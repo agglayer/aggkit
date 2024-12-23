@@ -1,31 +1,24 @@
-
 <div id="top"></div>
 <!-- PROJECT LOGO -->
 <br />
 <div align="center">
 
-<img src="./.github/assets/cdk-logo.svg#gh-light-mode-only" alt="Logo" width="100">
-<img src="./.github/assets/cdk-logo.svg#gh-dark-mode-only" alt="Logo" width="100">
+<img src="./.github/assets/aggkit-logo.svg#gh-light-mode-only" alt="Logo" width="100">
+<img src="./.github/assets/aggkit-logo.svg#gh-dark-mode-only" alt="Logo" width="100">
 
-## Polygon CDK
+## Polygon AggKit
 
-**Polygon CDK** (Chain Development Kit) is a modular framework that developers can use to build and deploy Zero Knowledge Proofs enabled Rollups and Validiums.
+**Polygon AggKit** is a modular framework that developers can use to build and deploy Pessimistic Proofs enabled chains (TBD).
 
-The CDK allow to build Rollups that are ZK powered, verifying the execution using the zkEVM prover from Polygon, they can be completelly personalizable because its modullar architecture.
-
-<!-- PROJECT SHIELDS -->
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=0xPolygon_cdk&metric=alert_status&token=aa6d76993fc213c4153bf65e0d62e4d08207ea7e)](https://sonarcloud.io/summary/new_code?id=0xPolygon_cdk)
-
-</div>
 </div>
 
 <br />
 
 ## Getting Started
 
-## Pre-requisites
+### Pre-requisites
 
-Setup Kurtosis following this instructions https://github.com/0xPolygon/kurtosis-cdk?tab=readme-ov-file#getting-started
+Setup Kurtosis following these instructions: [Kurtosis CDK Getting Started](https://github.com/0xPolygon/kurtosis-cdk?tab=readme-ov-file#getting-started)
 
 ### Local Testing
 
@@ -61,12 +54,12 @@ Contributions are very welcomed, the guidelines are currently not available (WIP
 
 ## Support
 
-Feel free to [open an issue](https://github.com/0xPolygon/cdk/issues/new) if you have any feature request or bug report.<br />
+Feel free to [open an issue](https://github.com/agglayer/aggkit/issues/new) if you have any feature request or bug report.<br />
 
 
 ## License
 
-Polygon Chain Development Kit
+Polygon AggKit
 Copyright (c) 2024 PT Services DMCC
 
 This program is free software: you can redistribute it and/or modify
