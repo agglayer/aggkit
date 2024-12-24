@@ -29,8 +29,6 @@ import (
 const (
 	rollupID           = uint32(1)
 	syncBlockChunkSize = 10
-	retries            = 3
-	periodRetry        = time.Millisecond * 100
 )
 
 type AggoracleWithEVMChain struct {
@@ -108,6 +106,11 @@ func L1Setup(t *testing.T) *L1Environment {
 	require.NoError(t, err)
 	go rdL1.Start(ctx) //nolint:errcheck
 
+	const (
+		l1InfoTreeSyncerRetries   = 3
+		l1InfoTreeSyncerRetryFreq = time.Millisecond * 100
+	)
+
 	// L1 info tree sync
 	dbPathL1InfoTreeSync := path.Join(t.TempDir(), "L1InfoTreeSync.sqlite")
 	l1InfoTreeSync, err := l1infotreesync.New(
@@ -115,20 +118,19 @@ func L1Setup(t *testing.T) *L1Environment {
 		gerL1Addr, common.Address{},
 		syncBlockChunkSize, etherman.LatestBlock,
 		rdL1, l1Client.Client(),
-		time.Millisecond, 0, periodRetry,
-		retries, l1infotreesync.FlagAllowWrongContractsAddrs,
+		time.Millisecond, 0, l1InfoTreeSyncerRetryFreq,
+		l1InfoTreeSyncerRetries, l1infotreesync.FlagAllowWrongContractsAddrs,
 	)
 	require.NoError(t, err)
 
 	go l1InfoTreeSync.Start(ctx)
 
 	const (
-		syncBlockChunks        = 10
 		waitForNewBlocksPeriod = 10 * time.Millisecond
 		originNetwork          = 1
 		initialBlock           = 0
-		retryPeriod            = 0
-		retriesCount           = 0
+		retryPeriod            = 50 * time.Millisecond
+		retriesCount           = 10
 	)
 
 	// Bridge sync
@@ -136,7 +138,7 @@ func L1Setup(t *testing.T) *L1Environment {
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
-		syncBlockChunks, etherman.LatestBlock, rdL1, testClient,
+		syncBlockChunkSize, etherman.LatestBlock, rdL1, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
 		retriesCount, originNetwork, false)
 	require.NoError(t, err)
@@ -186,16 +188,15 @@ func L2Setup(t *testing.T) *L2Environment {
 	testClient := TestClient{ClientRenamed: l2Client.Client()}
 
 	const (
-		syncBlockChunks        = 10
 		waitForNewBlocksPeriod = 10 * time.Millisecond
 		originNetwork          = 1
 		initialBlock           = 0
-		retryPeriod            = 0
-		retriesCount           = 0
+		retryPeriod            = 50 * time.Millisecond
+		retriesCount           = 10
 	)
 
 	bridgeL2Sync, err := bridgesync.NewL2(
-		ctx, dbPathL2BridgeSync, bridgeL2Addr, syncBlockChunks,
+		ctx, dbPathL2BridgeSync, bridgeL2Addr, syncBlockChunkSize,
 		etherman.LatestBlock, rdL2, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
 		retriesCount, originNetwork, false)
