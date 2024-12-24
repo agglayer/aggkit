@@ -70,7 +70,7 @@ fn build_versions() -> std::io::Result<()> {
     // Get the corresponding lines from the contents of the starlark file
     let versions = content
         .lines()
-        .skip(30)
+        .skip(32)
         .take(15)
         .collect::<Vec<&str>>()
         .join("\n");
@@ -81,6 +81,7 @@ fn build_versions() -> std::io::Result<()> {
     // Remove all comments to the end of the line using a regexp
     let re = Regex::new(r"\s#\s.*\n").unwrap();
     let versions = re.replace_all(&versions, "");
+
     // Replace the trailing comma on the last line
     let versions = versions.replace(", }", " }");
 
