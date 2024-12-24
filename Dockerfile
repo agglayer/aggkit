@@ -36,8 +36,8 @@ COPY --link crates crates
 COPY --link Cargo.toml Cargo.toml
 COPY --link Cargo.lock Cargo.lock
 
-ENV BUILD_SCRIPT_DISABLED=1
-RUN cargo build --release --bin cdk
+#ENV BUILD_SCRIPT_DISABLED=1
+#RUN cargo build --release --bin cdk
 
 # CONTAINER FOR RUNNING BINARY
 FROM --platform=${BUILDPLATFORM} debian:bookworm-slim
