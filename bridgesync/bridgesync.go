@@ -12,8 +12,8 @@ import (
 )
 
 const (
-	bridgeSyncL1       = "L1"
-	bridgeSyncL2       = "L2"
+	l1BridgeSyncer     = "L1BridgeSyncer"
+	l2BridgeSyncer     = "L2BridgeSyncer"
 	downloadBufferSize = 1000
 )
 
@@ -55,7 +55,7 @@ func NewL1(
 		rd,
 		ethClient,
 		initialBlock,
-		bridgeSyncL1,
+		l1BridgeSyncer,
 		waitForNewBlocksPeriod,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
@@ -89,7 +89,7 @@ func NewL2(
 		rd,
 		ethClient,
 		initialBlock,
-		bridgeSyncL2,
+		l2BridgeSyncer,
 		waitForNewBlocksPeriod,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
@@ -107,14 +107,14 @@ func newBridgeSync(
 	rd ReorgDetector,
 	ethClient EthClienter,
 	initialBlock uint64,
-	layerID string,
+	syncerID string,
 	waitForNewBlocksPeriod time.Duration,
 	retryAfterErrorPeriod time.Duration,
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
 ) (*BridgeSync, error) {
-	logger := log.WithFields("bridge-syncer", layerID)
+	logger := log.WithFields("module", syncerID)
 	processor, err := newProcessor(dbPath, logger)
 	if err != nil {
 		return nil, err
@@ -143,7 +143,7 @@ func newBridgeSync(
 		return nil, err
 	}
 	downloader, err := sync.NewEVMDownloader(
-		layerID,
+		syncerID,
 		ethClient,
 		syncBlockChunkSize,
 		blockFinalityType,
@@ -156,13 +156,13 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, layerID, downloadBufferSize, rh)
+	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID, downloadBufferSize, rh)
 	if err != nil {
 		return nil, err
 	}
 
 	logger.Infof(
-		"BridgeSyncer [%s] created:\n"+
+		"%s created:\n"+
 			"  dbPath: %s\n"+
 			"  initialBlock: %d\n"+
 			"  bridgeAddr: %s\n"+
@@ -172,7 +172,7 @@ func newBridgeSync(
 			"  syncBlockChunkSize: %d\n"+
 			"  blockFinalityType: %s\n"+
 			"  waitForNewBlocksPeriod: %s",
-		layerID,
+		syncerID,
 		dbPath,
 		initialBlock,
 		bridge.String(),
