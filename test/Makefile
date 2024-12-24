@@ -74,32 +74,32 @@ generate-mocks-agglayer: ## Generates mocks for agglayer, using mockery tool
 .PHONY: test-e2e-fork9-validium
 test-e2e-fork9-validium: stop
 	./run-e2e.sh fork9 cdk-validium
-	bats bats/fep/
+	BATS_TEST_TIMEOUT=1800 bats bats/fep/
 
 .PHONY: test-e2e-fork11-rollup
 test-e2e-fork11-rollup: stop
 	./run-e2e.sh fork11 rollup
-	bats bats/fep/
+	BATS_TEST_TIMEOUT=1800 bats bats/fep/
 
 .PHONY: test-e2e-fork12-validium
 test-e2e-fork12-validium: stop
 	./run-e2e.sh fork12 cdk-validium
-	bats bats/fep/
+	BATS_TEST_TIMEOUT=1800 bats bats/fep/
 
 .PHONY: test-e2e-fork12-rollup
 test-e2e-fork12-rollup: stop
 	./run-e2e.sh fork12 rollup
-	bats bats/fep/
+	BATS_TEST_TIMEOUT=1800 bats bats/fep/
 
 .PHONY: test-e2e-fork12-pessimistic
 test-e2e-fork12-pessimistic: stop
 	./run-e2e.sh fork12 pessimistic
-	bats bats/pp/bridge-e2e.bats bats/pp/e2e-pp.bats
+	BATS_TEST_TIMEOUT=1800 bats bats/pp/bridge-e2e.bats bats/pp/e2e-pp.bats
 
 .PHONY: test-e2e-fork12-multi-pessimistic
 test-e2e-fork12-multi-pessimistic: stop
 	./run-e2e-multi_pp.sh 
-	bats bats/pp-multi
+	BATS_TEST_TIMEOUT=1800 bats bats/pp-multi
 
 .PHONY: stop
 stop:
