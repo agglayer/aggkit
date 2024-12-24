@@ -84,7 +84,7 @@ stop: ## Stops all services
 
 .PHONY: test-unit
 test-unit:
-	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out  -coverpkg ./... -timeout 200s ./...
+	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -v -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out  -coverpkg ./... -timeout 200s ./...
 
 .PHONY: test-seq_sender
 test-seq_sender:
