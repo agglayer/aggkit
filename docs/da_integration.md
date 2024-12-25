@@ -62,7 +62,7 @@ These items would need to be implemented to have a successful integration:
 
 ## Test the integration
 
-1. Create an E2E test that uses your protocol by following the [test/e2e/datacommittee_test.go](https://github.com/agglayer/aggkit-validium-node/blob/develop/test/e2e/datacommittee_test.go) example.
+1. Create an E2E test that uses your protocol by following the [test/e2e/datacommittee_test.go](https://github.com/0xPolygon/cdk-validium-node/blob/develop/test/e2e/datacommittee_test.go) example.
 2. Follow the instructions on [Local Debug](local_debug.md) to run Kurtosis enviroment for local testing
 4. Deploy the new contract contract to L1 running in Kurtosis
 4. Call `setDataAvailabilityProtocol` in validium consensus contract to use the newly deployed contract.
