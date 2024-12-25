@@ -22,7 +22,7 @@ pub(crate) fn versions() {
     // Convert the JSON object to a HashMap.
     let versions_map = versions_json.as_object().unwrap();
 
-    // Get the version of the cdk-node binary.
+    // Get the version of the aggkit binary.
     let output = version().unwrap();
     let version = String::from_utf8(output.stdout).unwrap();
 

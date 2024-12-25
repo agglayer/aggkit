@@ -24,7 +24,7 @@ COPY --link crates crates
 COPY --link Cargo.toml Cargo.toml
 COPY --link Cargo.lock Cargo.lock
 
-RUN cargo chef prepare --recipe-path recipe.json --bin cdk
+RUN cargo chef prepare --recipe-path recipe.json --bin aggkit
 
 FROM chef AS builder
 
@@ -37,15 +37,15 @@ COPY --link Cargo.toml Cargo.toml
 COPY --link Cargo.lock Cargo.lock
 
 ENV BUILD_SCRIPT_DISABLED=1
-RUN cargo build --release --bin cdk
+RUN cargo build --release --bin aggkit
 
 # CONTAINER FOR RUNNING BINARY
 FROM --platform=${BUILDPLATFORM} debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates sqlite3 procps libssl-dev && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/cdk /usr/local/bin/
-COPY --from=build /go/src/github.com/agglayer/aggkit/target/cdk-node /usr/local/bin/
+COPY --from=builder /app/target/release/aggkit /usr/local/bin/
+COPY --from=build /go/src/github.com/agglayer/aggkit/target/aggkit /usr/local/bin/
 
 EXPOSE 5576/tcp
 
-CMD ["/bin/sh", "-c", "cdk"]
+CMD ["/bin/sh", "-c", "aggkit"]

@@ -39,6 +39,48 @@ dependencies = [
 ]
 
 [[package]]
+name = "aggkit"
+version = "0.1.0"
+dependencies = [
+ "aggkit-config",
+ "alloy-json-rpc",
+ "alloy-rpc-client",
+ "alloy-transport-http",
+ "anyhow",
+ "clap",
+ "colored",
+ "dotenvy",
+ "execute",
+ "regex",
+ "reqwest 0.12.8",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
+name = "aggkit-config"
+version = "0.1.0"
+dependencies = [
+ "ethers",
+ "jsonrpsee",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "thiserror",
+ "toml",
+ "tracing",
+ "tracing-appender",
+ "tracing-subscriber",
+ "url",
+]
+
+[[package]]
 name = "ahash"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -678,48 +720,6 @@ dependencies = [
  "jobserver",
  "libc",
  "once_cell",
-]
-
-[[package]]
-name = "cdk"
-version = "0.1.0"
-dependencies = [
- "alloy-json-rpc",
- "alloy-rpc-client",
- "alloy-transport-http",
- "anyhow",
- "cdk-config",
- "clap",
- "colored",
- "dotenvy",
- "execute",
- "regex",
- "reqwest 0.12.8",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "toml",
- "tracing",
- "tracing-subscriber",
- "url",
-]
-
-[[package]]
-name = "cdk-config"
-version = "0.1.0"
-dependencies = [
- "ethers",
- "jsonrpsee",
- "serde",
- "serde_json",
- "serde_with",
- "thiserror",
- "toml",
- "tracing",
- "tracing-appender",
- "tracing-subscriber",
- "url",
 ]
 
 [[package]]

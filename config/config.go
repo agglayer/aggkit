@@ -66,7 +66,7 @@ const (
 
 	EnvVarPrefix       = "CDK"
 	ConfigType         = "toml"
-	SaveConfigFileName = "cdk_config.toml"
+	SaveConfigFileName = "aggkit_config.toml"
 
 	DefaultCreationFilePermissions = os.FileMode(0600)
 )

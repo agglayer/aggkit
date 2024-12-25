@@ -15,7 +15,7 @@ import (
 	"github.com/0xPolygon/zkevm-ethtx-manager/etherman/etherscan"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
-	zkevm "github.com/agglayer/aggkit"
+	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
@@ -52,7 +52,7 @@ func start(cliCtx *cli.Context) error {
 	log.Init(cfg.Log)
 
 	if cfg.Log.Environment == log.EnvironmentDevelopment {
-		zkevm.PrintVersion(os.Stdout)
+		aggkit.PrintVersion(os.Stdout)
 		log.Info("Starting application")
 	} else if cfg.Log.Environment == log.EnvironmentProduction {
 		logVersion()
@@ -451,10 +451,10 @@ func newEtherman(c config.Config) (*etherman.Client, error) {
 func logVersion() {
 	log.Infow("Starting application",
 		// version is already logged by default
-		"gitRevision", zkevm.GitRev,
-		"gitBranch", zkevm.GitBranch,
+		"gitRevision", aggkit.GitRev,
+		"gitBranch", aggkit.GitBranch,
 		"goVersion", runtime.Version(),
-		"built", zkevm.BuildDate,
+		"built", aggkit.BuildDate,
 		"os/arch", fmt.Sprintf("%s/%s", runtime.GOOS, runtime.GOARCH),
 	)
 }

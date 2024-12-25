@@ -13,14 +13,14 @@ pub(crate) struct Cli {
 
 #[derive(Subcommand)]
 pub(crate) enum Commands {
-    /// Run the cdk-node with the provided configuration
+    /// Run the aggkit with the provided configuration
     Node {
         /// The path to the configuration file
         #[arg(
             long,
             short = 'C',
             value_hint = ValueHint::FilePath,
-            env = "CDK_CONFIG_PATH"
+            env = "AGGKIT_CONFIG_PATH"
         )]
         config: PathBuf,
 
@@ -29,7 +29,7 @@ pub(crate) enum Commands {
             long,
             short,
             value_hint = ValueHint::CommandString,
-            env = "CDK_COMPONENTS",
+            env = "AGGKIT_COMPONENTS",
         )]
         components: Option<String>,
     },
@@ -40,7 +40,7 @@ pub(crate) enum Commands {
             long,
             short = 'C',
             value_hint = ValueHint::FilePath,
-            env = "CDK_CONFIG_PATH"
+            env = "AGGKIT_CONFIG_PATH"
         )]
         config: PathBuf,
 
@@ -49,7 +49,7 @@ pub(crate) enum Commands {
             long,
             short = 'g',
             value_hint = ValueHint::FilePath,
-            env = "CDK_GENESIS_PATH"
+            env = "AGGKIT_GENESIS_PATH"
         )]
         chain: PathBuf,
     },

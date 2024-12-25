@@ -1,6 +1,6 @@
-//! CDK configuration.
+//! Aggkit configuration.
 //!
-//! The CDK is configured via its TOML configuration file, `cdk.toml`
+//! The Aggkit is configured via its TOML configuration file, `aggkit.toml`
 //! by default, which is deserialized into the [`Config`] struct.
 use serde::Deserialize;
 

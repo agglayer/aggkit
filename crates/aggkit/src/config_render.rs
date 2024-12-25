@@ -1,6 +1,6 @@
 use crate::allocs_render::Rendered;
 use anyhow::Error;
-use cdk_config::Config;
+use aggkit_config::Config;
 use std::fs;
 use std::path::PathBuf;
 use tempfile::{tempdir, TempDir};

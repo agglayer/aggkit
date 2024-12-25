@@ -1,9 +1,9 @@
 [book]
-authors = ["CDK Team - Polygon Labs"]
+authors = ["Aggkit Team - Polygon Labs"]
 language = "en"
 multilingual = false
 src = "docs"
-title = "CDK Docs"
+title = "Aggkit Docs"
 
 [preprocessor.mermaid]
 command = "mdbook-mermaid"
