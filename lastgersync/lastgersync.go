@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/l1infotreesync"
-	"github.com/0xPolygon/cdk/sync"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum/common"
 )
 

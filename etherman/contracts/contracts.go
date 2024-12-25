@@ -1,7 +1,7 @@
 package contracts
 
 import (
-	"github.com/0xPolygon/cdk/etherman/config"
+	"github.com/agglayer/aggkit/etherman/config"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 

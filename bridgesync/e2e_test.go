@@ -6,9 +6,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk/bridgesync"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/test/helpers"
+	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/test/helpers"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"

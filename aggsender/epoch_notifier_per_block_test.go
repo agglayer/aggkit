@@ -5,11 +5,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xPolygon/cdk/agglayer"
-	"github.com/0xPolygon/cdk/aggsender/mocks"
-	"github.com/0xPolygon/cdk/aggsender/types"
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/log"
+	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/log"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )

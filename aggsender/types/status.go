@@ -3,7 +3,7 @@ package types
 import (
 	"time"
 
-	zkevm "github.com/0xPolygon/cdk"
+	zkevm "github.com/agglayer/aggkit"
 )
 
 type AggsenderStatusType string

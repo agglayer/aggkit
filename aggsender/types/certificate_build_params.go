@@ -3,7 +3,7 @@ package types
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk/bridgesync"
+	"github.com/agglayer/aggkit/bridgesync"
 )
 
 const (

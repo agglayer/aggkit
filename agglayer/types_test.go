@@ -9,9 +9,9 @@ import (
 	"reflect"
 	"testing"
 
-	cdkcommon "github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/tree/types"
+	cdkcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"

@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	zkevm "github.com/0xPolygon/cdk"
+	zkevm "github.com/agglayer/aggkit"
 	"github.com/urfave/cli/v2"
 )
 

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk/aggoracle/mocks"
-	"github.com/0xPolygon/cdk/log"
+	"github.com/agglayer/aggkit/aggoracle/mocks"
+	"github.com/agglayer/aggkit/log"
 	"github.com/0xPolygon/zkevm-ethtx-manager/types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"

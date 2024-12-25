@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package datastream.v1;
 
-option go_package = "github.com/0xPolygon/cdk"state/datastream";
+option go_package = "github.com/agglayer/aggkit"state/datastream";
 
 message BatchStart {
     uint64 number = 1;

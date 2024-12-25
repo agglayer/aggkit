@@ -9,9 +9,9 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/0xPolygon/cdk/bridgesync"
-	cdkcommon "github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/tree/types"
+	"github.com/agglayer/aggkit/bridgesync"
+	cdkcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )

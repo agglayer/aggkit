@@ -5,7 +5,7 @@ import (
 	"path"
 	"testing"
 
-	"github.com/0xPolygon/cdk/db"
+	"github.com/agglayer/aggkit/db"
 	"github.com/stretchr/testify/require"
 )
 

@@ -3,7 +3,7 @@ package types
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk/sequencesender/seqsendertypes"
+	"github.com/agglayer/aggkit/sequencesender/seqsendertypes"
 	"github.com/ethereum/go-ethereum/common"
 )
 

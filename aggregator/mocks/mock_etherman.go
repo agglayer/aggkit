@@ -8,7 +8,7 @@ import (
 
 	common "github.com/ethereum/go-ethereum/common"
 
-	ethmantypes "github.com/0xPolygon/cdk/aggregator/ethmantypes"
+	ethmantypes "github.com/agglayer/aggkit/aggregator/ethmantypes"
 
 	mock "github.com/stretchr/testify/mock"
 

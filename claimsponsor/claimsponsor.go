@@ -8,11 +8,11 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk/claimsponsor/migrations"
-	"github.com/0xPolygon/cdk/db"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/sync"
-	tree "github.com/0xPolygon/cdk/tree/types"
+	"github.com/agglayer/aggkit/claimsponsor/migrations"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/sync"
+	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )

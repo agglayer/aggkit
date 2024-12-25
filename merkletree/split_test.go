@@ -6,8 +6,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/0xPolygon/cdk/hex"
-	"github.com/0xPolygon/cdk/test/testutils"
+	"github.com/agglayer/aggkit/hex"
+	"github.com/agglayer/aggkit/test/testutils"
 	"github.com/stretchr/testify/require"
 )
 

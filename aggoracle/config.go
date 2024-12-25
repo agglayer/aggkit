@@ -1,8 +1,8 @@
 package aggoracle
 
 import (
-	"github.com/0xPolygon/cdk/aggoracle/chaingersender"
-	"github.com/0xPolygon/cdk/config/types"
+	"github.com/agglayer/aggkit/aggoracle/chaingersender"
+	"github.com/agglayer/aggkit/config/types"
 )
 
 type TargetChainType string

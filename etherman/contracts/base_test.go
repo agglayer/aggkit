@@ -4,7 +4,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/banana/polygonzkevmglobalexitrootv2"
-	"github.com/0xPolygon/cdk/etherman/contracts"
+	"github.com/agglayer/aggkit/etherman/contracts"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )

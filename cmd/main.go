@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 
-	zkevm "github.com/0xPolygon/cdk"
-	"github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/config"
-	"github.com/0xPolygon/cdk/log"
+	zkevm "github.com/agglayer/aggkit"
+	"github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/config"
+	"github.com/agglayer/aggkit/log"
 	"github.com/urfave/cli/v2"
 )
 

@@ -112,7 +112,7 @@ Implements `ChainSender` using Ethereum clients and transaction management.
 - **Contract**: `GlobalExitRootManagerL2SovereignChain.sol`
 - **Function**: `insertGlobalExitRoot`
     - [Source Code](https://github.com/0xPolygonHermez/zkevm-contracts/blob/feature/audit-remediations/contracts/v2/sovereignChains/GlobalExitRootManagerL2SovereignChain.sol#L89-L103)
-- **Bindings**: Available in [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/l2-sovereign-chain).
+- **Bindings**: Available in [cdk-contracts-tooling](https://github.com/agglayer/aggkit-contracts-tooling/tree/main/contracts/l2-sovereign-chain).
 
 ---
 
@@ -120,4 +120,4 @@ Implements `ChainSender` using Ethereum clients and transaction management.
 
 The **AggOracle** component automates the propagation of GERs from L1 to L2, enabling bridging across networks.
 
-Refer to the EVM implementation in [evm.go](https://github.com/0xPolygon/cdk/blob/main/aggoracle/chaingersender/evm.go) for guidance on building new chain senders.
+Refer to the EVM implementation in [evm.go](https://github.com/agglayer/aggkit/blob/main/aggoracle/chaingersender/evm.go) for guidance on building new chain senders.

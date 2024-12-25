@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/0xPolygon/cdk/l1infotree"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/test/vectors"
+	"github.com/agglayer/aggkit/l1infotree"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/test/vectors"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )

@@ -7,11 +7,11 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk/agglayer"
-	"github.com/0xPolygon/cdk/bridgesync"
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/l1infotreesync"
-	treeTypes "github.com/0xPolygon/cdk/tree/types"
+	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )

@@ -15,10 +15,10 @@ GOENVVARS := GOBIN=$(GOBIN) CGO_ENABLED=1 GOARCH=$(ARCH)
 GOBINARY := cdk-node
 GOCMD := $(GOBASE)/cmd
 
-LDFLAGS += -X 'github.com/0xPolygon/cdk.Version=$(VERSION)'
-LDFLAGS += -X 'github.com/0xPolygon/cdk.GitRev=$(GITREV)'
-LDFLAGS += -X 'github.com/0xPolygon/cdk.GitBranch=$(GITBRANCH)'
-LDFLAGS += -X 'github.com/0xPolygon/cdk.BuildDate=$(DATE)'
+LDFLAGS += -X 'github.com/agglayer/aggkit.Version=$(VERSION)'
+LDFLAGS += -X 'github.com/agglayer/aggkit.GitRev=$(GITREV)'
+LDFLAGS += -X 'github.com/agglayer/aggkit.GitBranch=$(GITBRANCH)'
+LDFLAGS += -X 'github.com/agglayer/aggkit.BuildDate=$(DATE)'
 
 # Check dependencies
 # Check for Go

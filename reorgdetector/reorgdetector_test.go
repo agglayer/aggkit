@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	cdktypes "github.com/0xPolygon/cdk/config/types"
+	cdktypes "github.com/agglayer/aggkit/config/types"
 	common "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
 	"github.com/stretchr/testify/require"

@@ -4,10 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/sync"
-	tree "github.com/0xPolygon/cdk/tree/types"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/sync"
+	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 

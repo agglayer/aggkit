@@ -7,13 +7,13 @@ import (
 
 	common "github.com/ethereum/go-ethereum/common"
 
-	datastream "github.com/0xPolygon/cdk/state/datastream"
+	datastream "github.com/agglayer/aggkit/state/datastream"
 
 	mock "github.com/stretchr/testify/mock"
 
-	seqsendertypes "github.com/0xPolygon/cdk/sequencesender/seqsendertypes"
+	seqsendertypes "github.com/agglayer/aggkit/sequencesender/seqsendertypes"
 
-	txbuilder "github.com/0xPolygon/cdk/sequencesender/txbuilder"
+	txbuilder "github.com/agglayer/aggkit/sequencesender/txbuilder"
 
 	types "github.com/ethereum/go-ethereum/core/types"
 )

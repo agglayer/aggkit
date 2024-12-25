@@ -1,6 +1,6 @@
 package common
 
-import "github.com/0xPolygon/cdk/translator"
+import "github.com/agglayer/aggkit/translator"
 
 // Config holds the configuration for the CDK.
 type Config struct {

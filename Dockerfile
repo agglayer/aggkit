@@ -1,7 +1,7 @@
 # CONTAINER FOR BUILDING BINARY
 FROM --platform=${BUILDPLATFORM} golang:1.22.4 AS build
 
-WORKDIR $GOPATH/src/github.com/0xPolygon/cdk
+WORKDIR $GOPATH/src/github.com/agglayer/aggkit
 
 # INSTALL DEPENDENCIES
 COPY go.mod go.sum ./
@@ -44,7 +44,7 @@ FROM --platform=${BUILDPLATFORM} debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates sqlite3 procps libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /app/target/release/cdk /usr/local/bin/
-COPY --from=build /go/src/github.com/0xPolygon/cdk/target/cdk-node /usr/local/bin/
+COPY --from=build /go/src/github.com/agglayer/aggkit/target/cdk-node /usr/local/bin/
 
 EXPOSE 5576/tcp
 

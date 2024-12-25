@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk/aggregator/db"
-	"github.com/0xPolygon/cdk/state"
+	"github.com/agglayer/aggkit/aggregator/db"
+	"github.com/agglayer/aggkit/state"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )

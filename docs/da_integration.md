@@ -52,8 +52,8 @@ Up until now, DAs would fork the `cdk-validium-node` repo to make such an integr
 
 These items would need to be implemented to have a successful integration:
 
-1. Create a repository that will host the package that implements [this interface](https://github.com/0xPolygon/cdk/blob/develop/dataavailability/interfaces.go#L11-L16). You can check how is done for the [DAC case](https://github.com/0xPolygon/cdk/blob/develop/dataavailability/datacommittee/datacommittee.go) as an example.
-2. Add a new entry on the [supported backend strings](https://github.com/0xPolygon/cdk/blob/develop/dataavailability/config.go)
+1. Create a repository that will host the package that implements [this interface](https://github.com/agglayer/aggkit/blob/develop/dataavailability/interfaces.go#L11-L16). You can check how is done for the [DAC case](https://github.com/agglayer/aggkit/blob/develop/dataavailability/datacommittee/datacommittee.go) as an example.
+2. Add a new entry on the [supported backend strings](https://github.com/agglayer/aggkit/blob/develop/dataavailability/config.go)
 3. [OPTIONAL] Add a config struct in the new package, and add the struct inside the main data availability config struct, this way your package will be able to receive custom configuration using the main config file of the node.
 4. `go get` and instantiate your package and use it to create the main data availability instance, as done in the Polygon implementation.
 
@@ -62,7 +62,7 @@ These items would need to be implemented to have a successful integration:
 
 ## Test the integration
 
-1. Create an E2E test that uses your protocol by following the [test/e2e/datacommittee_test.go](https://github.com/0xPolygon/cdk-validium-node/blob/develop/test/e2e/datacommittee_test.go) example.
+1. Create an E2E test that uses your protocol by following the [test/e2e/datacommittee_test.go](https://github.com/agglayer/aggkit-validium-node/blob/develop/test/e2e/datacommittee_test.go) example.
 2. Follow the instructions on [Local Debug](local_debug.md) to run Kurtosis enviroment for local testing
 4. Deploy the new contract contract to L1 running in Kurtosis
 4. Call `setDataAvailabilityProtocol` in validium consensus contract to use the newly deployed contract.

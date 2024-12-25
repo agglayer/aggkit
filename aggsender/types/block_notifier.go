@@ -3,7 +3,7 @@ package types
 import (
 	"time"
 
-	"github.com/0xPolygon/cdk/etherman"
+	"github.com/agglayer/aggkit/etherman"
 )
 
 type EventNewBlock struct {

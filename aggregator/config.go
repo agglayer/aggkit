@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/0xPolygon/cdk/config/types"
-	"github.com/0xPolygon/cdk/log"
+	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/log"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	syncronizerConfig "github.com/0xPolygonHermez/zkevm-synchronizer-l1/config"
 )

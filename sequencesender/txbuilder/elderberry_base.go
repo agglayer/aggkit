@@ -3,10 +3,10 @@ package txbuilder
 import (
 	"context"
 
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/sequencesender/seqsendertypes"
-	"github.com/0xPolygon/cdk/state/datastream"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/sequencesender/seqsendertypes"
+	"github.com/agglayer/aggkit/state/datastream"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )

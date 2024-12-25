@@ -4,7 +4,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/banana/polygonrollupmanager"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/banana/polygonvalidiumetrog"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/banana/polygonzkevmglobalexitrootv2"
-	"github.com/0xPolygon/cdk/etherman/config"
+	"github.com/agglayer/aggkit/etherman/config"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 )
 

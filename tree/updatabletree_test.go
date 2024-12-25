@@ -4,9 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/0xPolygon/cdk/db"
-	"github.com/0xPolygon/cdk/tree"
-	"github.com/0xPolygon/cdk/tree/types"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/tree"
+	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )

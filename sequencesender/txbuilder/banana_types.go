@@ -3,9 +3,9 @@ package txbuilder
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/sequencesender/seqsendertypes"
-	"github.com/0xPolygon/cdk/state"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/sequencesender/seqsendertypes"
+	"github.com/agglayer/aggkit/state"
 	"github.com/ethereum/go-ethereum/common"
 )
 

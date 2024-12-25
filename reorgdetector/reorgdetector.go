@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xPolygon/cdk/db"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/reorgdetector/migrations"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector/migrations"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
