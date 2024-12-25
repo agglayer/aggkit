@@ -1,0 +1,16 @@
+[Unit]
+  Description=aggkit
+  StartLimitIntervalSec=500
+  StartLimitBurst=5
+
+[Service]
+  Restart=on-failure
+  RestartSec=5s
+  ExecStart=/usr/bin/aggkit --config $config --chain $chain node
+  Type=simple
+  KillSignal=SIGINT
+  User=aggkit
+  TimeoutStopSec=120
+
+[Install]
+  WantedBy=multi-user.target

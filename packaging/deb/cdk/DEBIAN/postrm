@@ -1,0 +1,8 @@
+#!/bin/bash
+#
+###############
+# Remove aggkit installs
+##############
+#rm -rf /lib/systemd/system/aggkit.service
+deluser aggkit
+#systemctl daemon-reload

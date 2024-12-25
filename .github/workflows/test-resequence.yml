@@ -1,0 +1,94 @@
+name: Resequence test
+on:
+  push:
+    branches:
+      # Disable test for the moment as it takes too long
+      - "test_disabled"
+
+concurrency:
+  group: ${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Resequence:
+    runs-on: ubuntu-latest
+    # TODO: Add "cdk-validium" once it's ready
+    # strategy:
+    #   matrix:
+    #     da-mode: [ "rollup" ]
+    steps:
+      - name: Checkout aggkit
+        uses: actions/checkout@v4
+        with:
+          path: aggkit
+
+      - name: Checkout cdk-erigon
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygonHermez/cdk-erigon
+          ref: banana
+          path: cdk-erigon
+
+      - name: Checkout kurtosis-cdk
+        uses: actions/checkout@v4
+        with:
+          repository: 0xPolygon/kurtosis-cdk
+          path: kurtosis-cdk
+          ref: v0.2.24
+
+      - name: Install Kurtosis CDK tools
+        uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
+
+      - name: Install polycli
+        run: |
+          POLYCLI_VERSION="${{ vars.POLYCLI_VERSION }}"
+          tmp_dir=$(mktemp -d)
+          curl -L "https://github.com/0xPolygon/polygon-cli/releases/download/${POLYCLI_VERSION}/polycli_${POLYCLI_VERSION}_linux_amd64.tar.gz" | tar -xz -C "$tmp_dir"
+          mv "$tmp_dir"/* /usr/local/bin/polycli
+          rm -rf "$tmp_dir"
+          sudo chmod +x /usr/local/bin/polycli
+          /usr/local/bin/polycli version
+
+      - name: Build docker image
+        working-directory: ./aggkit
+        run: docker build -t aggkit:local --file Dockerfile .
+
+      - name: Remove unused flags
+        working-directory: ./kurtosis-cdk
+        run: |
+          sed -i '/zkevm.sequencer-batch-seal-time:/d' templates/cdk-erigon/config.yml
+          sed -i '/zkevm.sequencer-non-empty-batch-seal-time:/d' templates/cdk-erigon/config.yml
+
+      - name: Configure Kurtosis CDK
+        working-directory: ./kurtosis-cdk
+        run: |
+          /usr/local/bin/yq -i '.args.cdk_node_image = "aggkit:local"' params.yml
+          /usr/local/bin/yq -i '.args.zkevm_rollup_fork_id = "12"' params.yml
+          /usr/local/bin/yq -i '.args.zkevm_prover_image = "hermeznetwork/zkevm-prover:v8.0.0-RC5-fork.12"' params.yml
+          /usr/local/bin/yq -i '.args.cdk_erigon_node_image = "jerrycgh/cdk-erigon:d5d04906f723f3f1d8c43c9e6baf3e18c27ff348"' params.yml
+
+      - name: Deploy Kurtosis CDK package
+        working-directory: ./kurtosis-cdk
+        run: kurtosis run --enclave cdk-v1 --args-file params.yml --image-download always .
+
+      - name: Test resequence
+        working-directory: ./cdk-erigon
+        run: .github/scripts/test_resequence.sh
+
+      - name: Dump enclave logs
+        if: failure()
+        run: kurtosis dump ./dump
+
+      - name: Generate archive name
+        if: failure()
+        run: |
+          archive_name="dump_run_with_args_${{matrix.e2e-group}}_${{ github.run_id }}"
+          echo "ARCHIVE_NAME=${archive_name}" >> "$GITHUB_ENV"
+          echo "Generated archive name: ${archive_name}"
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ./dump

@@ -1,0 +1,12 @@
+#!/bin/bash
+# This is a postinstallation script so the service can be configured and started when requested
+#
+adduser --disabled-password --disabled-login --shell /usr/sbin/nologin --quiet --system --no-create-home --home /nonexistent aggkit
+if [ -d "/opt/aggkit" ]
+then
+    echo "Directory /opt/aggkit exists."
+else
+     mkdir -p /opt/aggkit
+     chown -R aggkit /opt/aggkit
+fi
+systemctl daemon-reload
