@@ -10,6 +10,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
+	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
+	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/rpc"
@@ -17,9 +20,6 @@ import (
 	"github.com/agglayer/aggkit/sequencesender/seqsendertypes"
 	"github.com/agglayer/aggkit/sequencesender/txbuilder"
 	"github.com/agglayer/aggkit/state"
-	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
-	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
-	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 )

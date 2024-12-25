@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	types2 "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
@@ -15,7 +16,6 @@ import (
 	"github.com/agglayer/aggkit/sequencesender/seqsendertypes"
 	"github.com/agglayer/aggkit/sequencesender/txbuilder"
 	"github.com/agglayer/aggkit/state"
-	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"

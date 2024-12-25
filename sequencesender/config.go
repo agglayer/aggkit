@@ -1,9 +1,9 @@
 package sequencesender
 
 import (
+	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
-	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	"github.com/ethereum/go-ethereum/common"
 )
 

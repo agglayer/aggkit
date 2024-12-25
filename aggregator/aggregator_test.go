@@ -17,6 +17,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xPolygonHermez/zkevm-synchronizer-l1/synchronizer"
 	"github.com/agglayer/aggkit/agglayer"
 	mocks "github.com/agglayer/aggkit/aggregator/mocks"
 	"github.com/agglayer/aggkit/aggregator/prover"
@@ -24,7 +25,6 @@ import (
 	"github.com/agglayer/aggkit/log"
 	rpctypes "github.com/agglayer/aggkit/rpc/types"
 	"github.com/agglayer/aggkit/state"
-	"github.com/0xPolygonHermez/zkevm-synchronizer-l1/synchronizer"
 	"github.com/ethereum/go-ethereum/common"
 	ethTypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/assert"
