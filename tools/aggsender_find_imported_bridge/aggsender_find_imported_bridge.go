@@ -6,11 +6,11 @@ import (
 	"math/big"
 	"os"
 
-	"github.com/0xPolygon/cdk/agglayer"
-	"github.com/0xPolygon/cdk/aggsender/rpcclient"
-	"github.com/0xPolygon/cdk/aggsender/types"
-	"github.com/0xPolygon/cdk/bridgesync"
-	"github.com/0xPolygon/cdk/log"
+	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/aggsender/rpcclient"
+	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/log"
 )
 
 const (

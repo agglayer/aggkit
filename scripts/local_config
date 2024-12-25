@@ -297,8 +297,8 @@ EOF
         exit 1
     
     fi
-    if [ -z $TMP_CDK_FOLDER -o -z $KURTOSIS_ENCLAVE ]; then
-        log_fatal "TMP_CDK_FOLDER or KURTOSIS_ENCLAVE is not set. Must be set on file env.sh"
+    if [ -z $TMP_AGGKIT_FOLDER -o -z $KURTOSIS_ENCLAVE ]; then
+        log_fatal "TMP_AGGKIT_FOLDER or KURTOSIS_ENCLAVE is not set. Must be set on file env.sh"
     fi
     kurtosis enclave inspect $KURTOSIS_ENCLAVE > /dev/null
     if [ $? -ne 0 ]; then
@@ -312,8 +312,8 @@ EOF
 }
 ###############################################################################
 function create_dest_folder(){
-    export DEST=${TMP_CDK_FOLDER}/local_config
-    export zkevm_path_rw_data=${TMP_CDK_FOLDER}/runtime
+    export DEST=${TMP_AGGKIT_FOLDER}/local_config
+    export zkevm_path_rw_data=${TMP_AGGKIT_FOLDER}/runtime
     [ ! -d ${DEST} ] && mkdir -p ${DEST}
     rm $DEST/*
     mkdir $zkevm_path_rw_data
@@ -415,16 +415,16 @@ echo " "
 echo "file generated at:" $DEST/test.kurtosis.toml
 
 echo "- to restart kurtosis:"
-echo "    kurtosis clean --all; kurtosis run --enclave cdk --args-file params.yml --image-download always ."
+echo "    kurtosis clean --all; kurtosis run --enclave aggkit --args-file params.yml --image-download always ."
 echo " "
-echo "- Stop cdk-node:"
-echo "    kurtosis service stop cdk cdk-node-001"
+echo "- Stop aggkit:"
+echo "    kurtosis service stop aggkit cdk-node-001"
 echo " "
 echo "- Add next configuration to vscode launch.json"
 echo " -----------------------------------------------------------"
 cat << EOF
          {
-            "name": "Debug cdk",
+            "name": "Debug aggkit",
             "type": "go",
             "request": "launch",
             "mode": "auto",

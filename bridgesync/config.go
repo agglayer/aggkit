@@ -1,7 +1,7 @@
 package bridgesync
 
 import (
-	"github.com/0xPolygon/cdk/config/types"
+	"github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 

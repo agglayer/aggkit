@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-default-members = ["crates/cdk"]
+default-members = ["crates/aggkit"]
 members = ["crates/*"]
 
 [workspace.package]

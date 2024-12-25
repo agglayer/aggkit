@@ -3,7 +3,7 @@ package state
 import (
 	"time"
 
-	"github.com/0xPolygon/cdk/state/datastream"
+	"github.com/agglayer/aggkit/state/datastream"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )

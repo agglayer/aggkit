@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	cdktypes "github.com/0xPolygon/cdk/config/types"
+	aggkittypes "github.com/agglayer/aggkit/config/types"
 	common "github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
 	"github.com/stretchr/testify/require"
@@ -24,7 +24,7 @@ func Test_ReorgDetector(t *testing.T) {
 	// Create test DB dir
 	testDir := path.Join(t.TempDir(), "reorgdetectorTest_ReorgDetector.sqlite")
 
-	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: cdktypes.NewDuration(time.Millisecond * 100)})
+	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)})
 	require.NoError(t, err)
 
 	err = reorgDetector.Start(ctx)
@@ -99,7 +99,7 @@ func Test_ReorgDetector(t *testing.T) {
 func TestGetTrackedBlocks(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetector_TestGetTrackedBlocks.sqlite")
-	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: cdktypes.NewDuration(time.Millisecond * 100)})
+	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)})
 	require.NoError(t, err)
 	list, err := reorgDetector.getTrackedBlocks()
 	require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestGetTrackedBlocks(t *testing.T) {
 func TestNotSubscribed(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestNotSubscribed.sqlite")
-	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: cdktypes.NewDuration(time.Millisecond * 100)})
+	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)})
 	require.NoError(t, err)
 	err = reorgDetector.AddBlockToTrack(context.Background(), "foo", 1, common.Hash{})
 	require.True(t, strings.Contains(err.Error(), "is not subscribed"))

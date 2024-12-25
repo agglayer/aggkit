@@ -3,14 +3,14 @@ package main
 import (
 	"os"
 
-	zkevm "github.com/0xPolygon/cdk"
-	"github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/config"
-	"github.com/0xPolygon/cdk/log"
+	"github.com/agglayer/aggkit"
+	"github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/config"
+	"github.com/agglayer/aggkit/log"
 	"github.com/urfave/cli/v2"
 )
 
-const appName = "cdk"
+const appName = "aggkit"
 
 const (
 	// NETWORK_CONFIGFILE name to identify the network_custom (genesis) config-file
@@ -47,7 +47,7 @@ var (
 	saveConfigFlag = cli.StringFlag{
 		Name:     config.FlagSaveConfigPath,
 		Aliases:  []string{"s"},
-		Usage:    "Save final configuration into to the indicated path (name: cdk-node-config.toml)",
+		Usage:    "Save final configuration into to the indicated path (name: aggkit-config.toml)",
 		Required: false,
 	}
 	disableDefaultConfigVars = cli.BoolFlag{
@@ -67,7 +67,7 @@ var (
 func main() {
 	app := cli.NewApp()
 	app.Name = appName
-	app.Version = zkevm.Version
+	app.Version = aggkit.Version
 	flags := []cli.Flag{
 		&configFileFlag,
 		&yesFlag,
@@ -86,7 +86,7 @@ func main() {
 		{
 			Name:    "run",
 			Aliases: []string{},
-			Usage:   "Run the cdk client",
+			Usage:   "Run the aggkit client",
 			Action:  start,
 			Flags:   append(flags, &customNetworkFlag),
 		},

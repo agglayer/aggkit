@@ -1,7 +1,7 @@
 //! Command line interface.
 use alloy_rpc_client::ClientBuilder;
 use alloy_rpc_client::ReqwestClient;
-use cdk_config::Config;
+use aggkit_config::Config;
 use clap::Parser;
 use cli::Cli;
 use colored::*;

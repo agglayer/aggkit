@@ -3,8 +3,8 @@ package migrations
 import (
 	_ "embed"
 
-	"github.com/0xPolygon/cdk/db"
-	"github.com/0xPolygon/cdk/db/types"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/types"
 )
 
 //go:embed reorgdetector0001.sql

@@ -7,7 +7,7 @@ import (
 
 	common "github.com/ethereum/go-ethereum/common"
 
-	etherman "github.com/0xPolygon/cdk/etherman"
+	etherman "github.com/agglayer/aggkit/etherman"
 
 	mock "github.com/stretchr/testify/mock"
 )

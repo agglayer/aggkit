@@ -1,8 +1,8 @@
 #!/bin/bash
 #
 ###############
-# Remove cdk-node installs
+# Remove aggkit installs
 ##############
-#rm -rf /lib/systemd/system/cdk-node.service
-deluser cdk
+#rm -rf /lib/systemd/system/aggkit.service
+deluser aggkit
 #systemctl daemon-reload

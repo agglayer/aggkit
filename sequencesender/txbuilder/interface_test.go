@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xPolygon/cdk/sequencesender/txbuilder"
-	"github.com/0xPolygon/cdk/sequencesender/txbuilder/mocks_txbuilder"
+	"github.com/agglayer/aggkit/sequencesender/txbuilder"
+	"github.com/agglayer/aggkit/sequencesender/txbuilder/mocks_txbuilder"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"

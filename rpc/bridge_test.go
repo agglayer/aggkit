@@ -5,11 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	cdkCommon "github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/l1infotreesync"
-	"github.com/0xPolygon/cdk/log"
-	mocks "github.com/0xPolygon/cdk/rpc/mocks"
-	tree "github.com/0xPolygon/cdk/tree/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/log"
+	mocks "github.com/agglayer/aggkit/rpc/mocks"
+	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -49,7 +49,7 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 				require.True(t, ok)
 				infoAfterBlock.L1InfoTreeIndex = uint32(blockNum)
 				infoAfterBlock.BlockNumber = blockNum
-				infoAfterBlock.MainnetExitRoot = common.BytesToHash(cdkCommon.Uint32ToBytes(uint32(blockNum)))
+				infoAfterBlock.MainnetExitRoot = common.BytesToHash(aggkitcommon.Uint32ToBytes(uint32(blockNum)))
 			}).
 			Return(infoAfterBlock, nil)
 		rootByLER := &tree.Root{}
@@ -57,7 +57,7 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 			Run(func(args mock.Arguments) {
 				ler, ok := args.Get(1).(common.Hash)
 				require.True(t, ok)
-				index := cdkCommon.BytesToUint32(ler.Bytes()[28:]) // hash is 32 bytes, uint32 is just 4
+				index := aggkitcommon.BytesToUint32(ler.Bytes()[28:]) // hash is 32 bytes, uint32 is just 4
 				if ler == common.HexToHash("alfa") {
 					index = uint32(lastL1Info.BlockNumber)
 				}
@@ -244,8 +244,8 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 				blockNum, ok := args.Get(1).(uint64)
 				require.True(t, ok)
 				verifiedAfterBlock.BlockNumber = blockNum
-				verifiedAfterBlock.ExitRoot = common.BytesToHash(cdkCommon.Uint32ToBytes(uint32(blockNum)))
-				verifiedAfterBlock.RollupExitRoot = common.BytesToHash(cdkCommon.Uint32ToBytes(uint32(blockNum)))
+				verifiedAfterBlock.ExitRoot = common.BytesToHash(aggkitcommon.Uint32ToBytes(uint32(blockNum)))
+				verifiedAfterBlock.RollupExitRoot = common.BytesToHash(aggkitcommon.Uint32ToBytes(uint32(blockNum)))
 			}).
 			Return(verifiedAfterBlock, nil)
 		rootByLER := &tree.Root{}
@@ -253,7 +253,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 			Run(func(args mock.Arguments) {
 				ler, ok := args.Get(1).(common.Hash)
 				require.True(t, ok)
-				index := cdkCommon.BytesToUint32(ler.Bytes()[28:]) // hash is 32 bytes, uint32 is just 4
+				index := aggkitcommon.BytesToUint32(ler.Bytes()[28:]) // hash is 32 bytes, uint32 is just 4
 				if ler == common.HexToHash("alfa") {
 					index = uint32(lastVerified.BlockNumber)
 				}
@@ -265,7 +265,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 			Run(func(args mock.Arguments) {
 				exitRoot, ok := args.Get(0).(common.Hash)
 				require.True(t, ok)
-				index := cdkCommon.BytesToUint32(exitRoot.Bytes()[28:]) // hash is 32 bytes, uint32 is just 4
+				index := aggkitcommon.BytesToUint32(exitRoot.Bytes()[28:]) // hash is 32 bytes, uint32 is just 4
 				info.L1InfoTreeIndex = index
 			}).
 			Return(info, nil).

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xPolygon/cdk/aggsender/mocks"
-	"github.com/0xPolygon/cdk/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/stretchr/testify/require"
 )
 

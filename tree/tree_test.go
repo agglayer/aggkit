@@ -9,12 +9,12 @@ import (
 	"path"
 	"testing"
 
-	"github.com/0xPolygon/cdk/db"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/tree"
-	"github.com/0xPolygon/cdk/tree/migrations"
-	"github.com/0xPolygon/cdk/tree/testvectors"
-	"github.com/0xPolygon/cdk/tree/types"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/tree"
+	"github.com/agglayer/aggkit/tree/migrations"
+	"github.com/agglayer/aggkit/tree/testvectors"
+	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )

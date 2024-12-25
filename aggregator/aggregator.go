@@ -15,17 +15,7 @@ import (
 	"time"
 	"unicode"
 
-	cdkTypes "github.com/0xPolygon/cdk-rpc/types"
-	"github.com/0xPolygon/cdk/agglayer"
-	"github.com/0xPolygon/cdk/aggregator/db/dbstorage"
-	ethmanTypes "github.com/0xPolygon/cdk/aggregator/ethmantypes"
-	"github.com/0xPolygon/cdk/aggregator/prover"
-	cdkcommon "github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/config/types"
-	"github.com/0xPolygon/cdk/l1infotree"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/rpc"
-	"github.com/0xPolygon/cdk/state"
+	aggkittypes "github.com/0xPolygon/cdk-rpc/types"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
@@ -33,6 +23,16 @@ import (
 	"github.com/0xPolygonHermez/zkevm-synchronizer-l1/state/entities"
 	"github.com/0xPolygonHermez/zkevm-synchronizer-l1/synchronizer"
 	"github.com/0xPolygonHermez/zkevm-synchronizer-l1/synchronizer/l1_check_block"
+	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/aggregator/db/dbstorage"
+	ethmanTypes "github.com/agglayer/aggkit/aggregator/ethmantypes"
+	"github.com/agglayer/aggkit/aggregator/prover"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/l1infotree"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/rpc"
+	"github.com/agglayer/aggkit/state"
 	"github.com/ethereum/go-ethereum/common"
 	"go.uber.org/zap/zapcore"
 	"google.golang.org/grpc"
@@ -130,7 +130,7 @@ func New(
 	if !cfg.SyncModeOnlyEnabled && cfg.SettlementBackend == AggLayer {
 		aggLayerClient = agglayer.NewAggLayerClient(cfg.AggLayerURL)
 
-		sequencerPrivateKey, err = cdkcommon.NewKeyFromKeystore(cfg.SequencerPrivateKey)
+		sequencerPrivateKey, err = aggkitcommon.NewKeyFromKeystore(cfg.SequencerPrivateKey)
 		if err != nil {
 			return nil, err
 		}
@@ -383,7 +383,7 @@ func (a *Aggregator) Channel(stream prover.AggregatorService_ChannelServer) erro
 	if ok {
 		proverAddr = p.Addr
 	}
-	proverLogger := log.WithFields("module", cdkcommon.PROVER)
+	proverLogger := log.WithFields("module", aggkitcommon.PROVER)
 	prover, err := prover.New(proverLogger, stream, proverAddr, a.cfg.ProofStatePollingInterval)
 	if err != nil {
 		return err
@@ -513,12 +513,12 @@ func (a *Aggregator) settleWithAggLayer(
 	proofStrNo0x := strings.TrimPrefix(inputs.FinalProof.Proof, "0x")
 	proofBytes := common.Hex2Bytes(proofStrNo0x)
 	tx := agglayer.Tx{
-		LastVerifiedBatch: cdkTypes.ArgUint64(proof.BatchNumber - 1),
-		NewVerifiedBatch:  cdkTypes.ArgUint64(proof.BatchNumberFinal),
+		LastVerifiedBatch: aggkittypes.ArgUint64(proof.BatchNumber - 1),
+		NewVerifiedBatch:  aggkittypes.ArgUint64(proof.BatchNumberFinal),
 		ZKP: agglayer.ZKP{
 			NewStateRoot:     common.BytesToHash(inputs.NewStateRoot),
 			NewLocalExitRoot: common.BytesToHash(inputs.NewLocalExitRoot),
-			Proof:            cdkTypes.ArgBytes(proofBytes),
+			Proof:            aggkittypes.ArgBytes(proofBytes),
 		},
 		RollupID: a.etherman.GetRollupId(),
 	}
@@ -1175,7 +1175,7 @@ func (a *Aggregator) getAndLockBatchToProve(
 	}
 
 	// Calculate acc input hash as the RPC is not returning the correct one at the moment
-	accInputHash := cdkcommon.CalculateAccInputHash(
+	accInputHash := aggkitcommon.CalculateAccInputHash(
 		a.logger,
 		oldAccInputHash,
 		virtualBatch.BatchL2Data,

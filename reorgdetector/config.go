@@ -3,7 +3,7 @@ package reorgdetector
 import (
 	"time"
 
-	"github.com/0xPolygon/cdk/config/types"
+	"github.com/agglayer/aggkit/config/types"
 )
 
 const (

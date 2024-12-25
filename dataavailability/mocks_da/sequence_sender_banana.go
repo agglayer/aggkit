@@ -5,7 +5,7 @@ package mocks_da
 import (
 	context "context"
 
-	etherman "github.com/0xPolygon/cdk/etherman"
+	etherman "github.com/agglayer/aggkit/etherman"
 
 	mock "github.com/stretchr/testify/mock"
 )

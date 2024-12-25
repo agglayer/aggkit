@@ -7,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/0xPolygon/cdk/aggsender/types"
-	"github.com/0xPolygon/cdk/etherman"
+	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/etherman"
 )
 
 var (

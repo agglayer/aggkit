@@ -8,11 +8,11 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
-	cdkcommon "github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/db"
-	"github.com/0xPolygon/cdk/l1infotreesync"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/sync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -170,7 +170,7 @@ func (d *downloader) setGreatestGERInjectedFromList(b *sync.EVMBlock, list []Eve
 				continue
 			}
 
-			if common.BigToHash(blockHashBigInt) != cdkcommon.ZeroHash {
+			if common.BigToHash(blockHashBigInt) != aggkitcommon.ZeroHash {
 				b.Events = []interface{}{event}
 			}
 

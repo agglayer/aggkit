@@ -3,7 +3,7 @@ package dataavailability
 import (
 	"context"
 
-	"github.com/0xPolygon/cdk/etherman"
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/ethereum/go-ethereum/common"
 )
 

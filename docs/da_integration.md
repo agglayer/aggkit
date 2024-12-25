@@ -52,8 +52,8 @@ Up until now, DAs would fork the `cdk-validium-node` repo to make such an integr
 
 These items would need to be implemented to have a successful integration:
 
-1. Create a repository that will host the package that implements [this interface](https://github.com/0xPolygon/cdk/blob/develop/dataavailability/interfaces.go#L11-L16). You can check how is done for the [DAC case](https://github.com/0xPolygon/cdk/blob/develop/dataavailability/datacommittee/datacommittee.go) as an example.
-2. Add a new entry on the [supported backend strings](https://github.com/0xPolygon/cdk/blob/develop/dataavailability/config.go)
+1. Create a repository that will host the package that implements [this interface](https://github.com/agglayer/aggkit/blob/develop/dataavailability/interfaces.go#L11-L16). You can check how is done for the [DAC case](https://github.com/agglayer/aggkit/blob/develop/dataavailability/datacommittee/datacommittee.go) as an example.
+2. Add a new entry on the [supported backend strings](https://github.com/agglayer/aggkit/blob/develop/dataavailability/config.go)
 3. [OPTIONAL] Add a config struct in the new package, and add the struct inside the main data availability config struct, this way your package will be able to receive custom configuration using the main config file of the node.
 4. `go get` and instantiate your package and use it to create the main data availability instance, as done in the Polygon implementation.
 

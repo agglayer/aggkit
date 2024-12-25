@@ -1,5 +1,5 @@
 [package]
-name = "cdk"
+name = "aggkit"
 version.workspace = true
 edition.workspace = true
 
@@ -15,7 +15,7 @@ tracing.workspace = true
 tracing-subscriber = { workspace = true, features = ["env-filter", "json"] }
 url = { workspace = true, features = ["serde"] }
 colored = "2.0"
-cdk-config = { path = "../cdk-config" }
+aggkit-config = { path = "../aggkit-config" }
 serde.workspace = true
 serde_json.workspace = true
 tempfile = "3.12.0"

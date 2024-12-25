@@ -9,17 +9,17 @@ import (
 	"os"
 	"time"
 
-	zkevm "github.com/0xPolygon/cdk"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/0xPolygon/cdk/agglayer"
-	"github.com/0xPolygon/cdk/aggsender/db"
-	aggsenderrpc "github.com/0xPolygon/cdk/aggsender/rpc"
-	"github.com/0xPolygon/cdk/aggsender/types"
-	"github.com/0xPolygon/cdk/bridgesync"
-	cdkcommon "github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/l1infotreesync"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/tree"
+	zkevm "github.com/agglayer/aggkit"
+	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/aggsender/db"
+	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
+	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -69,7 +69,7 @@ func New(
 		return nil, err
 	}
 
-	sequencerPrivateKey, err := cdkcommon.NewKeyFromKeystore(cfg.AggsenderPrivateKey)
+	sequencerPrivateKey, err := aggkitcommon.NewKeyFromKeystore(cfg.AggsenderPrivateKey)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (a *AggSender) GetRPCServices() []jRPC.Service {
 		return []jRPC.Service{}
 	}
 
-	logger := log.WithFields("aggsender-rpc", cdkcommon.BRIDGE)
+	logger := log.WithFields("aggsender-rpc", aggkitcommon.BRIDGE)
 	return []jRPC.Service{
 		{
 			Name:    "aggsender",

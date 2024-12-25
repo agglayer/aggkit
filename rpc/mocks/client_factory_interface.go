@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	rpc "github.com/0xPolygon/cdk/rpc/client"
+	rpc "github.com/agglayer/aggkit/rpc/client"
 	mock "github.com/stretchr/testify/mock"
 )
 

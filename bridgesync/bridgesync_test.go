@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	mocksbridgesync "github.com/0xPolygon/cdk/bridgesync/mocks"
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/sync"
+	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"

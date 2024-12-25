@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/0xPolygon/cdk/hex"
+	"github.com/agglayer/aggkit/hex"
 )
 
 // maxBigIntLen is 256 bits (32 bytes)

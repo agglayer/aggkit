@@ -4,7 +4,7 @@ import (
 	"sort"
 	"sync"
 
-	"github.com/0xPolygon/cdk/db"
+	"github.com/agglayer/aggkit/db"
 	"github.com/ethereum/go-ethereum/common"
 )
 

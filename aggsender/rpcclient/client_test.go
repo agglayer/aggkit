@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/0xPolygon/cdk/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/stretchr/testify/require"
 )
 

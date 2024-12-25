@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk/aggoracle/mocks"
-	"github.com/0xPolygon/cdk/log"
 	"github.com/0xPolygon/zkevm-ethtx-manager/types"
+	"github.com/agglayer/aggkit/aggoracle/mocks"
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -160,6 +160,7 @@ func TestEVMChainGERSender_IsGERInjected(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+
 			require.Equal(t, tt.expectedResult, result)
 
 			mockL2GERManager.AssertExpectations(t)

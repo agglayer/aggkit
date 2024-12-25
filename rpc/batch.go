@@ -7,9 +7,9 @@ import (
 	"math/big"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/rpc/types"
-	"github.com/0xPolygon/cdk/state"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/rpc/types"
+	"github.com/agglayer/aggkit/state"
 	"github.com/ethereum/go-ethereum/common"
 )
 

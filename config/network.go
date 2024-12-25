@@ -1,8 +1,8 @@
 package config
 
 import (
-	ethermanconfig "github.com/0xPolygon/cdk/etherman/config"
-	"github.com/0xPolygon/cdk/state"
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/state"
 )
 
 // NetworkConfig is the configuration struct for the different environments

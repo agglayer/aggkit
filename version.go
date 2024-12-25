@@ -1,4 +1,4 @@
-package cdk
+package aggkit
 
 import (
 	"fmt"

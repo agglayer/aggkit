@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/sequencesender/seqsendertypes"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/sequencesender/seqsendertypes"
 	"github.com/ethereum/go-ethereum/common"
 )
 

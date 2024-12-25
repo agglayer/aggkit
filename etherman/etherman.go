@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/idataavailabilityprotocol"
-	cdkcommon "github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/etherman/config"
-	"github.com/0xPolygon/cdk/etherman/contracts"
-	"github.com/0xPolygon/cdk/log"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/etherman/contracts"
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
@@ -104,7 +104,7 @@ func GetRollupID(l1Config config.L1Config, rollupAddr common.Address, ethClient 
 }
 
 // NewClient creates a new etherman.
-func NewClient(cfg config.Config, l1Config config.L1Config, commonConfig cdkcommon.Config) (*Client, error) {
+func NewClient(cfg config.Config, l1Config config.L1Config, commonConfig aggkitcommon.Config) (*Client, error) {
 	// Connect to ethereum node
 	ethClient, err := ethclient.Dial(cfg.EthermanConfig.URL)
 	if err != nil {

@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
-	cdktypes "github.com/0xPolygon/cdk/config/types"
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/l1infotreesync"
-	mocks_l1infotreesync "github.com/0xPolygon/cdk/l1infotreesync/mocks"
-	"github.com/0xPolygon/cdk/reorgdetector"
-	"github.com/0xPolygon/cdk/test/contracts/verifybatchesmock"
-	"github.com/0xPolygon/cdk/test/helpers"
+	aggkittypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	mocks_l1infotreesync "github.com/agglayer/aggkit/l1infotreesync/mocks"
+	"github.com/agglayer/aggkit/reorgdetector"
+	"github.com/agglayer/aggkit/test/contracts/verifybatchesmock"
+	"github.com/agglayer/aggkit/test/helpers"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -154,7 +154,7 @@ func TestWithReorgs(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: cdktypes.NewDuration(time.Millisecond * 30)})
+	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 30)})
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
@@ -269,7 +269,7 @@ func TestStressAndReorgs(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: cdktypes.NewDuration(time.Millisecond * 100)})
+	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)})
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 

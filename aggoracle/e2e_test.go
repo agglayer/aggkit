@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk/test/helpers"
+	"github.com/agglayer/aggkit/test/helpers"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"

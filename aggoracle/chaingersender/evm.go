@@ -7,11 +7,11 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
-	cdkcommon "github.com/0xPolygon/cdk/common"
-	cfgtypes "github.com/0xPolygon/cdk/config/types"
-	"github.com/0xPolygon/cdk/log"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -104,7 +104,7 @@ func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
 		return false, fmt.Errorf("failed to check if global exit root is injected %s: %w", ger, err)
 	}
 
-	return common.BigToHash(blockHashBigInt) != cdkcommon.ZeroHash, nil
+	return common.BigToHash(blockHashBigInt) != aggkitcommon.ZeroHash, nil
 }
 
 func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) error {

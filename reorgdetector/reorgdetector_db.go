@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/0xPolygon/cdk/db"
+	"github.com/agglayer/aggkit/db"
 	"github.com/russross/meddler"
 )
 

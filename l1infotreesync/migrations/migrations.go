@@ -3,9 +3,9 @@ package migrations
 import (
 	_ "embed"
 
-	"github.com/0xPolygon/cdk/db"
-	"github.com/0xPolygon/cdk/db/types"
-	treeMigrations "github.com/0xPolygon/cdk/tree/migrations"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/types"
+	treeMigrations "github.com/agglayer/aggkit/tree/migrations"
 )
 
 const (

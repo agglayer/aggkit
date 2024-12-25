@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	types "github.com/0xPolygon/cdk/aggsender/types"
+	types "github.com/agglayer/aggkit/aggsender/types"
 	mock "github.com/stretchr/testify/mock"
 )
 

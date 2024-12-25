@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/0xPolygon/cdk/tree/types"
+	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 

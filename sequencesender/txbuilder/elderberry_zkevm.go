@@ -6,9 +6,9 @@ import (
 	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/elderberry/polygonvalidiumetrog"
-	"github.com/0xPolygon/cdk/etherman"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/sequencesender/seqsendertypes"
+	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/sequencesender/seqsendertypes"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"

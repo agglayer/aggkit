@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/0xPolygon/cdk/sync"
+	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )

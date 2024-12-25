@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package aggregator.v1;
 
-option go_package = ""github.com/0xPolygon/cdk/proverclient/prover";
+option go_package = ""github.com/agglayer/aggkit/proverclient/prover";
 
 message Version {
     string v0_0_1 = 1;

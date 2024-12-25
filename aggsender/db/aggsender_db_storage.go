@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0xPolygon/cdk/agglayer"
-	"github.com/0xPolygon/cdk/aggsender/db/migrations"
-	"github.com/0xPolygon/cdk/aggsender/types"
-	"github.com/0xPolygon/cdk/db"
-	"github.com/0xPolygon/cdk/log"
+	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/aggsender/db/migrations"
+	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )

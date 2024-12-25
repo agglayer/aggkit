@@ -3,7 +3,7 @@ package aggsender
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk/config/types"
+	"github.com/agglayer/aggkit/config/types"
 )
 
 // Config is the configuration for the AggSender

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/0xPolygon/cdk/db/types"
-	"github.com/0xPolygon/cdk/log"
+	"github.com/agglayer/aggkit/db/types"
+	"github.com/agglayer/aggkit/log"
 	_ "github.com/mattn/go-sqlite3"
 	migrate "github.com/rubenv/sql-migrate"
 )

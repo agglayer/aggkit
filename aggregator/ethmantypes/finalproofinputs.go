@@ -1,6 +1,6 @@
 package ethmantypes
 
-import "github.com/0xPolygon/cdk/aggregator/prover"
+import "github.com/agglayer/aggkit/aggregator/prover"
 
 // FinalProofInputs struct
 type FinalProofInputs struct {

@@ -9,9 +9,9 @@ import (
 	"reflect"
 	"testing"
 
-	cdkcommon "github.com/0xPolygon/cdk/common"
-	"github.com/0xPolygon/cdk/log"
-	"github.com/0xPolygon/cdk/tree/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/require"
@@ -611,8 +611,8 @@ func TestCertificate_Hash(t *testing.T) {
 	importedBridgeExitsPart := crypto.Keccak256(importedBridgeExitsHashes...)
 
 	expectedHash := crypto.Keccak256Hash(
-		cdkcommon.Uint32ToBytes(1),
-		cdkcommon.Uint64ToBytes(100),
+		aggkitcommon.Uint32ToBytes(1),
+		aggkitcommon.Uint64ToBytes(100),
 		prevLocalExitRoot[:],
 		newLocalExitRoot[:],
 		bridgeExitsPart,
