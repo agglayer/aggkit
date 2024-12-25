@@ -44,7 +44,7 @@ genesisBlockNumber = 0
 // This doesnt below to config, but are the vars used
 // to avoid repetition in config-files
 const DefaultVars = `
-PathRWData = "/tmp/cdk"
+PathRWData = "/tmp/aggkit"
 L1URLSyncChunkSize = 100
 
 `

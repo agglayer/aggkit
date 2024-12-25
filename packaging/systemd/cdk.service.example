@@ -1,15 +1,15 @@
 [Unit]
-  Description=cdk
+  Description=aggkit
   StartLimitIntervalSec=500
   StartLimitBurst=5
 
 [Service]
   Restart=on-failure
   RestartSec=5s
-  ExecStart=/usr/bin/cdk --config $config --chain $chain node
+  ExecStart=/usr/bin/aggkit --config $config --chain $chain node
   Type=simple
   KillSignal=SIGINT
-  User=cdk
+  User=aggkit
   TimeoutStopSec=120
 
 [Install]

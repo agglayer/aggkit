@@ -14,10 +14,10 @@
 scripts/local_config
 ```
 
-## Stop cdk-node started by Kurtosis
+## Stop aggkit enclave started by Kurtosis
 
 ```bash
-kurtosis service stop cdk-v1 cdk-node-001
+kurtosis service stop aggkit cdk-node-001
 ```
 
 ## Add to vscode launch.json

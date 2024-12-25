@@ -26,7 +26,7 @@ Setup Kurtosis following these instructions: [Kurtosis CDK Getting Started](http
 
 ### Build locally
 
-You can locally build a production release of CDK CLI + cdk-node with:
+You can locally build a production release of AggKit CLI + AggKit with:
 
 ```
 make build
@@ -46,7 +46,7 @@ It will build and run both binaries.
 1. Run your kurtosis environment
 2. build `cdk-erigon` and make it available in your system's PATH
 3. Run `scripts/local_config`
-4. cargo run -- --config ./tmp/cdk/local_config/test.kurtosis.toml --chain ./tmp/cdk/local_config/genesis.json erigon
+4. cargo run -- --config ./tmp/aggkit/local_config/test.kurtosis.toml --chain ./tmp/aggkit/local_config/genesis.json erigon
 
 ## Contributing
 
