@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
-	cdkcommon "github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -170,7 +170,7 @@ func (d *downloader) setGreatestGERInjectedFromList(b *sync.EVMBlock, list []Eve
 				continue
 			}
 
-			if common.BigToHash(blockHashBigInt) != cdkcommon.ZeroHash {
+			if common.BigToHash(blockHashBigInt) != aggkitcommon.ZeroHash {
 				b.Events = []interface{}{event}
 			}
 

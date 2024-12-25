@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/agglayer/aggkit/bridgesync"
-	cdkcommon "github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -161,8 +161,8 @@ func (c *Certificate) Hash() common.Hash {
 	importedBridgeExitsPart := crypto.Keccak256(importedBridgeExitsHashes...)
 
 	return crypto.Keccak256Hash(
-		cdkcommon.Uint32ToBytes(c.NetworkID),
-		cdkcommon.Uint64ToBytes(c.Height),
+		aggkitcommon.Uint32ToBytes(c.NetworkID),
+		aggkitcommon.Uint64ToBytes(c.Height),
 		c.PrevLocalExitRoot.Bytes(),
 		c.NewLocalExitRoot.Bytes(),
 		bridgeExitsPart,
@@ -253,7 +253,7 @@ func (g *GlobalIndex) String() string {
 
 func (g *GlobalIndex) Hash() common.Hash {
 	return crypto.Keccak256Hash(
-		cdkcommon.BigIntToLittleEndianBytes(
+		aggkitcommon.BigIntToLittleEndianBytes(
 			bridgesync.GenerateGlobalIndex(g.MainnetFlag, g.RollupIndex, g.LeafIndex),
 		),
 	)
@@ -321,9 +321,9 @@ func (b *BridgeExit) Hash() common.Hash {
 
 	return crypto.Keccak256Hash(
 		[]byte{b.LeafType.Uint8()},
-		cdkcommon.Uint32ToBytes(b.TokenInfo.OriginNetwork),
+		aggkitcommon.Uint32ToBytes(b.TokenInfo.OriginNetwork),
 		b.TokenInfo.OriginTokenAddress.Bytes(),
-		cdkcommon.Uint32ToBytes(b.DestinationNetwork),
+		aggkitcommon.Uint32ToBytes(b.DestinationNetwork),
 		b.DestinationAddress.Bytes(),
 		common.BigToHash(b.Amount).Bytes(),
 		metaDataHash,
@@ -473,7 +473,7 @@ func (l *L1InfoTreeLeafInner) Hash() common.Hash {
 	return crypto.Keccak256Hash(
 		l.GlobalExitRoot.Bytes(),
 		l.BlockHash.Bytes(),
-		cdkcommon.Uint64ToBytes(l.Timestamp),
+		aggkitcommon.Uint64ToBytes(l.Timestamp),
 	)
 }
 

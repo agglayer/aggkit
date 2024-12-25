@@ -27,7 +27,7 @@ import (
 	"github.com/agglayer/aggkit/aggregator/db/dbstorage"
 	ethmanTypes "github.com/agglayer/aggkit/aggregator/ethmantypes"
 	"github.com/agglayer/aggkit/aggregator/prover"
-	cdkcommon "github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotree"
 	"github.com/agglayer/aggkit/log"
@@ -130,7 +130,7 @@ func New(
 	if !cfg.SyncModeOnlyEnabled && cfg.SettlementBackend == AggLayer {
 		aggLayerClient = agglayer.NewAggLayerClient(cfg.AggLayerURL)
 
-		sequencerPrivateKey, err = cdkcommon.NewKeyFromKeystore(cfg.SequencerPrivateKey)
+		sequencerPrivateKey, err = aggkitcommon.NewKeyFromKeystore(cfg.SequencerPrivateKey)
 		if err != nil {
 			return nil, err
 		}
@@ -383,7 +383,7 @@ func (a *Aggregator) Channel(stream prover.AggregatorService_ChannelServer) erro
 	if ok {
 		proverAddr = p.Addr
 	}
-	proverLogger := log.WithFields("module", cdkcommon.PROVER)
+	proverLogger := log.WithFields("module", aggkitcommon.PROVER)
 	prover, err := prover.New(proverLogger, stream, proverAddr, a.cfg.ProofStatePollingInterval)
 	if err != nil {
 		return err
@@ -1175,7 +1175,7 @@ func (a *Aggregator) getAndLockBatchToProve(
 	}
 
 	// Calculate acc input hash as the RPC is not returning the correct one at the moment
-	accInputHash := cdkcommon.CalculateAccInputHash(
+	accInputHash := aggkitcommon.CalculateAccInputHash(
 		a.logger,
 		oldAccInputHash,
 		virtualBatch.BatchL2Data,

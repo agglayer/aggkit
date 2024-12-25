@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"math/big"
 
-	cdkcommon "github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -184,7 +184,7 @@ func (t *TxBuilderBananaBase) NewSequence(
 			blockHash = batch.ForcedBlockHashL1
 		}
 
-		accInputHash = cdkcommon.CalculateAccInputHash(
+		accInputHash = aggkitcommon.CalculateAccInputHash(
 			t.logger, accInputHash, batch.L2Data, infoRootHash, timestamp, batch.LastCoinbase, blockHash,
 		)
 	}

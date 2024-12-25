@@ -16,7 +16,7 @@ import (
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	cdkcommon "github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tree"
@@ -69,7 +69,7 @@ func New(
 		return nil, err
 	}
 
-	sequencerPrivateKey, err := cdkcommon.NewKeyFromKeystore(cfg.AggsenderPrivateKey)
+	sequencerPrivateKey, err := aggkitcommon.NewKeyFromKeystore(cfg.AggsenderPrivateKey)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (a *AggSender) GetRPCServices() []jRPC.Service {
 		return []jRPC.Service{}
 	}
 
-	logger := log.WithFields("aggsender-rpc", cdkcommon.BRIDGE)
+	logger := log.WithFields("aggsender-rpc", aggkitcommon.BRIDGE)
 	return []jRPC.Service{
 		{
 			Name:    "aggsender",
