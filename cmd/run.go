@@ -8,6 +8,9 @@ import (
 	"runtime"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/0xPolygon/cdk/aggregator"
+	"github.com/0xPolygon/cdk/aggregator/db"
+	cdklog "github.com/0xPolygon/cdk/log"
 	ethtxman "github.com/0xPolygon/zkevm-ethtx-manager/etherman"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
@@ -15,8 +18,6 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
-	"github.com/agglayer/aggkit/aggregator"
-	"github.com/agglayer/aggkit/aggregator/db"
 	"github.com/agglayer/aggkit/aggsender"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
@@ -166,7 +167,7 @@ func createAggSender(
 }
 
 func createAggregator(ctx context.Context, c config.Config, runMigrations bool) *aggregator.Aggregator {
-	logger := log.WithFields("module", aggkitcommon.AGGREGATOR)
+	logger := cdklog.WithFields("module", aggkitcommon.AGGREGATOR)
 	// Migrations
 	if runMigrations {
 		logger.Infof("Running DB migrations. File %s", c.Aggregator.DBPath)

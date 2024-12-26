@@ -1,7 +1,7 @@
-github.com/0xPolygon/cdk v0.1.0 h1:gS5nLprJV1E48R6+fsTYWL2LrzFHK2ym+GNDnCXTuJk=
-github.com/0xPolygon/cdk v0.1.0/go.mod h1:p4gFppiLHwouh77OQU3Z7iHrkkWp77FHqzQXrddUp8s=
-github.com/0xPolygon/cdk-contracts-tooling v0.0.1 h1:2HH8KpO1CZRl1zHfn0IYwJhPA7l91DOWrjdExmaB9Kk=
-github.com/0xPolygon/cdk-contracts-tooling v0.0.1/go.mod h1:mFlcEjsm2YBBsu8atHJ3zyVnwM+Z/fMXpVmIJge+WVU=
+github.com/0xPolygon/cdk v0.5.0-rc1.0.20241223132026-f3abefbbc365 h1:vB3W3xxpjMXGgIqKF4mxeVh9W8xtW7IqAyHpdk9kkus=
+github.com/0xPolygon/cdk v0.5.0-rc1.0.20241223132026-f3abefbbc365/go.mod h1:KUylXqA3Fibh6rHitA8n8W7Ug+Uu72QhObZUC9SEqHk=
+github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef h1:DRBrbysjMTyeFRbyo+zoltOTET+vR20CnXc4wupj+qo=
+github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef/go.mod h1:mFlcEjsm2YBBsu8atHJ3zyVnwM+Z/fMXpVmIJge+WVU=
 github.com/0xPolygon/cdk-data-availability v0.0.11 h1:enmlyFYCvmDmcX/2fnDjWnn3svqqm9o2Fe+Kupoykdo=
 github.com/0xPolygon/cdk-data-availability v0.0.11/go.mod h1:20WaXcSp7ggoxWePL9ReKSuqksHUx5h8LNQ+b56OHJE=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6 h1:FXL/rcO7/GtZ3kRFw+C7J6vmGnl8gcazg+Gh/NVmnas=

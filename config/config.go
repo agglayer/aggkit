@@ -8,8 +8,8 @@ import (
 	"strings"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/0xPolygon/cdk/aggregator"
 	"github.com/agglayer/aggkit/aggoracle"
-	"github.com/agglayer/aggkit/aggregator"
 	"github.com/agglayer/aggkit/aggsender"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
