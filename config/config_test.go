@@ -30,9 +30,6 @@ func TestLoadDefaultConfig(t *testing.T) {
 }
 
 const configWithDeprecatedFields = `
-[SequenceSender.EthTxManager]
-nodepretatedfield = "value2"
-persistencefilename = "value"
 `
 
 func TestLoadConfigWithDeprecatedFields(t *testing.T) {
@@ -126,11 +123,6 @@ func TestLoadConfigWithForbiddenFields(t *testing.T) {
 			name: "[Aggregator.Synchronizer] DB",
 			input: `[Aggregator.Synchronizer.DB]
 						name = "value"`,
-		},
-		{
-			name: "[SequenceSender.EthTxManager] PersistenceFilename",
-			input: `[SequenceSender.EthTxManager]
-						PersistenceFilename = "foo.json"`,
 		},
 	}
 

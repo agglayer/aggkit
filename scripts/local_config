@@ -164,15 +164,12 @@ function export_values_of_genesis(){
 ###############################################################################
 function export_values_of_cdk_node_config(){
     local _CDK_CONFIG_FILE=$1
-    export_key_from_toml_file      zkevm_l2_sequencer_address                       $_CDK_CONFIG_FILE SequenceSender L2Coinbase
     if [ $? -ne 0 ]; then 
         export_key_from_toml_file_or_fatal      zkevm_l2_sequencer_address          $_CDK_CONFIG_FILE "." L2Coinbase
     fi
-    export_obj_key_from_toml_file  zkevm_l2_sequencer_keystore_password             $_CDK_CONFIG_FILE SequenceSender PrivateKey Password
     if [ $? -ne 0 ]; then 
         export_key_from_toml_file_or_fatal      zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
     fi
-    export_key_from_toml_file      l1_chain_id                                      $_CDK_CONFIG_FILE SequenceSender.EthTxManager.Etherman L1ChainID
     if [ $? -ne 0 ]; then 
         export_key_from_toml_file_or_fatal      l1_chain_id                         $_CDK_CONFIG_FILE L1Config chainId
     fi

@@ -7,6 +7,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// TODO - Remove sequence sender from here?
+
 // DABackender is an interface for components that store and retrieve batch data
 type DABackender interface {
 	SequenceRetriever

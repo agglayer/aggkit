@@ -77,40 +77,6 @@ NetworkID = 1
 IsValidiumMode = {{IsValidiumMode}}
 ContractVersions = "{{ContractVersions}}"
 
-[SequenceSender]
-WaitPeriodSendSequence = "15s"
-LastBatchVirtualizationTimeMaxWaitPeriod = "10s"
-L1BlockTimestampMargin = "30s"
-MaxTxSizeForL1 = 131072
-L2Coinbase = "{{L2Coinbase}}"
-PrivateKey = { Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
-SequencesTxFileName = "sequencesender.json"
-GasOffset = 80000
-WaitPeriodPurgeTxFile = "15m"
-MaxPendingTx = 1
-MaxBatchesForL1 = 300
-BlockFinality = "FinalizedBlock"
-RPCURL = "{{L2URL}}"
-GetBatchWaitInterval = "10s"
-	[SequenceSender.EthTxManager]
-		FrequencyToMonitorTxs = "1s"
-		WaitTxToBeMined = "2m"
-		GetReceiptMaxTime = "250ms"
-		GetReceiptWaitInterval = "1s"
-		PrivateKeys = [
-			{Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"},
-		]
-		ForcedGas = 0
-		GasPriceMarginFactor = 1
-		MaxGasPriceLimit = 0
-		StoragePath = "ethtxmanager.sqlite"
-		ReadPendingL1Txs = false
-		SafeStatusL1NumberOfBlocks = 0
-		FinalizedStatusL1NumberOfBlocks = 0
-			[SequenceSender.EthTxManager.Etherman]
-				URL = "{{L1URL}}"
-				MultiGasProvider = false
-				L1ChainID = {{NetworkConfig.L1.L1ChainID}}
 [Aggregator]
 # GRPC server host
 Host = "0.0.0.0"
@@ -239,7 +205,8 @@ WaitPeriodNextGER="100ms"
 				ForcedGas = 0
 				GasPriceMarginFactor = 1
 				MaxGasPriceLimit = 0
-				StoragePath = "{{PathRWData}}/ethtxmanager-sequencesender.sqlite"
+				// TODO - What should be here?
+				StoragePath = ""
 				ReadPendingL1Txs = false
 				SafeStatusL1NumberOfBlocks = 5
 				FinalizedStatusL1NumberOfBlocks = 10

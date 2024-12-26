@@ -3,7 +3,6 @@ package types
 import (
 	"fmt"
 
-	"github.com/agglayer/aggkit/sequencesender/seqsendertypes"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -34,23 +33,6 @@ func NewRPCBatch(batchNumber uint64, accInputHash common.Hash, blockHashes []str
 		stateRoot:      stateRoot,
 		coinbase:       coinbase,
 		closed:         closed,
-	}
-}
-
-// DeepCopy
-func (b *RPCBatch) DeepCopy() seqsendertypes.Batch {
-	return &RPCBatch{
-		accInputHash:         b.accInputHash,
-		batchNumber:          b.batchNumber,
-		blockHashes:          b.blockHashes,
-		batchL2Data:          b.batchL2Data,
-		globalExitRoot:       b.globalExitRoot,
-		localExitRoot:        b.localExitRoot,
-		stateRoot:            b.stateRoot,
-		coinbase:             b.coinbase,
-		closed:               b.closed,
-		lastL2BlockTimestamp: b.lastL2BlockTimestamp,
-		l1InfoTreeIndex:      b.l1InfoTreeIndex,
 	}
 }
 
