@@ -8,10 +8,6 @@ import (
 	"runtime"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/0xPolygon/cdk/aggregator"
-	"github.com/0xPolygon/cdk/aggregator/db"
-	cdklog "github.com/0xPolygon/cdk/log"
-	ethtxman "github.com/0xPolygon/zkevm-ethtx-manager/etherman"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	"github.com/agglayer/aggkit"
@@ -79,15 +75,6 @@ func start(cliCtx *cli.Context) error {
 	var rpcServices []jRPC.Service
 	for _, component := range components {
 		switch component {
-		case aggkitcommon.AGGREGATOR:
-			aggregator := createAggregator(cliCtx.Context, *cfg, !cliCtx.Bool(config.FlagMigrations))
-			// start aggregator in a goroutine, checking for errors
-			go func() {
-				if err := aggregator.Start(); err != nil {
-					aggregator.Stop()
-					log.Fatal(err)
-				}
-			}()
 		case aggkitcommon.AGGORACLE:
 			aggOracle := createAggoracle(*cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(cliCtx.Context)
@@ -166,38 +153,6 @@ func createAggSender(
 	return aggsender.New(ctx, logger, cfg, agglayerClient, l1InfoTreeSync, l2Syncer, epochNotifier)
 }
 
-func createAggregator(ctx context.Context, c config.Config, runMigrations bool) *aggregator.Aggregator {
-	logger := cdklog.WithFields("module", aggkitcommon.AGGREGATOR)
-	// Migrations
-	if runMigrations {
-		logger.Infof("Running DB migrations. File %s", c.Aggregator.DBPath)
-		runAggregatorMigrations(c.Aggregator.DBPath)
-	}
-
-	etherman, err := newEtherman(c)
-	if err != nil {
-		logger.Fatal(err)
-	}
-
-	// READ CHAIN ID FROM POE SC
-
-	if c.Aggregator.ChainID == 0 {
-		l2ChainID, err := etherman.GetL2ChainID()
-		if err != nil {
-			logger.Fatal(err)
-		}
-		log.Infof("Autodiscover L2ChainID: %d", l2ChainID)
-		c.Aggregator.ChainID = l2ChainID
-	}
-
-	aggregator, err := aggregator.New(ctx, c.Aggregator, logger, etherman)
-	if err != nil {
-		logger.Fatal(err)
-	}
-
-	return aggregator
-}
-
 func createAggoracle(
 	cfg config.Config,
 	l1Client,
@@ -248,29 +203,6 @@ func createAggoracle(
 	}
 
 	return aggOracle
-}
-
-func runAggregatorMigrations(dbPath string) {
-	runMigrations(dbPath, db.AggregatorMigrationName)
-}
-
-func runMigrations(dbPath string, name string) {
-	log.Infof("running migrations for %v", name)
-	err := db.RunMigrationsUp(dbPath, name)
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func newEtherman(c config.Config) (*etherman.Client, error) {
-	return etherman.NewClient(ethermanconfig.Config{
-		EthermanConfig: ethtxman.Config{
-			URL:              c.Aggregator.EthTxManager.Etherman.URL,
-			MultiGasProvider: c.Aggregator.EthTxManager.Etherman.MultiGasProvider,
-			L1ChainID:        c.Aggregator.EthTxManager.Etherman.L1ChainID,
-			HTTPHeaders:      c.Aggregator.EthTxManager.Etherman.HTTPHeaders,
-		},
-	}, c.NetworkConfig.L1Config, c.Common)
 }
 
 func logVersion() {
@@ -362,7 +294,7 @@ func runL1InfoTreeSyncerIfNeeded(
 
 func runL1ClientIfNeeded(components []string, urlRPCL1 string) *ethclient.Client {
 	if !isNeeded([]string{
-		aggkitcommon.SEQUENCE_SENDER, aggkitcommon.AGGREGATOR,
+		aggkitcommon.SEQUENCE_SENDER,
 		aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.L1INFOTREESYNC,
@@ -413,7 +345,7 @@ func runReorgDetectorL1IfNeeded(
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
-		aggkitcommon.SEQUENCE_SENDER, aggkitcommon.AGGREGATOR,
+		aggkitcommon.SEQUENCE_SENDER,
 		aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER,
 		aggkitcommon.L1INFOTREESYNC},
 		components) {
