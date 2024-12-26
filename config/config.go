@@ -19,7 +19,6 @@ import (
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
-	"github.com/agglayer/aggkit/sequencesender"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/spf13/viper"
@@ -104,10 +103,6 @@ type DeprecatedField struct {
 var (
 	deprecatedFieldsOnConfig = []DeprecatedField{
 		{
-			FieldNamePattern: "sequencesender.ethtxmanager.persistencefilename",
-			Reason:           deprecatedFieldPersistenceFilename,
-		},
-		{
 			FieldNamePattern: "aggregator.synchronizer.db.",
 			Reason:           deprecatedFieldSyncDB,
 		},
@@ -134,8 +129,6 @@ type Config struct {
 	Log log.Config
 	// Configuration of the genesis of the network. This is used to known the initial state of the network
 	NetworkConfig NetworkConfig
-	// Configuration of the sequence sender service
-	SequenceSender sequencesender.Config
 	// Common Config that affects all the services
 	Common common.Config
 	// Configuration of the reorg detector service to be used for the L1

@@ -86,10 +86,6 @@ stop: ## Stops all services
 test-unit:
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out  -coverpkg ./... -timeout 15m ./...
 
-.PHONY: test-seq_sender
-test-seq_sender:
-	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1  -covermode=atomic -coverprofile=../coverage.out   -timeout 200s ./sequencesender/...
-
 .PHONY: lint
 lint: ## Runs the linter
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m
