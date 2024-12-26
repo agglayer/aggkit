@@ -3,8 +3,8 @@
 <br />
 <div align="center">
 
-<img src="./.github/.assets/aggkit-logo.svg#gh-light-mode-only" alt="Logo" width="100">
-<img src="./.github/.assets/aggkit-logo.svg#gh-dark-mode-only" alt="Logo" width="100">
+<img src="./.github/assets/aggkit-logo.svg#gh-light-mode-only" alt="Logo" width="100">
+<img src="./.github/assets/aggkit-logo.svg#gh-dark-mode-only" alt="Logo" width="100">
 
 ## Polygon AggKit
 
