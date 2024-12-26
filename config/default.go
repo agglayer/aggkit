@@ -205,8 +205,7 @@ WaitPeriodNextGER="100ms"
 				ForcedGas = 0
 				GasPriceMarginFactor = 1
 				MaxGasPriceLimit = 0
-				// TODO - What should be here?
-				StoragePath = ""
+				StoragePath = "{{PathRWData}}/ethtxmanager-aggoracle.sqlite"
 				ReadPendingL1Txs = false
 				SafeStatusL1NumberOfBlocks = 5
 				FinalizedStatusL1NumberOfBlocks = 10

@@ -2,13 +2,11 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
 	"os"
 	"os/signal"
 	"runtime"
 
-	dataCommitteeClient "github.com/0xPolygon/cdk-data-availability/client"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	ethtxman "github.com/0xPolygon/zkevm-ethtx-manager/etherman"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
@@ -24,8 +22,6 @@ import (
 	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config"
-	"github.com/agglayer/aggkit/dataavailability"
-	"github.com/agglayer/aggkit/dataavailability/datacommittee"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -33,7 +29,6 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/rpc"
-	"github.com/agglayer/aggkit/translator"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
 )
@@ -252,56 +247,6 @@ func createAggoracle(
 	}
 
 	return aggOracle
-}
-
-func newDataAvailability(c config.Config, etherman *etherman.Client) (*dataavailability.DataAvailability, error) {
-	if !c.Common.IsValidiumMode {
-		return nil, nil
-	}
-	logger := log.WithFields("module", "da-committee")
-	translator := translator.NewTranslatorImpl(logger)
-	logger.Infof("Translator rules: %v", c.Common.Translator)
-	translator.AddConfigRules(c.Common.Translator)
-
-	// Backend specific config
-	daProtocolName, err := etherman.GetDAProtocolName()
-	if err != nil {
-		return nil, fmt.Errorf("error getting data availability protocol name: %w", err)
-	}
-	var daBackend dataavailability.DABackender
-	switch daProtocolName {
-	case string(dataavailability.DataAvailabilityCommittee):
-		var (
-			pk  *ecdsa.PrivateKey
-			err error
-		)
-		// TODO - What should be here?
-		_, pk, err = etherman.LoadAuthFromKeyStore("", "")
-		if err != nil {
-			return nil, err
-		}
-		dacAddr, err := etherman.GetDAProtocolAddr()
-		if err != nil {
-			return nil, fmt.Errorf("error getting trusted sequencer URI. Error: %w", err)
-		}
-
-		// TODO - What should be here?
-		daBackend, err = datacommittee.New(
-			logger,
-			"",
-			dacAddr,
-			pk,
-			dataCommitteeClient.NewFactory(),
-			translator,
-		)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("unexpected / unsupported DA protocol: %s", daProtocolName)
-	}
-
-	return dataavailability.New(daBackend)
 }
 
 func runAggregatorMigrations(dbPath string) {
