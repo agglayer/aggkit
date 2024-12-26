@@ -9,7 +9,6 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
-	aggkitcommon "github.com/agglayer/aggkit/common"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
@@ -43,7 +42,7 @@ type EthTxManager interface {
 	) (common.Hash, error)
 }
 
-type L2GERManager interface {
+type L2GERManagerContract interface {
 	GlobalExitRootMap(opts *bind.CallOpts, ger [common.HashLength]byte) (*big.Int, error)
 }
 
@@ -59,7 +58,7 @@ type EVMConfig struct {
 type EVMChainGERSender struct {
 	logger *log.Logger
 
-	l2GERManager     L2GERManager
+	l2GERManager     L2GERManagerContract
 	l2GERManagerAddr common.Address
 	l2GERManagerAbi  *abi.ABI
 
@@ -99,12 +98,12 @@ func NewEVMChainGERSender(
 }
 
 func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
-	blockHashBigInt, err := c.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)
+	gerIndex, err := c.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if global exit root is injected %s: %w", ger, err)
 	}
 
-	return common.BigToHash(blockHashBigInt) != aggkitcommon.ZeroHash, nil
+	return gerIndex.Cmp(common.Big0) == 1, nil
 }
 
 func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) error {
