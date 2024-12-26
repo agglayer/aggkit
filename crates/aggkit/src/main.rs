@@ -108,7 +108,3 @@ pub fn node(config_path: PathBuf, components: Option<String>) -> anyhow::Result<
 
     Ok(())
 }
-
-#[derive(serde::Deserialize, Debug, Clone)]
-struct Batch {
-}
