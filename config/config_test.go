@@ -30,6 +30,9 @@ func TestLoadDefaultConfig(t *testing.T) {
 }
 
 const configWithDeprecatedFields = `
+[Aggregator.EthTxManager]
+nodepretatedfield = "value2"
+persistencefilename = "value"
 `
 
 func TestLoadConfigWithDeprecatedFields(t *testing.T) {
