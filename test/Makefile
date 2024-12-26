@@ -15,10 +15,6 @@ generate-mocks-reorgdetector: ## Generates mocks for reorgdetector, using mocker
 
 COMMON_MOCKERY_PARAMS=--disable-version-string --with-expecter --exported
 
-.PHONY: generate-mocks-da
-generate-mocks-da: ## Generates mocks for dataavailability, using mockery tool
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --all --case snake --dir ../dataavailability --output ../dataavailability/mocks_da --outpkg mocks_da ${COMMON_MOCKERY_PARAMS}
-	
 .PHONY: generate-mocks-rpc
 generate-mocks-rpc: ## Generates mocks for rpc, using mockery tool
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --all --case snake --dir ../rpc --output ../rpc/mocks --outpkg mocks ${COMMON_MOCKERY_PARAMS}
