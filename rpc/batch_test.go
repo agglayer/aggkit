@@ -105,14 +105,12 @@ func Test_getBatchFromRPC(t *testing.T) {
 
 			rcpBatchClient := NewBatchEndpoints(srv.URL)
 			rpcBatch, err := rcpBatchClient.GetBatch(tt.batch)
-			if rpcBatch != nil {
-				require.NotNil(t, rpcBatch)
-				require.NotNil(t, rpcBatch.String())
-			}
 			if tt.expectErr != nil {
 				require.Equal(t, tt.expectErr.Error(), err.Error())
 			} else {
 				require.NoError(t, err)
+				require.NotNil(t, rpcBatch)
+				require.NotEmpty(t, rpcBatch.String())
 				require.Equal(t, tt.expectTimestamp, rpcBatch.LastL2BLockTimestamp())
 				require.Equal(t, tt.expectData, rpcBatch.L2Data())
 			}
