@@ -5,6 +5,8 @@ generate-mocks:	generate-mocks-bridgesync generate-mocks-reorgdetector \
 	generate-mocks-sync generate-mocks-aggregator \
 	generate-mocks-aggsender generate-mocks-agglayer
 
+COMMON_MOCKERY_PARAMS=--disable-version-string --with-expecter --exported
+
 .PHONY: generate-mocks-bridgesync
 generate-mocks-bridgesync: ## Generates mocks for bridgesync, using mockery tool
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --all --case snake --dir ../bridgesync --output ../bridgesync/mocks --outpkg mocks_bridgesync ${COMMON_MOCKERY_PARAMS}
@@ -12,8 +14,6 @@ generate-mocks-bridgesync: ## Generates mocks for bridgesync, using mockery tool
 .PHONY: generate-mocks-reorgdetector
 generate-mocks-reorgdetector: ## Generates mocks for reorgdetector, using mockery tool
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=EthClient --dir=../reorgdetector --output=../reorgdetector --outpkg=reorgdetector --inpackage --structname=EthClientMock --filename=mock_eth_client.go ${COMMON_MOCKERY_PARAMS}
-
-COMMON_MOCKERY_PARAMS=--disable-version-string --with-expecter --exported
 
 .PHONY: generate-mocks-rpc
 generate-mocks-rpc: ## Generates mocks for rpc, using mockery tool
@@ -40,7 +40,6 @@ generate-mocks-sync: ## Generates mocks for sync, using mockery tool
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=processorInterface --dir=../sync --output=../sync --outpkg=sync --inpackage --structname=ProcessorMock --filename=mock_processor_test.go ${COMMON_MOCKERY_PARAMS}
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=ReorgDetector --dir=../sync --output=../sync --outpkg=sync --inpackage --structname=ReorgDetectorMock --filename=mock_reorgdetector_test.go ${COMMON_MOCKERY_PARAMS}
 	
-
 .PHONY: generate-mocks-aggregator	
 generate-mocks-aggregator: ## Generates mocks for aggregator, using mockery tool
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=ProverInterface --dir=../aggregator --output=../aggregator/mocks --outpkg=mocks --structname=ProverInterfaceMock --filename=mock_prover.go ${COMMON_MOCKERY_PARAMS}
@@ -52,7 +51,6 @@ generate-mocks-aggregator: ## Generates mocks for aggregator, using mockery tool
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=RPCInterface --dir=../aggregator --output=../aggregator/mocks --outpkg=mocks --structname=RPCInterfaceMock --filename=mock_rpc.go ${COMMON_MOCKERY_PARAMS}
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=AggregatorService_ChannelServer --dir=../aggregator/prover --output=../aggregator/prover/mocks --outpkg=mocks --structname=ChannelMock --filename=mock_channel.go ${COMMON_MOCKERY_PARAMS}
 	
-
 .PHONY: generate-mocks-aggsender
 generate-mocks-aggsender: ## Generates mocks for aggsender, using mockery tool
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --all --case snake --dir ../aggsender --output ../aggsender/mocks --outpkg mocks ${COMMON_MOCKERY_PARAMS}
