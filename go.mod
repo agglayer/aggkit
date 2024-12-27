@@ -4,7 +4,6 @@ go 1.22.4
 
 require (
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.1
-	github.com/0xPolygon/cdk-data-availability v0.0.11
 	github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.1
 	github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.6
@@ -40,6 +39,7 @@ require (
 
 require (
 	github.com/0xPolygon/cdk v0.1.0 // indirect
+	github.com/0xPolygon/cdk-data-availability v0.0.11 // indirect
 	github.com/DataDog/zstd v1.5.6 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect

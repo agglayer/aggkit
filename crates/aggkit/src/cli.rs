@@ -33,26 +33,6 @@ pub(crate) enum Commands {
         )]
         components: Option<String>,
     },
-    /// Run cdk-erigon node with the provided default configuration
-    Erigon {
-        /// The path to the configuration file
-        #[arg(
-            long,
-            short = 'C',
-            value_hint = ValueHint::FilePath,
-            env = "AGGKIT_CONFIG_PATH"
-        )]
-        config: PathBuf,
-
-        /// The path to a chain specification file.
-        #[arg(
-            long,
-            short = 'g',
-            value_hint = ValueHint::FilePath,
-            env = "AGGKIT_GENESIS_PATH"
-        )]
-        chain: PathBuf,
-    },
     /// Output the corresponding versions of the components
     Versions,
 }

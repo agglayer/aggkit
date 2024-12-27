@@ -2,17 +2,13 @@ package main
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"fmt"
-	"math/big"
 	"os"
 	"os/signal"
 	"runtime"
 
-	dataCommitteeClient "github.com/0xPolygon/cdk-data-availability/client"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	ethtxman "github.com/0xPolygon/zkevm-ethtx-manager/etherman"
-	"github.com/0xPolygon/zkevm-ethtx-manager/etherman/etherscan"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	"github.com/agglayer/aggkit"
@@ -26,19 +22,13 @@ import (
 	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config"
-	"github.com/agglayer/aggkit/dataavailability"
-	"github.com/agglayer/aggkit/dataavailability/datacommittee"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
-	"github.com/agglayer/aggkit/etherman/contracts"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/rpc"
-	"github.com/agglayer/aggkit/sequencesender"
-	"github.com/agglayer/aggkit/sequencesender/txbuilder"
-	"github.com/agglayer/aggkit/translator"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/urfave/cli/v2"
 )
@@ -88,12 +78,6 @@ func start(cliCtx *cli.Context) error {
 	var rpcServices []jRPC.Service
 	for _, component := range components {
 		switch component {
-		case aggkitcommon.SEQUENCE_SENDER:
-			cfg.SequenceSender.Log = cfg.Log
-			seqSender := createSequenceSender(*cfg, l1Client, l1InfoTreeSync)
-			// start sequence sender in a goroutine, checking for errors
-			go seqSender.Start(cliCtx.Context)
-
 		case aggkitcommon.AGGREGATOR:
 			aggregator := createAggregator(cliCtx.Context, *cfg, !cliCtx.Bool(config.FlagMigrations))
 			// start aggregator in a goroutine, checking for errors
@@ -213,118 +197,6 @@ func createAggregator(ctx context.Context, c config.Config, runMigrations bool) 
 	return aggregator
 }
 
-func createSequenceSender(
-	cfg config.Config,
-	l1Client *ethclient.Client,
-	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-) *sequencesender.SequenceSender {
-	logger := log.WithFields("module", aggkitcommon.SEQUENCE_SENDER)
-
-	// Check config
-	if cfg.SequenceSender.RPCURL == "" {
-		logger.Fatal("Required field RPCURL is empty in sequence sender config")
-	}
-
-	ethman, err := etherman.NewClient(ethermanconfig.Config{
-		EthermanConfig: ethtxman.Config{
-			URL:              cfg.SequenceSender.EthTxManager.Etherman.URL,
-			MultiGasProvider: cfg.SequenceSender.EthTxManager.Etherman.MultiGasProvider,
-			L1ChainID:        cfg.SequenceSender.EthTxManager.Etherman.L1ChainID,
-			Etherscan: etherscan.Config{
-				ApiKey: cfg.SequenceSender.EthTxManager.Etherman.Etherscan.ApiKey,
-				Url:    cfg.SequenceSender.EthTxManager.Etherman.Etherscan.Url,
-			},
-			HTTPHeaders: cfg.SequenceSender.EthTxManager.Etherman.HTTPHeaders,
-		},
-	}, cfg.NetworkConfig.L1Config, cfg.Common)
-	if err != nil {
-		logger.Fatalf("Failed to create etherman. Err: %w, ", err)
-	}
-
-	auth, _, err := ethman.LoadAuthFromKeyStore(cfg.SequenceSender.PrivateKey.Path, cfg.SequenceSender.PrivateKey.Password)
-	if err != nil {
-		logger.Fatal(err)
-	}
-	cfg.SequenceSender.SenderAddress = auth.From
-	blockFinalityType := etherman.BlockNumberFinality(cfg.SequenceSender.BlockFinality)
-
-	blockFinality, err := blockFinalityType.ToBlockNum()
-	if err != nil {
-		logger.Fatalf("Failed to create block finality. Err: %w, ", err)
-	}
-	txBuilder, err := newTxBuilder(cfg, logger, ethman, l1Client, l1InfoTreeSync, blockFinality)
-	if err != nil {
-		logger.Fatal(err)
-	}
-	seqSender, err := sequencesender.New(cfg.SequenceSender, logger, ethman, txBuilder)
-	if err != nil {
-		logger.Fatal(err)
-	}
-
-	return seqSender
-}
-
-func newTxBuilder(
-	cfg config.Config,
-	logger *log.Logger,
-	ethman *etherman.Client,
-	l1Client *ethclient.Client,
-	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-	blockFinality *big.Int,
-) (txbuilder.TxBuilder, error) {
-	auth, _, err := ethman.LoadAuthFromKeyStore(cfg.SequenceSender.PrivateKey.Path, cfg.SequenceSender.PrivateKey.Password)
-	if err != nil {
-		log.Fatal(err)
-	}
-	da, err := newDataAvailability(cfg, ethman)
-	if err != nil {
-		log.Fatal(err)
-	}
-	var txBuilder txbuilder.TxBuilder
-
-	switch contracts.VersionType(cfg.Common.ContractVersions) {
-	case contracts.VersionBanana:
-		if cfg.Common.IsValidiumMode {
-			txBuilder = txbuilder.NewTxBuilderBananaValidium(
-				logger,
-				ethman.Contracts.Banana.Rollup,
-				ethman.Contracts.Banana.GlobalExitRoot,
-				da,
-				*auth,
-				cfg.SequenceSender.MaxBatchesForL1,
-				l1InfoTreeSync,
-				l1Client,
-				blockFinality,
-			)
-		} else {
-			txBuilder = txbuilder.NewTxBuilderBananaZKEVM(
-				logger,
-				ethman.Contracts.Banana.Rollup,
-				ethman.Contracts.Banana.GlobalExitRoot,
-				*auth,
-				cfg.SequenceSender.MaxTxSizeForL1,
-				l1InfoTreeSync,
-				l1Client,
-				blockFinality,
-			)
-		}
-	case contracts.VersionElderberry:
-		if cfg.Common.IsValidiumMode {
-			txBuilder = txbuilder.NewTxBuilderElderberryValidium(
-				logger, ethman.Contracts.Elderberry.Rollup, da, *auth, cfg.SequenceSender.MaxBatchesForL1,
-			)
-		} else {
-			txBuilder = txbuilder.NewTxBuilderElderberryZKEVM(
-				logger, ethman.Contracts.Elderberry.Rollup, *auth, cfg.SequenceSender.MaxTxSizeForL1,
-			)
-		}
-	default:
-		err = fmt.Errorf("unknown contract version: %s", cfg.Common.ContractVersions)
-	}
-
-	return txBuilder, err
-}
-
 func createAggoracle(
 	cfg config.Config,
 	l1Client,
@@ -375,54 +247,6 @@ func createAggoracle(
 	}
 
 	return aggOracle
-}
-
-func newDataAvailability(c config.Config, etherman *etherman.Client) (*dataavailability.DataAvailability, error) {
-	if !c.Common.IsValidiumMode {
-		return nil, nil
-	}
-	logger := log.WithFields("module", "da-committee")
-	translator := translator.NewTranslatorImpl(logger)
-	logger.Infof("Translator rules: %v", c.Common.Translator)
-	translator.AddConfigRules(c.Common.Translator)
-
-	// Backend specific config
-	daProtocolName, err := etherman.GetDAProtocolName()
-	if err != nil {
-		return nil, fmt.Errorf("error getting data availability protocol name: %w", err)
-	}
-	var daBackend dataavailability.DABackender
-	switch daProtocolName {
-	case string(dataavailability.DataAvailabilityCommittee):
-		var (
-			pk  *ecdsa.PrivateKey
-			err error
-		)
-		_, pk, err = etherman.LoadAuthFromKeyStore(c.SequenceSender.PrivateKey.Path, c.SequenceSender.PrivateKey.Password)
-		if err != nil {
-			return nil, err
-		}
-		dacAddr, err := etherman.GetDAProtocolAddr()
-		if err != nil {
-			return nil, fmt.Errorf("error getting trusted sequencer URI. Error: %w", err)
-		}
-
-		daBackend, err = datacommittee.New(
-			logger,
-			c.SequenceSender.EthTxManager.Etherman.URL,
-			dacAddr,
-			pk,
-			dataCommitteeClient.NewFactory(),
-			translator,
-		)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("unexpected / unsupported DA protocol: %s", daProtocolName)
-	}
-
-	return dataavailability.New(daBackend)
 }
 
 func runAggregatorMigrations(dbPath string) {

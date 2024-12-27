@@ -10,11 +10,9 @@ pub(crate) mod aggregator;
 pub(crate) mod l1;
 pub mod log;
 pub(crate) mod network_config;
-pub(crate) mod sequence_sender;
 pub(crate) mod telemetry;
 
 pub use log::Log;
-use sequence_sender::SequenceSender;
 
 /// The Agglayer configuration.
 #[derive(Deserialize, Debug)]
@@ -32,7 +30,4 @@ pub struct Config {
 
     #[serde(rename = "Aggregator", default)]
     pub aggregator: aggregator::Aggregator,
-
-    #[serde(rename = "SequenceSender", default)]
-    pub sequence_sender: SequenceSender,
 }
