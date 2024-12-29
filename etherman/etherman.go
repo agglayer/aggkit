@@ -8,9 +8,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
-	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/idataavailabilityprotocol"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/etherman/contracts"
@@ -22,28 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
-)
-
-// EventOrder is the type used to identify the events order
-type EventOrder string
-
-const (
-	// GlobalExitRootsOrder identifies a GlobalExitRoot event
-	GlobalExitRootsOrder EventOrder = "GlobalExitRoots"
-	// L1InfoTreeOrder identifies a L1InTree event
-	L1InfoTreeOrder EventOrder = "L1InfoTreeOrder"
-	// SequenceBatchesOrder identifies a VerifyBatch event
-	SequenceBatchesOrder EventOrder = "SequenceBatches"
-	// ForcedBatchesOrder identifies a ForcedBatches event
-	ForcedBatchesOrder EventOrder = "ForcedBatches"
-	// TrustedVerifyBatchOrder identifies a TrustedVerifyBatch event
-	TrustedVerifyBatchOrder EventOrder = "TrustedVerifyBatch"
-	// VerifyBatchOrder identifies a VerifyBatch event
-	VerifyBatchOrder EventOrder = "VerifyBatch"
-	// SequenceForceBatchesOrder identifies a SequenceForceBatches event
-	SequenceForceBatchesOrder EventOrder = "SequenceForceBatches"
-	// ForkIDsOrder identifies an updateZkevmVersion event
-	ForkIDsOrder EventOrder = "forkIDs"
 )
 
 type ethereumClient interface {
@@ -76,8 +52,7 @@ type L1Config struct {
 
 // Client is a simple implementation of EtherMan.
 type Client struct {
-	EthClient  ethereumClient
-	DAProtocol *idataavailabilityprotocol.Idataavailabilityprotocol
+	EthClient ethereumClient
 
 	Contracts *contracts.Contracts
 	RollupID  uint32
@@ -85,22 +60,6 @@ type Client struct {
 	l1Cfg config.L1Config
 	cfg   config.Config
 	auth  map[common.Address]bind.TransactOpts // empty in case of read-only client
-}
-
-func GetRollupID(l1Config config.L1Config, rollupAddr common.Address, ethClient bind.ContractBackend) (uint32, error) {
-	contracts, err := contracts.NewContracts(l1Config, ethClient)
-	if err != nil {
-		return 0, fmt.Errorf("error creating contracts. Err: %w", err)
-	}
-	rollupID, err := contracts.Banana.RollupManager.RollupAddressToID(&bind.CallOpts{Pending: false}, rollupAddr)
-	if err != nil {
-		log.Errorf("error getting rollupID from %s: %v", contracts.Banana.RollupManager.String(), err)
-
-		return 0, fmt.Errorf("error calling contract RollupManager.RollupAddressToID(%s). Err: %w", rollupAddr.String(), err)
-	}
-	log.Infof("rollupID: %d (obtained from contract: %s )", rollupID, contracts.Banana.RollupManager.String())
-
-	return rollupID, nil
 }
 
 // NewClient creates a new etherman.
@@ -149,55 +108,23 @@ func NewClient(cfg config.Config, l1Config config.L1Config, commonConfig aggkitc
 		auth:     map[common.Address]bind.TransactOpts{},
 	}
 
-	if commonConfig.IsValidiumMode {
-		dapAddr, err := contracts.Banana.Rollup.DataAvailabilityProtocol(&bind.CallOpts{Pending: false})
-		if err != nil {
-			return nil, err
-		}
-
-		client.DAProtocol, err = idataavailabilityprotocol.NewIdataavailabilityprotocol(dapAddr, ethClient)
-		if err != nil {
-			return nil, err
-		}
-	}
-
 	return client, nil
 }
 
-// Order contains the event order to let the synchronizer store the information following this order.
-type Order struct {
-	Name EventOrder
-	Pos  int
-}
-
-// WaitTxToBeMined waits for an L1 tx to be mined. It will return error if the tx is reverted or timeout is exceeded
-func (etherMan *Client) WaitTxToBeMined(
-	ctx context.Context, tx *types.Transaction, timeout time.Duration,
-) (bool, error) {
-	// err := operations.WaitTxToBeMined(ctx, etherMan.EthClient, tx, timeout)
-	// if errors.Is(err, context.DeadlineExceeded) {
-	// 	return false, nil
-	// }
-	// if err != nil {
-	// 	return false, err
-	// }
-	return true, nil
-}
-
-// GetSendSequenceFee get super/trusted sequencer fee
-func (etherMan *Client) GetSendSequenceFee(numBatches uint64) (*big.Int, error) {
-	f, err := etherMan.Contracts.Banana.RollupManager.GetBatchFee(&bind.CallOpts{Pending: false})
+func GetRollupID(l1Config config.L1Config, rollupAddr common.Address, ethClient bind.ContractBackend) (uint32, error) {
+	contracts, err := contracts.NewContracts(l1Config, ethClient)
 	if err != nil {
-		return nil, err
+		return 0, fmt.Errorf("error creating contracts. Err: %w", err)
 	}
-	fee := new(big.Int).Mul(f, new(big.Int).SetUint64(numBatches))
+	rollupID, err := contracts.Banana.RollupManager.RollupAddressToID(&bind.CallOpts{Pending: false}, rollupAddr)
+	if err != nil {
+		log.Errorf("error getting rollupID from %s: %v", contracts.Banana.RollupManager.String(), err)
 
-	return fee, nil
-}
+		return 0, fmt.Errorf("error calling contract RollupManager.RollupAddressToID(%s). Err: %w", rollupAddr.String(), err)
+	}
+	log.Infof("rollupID: %d (obtained from contract: %s )", rollupID, contracts.Banana.RollupManager.String())
 
-// TrustedSequencer gets trusted sequencer address
-func (etherMan *Client) TrustedSequencer() (common.Address, error) {
-	return etherMan.Contracts.Banana.Rollup.TrustedSequencer(&bind.CallOpts{Pending: false})
+	return rollupID, nil
 }
 
 // HeaderByNumber returns a block header from the current canonical chain. If number is
@@ -291,11 +218,6 @@ func (etherMan *Client) GetTxReceipt(ctx context.Context, txHash common.Hash) (*
 	return etherMan.EthClient.TransactionReceipt(ctx, txHash)
 }
 
-// GetTrustedSequencerURL Gets the trusted sequencer url from rollup smc
-func (etherMan *Client) GetTrustedSequencerURL() (string, error) {
-	return etherMan.Contracts.Banana.Rollup.TrustedSequencerURL(&bind.CallOpts{Pending: false})
-}
-
 // GetL2ChainID returns L2 Chain ID
 func (etherMan *Client) GetL2ChainID() (uint64, error) {
 	rollupData, err := etherMan.Contracts.Banana.RollupManager.RollupIDToRollupData(
@@ -362,27 +284,6 @@ func (etherMan *Client) SignTx(
 	}
 
 	return signedTx, nil
-}
-
-// GetRevertMessage tries to get a revert message of a transaction
-func (etherMan *Client) GetRevertMessage(ctx context.Context, tx *types.Transaction) (string, error) {
-	// if tx == nil {
-	// 	return "", nil
-	// }
-
-	// receipt, err := etherMan.GetTxReceipt(ctx, tx.Hash())
-	// if err != nil {
-	// 	return "", err
-	// }
-
-	// if receipt.Status == types.ReceiptStatusFailed {
-	// 	revertMessage, err := operations.RevertReason(ctx, etherMan.EthClient, tx, receipt.BlockNumber)
-	// 	if err != nil {
-	// 		return "", err
-	// 	}
-	// 	return revertMessage, nil
-	// }
-	return "", nil
 }
 
 // AddOrReplaceAuth adds an authorization or replace an existent one to the same account
@@ -460,21 +361,6 @@ func (etherMan *Client) GetLatestBlockHeader(ctx context.Context) (*types.Header
 	}
 
 	return header, nil
-}
-
-// GetDAProtocolAddr returns the address of the data availability protocol
-func (etherMan *Client) GetDAProtocolAddr() (common.Address, error) {
-	return etherMan.Contracts.Banana.Rollup.DataAvailabilityProtocol(&bind.CallOpts{Pending: false})
-}
-
-// GetDAProtocolName returns the name of the data availability protocol
-func (etherMan *Client) GetDAProtocolName() (string, error) {
-	return etherMan.DAProtocol.GetProcotolName(&bind.CallOpts{Pending: false})
-}
-
-// LastAccInputHash gets the last acc input hash from the SC
-func (etherMan *Client) LastAccInputHash() (common.Hash, error) {
-	return etherMan.Contracts.Banana.Rollup.LastAccInputHash(&bind.CallOpts{Pending: false})
 }
 
 // GetL1InfoRoot gets the L1 info root from the SC
