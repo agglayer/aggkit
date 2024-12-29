@@ -10,8 +10,8 @@ on:
 jobs:
   analyze:
     name: Analyze
-    runs-on: ${{ matrix.language == 'swift' && 'macos-latest' || 'ubuntu-latest' }}
-    timeout-minutes: ${{ matrix.language == 'swift' && 120 || 360 }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
     permissions:
       actions: read
       contents: read
@@ -22,10 +22,42 @@ jobs:
       matrix:
         language:
           - go
+          - rust
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # Setup environment
+      - name: Setup Go
+        if: ${{ matrix.language == 'go' }}
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.22.x
+
+      - name: Setup Rust
+        if: ${{ matrix.language == 'rust' }}
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+
+      - name: Verify Go version
+        if: ${{ matrix.language == 'go' }}
+        run: go version
+  
+      - name: Verify Rust version
+        if: ${{ matrix.language == 'rust' }}
+        run: rustc --version
+
+      # Export dependencies
+      - name: Export Go dependencies
+        if: ${{ matrix.language == 'go' }}
+        run: go mod tidy
+
+      - name: Export Rust dependencies
+        if: ${{ matrix.language == 'rust' }}
+        run: cargo metadata --format-version=1
 
       # Initializes the CodeQL tools for scanning.
       - name: Initialize CodeQL
@@ -33,12 +65,17 @@ jobs:
         with:
           languages: ${{ matrix.language }}
 
-      # Autobuild attempts to build any compiled languages (C/C++, C#, Go, Java, or Swift).
-      # If this step fails, then you should remove it and run the build manually (see below)
-      - name: Autobuild
-        uses: github/codeql-action/autobuild@v2
+      # Build project
+      - name: Build Go project
+        if: ${{ matrix.language == 'go' }}
+        run: make build-go
 
+      - name: Build Rust project
+        if: ${{ matrix.language == 'rust' }}
+        run: make build-rust
+
+      # Perform CodeQL Analysis
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v2
         with:
-          category: "/language:${{ matrix.language }}"
+          category: "/codeql/${{ matrix.language }}-analysis"
