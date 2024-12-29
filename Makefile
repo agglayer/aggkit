@@ -55,8 +55,8 @@ stop: check-docker check-docker-compose
 install-linter: check-go check-curl
 generate-code-from-proto: check-protoc
 
-.PHONY: build
-build: build-rust build-go  build-tools## Builds the binaries locally into ./target
+.PHONY: build ## Builds the binaries locally into ./target
+build: build-rust build-go build-tools
 
 .PHONY: build-rust
 build-rust:
