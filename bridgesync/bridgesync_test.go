@@ -29,20 +29,22 @@ func TestNewLx(t *testing.T) {
 	ctx := context.Background()
 	dbPath := path.Join(t.TempDir(), "TestNewLx.sqlite")
 	bridge := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
-	syncBlockChunkSize := uint64(100)
-	blockFinalityType := etherman.SafeBlock
-	initialBlock := uint64(0)
-	waitForNewBlocksPeriod := time.Second * 10
-	retryAfterErrorPeriod := time.Second * 5
-	maxRetryAttemptsAfterError := 3
-	originNetwork := uint32(1)
+	const (
+		syncBlockChunkSize         = uint64(100)
+		blockFinalityType          = etherman.SafeBlock
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+	)
 
 	mockEthClient := mocksbridgesync.NewEthClienter(t)
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 
-	bridgeSync, err := NewL1(
+	l1BridgeSync, err := NewL1(
 		ctx,
 		dbPath,
 		bridge,
@@ -59,11 +61,11 @@ func TestNewLx(t *testing.T) {
 	)
 
 	assert.NoError(t, err)
-	assert.NotNil(t, bridgeSync)
-	assert.Equal(t, originNetwork, bridgeSync.OriginNetwork())
-	assert.Equal(t, blockFinalityType, bridgeSync.BlockFinality())
+	assert.NotNil(t, l1BridgeSync)
+	assert.Equal(t, originNetwork, l1BridgeSync.OriginNetwork())
+	assert.Equal(t, blockFinalityType, l1BridgeSync.BlockFinality())
 
-	bridgeSyncL2, err := NewL2(
+	l2BridgdeSync, err := NewL2(
 		ctx,
 		dbPath,
 		bridge,
@@ -80,9 +82,9 @@ func TestNewLx(t *testing.T) {
 	)
 
 	assert.NoError(t, err)
-	assert.NotNil(t, bridgeSync)
-	assert.Equal(t, originNetwork, bridgeSyncL2.OriginNetwork())
-	assert.Equal(t, blockFinalityType, bridgeSyncL2.BlockFinality())
+	assert.NotNil(t, l1BridgeSync)
+	assert.Equal(t, originNetwork, l2BridgdeSync.OriginNetwork())
+	assert.Equal(t, blockFinalityType, l2BridgdeSync.BlockFinality())
 }
 
 func TestGetLastProcessedBlock(t *testing.T) {
