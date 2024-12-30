@@ -45,6 +45,9 @@ jobs:
           - "fork12-rollup"
           - "fork12-pessimistic"
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Checkout kurtosis-cdk
       uses: actions/checkout@v4
       with:

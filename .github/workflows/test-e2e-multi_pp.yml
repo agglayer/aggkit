@@ -28,7 +28,6 @@ jobs:
         go-version: ${{ matrix.go-version }}
       env:
         GOARCH: ${{ matrix.goarch }}
-      
 
     - name: Build Docker
       run: make build-docker
