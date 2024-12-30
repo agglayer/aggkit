@@ -21,7 +21,7 @@ env:
 
 jobs:
   build:
-    runs-on: arm-runner-2204
+    runs-on: ubuntu-latest-16-cores
     strategy:
       fail-fast: false
       matrix:

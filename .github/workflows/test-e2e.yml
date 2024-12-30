@@ -8,7 +8,7 @@ on:
 
 jobs:
   build-aggkit-image:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest-16-cores
     timeout-minutes: 20
     steps:
     - uses: actions/checkout@v4
@@ -29,7 +29,7 @@ jobs:
         path: /tmp/aggkit.tar
 
   test-e2e:
-    runs-on: arm-runner-2204
+    runs-on: ubuntu-latest-16-cores
     timeout-minutes: 30
     needs: build-aggkit-image
     strategy:
@@ -42,15 +42,6 @@ jobs:
           - "fork12-rollup"
           - "fork12-pessimistic"
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Checkout kurtosis-cdk repository
-      uses: actions/checkout@v4
-      with:
-        go-version: ${{ matrix.go-version }}
-      env:
-        GOARCH: ${{ matrix.goarch }}
-
     - name: Build Docker
       run: make build-docker
     
