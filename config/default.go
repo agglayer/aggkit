@@ -10,7 +10,6 @@ AggLayerURL = "https://agglayer-dev.polygon.technology"
 
 ForkId = 9
 ContractVersions = "elderberry"
-IsValidiumMode = false
 
 L2Coinbase = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 SequencerPrivateKeyPath = "/app/sequencer.keystore"
@@ -74,7 +73,6 @@ Outputs = ["stderr"]
 
 [Common]
 NetworkID = 1
-IsValidiumMode = {{IsValidiumMode}}
 ContractVersions = "{{ContractVersions}}"
 
 [Aggregator]
