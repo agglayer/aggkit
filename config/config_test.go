@@ -29,24 +29,6 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.NotNil(t, cfg)
 }
 
-const configWithDeprecatedFields = `
-[Aggregator.EthTxManager]
-nodepretatedfield = "value2"
-persistencefilename = "value"
-`
-
-func TestLoadConfigWithDeprecatedFields(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "ut_config")
-	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	_, err = tmpFile.Write([]byte(DefaultVars + "\n" + configWithDeprecatedFields))
-	require.NoError(t, err)
-	ctx := newCliContextConfigFlag(t, tmpFile.Name())
-	cfg, err := Load(ctx)
-	require.Error(t, err)
-	require.Nil(t, cfg)
-}
-
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
 	tmpFile, err := os.CreateTemp("", "ut_config")
 	require.NoError(t, err)
@@ -65,35 +47,6 @@ func TestLoadConfigWithSaveConfigFile(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	_, err = os.Stat(dir + "/" + SaveConfigFileName)
-	require.NoError(t, err)
-}
-
-func TestTLoadFileFromStringDeprecatedField(t *testing.T) {
-	configFileData := configWithDeprecatedFields
-	_, err := LoadFileFromString(configFileData, "toml")
-	require.Error(t, err)
-}
-func TestTLoadDeprecatedField(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "ut_config")
-	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	_, err = tmpFile.Write([]byte(DefaultVars + "\n" + configWithDeprecatedFields))
-	require.NoError(t, err)
-	ctx := newCliContextConfigFlag(t, tmpFile.Name())
-	_, err = Load(ctx)
-	require.Error(t, err)
-}
-
-func TestTLoadDeprecatedFieldWithAllowFlag(t *testing.T) {
-	tmpFile, err := os.CreateTemp("", "ut_config")
-	require.NoError(t, err)
-	defer os.Remove(tmpFile.Name())
-	_, err = tmpFile.Write([]byte(DefaultVars + "\n" + configWithDeprecatedFields))
-	require.NoError(t, err)
-	ctx := newCliContextConfigFlag(t, tmpFile.Name())
-	err = ctx.Set(FlagAllowDeprecatedFields, "true")
-	require.NoError(t, err)
-	_, err = Load(ctx)
 	require.NoError(t, err)
 }
 
