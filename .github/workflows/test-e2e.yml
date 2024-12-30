@@ -29,7 +29,7 @@ jobs:
         path: /tmp/aggkit.tar
 
   test-e2e:
-    runs-on: ubuntu-latest
+    runs-on: arm-runner-2204
     timeout-minutes: 30
     needs: build-aggkit-image
     strategy:

@@ -21,7 +21,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: arm-runner-2204
     strategy:
       fail-fast: false
       matrix:
@@ -98,7 +98,7 @@ jobs:
           retention-days: 1
 
   merge:
-    runs-on: ubuntu-latest
+    runs-on: arm-runner-2204
     needs:
       - build
     steps:
