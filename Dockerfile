@@ -37,7 +37,7 @@ COPY --link Cargo.toml Cargo.toml
 COPY --link Cargo.lock Cargo.lock
 
 ENV BUILD_SCRIPT_DISABLED=1
-RUN cargo build --release --bin aggkit
+RUN cargo build --release --bin aggkit --verbose
 
 # CONTAINER FOR RUNNING BINARY
 FROM --platform=${BUILDPLATFORM} debian:bookworm-slim
