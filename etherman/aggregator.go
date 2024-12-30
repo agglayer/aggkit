@@ -16,10 +16,10 @@ import (
 )
 
 // BuildTrustedVerifyBatchesTxData builds a []bytes to be sent to the PoE SC method TrustedVerifyBatches.
-func (etherMan *Client) BuildTrustedVerifyBatchesTxData(
+func (c *Client) BuildTrustedVerifyBatchesTxData(
 	lastVerifiedBatch, newVerifiedBatch uint64, inputs *ethmanTypes.FinalProofInputs, beneficiary common.Address,
 ) (to *common.Address, data []byte, err error) {
-	opts, err := etherMan.generateRandomAuth()
+	opts, err := c.generateRandomAuth()
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to build trusted verify batches, err: %w", err)
 	}
@@ -44,9 +44,9 @@ func (etherMan *Client) BuildTrustedVerifyBatchesTxData(
 
 	const pendStateNum = 0 // TODO hardcoded for now until we implement the pending state feature
 
-	tx, err := etherMan.Contracts.Banana.RollupManager.VerifyBatchesTrustedAggregator(
+	tx, err := c.Contracts.Banana.RollupManager.VerifyBatchesTrustedAggregator(
 		&opts,
-		etherMan.RollupID,
+		c.RollupID,
 		pendStateNum,
 		lastVerifiedBatch,
 		newVerifiedBatch,
@@ -67,9 +67,9 @@ func (etherMan *Client) BuildTrustedVerifyBatchesTxData(
 }
 
 // GetBatchAccInputHash gets the batch accumulated input hash from the ethereum
-func (etherMan *Client) GetBatchAccInputHash(ctx context.Context, batchNumber uint64) (common.Hash, error) {
-	rollupData, err := etherMan.Contracts.Banana.RollupManager.GetRollupSequencedBatches(
-		&bind.CallOpts{Pending: false}, etherMan.RollupID, batchNumber,
+func (c *Client) GetBatchAccInputHash(ctx context.Context, batchNumber uint64) (common.Hash, error) {
+	rollupData, err := c.Contracts.Banana.RollupManager.GetRollupSequencedBatches(
+		&bind.CallOpts{Pending: false}, c.RollupID, batchNumber,
 	)
 	if err != nil {
 		return common.Hash{}, err
@@ -79,19 +79,19 @@ func (etherMan *Client) GetBatchAccInputHash(ctx context.Context, batchNumber ui
 }
 
 // GetRollupId returns the rollup id
-func (etherMan *Client) GetRollupId() uint32 { //nolint:stylecheck
-	return etherMan.RollupID
+func (c *Client) GetRollupId() uint32 { //nolint:stylecheck
+	return c.RollupID
 }
 
 // generateRandomAuth generates an authorization instance from a
 // randomly generated private key to be used to estimate gas for PoE
 // operations NOT restricted to the Trusted Sequencer
-func (etherMan *Client) generateRandomAuth() (bind.TransactOpts, error) {
+func (c *Client) generateRandomAuth() (bind.TransactOpts, error) {
 	privateKey, err := crypto.GenerateKey()
 	if err != nil {
 		return bind.TransactOpts{}, errors.New("failed to generate a private key to estimate L1 txs")
 	}
-	chainID := big.NewInt(0).SetUint64(etherMan.l1Cfg.L1ChainID)
+	chainID := big.NewInt(0).SetUint64(c.l1Cfg.L1ChainID)
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, chainID)
 	if err != nil {
 		return bind.TransactOpts{}, errors.New("failed to generate a fake authorization to estimate L1 txs")
