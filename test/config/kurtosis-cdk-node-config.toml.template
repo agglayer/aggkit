@@ -4,7 +4,6 @@ L2URL="http://{{.l2_rpc_name}}{{.deployment_suffix}}:{{.zkevm_rpc_http_port}}"
 AggLayerURL="{{.agglayer_url}}"
 
 ForkId = {{.zkevm_rollup_fork_id}}
-IsValidiumMode = {{.is_cdk_validium}}
 
 {{if eq .zkevm_rollup_fork_id "12"}}
 ContractVersions = "banana"

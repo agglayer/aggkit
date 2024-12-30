@@ -42,15 +42,6 @@ jobs:
           - "fork12-rollup"
           - "fork12-pessimistic"
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Checkout kurtosis-cdk repository
-      uses: actions/checkout@v4
-      with:
-        go-version: ${{ matrix.go-version }}
-      env:
-        GOARCH: ${{ matrix.goarch }}
-
     - name: Build Docker
       run: make build-docker
     
