@@ -1,6 +1,7 @@
 #!/bin/bash
 source $(dirname $0)/scripts/env.sh
 
+
 FORK=$1
 if [ -z $FORK ]; then
     echo "Missing FORK: ['fork9', 'fork12']"
@@ -12,6 +13,8 @@ if [ -z $DATA_AVAILABILITY_MODE ]; then
     echo "Missing DATA_AVAILABILITY_MODE: ['rollup', 'cdk-validium', 'pessimistic']"
     exit 1
 fi
+
+echo "Running e2e tests for ${FORK}-${DATA_AVAILABILITY_MODE} combination..."
 
 BASE_FOLDER=$(dirname $0)
 docker images -q aggkit:latest > /dev/null

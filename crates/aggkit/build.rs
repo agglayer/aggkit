@@ -8,6 +8,8 @@ use std::path::PathBuf;
 use std::process::Command;
 
 fn main() {
+    let _ = build_versions();
+
     let build_script_disabled = env::var("BUILD_SCRIPT_DISABLED")
         .map(|v| v == "1")
         .unwrap_or(false); // run by default
@@ -16,8 +18,6 @@ fn main() {
         println!("cargo:warning=Build script is disabled. Skipping build.");
         return;
     }
-
-    let _ = build_versions();
 
     // Determine the directory where the build script is located
     let dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -70,7 +70,7 @@ fn build_versions() -> std::io::Result<()> {
     // Get the corresponding lines from the contents of the starlark file
     let versions = content
         .lines()
-        .skip(32)
+        .skip(34)
         .take(15)
         .collect::<Vec<&str>>()
         .join("\n");

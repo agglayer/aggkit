@@ -11,8 +11,11 @@ jobs:
     runs-on: amd-runner-2204
     timeout-minutes: 20
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-go@v5
+    - name: Checkout aggkit
+      uses: actions/checkout@v4
+
+    - name: Install Go
+      uses: actions/setup-go@v5
       with:
         go-version: 1.22.x
 
@@ -78,7 +81,7 @@ jobs:
 
     - name: Run e2e tests
       run: make test-e2e-${{ matrix.e2e-group }}
-      working-directory: test
+      working-directory: ${{ github.workspace }}/test
       env:
         KURTOSIS_FOLDER: ${{ github.workspace }}/kurtosis-cdk
         BATS_LIB_PATH: /usr/lib/
