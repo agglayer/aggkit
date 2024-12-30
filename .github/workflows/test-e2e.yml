@@ -42,9 +42,6 @@ jobs:
           - "fork12-rollup"
           - "fork12-pessimistic"
     steps:
-    - name: Build Docker
-      run: make build-docker
-    
     - name: Checkout kurtosis-cdk
       uses: actions/checkout@v4
       with:
