@@ -1,7 +1,7 @@
 package l1infotreesync
 
 import (
-	"fmt"
+	"errors"
 	"math/big"
 	"strings"
 	"testing"
@@ -14,24 +14,43 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestBuildAppenderErrorOnBadContractAddr(t *testing.T) {
-	l1Client := mocks_l1infotreesync.NewEthClienter(t)
-	globalExitRoot := common.HexToAddress("0x1")
-	rollupManager := common.HexToAddress("0x2")
-	l1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("test-error"))
-	flags := FlagNone
-	_, err := buildAppender(l1Client, globalExitRoot, rollupManager, flags)
-	require.Error(t, err)
-}
+func TestBuildAppender(t *testing.T) {
+	tests := []struct {
+		name        string
+		flags       CreationFlags
+		mockError   error
+		expectError bool
+	}{
+		{
+			name:        "ErrorOnBadContractAddr",
+			flags:       FlagNone,
+			mockError:   errors.New("test-error"),
+			expectError: true,
+		},
+		{
+			name:        "BypassBadContractAddr",
+			flags:       FlagAllowWrongContractsAddrs,
+			mockError:   nil,
+			expectError: false,
+		},
+	}
 
-func TestBuildAppenderBypassBadContractAddr(t *testing.T) {
-	l1Client := mocks_l1infotreesync.NewEthClienter(t)
-	globalExitRoot := common.HexToAddress("0x1")
-	rollupManager := common.HexToAddress("0x2")
-	l1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, fmt.Errorf("test-error"))
-	flags := FlagAllowWrongContractsAddrs
-	_, err := buildAppender(l1Client, globalExitRoot, rollupManager, flags)
-	require.NoError(t, err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			l1Client := mocks_l1infotreesync.NewEthClienter(t)
+			globalExitRoot := common.HexToAddress("0x1")
+			rollupManager := common.HexToAddress("0x2")
+			if tt.flags == FlagNone {
+				l1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, tt.mockError).Twice()
+			}
+			_, err := buildAppender(l1Client, globalExitRoot, rollupManager, tt.flags)
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
 
 func TestBuildAppenderVerifiedContractAddr(t *testing.T) {
