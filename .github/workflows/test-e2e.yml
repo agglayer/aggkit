@@ -29,7 +29,7 @@ jobs:
         path: /tmp/cdk.tar
 
   test-e2e:
-    runs-on: ubuntu-latest
+    runs-on: amd-runner-2204
     timeout-minutes: 30
     needs: build-cdk-image
     strategy:

@@ -10,7 +10,7 @@ on:
 jobs:
   analyze:
     name: Analyze
-    runs-on: ubuntu-latest
+    runs-on: amd-runner-2204
     timeout-minutes: 360
     permissions:
       actions: read
