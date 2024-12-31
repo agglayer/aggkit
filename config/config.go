@@ -94,6 +94,10 @@ type DeprecatedField struct {
 	Reason           string
 }
 
+var (
+	deprecatedFieldsOnConfig = []DeprecatedField{}
+)
+
 /*
 Config represents the configuration of the entire CDK Node
 The file is [TOML format]
@@ -278,6 +282,39 @@ func loadString(cfg *Config, configData string, configType string,
 	if err != nil {
 		return err
 	}
+	configKeys := viper.AllKeys()
+	err = checkDeprecatedFields(configKeys)
+	if err != nil {
+		return err
+	}
 
+	return nil
+}
+
+func checkDeprecatedFields(keysOnConfig []string) error {
+	err := NewErrDeprecatedFields()
+	for _, key := range keysOnConfig {
+		forbbidenInfo := getDeprecatedField(key)
+		if forbbidenInfo != nil {
+			err.AddDeprecatedField(key, *forbbidenInfo)
+		}
+	}
+	if len(err.Fields) > 0 {
+		return err
+	}
+	return nil
+}
+
+func getDeprecatedField(fieldName string) *DeprecatedField {
+	for _, deprecatedField := range deprecatedFieldsOnConfig {
+		if deprecatedField.FieldNamePattern == fieldName {
+			return &deprecatedField
+		}
+		// If the field name ends with a dot, it means FieldNamePattern*
+		if deprecatedField.FieldNamePattern[len(deprecatedField.FieldNamePattern)-1] == '.' &&
+			strings.HasPrefix(fieldName, deprecatedField.FieldNamePattern) {
+			return &deprecatedField
+		}
+	}
 	return nil
 }
