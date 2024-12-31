@@ -265,8 +265,9 @@ func runL1InfoTreeSyncerIfNeeded(
 	l1Client *ethclient.Client,
 	reorgDetector *reorgdetector.ReorgDetector,
 ) *l1infotreesync.L1InfoTreeSync {
-	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE,
-		aggkitcommon.SEQUENCE_SENDER, aggkitcommon.AGGSENDER, aggkitcommon.L1INFOTREESYNC}, components) {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER,
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC}, components) {
 		return nil
 	}
 	l1InfoTreeSync, err := l1infotreesync.New(
@@ -294,9 +295,9 @@ func runL1InfoTreeSyncerIfNeeded(
 
 func runL1ClientIfNeeded(components []string, urlRPCL1 string) *ethclient.Client {
 	if !isNeeded([]string{
-		aggkitcommon.SEQUENCE_SENDER,
-		aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE,
+		aggkitcommon.AGGORACLE,
 		aggkitcommon.AGGSENDER,
+		aggkitcommon.BRIDGE,
 		aggkitcommon.L1INFOTREESYNC,
 	}, components) {
 		return nil
@@ -345,9 +346,8 @@ func runReorgDetectorL1IfNeeded(
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
-		aggkitcommon.SEQUENCE_SENDER,
-		aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER,
-		aggkitcommon.L1INFOTREESYNC},
+		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER,
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC},
 		components) {
 		return nil, nil
 	}

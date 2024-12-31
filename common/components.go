@@ -1,8 +1,6 @@
 package common
 
 const (
-	// SEQUENCE_SENDER name to identify the sequence-sender component
-	SEQUENCE_SENDER = "sequence-sender" //nolint:stylecheck
 	// AGGORACLE name to identify the aggoracle component
 	AGGORACLE = "aggoracle"
 	// BRIDGE name to identify the bridge component (have RPC)
