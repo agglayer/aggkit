@@ -8,7 +8,7 @@ use tempfile::{tempdir, TempDir};
 pub fn render(config: &Config, genesis_file: PathBuf, timestamp: u64) -> Result<TempDir, Error> {
     // Create a temporary directory
     let tmp_dir = tempdir()?;
-    let chain_id = config.aggregator.chain_id.clone();
+    let chain_id = "0"; // TODO - this needs to be chainged to the chain_id from the config
     let res = crate::allocs_render::render_allocs(genesis_file.to_str().unwrap())?;
     // Write the three files to disk
     fs::write(
