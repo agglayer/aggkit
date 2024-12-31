@@ -13,14 +13,16 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-type CreationFlags uint64
-
 const (
 	reorgDetectorID    = "l1infotreesync"
 	downloadBufferSize = 1000
-	// CreationFlags defitinion
-	FlagNone                     CreationFlags = 0
-	FlagAllowWrongContractsAddrs CreationFlags = 1 << iota // Allow to set wrong contracts addresses
+)
+
+type CreationFlags uint64
+
+const (
+	FlagNone                     CreationFlags = 1 << iota // Check for correct contracts addresses
+	FlagAllowWrongContractsAddrs                           // Allow to set wrong contracts addresses
 )
 
 var (

@@ -53,15 +53,15 @@ function bridge_asset() {
     else
         local tmp_response_file=$(mktemp)
         if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-            echo "cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes" 
-            cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes > $tmp_response_file
+            echo "cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes"
+            cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes >$tmp_response_file
         else
             echo "cast send --legacy --private-key $sender_private_key --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes"
-            
-            cast send --legacy --private-key $sender_private_key                 --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes > $tmp_response_file
+
+            cast send --legacy --private-key $sender_private_key --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes >$tmp_response_file
         fi
         export bridge_tx_hash=$(grep "^transactionHash" $tmp_response_file | cut -f 2- -d ' ' | sed 's/ //g')
-        echo "bridge_tx_hash=$bridge_tx_hash" 
+        echo "bridge_tx_hash=$bridge_tx_hash"
     fi
 }
 
@@ -72,7 +72,7 @@ function claim() {
     if [[ $bridge_type == "bridgeMessage" ]]; then
         claim_sig="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
     fi
-    
+
     readonly bridge_deposit_file=$(mktemp)
     readonly claimable_deposit_file=$(mktemp)
     echo "Getting full list of deposits" >&3
@@ -117,12 +117,12 @@ function claim() {
         if [[ $dry_run == "true" ]]; then
             cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
         else
-            local comp_gas_price=$(bc -l <<< "$gas_price * 1.5" | sed 's/\..*//')
+            local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
             if [[ $? -ne 0 ]]; then
                 echo "Failed to calculate gas price" >&3
                 exit 1
             fi
-            
+
             echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata" >&3
             cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr "$claim_sig" "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
         fi
@@ -137,12 +137,12 @@ function claim() {
 # - global_index
 
 function claim_tx_hash() {
-    local timeout="$1" 
+    local timeout="$1"
     tx_hash="$2"
     local destination_addr="$3"
     local destination_rpc_url="$4"
     local bridge_merkle_proof_url="$5"
-    
+
     readonly bridge_deposit_file=$(mktemp)
     local ready_for_claim="false"
     local start_time=$(date +%s)
@@ -156,10 +156,10 @@ function claim_tx_hash() {
             echo "     $current_time > $end_time" >&3
             exit 1
         fi
-        curl -s "$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0" | jq  "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" > $bridge_deposit_file
+        curl -s "$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
         if [[ $deposit_count == 0 ]]; then
-            echo "...[$(date '+%Y-%m-%d %H:%M:%S')] ❌  the tx_hash [$tx_hash] not found (elapsed: $elpased_time / timeout:$timeout)" >&3   
+            echo "...[$(date '+%Y-%m-%d %H:%M:%S')] ❌  the tx_hash [$tx_hash] not found (elapsed: $elpased_time / timeout:$timeout)" >&3
             sleep "$claim_frequency"
             continue
         fi
@@ -180,17 +180,17 @@ function claim_tx_hash() {
         exit 0
     fi
     local curr_deposit_cnt=$(jq '.[0].deposit_cnt' $bridge_deposit_file)
-    local curr_network_id=$(jq  '.[0].network_id' $bridge_deposit_file)
+    local curr_network_id=$(jq '.[0].network_id' $bridge_deposit_file)
     readonly current_deposit=$(mktemp)
     jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
     readonly current_proof=$(mktemp)
     echo ".... requesting merkel proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id" >&3
     request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_merkle_proof_url" "$current_proof"
-    echo "FILE current_deposit=$current_deposit" 
-    echo "FILE bridge_deposit_file=$bridge_deposit_file" 
-    echo "FILE current_proof=$current_proof" 
+    echo "FILE current_deposit=$current_deposit"
+    echo "FILE bridge_deposit_file=$bridge_deposit_file"
+    echo "FILE current_proof=$current_proof"
 
-    while true; do 
+    while true; do
         echo ".... requesting claim for $tx_hash" >&3
         run request_claim $current_deposit $current_proof $destination_rpc_url
         request_result=$status
@@ -223,14 +223,14 @@ function claim_tx_hash() {
     rm $current_deposit
     rm $current_proof
     rm $bridge_deposit_file
-    
+
 }
-function request_merkle_proof(){
+function request_merkle_proof() {
     local curr_deposit_cnt="$1"
     local curr_network_id="$2"
     local bridge_merkle_proof_url="$3"
     local result_proof_file="$4"
-    curl -s "$bridge_merkle_proof_url/merkle-proof?deposit_cnt=$curr_deposit_cnt&net_id=$curr_network_id" | jq '.' > $result_proof_file
+    curl -s "$bridge_merkle_proof_url/merkle-proof?deposit_cnt=$curr_deposit_cnt&net_id=$curr_network_id" | jq '.' >$result_proof_file
     echo "request_merkle_proof: $result_proof_file"
 }
 
@@ -240,16 +240,16 @@ function request_merkle_proof(){
 #  -gas_price
 #  -sender_private_key
 #  -bridge_addr
-function request_claim(){
+function request_claim() {
     local deposit_file="$1"
     local proof_file="$2"
     local destination_rpc_url="$3"
-    
+
     local leaf_type=$(jq -r '.leaf_type' $deposit_file)
     local claim_sig="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
-    
+
     if [[ $leaf_type != "0" ]]; then
-       claim_sig="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
+        claim_sig="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
     fi
 
     local in_merkle_proof="$(jq -r -c '.proof.merkle_proof' $proof_file | tr -d '"')"
@@ -264,36 +264,36 @@ function request_claim(){
     local in_amount=$(jq -r '.amount' $deposit_file)
     local in_metadata=$(jq -r '.metadata' $deposit_file)
     if [[ $dry_run == "true" ]]; then
-            echo "... Not real cleaim (dry_run mode)" >&3
-            cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
-        else
-            local comp_gas_price=$(bc -l <<< "$gas_price * 1.5" | sed 's/\..*//')
-            if [[ $? -ne 0 ]]; then
-                echo "Failed to calculate gas price" >&3
-                exit 1
-            fi
-            echo "... Claiming deposit: global_index: $in_global_index orig_net: $in_orig_net dest_net: $in_dest_net  amount:$in_amount" >&3
-            echo "claim: mainnetExitRoot=$in_main_exit_root  rollupExitRoot=$in_rollup_exit_root"
-            echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata" 
-            local tmp_response=$(mktemp)
-            cast send --legacy --gas-price $comp_gas_price \
-                        --rpc-url $destination_rpc_url \
-                        --private-key $sender_private_key \
-                        $bridge_addr "$claim_sig" "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata 2> $tmp_response ||  check_claim_revert_code $tmp_response 
+        echo "... Not real cleaim (dry_run mode)" >&3
+        cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
+    else
+        local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
+        if [[ $? -ne 0 ]]; then
+            echo "Failed to calculate gas price" >&3
+            exit 1
         fi
+        echo "... Claiming deposit: global_index: $in_global_index orig_net: $in_orig_net dest_net: $in_dest_net  amount:$in_amount" >&3
+        echo "claim: mainnetExitRoot=$in_main_exit_root  rollupExitRoot=$in_rollup_exit_root"
+        echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
+        local tmp_response=$(mktemp)
+        cast send --legacy --gas-price $comp_gas_price \
+            --rpc-url $destination_rpc_url \
+            --private-key $sender_private_key \
+            $bridge_addr "$claim_sig" "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata 2>$tmp_response || check_claim_revert_code $tmp_response
+    fi
 }
 
-function check_claim_revert_code(){
+function check_claim_revert_code() {
     local file_curl_reponse="$1"
     # 0x646cf558 -> AlreadyClaimed()
-    echo "check revert " 
+    echo "check revert "
     cat $file_curl_reponse
-    cat $file_curl_reponse | grep "0x646cf558" > /dev/null
+    cat $file_curl_reponse | grep "0x646cf558" >/dev/null
     if [ $? -eq 0 ]; then
         echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉  deposit is already claimed (revert code 0x646cf558)" >&3
         return 0
     fi
-    cat $file_curl_reponse | grep "0x002f6fad" > /dev/null
+    cat $file_curl_reponse | grep "0x002f6fad" >/dev/null
     if [ $? -eq 0 ]; then
         echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉  GlobalExitRootInvalid()(revert code 0x002f6fad)" >&3
         return 2
@@ -304,10 +304,10 @@ function check_claim_revert_code(){
 }
 
 function wait_for_claim() {
-    local timeout="$1"         # timeout (in seconds)
-    local claim_frequency="$2" # claim frequency (in seconds)
+    local timeout="$1"             # timeout (in seconds)
+    local claim_frequency="$2"     # claim frequency (in seconds)
     local destination_rpc_url="$3" # destination rpc url
-    local bridge_type="$4"        # bridgeAsset or bridgeMessage
+    local bridge_type="$4"         # bridgeAsset or bridgeMessage
     local start_time=$(date +%s)
     local end_time=$((start_time + timeout))
 
