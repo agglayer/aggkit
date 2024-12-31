@@ -3,7 +3,7 @@ source $(dirname $0)/scripts/env.sh
 
 FORK=$1
 if [ -z $FORK ]; then
-    echo "Missing FORK: ['fork9', 'fork12']"
+    echo "Missing FORK: [valid values: 'fork12']"
     exit 1
 fi
 

@@ -48,30 +48,6 @@ generate-mocks-aggsender: ## Generates mocks for aggsender, using mockery tool
 generate-mocks-agglayer: ## Generates mocks for agglayer, using mockery tool
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=AgglayerClientInterface --dir=../agglayer --output=../agglayer --outpkg=agglayer --inpackage --structname=AgglayerClientMock --filename=mock_agglayer_client.go ${COMMON_MOCKERY_PARAMS}	
 
-.PHONY: test-e2e-fork9-validium
-test-e2e-fork9-validium: stop
-	./run-e2e.sh fork9 cdk-validium
-	export BATS_TEST_TIMEOUT=1800
-	bats bats/fep/
-
-.PHONY: test-e2e-fork11-rollup
-test-e2e-fork11-rollup: stop
-	./run-e2e.sh fork11 rollup
-	export BATS_TEST_TIMEOUT=1800
-	bats bats/fep/
-
-.PHONY: test-e2e-fork12-validium
-test-e2e-fork12-validium: stop
-	./run-e2e.sh fork12 cdk-validium
-	export BATS_TEST_TIMEOUT=1800
-	bats bats/fep/
-
-.PHONY: test-e2e-fork12-rollup
-test-e2e-fork12-rollup: stop
-	./run-e2e.sh fork12 rollup
-	export BATS_TEST_TIMEOUT=1800
-	bats bats/fep/
-
 .PHONY: test-e2e-fork12-pessimistic
 test-e2e-fork12-pessimistic: stop
 	./run-e2e.sh fork12 pessimistic

@@ -36,10 +36,6 @@ jobs:
       fail-fast: false
       matrix:
         e2e-group:
-          - "fork9-validium"
-          - "fork11-rollup"
-          - "fork12-validium"
-          - "fork12-rollup"
           - "fork12-pessimistic"
     steps:
     - name: Checkout code
