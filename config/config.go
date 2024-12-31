@@ -9,7 +9,6 @@ import (
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle"
-	"github.com/agglayer/aggkit/aggregator"
 	"github.com/agglayer/aggkit/aggsender"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
@@ -58,11 +57,6 @@ const (
 	// FlagAllowDeprecatedFields is the flag to allow deprecated fields
 	FlagAllowDeprecatedFields = "allow-deprecated-fields"
 
-	deprecatedFieldSyncDB = "Aggregator.Synchronizer.DB is deprecated. Use Aggregator.Synchronizer.SQLDB instead."
-
-	deprecatedFieldPersistenceFilename = "EthTxManager.PersistenceFilename is deprecated." +
-		" Use EthTxManager.StoragePath instead."
-
 	EnvVarPrefix       = "CDK"
 	ConfigType         = "toml"
 	SaveConfigFileName = "aggkit_config.toml"
@@ -101,17 +95,7 @@ type DeprecatedField struct {
 }
 
 var (
-	deprecatedFieldsOnConfig = []DeprecatedField{
-		{
-			FieldNamePattern: "aggregator.synchronizer.db.",
-			Reason:           deprecatedFieldSyncDB,
-		},
-
-		{
-			FieldNamePattern: "aggregator.ethtxmanager.persistencefilename",
-			Reason:           deprecatedFieldPersistenceFilename,
-		},
-	}
+	deprecatedFieldsOnConfig = []DeprecatedField{}
 )
 
 /*
@@ -123,8 +107,6 @@ The file is [TOML format]
 type Config struct {
 	// Configuration of the etherman (client for access L1)
 	Etherman ethermanconfig.Config
-	// Configuration of the aggregator
-	Aggregator aggregator.Config
 	// Configure Log level for all the services, allow also to store the logs in a file
 	Log log.Config
 	// Configuration of the genesis of the network. This is used to known the initial state of the network

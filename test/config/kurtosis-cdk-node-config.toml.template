@@ -20,8 +20,6 @@ L2Coinbase =  "{{.zkevm_l2_sequencer_address}}"
 SequencerPrivateKeyPath = "{{or .zkevm_l2_sequencer_keystore_file "/etc/cdk/sequencer.keystore"}}"
 SequencerPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
 
-AggregatorPrivateKeyPath = "{{or .zkevm_l2_aggregator_keystore_file "/etc/cdk/aggregator.keystore"}}"
-AggregatorPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
 SenderProofToL1Addr = "{{.zkevm_l2_agglayer_address}}"   
 polygonBridgeAddr = "{{.zkevm_bridge_address}}" 
 
@@ -46,13 +44,6 @@ genesisBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
 Environment = "development" # "production" or "development"
 Level = "{{.global_log_level}}"
 Outputs = ["stderr"]
-
-[Aggregator]
-        Port = "{{.zkevm_aggregator_port}}"
-        RetryTime = "30s"
-        VerifyProofInterval = "10s"
-        GasOffset = 150000
-        SettlementBackend = "agglayer"
        
 [AggSender]
 SaveCertificatesToFilesPath = "{{.zkevm_path_rw_data}}/"

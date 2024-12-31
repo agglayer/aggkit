@@ -192,7 +192,7 @@ func L2Setup(t *testing.T) *L2Environment {
 		originNetwork          = 1
 		initialBlock           = 0
 		retryPeriod            = 50 * time.Millisecond
-		retriesCount           = 10
+		retriesCount           = 100
 	)
 
 	bridgeL2Sync, err := bridgesync.NewL2(

@@ -180,19 +180,8 @@ function export_values_of_cdk_node_config(){
         log_debug "l2_chain_id not found in Aggregator section, using 0"
         export l2_chain_id="0"
     fi
-    export_key_from_toml_file_or_fatal      zkevm_aggregator_port                   $_CDK_CONFIG_FILE Aggregator Port
-    export_key_from_toml_file      zkevm_l2_agglayer_address                        $_CDK_CONFIG_FILE Aggregator SenderAddress
-    if [ $? -ne 0 ]; then
-         export_key_from_toml_file      zkevm_l2_agglayer_address                   $_CDK_CONFIG_FILE "." SenderProofToL1Addr
-    fi
-    export_obj_key_from_toml_file  zkevm_l2_aggregator_keystore_password            $_CDK_CONFIG_FILE Aggregator.EthTxManager PrivateKeys Password
-    if [ $? -ne 0 ]; then
-        export_key_from_toml_file  zkevm_l2_aggregator_keystore_password            $_CDK_CONFIG_FILE "." AggregatorPrivateKeyPassword
-    fi
-    export_key_from_toml_file     zkevm_rollup_fork_id                              $_CDK_CONFIG_FILE Aggregator ForkId
-    if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal      zkevm_rollup_fork_id                $_CDK_CONFIG_FILE "." ForkId
-    fi
+    export_key_from_toml_file_or_fatal      zkevm_l2_agglayer_address               $_CDK_CONFIG_FILE "." SenderProofToL1Addr
+    export_key_from_toml_file_or_fatal     zkevm_rollup_fork_id                     $_CDK_CONFIG_FILE "." ForkId
     export_key_from_toml_file     zkevm_l2_agglayer_keystore_password               $_CDK_CONFIG_FILE AggSender.SequencerPrivateKey Password
     if [ $? -ne 0 ]; then
         export_key_from_toml_file_or_fatal      zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
