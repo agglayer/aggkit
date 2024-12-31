@@ -1,12 +1,12 @@
 networks:
   default:
-    name: aggkit
+    name: cdk
     
 services:
   cdk-sequence-sender:
     container_name: cdk-sequence-sender
     restart: no
-    image: aggkit
+    image: cdk
     build: .
     volumes:
       - ./config/test.config.toml:/app/config.toml
@@ -29,7 +29,7 @@ services:
 
   cdk-aggregator:
     container_name: cdk-aggregator
-    image: aggkit
+    image: cdk
     ports:
       - 50081:50081
       - 9093:9091 # needed if metrics enabled
@@ -43,11 +43,11 @@ services:
     command:
       - "/bin/sh"
       - "-c"
-      - "/app/aggkit run --cfg /app/config.toml --network custom --custom-network-file /app/genesis.json  --components aggregator"
+      - "/app/cdk run --cfg /app/config.toml --network custom --custom-network-file /app/genesis.json  --components aggregator"
     depends_on:
       cdk-aggregator-db:
         condition: service_started
-      aggkit-l1-sync-db:
+      cdk-l1-sync-db:
         condition: service_started
 
   cdk-aggregator-db:
@@ -70,8 +70,8 @@ services:
       - "-N"
       - "500"
 
-  aggkit-l1-sync-db:
-    container_name: aggkit-l1-sync-db
+  cdk-l1-sync-db:
+    container_name: cdk-l1-sync-db
     image: postgres:15
     deploy:
       resources:

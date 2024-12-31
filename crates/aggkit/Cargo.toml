@@ -1,5 +1,5 @@
 [package]
-name = "aggkit"
+name = "cdk"
 version.workspace = true
 edition.workspace = true
 

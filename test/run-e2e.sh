@@ -14,22 +14,22 @@ if [ -z $DATA_AVAILABILITY_MODE ]; then
 fi
 
 BASE_FOLDER=$(dirname $0)
-docker images -q aggkit:latest > /dev/null
+docker images -q cdk:latest > /dev/null
 if [ $? -ne 0 ] ; then
-    echo "Building aggkit:latest"
+    echo "Building cdk:latest"
     pushd $BASE_FOLDER/..
     make build-docker
     popd
 else
-    echo "docker aggkit:latest already exists"
+    echo "docker cdk:latest already exists"
 fi
 
 kurtosis clean --all
-echo "Override aggkit config file"
+echo "Override cdk config file"
 cp $BASE_FOLDER/config/kurtosis-cdk-node-config.toml.template $KURTOSIS_FOLDER/templates/trusted-node/cdk-node-config.toml
 KURTOSIS_CONFIG_FILE="combinations/$FORK-$DATA_AVAILABILITY_MODE.yml"
 TEMP_CONFIG_FILE=$(mktemp --suffix ".yml")
 echo "rendering $KURTOSIS_CONFIG_FILE to temp file $TEMP_CONFIG_FILE"
 go run ../scripts/run_template.go $KURTOSIS_CONFIG_FILE > $TEMP_CONFIG_FILE
-kurtosis run --enclave aggkit --args-file "$TEMP_CONFIG_FILE" --image-download always $KURTOSIS_FOLDER
+kurtosis run --enclave cdk --args-file "$TEMP_CONFIG_FILE" --image-download always $KURTOSIS_FOLDER
 rm $TEMP_CONFIG_FILE

@@ -17,15 +17,15 @@ function ok_or_fatal(){
 }
 
 function build_docker_if_required(){
-    docker images -q aggkit:latest > /dev/null
+    docker images -q cdk:latest > /dev/null
     if [ $? -ne 0 ] ; then
-        echo "Building aggkit:latest"
+        echo "Building cdk:latest"
         pushd $BASE_FOLDER/..
         make build-docker
         ok_or_fatal "Failed to build docker image"
         popd
     else
-        echo "docker aggkit:latest already exists"
+        echo "docker cdk:latest already exists"
     fi
 }
 
@@ -49,7 +49,7 @@ function resolve_template(){
 BASE_FOLDER=$(dirname $0)
 PP1_ORIGIN_CONFIG_FILE=combinations/fork12-pessimistic-multi.yml
 PP2_ORIGIN_CONFIG_FILE=combinations/fork12-pessimistic-multi-attach-second-cdk.yml
-KURTOSIS_ENCLAVE=aggkit
+KURTOSIS_ENCLAVE=cdk
 
 [ -z  $KURTOSIS_FOLDER ] &&  echo "KURTOSIS_FOLDER is not set" && exit 1
 [ ! -d $KURTOSIS_FOLDER ] &&  echo "KURTOSIS_FOLDER is not a directory ($KURTOSIS_FOLDER)" && exit 1

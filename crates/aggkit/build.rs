@@ -70,7 +70,7 @@ fn build_versions() -> std::io::Result<()> {
     // Get the corresponding lines from the contents of the starlark file
     let versions = content
         .lines()
-        .skip(32)
+        .skip(34)
         .take(15)
         .collect::<Vec<&str>>()
         .join("\n");
