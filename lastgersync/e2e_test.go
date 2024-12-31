@@ -19,7 +19,13 @@ import (
 func TestE2E(t *testing.T) {
 	ctx := context.Background()
 	setup := helpers.NewE2EEnvWithEVML2(t)
-	dbPathSyncer := path.Join(t.TempDir(), "lastgersyncTestE2E.sqlite")
+	dbPathSyncer := path.Join(t.TempDir(), "lastGERSyncTestE2E.sqlite")
+	const (
+		retryAfterErrorPeriod      = time.Millisecond * 30
+		maxRetryAttemptsAfterError = 10
+		waitForNewBlocksPeriod     = time.Millisecond * 30
+		syncBlockChunkSize         = 10
+	)
 	syncer, err := lastgersync.New(
 		ctx,
 		dbPathSyncer,
@@ -27,11 +33,11 @@ func TestE2E(t *testing.T) {
 		setup.L2Environment.SimBackend.Client(),
 		setup.L2Environment.GERAddr,
 		setup.InfoTreeSync,
-		0,
-		0,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
 		etherman.LatestBlock,
-		time.Millisecond*30,
-		10,
+		waitForNewBlocksPeriod,
+		syncBlockChunkSize,
 	)
 	require.NoError(t, err)
 	go syncer.Start(ctx)

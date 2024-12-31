@@ -126,10 +126,10 @@ func L1Setup(t *testing.T) *L1Environment {
 	go l1InfoTreeSync.Start(ctx)
 
 	const (
-		waitForNewBlocksPeriod = 10 * time.Millisecond
+		waitForNewBlocksPeriod = time.Millisecond * 10
 		originNetwork          = 1
 		initialBlock           = 0
-		retryPeriod            = 50 * time.Millisecond
+		retryPeriod            = time.Millisecond * 30
 		retriesCount           = 10
 	)
 

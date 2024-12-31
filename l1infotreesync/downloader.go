@@ -90,9 +90,12 @@ func buildAppender(client EthClienter, globalExitRoot,
 		log.Error(err)
 		return nil, err
 	}
-	err = sanityCheckContracts(globalExitRoot, rollupManager, ger, rm)
-	if err != nil && flags&FlagAllowWrongContractsAddrs == 0 {
-		return nil, fmt.Errorf("buildAppender: fails sanity check contracts. Err:%w", err)
+
+	if flags&FlagAllowWrongContractsAddrs == 0 {
+		err = sanityCheckContracts(globalExitRoot, rollupManager, ger, rm)
+		if err != nil {
+			return nil, fmt.Errorf("buildAppender: fails sanity check contracts. Err:%w", err)
+		}
 	}
 
 	appender := make(sync.LogAppenderMap)
