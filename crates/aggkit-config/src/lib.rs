@@ -6,15 +6,12 @@ use serde::Deserialize;
 
 pub(crate) const DEFAULT_IP: std::net::Ipv4Addr = std::net::Ipv4Addr::new(0, 0, 0, 0);
 
-pub(crate) mod aggregator;
 pub(crate) mod l1;
 pub mod log;
 pub(crate) mod network_config;
-pub(crate) mod sequence_sender;
 pub(crate) mod telemetry;
 
 pub use log::Log;
-use sequence_sender::SequenceSender;
 
 /// The Agglayer configuration.
 #[derive(Deserialize, Debug)]
@@ -29,10 +26,4 @@ pub struct Config {
 
     #[serde(rename = "NetworkConfig", default)]
     pub network_config: network_config::NetworkConfig,
-
-    #[serde(rename = "Aggregator", default)]
-    pub aggregator: aggregator::Aggregator,
-
-    #[serde(rename = "SequenceSender", default)]
-    pub sequence_sender: SequenceSender,
 }

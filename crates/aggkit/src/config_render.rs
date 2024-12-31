@@ -8,7 +8,7 @@ use tempfile::{tempdir, TempDir};
 pub fn render(config: &Config, genesis_file: PathBuf, timestamp: u64) -> Result<TempDir, Error> {
     // Create a temporary directory
     let tmp_dir = tempdir()?;
-    let chain_id = config.aggregator.chain_id.clone();
+    let chain_id = "0"; // TODO - this needs to be chainged to the chain_id from the config
     let res = crate::allocs_render::render_allocs(genesis_file.to_str().unwrap())?;
     // Write the three files to disk
     fs::write(
@@ -114,9 +114,6 @@ http.vhosts: any
 http.corsdomain: any
 ws: true
 "#,
-        chain_id = config.aggregator.chain_id.clone(),
-        l2_sequencer_rpc_url = config.aggregator.witness_url.to_string(),
-        l1_rpc_url = config.aggregator.eth_tx_manager.etherman.url,
         l1_chain_id = config.network_config.l1.l1_chain_id,
         sequencer_address = config.sequence_sender.l2_coinbase,
         zkevm_address = res.wrapper.l1_config.zkevm_address,

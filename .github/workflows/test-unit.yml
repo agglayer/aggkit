@@ -16,7 +16,7 @@ jobs:
       matrix:
         go-version: [1.22.4]
         goarch: ["amd64"]
-    runs-on: ubuntu-latest
+    runs-on: amd-runner-2204
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -32,9 +32,11 @@ jobs:
 
       - name: Test
         run: make test-unit
-          
-      - name: Analyze with SonarCloud
-        uses: sonarsource/sonarcloud-github-action@master
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        
+      # TODO: Uncomment the following lines to enable SonarCloud analysis, once the project is set up in SonarCloud
+      # 
+      # - name: Analyze with SonarCloud
+      #   uses: sonarsource/sonarcloud-github-action@master
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

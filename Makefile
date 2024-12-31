@@ -12,7 +12,7 @@ endif
 GOBASE := $(shell pwd)
 GOBIN := $(GOBASE)/target
 GOENVVARS := GOBIN=$(GOBIN) CGO_ENABLED=1 GOARCH=$(ARCH)
-GOBINARY := aggkit
+GOBINARY := cdk-node
 GOCMD := $(GOBASE)/cmd
 
 LDFLAGS += -X 'github.com/agglayer/aggkit.Version=$(VERSION)'
@@ -55,12 +55,12 @@ stop: check-docker check-docker-compose
 install-linter: check-go check-curl
 generate-code-from-proto: check-protoc
 
-.PHONY: build
-build: build-rust build-go  build-tools## Builds the binaries locally into ./target
+.PHONY: build ## Builds the binaries locally into ./target
+build: build-rust build-go build-tools
 
 .PHONY: build-rust
 build-rust:
-	cargo build --release --jobs $(shell nproc)
+	export BUILD_SCRIPT_DISABLED=1 && cargo build --release
 
 .PHONY: build-go
 build-go:
@@ -71,12 +71,12 @@ build-tools: ## Builds the tools
 	$(GOENVVARS) go build -o $(GOBIN)/aggsender_find_imported_bridge ./tools/aggsender_find_imported_bridge
 
 .PHONY: build-docker
-build-docker: ## Builds a docker image with the aggkit binary
-	docker build -t aggkit -f ./Dockerfile .
+build-docker: ## Builds a docker image with the cdk binary
+	docker build -t cdk -f ./Dockerfile .
 
 .PHONY: build-docker-nc
-build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
-	docker build --no-cache=true -t aggkit -f ./Dockerfile .
+build-docker-nc: ## Builds a docker image with the cdk binary - but without build cache
+	docker build --no-cache=true -t cdk -f ./Dockerfile .
 
 .PHONY: stop
 stop: ## Stops all services
@@ -86,17 +86,12 @@ stop: ## Stops all services
 test-unit:
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out  -coverpkg ./... -timeout 15m ./...
 
-.PHONY: test-seq_sender
-test-seq_sender:
-	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1  -covermode=atomic -coverprofile=../coverage.out   -timeout 200s ./sequencesender/...
-
 .PHONY: lint
 lint: ## Runs the linter
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m
 
 .PHONY: generate-code-from-proto
 generate-code-from-proto: ## Generates code from proto files
-	cd proto/src/proto/aggregator/v1 && protoc --proto_path=. --proto_path=../../../../include --go_out=../../../../../aggregator/prover --go-grpc_out=../../../../../aggregator/prover --go-grpc_opt=paths=source_relative --go_opt=paths=source_relative aggregator.proto
 	cd proto/src/proto/datastream/v1 && protoc --proto_path=. --proto_path=../../../../include --go_out=../../../../../state/datastream --go-grpc_out=../../../../../state/datastream --go-grpc_opt=paths=source_relative --go_opt=paths=source_relative datastream.proto
 
 

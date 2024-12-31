@@ -35,13 +35,13 @@ jobs:
       - name: Download deps for project
         run: go mod download
 
-      - name: Building aggkit for amd64
+      - name: Building cdk-node for amd64
         run: make build
 
-      - name: Building the aggkit for arm64
+      - name: Building the cdk
         run: |
           BUILD_SCRIPT_DISABLED=1
-          cargo build --release --bin aggkit-cli
+          cargo build --release --bin cdk
 
       - name: Installing some dependencies
         run: sudo apt-get update && sudo apt-get install -y rpm
@@ -53,51 +53,51 @@ jobs:
           mkdir -p packaging/rpm/RPMS
           mkdir -p packaging/rpm/SRPMS
           
-          touch packaging/rpm/aggkit.spec 
-          echo "Name: aggkit" >> packaging/rpm/SPECS/aggkit.spec
-          echo "Version: ${{ env.GIT_TAG1 }}" >> packaging/rpm/SPECS/aggkit.spec
-          echo "Release: 1%{?dist}" >> packaging/rpm/SPECS/aggkit.spec
-          echo "License: GPL/AGPL" >> packaging/rpm/SPECS/aggkit.spec
-          echo "BuildArch: aarch64" >> packaging/rpm/SPECS/aggkit.spec
-          echo "Summary: aggkit rpm package" >> packaging/rpm/SPECS/aggkit.spec
+          touch packaging/rpm/cdk.spec 
+          echo "Name: cdk" >> packaging/rpm/SPECS/cdk.spec
+          echo "Version: ${{ env.GIT_TAG1 }}" >> packaging/rpm/SPECS/cdk.spec
+          echo "Release: 1%{?dist}" >> packaging/rpm/SPECS/cdk.spec
+          echo "License: GPL/AGPL" >> packaging/rpm/SPECS/cdk.spec
+          echo "BuildArch: aarch64" >> packaging/rpm/SPECS/cdk.spec
+          echo "Summary: cdk rpm package" >> packaging/rpm/SPECS/cdk.spec
           
-          echo "%description" >> packaging/rpm/SPECS/aggkit.spec
-          echo "aggkit rpm package" >> packaging/rpm/SPECS/aggkit.spec
+          echo "%description" >> packaging/rpm/SPECS/cdk.spec
+          echo "cdk rpm package" >> packaging/rpm/SPECS/cdk.spec
           
-          echo "%pre" >> packaging/rpm/SPECS/aggkit.spec
-          echo "getent group aggkit >/dev/null || groupadd -r aggkit" >> packaging/rpm/SPECS/aggkit.spec
-          echo "getent passwd aggkit >/dev/null || useradd -s /bin/false -d /opt/aggkit -r aggkit -g aggkit" >> packaging/rpm/SPECS/aggkit.spec
+          echo "%pre" >> packaging/rpm/SPECS/cdk.spec
+          echo "getent group cdk >/dev/null || groupadd -r cdk" >> packaging/rpm/SPECS/cdk.spec
+          echo "getent passwd cdk >/dev/null || useradd -s /bin/false -d /opt/cdk -r cdk -g cdk" >> packaging/rpm/SPECS/cdk.spec
           
-          echo "%install" >> packaging/rpm/SPECS/aggkit.spec
-          echo "mkdir -p %{buildroot}/usr/bin" >> packaging/rpm/SPECS/aggkit.spec
-          echo "cp /home/runner/work/aggkit/aggkit/target/aggkit %{buildroot}/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
-          echo "cp /home/runner/work/aggkit/aggkit/target/release/aggkit %{buildroot}/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
+          echo "%install" >> packaging/rpm/SPECS/cdk.spec
+          echo "mkdir -p %{buildroot}/usr/bin" >> packaging/rpm/SPECS/cdk.spec
+          echo "cp /home/runner/work/cdk/cdk/target/cdk-node %{buildroot}/usr/bin/cdk-node" >> packaging/rpm/SPECS/cdk.spec
+          echo "cp /home/runner/work/cdk/cdk/target/release/cdk %{buildroot}/usr/bin/cdk" >> packaging/rpm/SPECS/cdk.spec
           
-          echo "%files" >> packaging/rpm/SPECS/aggkit.spec
-          echo "/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
-          echo "/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
+          echo "%files" >> packaging/rpm/SPECS/cdk.spec
+          echo "/usr/bin/cdk" >> packaging/rpm/SPECS/cdk.spec
+          echo "/usr/bin/cdk-node" >> packaging/rpm/SPECS/cdk.spec
 
 
       - name: Construct rpm package
         run: |
-          rpmbuild --define "_topdir /home/runner/work/aggkit/aggkit/packaging/rpm_build" \
+          rpmbuild --define "_topdir /home/runner/work/cdk/cdk/packaging/rpm_build" \
                    --define "_builddir %{_topdir}/BUILD" \
                    --define "_rpmdir %{_topdir}/RPMS" \
                    --define "_srcrpmdir %{_topdir}/SRPMS" \
                    --define "__spec_install_post /bin/true" \
-                   -bb packaging/rpm/SPECS/aggkit.spec
+                   -bb packaging/rpm/SPECS/cdk.spec
 
       - name: Rename file for post rpm build and for checksum
-        run: mv /home/runner/work/aggkit/aggkit/packaging/rpm_build/RPMS/aarch64/aggkit-${{ env.GIT_TAG1 }}-1.aarch64.rpm /home/runner/work/aggkit/aggkit/packaging/rpm_build/RPMS/aarch64/aggkit-${{ env.GIT_TAG1 }}.aarch64.rpm
+        run: mv /home/runner/work/cdk/cdk/packaging/rpm_build/RPMS/aarch64/cdk-${{ env.GIT_TAG1 }}-1.aarch64.rpm /home/runner/work/cdk/cdk/packaging/rpm_build/RPMS/aarch64/cdk-${{ env.GIT_TAG1 }}.aarch64.rpm
 
       - name: Checksum for the rpm package
-        run: sha256sum /home/runner/work/aggkit/aggkit/packaging/rpm_build/RPMS/aarch64/aggkit-${{ env.GIT_TAG1 }}.aarch64.rpm > /home/runner/work/aggkit/aggkit/packaging/rpm_build/RPMS/aarch64/aggkit-${{ env.GIT_TAG1 }}.aarch64.rpm.checksum
+        run: sha256sum /home/runner/work/cdk/cdk/packaging/rpm_build/RPMS/aarch64/cdk-${{ env.GIT_TAG1 }}.aarch64.rpm > /home/runner/work/cdk/cdk/packaging/rpm_build/RPMS/aarch64/cdk-${{ env.GIT_TAG1 }}.aarch64.rpm.checksum
 
-      - name: Release aggkit Packages
+      - name: Release cdk Packages
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ env.GIT_TAG }}
           prerelease: true
           files: |
-            packaging/rpm_build/RPMS/aarch64/aggkit-**.rpm
-            packaging/rpm_build/RPMS/aarch64/aggkit-**.rpm.checksum
+            packaging/rpm_build/RPMS/aarch64/cdk-**.rpm
+            packaging/rpm_build/RPMS/aarch64/cdk-**.rpm.checksum

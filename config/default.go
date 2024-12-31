@@ -17,8 +17,6 @@ SequencerPrivateKeyPath = "/app/sequencer.keystore"
 SequencerPrivateKeyPassword = "test"
 WitnessURL = "http://localhost:8123"
 
-AggregatorPrivateKeyPath = "/app/keystore/aggregator.keystore"
-AggregatorPrivateKeyPassword = "testonly"
 # Who send Proof to L1? AggLayer addr, or aggregator addr?
 SenderProofToL1Addr = "0x0000000000000000000000000000000000000000"
 polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
@@ -77,128 +75,6 @@ NetworkID = 1
 IsValidiumMode = {{IsValidiumMode}}
 ContractVersions = "{{ContractVersions}}"
 
-[SequenceSender]
-WaitPeriodSendSequence = "15s"
-LastBatchVirtualizationTimeMaxWaitPeriod = "10s"
-L1BlockTimestampMargin = "30s"
-MaxTxSizeForL1 = 131072
-L2Coinbase = "{{L2Coinbase}}"
-PrivateKey = { Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
-SequencesTxFileName = "sequencesender.json"
-GasOffset = 80000
-WaitPeriodPurgeTxFile = "15m"
-MaxPendingTx = 1
-MaxBatchesForL1 = 300
-BlockFinality = "FinalizedBlock"
-RPCURL = "{{L2URL}}"
-GetBatchWaitInterval = "10s"
-	[SequenceSender.EthTxManager]
-		FrequencyToMonitorTxs = "1s"
-		WaitTxToBeMined = "2m"
-		GetReceiptMaxTime = "250ms"
-		GetReceiptWaitInterval = "1s"
-		PrivateKeys = [
-			{Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"},
-		]
-		ForcedGas = 0
-		GasPriceMarginFactor = 1
-		MaxGasPriceLimit = 0
-		StoragePath = "ethtxmanager.sqlite"
-		ReadPendingL1Txs = false
-		SafeStatusL1NumberOfBlocks = 0
-		FinalizedStatusL1NumberOfBlocks = 0
-			[SequenceSender.EthTxManager.Etherman]
-				URL = "{{L1URL}}"
-				MultiGasProvider = false
-				L1ChainID = {{NetworkConfig.L1.L1ChainID}}
-[Aggregator]
-# GRPC server host
-Host = "0.0.0.0"
-# GRPC server port
-Port = 50081
-RetryTime = "5s"
-VerifyProofInterval = "10s"
-ProofStatePollingInterval = "5s"
-TxProfitabilityCheckerType = "acceptall"
-TxProfitabilityMinReward = "1.1"
-IntervalAfterWhichBatchConsolidateAnyway="0s"
-BatchProofSanityCheckEnabled = true
-#  ChainID is L2ChainID. Is populated on runtimme
-ChainID = 0
-ForkId = {{ForkId}}
-SenderAddress = "{{SenderProofToL1Addr}}"
-CleanupLockedProofsInterval = "2m"
-GeneratingProofCleanupThreshold = "10m"
-GasOffset = 0
-RPCURL = "{{L2URL}}"
-WitnessURL = "{{WitnessURL}}"
-UseFullWitness = false
-SettlementBackend = "l1"
-AggLayerTxTimeout = "5m"
-AggLayerURL = "{{AggLayerURL}}"
-SyncModeOnlyEnabled = false
-DBPath = "{{PathRWData}}/aggregator_db.sqlite"
-	[Aggregator.SequencerPrivateKey]
-		Path = "{{SequencerPrivateKeyPath}}"
-		Password = "{{SequencerPrivateKeyPassword}}"
-	[Aggregator.Log]
-		Environment ="{{Log.Environment}}" # "production" or "development"
-		Level = "{{Log.Level}}"
-		Outputs = ["stderr"]
-	[Aggregator.EthTxManager]
-		FrequencyToMonitorTxs = "1s"
-		WaitTxToBeMined = "2m"
-		GetReceiptMaxTime = "250ms"
-		GetReceiptWaitInterval = "1s"
-		PrivateKeys = [
-			{Path = "{{AggregatorPrivateKeyPath}}", Password = "{{AggregatorPrivateKeyPassword}}"},
-		]
-		ForcedGas = 0
-		GasPriceMarginFactor = 1
-		MaxGasPriceLimit = 0
-		StoragePath = ""
-		ReadPendingL1Txs = false
-		SafeStatusL1NumberOfBlocks = 0
-		FinalizedStatusL1NumberOfBlocks = 0
-			[Aggregator.EthTxManager.Etherman]
-				URL = "{{L1URL}}"
-				L1ChainID = {{NetworkConfig.L1.L1ChainID}}
-				HTTPHeaders = []
-	[Aggregator.Synchronizer]
-		[Aggregator.Synchronizer.Log]
-			Environment = "{{Log.Environment}}" # "production" or "development"
-			Level = "{{Log.Level}}"
-			Outputs = ["stderr"]
-		[Aggregator.Synchronizer.SQLDB]
-			DriverName = "sqlite3"
-			DataSource = "file:{{PathRWData}}/aggregator_sync_db.sqlite"
-		[Aggregator.Synchronizer.Synchronizer]
-			SyncInterval = "10s"
-			SyncChunkSize = 1000
-			GenesisBlockNumber = {{genesisBlockNumber}}
-			SyncUpToBlock = "finalized"
-			BlockFinality = "finalized"
-			OverrideStorageCheck = false
-		[Aggregator.Synchronizer.Etherman]
-			L1URL = "{{L1URL}}"
-			ForkIDChunkSize = 100
-			L1ChainID = {{NetworkConfig.L1.L1ChainID}}
-			PararellBlockRequest = false
-			[Aggregator.Synchronizer.Etherman.Contracts]
-				GlobalExitRootManagerAddr = "{{NetworkConfig.L1.GlobalExitRootManagerAddr}}"
-				RollupManagerAddr = "{{NetworkConfig.L1.RollupManagerAddr}}"
-				ZkEVMAddr = "{{NetworkConfig.L1.ZkEVMAddr}}"
-			[Aggregator.Synchronizer.Etherman.Validium]
-				Enabled = {{IsValidiumMode}}
-				# L2URL, empty ask to contract
-				TrustedSequencerURL = ""
-				RetryOnDACErrorInterval = "1m"
-				DataSourcePriority = ["trusted", "external"]
-			[Aggregator.Synchronizer.Etherman.Validium.Translator]
-				FullMatchRules = []
-			[Aggregator.Synchronizer.Etherman.Validium.RateLimit]
-				NumRequests = 1000
-				Interval = "1s"
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
 
@@ -239,7 +115,7 @@ WaitPeriodNextGER="100ms"
 				ForcedGas = 0
 				GasPriceMarginFactor = 1
 				MaxGasPriceLimit = 0
-				StoragePath = "{{PathRWData}}/ethtxmanager-sequencesender.sqlite"
+				StoragePath = "{{PathRWData}}/ethtxmanager-aggoracle.sqlite"
 				ReadPendingL1Txs = false
 				SafeStatusL1NumberOfBlocks = 5
 				FinalizedStatusL1NumberOfBlocks = 10
