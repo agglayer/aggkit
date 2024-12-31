@@ -84,7 +84,7 @@ jobs:
       env:
         KURTOSIS_FOLDER: ${{ github.workspace }}/kurtosis-cdk
         BATS_LIB_PATH: /usr/lib/
-        agglayer_prover_sp1_key: ${{ secrets.SP1_PRIVATE_KEY }}
+        AGGLAYER_PROVER_SP1_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
     
     - name: Dump enclave logs
       if: failure()
@@ -105,7 +105,8 @@ jobs:
         name: ${{ env.ARCHIVE_NAME }}
         path: ./dump
 
-  test-e2e-multi_pp:
+  test-e2e-multi-pp:
+    name: Multi pessimistic proofs
     needs: build-cdk-image
     strategy:
       fail-fast: false
@@ -113,7 +114,7 @@ jobs:
         go-version: [ 1.22.x ]
         goarch: [ "amd64" ]
         e2e-group:
-          - "fork12-pessimistic"
+          - "fork12-multi-pessimistic"
     runs-on: amd-runner-2204
     timeout-minutes: 30
 
@@ -169,7 +170,7 @@ jobs:
       env:
         KURTOSIS_FOLDER: ${{ github.workspace }}/kurtosis-cdk
         BATS_LIB_PATH: /usr/lib/
-        agglayer_prover_sp1_key: ${{ secrets.SP1_PRIVATE_KEY }}
+        AGGLAYER_PROVER_SP1_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
     
     - name: Dump enclave logs
       if: failure()
