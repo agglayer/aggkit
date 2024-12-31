@@ -12,7 +12,7 @@ endif
 GOBASE := $(shell pwd)
 GOBIN := $(GOBASE)/target
 GOENVVARS := GOBIN=$(GOBIN) CGO_ENABLED=1 GOARCH=$(ARCH)
-GOBINARY := aggkit
+GOBINARY := cdk-node
 GOCMD := $(GOBASE)/cmd
 
 LDFLAGS += -X 'github.com/agglayer/aggkit.Version=$(VERSION)'
@@ -55,12 +55,12 @@ stop: check-docker check-docker-compose
 install-linter: check-go check-curl
 generate-code-from-proto: check-protoc
 
-.PHONY: build ## Builds the binaries locally into ./target
-build: build-rust build-go build-tools
+.PHONY: build
+build: build-rust build-go  build-tools## Builds the binaries locally into ./target
 
 .PHONY: build-rust
 build-rust:
-	cargo build --release --jobs $(shell nproc)
+	export BUILD_SCRIPT_DISABLED=1 && cargo build --release
 
 .PHONY: build-go
 build-go:
@@ -71,12 +71,12 @@ build-tools: ## Builds the tools
 	$(GOENVVARS) go build -o $(GOBIN)/aggsender_find_imported_bridge ./tools/aggsender_find_imported_bridge
 
 .PHONY: build-docker
-build-docker: ## Builds a docker image with the aggkit binary
-	docker build -t aggkit -f ./Dockerfile .
+build-docker: ## Builds a docker image with the cdk binary
+	docker build -t cdk -f ./Dockerfile .
 
 .PHONY: build-docker-nc
-build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
-	docker build --no-cache=true -t aggkit -f ./Dockerfile .
+build-docker-nc: ## Builds a docker image with the cdk binary - but without build cache
+	docker build --no-cache=true -t cdk -f ./Dockerfile .
 
 .PHONY: stop
 stop: ## Stops all services

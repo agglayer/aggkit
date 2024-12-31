@@ -28,7 +28,7 @@ function check_timeout(){
 }
 
 function check_num_certificates(){
-    readonly agglayer_rpc_url="$(kurtosis port print aggkit agglayer agglayer)"
+    readonly agglayer_rpc_url="$(kurtosis port print cdk agglayer agglayer)"
 
     cast_output=$(cast rpc --rpc-url "$agglayer_rpc_url" "interop_getLatestKnownCertificateHeader" "$l2_rpc_network_id" 2>&1)
 

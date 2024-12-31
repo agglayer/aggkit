@@ -17,10 +17,10 @@ jobs:
     #   matrix:
     #     da-mode: [ "rollup" ]
     steps:
-      - name: Checkout aggkit
+      - name: Checkout cdk
         uses: actions/checkout@v4
         with:
-          path: aggkit
+          path: cdk
 
       - name: Checkout cdk-erigon
         uses: actions/checkout@v4
@@ -50,8 +50,8 @@ jobs:
           /usr/local/bin/polycli version
 
       - name: Build docker image
-        working-directory: ./aggkit
-        run: docker build -t aggkit:local --file Dockerfile .
+        working-directory: ./cdk
+        run: docker build -t cdk:local --file Dockerfile .
 
       - name: Remove unused flags
         working-directory: ./kurtosis-cdk
@@ -62,7 +62,7 @@ jobs:
       - name: Configure Kurtosis CDK
         working-directory: ./kurtosis-cdk
         run: |
-          /usr/local/bin/yq -i '.args.cdk_node_image = "aggkit:local"' params.yml
+          /usr/local/bin/yq -i '.args.cdk_node_image = "cdk:local"' params.yml
           /usr/local/bin/yq -i '.args.zkevm_rollup_fork_id = "12"' params.yml
           /usr/local/bin/yq -i '.args.zkevm_prover_image = "hermeznetwork/zkevm-prover:v8.0.0-RC5-fork.12"' params.yml
           /usr/local/bin/yq -i '.args.cdk_erigon_node_image = "jerrycgh/cdk-erigon:d5d04906f723f3f1d8c43c9e6baf3e18c27ff348"' params.yml
