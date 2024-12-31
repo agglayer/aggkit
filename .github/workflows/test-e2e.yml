@@ -32,6 +32,7 @@ jobs:
         path: /tmp/cdk.tar
 
   test-e2e:
+    name: E2E tests (different groups)
     runs-on: amd-runner-2204
     timeout-minutes: 30
     needs: build-cdk-image
@@ -106,7 +107,7 @@ jobs:
         path: ./dump
 
   test-e2e-multi-pp:
-    name: Multi pessimistic proofs
+    name: E2E tests
     needs: build-cdk-image
     strategy:
       fail-fast: false
