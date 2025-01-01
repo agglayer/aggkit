@@ -1,31 +1,7 @@
 .PHONY: generate-mocks
-generate-mocks:	generate-mocks-da \
-	generate-mocks-l1infotreesync generate-mocks-helpers \
-	generate-mocks-sync \
+generate-mocks:	
 	mockery
 
-COMMON_MOCKERY_PARAMS=--disable-version-string --with-expecter --exported
-
-.PHONY: generate-mocks-rpc
-generate-mocks-rpc: ## Generates mocks for rpc, using mockery tool
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --all --case snake --dir ../rpc --output ../rpc/mocks --outpkg mocks ${COMMON_MOCKERY_PARAMS}
-
-.PHONY: generate-mocks-l1infotreesync
-generate-mocks-l1infotreesync: ## Generates mocks for l1infotreesync, using mockery tool
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --all --case snake --dir ../l1infotreesync --output ../l1infotreesync/mocks --outpkg mocks_l1infotreesync ${COMMON_MOCKERY_PARAMS}
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=ReorgDetector --dir=../sync --output=../l1infotreesync/mocks --outpkg=mocks_l1infotreesync --structname=ReorgDetectorMock --filename=mock_reorgdetector.go ${COMMON_MOCKERY_PARAMS}
-	
-.PHONY: generate-mocks-helpers
-generate-mocks-helpers: ## Generates mocks for helpers, using mockery tool
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=EthTxManager --dir=../aggoracle/chaingersender --output=./helpers --outpkg=helpers --structname=EthTxManagerMock --filename=mock_ethtxmanager.go ${COMMON_MOCKERY_PARAMS}
-
-.PHONY: generate-mocks-sync
-generate-mocks-sync: ## Generates mocks for sync, using mockery tool
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=EthClienter --dir=../sync --output=../sync --outpkg=sync --inpackage --structname=L2Mock --filename=mock_l2_test.go ${COMMON_MOCKERY_PARAMS}
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=evmDownloaderFull --dir=../sync --output=../sync --outpkg=sync --inpackage --structname=EVMDownloaderMock --filename=mock_downloader_test.go ${COMMON_MOCKERY_PARAMS}
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=processorInterface --dir=../sync --output=../sync --outpkg=sync --inpackage --structname=ProcessorMock --filename=mock_processor_test.go ${COMMON_MOCKERY_PARAMS}
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=ReorgDetector --dir=../sync --output=../sync --outpkg=sync --inpackage --structname=ReorgDetectorMock --filename=mock_reorgdetector_test.go ${COMMON_MOCKERY_PARAMS}
-	
 .PHONY: test-e2e-fork12-pessimistic
 test-e2e-fork12-pessimistic: stop
 	./run-e2e.sh fork12 pessimistic
