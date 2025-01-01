@@ -3,8 +3,8 @@ packages:
   github.com/agglayer/aggkit/agglayer:
     config:
       inpackage: True
-      dir: "{{.InterfaceDir}}"
-      outpkg: "{{.PackageName}}"
+      dir: "{{ .InterfaceDir }}"
+      outpkg: "{{ .PackageName }}"
     interfaces:
       AgglayerClientInterface:
         config:
@@ -12,7 +12,7 @@ packages:
           filename: mock_agglayer_client.go
   github.com/agglayer/aggkit/aggoracle/chaingersender:
     config:
-      dir: "{{.InterfaceDir}}/../mocks"
+      dir: "{{ .InterfaceDir }}/../mocks"
       outpkg: "mocks"
     interfaces:
       EthTxManager:
@@ -23,3 +23,44 @@ packages:
         config:
           mockname: L2GERManagerMock
           filename: mock_l2germanager.go
+  github.com/agglayer/aggkit/aggsender/db:
+    config:
+      dir: "{{.InterfaceDir}}/../mocks"
+      outpkg: "mocks"
+      filename: "{{ .InterfaceName | snakecase | lower }}.go"
+      mockname: "{{ .InterfaceName }}"
+    interfaces:
+      AggSenderStorage:
+        config:
+  github.com/agglayer/aggkit/aggsender/rpc:
+    config:
+      dir: "{{.InterfaceDir}}/../mocks"
+      outpkg: "mocks"
+      mockname: "{{ .InterfaceName }}"
+      filename: "{{ .InterfaceName | snakecase | lower }}.go"
+    interfaces:
+      aggsenderInterface:
+        config:
+      aggsenderStorer:
+        config:
+  github.com/agglayer/aggkit/aggsender/types:
+    config:
+      dir: "{{.InterfaceDir}}/../mocks"
+      outpkg: "mocks"
+      mockname: "{{ .InterfaceName }}"
+      filename: "{{ .InterfaceName | snakecase | lower }}.go"
+    interfaces:
+      BlockNotifier:
+        config:
+      EpochNotifier:
+        config:
+      EthClient:
+        config:
+      GenericSubscriber:
+        config:
+      L1InfoTreeSyncer:
+        config:
+      L2BridgeSyncer:
+        config:
+      Logger:
+        config:
