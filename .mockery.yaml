@@ -1,0 +1,12 @@
+with-expecter: true
+packages:
+  github.com/agglayer/aggkit/agglayer:
+    config:
+      inpackage: True
+      dir: "{{.InterfaceDir}}"
+      outpkg: "{{.PackageName}}"
+    interfaces:
+      AgglayerClientInterface:
+        config:
+          mockname: AgglayerClientMock
+          filename: mock_agglayer_client.go
