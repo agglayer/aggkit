@@ -1,4 +1,10 @@
+issue-845-fix: True
 with-expecter: true
+resolve-type-alias: False
+dir: "{{ .InterfaceDir }}/../mocks"
+outpkg: "mocks"
+filename: "{{ .InterfaceName | snakecase | lower }}.go"
+mockname: "{{ .InterfaceName }}"
 packages:
   github.com/agglayer/aggkit/agglayer:
     config:
@@ -12,66 +18,97 @@ packages:
           filename: mock_agglayer_client.go
   github.com/agglayer/aggkit/aggoracle/chaingersender:
     config:
-      dir: "{{ .InterfaceDir }}/../mocks"
-      outpkg: "mocks"
     interfaces:
       EthTxManager:
         config:
-          mockname: EthTxManagerMock
-          filename: mock_ethtxmanager.go
+        configs:
+          - mockname: EthTxManagerMock
+            filename: mock_ethtxmanager.go
+          - mockname: EthTxManagerMock
+            filename: mock_ethtxmanager.go
+            dir: "{{ .InterfaceDir }}/../../test/helpers"
+            outpkg: "helpers"
       L2GERManagerContract:
         config:
           mockname: L2GERManagerMock
           filename: mock_l2germanager.go
   github.com/agglayer/aggkit/aggsender/db:
     config:
-      dir: "{{.InterfaceDir}}/../mocks"
-      outpkg: "mocks"
-      filename: "{{ .InterfaceName | snakecase | lower }}.go"
-      mockname: "{{ .InterfaceName }}"
     interfaces:
       AggSenderStorage:
-        config:
   github.com/agglayer/aggkit/aggsender/rpc:
     config:
-      dir: "{{.InterfaceDir}}/../mocks"
-      outpkg: "mocks"
-      mockname: "{{ .InterfaceName }}"
-      filename: "{{ .InterfaceName | snakecase | lower }}.go"
     interfaces:
       aggsenderInterface:
-        config:
       aggsenderStorer:
-        config:
   github.com/agglayer/aggkit/aggsender/types:
     config:
-      dir: "{{.InterfaceDir}}/../mocks"
-      outpkg: "mocks"
-      mockname: "{{ .InterfaceName }}"
-      filename: "{{ .InterfaceName | snakecase | lower }}.go"
     interfaces:
       BlockNotifier:
-        config:
       EpochNotifier:
-        config:
       EthClient:
-        config:
       GenericSubscriber:
-        config:
       L1InfoTreeSyncer:
-        config:
       L2BridgeSyncer:
-        config:
       Logger:
-        config:
   github.com/agglayer/aggkit/bridgesync:
     config:
-      dir: "{{.InterfaceDir}}/mocks"
-      outpkg: "mocks"
-      mockname: "{{ .InterfaceName }}"
-      filename: "{{ .InterfaceName | snakecase | lower }}.go"
+      dir: "{{ .InterfaceDir }}/mocks"
     interfaces:
       ReorgDetector:
+      EthClienter:
+  github.com/agglayer/aggkit/l1infotreesync:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+    interfaces:
+      EthClienter:
+  github.com/agglayer/aggkit/reorgdetector:
+    config:
+      dir: "{{ .InterfaceDir }}"
+      outpkg: "{{ .PackageName }}"
+      mockname: "{{ .InterfaceName }}Mock"
+      filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
+    interfaces:
+      EthClient:
+  github.com/agglayer/aggkit/rpc/client:
+    config:
+    interfaces:
+      BridgeClientInterface:
+      ClientInterface:
+      ClientFactoryInterface:
+  github.com/agglayer/aggkit/rpc:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+    interfaces:
+      Bridger:
+      LastGERer:
+      L1InfoTreer:
+      ClaimSponsorer:
+  github.com/agglayer/aggkit/sync:
+    config:
+      dir: "{{ .InterfaceDir }}"
+      outpkg: "{{ .PackageName }}"
+      mockname: "{{ .InterfaceName }}Mock"
+      filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
+      inpackage: True
+    interfaces:
+      ReorgDetector:
+        configs:
+          - dir: "{{ .InterfaceDir }}/../l1infotreesync/mocks"
+            outpkg: "mocks"
+            mockname: "{{ .InterfaceName }}Mock"
+            filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
+            inpackage: False
+          - dir: "{{ .InterfaceDir }}"
+            outpkg: "{{ .PackageName }}"
+            mockname: "{{ .InterfaceName }}Mock"
+            filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
+      processorInterface:
         config:
+          mockname: "ProcessorMock"
+      evmDownloaderFull:
+        config:
+          mockname: "EVMDownloaderMock"
       EthClienter:
         config:
+          mockname: "L2Mock"

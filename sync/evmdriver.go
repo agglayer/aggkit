@@ -9,6 +9,13 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+var ErrInconsistentState = errors.New("state is inconsistent, try again later once the state is consolidated")
+
+type Block struct {
+	Num    uint64
+	Events []interface{}
+}
+
 type evmDownloaderFull interface {
 	EVMDownloaderInterface
 	downloader
