@@ -10,3 +10,16 @@ packages:
         config:
           mockname: AgglayerClientMock
           filename: mock_agglayer_client.go
+  github.com/agglayer/aggkit/aggoracle/chaingersender:
+    config:
+      dir: "{{.InterfaceDir}}/../mocks"
+      outpkg: "mocks"
+    interfaces:
+      EthTxManager:
+        config:
+          mockname: EthTxManagerMock
+          filename: mock_ethtxmanager.go
+      L2GERManagerContract:
+        config:
+          mockname: L2GERManagerMock
+          filename: mock_l2germanager.go
