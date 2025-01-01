@@ -3,7 +3,7 @@ generate-mocks:	generate-mocks-bridgesync generate-mocks-reorgdetector \
 	generate-mocks-da \
 	generate-mocks-l1infotreesync generate-mocks-helpers \
 	generate-mocks-sync \
-	generate-mocks-aggsender generate-mocks-agglayer
+	generate-mocks-aggsender mockery
 
 COMMON_MOCKERY_PARAMS=--disable-version-string --with-expecter --exported
 
@@ -43,10 +43,6 @@ generate-mocks-sync: ## Generates mocks for sync, using mockery tool
 .PHONY: generate-mocks-aggsender
 generate-mocks-aggsender: ## Generates mocks for aggsender, using mockery tool
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --all --case snake --dir ../aggsender --output ../aggsender/mocks --outpkg mocks ${COMMON_MOCKERY_PARAMS}
-
-.PHONY: generate-mocks-agglayer
-generate-mocks-agglayer: ## Generates mocks for agglayer, using mockery tool
-	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/mockery --name=AgglayerClientInterface --dir=../agglayer --output=../agglayer --outpkg=agglayer --inpackage --structname=AgglayerClientMock --filename=mock_agglayer_client.go ${COMMON_MOCKERY_PARAMS}	
 
 .PHONY: test-e2e-fork12-pessimistic
 test-e2e-fork12-pessimistic: stop
