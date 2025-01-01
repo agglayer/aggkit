@@ -12,26 +12,26 @@ const (
 	base10 = 10
 )
 
-type aggsenderStorer interface {
+type AggsenderStorer interface {
 	GetCertificateByHeight(height uint64) (*types.CertificateInfo, error)
 	GetLastSentCertificate() (*types.CertificateInfo, error)
 }
 
-type aggsenderInterface interface {
+type AggsenderInterface interface {
 	Info() types.AggsenderInfo
 }
 
 // AggsenderRPC is the RPC interface for the aggsender
 type AggsenderRPC struct {
 	logger    *log.Logger
-	storage   aggsenderStorer
-	aggsender aggsenderInterface
+	storage   AggsenderStorer
+	aggsender AggsenderInterface
 }
 
 func NewAggsenderRPC(
 	logger *log.Logger,
-	storage aggsenderStorer,
-	aggsender aggsenderInterface,
+	storage AggsenderStorer,
+	aggsender AggsenderInterface,
 ) *AggsenderRPC {
 	return &AggsenderRPC{
 		logger:    logger,
