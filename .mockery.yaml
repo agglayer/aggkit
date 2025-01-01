@@ -64,3 +64,14 @@ packages:
         config:
       Logger:
         config:
+  github.com/agglayer/aggkit/bridgesync:
+    config:
+      dir: "{{.InterfaceDir}}/mocks"
+      outpkg: "mocks"
+      mockname: "{{ .InterfaceName }}"
+      filename: "{{ .InterfaceName | snakecase | lower }}.go"
+    interfaces:
+      ReorgDetector:
+        config:
+      EthClienter:
+        config:
