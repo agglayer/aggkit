@@ -1,6 +1,6 @@
-issue-845-fix: True
+issue-845-fix: true
 with-expecter: true
-resolve-type-alias: False
+resolve-type-alias: false
 dir: "{{ .InterfaceDir }}/../mocks"
 outpkg: "mocks"
 filename: "{{ .InterfaceName | snakecase | lower }}.go"
@@ -8,7 +8,7 @@ mockname: "{{ .InterfaceName }}"
 packages:
   github.com/agglayer/aggkit/agglayer:
     config:
-      inpackage: True
+      inpackage: true
       dir: "{{ .InterfaceDir }}"
       outpkg: "{{ .PackageName }}"
     interfaces:
@@ -90,7 +90,7 @@ packages:
       outpkg: "{{ .PackageName }}"
       mockname: "{{ .InterfaceName }}Mock"
       filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
-      inpackage: True
+      inpackage: true
     interfaces:
       ReorgDetector:
         configs:
@@ -98,7 +98,7 @@ packages:
             outpkg: "mocks"
             mockname: "{{ .InterfaceName }}Mock"
             filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
-            inpackage: False
+            inpackage: false
           - dir: "{{ .InterfaceDir }}"
             outpkg: "{{ .PackageName }}"
             mockname: "{{ .InterfaceName }}Mock"
