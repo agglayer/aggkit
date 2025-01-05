@@ -1,6 +1,8 @@
+COMMON_MOCKERY_PARAMS=--disable-version-string --with-expecter --exported
+
 .PHONY: generate-mocks
 generate-mocks:	
-	mockery
+	mockery ${COMMON_MOCKERY_PARAMS}
 
 .PHONY: test-e2e-fork12-pessimistic
 test-e2e-fork12-pessimistic: stop
