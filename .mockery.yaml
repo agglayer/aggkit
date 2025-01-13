@@ -20,7 +20,6 @@ packages:
     config:
     interfaces:
       EthTxManager:
-        config:
         configs:
           - mockname: EthTxManagerMock
             filename: mock_ethtxmanager.go
