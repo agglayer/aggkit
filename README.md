@@ -6,9 +6,9 @@
 <img src="./.github/assets/aggkit-logo.svg#gh-light-mode-only" alt="Logo" width="100">
 <img src="./.github/assets/aggkit-logo.svg#gh-dark-mode-only" alt="Logo" width="100">
 
-## Polygon AggKit
+## AggKit
 
-**Polygon AggKit** is a modular framework that developers can use to build and deploy Pessimistic Proofs enabled chains (TBD).
+**AggKit** is a modular framework that developers can use to connect networks to the AggLayer
 
 </div>
 
@@ -59,8 +59,8 @@ Feel free to [open an issue](https://github.com/agglayer/aggkit/issues/new) if y
 
 ## License
 
-Polygon AggKit
-Copyright (c) 2024 PT Services DMCC
+ AggKit
+ Copyright (c) 2024 PT Services DMCC
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
