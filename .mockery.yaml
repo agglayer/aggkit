@@ -3,7 +3,7 @@ with-expecter: true
 resolve-type-alias: false
 dir: "{{ .InterfaceDir }}/../mocks"
 outpkg: "mocks"
-filename: "{{ .InterfaceName | snakecase | lower }}.go"
+filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
 mockname: "{{ .InterfaceName }}"
 packages:
   github.com/agglayer/aggkit/agglayer:
@@ -33,23 +33,13 @@ packages:
           filename: mock_l2germanager.go
   github.com/agglayer/aggkit/aggsender/db:
     config:
-    interfaces:
-      AggSenderStorage:
+      all: true
   github.com/agglayer/aggkit/aggsender/rpc:
     config:
-    interfaces:
-      aggsenderInterface:
-      aggsenderStorer:
+      all: true
   github.com/agglayer/aggkit/aggsender/types:
     config:
-    interfaces:
-      BlockNotifier:
-      EpochNotifier:
-      EthClient:
-      GenericSubscriber:
-      L1InfoTreeSyncer:
-      L2BridgeSyncer:
-      Logger:
+      all: true
   github.com/agglayer/aggkit/bridgesync:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
@@ -66,29 +56,20 @@ packages:
       dir: "{{ .InterfaceDir }}"
       outpkg: "{{ .PackageName }}"
       mockname: "{{ .InterfaceName }}Mock"
-      filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
     interfaces:
       EthClient:
   github.com/agglayer/aggkit/rpc/client:
     config:
-    interfaces:
-      BridgeClientInterface:
-      ClientInterface:
-      ClientFactoryInterface:
+      all: true
   github.com/agglayer/aggkit/rpc:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
-    interfaces:
-      Bridger:
-      LastGERer:
-      L1InfoTreer:
-      ClaimSponsorer:
+      all: true
   github.com/agglayer/aggkit/sync:
     config:
       dir: "{{ .InterfaceDir }}"
       outpkg: "{{ .PackageName }}"
       mockname: "{{ .InterfaceName }}Mock"
-      filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
       inpackage: true
     interfaces:
       ReorgDetector:
@@ -96,12 +77,10 @@ packages:
           - dir: "{{ .InterfaceDir }}/../l1infotreesync/mocks"
             outpkg: "mocks"
             mockname: "{{ .InterfaceName }}Mock"
-            filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
             inpackage: false
           - dir: "{{ .InterfaceDir }}"
             outpkg: "{{ .PackageName }}"
             mockname: "{{ .InterfaceName }}Mock"
-            filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
       processorInterface:
         config:
           mockname: "ProcessorMock"
