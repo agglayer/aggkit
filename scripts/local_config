@@ -413,12 +413,10 @@ cat << EOF
             "args":[
                 "run",
                 "-cfg", "$DEST_TEMPLATE_FILE",
-                "-components", "sequence-sender,aggregator",
+                "-components", "aggsender",
             ]
         },
 
-        To run AggSender change components to:
-                "-components", "aggsender",
 EOF
 
 echo " -----------------------------------------------------------"
