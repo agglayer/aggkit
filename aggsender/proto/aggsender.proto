@@ -1,0 +1,18 @@
+// Proto definition for AggSender service
+
+syntax = "proto3";
+package types;
+option go_package = "github.com/agglayer/aggkit/aggsender/types";
+
+message ProofRequest {
+  string data = 1;
+  string range = 2;
+}
+
+message ProofResponse {
+  string error = 1;
+}
+
+service AggSender {
+    rpc Proof (ProofRequest) returns (ProofResponse) {}
+}
