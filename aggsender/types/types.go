@@ -55,6 +55,11 @@ type Logger interface {
 	Debugf(format string, args ...interface{})
 }
 
+type AuthProof struct {
+	Identifier string
+	Proof      string
+}
+
 type CertificateInfo struct {
 	Height        uint64      `meddler:"height"`
 	RetryCount    int         `meddler:"retry_count"`

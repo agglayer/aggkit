@@ -32,6 +32,14 @@ type AggSenderStorage interface {
 	GetCertificatesByStatus(status []agglayer.CertificateStatus) ([]*types.CertificateInfo, error)
 	// UpdateCertificate updates certificate in db
 	UpdateCertificate(ctx context.Context, certificate types.CertificateInfo) error
+
+	// Aggkit-prover specific methods
+	// Add auth-proof in DB
+	AddAuthProof(ctx context.Context, authProof types.AuthProof) error
+	// Get auth-proof by identifier
+	GetAuthProof(ctx context.Context, identifier string) (*types.AuthProof, error)
+	// Validate auth-proof
+	ValidateProof(req *types.ProofRequest) (bool, error)
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -64,6 +72,50 @@ func NewAggSenderSQLStorage(logger *log.Logger, cfg AggSenderSQLStorageConfig) (
 		logger: logger,
 		cfg:    cfg,
 	}, nil
+}
+
+// @temaniarpit27 - Dummy implementation
+func (a *AggSenderSQLStorage) AddAuthProof(ctx context.Context, authProof types.AuthProof) error {
+	tx, err := db.NewTx(ctx, a.db)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err != nil {
+			if errRllbck := tx.Rollback(); errRllbck != nil {
+				a.logger.Errorf(errWhileRollbackFormat, errRllbck)
+			}
+		}
+	}()
+
+	if _, err = tx.Exec(`INSERT INTO auth_proof (identifier, proof) VALUES ($1, $2);`,
+		authProof.Identifier, authProof.Proof); err != nil {
+		return fmt.Errorf("error inserting auth proof: %w", err)
+	}
+	if err = tx.Commit(); err != nil {
+		return err
+	}
+
+	a.logger.Debugf("inserted auth proof - Identifier: %s", authProof.Identifier)
+
+	return nil
+}
+
+// @temaniarpit27 - Dummy implementation
+func (a *AggSenderSQLStorage) GetAuthProof(ctx context.Context, identifier string) (*types.AuthProof, error) {
+	var authProof types.AuthProof
+	if err := meddler.QueryRow(a.db, &authProof,
+		"SELECT * FROM auth_proof WHERE identifier = $1;", identifier); err != nil {
+		// Fix this
+		return nil, getSelectQueryError(0, err)
+	}
+
+	return &authProof, nil
+}
+
+// @temaniarpit27 - Dummy implementation
+func (a *AggSenderSQLStorage) ValidateProof(req *types.ProofRequest) (bool, error) {
+	return true, nil
 }
 
 func (a *AggSenderSQLStorage) GetCertificatesByStatus(
