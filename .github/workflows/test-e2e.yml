@@ -55,16 +55,6 @@ jobs:
     - name: Install Kurtosis CDK tools
       uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
     
-    - name: Install polycli
-      run: |
-        POLYCLI_VERSION="${{ vars.POLYCLI_VERSION }}"
-        tmp_dir=$(mktemp -d) 
-        curl -L "https://github.com/0xPolygon/polygon-cli/releases/download/${POLYCLI_VERSION}/polycli_${POLYCLI_VERSION}_linux_amd64.tar.gz" | tar -xz -C "$tmp_dir" 
-        mv "$tmp_dir"/* /usr/local/bin/polycli 
-        rm -rf "$tmp_dir"
-        sudo chmod +x /usr/local/bin/polycli
-        /usr/local/bin/polycli version
-
     - name: Setup Bats and bats libs
       uses: bats-core/bats-action@2.0.0
     
@@ -138,18 +128,10 @@ jobs:
       with:
         repository: 0xPolygon/kurtosis-cdk
         path: kurtosis-cdk
-        ref: jhilliard/multi-pp-testing
+        ref: main
     
     - name: Install Kurtosis CDK tools
       uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
-    
-    - name: Install polycli
-      run: |
-        git clone https://github.com/0xPolygon/polygon-cli -b jhilliard/alonso
-        cd polygon-cli
-        make install
-        cp ~/go/bin/polycli /usr/local/bin/polycli
-        /usr/local/bin/polycli version
 
     - name: Setup Bats and bats libs
       uses: bats-core/bats-action@2.0.0
