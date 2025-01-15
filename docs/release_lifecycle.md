@@ -1,8 +1,8 @@
-This document presents the CDK [Software release lifecycle](https://simple.wikipedia.org/wiki/Software_release_life_cycle). The CDK team has adopted a process grounded in industry-standard best practices to avoid reinventing the wheel and, more importantly, to prevent confusion among new developers and users. By adhering to these widely recognized practices, we ensure that anyone in the industry can intuitively understand and follow our internal procedures with minimal explanation.
+This document presents the Aggkit [Software release lifecycle](https://simple.wikipedia.org/wiki/Software_release_life_cycle). The Aggkit team has adopted a process grounded in industry-standard best practices to avoid reinventing the wheel and, more importantly, to prevent confusion among new developers and users. By adhering to these widely recognized practices, we ensure that anyone in the industry can intuitively understand and follow our internal procedures with minimal explanation.
 
 ## Versioning
 
-The versioning process follows the standard [Semver](https://semver.org/) to name new versions
+The versioning process follows the standard [Semantic Versioning](https://semver.org/) to tag new versions
 
 Summary 
 
