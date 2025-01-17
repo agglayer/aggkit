@@ -24,32 +24,13 @@ jobs:
         e2e-group:
           - "fork12-pessimistic"
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-      
-    - name: Checkout kurtosis-cdk
-      uses: actions/checkout@v4
+    - name: Setup Environment
+      uses: ./.github/workflows/setup-environment.yml
       with:
-        repository: 0xPolygon/kurtosis-cdk
-        path: kurtosis-cdk
-        ref: v0.2.26
-    
-    - name: Install Kurtosis CDK tools
-      uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
-    
-    - name: Setup Bats and bats libs
-      uses: bats-core/bats-action@2.0.0
-    
-    - name: Download cdk archive
-      uses: actions/download-artifact@v4
-      with:
-        name: cdk
-        path: /tmp
-    
-    - name: Load cdk image
-      run: |
-        docker load --input /tmp/cdk.tar
-        docker image ls -a
+        kurtosis-repository: 0xPolygon/kurtosis-cdk
+        kurtosis-path: kurtosis-cdk
+        kurtosis-ref: v0.2.26
+        docker-image-name: cdk
 
     - name: Run E2E tests
       run: make test-e2e-${{ matrix.e2e-group }}
@@ -92,8 +73,13 @@ jobs:
     timeout-minutes: 30
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+    - name: Setup Environment
+      uses: ./.github/workflows/setup-environment.yml
+      with:
+        kurtosis-repository: 0xPolygon/kurtosis-cdk
+        kurtosis-path: kurtosis-cdk
+        kurtosis-ref: v0.2.26
+        docker-image-name: cdk
 
     - name: Install Go
       uses: actions/setup-go@v5
@@ -101,33 +87,9 @@ jobs:
         go-version: ${{ matrix.go-version }}
       env:
         GOARCH: ${{ matrix.goarch }}
-
+  
     - name: Build Tools
       run: make build-tools
-      
-    - name: Checkout kurtosis-cdk
-      uses: actions/checkout@v4
-      with:
-        repository: 0xPolygon/kurtosis-cdk
-        path: kurtosis-cdk
-        ref: v0.2.26
-    
-    - name: Install Kurtosis CDK tools
-      uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
-
-    - name: Setup Bats and bats libs
-      uses: bats-core/bats-action@2.0.0
-    
-    - name: Download cdk archive
-      uses: actions/download-artifact@v4
-      with:
-        name: cdk
-        path: /tmp
-    
-    - name: Load cdk image
-      run: |
-        docker load --input /tmp/cdk.tar
-        docker image ls -a
 
     - name: Run E2E tests
       run: make test-e2e-fork12-multi-pessimistic

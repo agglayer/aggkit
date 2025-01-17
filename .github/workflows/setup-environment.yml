@@ -1,0 +1,46 @@
+name: Setup Environment
+on:
+  workflow_call:
+    inputs:
+      kurtosis-repository:
+        required: true
+        type: string
+      kurtosis-path:
+        required: true
+        type: string
+      kurtosis-ref:
+        required: false
+        type: string
+      docker-image-name:
+        required: true
+        type: string
+jobs:
+  setup-environment:
+    runs-on: amd-runner-2204
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Checkout Kurtosis CDK
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ inputs.kurtosis-repository }}
+          path: ${{ inputs.kurtosis-path }}
+          ref: ${{ inputs.kurtosis-ref }}
+
+      - name: Install Kurtosis CDK Tools
+        uses: ./${{ inputs.kurtosis-path }}/.github/actions/setup-kurtosis-cdk
+
+      - name: Setup Bats and Bats Libs
+        uses: bats-core/bats-action@2.0.0
+
+      - name: Download CDK Archive
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.docker-image-name }}
+          path: /tmp
+
+      - name: Load CDK Image
+        run: |
+          docker load --input /tmp/${{ inputs.docker-image-name }}.tar
+          docker image ls -a
