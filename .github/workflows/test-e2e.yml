@@ -5,7 +5,6 @@ on:
       - '**'
   workflow_dispatch: {}
 
-
 jobs:
   build-cdk-image:
     uses: ./.github/workflows/build-cdk-image.yml
@@ -24,6 +23,9 @@ jobs:
         e2e-group:
           - "fork12-pessimistic"
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Setup Environment
       uses: ./.github/workflows/setup-environment.yml
       with:
@@ -73,6 +75,9 @@ jobs:
     timeout-minutes: 30
 
     steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
     - name: Setup Environment
       uses: ./.github/workflows/setup-environment.yml
       with:

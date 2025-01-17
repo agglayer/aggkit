@@ -14,13 +14,11 @@ on:
       docker-image-name:
         required: true
         type: string
+
 jobs:
   setup-environment:
     runs-on: amd-runner-2204
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
       - name: Checkout Kurtosis CDK
         uses: actions/checkout@v4
         with:
