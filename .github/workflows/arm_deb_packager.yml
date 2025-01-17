@@ -41,17 +41,10 @@ jobs:
       - name: Build the binary
         run: make build
 
-      - name: Build the rust binary
-        run: |
-          BUILD_SCRIPT_DISABLED=1
-          cargo build --release --bin cdk
-
       - name: making directory structure
         run: mkdir -p packaging/deb/cdk/usr/bin/
       - name: copying necessary binary for arm64
         run: cp -rp target/cdk-node packaging/deb/cdk/usr/bin/cdk-node
-      - name: copying rust binary for arm64
-        run: cp -rp target/release/cdk packaging/deb/cdk/usr/bin/cdk
 
       # Control file creation
       - name: Create control file
