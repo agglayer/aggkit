@@ -15,7 +15,6 @@ RUN make build-go build-tools
 FROM --platform=${BUILDPLATFORM} debian:bookworm-slim
 
 RUN apt-get update && apt-get install -y ca-certificates sqlite3 procps libssl-dev && rm -rf /var/lib/apt/lists/*
-COPY --from=builder /app/target/release/aggkit /usr/local/bin/
 COPY --from=build /go/src/github.com/agglayer/aggkit/target/aggkit-node /usr/local/bin/
 
 EXPOSE 5576/tcp
