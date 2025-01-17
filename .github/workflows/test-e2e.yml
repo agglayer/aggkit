@@ -12,110 +12,99 @@ jobs:
       go-version: 1.22.x
       docker-image-name: cdk
 
+  setup-environment:
+    uses: ./.github/workflows/setup-environment.yml
+    with:
+      kurtosis-repository: 0xPolygon/kurtosis-cdk
+      kurtosis-path: kurtosis-cdk
+      kurtosis-ref: v0.2.26
+      docker-image-name: cdk
+
   test-e2e:
-    name: E2E tests (different groups)
+    name: E2E tests (single chain)
     runs-on: amd-runner-2204
     timeout-minutes: 30
-    needs: build-cdk-image
+    needs: [build-cdk-image, setup-environment]
     strategy:
       fail-fast: false
       matrix:
         e2e-group:
           - "fork12-pessimistic"
     steps:
-    - name: Setup Environment
-      uses: ./.github/workflows/setup-environment.yml
-      with:
-        kurtosis-repository: 0xPolygon/kurtosis-cdk
-        kurtosis-path: kurtosis-cdk
-        kurtosis-ref: v0.2.26
-        docker-image-name: cdk
+      - name: Run E2E tests
+        run: make test-e2e-${{ matrix.e2e-group }}
+        working-directory: test
+        env:
+          KURTOSIS_FOLDER: ${{ github.workspace }}/kurtosis-cdk
+          BATS_LIB_PATH: /usr/lib/
+          AGGLAYER_PROVER_SP1_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
 
-    - name: Run E2E tests
-      run: make test-e2e-${{ matrix.e2e-group }}
-      working-directory: test
-      env:
-        KURTOSIS_FOLDER: ${{ github.workspace }}/kurtosis-cdk
-        BATS_LIB_PATH: /usr/lib/
-        AGGLAYER_PROVER_SP1_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
-    
-    - name: Dump enclave logs
-      if: failure()
-      run: kurtosis dump ./dump
+      - name: Dump enclave logs
+        if: failure()
+        run: kurtosis dump ./dump
 
-    - name: Generate archive name
-      if: failure()
-      run: |
-        archive_name="dump_run_with_args_${{matrix.e2e-group}}_${{ github.run_id }}"
-        echo "ARCHIVE_NAME=${archive_name}" >> "$GITHUB_ENV"
-        echo "Generated archive name: ${archive_name}"
-        kurtosis service exec cdk cdk-node-001 'cat /etc/cdk/cdk-node-config.toml' > ./dump/cdk-node-config.toml
+      - name: Generate archive name
+        if: failure()
+        run: |
+          archive_name="dump_run_with_args_${{matrix.e2e-group}}_${{ github.run_id }}"
+          echo "ARCHIVE_NAME=${archive_name}" >> "$GITHUB_ENV"
+          echo "Generated archive name: ${archive_name}"
+          kurtosis service exec cdk cdk-node-001 'cat /etc/cdk/cdk-node-config.toml' > ./dump/cdk-node-config.toml
 
-    - name: Upload logs
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ env.ARCHIVE_NAME }}
-        path: ./dump
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ./dump
 
   test-e2e-multi-pp:
-    name: E2E tests
-    needs: build-cdk-image
+    name: E2E tests (multi chain)
+    needs: [build-cdk-image, setup-environment]
     strategy:
       fail-fast: false
       matrix:
-        go-version: [ 1.22.x ]
-        goarch: [ "amd64" ]
+        go-version: [1.22.x]
+        goarch: ["amd64"]
         e2e-group:
           - "fork12-multi-pessimistic"
     runs-on: amd-runner-2204
     timeout-minutes: 30
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-    
-    - name: Setup Environment
-      uses: ./.github/workflows/setup-environment.yml
-      with:
-        kurtosis-repository: 0xPolygon/kurtosis-cdk
-        kurtosis-path: kurtosis-cdk
-        kurtosis-ref: v0.2.26
-        docker-image-name: cdk
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go-version }}
+        env:
+          GOARCH: ${{ matrix.goarch }}
 
-    - name: Install Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: ${{ matrix.go-version }}
-      env:
-        GOARCH: ${{ matrix.goarch }}
-  
-    - name: Build Tools
-      run: make build-tools
+      - name: Build Tools
+        run: make build-tools
 
-    - name: Run E2E tests
-      run: make test-e2e-fork12-multi-pessimistic
-      working-directory: test
-      env:
-        KURTOSIS_FOLDER: ${{ github.workspace }}/kurtosis-cdk
-        BATS_LIB_PATH: /usr/lib/
-        AGGLAYER_PROVER_SP1_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
-    
-    - name: Dump enclave logs
-      if: failure()
-      run: kurtosis dump ./dump
+      - name: Run E2E tests
+        run: make test-e2e-fork12-multi-pessimistic
+        working-directory: test
+        env:
+          KURTOSIS_FOLDER: ${{ github.workspace }}/kurtosis-cdk
+          BATS_LIB_PATH: /usr/lib/
+          AGGLAYER_PROVER_SP1_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
 
-    - name: Generate archive name
-      if: failure()
-      run: |
-        archive_name="dump_run_with_args_${{matrix.e2e-group}}_${{ github.run_id }}"
-        echo "ARCHIVE_NAME=${archive_name}" >> "$GITHUB_ENV"
-        echo "Generated archive name: ${archive_name}"
-        kurtosis service exec cdk cdk-node-001 'cat /etc/cdk/cdk-node-config.toml' > ./dump/cdk-node-config.toml
+      - name: Dump enclave logs
+        if: failure()
+        run: kurtosis dump ./dump
 
-    - name: Upload logs
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ env.ARCHIVE_NAME }}
-        path: ./dump
+      - name: Generate archive name
+        if: failure()
+        run: |
+          archive_name="dump_run_with_args_${{matrix.e2e-group}}_${{ github.run_id }}"
+          echo "ARCHIVE_NAME=${archive_name}" >> "$GITHUB_ENV"
+          echo "Generated archive name: ${archive_name}"
+          kurtosis service exec cdk cdk-node-001 'cat /etc/cdk/cdk-node-config.toml' > ./dump/cdk-node-config.toml
+
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ./dump
