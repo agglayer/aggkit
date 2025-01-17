@@ -8,28 +8,10 @@ on:
 
 jobs:
   build-cdk-image:
-    runs-on: amd-runner-2204
-    timeout-minutes: 20
-    steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
-
-    - name: Install Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: 1.22.x
-
-    - name: Build cdk docker image
-      run: make build-docker
-    
-    - name: Save cdk image to archive
-      run: docker save --output /tmp/cdk.tar cdk
-    
-    - name: Upload archive
-      uses: actions/upload-artifact@v4
-      with:
-        name: cdk
-        path: /tmp/cdk.tar
+    uses: ./.github/workflows/build-cdk-image.yml
+    with:
+      go-version: 1.22.x
+      docker-image-name: cdk
 
   test-e2e:
     name: E2E tests (different groups)
