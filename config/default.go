@@ -101,7 +101,6 @@ WaitPeriodNextGER="100ms"
 	[AggOracle.EVMSender]
 		GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 		URLRPCL2="{{L2URL}}"
-		ChainIDL2=1337
 		GasOffset=0
 		WaitPeriodMonitorTx="100ms"
 		[AggOracle.EVMSender.EthTxManager]
@@ -122,7 +121,6 @@ WaitPeriodNextGER="100ms"
 					[AggOracle.EVMSender.EthTxManager.Etherman]
 						URL = "{{L2URL}}"
 						MultiGasProvider = false
-						L1ChainID = {{NetworkConfig.L1.L1ChainID}}
 						HTTPHeaders = []
 
 [RPC]
