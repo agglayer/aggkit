@@ -22,9 +22,9 @@ jobs:
 
   test-e2e:
     name: E2E tests (single chain)
+    needs: setup-environment
     runs-on: amd-runner-2204
     timeout-minutes: 30
-    needs: setup-environment
     strategy:
       fail-fast: false
       matrix:
@@ -60,7 +60,9 @@ jobs:
 
   test-e2e-multi-pp:
     name: E2E tests (multi chain)
-    needs: [build-cdk-image, setup-environment]
+    needs: setup-environment
+    runs-on: amd-runner-2204
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -68,8 +70,6 @@ jobs:
         goarch: ["amd64"]
         e2e-group:
           - "fork12-multi-pessimistic"
-    runs-on: amd-runner-2204
-    timeout-minutes: 30
 
     steps:
       - name: Install Go
