@@ -19,9 +19,6 @@ jobs:
   setup-environment:
     runs-on: amd-runner-2204
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Checkout Kurtosis CDK
         uses: actions/checkout@v4
         with:
