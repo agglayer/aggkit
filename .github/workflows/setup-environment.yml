@@ -5,9 +5,6 @@ on:
       kurtosis-repository:
         required: true
         type: string
-      kurtosis-path:
-        required: true
-        type: string
       kurtosis-ref:
         required: false
         type: string
@@ -23,11 +20,11 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: ${{ inputs.kurtosis-repository }}
-          path: ${{ inputs.kurtosis-path }}
+          path: kurtosis-cdk
           ref: ${{ inputs.kurtosis-ref }}
 
       - name: Install Kurtosis CDK Tools
-        uses: ./${{ inputs.kurtosis-path }}/.github/actions/setup-kurtosis-cdk
+        uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
 
       - name: Setup Bats and Bats Libs
         uses: bats-core/bats-action@3.0.0

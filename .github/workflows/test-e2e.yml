@@ -16,7 +16,6 @@ jobs:
     uses: ./.github/workflows/setup-environment.yml
     with:
       kurtosis-repository: 0xPolygon/kurtosis-cdk
-      kurtosis-path: kurtosis-cdk
       kurtosis-ref: v0.2.26
       docker-image-name: cdk
 
