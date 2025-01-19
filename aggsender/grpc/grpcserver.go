@@ -2,7 +2,6 @@
 package grpc
 
 import (
-	"context"
 	"log"
 	"net"
 
@@ -19,8 +18,8 @@ type server struct {
 
 func NewGRPCServer(opts ...grpc.ServerOption) *grpc.Server {
 	s := grpc.NewServer(opts...)
+	// TODO - Add aggsenderStorage initialization
 	types.RegisterAggSenderServer(s, &server{})
-	// @temaniarpit27 - Add initialization for aggsender storage
 	return s
 }
 
@@ -34,34 +33,4 @@ func StartGRPCServer(address string, opts ...grpc.ServerOption) {
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
 	}
-}
-
-// Dummy implementation of the Proof method.
-// And register the AggsenderServiceServer with the server.
-func (s *server) ReceiveProof(ctx context.Context, req *types.ProofRequest) (*types.ProofResponse, error) {
-	// Implement your logic here
-	log.Printf("Received proof: %v", req)
-	valid, err := s.aggsenderStorage.ValidateProof(req)
-	if err != nil {
-		log.Printf("Error validating proof: %v", err)
-		return &types.ProofResponse{}, err
-	}
-
-	if !valid {
-		log.Printf("Proof is invalid")
-		return &types.ProofResponse{}, err
-	}
-
-	log.Printf("Proof is valid")
-	err = s.aggsenderStorage.AddAuthProof(context.Background(), types.AuthProof{
-		Proof:      req.Proof,
-		Identifier: req.Identifier,
-	})
-	if err != nil {
-		log.Printf("Error adding proof: %v", err)
-		return &types.ProofResponse{}, err
-	}
-	log.Printf("Proof added successfully")
-
-	return &types.ProofResponse{}, nil
 }

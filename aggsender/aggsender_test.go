@@ -1971,12 +1971,6 @@ func TestLimitSize_NoWayToFitInMaxSize(t *testing.T) {
 	require.Equal(t, uint64(19), newCert.ToBlock)
 }
 
-func TestAddAuthProof(t *testing.T) {
-}
-
-func TestGetAuthProof(t *testing.T) {
-}
-
 func TestLimitSize_MinNumBlocks(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage)
 	testData.sut.cfg.MaxCertSize = (aggsendertypes.EstimatedSizeBridgeExit * 2) + 1

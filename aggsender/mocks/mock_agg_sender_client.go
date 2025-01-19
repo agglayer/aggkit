@@ -25,8 +25,8 @@ func (_m *AggSenderClient) EXPECT() *AggSenderClient_Expecter {
 	return &AggSenderClient_Expecter{mock: &_m.Mock}
 }
 
-// Proof provides a mock function with given fields: ctx, in, opts
-func (_m *AggSenderClient) Proof(ctx context.Context, in *types.ProofRequest, opts ...grpc.CallOption) (*types.ProofResponse, error) {
+// ReceiveAuthProof provides a mock function with given fields: ctx, in, opts
+func (_m *AggSenderClient) ReceiveAuthProof(ctx context.Context, in *types.ProofRequest, opts ...grpc.CallOption) (*types.ProofResponse, error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -37,7 +37,7 @@ func (_m *AggSenderClient) Proof(ctx context.Context, in *types.ProofRequest, op
 	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Proof")
+		panic("no return value specified for ReceiveAuthProof")
 	}
 
 	var r0 *types.ProofResponse
@@ -62,21 +62,21 @@ func (_m *AggSenderClient) Proof(ctx context.Context, in *types.ProofRequest, op
 	return r0, r1
 }
 
-// AggSenderClient_Proof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Proof'
-type AggSenderClient_Proof_Call struct {
+// AggSenderClient_ReceiveAuthProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReceiveAuthProof'
+type AggSenderClient_ReceiveAuthProof_Call struct {
 	*mock.Call
 }
 
-// Proof is a helper method to define mock.On call
+// ReceiveAuthProof is a helper method to define mock.On call
 //   - ctx context.Context
 //   - in *types.ProofRequest
 //   - opts ...grpc.CallOption
-func (_e *AggSenderClient_Expecter) Proof(ctx interface{}, in interface{}, opts ...interface{}) *AggSenderClient_Proof_Call {
-	return &AggSenderClient_Proof_Call{Call: _e.mock.On("Proof",
+func (_e *AggSenderClient_Expecter) ReceiveAuthProof(ctx interface{}, in interface{}, opts ...interface{}) *AggSenderClient_ReceiveAuthProof_Call {
+	return &AggSenderClient_ReceiveAuthProof_Call{Call: _e.mock.On("ReceiveAuthProof",
 		append([]interface{}{ctx, in}, opts...)...)}
 }
 
-func (_c *AggSenderClient_Proof_Call) Run(run func(ctx context.Context, in *types.ProofRequest, opts ...grpc.CallOption)) *AggSenderClient_Proof_Call {
+func (_c *AggSenderClient_ReceiveAuthProof_Call) Run(run func(ctx context.Context, in *types.ProofRequest, opts ...grpc.CallOption)) *AggSenderClient_ReceiveAuthProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		variadicArgs := make([]grpc.CallOption, len(args)-2)
 		for i, a := range args[2:] {
@@ -89,12 +89,12 @@ func (_c *AggSenderClient_Proof_Call) Run(run func(ctx context.Context, in *type
 	return _c
 }
 
-func (_c *AggSenderClient_Proof_Call) Return(_a0 *types.ProofResponse, _a1 error) *AggSenderClient_Proof_Call {
+func (_c *AggSenderClient_ReceiveAuthProof_Call) Return(_a0 *types.ProofResponse, _a1 error) *AggSenderClient_ReceiveAuthProof_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggSenderClient_Proof_Call) RunAndReturn(run func(context.Context, *types.ProofRequest, ...grpc.CallOption) (*types.ProofResponse, error)) *AggSenderClient_Proof_Call {
+func (_c *AggSenderClient_ReceiveAuthProof_Call) RunAndReturn(run func(context.Context, *types.ProofRequest, ...grpc.CallOption) (*types.ProofResponse, error)) *AggSenderClient_ReceiveAuthProof_Call {
 	_c.Call.Return(run)
 	return _c
 }
