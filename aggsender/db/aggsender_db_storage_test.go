@@ -425,3 +425,31 @@ func Test_StoragePreviousLER(t *testing.T) {
 	require.NotNil(t, readCertWithLER)
 	require.Equal(t, certLER, *readCertWithLER)
 }
+
+func TestAddAuthProof(t *testing.T) {
+}
+
+func TestGetAuthProof(t *testing.T) {
+}
+
+func TestValidateProof(t *testing.T) {
+	path := path.Join(t.TempDir(), "aggsenderTest_SaveLastSentCertificate.sqlite")
+	log.Debugf("sqlite path: %s", path)
+	cfg := AggSenderSQLStorageConfig{
+		DBPath:                  path,
+		KeepCertificatesHistory: true,
+	}
+
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+
+	t.Run("ValidateProof", func(t *testing.T) {
+		mockProofRequest := &types.ProofRequest{
+			Identifier: "identifier",
+			Proof:      "proof",
+		}
+		valid, err := storage.ValidateProof(mockProofRequest)
+		require.NoError(t, err)
+		require.True(t, valid)
+	})
+}

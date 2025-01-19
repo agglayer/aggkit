@@ -120,9 +120,9 @@ func (_c *AggSenderStorage_DeleteCertificate_Call) RunAndReturn(run func(context
 	return _c
 }
 
-// GetAuthProof provides a mock function with given fields: ctx, identifier
-func (_m *AggSenderStorage) GetAuthProof(ctx context.Context, identifier string) (*types.AuthProof, error) {
-	ret := _m.Called(ctx, identifier)
+// GetAuthProof provides a mock function with given fields: identifier
+func (_m *AggSenderStorage) GetAuthProof(identifier string) (*types.AuthProof, error) {
+	ret := _m.Called(identifier)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAuthProof")
@@ -130,19 +130,19 @@ func (_m *AggSenderStorage) GetAuthProof(ctx context.Context, identifier string)
 
 	var r0 *types.AuthProof
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, string) (*types.AuthProof, error)); ok {
-		return rf(ctx, identifier)
+	if rf, ok := ret.Get(0).(func(string) (*types.AuthProof, error)); ok {
+		return rf(identifier)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, string) *types.AuthProof); ok {
-		r0 = rf(ctx, identifier)
+	if rf, ok := ret.Get(0).(func(string) *types.AuthProof); ok {
+		r0 = rf(identifier)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.AuthProof)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = rf(ctx, identifier)
+	if rf, ok := ret.Get(1).(func(string) error); ok {
+		r1 = rf(identifier)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -156,15 +156,14 @@ type AggSenderStorage_GetAuthProof_Call struct {
 }
 
 // GetAuthProof is a helper method to define mock.On call
-//   - ctx context.Context
 //   - identifier string
-func (_e *AggSenderStorage_Expecter) GetAuthProof(ctx interface{}, identifier interface{}) *AggSenderStorage_GetAuthProof_Call {
-	return &AggSenderStorage_GetAuthProof_Call{Call: _e.mock.On("GetAuthProof", ctx, identifier)}
+func (_e *AggSenderStorage_Expecter) GetAuthProof(identifier interface{}) *AggSenderStorage_GetAuthProof_Call {
+	return &AggSenderStorage_GetAuthProof_Call{Call: _e.mock.On("GetAuthProof", identifier)}
 }
 
-func (_c *AggSenderStorage_GetAuthProof_Call) Run(run func(ctx context.Context, identifier string)) *AggSenderStorage_GetAuthProof_Call {
+func (_c *AggSenderStorage_GetAuthProof_Call) Run(run func(identifier string)) *AggSenderStorage_GetAuthProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(string))
+		run(args[0].(string))
 	})
 	return _c
 }
@@ -174,7 +173,7 @@ func (_c *AggSenderStorage_GetAuthProof_Call) Return(_a0 *types.AuthProof, _a1 e
 	return _c
 }
 
-func (_c *AggSenderStorage_GetAuthProof_Call) RunAndReturn(run func(context.Context, string) (*types.AuthProof, error)) *AggSenderStorage_GetAuthProof_Call {
+func (_c *AggSenderStorage_GetAuthProof_Call) RunAndReturn(run func(string) (*types.AuthProof, error)) *AggSenderStorage_GetAuthProof_Call {
 	_c.Call.Return(run)
 	return _c
 }

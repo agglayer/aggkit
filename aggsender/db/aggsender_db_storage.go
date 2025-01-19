@@ -37,7 +37,7 @@ type AggSenderStorage interface {
 	// Add auth-proof in DB
 	AddAuthProof(ctx context.Context, authProof types.AuthProof) error
 	// Get auth-proof by identifier
-	GetAuthProof(ctx context.Context, identifier string) (*types.AuthProof, error)
+	GetAuthProof(identifier string) (*types.AuthProof, error)
 	// Validate auth-proof
 	ValidateProof(req *types.ProofRequest) (bool, error)
 }
@@ -74,7 +74,6 @@ func NewAggSenderSQLStorage(logger *log.Logger, cfg AggSenderSQLStorageConfig) (
 	}, nil
 }
 
-// @temaniarpit27 - Dummy implementation
 func (a *AggSenderSQLStorage) AddAuthProof(ctx context.Context, authProof types.AuthProof) error {
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
@@ -101,8 +100,7 @@ func (a *AggSenderSQLStorage) AddAuthProof(ctx context.Context, authProof types.
 	return nil
 }
 
-// @temaniarpit27 - Dummy implementation
-func (a *AggSenderSQLStorage) GetAuthProof(ctx context.Context, identifier string) (*types.AuthProof, error) {
+func (a *AggSenderSQLStorage) GetAuthProof(identifier string) (*types.AuthProof, error) {
 	var authProof types.AuthProof
 	if err := meddler.QueryRow(a.db, &authProof,
 		"SELECT * FROM auth_proof WHERE identifier = $1;", identifier); err != nil {
@@ -113,7 +111,6 @@ func (a *AggSenderSQLStorage) GetAuthProof(ctx context.Context, identifier strin
 	return &authProof, nil
 }
 
-// @temaniarpit27 - Dummy implementation
 func (a *AggSenderSQLStorage) ValidateProof(req *types.ProofRequest) (bool, error) {
 	return true, nil
 }

@@ -12,13 +12,18 @@ import (
 //go:embed 0001.sql
 var mig001 string
 
-// TODO - Add migrations for aggkit-prover
+//go:embed 0002.sql
+var mig002 string
 
 func RunMigrations(logger *log.Logger, database *sql.DB) error {
 	migrations := []types.Migration{
 		{
 			ID:  "0001",
 			SQL: mig001,
+		},
+		{
+			ID:  "0002",
+			SQL: mig002,
 		},
 	}
 

@@ -21,14 +21,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AggSender_Proof_FullMethodName = "/types.AggSender/Proof"
+	AggSender_ReceiveAuthProof_FullMethodName = "/types.AggSender/ReceiveAuthProof"
 )
 
 // AggSenderClient is the client API for AggSender service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AggSenderClient interface {
-	Proof(ctx context.Context, in *ProofRequest, opts ...grpc.CallOption) (*ProofResponse, error)
+	ReceiveAuthProof(ctx context.Context, in *ProofRequest, opts ...grpc.CallOption) (*ProofResponse, error)
 }
 
 type aggSenderClient struct {
@@ -39,10 +39,10 @@ func NewAggSenderClient(cc grpc.ClientConnInterface) AggSenderClient {
 	return &aggSenderClient{cc}
 }
 
-func (c *aggSenderClient) Proof(ctx context.Context, in *ProofRequest, opts ...grpc.CallOption) (*ProofResponse, error) {
+func (c *aggSenderClient) ReceiveAuthProof(ctx context.Context, in *ProofRequest, opts ...grpc.CallOption) (*ProofResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(ProofResponse)
-	err := c.cc.Invoke(ctx, AggSender_Proof_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, AggSender_ReceiveAuthProof_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (c *aggSenderClient) Proof(ctx context.Context, in *ProofRequest, opts ...g
 // All implementations must embed UnimplementedAggSenderServer
 // for forward compatibility.
 type AggSenderServer interface {
-	Proof(context.Context, *ProofRequest) (*ProofResponse, error)
+	ReceiveAuthProof(context.Context, *ProofRequest) (*ProofResponse, error)
 	mustEmbedUnimplementedAggSenderServer()
 }
 
@@ -64,8 +64,8 @@ type AggSenderServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAggSenderServer struct{}
 
-func (UnimplementedAggSenderServer) Proof(context.Context, *ProofRequest) (*ProofResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Proof not implemented")
+func (UnimplementedAggSenderServer) ReceiveAuthProof(context.Context, *ProofRequest) (*ProofResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ReceiveAuthProof not implemented")
 }
 func (UnimplementedAggSenderServer) mustEmbedUnimplementedAggSenderServer() {}
 func (UnimplementedAggSenderServer) testEmbeddedByValue()                   {}
@@ -88,20 +88,20 @@ func RegisterAggSenderServer(s grpc.ServiceRegistrar, srv AggSenderServer) {
 	s.RegisterService(&AggSender_ServiceDesc, srv)
 }
 
-func _AggSender_Proof_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _AggSender_ReceiveAuthProof_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(ProofRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AggSenderServer).Proof(ctx, in)
+		return srv.(AggSenderServer).ReceiveAuthProof(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AggSender_Proof_FullMethodName,
+		FullMethod: AggSender_ReceiveAuthProof_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AggSenderServer).Proof(ctx, req.(*ProofRequest))
+		return srv.(AggSenderServer).ReceiveAuthProof(ctx, req.(*ProofRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -114,8 +114,8 @@ var AggSender_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*AggSenderServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Proof",
-			Handler:    _AggSender_Proof_Handler,
+			MethodName: "ReceiveAuthProof",
+			Handler:    _AggSender_ReceiveAuthProof_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -22,12 +22,12 @@ func (_m *AggSenderServer) EXPECT() *AggSenderServer_Expecter {
 	return &AggSenderServer_Expecter{mock: &_m.Mock}
 }
 
-// Proof provides a mock function with given fields: _a0, _a1
-func (_m *AggSenderServer) Proof(_a0 context.Context, _a1 *types.ProofRequest) (*types.ProofResponse, error) {
+// ReceiveAuthProof provides a mock function with given fields: _a0, _a1
+func (_m *AggSenderServer) ReceiveAuthProof(_a0 context.Context, _a1 *types.ProofRequest) (*types.ProofResponse, error) {
 	ret := _m.Called(_a0, _a1)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Proof")
+		panic("no return value specified for ReceiveAuthProof")
 	}
 
 	var r0 *types.ProofResponse
@@ -52,31 +52,31 @@ func (_m *AggSenderServer) Proof(_a0 context.Context, _a1 *types.ProofRequest) (
 	return r0, r1
 }
 
-// AggSenderServer_Proof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Proof'
-type AggSenderServer_Proof_Call struct {
+// AggSenderServer_ReceiveAuthProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ReceiveAuthProof'
+type AggSenderServer_ReceiveAuthProof_Call struct {
 	*mock.Call
 }
 
-// Proof is a helper method to define mock.On call
+// ReceiveAuthProof is a helper method to define mock.On call
 //   - _a0 context.Context
 //   - _a1 *types.ProofRequest
-func (_e *AggSenderServer_Expecter) Proof(_a0 interface{}, _a1 interface{}) *AggSenderServer_Proof_Call {
-	return &AggSenderServer_Proof_Call{Call: _e.mock.On("Proof", _a0, _a1)}
+func (_e *AggSenderServer_Expecter) ReceiveAuthProof(_a0 interface{}, _a1 interface{}) *AggSenderServer_ReceiveAuthProof_Call {
+	return &AggSenderServer_ReceiveAuthProof_Call{Call: _e.mock.On("ReceiveAuthProof", _a0, _a1)}
 }
 
-func (_c *AggSenderServer_Proof_Call) Run(run func(_a0 context.Context, _a1 *types.ProofRequest)) *AggSenderServer_Proof_Call {
+func (_c *AggSenderServer_ReceiveAuthProof_Call) Run(run func(_a0 context.Context, _a1 *types.ProofRequest)) *AggSenderServer_ReceiveAuthProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(*types.ProofRequest))
 	})
 	return _c
 }
 
-func (_c *AggSenderServer_Proof_Call) Return(_a0 *types.ProofResponse, _a1 error) *AggSenderServer_Proof_Call {
+func (_c *AggSenderServer_ReceiveAuthProof_Call) Return(_a0 *types.ProofResponse, _a1 error) *AggSenderServer_ReceiveAuthProof_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggSenderServer_Proof_Call) RunAndReturn(run func(context.Context, *types.ProofRequest) (*types.ProofResponse, error)) *AggSenderServer_Proof_Call {
+func (_c *AggSenderServer_ReceiveAuthProof_Call) RunAndReturn(run func(context.Context, *types.ProofRequest) (*types.ProofResponse, error)) *AggSenderServer_ReceiveAuthProof_Call {
 	_c.Call.Return(run)
 	return _c
 }

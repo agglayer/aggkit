@@ -14,5 +14,5 @@ message ProofResponse {
 }
 
 service AggSender {
-    rpc Proof (ProofRequest) returns (ProofResponse) {}
+    rpc ReceiveAuthProof (ProofRequest) returns (ProofResponse) {}
 }
