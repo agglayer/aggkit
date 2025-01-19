@@ -16,8 +16,23 @@ jobs:
   setup-environment:
     runs-on: amd-runner-2204
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Debug Workflow Setup (pre-setup)
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "List all files:"
+          ls -R
+          echo "Environment variables:"
+          printenv
+          echo "Checking if 'test' exists:"
+          if [ -d "test" ]; then
+            echo "'test' directory exists."
+            ls -l test
+          else
+            echo "'test' directory does not exist!"
+          fi
+          echo "Checking Docker images:"
+          docker image ls -a
 
       - name: Checkout Kurtosis CDK
         uses: actions/checkout@v4

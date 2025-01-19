@@ -31,6 +31,24 @@ jobs:
         e2e-group:
           - "fork12-pessimistic"
     steps:
+      - name: Debug Workflow Setup
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "List all files:"
+          ls -R
+          echo "Environment variables:"
+          printenv
+          echo "Checking if 'test' exists:"
+          if [ -d "test" ]; then
+            echo "'test' directory exists."
+            ls -l test
+          else
+            echo "'test' directory does not exist!"
+          fi
+          echo "Checking Docker images:"
+          docker image ls -a
+
       - name: Run E2E tests
         run: make test-e2e-${{ matrix.e2e-group }}
         working-directory: test
@@ -72,6 +90,24 @@ jobs:
           - "fork12-multi-pessimistic"
 
     steps:
+      - name: Debug Workflow Setup
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "List all files:"
+          ls -R
+          echo "Environment variables:"
+          printenv
+          echo "Checking if 'test' exists:"
+          if [ -d "test" ]; then
+            echo "'test' directory exists."
+            ls -l test
+          else
+            echo "'test' directory does not exist!"
+          fi
+          echo "Checking Docker images:"
+          docker image ls -a
+
       - name: Install Go
         uses: actions/setup-go@v5
         with:
