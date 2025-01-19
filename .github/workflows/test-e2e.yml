@@ -31,6 +31,14 @@ jobs:
         e2e-group:
           - "fork12-pessimistic"
     steps:
+      - name: Download environment
+        uses: actions/download-artifact@v4
+        with:
+          name: environment
+
+      - name: Extract environment
+        run: tar -xzf environment.tar.gz
+
       - name: Debug Workflow Setup
         run: |
           echo "Current directory:"
@@ -90,6 +98,14 @@ jobs:
           - "fork12-multi-pessimistic"
 
     steps:
+      - name: Download environment
+        uses: actions/download-artifact@v4
+        with:
+          name: environment
+
+      - name: Extract environment
+        run: tar -xzf environment.tar.gz
+
       - name: Debug Workflow Setup
         run: |
           echo "Current directory:"

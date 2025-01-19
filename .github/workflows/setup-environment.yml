@@ -57,3 +57,12 @@ jobs:
         run: |
           docker load --input /tmp/${{ inputs.docker-image-name }}.tar
           docker image ls -a
+
+      - name: Archive Environment
+        run: tar -czf environment.tar.gz test kurtosis-cdk
+
+      - name: Upload Environment
+        uses: actions/upload-artifact@v4
+        with:
+          name: environment
+          path: environment.tar.gz
