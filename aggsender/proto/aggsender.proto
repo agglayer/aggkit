@@ -5,8 +5,9 @@ package types;
 option go_package = "github.com/agglayer/aggkit/aggsender/types";
 
 message ProofRequest {
-  string identifier = 1;
-  string proof = 2;
+  uint64 start_block = 1;
+  uint64 end_block = 2;
+  string proof = 3;
 }
 
 message ProofResponse {
