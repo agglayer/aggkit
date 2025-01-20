@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	testURL = "http://localhost:8080"
+	testURL            = "http://localhost:8080"
+	testExploratoryURL = "http://localhost:32863"
 )
 
 func TestExploratoryClient(t *testing.T) {
 	t.Skip("This test is for exploratory purposes only")
-	sut := NewAggLayerClient("http://127.0.0.1:32781")
+	sut := NewAggLayerClient(testExploratoryURL)
 	config, err := sut.GetEpochConfiguration()
 	require.NoError(t, err)
 	require.NotNil(t, config)
@@ -29,7 +30,7 @@ func TestExploratoryClient(t *testing.T) {
 
 func TestExploratoryGetCertificateHeader(t *testing.T) {
 	t.Skip("This test is exploratory and should be skipped")
-	aggLayerClient := NewAggLayerClient("http://localhost:32796")
+	aggLayerClient := NewAggLayerClient(testExploratoryURL)
 	certificateID := common.HexToHash("0xf153e75e24591432ac5deafaeaafba3fec0fd851261c86051b9c0d540b38c369")
 	certificateHeader, err := aggLayerClient.GetCertificateHeader(certificateID)
 	require.NoError(t, err)
@@ -37,16 +38,24 @@ func TestExploratoryGetCertificateHeader(t *testing.T) {
 }
 func TestExploratoryGetEpochConfiguration(t *testing.T) {
 	t.Skip("This test is exploratory and should be skipped")
-	aggLayerClient := NewAggLayerClient("http://localhost:32796")
+	aggLayerClient := NewAggLayerClient(testExploratoryURL)
 	clockConfig, err := aggLayerClient.GetEpochConfiguration()
 	require.NoError(t, err)
 	fmt.Print(clockConfig)
 }
 
 func TestExploratoryGetLatestKnownCertificateHeader(t *testing.T) {
-	t.Skip("This test is exploratory and should be skipped")
-	aggLayerClient := NewAggLayerClient("http://localhost:32843")
-	cert, err := aggLayerClient.GetLatestKnownCertificateHeader(1)
+	//t.Skip("This test is exploratory and should be skipped")
+	aggLayerClient := NewAggLayerClient(testExploratoryURL)
+	cert, err := aggLayerClient.GetLatestKnownCertificateHeader(2)
+	require.NoError(t, err)
+	fmt.Print(cert)
+}
+
+func TestExploratoryGetLatestPendingCertificateHeader(t *testing.T) {
+	//t.Skip("This test is exploratory and should be skipped")
+	aggLayerClient := NewAggLayerClient(testExploratoryURL)
+	cert, err := aggLayerClient.GetLatestPendingCertificateHeader(2)
 	require.NoError(t, err)
 	fmt.Print(cert)
 }

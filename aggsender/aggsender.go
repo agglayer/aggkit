@@ -738,6 +738,17 @@ func (a *AggSender) shouldSendCertificate() (bool, error) {
 // checkLastCertificateFromAgglayer checks the last certificate from agglayer
 func (a *AggSender) checkLastCertificateFromAgglayer(ctx context.Context) error {
 	networkID := a.l2Syncer.OriginNetwork()
+	initialStatus, err := NewInitialStatus(a.log, networkID, a.storage, a.aggLayerClient)
+	if err != nil {
+		return fmt.Errorf("recovery: error retrieving initial status: %w", err)
+	}
+	initialStatus.LogData()
+	return nil
+}
+
+// checkLastCertificateFromAgglayer checks the last certificate from agglayer
+func (a *AggSender) checkLastCertificateFromAgglayerOld(ctx context.Context) error {
+	networkID := a.l2Syncer.OriginNetwork()
 	a.log.Infof("recovery: checking last certificate from AggLayer for network %d", networkID)
 	aggLayerLastCert, err := a.aggLayerClient.GetLatestKnownCertificateHeader(networkID)
 	if err != nil {

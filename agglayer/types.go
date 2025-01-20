@@ -733,10 +733,10 @@ func (p *GenericError) Error() string {
 
 // CertificateHeader is the structure returned by the interop_getCertificateHeader RPC call
 type CertificateHeader struct {
-	NetworkID             uint32            `json:"network_id"`
-	Height                uint64            `json:"height"`
-	EpochNumber           *uint64           `json:"epoch_number"`
-	CertificateIndex      *uint64           `json:"certificate_index"`
+	NetworkID uint32 `json:"network_id"`
+	Height    uint64 `json:"height"`
+	//EpochNumber           *uint64           `json:"epoch_number"`
+	//CertificateIndex      *uint64           `json:"certificate_index"`
 	CertificateID         common.Hash       `json:"certificate_id"`
 	PreviousLocalExitRoot *common.Hash      `json:"prev_local_exit_root,omitempty"`
 	NewLocalExitRoot      common.Hash       `json:"new_local_exit_root"`
@@ -751,6 +751,14 @@ func (c *CertificateHeader) ID() string {
 		return nilStr
 	}
 	return fmt.Sprintf("%d/%s", c.Height, c.CertificateID.String())
+}
+
+// StatusString returns the string representation of the status
+func (c *CertificateHeader) StatusString() string {
+	if c == nil {
+		return "???"
+	}
+	return c.Status.String()
 }
 
 func (c *CertificateHeader) String() string {
