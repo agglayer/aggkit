@@ -55,7 +55,6 @@ var (
 		Usage:    "Disable default configuration variables, all of them must be defined on config files",
 		Required: false,
 	}
-
 	allowDeprecatedFields = cli.BoolFlag{
 		Name:     config.FlagAllowDeprecatedFields,
 		Usage:    "Allow that config-files contains deprecated fields",
