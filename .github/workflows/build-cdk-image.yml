@@ -11,29 +11,11 @@ on:
 
 jobs:
   build-cdk-image:
-    runs-on: ubuntu-latest
+    runs-on: amd-runner-2204
     timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      - name: Debug Workflow Setup
-        run: |
-          echo "Current directory:"
-          pwd
-          echo "List all files:"
-          ls -R
-          echo "Environment variables:"
-          printenv
-          echo "Checking if 'test' exists:"
-          if [ -d "test" ]; then
-            echo "'test' directory exists."
-            ls -l test
-          else
-            echo "'test' directory does not exist!"
-          fi
-          echo "Checking Docker images:"
-          docker image ls -a
 
       - name: Install Go
         uses: actions/setup-go@v5
