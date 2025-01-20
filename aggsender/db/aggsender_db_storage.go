@@ -37,7 +37,7 @@ type AggSenderStorage interface {
 	// Add auth-proof in DB
 	AddAuthProof(ctx context.Context, authProof types.AuthProof) error
 	// Get auth-proof by identifier
-	GetAuthProof(identifier string) (*types.AuthProof, error)
+	GetAuthProof(endBlock uint64) (*types.AuthProof, error)
 	// Validate auth-proof
 	ValidateProof(req *types.ProofRequest) (bool, error)
 }
@@ -87,25 +87,24 @@ func (a *AggSenderSQLStorage) AddAuthProof(ctx context.Context, authProof types.
 		}
 	}()
 
-	if _, err = tx.Exec(`INSERT INTO auth_proof (identifier, proof) VALUES ($1, $2);`,
-		authProof.Identifier, authProof.Proof); err != nil {
+	if _, err = tx.Exec(`INSERT INTO auth_proof (start_block, end_block, proof) VALUES ($1, $2, $3);`,
+		authProof.StartBlock, authProof.EndBlock, authProof.Proof); err != nil {
 		return fmt.Errorf("error inserting auth proof: %w", err)
 	}
 	if err = tx.Commit(); err != nil {
 		return err
 	}
 
-	a.logger.Debugf("inserted auth proof - Identifier: %s", authProof.Identifier)
+	a.logger.Debugf("inserted auth proof - start block: %d", authProof.StartBlock, "end block: %d", authProof.EndBlock)
 
 	return nil
 }
 
-func (a *AggSenderSQLStorage) GetAuthProof(identifier string) (*types.AuthProof, error) {
+func (a *AggSenderSQLStorage) GetAuthProof(endBlock uint64) (*types.AuthProof, error) {
 	var authProof types.AuthProof
 	if err := meddler.QueryRow(a.db, &authProof,
-		"SELECT * FROM auth_proof WHERE identifier = $1;", identifier); err != nil {
-		// Fix this
-		return nil, getSelectQueryError(0, err)
+		"SELECT * FROM auth_proof WHERE start_block = $1;", endBlock); err != nil {
+		return nil, getSelectQueryError(endBlock, err)
 	}
 
 	return &authProof, nil

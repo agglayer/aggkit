@@ -8,7 +8,6 @@ import (
 )
 
 func (s *server) ReceiveAuthProof(ctx context.Context, req *types.ProofRequest) (*types.ProofResponse, error) {
-	// Implement your logic here
 	log.Printf("Received proof: %v", req)
 	valid, err := s.aggsenderStorage.ValidateProof(req)
 	if err != nil {
@@ -24,7 +23,8 @@ func (s *server) ReceiveAuthProof(ctx context.Context, req *types.ProofRequest) 
 	log.Printf("Proof is valid")
 	err = s.aggsenderStorage.AddAuthProof(context.Background(), types.AuthProof{
 		Proof:      req.Proof,
-		Identifier: req.Identifier,
+		StartBlock: req.StartBlock,
+		EndBlock:   req.EndBlock,
 	})
 	if err != nil {
 		log.Printf("Error adding proof: %v", err)

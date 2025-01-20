@@ -56,7 +56,8 @@ type Logger interface {
 }
 
 type AuthProof struct {
-	Identifier string
+	StartBlock uint64
+	EndBlock   uint64
 	Proof      string
 }
 

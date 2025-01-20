@@ -445,7 +445,8 @@ func TestValidateProof(t *testing.T) {
 
 	t.Run("ValidateProof", func(t *testing.T) {
 		mockProofRequest := &types.ProofRequest{
-			Identifier: "identifier",
+			StartBlock: 0,
+			EndBlock:   1,
 			Proof:      "proof",
 		}
 		valid, err := storage.ValidateProof(mockProofRequest)
