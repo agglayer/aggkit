@@ -168,7 +168,7 @@ func createAggoracle(
 	if err != nil {
 		logger.Fatal(err)
 	}
-	cfg.AggOracle.ApplyL2ChainID(l2ChainID)
+	cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID = l2ChainID
 
 	var sender aggoracle.ChainSender
 	switch cfg.AggOracle.TargetChainType {

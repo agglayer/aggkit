@@ -121,6 +121,7 @@ WaitPeriodNextGER="100ms"
 					[AggOracle.EVMSender.EthTxManager.Etherman]
 						URL = "{{L2URL}}"
 						MultiGasProvider = false
+						# L1ChainID is configured during runtime
 						HTTPHeaders = []
 
 [RPC]
