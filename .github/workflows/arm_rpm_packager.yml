@@ -35,13 +35,8 @@ jobs:
       - name: Download deps for project
         run: go mod download
 
-      - name: Building aggkit-node for amd64
+      - name: Building aggkit for arm
         run: make build
-
-      - name: Building the aggkit
-        run: |
-          BUILD_SCRIPT_DISABLED=1
-          cargo build --release --bin aggkit
 
       - name: Installing some dependencies
         run: sudo apt-get update && sudo apt-get install -y rpm

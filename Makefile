@@ -50,14 +50,10 @@ install-linter: check-go check-curl
 generate-code-from-proto: check-protoc
 
 .PHONY: build ## Builds the binaries locally into ./target
-build: build-rust build-go build-tools
+build: build-aggkit build-tools
 
-.PHONY: build-rust
-build-rust:
-	export BUILD_SCRIPT_DISABLED=1 && cargo build --release
-
-.PHONY: build-go
-build-go:
+.PHONY: build-aggkit
+build-aggkit:
 	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
 
 .PHONY: build-tools
