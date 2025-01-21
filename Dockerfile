@@ -1,7 +1,7 @@
 # CONTAINER FOR BUILDING BINARY
 FROM --platform=${BUILDPLATFORM} golang:1.22.4 AS build
 
-WORKDIR $GOPATH/src/github.com/agglayer/aggkit
+WORKDIR /app
 
 # INSTALL DEPENDENCIES
 COPY go.mod go.sum ./
@@ -20,7 +20,11 @@ RUN apt-get update && \
     procps \
     libssl-dev && \
     rm -rf /var/lib/apt/lists/*
-COPY --from=build /go/src/github.com/agglayer/aggkit/target/aggkit-node /usr/local/bin/
+COPY --from=build /app/target/aggkit /usr/local/bin/
+
+# ADD NON-ROOT USER
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+USER appuser
 
 EXPOSE 5576/tcp
 

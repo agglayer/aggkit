@@ -12,7 +12,7 @@ endif
 GOBASE := $(shell pwd)
 GOBIN := $(GOBASE)/target
 GOENVVARS := GOBIN=$(GOBIN) CGO_ENABLED=1 GOARCH=$(ARCH)
-GOBINARY := aggkit-node
+GOBINARY := aggkit
 GOCMD := $(GOBASE)/cmd
 
 LDFLAGS += -X 'github.com/agglayer/aggkit.Version=$(VERSION)'
