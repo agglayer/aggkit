@@ -250,7 +250,6 @@ func runTestCases(t *testing.T, tests []testCaseData) {
 	logger := log.WithFields("module", "unit-test")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-
 			sut := InitialStatus{log: logger}
 			if tt.localCert != nil {
 				sut.LocalCert = &types.CertificateInfo{
@@ -274,7 +273,7 @@ func runTestCases(t *testing.T, tests []testCaseData) {
 				}
 			}
 
-			action, err := sut.Process2()
+			action, err := sut.Process()
 			if tt.resultError {
 				require.Error(t, err)
 				require.Nil(t, action)

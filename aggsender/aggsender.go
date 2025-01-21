@@ -745,7 +745,7 @@ func (a *AggSender) checkLastCertificateFromAgglayer(ctx context.Context) error 
 		return fmt.Errorf("recovery: error retrieving initial status: %w", err)
 	}
 	initialStatus.LogData()
-	action, err := initialStatus.Process2()
+	action, err := initialStatus.Process()
 	if err != nil {
 		return fmt.Errorf("recovery: error processing initial status: %w", err)
 	}
@@ -753,7 +753,8 @@ func (a *AggSender) checkLastCertificateFromAgglayer(ctx context.Context) error 
 	return err
 }
 
-func (a *AggSender) executeInitialStatusAction(ctx context.Context, action *InitialStatusResult, localCert *types.CertificateInfo) error {
+func (a *AggSender) executeInitialStatusAction(ctx context.Context,
+	action *InitialStatusResult, localCert *types.CertificateInfo) error {
 	a.log.Infof("recovery: action: %s", action.String())
 	switch action.Action {
 	case InitialStatusActionNone:
