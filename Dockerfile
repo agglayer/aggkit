@@ -12,9 +12,14 @@ COPY . .
 RUN make build-go build-tools
 
 # CONTAINER FOR RUNNING BINARY
-FROM --platform=${BUILDPLATFORM} debian:bookworm-slim
-
-RUN apt-get update && apt-get install -y ca-certificates sqlite3 procps libssl-dev && rm -rf /var/lib/apt/lists/*
+FROM debian:bookworm-slim
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    ca-certificates \
+    sqlite3 \
+    procps \
+    libssl-dev && \
+    rm -rf /var/lib/apt/lists/*
 COPY --from=build /go/src/github.com/agglayer/aggkit/target/aggkit-node /usr/local/bin/
 
 EXPOSE 5576/tcp
