@@ -21,7 +21,7 @@ require (
 	github.com/rubenv/sql-migrate v1.7.0
 	github.com/russross/meddler v1.0.1
 	github.com/spf13/viper v1.19.0
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.4
 	github.com/valyala/fasttemplate v1.2.2
 	go.opentelemetry.io/otel v1.24.0
