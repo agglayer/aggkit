@@ -166,14 +166,12 @@ func createAggoracle(
 	}
 	l2ChainID, err := ethermanClient.GetL2ChainID()
 	if err != nil {
-		logger.Fatalf("Failed to retrieve L2ChainID: %v", err)
+		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
 	}
 
-	if cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID == 0 {
-		cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID = l2ChainID
-		logger.Infof("AggOracle ChainID set to L2ChainID: %d", l2ChainID)
-	} else if cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID != l2ChainID {
-		logger.Errorf("Incorrect ChainID in aggOracle provided: %d expected: %d",
+	// sanity check for the aggOracle ChainID
+	if cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID != l2ChainID {
+		logger.Warnf("Incorrect ChainID in aggOracle provided: %d expected: %d",
 			cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID,
 			l2ChainID,
 		)
