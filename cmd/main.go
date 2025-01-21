@@ -24,18 +24,6 @@ var (
 		Usage:    "Configuration file(s)",
 		Required: true,
 	}
-	customNetworkFlag = cli.StringFlag{
-		Name:     config.FlagCustomNetwork,
-		Aliases:  []string{"net-file"},
-		Usage:    "Load the network configuration file if --network=custom",
-		Required: false,
-	}
-	yesFlag = cli.BoolFlag{
-		Name:     config.FlagYes,
-		Aliases:  []string{"y"},
-		Usage:    "Automatically accepts any confirmation to execute the command",
-		Required: false,
-	}
 	componentsFlag = cli.StringSliceFlag{
 		Name:     config.FlagComponents,
 		Aliases:  []string{"co"},
@@ -68,7 +56,6 @@ func main() {
 	app.Version = aggkit.Version
 	flags := []cli.Flag{
 		&configFileFlag,
-		&yesFlag,
 		&componentsFlag,
 		&saveConfigFlag,
 		&disableDefaultConfigVars,
@@ -86,7 +73,7 @@ func main() {
 			Aliases: []string{},
 			Usage:   "Run the aggkit client",
 			Action:  start,
-			Flags:   append(flags, &customNetworkFlag),
+			Flags:   flags,
 		},
 	}
 

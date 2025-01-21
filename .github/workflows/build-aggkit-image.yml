@@ -1,4 +1,4 @@
-name: Build CDK Image
+name: Build Aggkit Image
 on:
   workflow_call:
     inputs:
@@ -10,7 +10,7 @@ on:
         type: string
 
 jobs:
-  build-cdk-image:
+  build-aggkit-image:
     runs-on: amd-runner-2204
     timeout-minutes: 20
     steps:
@@ -22,13 +22,13 @@ jobs:
         with:
           go-version: ${{ inputs.go-version }}
 
-      - name: Build CDK Docker Image
+      - name: Build Aggkit Docker Image
         run: make build-docker
 
-      - name: Save CDK Image to Archive
+      - name: Save Aggkit Image to Archive
         run: docker save --output /tmp/${{ inputs.docker-image-name }}.tar ${{ inputs.docker-image-name }}
 
-      - name: Upload CDK Archive
+      - name: Upload Aggkit Archive
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.docker-image-name }}

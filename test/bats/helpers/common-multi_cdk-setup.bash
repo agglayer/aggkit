@@ -43,7 +43,7 @@ _common_multi_setup() {
 
 }
 
-add_cdk_network2_to_agglayer() {
+add_network2_to_agglayer() {
     echo "=== Checking if  network 2 is in agglayer ===" >&3
     local _prev=$(kurtosis service exec $enclave agglayer "grep \"2 = \" /etc/zkevm/agglayer-config.toml || true" | tail -n +2)
     if [ ! -z "$_prev" ]; then
