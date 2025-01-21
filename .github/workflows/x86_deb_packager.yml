@@ -43,7 +43,7 @@ jobs:
       - name: making directory structure
         run: mkdir -p packaging/deb/aggkit/usr/bin/
       - name: copying necessary binary for amd64
-        run: cp -rp target/aggkit-node packaging/deb/aggkit/usr/bin/aggkit-node
+        run: cp -rp target/aggkit packaging/deb/aggkit/usr/bin/aggkit
 
       # Control file creation
       - name: Create control file
