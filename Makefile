@@ -31,11 +31,6 @@ check-go:
 check-docker:
 	@which docker > /dev/null || (echo "Error: docker is not installed" && exit 1)
 
-# Check for Docker-compose
-.PHONY: check-docker-compose
-check-docker-compose:
-	@which docker-compose > /dev/null || (echo "Error: docker-compose is not installed" && exit 1)
-
 # Check for Protoc
 .PHONY: check-protoc
 check-protoc:
@@ -51,7 +46,6 @@ build: check-go
 lint: check-go
 build-docker: check-docker
 build-docker-nc: check-docker
-stop: check-docker check-docker-compose
 install-linter: check-go check-curl
 generate-code-from-proto: check-protoc
 
@@ -77,10 +71,6 @@ build-docker: ## Builds a docker image with the aggkit binary
 .PHONY: build-docker-nc
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
 	docker build --no-cache=true -t aggkit -f ./Dockerfile .
-
-.PHONY: stop
-stop: ## Stops all services
-	docker-compose down
 
 .PHONY: test-unit
 test-unit:
