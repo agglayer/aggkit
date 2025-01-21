@@ -65,12 +65,11 @@ jobs:
           
           echo "%install" >> packaging/rpm/SPECS/aggkit.spec
           echo "mkdir -p %{buildroot}/usr/bin" >> packaging/rpm/SPECS/aggkit.spec
-          echo "cp /home/runner/work/aggkit/aggkit/target/aggkit-node %{buildroot}/usr/bin/aggkit-node" >> packaging/rpm/SPECS/aggkit.spec
+          echo "cp /home/runner/work/aggkit/aggkit/target/aggkit %{buildroot}/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
           echo "cp /home/runner/work/aggkit/aggkit/target/release/aggkit %{buildroot}/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
           
           echo "%files" >> packaging/rpm/SPECS/aggkit.spec
           echo "/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
-          echo "/usr/bin/aggkit-node" >> packaging/rpm/SPECS/aggkit.spec
 
 
       - name: Construct rpm package
