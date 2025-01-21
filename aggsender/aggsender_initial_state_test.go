@@ -36,87 +36,88 @@ type testCaseData struct {
 //	 |-------------------------------------------------------------------------------------------------
 //	 |ID | h  | st      | ID | h  | st		    | ID | h  | st   			    |
 //	 |-------------------------------------------------------------------------------------------------
-//	1|N/A 				| ID1| h1 | NA	 		| ID2| h1   | !=inError  		| Agglayer incosistence
-//	2|N/A 				| ID1| h2 | NA	 		| ID2| h1   | !=inError  		| Agglayer incosistence???
-//	3|nil 				| nil 					| ID1| >h0  | !=inError  		| Agglayer incosistence???
-//	4|ID1| h1 | Inerror | nil 					| nil 							| AggSender incosistence
-//	5|ID1| h1 | Settled | nil 					| nil 							| AggSender incosistence
-//  6|ID1| h1 | !=closed   | nil 					| nil 							| incosistence
+//	1|N/A 				 | ID1, h1 , NA	 		| ID2, h1   , !=inError  		| Agglayer incosistence
+//	2|N/A 				 | ID1, h2 , NA	 		| ID2, h1   , !=inError  		| Agglayer incosistence
+//	3|nil 				 | nil 					| ID1, >h0  , !=inError  		| Agglayer incosistence
+//	4|ID1, h1 , Inerror  | nil 					| nil 							| AggSender incosistence
+//	5|ID1, h1 , Settled  | nil 					| nil 							| AggSender incosistence
+//  6|ID1, h1 , !=closed | nil 					| nil 							| incosistence
 
-// 7|ID1| h3 | NA		| NA 					| ID2| h2   | !=InError 		| AggSender incosistence
-// 8|ID1| h3 | NA		| ID2 | h2 |NA			| NA  							| AggSender incosistence
-// 9|ID2| h2 | NA		| ID1| h3 | N/A			| ID3| h4   | !=inError			| AggSender incosistence (2cert jump)
-// 10|ID2| h2 | NA		| ID1| h3 | N/A			| ID3| h4   | inError			| AggSender incosistence (2cert jump)
+//	7|ID1, h3 , NA		| NA 					| ID2, h2   , !=InError 		| AggSender incosistence
+//	8|ID1, h3 , NA		| ID2, h2 ,NA			| NA  							| AggSender incosistence
+//	9|ID2, h2 , NA		| ID1, h3 , N/A			| ID3, h4   , !=inError			| AggSender incosistence (2cert jump)
+// 10|ID2, h2 , NA		| ID1, h3 , N/A			| ID3, h4   , inError			| AggSender incosistence (2cert jump)
+
 func TestInitialStateInconsistence(t *testing.T) {
 	hash1 := common.HexToHash("0xdead")
 	hash2 := common.HexToHash("0xbeef")
 
 	tests := []testCaseData{
 		{
-			name:            "1| local:NA 				| settled: {ID1| h1 | NA}	 		| pending:{ID2| h1   | !=inError} | Agglayer incosistence",
+			name:            "1|N/A 				 | ID1, h1 , NA	 		| ID2, h1   , !=inError  		| Agglayer incosistence",
 			localCert:       nil,
 			agglayerSettled: &certTestData{hash1, 1, agglayer.Proven},
 			agglayerPending: &certTestData{hash2, 1, agglayer.Pending},
 			resultError:     true,
 		},
 		{
-			name:            "2| local:NA 				| settled:{ID1| h2 | NA}	 		| pending:{ID2| h1   | !=inError} | Agglayer incosistence???",
+			name:            "2|N/A 				 | ID1, h2 , NA	 		| ID2, h1   , !=inError  		| Agglayer incosistence",
 			localCert:       nil,
 			agglayerSettled: &certTestData{hash1, 2, agglayer.Proven},
 			agglayerPending: &certTestData{hash2, 1, agglayer.Pending},
 			resultError:     true,
 		},
 		{
-			name:            "3|local:nil 				| settled:nil 					| pending:{ID1| >h0  | !=inError}  		| Agglayer incosistence???",
+			name:            "3|nil 				 | nil 					| ID1, >h0  , !=inError  		| Agglayer incosistence",
 			localCert:       nil,
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 1, agglayer.Pending},
 			resultError:     true,
 		},
 		{
-			name:            "4|local:{ID1| h1 | Inerror}  | settled:nil 					| pending:nil 							| AggSender incosistence",
+			name:            "4|ID1, h1 , Inerror  | nil 					| nil 							| AggSender incosistence",
 			localCert:       &certTestData{hash1, 2, agglayer.InError},
 			agglayerSettled: nil,
 			agglayerPending: nil,
 			resultError:     true,
 		},
 		{
-			name:            "5|ID1| h1 | Settled    | settled:nil 					| pending:nil 							| AggSender incosistence",
+			name:            "5|ID1, h1 , Settled  | nil 					| nil 							| AggSender incosistence",
 			localCert:       &certTestData{hash1, 2, agglayer.Settled},
 			agglayerSettled: nil,
 			agglayerPending: nil,
 			resultError:     true,
 		},
 		{
-			name:            "6|ID1| h0 | !=closed   | nil 					| nil 							| incosistence",
+			name:            "6|ID1, h1 , !=closed | nil 					| nil 							| incosistence",
 			localCert:       &certTestData{hash1, 0, agglayer.Proven},
 			agglayerSettled: nil,
 			agglayerPending: nil,
 			resultError:     true,
 		},
 		{
-			name:            "7|ID1| h3 | NA		| NA 					| ID2| h2   | !=InError 		| AggSender incosistence",
+			name:            "7|ID1, h3 , NA		| NA 					| ID2, h2   , !=InError 		| AggSender incosistence",
 			localCert:       &certTestData{hash1, 3, agglayer.Proven},
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash2, 2, agglayer.Proven},
 			resultError:     true,
 		},
 		{
-			name:            "8|ID1| h3 | NA		| ID2 | h2 |NA			| NA  							| AggSender incosistence",
+			name:            "8|ID1, h3 , NA		| ID2, h2 ,NA			| NA  							| AggSender incosistence",
 			localCert:       &certTestData{hash1, 3, agglayer.Proven},
 			agglayerSettled: &certTestData{hash2, 2, agglayer.Proven},
 			agglayerPending: nil,
 			resultError:     true,
 		},
 		{
-			name:            "9|ID2| h2 | NA		| ID1| h3 | N/A			| ID3| h4   | !=inError			| AggSender incosistence (2cert jump)",
+			name:            "9|ID2, h2 , NA		| ID1, h3 , N/A			| ID3, h4   , !=inError			| AggSender incosistence (2cert jump)",
 			localCert:       &certTestData{hash1, 2, agglayer.Proven},
 			agglayerSettled: &certTestData{hash2, 3, agglayer.Settled},
 			agglayerPending: &certTestData{hash2, 4, agglayer.Proven},
 			resultError:     true,
 		},
 		{
-			name:            "10|ID2| h2 | NA		| ID1| h3 | N/A			| ID3| h4   | inError			| AggSender incosistence (2cert jump)",
+			name:            "10|ID2, h2 , NA		| ID1, h3 , N/A			| ID3, h4   , inError			| AggSender incosistence (2cert jump)",
 			localCert:       &certTestData{hash1, 2, agglayer.Proven},
 			agglayerSettled: &certTestData{hash2, 3, agglayer.Settled},
 			agglayerPending: &certTestData{hash2, 4, agglayer.InError},
