@@ -1901,10 +1901,8 @@ func TestCheckLastCertificateFromAgglayer_Case5SameStatus(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// CASE 5: AggSender and AggLayer same certificateID and differ on status
-// CASE 4: AggSender and AggLayer same certificateID and differ on status but fails update
-func TestCheckLastCertificateFromAgglayer_Case5UpdateStatus(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage)
+func setupCase5Expectations(t *testing.T, testData *aggsenderTestData) {
+	t.Helper()
 	testData.l2syncerMock.EXPECT().OriginNetwork().Return(networkIDTest)
 	aggLayerCert := certInfoToCertHeader(t, &testData.testCerts[0], networkIDTest)
 	aggLayerCert.Status = agglayer.Settled
@@ -1912,22 +1910,29 @@ func TestCheckLastCertificateFromAgglayer_Case5UpdateStatus(t *testing.T) {
 	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(networkIDTest).Return(aggLayerCert, nil)
 
 	testData.storageMock.EXPECT().GetLastSentCertificate().Return(&testData.testCerts[0], nil)
-
-	t.Run("update status", func(t *testing.T) {
-		testData.storageMock.EXPECT().UpdateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
-		err := testData.sut.checkLastCertificateFromAgglayer(testData.ctx)
-
-		require.NoError(t, err)
-	})
-
-	t.Run("err update status", func(t *testing.T) {
-		testData.storageMock.EXPECT().UpdateCertificate(mock.Anything, mock.Anything).Return(errTest).Once()
-		err := testData.sut.checkLastCertificateFromAgglayer(testData.ctx)
-
-		require.Error(t, err)
-	})
 }
 
+// CASE 5: AggSender and AggLayer same certificateID and differ on status
+func TestCheckLastCertificateFromAgglayer_Case5UpdateStatus(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage)
+	setupCase5Expectations(t, testData)
+	testData.storageMock.EXPECT().UpdateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+
+	err := testData.sut.checkLastCertificateFromAgglayer(testData.ctx)
+
+	require.NoError(t, err)
+}
+
+// CASE 4: AggSender and AggLayer same certificateID and differ on status but fails update
+func TestCheckLastCertificateFromAgglayer_Case4ErrorUpdateStatus(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage)
+	setupCase5Expectations(t, testData)
+	testData.storageMock.EXPECT().UpdateCertificate(mock.Anything, mock.Anything).Return(errTest).Once()
+
+	err := testData.sut.checkLastCertificateFromAgglayer(testData.ctx)
+
+	require.Error(t, err)
+}
 func TestLimitSize_FirstOneFit(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage)
 	certParams := &aggsendertypes.CertificateBuildParams{
