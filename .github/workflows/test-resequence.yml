@@ -17,10 +17,10 @@ jobs:
     #   matrix:
     #     da-mode: [ "rollup" ]
     steps:
-      - name: Checkout cdk
+      - name: Checkout aggkit
         uses: actions/checkout@v4
         with:
-          path: cdk
+          path: aggkit
 
       - name: Checkout cdk-erigon
         uses: actions/checkout@v4
@@ -50,8 +50,8 @@ jobs:
           /usr/local/bin/polycli version
 
       - name: Build docker image
-        working-directory: ./cdk
-        run: docker build -t cdk:local --file Dockerfile .
+        working-directory: ./aggkit
+        run: docker build -t aggkit:local --file Dockerfile .
 
       - name: Remove unused flags
         working-directory: ./kurtosis-cdk
@@ -69,7 +69,7 @@ jobs:
 
       - name: Deploy Kurtosis CDK package
         working-directory: ./kurtosis-cdk
-        run: kurtosis run --enclave cdk-v1 --args-file params.yml --image-download always .
+        run: kurtosis run --enclave aggkit --args-file params.yml --image-download always .
 
       - name: Test resequence
         working-directory: ./cdk-erigon
