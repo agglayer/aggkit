@@ -162,32 +162,32 @@ function export_values_of_genesis() {
 
 ###############################################################################
 function export_values_of_cdk_node_config() {
-    local _CDK_CONFIG_FILE=$1
-    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_address $_CDK_CONFIG_FILE "." L2Coinbase
-    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
-    export_key_from_toml_file_or_fatal l1_chain_id $_CDK_CONFIG_FILE L1Config chainId
-    export_key_from_toml_file zkevm_is_validium $_CDK_CONFIG_FILE Common IsValidiumMode
+    local _AGGKIT_CONFIG_FILE=$1
+    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_address $_AGGKIT_CONFIG_FILE "." L2Coinbase
+    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_AGGKIT_CONFIG_FILE "." SequencerPrivateKeyPassword
+    export_key_from_toml_file_or_fatal l1_chain_id $_AGGKIT_CONFIG_FILE L1Config chainId
+    export_key_from_toml_file zkevm_is_validium $_AGGKIT_CONFIG_FILE Common IsValidiumMode
     if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_is_validium $_CDK_CONFIG_FILE "." IsValidiumMode
+        export_key_from_toml_file_or_fatal zkevm_is_validium $_AGGKIT_CONFIG_FILE "." IsValidiumMode
     fi
-    export_key_from_toml_file zkevm_contract_versions $_CDK_CONFIG_FILE Common ContractVersions
+    export_key_from_toml_file zkevm_contract_versions $_AGGKIT_CONFIG_FILE Common ContractVersions
     if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_contract_versions $_CDK_CONFIG_FILE "." ContractVersions
+        export_key_from_toml_file_or_fatal zkevm_contract_versions $_AGGKIT_CONFIG_FILE "." ContractVersions
     fi
-    export_key_from_toml_file l2_chain_id $_CDK_CONFIG_FILE Aggregator ChainID
+    export_key_from_toml_file l2_chain_id $_AGGKIT_CONFIG_FILE Aggregator ChainID
     if [ $? -ne 0 ]; then
         log_debug "l2_chain_id not found in Aggregator section, using 0"
         export l2_chain_id="0"
     fi
-    export_key_from_toml_file_or_fatal zkevm_l2_agglayer_address $_CDK_CONFIG_FILE "." SenderProofToL1Addr
-    export_key_from_toml_file_or_fatal zkevm_rollup_fork_id $_CDK_CONFIG_FILE "." ForkId
-    export_key_from_toml_file zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE AggSender.SequencerPrivateKey Password
+    export_key_from_toml_file_or_fatal zkevm_l2_agglayer_address $_AGGKIT_CONFIG_FILE "." SenderProofToL1Addr
+    export_key_from_toml_file_or_fatal zkevm_rollup_fork_id $_AGGKIT_CONFIG_FILE "." ForkId
+    export_key_from_toml_file zkevm_l2_agglayer_keystore_password $_AGGKIT_CONFIG_FILE AggSender.SequencerPrivateKey Password
     if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
+        export_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_AGGKIT_CONFIG_FILE "." SequencerPrivateKeyPassword
     fi
-    export_key_from_toml_file zkevm_bridge_address $_CDK_CONFIG_FILE BridgeL1Sync BridgeAddr
+    export_key_from_toml_file zkevm_bridge_address $_AGGKIT_CONFIG_FILE BridgeL1Sync BridgeAddr
     if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_bridge_address $_CDK_CONFIG_FILE "." polygonBridgeAddr
+        export_key_from_toml_file_or_fatal zkevm_bridge_address $_AGGKIT_CONFIG_FILE "." polygonBridgeAddr
     fi
     export is_cdk_validium=$zkevm_is_validium
     export zkevm_rollup_chain_id=$l2_chain_id

@@ -1,6 +1,6 @@
 #!/bin/bash
 ### Common variables
-KURTOSIS_ENCLAVE=aggkit
+KURTOSIS_ENCLAVE=cdk
 TMP_AGGKIT_FOLDER=tmp/aggkit
 DEST_KURTOSIS_PARAMS_YML=../$TMP_AGGKIT_FOLDER/e2e-params.yml
 KURTOSIS_FOLDER=${KURTOSIS_FOLDER:=../kurtosis-cdk}
