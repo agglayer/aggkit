@@ -1902,41 +1902,30 @@ func TestCheckLastCertificateFromAgglayer_Case5SameStatus(t *testing.T) {
 }
 
 // CASE 5: AggSender and AggLayer same certificateID and differ on status
-
+// CASE 4: AggSender and AggLayer same certificateID and differ on status but fails update
 func TestCheckLastCertificateFromAgglayer_Case5UpdateStatus(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage)
-	testData.l2syncerMock.EXPECT().OriginNetwork().Return(networkIDTest).Once()
+	testData.l2syncerMock.EXPECT().OriginNetwork().Return(networkIDTest)
 	aggLayerCert := certInfoToCertHeader(t, &testData.testCerts[0], networkIDTest)
 	aggLayerCert.Status = agglayer.Settled
 	testData.agglayerClientMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything).Return(nil, nil)
-	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(networkIDTest).
-		Return(aggLayerCert, nil).Once()
+	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(networkIDTest).Return(aggLayerCert, nil)
 
 	testData.storageMock.EXPECT().GetLastSentCertificate().Return(&testData.testCerts[0], nil)
-	testData.storageMock.EXPECT().UpdateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 
-	err := testData.sut.checkLastCertificateFromAgglayer(testData.ctx)
+	t.Run("update status", func(t *testing.T) {
+		testData.storageMock.EXPECT().UpdateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+		err := testData.sut.checkLastCertificateFromAgglayer(testData.ctx)
 
-	require.NoError(t, err)
-}
+		require.NoError(t, err)
+	})
 
-// CASE 4: AggSender and AggLayer same certificateID and differ on status but fails update
+	t.Run("err update status", func(t *testing.T) {
+		testData.storageMock.EXPECT().UpdateCertificate(mock.Anything, mock.Anything).Return(errTest).Once()
+		err := testData.sut.checkLastCertificateFromAgglayer(testData.ctx)
 
-func TestCheckLastCertificateFromAgglayer_Case4ErrorUpdateStatus(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage)
-	testData.l2syncerMock.EXPECT().OriginNetwork().Return(networkIDTest).Once()
-	aggLayerCert := certInfoToCertHeader(t, &testData.testCerts[0], networkIDTest)
-	aggLayerCert.Status = agglayer.Settled
-	testData.agglayerClientMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything).Return(nil, nil)
-	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(networkIDTest).
-		Return(aggLayerCert, nil).Once()
-
-	testData.storageMock.EXPECT().GetLastSentCertificate().Return(&testData.testCerts[0], nil)
-	testData.storageMock.EXPECT().UpdateCertificate(mock.Anything, mock.Anything).Return(errTest).Once()
-
-	err := testData.sut.checkLastCertificateFromAgglayer(testData.ctx)
-
-	require.Error(t, err)
+		require.Error(t, err)
+	})
 }
 
 func TestLimitSize_FirstOneFit(t *testing.T) {
