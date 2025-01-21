@@ -9,7 +9,7 @@ RUN go mod download
 
 # BUILD BINARY
 COPY . .
-RUN make build-go build-tools
+RUN make build-aggkit build-tools
 
 # CONTAINER FOR RUNNING BINARY
 FROM debian:bookworm-slim
