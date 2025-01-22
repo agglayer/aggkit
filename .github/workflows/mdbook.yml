@@ -27,11 +27,13 @@ concurrency:
 jobs:
   # Build job
   build:
-    runs-on: arm-runner-2204
+    runs-on: amd-runner-2204
     env:
-      MDBOOK_VERSION: 0.4.36
+      MDBOOK_VERSION: 0.4.43
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Install mdBook
         run: |
           curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
@@ -39,11 +41,14 @@ jobs:
           cargo install --version ${MDBOOK_VERSION} mdbook
           cargo install mdbook-alerts
           cargo install mdbook-mermaid
+
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
+
       - name: Build with mdBook
-        run: mdbook build
+        run: mdbook build ./docs
+
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
@@ -56,6 +61,7 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: amd-runner-2204
     needs: build
+
     steps:
       - name: Deploy to GitHub Pages
         id: deployment
