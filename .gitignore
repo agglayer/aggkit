@@ -5,6 +5,7 @@
 cmd/__debug_bin
 **__debug**
 target/
+book/
 index.html
 tmp
 .vscode
