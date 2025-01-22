@@ -52,7 +52,7 @@ jobs:
         run: ls -la
 
       - name: Build with mdBook
-        run: mdbook build /docs
+        run: mdbook build ../docs
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
