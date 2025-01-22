@@ -71,7 +71,6 @@ jobs:
         env:
           ARCH: amd64
 
-
       - name: Release aggkit Packages
         uses: softprops/action-gh-release@v2
         with:

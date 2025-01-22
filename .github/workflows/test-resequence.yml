@@ -69,7 +69,7 @@ jobs:
 
       - name: Deploy Kurtosis CDK package
         working-directory: ./kurtosis-cdk
-        run: kurtosis run --enclave cdk-v1 --args-file params.yml --image-download always .
+        run: kurtosis run --enclave aggkit --args-file params.yml --image-download always .
 
       - name: Test resequence
         working-directory: ./cdk-erigon
