@@ -530,7 +530,7 @@ func runBridgeSyncL2IfNeeded(
 
 func createBridgeRPC(
 	cfg jRPC.Config,
-	cdkNetworkID uint32,
+	l2NetworkID uint32,
 	sponsor *claimsponsor.ClaimSponsor,
 	l1InfoTree *l1infotreesync.L1InfoTreeSync,
 	injectedGERs *lastgersync.LastGERSync,
@@ -545,7 +545,7 @@ func createBridgeRPC(
 				logger,
 				cfg.WriteTimeout.Duration,
 				cfg.ReadTimeout.Duration,
-				cdkNetworkID,
+				l2NetworkID,
 				sponsor,
 				l1InfoTree,
 				injectedGERs,

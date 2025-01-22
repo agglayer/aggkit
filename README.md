@@ -3,8 +3,8 @@
 <br />
 <div align="center">
 
-<img src="./.github/assets/aggkit-logo.svg#gh-light-mode-only" alt="Logo" width="100">
-<img src="./.github/assets/aggkit-logo.svg#gh-dark-mode-only" alt="Logo" width="100">
+<img src="./.github/assets/aggkit-logo.png#gh-light-mode-only" alt="Logo" width="100">
+<img src="./.github/assets/aggkit-logo.png#gh-dark-mode-only" alt="Logo" width="100">
 
 ## AggKit
 
@@ -34,19 +34,24 @@ make build
 
 ### Run locally
 
-You can build and run a debug release locally using:
+You can build and run a debug binary locally using:
 
-```
-cargo run
+1. build the `aggkit` binary
+```bash
+make build-aggkit
 ```
 
-It will build and run both binaries.
+2. run the `aggkit` binary
+```bash
+cd target/
+aggkit run --cfg <CONFIG_FILE> --components <COMPONENTS_TO_RUN>
+```
+
 ### Running with Kurtosis
 
 1. Run your kurtosis environment
 2. build `cdk-erigon` and make it available in your system's PATH
 3. Run `scripts/local_config`
-4. cargo run -- --config ./tmp/aggkit/local_config/test.kurtosis.toml --chain ./tmp/aggkit/local_config/genesis.json erigon
 
 ## Contributing
 

@@ -12,7 +12,7 @@ endif
 GOBASE := $(shell pwd)
 GOBIN := $(GOBASE)/target
 GOENVVARS := GOBIN=$(GOBIN) CGO_ENABLED=1 GOARCH=$(ARCH)
-GOBINARY := cdk-node
+GOBINARY := aggkit
 GOCMD := $(GOBASE)/cmd
 
 LDFLAGS += -X 'github.com/agglayer/aggkit.Version=$(VERSION)'
@@ -31,11 +31,6 @@ check-go:
 check-docker:
 	@which docker > /dev/null || (echo "Error: docker is not installed" && exit 1)
 
-# Check for Docker-compose
-.PHONY: check-docker-compose
-check-docker-compose:
-	@which docker-compose > /dev/null || (echo "Error: docker-compose is not installed" && exit 1)
-
 # Check for Protoc
 .PHONY: check-protoc
 check-protoc:
@@ -51,19 +46,14 @@ build: check-go
 lint: check-go
 build-docker: check-docker
 build-docker-nc: check-docker
-stop: check-docker check-docker-compose
 install-linter: check-go check-curl
 generate-code-from-proto: check-protoc
 
 .PHONY: build ## Builds the binaries locally into ./target
-build: build-rust build-go build-tools
+build: build-aggkit build-tools
 
-.PHONY: build-rust
-build-rust:
-	export BUILD_SCRIPT_DISABLED=1 && cargo build --release
-
-.PHONY: build-go
-build-go:
+.PHONY: build-aggkit
+build-aggkit:
 	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
 
 .PHONY: build-tools
@@ -71,16 +61,12 @@ build-tools: ## Builds the tools
 	$(GOENVVARS) go build -o $(GOBIN)/aggsender_find_imported_bridge ./tools/aggsender_find_imported_bridge
 
 .PHONY: build-docker
-build-docker: ## Builds a docker image with the cdk binary
-	docker build -t cdk -f ./Dockerfile .
+build-docker: ## Builds a docker image with the aggkit binary
+	docker build -t aggkit -f ./Dockerfile .
 
 .PHONY: build-docker-nc
-build-docker-nc: ## Builds a docker image with the cdk binary - but without build cache
-	docker build --no-cache=true -t cdk -f ./Dockerfile .
-
-.PHONY: stop
-stop: ## Stops all services
-	docker-compose down
+build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
+	docker build --no-cache=true -t aggkit -f ./Dockerfile .
 
 .PHONY: test-unit
 test-unit:
