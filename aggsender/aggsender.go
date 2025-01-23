@@ -750,7 +750,7 @@ func (a *AggSender) checkLastCertificateFromAgglayer(ctx context.Context) error 
 		return fmt.Errorf("recovery: error processing initial status: %w", err)
 	}
 	err = a.executeInitialStatusAction(ctx, action, initialStatus.LocalCert)
-	return err
+	return a.executeInitialStatusAction(ctx, action, initialStatus.LocalCert)
 }
 
 func (a *AggSender) executeInitialStatusAction(ctx context.Context,
