@@ -1,6 +1,7 @@
 package aggsender
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/agglayer/aggkit/agglayer"
@@ -16,7 +17,7 @@ const (
 	nilStr = "nil"
 )
 
-var ErrAgglayerInconsistence = errros.New("recovery: agglayer inconsistence")
+var ErrAgglayerInconsistence = errors.New("recovery: agglayer inconsistence")
 
 type InitialStatus struct {
 	SettledCert *agglayer.CertificateHeader
@@ -114,7 +115,7 @@ func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 				Cert:    nil}, nil
 		}
 	}
-	aggLayerLastCert := i.getLastAggLayerCert()
+	aggLayerLastCert := i.getLatestAggLayerCert()
 	i.log.Infof("recovery: last certificate from AggLayer: %s", aggLayerLastCert.String())
 	localLastCert := i.LocalCert
 
@@ -195,7 +196,7 @@ func (i *InitialStatus) checkAgglayerConsistenceCerts() error {
 	return nil
 }
 
-func (i *InitialStatus) getLastAggLayerCert() *agglayer.CertificateHeader {
+func (i *InitialStatus) getLatestAggLayerCert() *agglayer.CertificateHeader {
 	if i.PendingCert == nil {
 		return i.SettledCert
 	}
