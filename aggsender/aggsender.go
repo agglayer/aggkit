@@ -748,7 +748,6 @@ func (a *AggSender) checkLastCertificateFromAgglayer(ctx context.Context) error 
 	if err != nil {
 		return fmt.Errorf("recovery: error processing initial status: %w", err)
 	}
-	err = a.executeInitialStatusAction(ctx, action, initialStatus.LocalCert)
 	return a.executeInitialStatusAction(ctx, action, initialStatus.LocalCert)
 }
 
