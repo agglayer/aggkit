@@ -8,6 +8,16 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 )
 
+const (
+	InitialStatusActionNone InitialStatusAction = iota
+	InitialStatusActionUpdateCurrentCert
+	InitialStatusActionInsertNewCert
+
+	nilStr = "nil"
+)
+
+var ErrAgglayerInconsistence = fmt.Errorf("recovery: agglayer inconsistence")
+
 type InitialStatus struct {
 	SettledCert *agglayer.CertificateHeader
 	PendingCert *agglayer.CertificateHeader
@@ -17,24 +27,10 @@ type InitialStatus struct {
 
 type InitialStatusAction int
 
-const (
-	InitialStatusActionNone InitialStatusAction = iota
-	InitialStatusActionUpdateCurrentCert
-	InitialStatusActionInsertNewCert
-
-	nilStr = "nil"
-)
-
 // String representation of the enum
 func (i InitialStatusAction) String() string {
 	return [...]string{"None", "Update", "InsertNew"}[i]
 }
-
-var (
-	ErrAgglayerInconsistence         = fmt.Errorf("recovery: agglayer inconsistence")
-	ErrMismatchStateAgglayerAndLocal = fmt.Errorf("recovery: mismatch between local and agglayer certificates")
-	ErrUnknownCase                   = fmt.Errorf("recovery: unknown case")
-)
 
 type InitialStatusResult struct {
 	Action  InitialStatusAction
