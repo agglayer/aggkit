@@ -168,10 +168,11 @@ func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 }
 
 func (i *InitialStatus) checkAgglayerConsistenceCerts() error {
-	if i.PendingCert == nil && i.SettledCert == nil {
+	if i.PendingCert == nil {
 		return nil
 	}
-	if i.PendingCert != nil && i.SettledCert == nil {
+
+	if i.SettledCert == nil {
 		// If Height>0 and not inError, we have a problem. We should have a settled cert
 		if !i.PendingCert.Status.IsInError() && i.PendingCert.Height != 0 {
 			return fmt.Errorf("consistence: no settled cert, and pending one is height %d and not in error. Err: %w",
@@ -180,28 +181,21 @@ func (i *InitialStatus) checkAgglayerConsistenceCerts() error {
 		return nil
 	}
 
-	// If only settled cert, there no chance of inconsistency
-	if i.PendingCert == nil && i.SettledCert != nil {
-		return nil
+	// Both settled and pending cert != nil, that is the potential inconsistency
+	// This is there is a settled cert for a height but also a pending cert for the same height
+	if i.PendingCert.Height == i.SettledCert.Height &&
+		!i.SettledCert.Status.IsInError() {
+		return fmt.Errorf("consistence: settled (%s) and pending (%s) certs are different for same height. Err: %w",
+			i.SettledCert.ID(), i.PendingCert.ID(),
+			ErrAgglayerInconsistence)
+	}
+	//
+	if i.SettledCert.Height > i.PendingCert.Height && !i.SettledCert.Status.IsInError() {
+		return fmt.Errorf("settled cert height %s is higher than pending cert height %s that is inNoError. Err: %w",
+			i.SettledCert.ID(), i.PendingCert.ID(),
+			ErrAgglayerInconsistence)
 	}
 
-	// If both settled and pending cert, that is the potential inconsistency
-	if i.SettledCert != nil && i.PendingCert != nil {
-		// This is there is a settled cert for a height but also a pending cert for the same height
-		if i.PendingCert.Height == i.SettledCert.Height &&
-			i.SettledCert.CertificateID != i.PendingCert.CertificateID &&
-			!i.SettledCert.Status.IsInError() {
-			return fmt.Errorf("consistence: settled (%s) and pending (%s) certs are different for same height. Err: %w",
-				i.SettledCert.ID(), i.PendingCert.ID(),
-				ErrAgglayerInconsistence)
-		}
-		//
-		if i.SettledCert.Height > i.PendingCert.Height && !i.SettledCert.Status.IsInError() {
-			return fmt.Errorf("settled cert height %s is higher than pending cert height %s that is inNoError. Err: %w",
-				i.SettledCert.ID(), i.PendingCert.ID(),
-				ErrAgglayerInconsistence)
-		}
-	}
 	return nil
 }
 
