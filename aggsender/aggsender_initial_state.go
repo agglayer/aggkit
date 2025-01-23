@@ -93,7 +93,7 @@ func (i *InitialStatus) LogData() {
 		i.LocalCert.ID(), i.LocalCert.StatusString())
 }
 
-// checkLastCertificateFromAgglayer checks the last certificate from agglayer
+// Process checks the last certificates from agglayer vs local certificates and returns the action to take
 func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 	// Check that agglayer data is consistent.
 	if err := i.checkAgglayerConsistenceCerts(); err != nil {
