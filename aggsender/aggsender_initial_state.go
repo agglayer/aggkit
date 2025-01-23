@@ -87,7 +87,7 @@ func NewInitialStatus(log types.Logger, networkID uint32,
 // LogData logs the data from the InitialStatus object
 func (i *InitialStatus) LogData() {
 	i.log.Infof("recovery: settled certificate from AggLayer: %s", i.SettledCert.ID())
-	i.log.Infof("recovery: pending certificate from AggLayer: %s / st: %s",
+	i.log.Infof("recovery: pending certificate from AggLayer: %s / status: %s",
 		i.PendingCert.ID(), i.PendingCert.StatusString())
 	i.log.Infof("recovery: certificate from Local           : %s / status: %s",
 		i.LocalCert.ID(), i.LocalCert.StatusString())
