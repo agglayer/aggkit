@@ -16,7 +16,7 @@ const (
 	nilStr = "nil"
 )
 
-var ErrAgglayerInconsistence = fmt.Errorf("recovery: agglayer inconsistence")
+var ErrAgglayerInconsistence = errros.New("recovery: agglayer inconsistence")
 
 type InitialStatus struct {
 	SettledCert *agglayer.CertificateHeader
