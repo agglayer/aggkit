@@ -128,7 +128,6 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 	defer ticker.Stop()
 	a.status.Status = types.StatusCheckingInitialStage
 	for {
-		//
 		a.checkPendingCertificatesStatus(ctx)
 		err := a.checkLastCertificateFromAgglayer(ctx)
 		a.status.SetLastError(err)
