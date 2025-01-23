@@ -17,7 +17,7 @@ require (
 	github.com/knadh/koanf/v2 v2.1.2
 	github.com/mattn/go-sqlite3 v1.14.24
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pelletier/go-toml/v2 v2.2.2
+	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/rubenv/sql-migrate v1.7.1
 	github.com/russross/meddler v1.0.1
 	github.com/spf13/viper v1.19.0
