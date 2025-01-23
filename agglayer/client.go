@@ -188,7 +188,7 @@ func (c *AggLayerClient) GetLatestSettledCertificateHeader(networkID uint32) (*C
 func (c *AggLayerClient) GetLatestPendingCertificateHeader(networkID uint32) (*CertificateHeader, error) {
 	response, err := jSONRPCCall(c.url, "interop_getLatestPendingCertificateHeader", networkID)
 	if err != nil {
-		return nil, fmt.Errorf("GetLatestPendingCertificateHeader error jSONRPCCall. Err: %w", err)
+		return nil, fmt.Errorf("interop_getLatestPendingCertificateHeader rpc call failed: %w", err)
 	}
 
 	if response.Error != nil {
