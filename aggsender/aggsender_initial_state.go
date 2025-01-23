@@ -102,7 +102,7 @@ func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 	if i.LocalCert == nil && i.SettledCert == nil && i.PendingCert != nil {
 		if i.PendingCert.Height == 0 {
 			return &InitialStatusResult{Action: InitialStatusActionInsertNewCert,
-				Message: "no settled cert yet, and the pending cert have the righ height(0) so we use it",
+				Message: "no settled cert yet, and the pending cert have the correct height (0) so we use it",
 				Cert:    i.PendingCert}, nil
 		}
 
