@@ -168,7 +168,7 @@ func (c *AggLayerClient) GetEpochConfiguration() (*ClockConfiguration, error) {
 func (c *AggLayerClient) GetLatestSettledCertificateHeader(networkID uint32) (*CertificateHeader, error) {
 	response, err := jSONRPCCall(c.url, "interop_getLatestSettledCertificateHeader", networkID)
 	if err != nil {
-		return nil, fmt.Errorf("GetLatestSettledCertificateHeader error jSONRPCCall. Err: %w", err)
+		return nil, fmt.Errorf("interop_getLatestSettledCertificateHeader rpc call failed: %w", err)
 	}
 
 	if response.Error != nil {
