@@ -172,7 +172,7 @@ func (c *AggLayerClient) GetLatestSettledCertificateHeader(networkID uint32) (*C
 	}
 
 	if response.Error != nil {
-		return nil, fmt.Errorf("GetLatestSettledCertificateHeader rpc returns an error:  code=%d msg=%s",
+		return nil, fmt.Errorf("interop_getLatestSettledCertificateHeader rpc call returned an error:  code=%d msg=%s",
 			response.Error.Code, response.Error.Message)
 	}
 
