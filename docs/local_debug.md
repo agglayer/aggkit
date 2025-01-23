@@ -6,20 +6,20 @@
 * In `test/scripts/env.sh` setup `KURTOSIS_FOLDER` pointing to your setup.
 
 > [!TIP]
-> Use your WIP branch in Kurtosis as needed
+> Use your WIP branch in Kurtosis CDK as needed
 
-## Create configuration for this kurtosis environment
+## 1. Create configuration for this kurtosis environment
 
-```
+```bash
 scripts/local_config
 ```
 
-## Stop aggkit enclave started by Kurtosis
+## 2. Stop the aggkit node started by Kurtosis CDK
 
 ```bash
 kurtosis service stop aggkit cdk-node-001
 ```
 
-## Add to vscode launch.json
+## 3. Add to vscode launch.json
 
-After execution `scripts/local_config` it suggest an entry for `launch.json` configurations
+After execution of `scripts/local_config`, it suggests an entry for `launch.json` configurations
