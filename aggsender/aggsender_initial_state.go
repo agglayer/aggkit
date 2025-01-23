@@ -31,7 +31,7 @@ func (i InitialStatusAction) String() string {
 }
 
 var (
-	ErrAgglayerInconsistence         = fmt.Errorf("recovery: agglayer incosistence")
+	ErrAgglayerInconsistence         = fmt.Errorf("recovery: agglayer inconsistence")
 	ErrMismatchStateAgglayerAndLocal = fmt.Errorf("recovery: mismatch between local and agglayer certificates")
 	ErrUnknownCase                   = fmt.Errorf("recovery: unknown case")
 )
