@@ -106,7 +106,7 @@ func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 				Cert:    i.PendingCert}, nil
 		}
 
-		// We don't known if pendingCert is going to be settle or error.
+		// We don't known if pendingCert is going to be Settled or InError.
 		// We can't use it because maybe is error wrong height
 		if !i.PendingCert.Status.IsInError() && i.PendingCert.Height > 0 {
 			return nil, fmt.Errorf("recovery: pendingCert %s is in state %s but have a suspicious height, so we wait to finish",
