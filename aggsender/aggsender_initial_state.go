@@ -114,7 +114,7 @@ func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 		}
 		if i.PendingCert.Status.IsInError() && i.PendingCert.Height > 0 {
 			return &InitialStatusResult{Action: InitialStatusActionNone,
-				Message: "the pending cert have wrong height and it's on error. We ignore it",
+				Message: "the pending cert have wrong height and it's InError. We ignore it",
 				Cert:    nil}, nil
 		}
 	}
