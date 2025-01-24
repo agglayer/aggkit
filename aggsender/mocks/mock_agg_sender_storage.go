@@ -26,53 +26,6 @@ func (_m *AggSenderStorage) EXPECT() *AggSenderStorage_Expecter {
 	return &AggSenderStorage_Expecter{mock: &_m.Mock}
 }
 
-// AddAuthProof provides a mock function with given fields: ctx, authProof
-func (_m *AggSenderStorage) AddAuthProof(ctx context.Context, authProof types.AuthProof) error {
-	ret := _m.Called(ctx, authProof)
-
-	if len(ret) == 0 {
-		panic("no return value specified for AddAuthProof")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, types.AuthProof) error); ok {
-		r0 = rf(ctx, authProof)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// AggSenderStorage_AddAuthProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AddAuthProof'
-type AggSenderStorage_AddAuthProof_Call struct {
-	*mock.Call
-}
-
-// AddAuthProof is a helper method to define mock.On call
-//   - ctx context.Context
-//   - authProof types.AuthProof
-func (_e *AggSenderStorage_Expecter) AddAuthProof(ctx interface{}, authProof interface{}) *AggSenderStorage_AddAuthProof_Call {
-	return &AggSenderStorage_AddAuthProof_Call{Call: _e.mock.On("AddAuthProof", ctx, authProof)}
-}
-
-func (_c *AggSenderStorage_AddAuthProof_Call) Run(run func(ctx context.Context, authProof types.AuthProof)) *AggSenderStorage_AddAuthProof_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(types.AuthProof))
-	})
-	return _c
-}
-
-func (_c *AggSenderStorage_AddAuthProof_Call) Return(_a0 error) *AggSenderStorage_AddAuthProof_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *AggSenderStorage_AddAuthProof_Call) RunAndReturn(run func(context.Context, types.AuthProof) error) *AggSenderStorage_AddAuthProof_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // DeleteCertificate provides a mock function with given fields: ctx, certificateID
 func (_m *AggSenderStorage) DeleteCertificate(ctx context.Context, certificateID common.Hash) error {
 	ret := _m.Called(ctx, certificateID)
@@ -116,64 +69,6 @@ func (_c *AggSenderStorage_DeleteCertificate_Call) Return(_a0 error) *AggSenderS
 }
 
 func (_c *AggSenderStorage_DeleteCertificate_Call) RunAndReturn(run func(context.Context, common.Hash) error) *AggSenderStorage_DeleteCertificate_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetAuthProof provides a mock function with given fields: endBlock
-func (_m *AggSenderStorage) GetAuthProof(endBlock uint64) (*types.AuthProof, error) {
-	ret := _m.Called(endBlock)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetAuthProof")
-	}
-
-	var r0 *types.AuthProof
-	var r1 error
-	if rf, ok := ret.Get(0).(func(uint64) (*types.AuthProof, error)); ok {
-		return rf(endBlock)
-	}
-	if rf, ok := ret.Get(0).(func(uint64) *types.AuthProof); ok {
-		r0 = rf(endBlock)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.AuthProof)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(uint64) error); ok {
-		r1 = rf(endBlock)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AggSenderStorage_GetAuthProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAuthProof'
-type AggSenderStorage_GetAuthProof_Call struct {
-	*mock.Call
-}
-
-// GetAuthProof is a helper method to define mock.On call
-//   - endBlock uint64
-func (_e *AggSenderStorage_Expecter) GetAuthProof(endBlock interface{}) *AggSenderStorage_GetAuthProof_Call {
-	return &AggSenderStorage_GetAuthProof_Call{Call: _e.mock.On("GetAuthProof", endBlock)}
-}
-
-func (_c *AggSenderStorage_GetAuthProof_Call) Run(run func(endBlock uint64)) *AggSenderStorage_GetAuthProof_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(uint64))
-	})
-	return _c
-}
-
-func (_c *AggSenderStorage_GetAuthProof_Call) Return(_a0 *types.AuthProof, _a1 error) *AggSenderStorage_GetAuthProof_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AggSenderStorage_GetAuthProof_Call) RunAndReturn(run func(uint64) (*types.AuthProof, error)) *AggSenderStorage_GetAuthProof_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -441,62 +336,6 @@ func (_c *AggSenderStorage_UpdateCertificate_Call) Return(_a0 error) *AggSenderS
 }
 
 func (_c *AggSenderStorage_UpdateCertificate_Call) RunAndReturn(run func(context.Context, types.CertificateInfo) error) *AggSenderStorage_UpdateCertificate_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// ValidateProof provides a mock function with given fields: req
-func (_m *AggSenderStorage) ValidateProof(req *types.ProofRequest) (bool, error) {
-	ret := _m.Called(req)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ValidateProof")
-	}
-
-	var r0 bool
-	var r1 error
-	if rf, ok := ret.Get(0).(func(*types.ProofRequest) (bool, error)); ok {
-		return rf(req)
-	}
-	if rf, ok := ret.Get(0).(func(*types.ProofRequest) bool); ok {
-		r0 = rf(req)
-	} else {
-		r0 = ret.Get(0).(bool)
-	}
-
-	if rf, ok := ret.Get(1).(func(*types.ProofRequest) error); ok {
-		r1 = rf(req)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AggSenderStorage_ValidateProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateProof'
-type AggSenderStorage_ValidateProof_Call struct {
-	*mock.Call
-}
-
-// ValidateProof is a helper method to define mock.On call
-//   - req *types.ProofRequest
-func (_e *AggSenderStorage_Expecter) ValidateProof(req interface{}) *AggSenderStorage_ValidateProof_Call {
-	return &AggSenderStorage_ValidateProof_Call{Call: _e.mock.On("ValidateProof", req)}
-}
-
-func (_c *AggSenderStorage_ValidateProof_Call) Run(run func(req *types.ProofRequest)) *AggSenderStorage_ValidateProof_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*types.ProofRequest))
-	})
-	return _c
-}
-
-func (_c *AggSenderStorage_ValidateProof_Call) Return(_a0 bool, _a1 error) *AggSenderStorage_ValidateProof_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AggSenderStorage_ValidateProof_Call) RunAndReturn(run func(*types.ProofRequest) (bool, error)) *AggSenderStorage_ValidateProof_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -21,101 +21,107 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AggSender_ReceiveAuthProof_FullMethodName = "/types.AggSender/ReceiveAuthProof"
+	AuthProofService_FetchAuthProof_FullMethodName = "/types.AuthProofService/FetchAuthProof"
 )
 
-// AggSenderClient is the client API for AggSender service.
+// AuthProofServiceClient is the client API for AuthProofService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type AggSenderClient interface {
-	ReceiveAuthProof(ctx context.Context, in *ProofRequest, opts ...grpc.CallOption) (*ProofResponse, error)
+//
+// Service for fetching auth proof.
+type AuthProofServiceClient interface {
+	// Fetches a auth-proof for a given start_block.
+	FetchAuthProof(ctx context.Context, in *FetchAuthProofRequest, opts ...grpc.CallOption) (*FetchAuthProofResponse, error)
 }
 
-type aggSenderClient struct {
+type authProofServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewAggSenderClient(cc grpc.ClientConnInterface) AggSenderClient {
-	return &aggSenderClient{cc}
+func NewAuthProofServiceClient(cc grpc.ClientConnInterface) AuthProofServiceClient {
+	return &authProofServiceClient{cc}
 }
 
-func (c *aggSenderClient) ReceiveAuthProof(ctx context.Context, in *ProofRequest, opts ...grpc.CallOption) (*ProofResponse, error) {
+func (c *authProofServiceClient) FetchAuthProof(ctx context.Context, in *FetchAuthProofRequest, opts ...grpc.CallOption) (*FetchAuthProofResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(ProofResponse)
-	err := c.cc.Invoke(ctx, AggSender_ReceiveAuthProof_FullMethodName, in, out, cOpts...)
+	out := new(FetchAuthProofResponse)
+	err := c.cc.Invoke(ctx, AuthProofService_FetchAuthProof_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// AggSenderServer is the server API for AggSender service.
-// All implementations must embed UnimplementedAggSenderServer
+// AuthProofServiceServer is the server API for AuthProofService service.
+// All implementations must embed UnimplementedAuthProofServiceServer
 // for forward compatibility.
-type AggSenderServer interface {
-	ReceiveAuthProof(context.Context, *ProofRequest) (*ProofResponse, error)
-	mustEmbedUnimplementedAggSenderServer()
+//
+// Service for fetching auth proof.
+type AuthProofServiceServer interface {
+	// Fetches a auth-proof for a given start_block.
+	FetchAuthProof(context.Context, *FetchAuthProofRequest) (*FetchAuthProofResponse, error)
+	mustEmbedUnimplementedAuthProofServiceServer()
 }
 
-// UnimplementedAggSenderServer must be embedded to have
+// UnimplementedAuthProofServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedAggSenderServer struct{}
+type UnimplementedAuthProofServiceServer struct{}
 
-func (UnimplementedAggSenderServer) ReceiveAuthProof(context.Context, *ProofRequest) (*ProofResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method ReceiveAuthProof not implemented")
+func (UnimplementedAuthProofServiceServer) FetchAuthProof(context.Context, *FetchAuthProofRequest) (*FetchAuthProofResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FetchAuthProof not implemented")
 }
-func (UnimplementedAggSenderServer) mustEmbedUnimplementedAggSenderServer() {}
-func (UnimplementedAggSenderServer) testEmbeddedByValue()                   {}
+func (UnimplementedAuthProofServiceServer) mustEmbedUnimplementedAuthProofServiceServer() {}
+func (UnimplementedAuthProofServiceServer) testEmbeddedByValue()                          {}
 
-// UnsafeAggSenderServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to AggSenderServer will
+// UnsafeAuthProofServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AuthProofServiceServer will
 // result in compilation errors.
-type UnsafeAggSenderServer interface {
-	mustEmbedUnimplementedAggSenderServer()
+type UnsafeAuthProofServiceServer interface {
+	mustEmbedUnimplementedAuthProofServiceServer()
 }
 
-func RegisterAggSenderServer(s grpc.ServiceRegistrar, srv AggSenderServer) {
-	// If the following call pancis, it indicates UnimplementedAggSenderServer was
+func RegisterAuthProofServiceServer(s grpc.ServiceRegistrar, srv AuthProofServiceServer) {
+	// If the following call pancis, it indicates UnimplementedAuthProofServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&AggSender_ServiceDesc, srv)
+	s.RegisterService(&AuthProofService_ServiceDesc, srv)
 }
 
-func _AggSender_ReceiveAuthProof_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ProofRequest)
+func _AuthProofService_FetchAuthProof_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FetchAuthProofRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AggSenderServer).ReceiveAuthProof(ctx, in)
+		return srv.(AuthProofServiceServer).FetchAuthProof(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AggSender_ReceiveAuthProof_FullMethodName,
+		FullMethod: AuthProofService_FetchAuthProof_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AggSenderServer).ReceiveAuthProof(ctx, req.(*ProofRequest))
+		return srv.(AuthProofServiceServer).FetchAuthProof(ctx, req.(*FetchAuthProofRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// AggSender_ServiceDesc is the grpc.ServiceDesc for AggSender service.
+// AuthProofService_ServiceDesc is the grpc.ServiceDesc for AuthProofService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var AggSender_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "types.AggSender",
-	HandlerType: (*AggSenderServer)(nil),
+var AuthProofService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "types.AuthProofService",
+	HandlerType: (*AuthProofServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ReceiveAuthProof",
-			Handler:    _AggSender_ReceiveAuthProof_Handler,
+			MethodName: "FetchAuthProof",
+			Handler:    _AuthProofService_FetchAuthProof_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
