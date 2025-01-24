@@ -32,14 +32,6 @@ type AggSenderStorage interface {
 	GetCertificatesByStatus(status []agglayer.CertificateStatus) ([]*types.CertificateInfo, error)
 	// UpdateCertificate updates certificate in db
 	UpdateCertificate(ctx context.Context, certificate types.CertificateInfo) error
-
-	// Aggkit-prover specific methods
-	// Add auth-proof in DB
-	AddAuthProof(ctx context.Context, authProof types.AuthProof) error
-	// Get auth-proof by identifier
-	GetAuthProof(endBlock uint64) (*types.AuthProof, error)
-	// Validate auth-proof
-	ValidateProof(req *types.ProofRequest) (bool, error)
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -72,46 +64,6 @@ func NewAggSenderSQLStorage(logger *log.Logger, cfg AggSenderSQLStorageConfig) (
 		logger: logger,
 		cfg:    cfg,
 	}, nil
-}
-
-func (a *AggSenderSQLStorage) AddAuthProof(ctx context.Context, authProof types.AuthProof) error {
-	tx, err := db.NewTx(ctx, a.db)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			if errRllbck := tx.Rollback(); errRllbck != nil {
-				a.logger.Errorf(errWhileRollbackFormat, errRllbck)
-			}
-		}
-	}()
-
-	if _, err = tx.Exec(`INSERT INTO auth_proof (start_block, end_block, proof) VALUES ($1, $2, $3);`,
-		authProof.StartBlock, authProof.EndBlock, authProof.Proof); err != nil {
-		return fmt.Errorf("error inserting auth proof: %w", err)
-	}
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-
-	a.logger.Debugf("inserted auth proof - start block: %d", authProof.StartBlock, "end block: %d", authProof.EndBlock)
-
-	return nil
-}
-
-func (a *AggSenderSQLStorage) GetAuthProof(endBlock uint64) (*types.AuthProof, error) {
-	var authProof types.AuthProof
-	if err := meddler.QueryRow(a.db, &authProof,
-		"SELECT * FROM auth_proof WHERE start_block = $1;", endBlock); err != nil {
-		return nil, getSelectQueryError(endBlock, err)
-	}
-
-	return &authProof, nil
-}
-
-func (a *AggSenderSQLStorage) ValidateProof(req *types.ProofRequest) (bool, error) {
-	return true, nil
 }
 
 func (a *AggSenderSQLStorage) GetCertificatesByStatus(
