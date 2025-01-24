@@ -753,6 +753,14 @@ func (c *CertificateHeader) ID() string {
 	return fmt.Sprintf("%d/%s", c.Height, c.CertificateID.String())
 }
 
+// StatusString returns the string representation of the status
+func (c *CertificateHeader) StatusString() string {
+	if c == nil {
+		return "???"
+	}
+	return c.Status.String()
+}
+
 func (c *CertificateHeader) String() string {
 	if c == nil {
 		return nilStr
