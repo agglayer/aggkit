@@ -106,7 +106,7 @@ func L1Setup(t *testing.T) *L1Environment {
 	rdL1, err := reorgdetector.New(l1Client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorgDetectorL1,
 		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
-	})
+	}, reorgdetector.L1)
 	require.NoError(t, err)
 	go rdL1.Start(ctx) //nolint:errcheck
 
@@ -186,7 +186,9 @@ func L2Setup(t *testing.T) *L2Environment {
 	dbPathReorgL2 := path.Join(t.TempDir(), "ReorgDetectorL2.sqlite")
 	rdL2, err := reorgdetector.New(l2Client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorgL2,
-		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}}) //nolint:mnd
+		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}}, //nolint:mnd
+		reorgdetector.L2,
+	)
 	require.NoError(t, err)
 	go rdL2.Start(ctx) //nolint:errcheck
 

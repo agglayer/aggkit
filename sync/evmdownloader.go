@@ -107,7 +107,7 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 	for {
 		select {
 		case <-ctx.Done():
-			d.log.Debug("closing channel")
+			d.log.Info("closing evm downloader channel")
 			close(downloadedCh)
 			return
 		default:
@@ -119,7 +119,7 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 		}
 
 		if fromBlock > toBlock {
-			d.log.Infof(
+			d.log.Debugf(
 				"waiting for new blocks, last block processed: %d, last block seen on L1: %d",
 				fromBlock-1, lastBlock,
 			)
@@ -135,7 +135,7 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 
 		lastFinalizedBlockNumber := lastFinalizedBlock.Number.Uint64()
 
-		d.log.Infof("getting events from blocks %d to  %d. lastFinalizedBlock: %d",
+		d.log.Debugf("getting events from blocks %d to  %d. lastFinalizedBlock: %d",
 			fromBlock, toBlock, lastFinalizedBlockNumber)
 		blocks := d.GetEventsByBlockRange(ctx, fromBlock, toBlock)
 

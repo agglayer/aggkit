@@ -14,6 +14,7 @@ var ErrInconsistentState = errors.New("state is inconsistent, try again later on
 type Block struct {
 	Num    uint64
 	Events []interface{}
+	Hash   common.Hash
 }
 
 type evmDownloaderFull interface {
@@ -158,6 +159,7 @@ func (d *EVMDriver) handleNewBlock(ctx context.Context, cancel context.CancelFun
 			blockToProcess := Block{
 				Num:    b.Num,
 				Events: b.Events,
+				Hash:   b.Hash,
 			}
 			err := d.processor.ProcessBlock(ctx, blockToProcess)
 			if err != nil {
