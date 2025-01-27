@@ -151,3 +151,7 @@ This paragraph explains different use cases with outcomes.
 5. This will start the `aggkit` with the `aggsender` running.
 6. Navigate to the `test/bats/pp` folder (`cd test/bats/pp`).
 7. Run a test in `bridge-e2e.bats` file: `bats -f "Native gas token deposit to WETH" bridge-e2e.bats`. This will build a new certificate after it is done, and you can debug the whole process.
+
+## Additional Documentation
+[1] https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html 
+[2] https://agglayer.github.io/agglayer/pessimistic_proof/index.html	
