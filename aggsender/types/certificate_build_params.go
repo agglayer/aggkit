@@ -14,11 +14,14 @@ const (
 
 // CertificateBuildParams is a struct that holds the parameters to build a certificate
 type CertificateBuildParams struct {
-	FromBlock uint64
-	ToBlock   uint64
-	Bridges   []bridgesync.Bridge
-	Claims    []bridgesync.Claim
-	CreatedAt uint32
+	FromBlock              uint64
+	ToBlock                uint64
+	Bridges                []bridgesync.Bridge
+	Claims                 []bridgesync.Claim
+	CreatedAt              uint32
+	RetryCount             int
+	ShouldBuildCertificate bool
+	LastSentCertificate    *CertificateInfo
 }
 
 func (c *CertificateBuildParams) String() string {
@@ -35,10 +38,14 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		return nil, fmt.Errorf("invalid range")
 	}
 	newCert := &CertificateBuildParams{
-		FromBlock: fromBlock,
-		ToBlock:   toBlock,
-		Bridges:   make([]bridgesync.Bridge, 0),
-		Claims:    make([]bridgesync.Claim, 0),
+		FromBlock:              fromBlock,
+		ToBlock:                toBlock,
+		Bridges:                make([]bridgesync.Bridge, 0),
+		Claims:                 make([]bridgesync.Claim, 0),
+		CreatedAt:              c.CreatedAt,
+		RetryCount:             c.RetryCount,
+		ShouldBuildCertificate: c.ShouldBuildCertificate,
+		LastSentCertificate:    c.LastSentCertificate,
 	}
 
 	for _, bridge := range c.Bridges {
