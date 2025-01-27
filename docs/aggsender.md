@@ -1,7 +1,5 @@
 # AggSender component
 
-## Introduction
-
 `AggSender` is in charge to build and pack the information required to prove a target chain’s bridge state into a certificate. This certificate provides the inputs needed to build a pessimistic proof.
 
 ## Component Diagram
