@@ -33,6 +33,11 @@ var (
 	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
+type RateLimiter interface {
+	Call(msg string, allowToSleep bool) *time.Duration
+	String() string
+}
+
 // AggSender is a component that will send certificates to the aggLayer
 type AggSender struct {
 	log types.Logger
@@ -48,7 +53,8 @@ type AggSender struct {
 
 	sequencerKey *ecdsa.PrivateKey
 
-	status types.AggsenderStatus
+	status      types.AggsenderStatus
+	rateLimiter RateLimiter
 }
 
 // New returns a new AggSender
@@ -73,6 +79,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	rateLimit := createRateLimit(cfg)
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
 
@@ -86,7 +93,16 @@ func New(
 		sequencerKey:     sequencerPrivateKey,
 		epochNotifier:    epochNotifier,
 		status:           types.AggsenderStatus{Status: types.StatusNone},
+		rateLimiter:      rateLimit,
 	}, nil
+}
+
+func createRateLimit(cfg Config) *aggkitcommon.RateLimit {
+	if cfg.MaxSubmitCertificateRate.Enabled() {
+		rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
+		return &rateLimit
+	}
+	return nil
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {
@@ -271,6 +287,10 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, fmt.Errorf("error signing certificate: %w", err)
 	}
 
+	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
+		a.log.Warnf("rate limit reached , next cert can be submitted after %s. Rate:%s", rateLimitSleepTime.String(), a.rateLimiter.String())
+		return nil, fmt.Errorf("rate limit reached, next cert can be submitted after %s. Rate:%s", rateLimitSleepTime.String(), a.rateLimiter.String())
+	}
 	a.saveCertificateToFile(signedCertificate)
 	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
 	if a.cfg.DryRun {

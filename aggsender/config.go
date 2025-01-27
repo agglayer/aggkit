@@ -3,6 +3,7 @@ package aggsender
 import (
 	"fmt"
 
+	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 )
 
@@ -49,6 +50,8 @@ type Config struct {
 	//RetryCertAfterInError when a cert pass to 'InError'
 	// state the AggSender will retry to send it inmediatly
 	RetryCertAfterInError bool `mapstructure:"RetryCertAfterInError"`
+	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
+	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -64,8 +67,9 @@ func (c Config) String() string {
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
 		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n" +
-		"DryRun" + fmt.Sprintf("%t", c.DryRun) + "\n" +
-		"EnableRPC" + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
-		"CheckStatusCertificateInterval" + c.CheckStatusCertificateInterval.String() + "\n" +
-		"RetryCertInmediatlyAfterInError" + fmt.Sprintf("%t", c.RetryCertAfterInError)
+		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
+		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
+		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
+		"RetryCertInmediatlyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
+		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n"
 }

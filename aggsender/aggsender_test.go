@@ -53,7 +53,12 @@ func TestConfigString(t *testing.T) {
 		"URLRPCL2: http://l2.rpc.url\n" +
 		"BlockFinality: latestBlock\n" +
 		"EpochNotificationPercentage: 50\n" +
-		"SaveCertificatesToFilesPath: /path/to/certificates\n"
+		"SaveCertificatesToFilesPath: /path/to/certificates\n" +
+		"DryRun: false\n" +
+		"EnableRPC: false\n" +
+		"CheckStatusCertificateInterval: 0s\n" +
+		"RetryCertInmediatlyAfterInError: false\n" +
+		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"
 
 	require.Equal(t, expected, config.String())
 }
