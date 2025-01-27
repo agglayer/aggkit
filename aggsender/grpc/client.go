@@ -9,7 +9,7 @@ type Client struct {
 	conn *grpc.ClientConn
 }
 
-// NewClient initializes and returns a new gRPC client with a 15-minute connection timeout
+// NewClient initializes and returns a new gRPC client
 func NewClient(serverAddr string) (*Client, error) {
 	conn, err := grpc.NewClient(serverAddr)
 	if err != nil {
