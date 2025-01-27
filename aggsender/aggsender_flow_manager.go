@@ -21,9 +21,8 @@ type FlowManager interface {
 
 // flowManager is a struct that holds the common logic for the different prover types
 type flowManager struct {
-	l2Syncer         types.L2BridgeSyncer
-	l1infoTreeSyncer types.L1InfoTreeSyncer
-	storage          db.AggSenderStorage
+	l2Syncer types.L2BridgeSyncer
+	storage  db.AggSenderStorage
 
 	log types.Logger
 }
@@ -93,24 +92,24 @@ func (f *flowManager) GetCertificateBuildParams(ctx context.Context) (*types.Cer
 	}, nil
 }
 
-// aggkitProverFlow is a struct that holds the logic for the AggkitProver prover type flow
-type aggkitProverFlow struct {
+// aggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
+type aggchainProverFlow struct {
 	*flowManager
 
-	aggkitProverClient grpc.AggchainProofClientInterface
+	aggchainProofClient grpc.AggchainProofClientInterface
 }
 
-// newAggkitProverFlow returns a new instance of the aggkitProverFlow
-func newAggkitProverFlow(aggkitProverClient grpc.AggchainProofClientInterface,
+// newAggchainProverFlow returns a new instance of the aggchainProverFlow
+func newAggchainProverFlow(log types.Logger,
+	aggkitProverClient grpc.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
-	l2Syncer types.L2BridgeSyncer,
-	l1infoTreeSyncer types.L1InfoTreeSyncer) *aggkitProverFlow {
-	return &aggkitProverFlow{
-		aggkitProverClient: aggkitProverClient,
+	l2Syncer types.L2BridgeSyncer) *aggchainProverFlow {
+	return &aggchainProverFlow{
+		aggchainProofClient: aggkitProverClient,
 		flowManager: &flowManager{
-			l2Syncer:         l2Syncer,
-			l1infoTreeSyncer: l1infoTreeSyncer,
-			storage:          storage,
+			log:      log,
+			l2Syncer: l2Syncer,
+			storage:  storage,
 		},
 	}
 }
@@ -119,13 +118,15 @@ func newAggkitProverFlow(aggkitProverClient grpc.AggchainProofClientInterface,
 // this funciton is the implementation of the FlowManager interface
 // What differentiates this function from the regular PP flow is that,
 // if the last sent certificate is in error, we need to resend the exact same certificate
-func (a *aggkitProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
+func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastSentCertificateInfo, err := a.storage.GetLastSentCertificate()
 	if err != nil {
 		return nil, err
 	}
 
 	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayer.InError {
+		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
+
 		bridges, claims, err := a.getBridgesAndClaims(ctx, lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock)
 		if err != nil {
 			return nil, err
@@ -137,6 +138,19 @@ func (a *aggkitProverFlow) GetCertificateBuildParams(ctx context.Context) (*type
 			// just keep return an error here
 			return nil, fmt.Errorf("we have an InError certificate: %s, but no bridges to resend the same certificate",
 				lastSentCertificateInfo.String())
+		}
+
+		if lastSentCertificateInfo.AuthProof == "" {
+			authProof, err := a.aggchainProofClient.FetchAggchainProof(lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock)
+			if err != nil {
+				return nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d : %w",
+					lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, err)
+			}
+
+			a.log.Infof("InError certificate did not have auth proof, so got it from the aggchain prover for range %d : %d. Proof: %s",
+				lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, authProof.Proof)
+
+			lastSentCertificateInfo.AuthProof = authProof.Proof
 		}
 
 		// we need to resend the exact same certificate
@@ -153,7 +167,23 @@ func (a *aggkitProverFlow) GetCertificateBuildParams(ctx context.Context) (*type
 	}
 
 	// use the old logic, where we build the new certificate
-	return a.flowManager.GetCertificateBuildParams(ctx)
+	buildParams, err := a.flowManager.GetCertificateBuildParams(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	authProof, err := a.aggchainProofClient.FetchAggchainProof(buildParams.FromBlock, buildParams.ToBlock)
+	if err != nil {
+		return nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d : %w",
+			buildParams.FromBlock, buildParams.ToBlock, err)
+	}
+
+	a.log.Infof("fetched auth proof: %s for new certificate of block range %d : %d",
+		authProof.Proof, buildParams.FromBlock, buildParams.ToBlock)
+
+	buildParams.LastSentCertificate.AuthProof = authProof.Proof
+
+	return buildParams, nil
 }
 
 // ppFlow is a struct that holds the logic for the regular pessimistic proof flow
@@ -162,14 +192,14 @@ type ppFlow struct {
 }
 
 // newPPFlow returns a new instance of the ppFlow
-func newPPFlow(storage db.AggSenderStorage,
-	l2Syncer types.L2BridgeSyncer,
-	l1infoTreeSyncer types.L1InfoTreeSyncer) *ppFlow {
+func newPPFlow(log types.Logger,
+	storage db.AggSenderStorage,
+	l2Syncer types.L2BridgeSyncer) *ppFlow {
 	return &ppFlow{
 		flowManager: &flowManager{
-			l2Syncer:         l2Syncer,
-			l1infoTreeSyncer: l1infoTreeSyncer,
-			storage:          storage,
+			log:      log,
+			l2Syncer: l2Syncer,
+			storage:  storage,
 		},
 	}
 }

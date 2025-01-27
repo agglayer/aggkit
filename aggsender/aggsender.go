@@ -51,8 +51,7 @@ type AggSender struct {
 
 	status types.AggsenderStatus
 
-	aggchainProofClient grpc.AggchainProofClientInterface
-	flowManager         FlowManager
+	flowManager FlowManager
 }
 
 // New returns a new AggSender
@@ -79,19 +78,19 @@ func New(
 	}
 
 	var (
-		aggkitProverClient grpc.AggchainProofClientInterface
-		flowManager        FlowManager
+		aggchainProofClient grpc.AggchainProofClientInterface
+		flowManager         FlowManager
 	)
 
 	if cfg.AggchainProofURL != "" {
-		aggkitProverClient, err = grpc.NewAggchainProofClient(cfg.AggchainProofURL)
+		aggchainProofClient, err = grpc.NewAggchainProofClient(cfg.AggchainProofURL)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}
 
-		flowManager = newAggkitProverFlow(aggkitProverClient, storage, l2Syncer, l1InfoTreeSyncer)
+		flowManager = newAggchainProverFlow(logger, aggchainProofClient, storage, l2Syncer)
 	} else {
-		flowManager = newPPFlow(storage, l2Syncer, l1InfoTreeSyncer)
+		flowManager = newPPFlow(logger, storage, l2Syncer)
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
@@ -209,6 +208,10 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	certificateParams, err := a.flowManager.GetCertificateBuildParams(ctx)
 	if err != nil {
 		return nil, err
+	}
+
+	if certificateParams == nil || !certificateParams.ShouldBuildCertificate {
+		return nil, nil
 	}
 
 	certificateParams, err = a.limitCertSize(certificateParams)
