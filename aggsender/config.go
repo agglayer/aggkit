@@ -44,8 +44,8 @@ type Config struct {
 	DryRun bool `mapstructure:"DryRun"`
 	// EnableRPC is a flag to enable the RPC for aggsender
 	EnableRPC bool `mapstructure:"EnableRPC"`
-	// AggchainProofURL is the URL of the AggkitProver
-	AggchainProofURL string `mapstructure:"AggchainProofURL"`
+	// AggchainProofClientURL is the URL of the AggchainProofClient
+	AggchainProofClientURL string `mapstructure:"AggchainProofClientURL"`
 }
 
 // String returns a string representation of the Config

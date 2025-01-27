@@ -2,9 +2,16 @@ package sync
 
 import "github.com/ethereum/go-ethereum/common"
 
+type EVMBlocks []*EVMBlock
+
+func (e EVMBlocks) Len() int {
+	return len(e)
+}
+
 type EVMBlock struct {
 	EVMBlockHeader
-	Events []interface{}
+	IsFinalizedBlock bool
+	Events           []interface{}
 }
 
 type EVMBlockHeader struct {

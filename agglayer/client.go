@@ -24,14 +24,19 @@ type AggLayerClientGetEpochConfiguration interface {
 	GetEpochConfiguration() (*ClockConfiguration, error)
 }
 
+type AggLayerClientRecoveryQuerier interface {
+	GetLatestSettledCertificateHeader(networkID uint32) (*CertificateHeader, error)
+	GetLatestPendingCertificateHeader(networkID uint32) (*CertificateHeader, error)
+}
+
 // AgglayerClientInterface is the interface that defines the methods that the AggLayerClient will implement
 type AgglayerClientInterface interface {
 	SendTx(signedTx SignedTx) (common.Hash, error)
 	WaitTxToBeMined(hash common.Hash, ctx context.Context) error
 	SendCertificate(certificate *SignedCertificate) (common.Hash, error)
 	GetCertificateHeader(certificateHash common.Hash) (*CertificateHeader, error)
-	GetLatestKnownCertificateHeader(networkID uint32) (*CertificateHeader, error)
 	AggLayerClientGetEpochConfiguration
+	AggLayerClientRecoveryQuerier
 }
 
 // AggLayerClient is the client that will be used to interact with the AggLayer
@@ -160,22 +165,41 @@ func (c *AggLayerClient) GetEpochConfiguration() (*ClockConfiguration, error) {
 	return result, nil
 }
 
-// GetLatestKnownCertificateHeader returns the last certificate header submitted by networkID
-func (c *AggLayerClient) GetLatestKnownCertificateHeader(networkID uint32) (*CertificateHeader, error) {
-	response, err := jSONRPCCall(c.url, "interop_getLatestKnownCertificateHeader", networkID)
+func (c *AggLayerClient) GetLatestSettledCertificateHeader(networkID uint32) (*CertificateHeader, error) {
+	response, err := jSONRPCCall(c.url, "interop_getLatestSettledCertificateHeader", networkID)
 	if err != nil {
-		return nil, fmt.Errorf("GetLatestKnownCertificateHeader error jSONRPCCall. Err: %w", err)
+		return nil, fmt.Errorf("interop_getLatestSettledCertificateHeader rpc call failed: %w", err)
 	}
 
 	if response.Error != nil {
-		return nil, fmt.Errorf("GetLatestKnownCertificateHeader rpc returns an error:  code=%d msg=%s",
+		return nil, fmt.Errorf("interop_getLatestSettledCertificateHeader rpc call returned an error:  code=%d msg=%s",
 			response.Error.Code, response.Error.Message)
 	}
 
 	var result *CertificateHeader
 	err = json.Unmarshal(response.Result, &result)
 	if err != nil {
-		return nil, fmt.Errorf("GetLatestKnownCertificateHeader error Unmashal. Err: %w", err)
+		return nil, fmt.Errorf("GetLatestSettledCertificateHeader error Unmashal. Err: %w", err)
+	}
+
+	return result, nil
+}
+
+func (c *AggLayerClient) GetLatestPendingCertificateHeader(networkID uint32) (*CertificateHeader, error) {
+	response, err := jSONRPCCall(c.url, "interop_getLatestPendingCertificateHeader", networkID)
+	if err != nil {
+		return nil, fmt.Errorf("interop_getLatestPendingCertificateHeader rpc call failed: %w", err)
+	}
+
+	if response.Error != nil {
+		return nil, fmt.Errorf("interop_getLatestPendingCertificateHeader rpc call returned an error:  code=%d msg=%s",
+			response.Error.Code, response.Error.Message)
+	}
+
+	var result *CertificateHeader
+	err = json.Unmarshal(response.Result, &result)
+	if err != nil {
+		return nil, fmt.Errorf("GetLatestPendingCertificateHeader error Unmashal. Err: %w", err)
 	}
 
 	return result, nil

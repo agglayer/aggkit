@@ -52,7 +52,7 @@ jobs:
       # Build project
       - name: Build Go project
         if: ${{ matrix.language == 'go' }}
-        run: make build-go
+        run: make build-aggkit
 
       # Perform CodeQL Analysis
       - name: Perform CodeQL Analysis

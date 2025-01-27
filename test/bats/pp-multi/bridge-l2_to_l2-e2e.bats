@@ -12,7 +12,7 @@ setup() {
         return 1
     fi
     
-    add_cdk_network2_to_agglayer
+    add_network2_to_agglayer
     fund_claim_tx_manager
     mint_pol_token
 

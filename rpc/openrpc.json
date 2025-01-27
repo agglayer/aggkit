@@ -1,7 +1,7 @@
 {
   "openrpc": "1.0.0",
   "info": {
-    "title": "CDK Endpoints",
+    "title": "Aggkit Endpoints",
     "version": "0.0.1"
   },
   "methods": [

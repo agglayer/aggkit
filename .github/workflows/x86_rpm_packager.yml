@@ -37,11 +37,6 @@ jobs:
       - name: Building aggkit for amd64
         run: make build
 
-      - name: Building the aggkit
-        run: |
-          BUILD_SCRIPT_DISABLED=1
-          cargo build --release --bin aggkit
-
       - name: Installing some dependencies
         run: sudo apt-get update && sudo apt-get install -y rpm
 
@@ -69,12 +64,11 @@ jobs:
           
           echo "%install" >> packaging/rpm/SPECS/aggkit.spec
           echo "mkdir -p %{buildroot}/usr/bin" >> packaging/rpm/SPECS/aggkit.spec
-          echo "cp /home/runner/work/aggkit/aggkit/target/aggkit-node %{buildroot}/usr/bin/aggkit-node" >> packaging/rpm/SPECS/aggkit.spec
+          echo "cp /home/runner/work/aggkit/aggkit/target/aggkit %{buildroot}/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
           echo "cp /home/runner/work/aggkit/aggkit/target/release/aggkit %{buildroot}/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
           
           echo "%files" >> packaging/rpm/SPECS/aggkit.spec
           echo "/usr/bin/aggkit" >> packaging/rpm/SPECS/aggkit.spec
-          echo "/usr/bin/aggkit-node" >> packaging/rpm/SPECS/aggkit.spec
 
 
       - name: Construct rpm package

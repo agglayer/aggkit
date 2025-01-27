@@ -160,6 +160,23 @@ func createAggoracle(
 	syncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
+	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config, cfg.Common)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	l2ChainID, err := ethermanClient.GetL2ChainID()
+	if err != nil {
+		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
+	}
+
+	// sanity check for the aggOracle ChainID
+	if cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID != l2ChainID {
+		logger.Warnf("Incorrect ChainID in aggOracle provided: %d expected: %d",
+			cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID,
+			l2ChainID,
+		)
+	}
+
 	var sender aggoracle.ChainSender
 	switch cfg.AggOracle.TargetChainType {
 	case aggoracle.EVMChain:
@@ -237,8 +254,9 @@ func waitSignal(cancelFuncs []context.CancelFunc) {
 func newReorgDetector(
 	cfg *reorgdetector.Config,
 	client *ethclient.Client,
+	network reorgdetector.Network,
 ) *reorgdetector.ReorgDetector {
-	rd, err := reorgdetector.New(client, *cfg)
+	rd, err := reorgdetector.New(client, *cfg, network)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -284,6 +302,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.RetryAfterErrorPeriod.Duration,
 		cfg.L1InfoTreeSync.MaxRetryAttemptsAfterError,
 		l1infotreesync.FlagNone,
+		etherman.FinalizedBlock,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -351,7 +370,7 @@ func runReorgDetectorL1IfNeeded(
 		components) {
 		return nil, nil
 	}
-	rd := newReorgDetector(cfg, l1Client)
+	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
 
 	errChan := make(chan error)
 	go func() {
@@ -373,7 +392,7 @@ func runReorgDetectorL2IfNeeded(
 	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
 		return nil, nil
 	}
-	rd := newReorgDetector(cfg, l2Client)
+	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
 
 	errChan := make(chan error)
 	go func() {
@@ -484,6 +503,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		false,
+		etherman.FinalizedBlock,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -519,6 +539,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		true,
+		etherman.LatestBlock,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
@@ -530,7 +551,7 @@ func runBridgeSyncL2IfNeeded(
 
 func createBridgeRPC(
 	cfg jRPC.Config,
-	cdkNetworkID uint32,
+	l2NetworkID uint32,
 	sponsor *claimsponsor.ClaimSponsor,
 	l1InfoTree *l1infotreesync.L1InfoTreeSync,
 	injectedGERs *lastgersync.LastGERSync,
@@ -545,7 +566,7 @@ func createBridgeRPC(
 				logger,
 				cfg.WriteTimeout.Duration,
 				cfg.ReadTimeout.Duration,
-				cdkNetworkID,
+				l2NetworkID,
 				sponsor,
 				l1InfoTree,
 				injectedGERs,
