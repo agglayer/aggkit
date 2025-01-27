@@ -52,6 +52,7 @@ type AggSender struct {
 	status types.AggsenderStatus
 
 	aggchainProofClient grpc.AggchainProofClientInterface
+	flowManager         FlowManager
 }
 
 // New returns a new AggSender
@@ -77,24 +78,35 @@ func New(
 		return nil, err
 	}
 
-	aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggchainProofURL)
-	if err != nil {
-		return nil, err
+	var (
+		aggkitProverClient grpc.AggchainProofClientInterface
+		flowManager        FlowManager
+	)
+
+	if cfg.AggchainProofURL != "" {
+		aggkitProverClient, err = grpc.NewAggchainProofClient(cfg.AggchainProofURL)
+		if err != nil {
+			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
+		}
+
+		flowManager = newAggkitProverFlow(aggkitProverClient, storage, l2Syncer, l1InfoTreeSyncer)
+	} else {
+		flowManager = newPPFlow(storage, l2Syncer, l1InfoTreeSyncer)
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
 
 	return &AggSender{
-		cfg:                 cfg,
-		log:                 logger,
-		storage:             storage,
-		l2Syncer:            l2Syncer,
-		aggLayerClient:      aggLayerClient,
-		l1infoTreeSyncer:    l1InfoTreeSyncer,
-		sequencerKey:        sequencerPrivateKey,
-		epochNotifier:       epochNotifier,
-		status:              types.AggsenderStatus{Status: types.StatusNone},
-		aggchainProofClient: aggchainProofClient,
+		cfg:              cfg,
+		log:              logger,
+		storage:          storage,
+		l2Syncer:         l2Syncer,
+		aggLayerClient:   aggLayerClient,
+		l1infoTreeSyncer: l1InfoTreeSyncer,
+		sequencerKey:     sequencerPrivateKey,
+		epochNotifier:    epochNotifier,
+		status:           types.AggsenderStatus{Status: types.StatusNone},
+		flowManager:      flowManager,
 	}, nil
 }
 
@@ -194,47 +206,9 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, nil
 	}
 
-	lastL2BlockSynced, err := a.l2Syncer.GetLastProcessedBlock(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
-	}
-
-	lastSentCertificateInfo, err := a.storage.GetLastSentCertificate()
+	certificateParams, err := a.flowManager.GetCertificateBuildParams(ctx)
 	if err != nil {
 		return nil, err
-	}
-
-	previousToBlock, retryCount := getLastSentBlockAndRetryCount(lastSentCertificateInfo)
-
-	if previousToBlock >= lastL2BlockSynced {
-		a.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
-			previousToBlock, lastL2BlockSynced)
-		return nil, nil
-	}
-
-	fromBlock := previousToBlock + 1
-	toBlock := lastL2BlockSynced
-
-	bridges, err := a.l2Syncer.GetBridgesPublished(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, fmt.Errorf("error getting bridges: %w", err)
-	}
-
-	if len(bridges) == 0 {
-		a.log.Infof("no bridges consumed, no need to send a certificate from block: %d to block: %d", fromBlock, toBlock)
-		return nil, nil
-	}
-
-	claims, err := a.l2Syncer.GetClaims(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, fmt.Errorf("error getting claims: %w", err)
-	}
-	certificateParams := &types.CertificateBuildParams{
-		FromBlock: fromBlock,
-		ToBlock:   toBlock,
-		Bridges:   bridges,
-		Claims:    claims,
-		CreatedAt: uint32(time.Now().UTC().Unix()),
 	}
 
 	certificateParams, err = a.limitCertSize(certificateParams)
@@ -244,7 +218,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	a.log.Infof("building certificate for %s estimatedSize=%d",
 		certificateParams.String(), certificateParams.EstimatedSize())
 
-	certificate, err := a.buildCertificate(ctx, certificateParams, lastSentCertificateInfo)
+	certificate, err := a.buildCertificate(ctx, certificateParams, certificateParams.LastSentCertificate)
 	if err != nil {
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
@@ -275,12 +249,12 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	prevLER := common.BytesToHash(certificate.PrevLocalExitRoot[:])
 	certInfo := types.CertificateInfo{
 		Height:                certificate.Height,
-		RetryCount:            retryCount,
+		RetryCount:            certificateParams.RetryCount,
 		CertificateID:         certificateHash,
 		NewLocalExitRoot:      certificate.NewLocalExitRoot,
 		PreviousLocalExitRoot: &prevLER,
-		FromBlock:             fromBlock,
-		ToBlock:               toBlock,
+		FromBlock:             certificateParams.FromBlock,
+		ToBlock:               certificateParams.ToBlock,
 		CreatedAt:             certificateParams.CreatedAt,
 		UpdatedAt:             certificateParams.CreatedAt,
 		SignedCertificate:     string(raw),
@@ -293,7 +267,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	}
 
 	a.log.Infof("certificate: %s sent successfully for range of l2 blocks (from block: %d, to block: %d) cert:%s",
-		certInfo.ID(), fromBlock, toBlock, signedCertificate.Brief())
+		certInfo.ID(), certificateParams.FromBlock, certificateParams.ToBlock, signedCertificate.Brief())
 
 	return signedCertificate, nil
 }
@@ -831,27 +805,4 @@ func NewCertificateInfoFromAgglayerCertHeader(c *agglayer.CertificateHeader) *ty
 		res.PreviousLocalExitRoot = c.PreviousLocalExitRoot
 	}
 	return res
-}
-
-// getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
-// if there is no previosly sent certificate, it returns 0 and 0
-func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
-	if lastSentCertificateInfo == nil {
-		return 0, 0
-	}
-
-	retryCount := 0
-	lastSentBlock := lastSentCertificateInfo.ToBlock
-
-	if lastSentCertificateInfo.Status == agglayer.InError {
-		// if the last certificate was in error, we need to resend it
-		// from the block before the error
-		if lastSentCertificateInfo.FromBlock > 0 {
-			lastSentBlock = lastSentCertificateInfo.FromBlock - 1
-		}
-
-		retryCount = lastSentCertificateInfo.RetryCount + 1
-	}
-
-	return lastSentBlock, retryCount
 }
