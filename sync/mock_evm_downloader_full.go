@@ -53,7 +53,7 @@ func (_c *EVMDownloaderMock_Download_Call) Return() *EVMDownloaderMock_Download_
 }
 
 func (_c *EVMDownloaderMock_Download_Call) RunAndReturn(run func(context.Context, uint64, chan EVMBlock)) *EVMDownloaderMock_Download_Call {
-	_c.Run(run)
+	_c.Call.Return(run)
 	return _c
 }
 
@@ -115,19 +115,19 @@ func (_c *EVMDownloaderMock_GetBlockHeader_Call) RunAndReturn(run func(context.C
 }
 
 // GetEventsByBlockRange provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *EVMDownloaderMock) GetEventsByBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) []EVMBlock {
+func (_m *EVMDownloaderMock) GetEventsByBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) EVMBlocks {
 	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetEventsByBlockRange")
 	}
 
-	var r0 []EVMBlock
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []EVMBlock); ok {
+	var r0 EVMBlocks
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) EVMBlocks); ok {
 		r0 = rf(ctx, fromBlock, toBlock)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]EVMBlock)
+			r0 = ret.Get(0).(EVMBlocks)
 		}
 	}
 
@@ -154,12 +154,70 @@ func (_c *EVMDownloaderMock_GetEventsByBlockRange_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *EVMDownloaderMock_GetEventsByBlockRange_Call) Return(_a0 []EVMBlock) *EVMDownloaderMock_GetEventsByBlockRange_Call {
+func (_c *EVMDownloaderMock_GetEventsByBlockRange_Call) Return(_a0 EVMBlocks) *EVMDownloaderMock_GetEventsByBlockRange_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *EVMDownloaderMock_GetEventsByBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) []EVMBlock) *EVMDownloaderMock_GetEventsByBlockRange_Call {
+func (_c *EVMDownloaderMock_GetEventsByBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) EVMBlocks) *EVMDownloaderMock_GetEventsByBlockRange_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetLastFinalizedBlock provides a mock function with given fields: ctx
+func (_m *EVMDownloaderMock) GetLastFinalizedBlock(ctx context.Context) (*types.Header, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLastFinalizedBlock")
+	}
+
+	var r0 *types.Header
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (*types.Header, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) *types.Header); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.Header)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// EVMDownloaderMock_GetLastFinalizedBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastFinalizedBlock'
+type EVMDownloaderMock_GetLastFinalizedBlock_Call struct {
+	*mock.Call
+}
+
+// GetLastFinalizedBlock is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *EVMDownloaderMock_Expecter) GetLastFinalizedBlock(ctx interface{}) *EVMDownloaderMock_GetLastFinalizedBlock_Call {
+	return &EVMDownloaderMock_GetLastFinalizedBlock_Call{Call: _e.mock.On("GetLastFinalizedBlock", ctx)}
+}
+
+func (_c *EVMDownloaderMock_GetLastFinalizedBlock_Call) Run(run func(ctx context.Context)) *EVMDownloaderMock_GetLastFinalizedBlock_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *EVMDownloaderMock_GetLastFinalizedBlock_Call) Return(_a0 *types.Header, _a1 error) *EVMDownloaderMock_GetLastFinalizedBlock_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *EVMDownloaderMock_GetLastFinalizedBlock_Call) RunAndReturn(run func(context.Context) (*types.Header, error)) *EVMDownloaderMock_GetLastFinalizedBlock_Call {
 	_c.Call.Return(run)
 	return _c
 }

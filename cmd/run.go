@@ -254,8 +254,9 @@ func waitSignal(cancelFuncs []context.CancelFunc) {
 func newReorgDetector(
 	cfg *reorgdetector.Config,
 	client *ethclient.Client,
+	network reorgdetector.Network,
 ) *reorgdetector.ReorgDetector {
-	rd, err := reorgdetector.New(client, *cfg)
+	rd, err := reorgdetector.New(client, *cfg, network)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -301,6 +302,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.RetryAfterErrorPeriod.Duration,
 		cfg.L1InfoTreeSync.MaxRetryAttemptsAfterError,
 		l1infotreesync.FlagNone,
+		etherman.FinalizedBlock,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -368,7 +370,7 @@ func runReorgDetectorL1IfNeeded(
 		components) {
 		return nil, nil
 	}
-	rd := newReorgDetector(cfg, l1Client)
+	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
 
 	errChan := make(chan error)
 	go func() {
@@ -390,7 +392,7 @@ func runReorgDetectorL2IfNeeded(
 	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
 		return nil, nil
 	}
-	rd := newReorgDetector(cfg, l2Client)
+	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
 
 	errChan := make(chan error)
 	go func() {
@@ -501,6 +503,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		false,
+		etherman.FinalizedBlock,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -536,6 +539,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		true,
+		etherman.LatestBlock,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
