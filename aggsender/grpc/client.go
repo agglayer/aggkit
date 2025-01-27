@@ -1,49 +1,22 @@
 package grpc
 
 import (
-	"context"
-	"time"
-
 	"google.golang.org/grpc"
-
-	"github.com/agglayer/aggkit/aggsender/types"
 )
 
-const TIMEOUT = 60
-
-// Client struct holds the gRPC client connection
+// Client holds the gRPC connection and services
 type Client struct {
-	conn   *grpc.ClientConn
-	client types.AuthProofServiceClient
+	conn *grpc.ClientConn
 }
 
-// NewClient initializes and returns a new gRPC client
+// NewClient initializes and returns a new gRPC client with a 15-minute connection timeout
 func NewClient(serverAddr string) (*Client, error) {
 	conn, err := grpc.NewClient(serverAddr)
 	if err != nil {
 		return nil, err
 	}
 
-	client := types.NewAuthProofServiceClient(conn)
-	return &Client{conn: conn, client: client}, nil
-}
-
-func (c *Client) FetchAuthProof(startBlock uint64, maxEndBlock uint64) (*types.AuthProof, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*TIMEOUT)
-	defer cancel()
-
-	resp, err := c.client.FetchAuthProof(ctx, &types.FetchAuthProofRequest{
-		StartBlock:  startBlock,
-		MaxEndBlock: maxEndBlock,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &types.AuthProof{
-		Proof:      string(resp.AuthProof),
-		StartBlock: resp.StartBlock,
-		EndBlock:   resp.EndBlock,
-	}, nil
+	return &Client{conn: conn}, nil
 }
 
 // Close closes the gRPC connection

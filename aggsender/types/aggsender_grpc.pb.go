@@ -21,107 +21,107 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AuthProofService_FetchAuthProof_FullMethodName = "/types.AuthProofService/FetchAuthProof"
+	AggchainProofService_FetchAggchainProof_FullMethodName = "/types.AggchainProofService/FetchAggchainProof"
 )
 
-// AuthProofServiceClient is the client API for AuthProofService service.
+// AggchainProofServiceClient is the client API for AggchainProofService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Service for fetching auth proof.
-type AuthProofServiceClient interface {
-	// Fetches a auth-proof for a given start_block.
-	FetchAuthProof(ctx context.Context, in *FetchAuthProofRequest, opts ...grpc.CallOption) (*FetchAuthProofResponse, error)
+// Service for fetching aggchain proof.
+type AggchainProofServiceClient interface {
+	// Fetches a aggchain-proof for a given start_block.
+	FetchAggchainProof(ctx context.Context, in *FetchAggchainProofRequest, opts ...grpc.CallOption) (*FetchAggchainProofResponse, error)
 }
 
-type authProofServiceClient struct {
+type aggchainProofServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewAuthProofServiceClient(cc grpc.ClientConnInterface) AuthProofServiceClient {
-	return &authProofServiceClient{cc}
+func NewAggchainProofServiceClient(cc grpc.ClientConnInterface) AggchainProofServiceClient {
+	return &aggchainProofServiceClient{cc}
 }
 
-func (c *authProofServiceClient) FetchAuthProof(ctx context.Context, in *FetchAuthProofRequest, opts ...grpc.CallOption) (*FetchAuthProofResponse, error) {
+func (c *aggchainProofServiceClient) FetchAggchainProof(ctx context.Context, in *FetchAggchainProofRequest, opts ...grpc.CallOption) (*FetchAggchainProofResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(FetchAuthProofResponse)
-	err := c.cc.Invoke(ctx, AuthProofService_FetchAuthProof_FullMethodName, in, out, cOpts...)
+	out := new(FetchAggchainProofResponse)
+	err := c.cc.Invoke(ctx, AggchainProofService_FetchAggchainProof_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// AuthProofServiceServer is the server API for AuthProofService service.
-// All implementations must embed UnimplementedAuthProofServiceServer
+// AggchainProofServiceServer is the server API for AggchainProofService service.
+// All implementations must embed UnimplementedAggchainProofServiceServer
 // for forward compatibility.
 //
-// Service for fetching auth proof.
-type AuthProofServiceServer interface {
-	// Fetches a auth-proof for a given start_block.
-	FetchAuthProof(context.Context, *FetchAuthProofRequest) (*FetchAuthProofResponse, error)
-	mustEmbedUnimplementedAuthProofServiceServer()
+// Service for fetching aggchain proof.
+type AggchainProofServiceServer interface {
+	// Fetches a aggchain-proof for a given start_block.
+	FetchAggchainProof(context.Context, *FetchAggchainProofRequest) (*FetchAggchainProofResponse, error)
+	mustEmbedUnimplementedAggchainProofServiceServer()
 }
 
-// UnimplementedAuthProofServiceServer must be embedded to have
+// UnimplementedAggchainProofServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedAuthProofServiceServer struct{}
+type UnimplementedAggchainProofServiceServer struct{}
 
-func (UnimplementedAuthProofServiceServer) FetchAuthProof(context.Context, *FetchAuthProofRequest) (*FetchAuthProofResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FetchAuthProof not implemented")
+func (UnimplementedAggchainProofServiceServer) FetchAggchainProof(context.Context, *FetchAggchainProofRequest) (*FetchAggchainProofResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method FetchAggchainProof not implemented")
 }
-func (UnimplementedAuthProofServiceServer) mustEmbedUnimplementedAuthProofServiceServer() {}
-func (UnimplementedAuthProofServiceServer) testEmbeddedByValue()                          {}
+func (UnimplementedAggchainProofServiceServer) mustEmbedUnimplementedAggchainProofServiceServer() {}
+func (UnimplementedAggchainProofServiceServer) testEmbeddedByValue()                              {}
 
-// UnsafeAuthProofServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to AuthProofServiceServer will
+// UnsafeAggchainProofServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to AggchainProofServiceServer will
 // result in compilation errors.
-type UnsafeAuthProofServiceServer interface {
-	mustEmbedUnimplementedAuthProofServiceServer()
+type UnsafeAggchainProofServiceServer interface {
+	mustEmbedUnimplementedAggchainProofServiceServer()
 }
 
-func RegisterAuthProofServiceServer(s grpc.ServiceRegistrar, srv AuthProofServiceServer) {
-	// If the following call pancis, it indicates UnimplementedAuthProofServiceServer was
+func RegisterAggchainProofServiceServer(s grpc.ServiceRegistrar, srv AggchainProofServiceServer) {
+	// If the following call pancis, it indicates UnimplementedAggchainProofServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&AuthProofService_ServiceDesc, srv)
+	s.RegisterService(&AggchainProofService_ServiceDesc, srv)
 }
 
-func _AuthProofService_FetchAuthProof_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FetchAuthProofRequest)
+func _AggchainProofService_FetchAggchainProof_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(FetchAggchainProofRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AuthProofServiceServer).FetchAuthProof(ctx, in)
+		return srv.(AggchainProofServiceServer).FetchAggchainProof(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AuthProofService_FetchAuthProof_FullMethodName,
+		FullMethod: AggchainProofService_FetchAggchainProof_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AuthProofServiceServer).FetchAuthProof(ctx, req.(*FetchAuthProofRequest))
+		return srv.(AggchainProofServiceServer).FetchAggchainProof(ctx, req.(*FetchAggchainProofRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// AuthProofService_ServiceDesc is the grpc.ServiceDesc for AuthProofService service.
+// AggchainProofService_ServiceDesc is the grpc.ServiceDesc for AggchainProofService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var AuthProofService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "types.AuthProofService",
-	HandlerType: (*AuthProofServiceServer)(nil),
+var AggchainProofService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "types.AggchainProofService",
+	HandlerType: (*AggchainProofServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "FetchAuthProof",
-			Handler:    _AuthProofService_FetchAuthProof_Handler,
+			MethodName: "FetchAggchainProof",
+			Handler:    _AggchainProofService_FetchAggchainProof_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

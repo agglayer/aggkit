@@ -4,29 +4,29 @@ syntax = "proto3";
 package types;
 option go_package = "github.com/agglayer/aggkit/aggsender/types";
 
-// Service for fetching auth proof.
-service AuthProofService {
-  // Fetches a auth-proof for a given start_block.
-  rpc FetchAuthProof(FetchAuthProofRequest) returns (FetchAuthProofResponse);
+// Service for fetching aggchain proof.
+service AggchainProofService {
+  // Fetches a aggchain-proof for a given start_block.
+  rpc FetchAggchainProof(FetchAggchainProofRequest) returns (FetchAggchainProofResponse);
 }
 
-message FetchAuthProofRequest {
-  // The start block for which the auth proof is requested.
+message FetchAggchainProofRequest {
+  // The start block for which the aggchain proof is requested.
   uint64 start_block = 1;
-  // The max end block for which the auth proof is requested.
+  // The max end block for which the aggchain proof is requested.
   uint64 max_end_block = 2;
 }
 
-message FetchAuthProofResponse {
-  // The auth proof.
-  // TODO - Define the type of auth proof.
-  bytes auth_proof = 1;
+message FetchAggchainProofResponse {
+  // The aggchain proof.
+  // TODO - Define the type of aggchain proof.
+  bytes aggchain_proof = 1;
   uint64 start_block = 2;
   uint64 end_block = 3;
 }
 
-// Error message returned when an error occurs during auth proof request.
-message FetchAuthProofError {
+// Error message returned when an error occurs during aggchain proof request.
+message FetchAggchainProofError {
   // The error message as bytes.
   bytes error = 1;
   // The kind of error that occurred.

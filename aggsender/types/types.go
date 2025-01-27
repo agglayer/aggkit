@@ -55,7 +55,7 @@ type Logger interface {
 	Debugf(format string, args ...interface{})
 }
 
-type AuthProof struct {
+type AggchainProof struct {
 	StartBlock uint64
 	EndBlock   uint64
 	Proof      string
