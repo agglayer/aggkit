@@ -44,7 +44,39 @@ It is important to mention that, in the case of resending the certificate, the c
 
 Suppose the previously sent certificate was not marked as `InError`, or `Settled` on the `Agglayer`. In that case, we can not send/resend the certificate, even though a new epoch event is handled.
 
-(TBD sequence diagram)
+The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer`.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant L1RPC as L1 Network
+    participant L2RPC as L2 Network
+    participant Bridge as Bridge Smart Contract
+    participant AggLayer
+    participant L2BridgeSyncer
+    participant L1InfoTreeSync
+    participant Aggsender
+
+    User->>L1RPC: bridge (L1->L2)
+    L1RPC->>Bridge: bridgeAsset
+    Bridge->>AggLayer: updateL1InfoTree
+    Bridge->>Bridge: auto claim
+
+    User->>L2RPC: bridge (L2->L1)
+    L2RPC->>L2BridgeSyncer: bridgeAsset emits bridgeEvent
+
+    User->>L2RPC: claimAsset
+    L2RPC->>L1InfoTreeSync: claimEvent
+
+    AggSender->>AggSender: wait for epoch to elapse
+    AggSender->>L1InfoTreeSync: check latest sent certificate
+    AggSender->>L2BridgeSyncer: get published bridges
+    AggSender->>L2BridgeSyncer: get imported bridge exits
+    Note right of AggSender: generate a Merkle proof for each importedBridgee
+    AggSender->>L1InfoTreeSync: get claims
+    AggSender->>L1InfoTreeSync: get l1 info tree merkle proof from index to root
+    AggSender->>AggLayer: send certificate
+```
 
 ## Certificate data
 
