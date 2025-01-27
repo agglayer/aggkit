@@ -74,6 +74,7 @@ type CertificateInfo struct {
 	CreatedAt             uint32                     `meddler:"created_at"`
 	UpdatedAt             uint32                     `meddler:"updated_at"`
 	SignedCertificate     string                     `meddler:"signed_certificate"`
+	AuthProof             string                     `meddler:"auth_proof"`
 }
 
 func (c *CertificateInfo) String() string {
@@ -95,7 +96,8 @@ func (c *CertificateInfo) String() string {
 		"FromBlock: %d "+
 		"ToBlock: %d "+
 		"CreatedAt: %s "+
-		"UpdatedAt: %s",
+		"UpdatedAt: %s "+
+		"AuthProof: %s ",
 		c.Height,
 		c.RetryCount,
 		c.CertificateID.String(),
@@ -106,6 +108,7 @@ func (c *CertificateInfo) String() string {
 		c.ToBlock,
 		time.Unix(int64(c.CreatedAt), 0),
 		time.Unix(int64(c.UpdatedAt), 0),
+		c.AuthProof,
 	)
 }
 
