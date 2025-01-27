@@ -47,5 +47,7 @@ Outputs = ["stderr"]
        
 [AggSender]
 SaveCertificatesToFilesPath = "{{.zkevm_path_rw_data}}/"
+CheckStatusCertificateInterval = "1s"
+
 
 

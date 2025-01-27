@@ -147,14 +147,40 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 
 // sendCertificates sends certificates to the aggLayer
 func (a *AggSender) sendCertificates(ctx context.Context) {
+	var checkCertChannel <-chan time.Time
+	if a.cfg.CheckStatusCertificateInterval.Duration > 0 {
+		checkCertTicker := time.NewTicker(a.cfg.CheckStatusCertificateInterval.Duration)
+		defer checkCertTicker.Stop()
+		checkCertChannel = checkCertTicker.C
+	} else {
+		a.log.Infof("CheckStatusCertificateInterval is 0, so we are not going to check the certificate status")
+		checkCertChannel = make(chan time.Time)
+	}
+
 	chEpoch := a.epochNotifier.Subscribe("aggsender")
 	a.status.Status = types.StatusCertificateStage
 	for {
 		select {
+		case <-checkCertChannel:
+			a.log.Debugf("Checking perodical certificates status (%s)",
+				a.cfg.CheckCertConfigBriefString())
+			checkResult := a.checkPendingCertificatesStatus(ctx)
+			if !checkResult.thereArePendingCerts && checkResult.appearsNewInErrorCert {
+				if a.cfg.RetryCertAfterInError {
+					a.log.Infof("Appears an InError cert sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
+					_, err := a.sendCertificate(ctx)
+					a.status.SetLastError(err)
+					if err != nil {
+						a.log.Error(err)
+					}
+				} else {
+					a.log.Infof("Appears an InError cert but skipping send cert because RetryCertInmediatlyAfterInError is false")
+				}
+			}
 		case epoch := <-chEpoch:
 			a.log.Infof("Epoch received: %s", epoch.String())
-			thereArePendingCerts := a.checkPendingCertificatesStatus(ctx)
-			if !thereArePendingCerts {
+			checkResult := a.checkPendingCertificatesStatus(ctx)
+			if !checkResult.thereArePendingCerts {
 				_, err := a.sendCertificate(ctx)
 				a.status.SetLastError(err)
 				if err != nil {
@@ -658,45 +684,53 @@ func (a *AggSender) signCertificate(certificate *agglayer.Certificate) (*agglaye
 	}, nil
 }
 
+type checkCertResult struct {
+	// thereArePendingCerts means that there are still pending certificates
+	thereArePendingCerts bool
+	// appearsNewInErrorCert means than in this run a cert pass from xxx to InError
+	appearsNewInErrorCert bool
+}
+
 // checkPendingCertificatesStatus checks the status of pending certificates
 // and updates in the storage if it changed on agglayer
 // It returns:
 // bool -> if there are pending certificates
-func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) bool {
+func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCertResult {
 	pendingCertificates, err := a.storage.GetCertificatesByStatus(agglayer.NonSettledStatuses)
 	if err != nil {
 		a.log.Errorf("error getting pending certificates: %w", err)
-		return true
+		return checkCertResult{thereArePendingCerts: true, appearsNewInErrorCert: false}
 	}
 
 	a.log.Debugf("checkPendingCertificatesStatus num of pendingCertificates: %d", len(pendingCertificates))
 	thereArePendingCerts := false
-
-	for _, certificate := range pendingCertificates {
-		certificateHeader, err := a.aggLayerClient.GetCertificateHeader(certificate.CertificateID)
+	appearsNewInErrorCert := false
+	for _, certificateLocal := range pendingCertificates {
+		certificateHeader, err := a.aggLayerClient.GetCertificateHeader(certificateLocal.CertificateID)
 		if err != nil {
 			a.log.Errorf("error getting certificate header of %s from agglayer: %w",
-				certificate.ID(), err)
-			return true
+				certificateLocal.ID(), err)
+			return checkCertResult{thereArePendingCerts: true, appearsNewInErrorCert: false}
 		}
 
 		a.log.Debugf("aggLayerClient.GetCertificateHeader status [%s] of certificate %s  elapsed time:%s",
 			certificateHeader.Status,
 			certificateHeader.ID(),
-			certificate.ElapsedTimeSinceCreation())
+			certificateLocal.ElapsedTimeSinceCreation())
+		appearsNewInErrorCert = appearsNewInErrorCert || (!certificateLocal.Status.IsInError() && certificateHeader.Status.IsInError())
 
-		if err := a.updateCertificateStatus(ctx, certificate, certificateHeader); err != nil {
+		if err := a.updateCertificateStatus(ctx, certificateLocal, certificateHeader); err != nil {
 			a.log.Errorf("error updating certificate %s status in storage: %w", certificateHeader.String(), err)
-			return true
+			return checkCertResult{thereArePendingCerts: true, appearsNewInErrorCert: false}
 		}
 
-		if !certificate.IsClosed() {
+		if !certificateLocal.IsClosed() {
 			a.log.Infof("certificate %s is still pending, elapsed time:%s ",
-				certificateHeader.ID(), certificate.ElapsedTimeSinceCreation())
+				certificateHeader.ID(), certificateLocal.ElapsedTimeSinceCreation())
 			thereArePendingCerts = true
 		}
 	}
-	return thereArePendingCerts
+	return checkCertResult{thereArePendingCerts: thereArePendingCerts, appearsNewInErrorCert: appearsNewInErrorCert}
 }
 
 // updateCertificate updates the certificate status in the storage
