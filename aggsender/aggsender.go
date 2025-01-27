@@ -288,8 +288,10 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	}
 
 	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
-		a.log.Warnf("rate limit reached , next cert can be submitted after %s. Rate:%s", rateLimitSleepTime.String(), a.rateLimiter.String())
-		return nil, fmt.Errorf("rate limit reached, next cert can be submitted after %s. Rate:%s", rateLimitSleepTime.String(), a.rateLimiter.String())
+		a.log.Warnf("rate limit reached , next cert %s can be submitted after %s so sleeping. Rate:%s",
+			certificate.ID(),
+			rateLimitSleepTime.String(), a.rateLimiter.String())
+		time.Sleep(*rateLimitSleepTime)
 	}
 	a.saveCertificateToFile(signedCertificate)
 	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
@@ -737,7 +739,8 @@ func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCer
 			certificateHeader.Status,
 			certificateHeader.ID(),
 			certificateLocal.ElapsedTimeSinceCreation())
-		appearsNewInErrorCert = appearsNewInErrorCert || (!certificateLocal.Status.IsInError() && certificateHeader.Status.IsInError())
+		appearsNewInErrorCert = appearsNewInErrorCert ||
+			(!certificateLocal.Status.IsInError() && certificateHeader.Status.IsInError())
 
 		if err := a.updateCertificateStatus(ctx, certificateLocal, certificateHeader); err != nil {
 			a.log.Errorf("error updating certificate %s status in storage: %w", certificateHeader.String(), err)

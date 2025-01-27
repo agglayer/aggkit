@@ -47,7 +47,7 @@ type Config struct {
 	EnableRPC bool `mapstructure:"EnableRPC"`
 	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
 	CheckStatusCertificateInterval types.Duration `mapstructure:"CheckStatusCertificateInterval"`
-	//RetryCertAfterInError when a cert pass to 'InError'
+	// RetryCertAfterInError when a cert pass to 'InError'
 	// state the AggSender will retry to send it inmediatly
 	RetryCertAfterInError bool `mapstructure:"RetryCertAfterInError"`
 	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
