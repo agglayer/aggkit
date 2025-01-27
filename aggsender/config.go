@@ -56,5 +56,13 @@ func (c Config) String() string {
 		"URLRPCL2: " + c.URLRPCL2 + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
-		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n"
+		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n" +
+		"MaxRetriesStoreCertificate: " + fmt.Sprintf("%d", c.MaxRetriesStoreCertificate) + "\n" +
+		"DelayBeetweenRetries: " + c.DelayBeetweenRetries.String() + "\n" +
+		"KeepCertificatesHistory: " + fmt.Sprintf("%t", c.KeepCertificatesHistory) + "\n" +
+		"MaxCertSize: " + fmt.Sprintf("%d", c.MaxCertSize) + "\n" +
+		"BridgeMetadataAsHash: " + fmt.Sprintf("%t", c.BridgeMetadataAsHash) + "\n" +
+		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
+		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
+		"AggchainProofClientURL: " + c.AggchainProofClientURL + "\n"
 }

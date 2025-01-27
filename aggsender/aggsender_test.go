@@ -53,7 +53,15 @@ func TestConfigString(t *testing.T) {
 		"URLRPCL2: http://l2.rpc.url\n" +
 		"BlockFinality: latestBlock\n" +
 		"EpochNotificationPercentage: 50\n" +
-		"SaveCertificatesToFilesPath: /path/to/certificates\n"
+		"SaveCertificatesToFilesPath: /path/to/certificates\n" +
+		"MaxRetriesStoreCertificate: 0\n" +
+		"DelayBeetweenRetries: 0s\n" +
+		"KeepCertificatesHistory: false\n" +
+		"MaxCertSize: 0\n" +
+		"BridgeMetadataAsHash: false\n" +
+		"DryRun: false\n" +
+		"EnableRPC: false\n" +
+		"AggkitProverURL: \n"
 
 	require.Equal(t, expected, config.String())
 }
