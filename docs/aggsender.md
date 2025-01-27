@@ -97,8 +97,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 |-------------------------------|--------------------|---------------------------------------------------------------------------------------------------------------|
 | StoragePath                   | string             | Path where to store Aggsender DB                                                                              |
 | AggLayerURL                   | string             | URL to Agglayer                                                                                               |
-| BlockGetInterval              |                    | Deprecated (CDK-616)                                                                                          |
-| CheckSettledInterval          |                    | Deprecated (CDK-616)                                                                                          |
 | AggsenderPrivateKey           | KeystoreFileConfig | Private key used to sign the certificate on the Aggsender before sending it to the Agglayer. Must be configured the same as on Agglayer. |
 | URLRPCL2                      | string             | L2 RPC                                                                                                       |
 | BlockFinality                 | string             | Block type to calculate epochs on L1.                                                                         |
@@ -107,6 +105,10 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | MaxRetriesStoreCertificate    | int                | Number of retries if Aggsender fails to store certificates on DB                                              |
 | DelayBeetweenRetries          | Duration           | Initial status check delay <br> Store certificate on DB delay                                                 |
 | KeepCertificatesHistory       | bool               | Instead of deleting them, discarded certificates are moved to certificate_info_history table                   |
+| MaxCertSize | uint | the maximum size of the certificate (the emitted certificate cannot be bigger that this size) 0 is infinite
+| BridgeMetadataAsHash | bool | A flag indicating to import the bridge metadata as hash
+| DryRun | bool | A flag to enable the dry-run mode. In this mode the AggSender will not send the certificates to the Agglayer
+| EnableRPC | bool | A flag to enable the Aggsender's RPC layer
 
 ## Use Cases
 
