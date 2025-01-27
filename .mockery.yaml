@@ -34,6 +34,9 @@ packages:
   github.com/agglayer/aggkit/aggsender/db:
     config:
       all: true
+  github.com/agglayer/aggkit/aggsender/grpc:
+    config:
+      all: true
   github.com/agglayer/aggkit/aggsender/rpc:
     config:
       all: true
