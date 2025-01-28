@@ -116,6 +116,41 @@ Implements `ChainSender` using Ethereum clients and transaction management.
 
 ---
 
+## Configuration
+
+| Name                                | Type               | Description                                                                                                     |
+|-------------------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------|
+| TargetChainType                     | TargetChainType    | The type of target chain (e.g., `EVM`).                                                                         |
+| URLRPCL1                            | string             | RPC URL for Layer 1.                                                                                            |
+| BlockFinality                       | string             | The status of blocks to query for syncing. <br> Possible values: `LatestBlock`, `SafeBlock`, `PendingBlock`, `FinalizedBlock`, `EarliestBlock`. |
+| WaitPeriodNextGER                   | Duration           | Time interval to wait before checking the next Global Exit Root (GER).                                          |
+| EVMSender                           | EVMConfig          | Configuration for the EVM Sender module.                                                                        |
+| EVMSender.GlobalExitRootL2          | string             | Address of the Global Exit Root on Layer 2.                                                                     |
+| EVMSender.URLRPCL2                  | string             | RPC URL for Layer 2.                                                                                            |
+| EVMSender.GasOffset                 | int                | Offset for gas calculations in Layer 2 transactions.                                                            |
+| EVMSender.WaitPeriodMonitorTx       | Duration           | Time interval to wait before monitoring Layer 2 transactions.                                                   |
+| EVMSender.EthTxManager              | EthTxManagerConfig | Configuration for the Ethereum Transaction Manager used to send Layer 2 transactions.                           |
+| EthTxManager.FrequencyToMonitorTxs  | Duration           | Frequency at which pending transactions are monitored.                                                          |
+| EthTxManager.WaitTxToBeMined        | Duration           | Time to wait for a transaction to be mined.                                                                     |
+| EthTxManager.GetReceiptMaxTime      | Duration           | Maximum time to wait for a transaction receipt.                                                                 |
+| EthTxManager.GetReceiptWaitInterval | Duration           | Interval between attempts to fetch a transaction receipt.                                                       |
+| EthTxManager.PrivateKeys            | array              | List of private keys for signing transactions. Each entry contains `Path` and `Password`.                       |
+| EthTxManager.ForcedGas              | int                | Fixed gas to be used if specified; otherwise, dynamic gas calculation will be used.                             |
+| EthTxManager.GasPriceMarginFactor   | float              | Factor to apply as a margin on the gas price.                                                                   |
+| EthTxManager.MaxGasPriceLimit       | int                | Maximum gas price limit.                                                                                        |
+| EthTxManager.StoragePath            | string             | Path where the Ethereum Transaction Manager's SQLite database is stored.                                        |
+| EthTxManager.ReadPendingL1Txs       | bool               | Whether to read pending Layer 1 transactions.                                                                   |
+| EthTxManager.SafeStatusL1Blocks     | int                | Number of blocks considered safe for status determination.                                                      |
+| EthTxManager.FinalizedStatusL1Blocks| int                | Number of blocks considered finalized for status determination.                                                 |
+| Etherman.URL                        | string             | URL for Layer 2.                                                                                                |
+| Etherman.MultiGasProvider           | bool               | Indicates if multiple gas providers are used.                                                                   |
+| Etherman.L1ChainID                  | int                | Although the field name is `L1ChainID`, it is used for the Layer 2 Chain ID. A value of `0` indicates it will be set at runtime using the `getChainID` RPC method. |
+| Etherman.HTTPHeaders                | array              | List of HTTP headers for Layer 2 RPC requests.                                                                  |
+
+---
+
+Note: An example configuration file can be found in `default.go`.
+
 ## Summary
 
 The **AggOracle** component automates the propagation of GERs from L1 to L2, enabling bridging across networks.
