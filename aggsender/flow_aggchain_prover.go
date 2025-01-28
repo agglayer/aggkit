@@ -37,7 +37,7 @@ func newAggchainProverFlow(log types.Logger,
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate
-// this funciton is the implementation of the FlowManager interface
+// this function is the implementation of the FlowManager interface
 // What differentiates this function from the regular PP flow is that,
 // if the last sent certificate is in error, we need to resend the exact same certificate
 func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
@@ -63,13 +63,15 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		}
 
 		if lastSentCertificateInfo.AuthProof == "" {
-			authProof, err := a.aggchainProofClient.FetchAggchainProof(lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock)
+			authProof, err := a.aggchainProofClient.FetchAggchainProof(lastSentCertificateInfo.FromBlock,
+				lastSentCertificateInfo.ToBlock)
 			if err != nil {
 				return nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d : %w",
 					lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, err)
 			}
 
-			a.log.Infof("InError certificate did not have auth proof, so got it from the aggchain prover for range %d : %d. Proof: %s",
+			a.log.Infof("InError certificate did not have auth proof, "+
+				"so got it from the aggchain prover for range %d : %d. Proof: %s",
 				lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, authProof.Proof)
 
 			lastSentCertificateInfo.AuthProof = authProof.Proof

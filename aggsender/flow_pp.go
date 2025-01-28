@@ -59,7 +59,7 @@ func (f *flowManager) getBridgesAndClaims(
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate
-// this funciton is the implementation of the FlowManager interface
+// this function is the implementation of the FlowManager interface
 func (f *flowManager) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
 	if err != nil {
@@ -99,8 +99,9 @@ func (f *flowManager) GetCertificateBuildParams(ctx context.Context) (*types.Cer
 }
 
 // BuildCertificate builds a certificate based on the buildParams
-// this funciton is the implementation of the FlowManager interface
-func (f *flowManager) BuildCertificate(ctx context.Context, buildParams *types.CertificateBuildParams) (*agglayer.Certificate, error) {
+// this function is the implementation of the FlowManager interface
+func (f *flowManager) BuildCertificate(ctx context.Context,
+	buildParams *types.CertificateBuildParams) (*agglayer.Certificate, error) {
 	certificateParams, err := f.limitCertSize(buildParams)
 	if err != nil {
 		return nil, fmt.Errorf("error limitCertSize: %w", err)

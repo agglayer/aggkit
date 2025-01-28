@@ -848,6 +848,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			if tt.lastSettleCertificateInfoCall || tt.lastSettleCertificateInfo != nil || tt.lastSettleCertificateInfoError != nil {
 				storageMock.EXPECT().GetCertificateByHeight(mock.Anything).Return(tt.lastSettleCertificateInfo, tt.lastSettleCertificateInfoError).Once()
 			}
+
 			height, previousLER, err := flow.getNextHeightAndPreviousLER(tt.lastSentCertificateInfo)
 			if tt.expectedError {
 				require.Error(t, err)
@@ -865,17 +866,11 @@ func TestGetBridgesAndClaims(t *testing.T) {
 
 	ctx := context.Background()
 
-	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-	fm := &flowManager{
-		l2Syncer: mockL2Syncer,
-		log:      log.WithFields("flowManager", "TestGetBridgesAndClaims"),
-	}
-
 	testCases := []struct {
 		name            string
 		fromBlock       uint64
 		toBlock         uint64
-		mockFn          func()
+		mockFn          func(*mocks.L2BridgeSyncer)
 		expectedBridges []bridgesync.Bridge
 		expectedClaims  []bridgesync.Claim
 		expectedError   string
@@ -884,7 +879,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "error getting bridges",
 			fromBlock: 1,
 			toBlock:   10,
-			mockFn: func() {
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "some error",
@@ -893,7 +888,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "no bridges consumed",
 			fromBlock: 1,
 			toBlock:   10,
-			mockFn: func() {
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
 			},
 			expectedBridges: nil,
@@ -903,7 +898,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "error getting claims",
 			fromBlock: 1,
 			toBlock:   10,
-			mockFn: func() {
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
 			},
@@ -913,7 +908,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "no claims consumed",
 			fromBlock: 1,
 			toBlock:   10,
-			mockFn: func() {
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
 			},
@@ -924,7 +919,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "success",
 			fromBlock: 1,
 			toBlock:   10,
-			mockFn: func() {
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
 			},
@@ -936,8 +931,15 @@ func TestGetBridgesAndClaims(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			mockL2Syncer.ExpectedCalls = nil
-			tc.mockFn()
+			t.Parallel()
+
+			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
+			fm := &flowManager{
+				l2Syncer: mockL2Syncer,
+				log:      log.WithFields("flowManager", "TestGetBridgesAndClaims"),
+			}
+
+			tc.mockFn(mockL2Syncer)
 
 			bridges, claims, err := fm.getBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock)
 			if tc.expectedError != "" {
@@ -956,26 +958,22 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 
 	ctx := context.Background()
 
-	mockStorage := mocks.NewAggSenderStorage(t)
-	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-	ppFlow := newPPFlow(log.WithFields("flowManager", "Test_PPFlow_GetCertificateBuildParams"), Config{}, mockStorage, nil, mockL2Syncer)
-
 	testCases := []struct {
 		name           string
-		mockFn         func()
+		mockFn         func(*mocks.AggSenderStorage, *mocks.L2BridgeSyncer)
 		expectedParams *types.CertificateBuildParams
 		expectedError  string
 	}{
 		{
 			name: "error getting last processed block",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage, mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(0), errors.New("some error"))
 			},
 			expectedError: "error getting last processed block from l2: some error",
 		},
 		{
 			name: "error getting last sent certificate",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage, mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(nil, errors.New("some error"))
 			},
@@ -983,7 +981,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 		},
 		{
 			name: "no new blocks to send a certificate",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage, mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 10}, nil)
 			},
@@ -991,7 +989,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 		},
 		{
 			name: "error getting bridges and claims",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage, mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return(nil, errors.New("some error"))
@@ -1000,7 +998,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 		},
 		{
 			name: "success",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage, mockL2Syncer *mocks.L2BridgeSyncer) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
@@ -1021,9 +1019,13 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			mockL2Syncer.ExpectedCalls = nil
-			mockStorage.ExpectedCalls = nil
-			tc.mockFn()
+			t.Parallel()
+
+			mockStorage := mocks.NewAggSenderStorage(t)
+			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
+			ppFlow := newPPFlow(log.WithFields("flowManager", "Test_PPFlow_GetCertificateBuildParams"), Config{}, mockStorage, nil, mockL2Syncer)
+
+			tc.mockFn(mockStorage, mockL2Syncer)
 
 			params, err := ppFlow.GetCertificateBuildParams(ctx)
 			if tc.expectedError != "" {
