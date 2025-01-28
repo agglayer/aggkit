@@ -109,28 +109,6 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	return buildParams, nil
 }
 
-// ppFlow is a struct that holds the logic for the regular pessimistic proof flow
-type ppFlow struct {
-	*flowManager
-}
-
-// newPPFlow returns a new instance of the ppFlow
-func newPPFlow(log types.Logger,
-	cfg Config,
-	storage db.AggSenderStorage,
-	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	l2Syncer types.L2BridgeSyncer) *ppFlow {
-	return &ppFlow{
-		flowManager: &flowManager{
-			log:              log,
-			cfg:              cfg,
-			l2Syncer:         l2Syncer,
-			storage:          storage,
-			l1InfoTreeSyncer: l1InfoTreeSyncer,
-		},
-	}
-}
-
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
 // if there is no previosly sent certificate, it returns 0 and 0
 func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {

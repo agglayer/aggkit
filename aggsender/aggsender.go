@@ -86,9 +86,9 @@ func New(
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}
 
-		flowManager = newAggchainProverFlow(logger, cfg, aggchainProofClient, storage, nil, l2Syncer)
+		flowManager = newAggchainProverFlow(logger, cfg, aggchainProofClient, storage, l1InfoTreeSyncer, l2Syncer)
 	} else {
-		flowManager = newPPFlow(logger, cfg, storage, nil, l2Syncer)
+		flowManager = newPPFlow(logger, cfg, storage, l1InfoTreeSyncer, l2Syncer)
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
