@@ -414,3 +414,25 @@ func (f *flowManager) getNextHeightAndPreviousLER(
 	return 0, zeroLER, fmt.Errorf("last certificate %s has an unknown status: %s",
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 }
+
+// ppFlow is a struct that holds the logic for the regular pessimistic proof flow
+type ppFlow struct {
+	*flowManager
+}
+
+// newPPFlow returns a new instance of the ppFlow
+func newPPFlow(log types.Logger,
+	cfg Config,
+	storage db.AggSenderStorage,
+	l1InfoTreeSyncer types.L1InfoTreeSyncer,
+	l2Syncer types.L2BridgeSyncer) *ppFlow {
+	return &ppFlow{
+		flowManager: &flowManager{
+			log:              log,
+			cfg:              cfg,
+			l2Syncer:         l2Syncer,
+			storage:          storage,
+			l1InfoTreeSyncer: l1InfoTreeSyncer,
+		},
+	}
+}
