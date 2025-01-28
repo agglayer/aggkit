@@ -19,28 +19,26 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 	ctx := context.Background()
 
-	mockStorage := mocks.NewAggSenderStorage(t)
-	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-	mockAggchainProofClient := mocks.NewAggchainProofClientInterface(t)
-	aggchainFlow := newAggchainProverFlow(log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
-		Config{}, mockAggchainProofClient, mockStorage, nil, mockL2Syncer)
-
 	testCases := []struct {
 		name           string
-		mockFn         func()
+		mockFn         func(*mocks.AggSenderStorage, *mocks.L2BridgeSyncer, *mocks.AggchainProofClientInterface)
 		expectedParams *types.CertificateBuildParams
 		expectedError  string
 	}{
 		{
 			name: "error getting last sent certificate",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockClient *mocks.AggchainProofClientInterface) {
 				mockStorage.On("GetLastSentCertificate").Return(nil, errors.New("some error"))
 			},
 			expectedError: "some error",
 		},
 		{
 			name: "resend InError certificate with no bridges",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockClient *mocks.AggchainProofClientInterface) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
@@ -52,7 +50,9 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		},
 		{
 			name: "resend InError certificate with no auth proof",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockClient *mocks.AggchainProofClientInterface) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
@@ -60,7 +60,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-				mockAggchainProofClient.On("FetchAggchainProof", uint64(1), uint64(10)).Return(&types.AggchainProof{Proof: "some-proof"}, nil)
+				mockClient.On("FetchAggchainProof", uint64(1), uint64(10)).Return(&types.AggchainProof{Proof: "some-proof"}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:  1,
@@ -78,7 +78,9 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		},
 		{
 			name: "resend InError certificate with auth proof",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockClient *mocks.AggchainProofClientInterface) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
@@ -104,23 +106,27 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		},
 		{
 			name: "error fetching aggchain proof for new certificate",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockClient *mocks.AggchainProofClientInterface) {
 				mockStorage.On("GetLastSentCertificate").Return(nil, nil).Twice()
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-				mockAggchainProofClient.On("FetchAggchainProof", uint64(1), uint64(10)).Return(nil, errors.New("some error"))
+				mockClient.On("FetchAggchainProof", uint64(1), uint64(10)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
 		},
 		{
 			name: "success fetching aggchain proof for new certificate",
-			mockFn: func() {
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockClient *mocks.AggchainProofClientInterface) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil).Twice()
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-				mockAggchainProofClient.On("FetchAggchainProof", uint64(6), uint64(10)).Return(&types.AggchainProof{Proof: "some-proof"}, nil)
+				mockClient.On("FetchAggchainProof", uint64(6), uint64(10)).Return(&types.AggchainProof{Proof: "some-proof"}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
@@ -137,10 +143,15 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			mockStorage.ExpectedCalls = nil
-			mockL2Syncer.ExpectedCalls = nil
-			mockAggchainProofClient.ExpectedCalls = nil
-			tc.mockFn()
+			t.Parallel()
+
+			mockStorage := mocks.NewAggSenderStorage(t)
+			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
+			mockAggchainProofClient := mocks.NewAggchainProofClientInterface(t)
+			aggchainFlow := newAggchainProverFlow(log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
+				Config{}, mockAggchainProofClient, mockStorage, nil, mockL2Syncer)
+
+			tc.mockFn(mockStorage, mockL2Syncer, mockAggchainProofClient)
 
 			params, err := aggchainFlow.GetCertificateBuildParams(ctx)
 			if tc.expectedError != "" {
