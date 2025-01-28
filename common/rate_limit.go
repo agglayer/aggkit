@@ -41,8 +41,8 @@ type RateLimit struct {
 	bucket []time.Time
 }
 
-func NewRateLimit(cfg RateLimitConfig) RateLimit {
-	return RateLimit{
+func NewRateLimit(cfg RateLimitConfig) *RateLimit {
+	return &RateLimit{
 		cfg: cfg,
 	}
 }

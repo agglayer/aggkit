@@ -98,11 +98,8 @@ func New(
 }
 
 func createRateLimit(cfg Config) *aggkitcommon.RateLimit {
-	if cfg.MaxSubmitCertificateRate.Enabled() {
-		rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
-		return &rateLimit
-	}
-	return nil
+	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
+	return rateLimit
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {

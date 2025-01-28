@@ -17,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -929,8 +930,8 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			}
 
 			ctx := context.TODO()
-			thereArePendingCerts := aggSender.checkPendingCertificatesStatus(ctx)
-			require.Equal(t, tt.expectedError, thereArePendingCerts)
+			checkResult := aggSender.checkPendingCertificatesStatus(ctx)
+			require.Equal(t, tt.expectedError, checkResult.thereArePendingCerts)
 			mockAggLayerClient.AssertExpectations(t)
 			mockStorage.AssertExpectations(t)
 		})
@@ -968,6 +969,7 @@ func TestSendCertificate(t *testing.T) {
 				log:          log.WithFields("aggsender", 1),
 				cfg:          Config{MaxRetriesStoreCertificate: 1},
 				sequencerKey: cfg.sequencerKey,
+				rateLimiter:  aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 			}
 			mockStorage          *mocks.AggSenderStorage
 			mockL2Syncer         *mocks.L2BridgeSyncer
@@ -1666,6 +1668,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
 		sequencerKey:     privateKey,
 		cfg:              Config{},
+		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
 	mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
