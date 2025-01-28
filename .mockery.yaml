@@ -43,6 +43,10 @@ packages:
   github.com/agglayer/aggkit/aggsender/types:
     config:
       all: true
+  github.com/agglayer/aggkit/aggsender:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true
   github.com/agglayer/aggkit/bridgesync:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
