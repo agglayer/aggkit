@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Client holds the gRPC connection and services
@@ -11,7 +12,10 @@ type Client struct {
 
 // NewClient initializes and returns a new gRPC client
 func NewClient(serverAddr string) (*Client, error) {
-	conn, err := grpc.NewClient(serverAddr)
+	// TODO - Check if we need to use this
+	var opts []grpc.DialOption
+	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(serverAddr, opts...)
 	if err != nil {
 		return nil, err
 	}

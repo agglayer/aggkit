@@ -15,22 +15,22 @@ type MockAggchainProofServiceClient struct {
 	mock.Mock
 }
 
-func TestFetchAggchainProof_Success(t *testing.T) {
+func TestGenerateAggchainProof_Success(t *testing.T) {
 	mockClient := mocks.NewAggchainProofServiceClient(t)
 	client := &AggchainProofClient{client: mockClient}
 
-	expectedResponse := &types.FetchAggchainProofResponse{
+	expectedResponse := &types.GenerateAggchainProofResponse{
 		AggchainProof: []byte("dummy-proof"),
 		StartBlock:    100,
 		EndBlock:      200,
 	}
 
-	mockClient.On("FetchAggchainProof", mock.Anything, &types.FetchAggchainProofRequest{
+	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
 		StartBlock:  100,
 		MaxEndBlock: 200,
 	}).Return(expectedResponse, nil)
 
-	result, err := client.FetchAggchainProof(100, 200)
+	result, err := client.GenerateAggchainProof(100, 200)
 
 	assert.NoError(t, err)
 	assert.Equal(t, "dummy-proof", result.Proof)
@@ -39,21 +39,21 @@ func TestFetchAggchainProof_Success(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
-func TestFetchAggchainProof_Error(t *testing.T) {
+func TestGenerateAggchainProof_Error(t *testing.T) {
 	mockClient := mocks.NewAggchainProofServiceClient(t)
 	client := &AggchainProofClient{client: mockClient}
 
-	expectedError := errors.New("fetch error")
+	expectedError := errors.New("Generate error")
 
-	mockClient.On("FetchAggchainProof", mock.Anything, &types.FetchAggchainProofRequest{
+	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
 		StartBlock:  300,
 		MaxEndBlock: 400,
-	}).Return((*types.FetchAggchainProofResponse)(nil), expectedError)
+	}).Return((*types.GenerateAggchainProofResponse)(nil), expectedError)
 
-	result, err := client.FetchAggchainProof(300, 400)
+	result, err := client.GenerateAggchainProof(300, 400)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
-	assert.Equal(t, "fetch error", err.Error())
+	assert.Equal(t, "Generate error", err.Error())
 	mockClient.AssertExpectations(t)
 }
