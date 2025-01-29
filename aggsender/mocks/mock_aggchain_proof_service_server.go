@@ -22,28 +22,28 @@ func (_m *AggchainProofServiceServer) EXPECT() *AggchainProofServiceServer_Expec
 	return &AggchainProofServiceServer_Expecter{mock: &_m.Mock}
 }
 
-// FetchAggchainProof provides a mock function with given fields: _a0, _a1
-func (_m *AggchainProofServiceServer) FetchAggchainProof(_a0 context.Context, _a1 *types.FetchAggchainProofRequest) (*types.FetchAggchainProofResponse, error) {
+// GenerateAggchainProof provides a mock function with given fields: _a0, _a1
+func (_m *AggchainProofServiceServer) GenerateAggchainProof(_a0 context.Context, _a1 *types.GenerateAggchainProofRequest) (*types.GenerateAggchainProofResponse, error) {
 	ret := _m.Called(_a0, _a1)
 
 	if len(ret) == 0 {
-		panic("no return value specified for FetchAggchainProof")
+		panic("no return value specified for GenerateAggchainProof")
 	}
 
-	var r0 *types.FetchAggchainProofResponse
+	var r0 *types.GenerateAggchainProofResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *types.FetchAggchainProofRequest) (*types.FetchAggchainProofResponse, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.GenerateAggchainProofRequest) (*types.GenerateAggchainProofResponse, error)); ok {
 		return rf(_a0, _a1)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *types.FetchAggchainProofRequest) *types.FetchAggchainProofResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.GenerateAggchainProofRequest) *types.GenerateAggchainProofResponse); ok {
 		r0 = rf(_a0, _a1)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.FetchAggchainProofResponse)
+			r0 = ret.Get(0).(*types.GenerateAggchainProofResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *types.FetchAggchainProofRequest) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *types.GenerateAggchainProofRequest) error); ok {
 		r1 = rf(_a0, _a1)
 	} else {
 		r1 = ret.Error(1)
@@ -52,31 +52,31 @@ func (_m *AggchainProofServiceServer) FetchAggchainProof(_a0 context.Context, _a
 	return r0, r1
 }
 
-// AggchainProofServiceServer_FetchAggchainProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FetchAggchainProof'
-type AggchainProofServiceServer_FetchAggchainProof_Call struct {
+// AggchainProofServiceServer_GenerateAggchainProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GenerateAggchainProof'
+type AggchainProofServiceServer_GenerateAggchainProof_Call struct {
 	*mock.Call
 }
 
-// FetchAggchainProof is a helper method to define mock.On call
+// GenerateAggchainProof is a helper method to define mock.On call
 //   - _a0 context.Context
-//   - _a1 *types.FetchAggchainProofRequest
-func (_e *AggchainProofServiceServer_Expecter) FetchAggchainProof(_a0 interface{}, _a1 interface{}) *AggchainProofServiceServer_FetchAggchainProof_Call {
-	return &AggchainProofServiceServer_FetchAggchainProof_Call{Call: _e.mock.On("FetchAggchainProof", _a0, _a1)}
+//   - _a1 *types.GenerateAggchainProofRequest
+func (_e *AggchainProofServiceServer_Expecter) GenerateAggchainProof(_a0 interface{}, _a1 interface{}) *AggchainProofServiceServer_GenerateAggchainProof_Call {
+	return &AggchainProofServiceServer_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", _a0, _a1)}
 }
 
-func (_c *AggchainProofServiceServer_FetchAggchainProof_Call) Run(run func(_a0 context.Context, _a1 *types.FetchAggchainProofRequest)) *AggchainProofServiceServer_FetchAggchainProof_Call {
+func (_c *AggchainProofServiceServer_GenerateAggchainProof_Call) Run(run func(_a0 context.Context, _a1 *types.GenerateAggchainProofRequest)) *AggchainProofServiceServer_GenerateAggchainProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*types.FetchAggchainProofRequest))
+		run(args[0].(context.Context), args[1].(*types.GenerateAggchainProofRequest))
 	})
 	return _c
 }
 
-func (_c *AggchainProofServiceServer_FetchAggchainProof_Call) Return(_a0 *types.FetchAggchainProofResponse, _a1 error) *AggchainProofServiceServer_FetchAggchainProof_Call {
+func (_c *AggchainProofServiceServer_GenerateAggchainProof_Call) Return(_a0 *types.GenerateAggchainProofResponse, _a1 error) *AggchainProofServiceServer_GenerateAggchainProof_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggchainProofServiceServer_FetchAggchainProof_Call) RunAndReturn(run func(context.Context, *types.FetchAggchainProofRequest) (*types.FetchAggchainProofResponse, error)) *AggchainProofServiceServer_FetchAggchainProof_Call {
+func (_c *AggchainProofServiceServer_GenerateAggchainProof_Call) RunAndReturn(run func(context.Context, *types.GenerateAggchainProofRequest) (*types.GenerateAggchainProofResponse, error)) *AggchainProofServiceServer_GenerateAggchainProof_Call {
 	_c.Call.Return(run)
 	return _c
 }

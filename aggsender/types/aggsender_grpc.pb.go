@@ -21,17 +21,17 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AggchainProofService_FetchAggchainProof_FullMethodName = "/types.AggchainProofService/FetchAggchainProof"
+	AggchainProofService_GenerateAggchainProof_FullMethodName = "/types.AggchainProofService/GenerateAggchainProof"
 )
 
 // AggchainProofServiceClient is the client API for AggchainProofService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
-// Service for fetching aggchain proof.
+// Service for generating aggchain proof.
 type AggchainProofServiceClient interface {
-	// Fetches a aggchain-proof for a given start_block.
-	FetchAggchainProof(ctx context.Context, in *FetchAggchainProofRequest, opts ...grpc.CallOption) (*FetchAggchainProofResponse, error)
+	// Generates a aggchain proof for a given start_block.
+	GenerateAggchainProof(ctx context.Context, in *GenerateAggchainProofRequest, opts ...grpc.CallOption) (*GenerateAggchainProofResponse, error)
 }
 
 type aggchainProofServiceClient struct {
@@ -42,10 +42,10 @@ func NewAggchainProofServiceClient(cc grpc.ClientConnInterface) AggchainProofSer
 	return &aggchainProofServiceClient{cc}
 }
 
-func (c *aggchainProofServiceClient) FetchAggchainProof(ctx context.Context, in *FetchAggchainProofRequest, opts ...grpc.CallOption) (*FetchAggchainProofResponse, error) {
+func (c *aggchainProofServiceClient) GenerateAggchainProof(ctx context.Context, in *GenerateAggchainProofRequest, opts ...grpc.CallOption) (*GenerateAggchainProofResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(FetchAggchainProofResponse)
-	err := c.cc.Invoke(ctx, AggchainProofService_FetchAggchainProof_FullMethodName, in, out, cOpts...)
+	out := new(GenerateAggchainProofResponse)
+	err := c.cc.Invoke(ctx, AggchainProofService_GenerateAggchainProof_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -56,10 +56,10 @@ func (c *aggchainProofServiceClient) FetchAggchainProof(ctx context.Context, in 
 // All implementations must embed UnimplementedAggchainProofServiceServer
 // for forward compatibility.
 //
-// Service for fetching aggchain proof.
+// Service for generating aggchain proof.
 type AggchainProofServiceServer interface {
-	// Fetches a aggchain-proof for a given start_block.
-	FetchAggchainProof(context.Context, *FetchAggchainProofRequest) (*FetchAggchainProofResponse, error)
+	// Generates a aggchain proof for a given start_block.
+	GenerateAggchainProof(context.Context, *GenerateAggchainProofRequest) (*GenerateAggchainProofResponse, error)
 	mustEmbedUnimplementedAggchainProofServiceServer()
 }
 
@@ -70,8 +70,8 @@ type AggchainProofServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedAggchainProofServiceServer struct{}
 
-func (UnimplementedAggchainProofServiceServer) FetchAggchainProof(context.Context, *FetchAggchainProofRequest) (*FetchAggchainProofResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method FetchAggchainProof not implemented")
+func (UnimplementedAggchainProofServiceServer) GenerateAggchainProof(context.Context, *GenerateAggchainProofRequest) (*GenerateAggchainProofResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GenerateAggchainProof not implemented")
 }
 func (UnimplementedAggchainProofServiceServer) mustEmbedUnimplementedAggchainProofServiceServer() {}
 func (UnimplementedAggchainProofServiceServer) testEmbeddedByValue()                              {}
@@ -94,20 +94,20 @@ func RegisterAggchainProofServiceServer(s grpc.ServiceRegistrar, srv AggchainPro
 	s.RegisterService(&AggchainProofService_ServiceDesc, srv)
 }
 
-func _AggchainProofService_FetchAggchainProof_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FetchAggchainProofRequest)
+func _AggchainProofService_GenerateAggchainProof_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GenerateAggchainProofRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AggchainProofServiceServer).FetchAggchainProof(ctx, in)
+		return srv.(AggchainProofServiceServer).GenerateAggchainProof(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AggchainProofService_FetchAggchainProof_FullMethodName,
+		FullMethod: AggchainProofService_GenerateAggchainProof_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AggchainProofServiceServer).FetchAggchainProof(ctx, req.(*FetchAggchainProofRequest))
+		return srv.(AggchainProofServiceServer).GenerateAggchainProof(ctx, req.(*GenerateAggchainProofRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -120,8 +120,8 @@ var AggchainProofService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*AggchainProofServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "FetchAggchainProof",
-			Handler:    _AggchainProofService_FetchAggchainProof_Handler,
+			MethodName: "GenerateAggchainProof",
+			Handler:    _AggchainProofService_GenerateAggchainProof_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

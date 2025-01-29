@@ -11,7 +11,7 @@ const TIMEOUT = 2
 
 // AggchainProofClientInterface defines an interface for aggchain proof client
 type AggchainProofClientInterface interface {
-	FetchAggchainProof(startBlock uint64, maxEndBlock uint64) (*types.AggchainProof, error)
+	GenerateAggchainProof(startBlock uint64, maxEndBlock uint64) (*types.AggchainProof, error)
 }
 
 // AggchainProofClient provides an implementation for the AggchainProofClient interface
@@ -30,11 +30,12 @@ func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
 	}, nil
 }
 
-func (c *AggchainProofClient) FetchAggchainProof(startBlock uint64, maxEndBlock uint64) (*types.AggchainProof, error) {
+func (c *AggchainProofClient) GenerateAggchainProof(startBlock uint64,
+	maxEndBlock uint64) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
 	defer cancel()
 
-	resp, err := c.client.FetchAggchainProof(ctx, &types.FetchAggchainProofRequest{
+	resp, err := c.client.GenerateAggchainProof(ctx, &types.GenerateAggchainProofRequest{
 		StartBlock:  startBlock,
 		MaxEndBlock: maxEndBlock,
 	})
