@@ -20,12 +20,12 @@ func (_m *AggchainProofClientInterface) EXPECT() *AggchainProofClientInterface_E
 	return &AggchainProofClientInterface_Expecter{mock: &_m.Mock}
 }
 
-// FetchAggchainProof provides a mock function with given fields: startBlock, maxEndBlock
-func (_m *AggchainProofClientInterface) FetchAggchainProof(startBlock uint64, maxEndBlock uint64) (*types.AggchainProof, error) {
+// GenerateAggchainProof provides a mock function with given fields: startBlock, maxEndBlock
+func (_m *AggchainProofClientInterface) GenerateAggchainProof(startBlock uint64, maxEndBlock uint64) (*types.AggchainProof, error) {
 	ret := _m.Called(startBlock, maxEndBlock)
 
 	if len(ret) == 0 {
-		panic("no return value specified for FetchAggchainProof")
+		panic("no return value specified for GenerateAggchainProof")
 	}
 
 	var r0 *types.AggchainProof
@@ -50,31 +50,31 @@ func (_m *AggchainProofClientInterface) FetchAggchainProof(startBlock uint64, ma
 	return r0, r1
 }
 
-// AggchainProofClientInterface_FetchAggchainProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FetchAggchainProof'
-type AggchainProofClientInterface_FetchAggchainProof_Call struct {
+// AggchainProofClientInterface_GenerateAggchainProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GenerateAggchainProof'
+type AggchainProofClientInterface_GenerateAggchainProof_Call struct {
 	*mock.Call
 }
 
-// FetchAggchainProof is a helper method to define mock.On call
+// GenerateAggchainProof is a helper method to define mock.On call
 //   - startBlock uint64
 //   - maxEndBlock uint64
-func (_e *AggchainProofClientInterface_Expecter) FetchAggchainProof(startBlock interface{}, maxEndBlock interface{}) *AggchainProofClientInterface_FetchAggchainProof_Call {
-	return &AggchainProofClientInterface_FetchAggchainProof_Call{Call: _e.mock.On("FetchAggchainProof", startBlock, maxEndBlock)}
+func (_e *AggchainProofClientInterface_Expecter) GenerateAggchainProof(startBlock interface{}, maxEndBlock interface{}) *AggchainProofClientInterface_GenerateAggchainProof_Call {
+	return &AggchainProofClientInterface_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", startBlock, maxEndBlock)}
 }
 
-func (_c *AggchainProofClientInterface_FetchAggchainProof_Call) Run(run func(startBlock uint64, maxEndBlock uint64)) *AggchainProofClientInterface_FetchAggchainProof_Call {
+func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) Run(run func(startBlock uint64, maxEndBlock uint64)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(uint64), args[1].(uint64))
 	})
 	return _c
 }
 
-func (_c *AggchainProofClientInterface_FetchAggchainProof_Call) Return(_a0 *types.AggchainProof, _a1 error) *AggchainProofClientInterface_FetchAggchainProof_Call {
+func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) Return(_a0 *types.AggchainProof, _a1 error) *AggchainProofClientInterface_GenerateAggchainProof_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggchainProofClientInterface_FetchAggchainProof_Call) RunAndReturn(run func(uint64, uint64) (*types.AggchainProof, error)) *AggchainProofClientInterface_FetchAggchainProof_Call {
+func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) RunAndReturn(run func(uint64, uint64) (*types.AggchainProof, error)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
 	_c.Call.Return(run)
 	return _c
 }
