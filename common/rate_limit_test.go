@@ -59,3 +59,16 @@ func TestRateLimitDisabled(t *testing.T) {
 		require.Nil(t, sut.Call("test", false))
 	}
 }
+
+func TestRateLimitString(t *testing.T) {
+	rateLimit := &common.RateLimit{}
+	require.Equal(t, "RateLimit{cfg: RateLimitConfig{Unlimited}, bucket len: 0}", rateLimit.String())
+
+	var empty *common.RateLimit
+	require.Equal(t, "RateLimit{nil}", empty.String())
+}
+
+func TestRateLimitConfigString(t *testing.T) {
+	cfg := common.NewRateLimitConfig(2, time.Minute)
+	require.Equal(t, "RateLimitConfig{NumRequests: 2, Period: 1m0s}", cfg.String())
+}

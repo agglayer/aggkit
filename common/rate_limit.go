@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xPolygonHermez/zkevm-synchronizer-l1/config/types"
-	"github.com/0xPolygonHermez/zkevm-synchronizer-l1/log"
+	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/log"
 )
 
 var (

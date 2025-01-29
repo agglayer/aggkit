@@ -319,7 +319,8 @@ func TestAggSenderSendCertificates(t *testing.T) {
 		ctx,
 		log.WithFields("test", "unittest"),
 		Config{
-			StoragePath: path.Join(t.TempDir(), "aggsenderTestAggSenderSendCertificates.sqlite"),
+			MaxSubmitCertificateRate: aggkitcommon.RateLimitConfig{NumRequests: 1, Interval: types.Duration{Duration: 1 * time.Second}},
+			StoragePath:              path.Join(t.TempDir(), "aggsenderTestAggSenderSendCertificates.sqlite"),
 		},
 		AggLayerMock,
 		nil,
@@ -327,21 +328,44 @@ func TestAggSenderSendCertificates(t *testing.T) {
 		epochNotifierMock)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
-	ch := make(chan aggsendertypes.EpochEvent, 2)
-	epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch)
-	err = aggSender.storage.SaveLastSentCertificate(ctx, aggsendertypes.CertificateInfo{
-		Height: 1,
-		Status: agglayer.Pending,
+	t.Run("regular case (1 cert send)", func(t *testing.T) {
+		aggSender.cfg.CheckStatusCertificateInterval = types.Duration{Duration: 0}
+		ch := make(chan aggsendertypes.EpochEvent, 2)
+		epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch)
+		err = aggSender.storage.SaveLastSentCertificate(ctx, aggsendertypes.CertificateInfo{
+			Height: 1,
+			Status: agglayer.Pending,
+		})
+		AggLayerMock.EXPECT().GetCertificateHeader(mock.Anything).Return(&agglayer.CertificateHeader{
+			Status: agglayer.Pending,
+		}, nil)
+		require.NoError(t, err)
+		ch <- aggsendertypes.EpochEvent{
+			Epoch: 1,
+		}
+		aggSender.sendCertificates(ctx, 1)
 	})
-	AggLayerMock.EXPECT().GetCertificateHeader(mock.Anything).Return(&agglayer.CertificateHeader{
-		Status: agglayer.Pending,
-	}, nil)
-	require.NoError(t, err)
-	ch <- aggsendertypes.EpochEvent{
-		Epoch: 1,
-	}
-	go aggSender.sendCertificates(ctx)
-	time.Sleep(200 * time.Millisecond)
+
+	t.Run("check cert status and retry cert", func(t *testing.T) {
+		aggSender.cfg.CheckStatusCertificateInterval = types.Duration{Duration: 1 * time.Millisecond}
+		ch := make(chan aggsendertypes.EpochEvent, 2)
+		epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch)
+		err = aggSender.storage.SaveLastSentCertificate(ctx, aggsendertypes.CertificateInfo{
+			Height: 1,
+			Status: agglayer.Pending,
+		})
+		AggLayerMock.EXPECT().GetCertificateHeader(mock.Anything).Return(&agglayer.CertificateHeader{
+			Status: agglayer.InError,
+		}, nil)
+		require.NoError(t, err)
+		ch <- aggsendertypes.EpochEvent{
+			Epoch: 1,
+		}
+		bridgeL2SyncerMock.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(1), nil)
+		bridgeL2SyncerMock.EXPECT().GetBridgesPublished(mock.Anything, mock.Anything, mock.Anything).Return([]bridgesync.Bridge{}, nil)
+		aggSender.sendCertificates(ctx, 1)
+	})
+
 }
 
 //nolint:dupl

@@ -132,7 +132,7 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.log.Info("AggSender started")
 	a.status.Start(time.Now().UTC())
 	a.checkInitialStatus(ctx)
-	a.sendCertificates(ctx)
+	a.sendCertificates(ctx, 0)
 }
 
 // checkInitialStatus check local status vs agglayer status
@@ -159,7 +159,7 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 }
 
 // sendCertificates sends certificates to the aggLayer
-func (a *AggSender) sendCertificates(ctx context.Context) {
+func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations int) {
 	var checkCertChannel <-chan time.Time
 	if a.cfg.CheckStatusCertificateInterval.Duration > 0 {
 		checkCertTicker := time.NewTicker(a.cfg.CheckStatusCertificateInterval.Duration)
@@ -172,9 +172,11 @@ func (a *AggSender) sendCertificates(ctx context.Context) {
 
 	chEpoch := a.epochNotifier.Subscribe("aggsender")
 	a.status.Status = types.StatusCertificateStage
+	iteration := 0
 	for {
 		select {
 		case <-checkCertChannel:
+			iteration++
 			a.log.Debugf("Checking perodical certificates status (%s)",
 				a.cfg.CheckCertConfigBriefString())
 			checkResult := a.checkPendingCertificatesStatus(ctx)
@@ -190,7 +192,12 @@ func (a *AggSender) sendCertificates(ctx context.Context) {
 					a.log.Infof("Appears an InError cert but skipping send cert because RetryCertInmediatlyAfterInError is false")
 				}
 			}
+			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
+				a.log.Warnf("reached number of iterations, so we are going to return")
+				return
+			}
 		case epoch := <-chEpoch:
+			iteration++
 			a.log.Infof("Epoch received: %s", epoch.String())
 			checkResult := a.checkPendingCertificatesStatus(ctx)
 			if !checkResult.thereArePendingCerts {
@@ -202,6 +209,11 @@ func (a *AggSender) sendCertificates(ctx context.Context) {
 			} else {
 				log.Infof("Skipping epoch %s because there are pending certificates",
 					epoch.String())
+			}
+
+			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
+				a.log.Warnf("reached number of iterations, so we are going to return")
+				return
 			}
 		case <-ctx.Done():
 			a.log.Info("AggSender stopped")
