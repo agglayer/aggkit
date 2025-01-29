@@ -55,6 +55,12 @@ type Logger interface {
 	Debugf(format string, args ...interface{})
 }
 
+type AggchainProof struct {
+	StartBlock uint64
+	EndBlock   uint64
+	Proof      string
+}
+
 type CertificateInfo struct {
 	Height        uint64      `meddler:"height"`
 	RetryCount    int         `meddler:"retry_count"`
