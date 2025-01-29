@@ -331,7 +331,6 @@ func TestAggSenderSendCertificates(t *testing.T) {
 	require.NotNil(t, aggSender)
 
 	t.Run("regular case (1 cert send)", func(t *testing.T) {
-
 		aggSender.cfg.CheckStatusCertificateInterval = types.Duration{Duration: 0}
 		ch := make(chan aggsendertypes.EpochEvent, 2)
 		epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch).Once()
