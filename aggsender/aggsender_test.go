@@ -2054,6 +2054,13 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 	}
 }
 
+func TestNewAggSender(t *testing.T) {
+	sut, err := New(context.TODO(), log.WithFields("module", "ut"), Config{}, nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, sut)
+	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
+}
+
 type testDataFlags = int
 
 const (
