@@ -137,9 +137,9 @@ type Certificate struct {
 // ID returns a string with the ident of this cert (height/certID)
 func (c *Certificate) ID() string {
 	if c == nil {
-		return nilStr
+		return "cert{" + nilStr + "}"
 	}
-	return fmt.Sprintf("height:%d / networkID:%d", c.Height, c.NetworkID)
+	return fmt.Sprintf("cert{height:%d, networkID:%d}", c.Height, c.NetworkID)
 }
 
 // Brief returns a string with a brief cert
