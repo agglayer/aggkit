@@ -132,7 +132,7 @@ type Certificate struct {
 	BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
 	Metadata            common.Hash           `json:"metadata"`
-	AuthProof           string                `json:"auth_proof,omitempty"`
+	AggchainProof       string                `json:"aggchain_proof,omitempty"`
 }
 
 // Brief returns a string with a brief cert
@@ -140,8 +140,8 @@ func (c *Certificate) Brief() string {
 	if c == nil {
 		return nilStr
 	}
-	res := fmt.Sprintf("agglayer.Cert {height: %d prevLER: %s, newLER: %s, authProof: %s, exits: %d imported_exits: %d}",
-		c.Height, c.PrevLocalExitRoot.String(), c.NewLocalExitRoot.String(), c.AuthProof,
+	res := fmt.Sprintf("agglayer.Cert {height: %d prevLER: %s, newLER: %s, aggchainProof: %s, exits: %d imported_exits: %d}",
+		c.Height, c.PrevLocalExitRoot.String(), c.NewLocalExitRoot.String(), c.AggchainProof,
 		len(c.BridgeExits), len(c.ImportedBridgeExits))
 	return res
 }
@@ -744,7 +744,7 @@ type CertificateHeader struct {
 	Status                CertificateStatus `json:"status"`
 	Metadata              common.Hash       `json:"metadata"`
 	Error                 error             `json:"-"`
-	AuthProof             string            `json:"auth_proof,omitempty"`
+	AggchainProof         string            `json:"aggchain_proof,omitempty"`
 }
 
 // ID returns a string with the ident of this cert (height/certID)
@@ -776,9 +776,9 @@ func (c *CertificateHeader) String() string {
 		previousLocalExitRoot = c.PreviousLocalExitRoot.String()
 	}
 	return fmt.Sprintf("Height: %d, CertificateID: %s, PreviousLocalExitRoot: %s, NewLocalExitRoot: %s. Status: %s."+
-		" AuthProof: %s, Errors: [%s]",
+		" AggchainProof: %s, Errors: [%s]",
 		c.Height, c.CertificateID.String(), previousLocalExitRoot, c.NewLocalExitRoot.String(), c.Status.String(),
-		c.AuthProof, errors)
+		c.AggchainProof, errors)
 }
 
 func (c *CertificateHeader) UnmarshalJSON(data []byte) error {

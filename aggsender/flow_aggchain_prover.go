@@ -62,8 +62,8 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 				lastSentCertificateInfo.String())
 		}
 
-		if lastSentCertificateInfo.AuthProof == "" {
-			authProof, err := a.aggchainProofClient.FetchAggchainProof(lastSentCertificateInfo.FromBlock,
+		if lastSentCertificateInfo.AggchainProof == "" {
+			aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(lastSentCertificateInfo.FromBlock,
 				lastSentCertificateInfo.ToBlock)
 			if err != nil {
 				return nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d : %w",
@@ -72,9 +72,9 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 			a.log.Infof("InError certificate did not have auth proof, "+
 				"so got it from the aggchain prover for range %d : %d. Proof: %s",
-				lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, authProof.Proof)
+				lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, aggchainProof.Proof)
 
-			lastSentCertificateInfo.AuthProof = authProof.Proof
+			lastSentCertificateInfo.AggchainProof = aggchainProof.Proof
 		}
 
 		// we need to resend the exact same certificate
@@ -95,16 +95,16 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, err
 	}
 
-	authProof, err := a.aggchainProofClient.FetchAggchainProof(buildParams.FromBlock, buildParams.ToBlock)
+	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(buildParams.FromBlock, buildParams.ToBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
 	}
 
 	a.log.Infof("fetched auth proof: %s for new certificate of block range %d : %d",
-		authProof.Proof, buildParams.FromBlock, buildParams.ToBlock)
+		aggchainProof.Proof, buildParams.FromBlock, buildParams.ToBlock)
 
-	buildParams.LastSentCertificate.AuthProof = authProof.Proof
+	buildParams.LastSentCertificate.AggchainProof = aggchainProof.Proof
 
 	return buildParams, nil
 }
