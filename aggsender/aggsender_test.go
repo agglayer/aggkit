@@ -331,7 +331,7 @@ func TestAggSenderSendCertificates(t *testing.T) {
 	require.NotNil(t, aggSender)
 
 	t.Run("regular case (1 cert send)", func(t *testing.T) {
-		aggSender.cfg.CheckStatusCertificateInterval = types.Duration{Duration: 0}
+		aggSender.cfg.CheckStatusCertificateInterval = types.Duration{Duration: time.Microsecond}
 		ch := make(chan aggsendertypes.EpochEvent, 2)
 		epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch).Once()
 		err = aggSender.storage.SaveLastSentCertificate(ctx, aggsendertypes.CertificateInfo{
@@ -343,9 +343,6 @@ func TestAggSenderSendCertificates(t *testing.T) {
 			Status: agglayer.Pending,
 		}, nil).Once()
 
-		ch <- aggsendertypes.EpochEvent{
-			Epoch: 1,
-		}
 		aggSender.sendCertificates(ctx, 1)
 		AggLayerMock.AssertExpectations(t)
 		epochNotifierMock.AssertExpectations(t)
