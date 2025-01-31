@@ -180,7 +180,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			a.log.Debugf("Checking perodical certificates status (%s)",
 				a.cfg.CheckCertConfigBriefString())
 			checkResult := a.checkPendingCertificatesStatus(ctx)
-			if !checkResult.thereArePendingCerts && checkResult.appearsNewInErrorCert {
+			if !checkResult.existPendingCerts && checkResult.existNewInErrorCert {
 				if a.cfg.RetryCertAfterInError {
 					a.log.Infof("Appears an InError cert sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
 					_, err := a.sendCertificate(ctx)
@@ -200,7 +200,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			iteration++
 			a.log.Infof("Epoch received: %s", epoch.String())
 			checkResult := a.checkPendingCertificatesStatus(ctx)
-			if !checkResult.thereArePendingCerts {
+			if !checkResult.existPendingCerts {
 				_, err := a.sendCertificate(ctx)
 				a.status.SetLastError(err)
 				if err != nil {
@@ -716,10 +716,10 @@ func (a *AggSender) signCertificate(certificate *agglayer.Certificate) (*agglaye
 }
 
 type checkCertResult struct {
-	// thereArePendingCerts means that there are still pending certificates
-	thereArePendingCerts bool
-	// appearsNewInErrorCert means than in this run a cert pass from xxx to InError
-	appearsNewInErrorCert bool
+	// existPendingCerts means that there are still pending certificates
+	existPendingCerts bool
+	// existNewInErrorCert means than in this run a cert pass from xxx to InError
+	existNewInErrorCert bool
 }
 
 // checkPendingCertificatesStatus checks the status of pending certificates
@@ -730,7 +730,7 @@ func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCer
 	pendingCertificates, err := a.storage.GetCertificatesByStatus(agglayer.NonSettledStatuses)
 	if err != nil {
 		a.log.Errorf("error getting pending certificates: %w", err)
-		return checkCertResult{thereArePendingCerts: true, appearsNewInErrorCert: false}
+		return checkCertResult{existPendingCerts: true, existNewInErrorCert: false}
 	}
 
 	a.log.Debugf("checkPendingCertificatesStatus num of pendingCertificates: %d", len(pendingCertificates))
@@ -741,7 +741,7 @@ func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCer
 		if err != nil {
 			a.log.Errorf("error getting certificate header of %s from agglayer: %w",
 				certificateLocal.ID(), err)
-			return checkCertResult{thereArePendingCerts: true, appearsNewInErrorCert: false}
+			return checkCertResult{existPendingCerts: true, existNewInErrorCert: false}
 		}
 
 		a.log.Debugf("aggLayerClient.GetCertificateHeader status [%s] of certificate %s  elapsed time:%s",
@@ -753,7 +753,7 @@ func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCer
 
 		if err := a.updateCertificateStatus(ctx, certificateLocal, certificateHeader); err != nil {
 			a.log.Errorf("error updating certificate %s status in storage: %w", certificateHeader.String(), err)
-			return checkCertResult{thereArePendingCerts: true, appearsNewInErrorCert: false}
+			return checkCertResult{existPendingCerts: true, existNewInErrorCert: false}
 		}
 
 		if !certificateLocal.IsClosed() {
@@ -762,7 +762,7 @@ func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCer
 			thereArePendingCerts = true
 		}
 	}
-	return checkCertResult{thereArePendingCerts: thereArePendingCerts, appearsNewInErrorCert: appearsNewInErrorCert}
+	return checkCertResult{existPendingCerts: thereArePendingCerts, existNewInErrorCert: appearsNewInErrorCert}
 }
 
 // updateCertificate updates the certificate status in the storage

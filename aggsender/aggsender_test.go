@@ -967,7 +967,7 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 
 			ctx := context.TODO()
 			checkResult := aggSender.checkPendingCertificatesStatus(ctx)
-			require.Equal(t, tt.expectedError, checkResult.thereArePendingCerts)
+			require.Equal(t, tt.expectedError, checkResult.existPendingCerts)
 			mockAggLayerClient.AssertExpectations(t)
 			mockStorage.AssertExpectations(t)
 		})
