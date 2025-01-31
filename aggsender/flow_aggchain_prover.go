@@ -12,7 +12,7 @@ import (
 
 // aggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type aggchainProverFlow struct {
-	*flowManager
+	*baseFlow
 
 	aggchainProofClient grpc.AggchainProofClientInterface
 }
@@ -26,7 +26,7 @@ func newAggchainProverFlow(log types.Logger,
 	l2Syncer types.L2BridgeSyncer) *aggchainProverFlow {
 	return &aggchainProverFlow{
 		aggchainProofClient: aggkitProverClient,
-		flowManager: &flowManager{
+		baseFlow: &baseFlow{
 			log:              log,
 			cfg:              cfg,
 			l2Syncer:         l2Syncer,
@@ -43,7 +43,7 @@ func newAggchainProverFlow(log types.Logger,
 func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastSentCertificateInfo, err := a.storage.GetLastSentCertificate()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
 
 	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayer.InError {
@@ -51,14 +51,14 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 		bridges, claims, err := a.getBridgesAndClaims(ctx, lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
 		}
 
 		if len(bridges) == 0 {
 			// this should never happen, if it does, we need to investigate
 			// (maybe someone deleted the bridge syncer db, so we might need to wait for it to catch up)
 			// just keep return an error here
-			return nil, fmt.Errorf("we have an InError certificate: %s, but no bridges to resend the same certificate",
+			return nil, fmt.Errorf("aggchainProverFlow - we have an InError certificate: %s, but no bridges to resend the same certificate",
 				lastSentCertificateInfo.String())
 		}
 
@@ -66,11 +66,11 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(lastSentCertificateInfo.FromBlock,
 				lastSentCertificateInfo.ToBlock)
 			if err != nil {
-				return nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d : %w",
+				return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 					lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, err)
 			}
 
-			a.log.Infof("InError certificate did not have auth proof, "+
+			a.log.Infof("aggchainProverFlow - InError certificate did not have auth proof, "+
 				"so got it from the aggchain prover for range %d : %d. Proof: %s",
 				lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, aggchainProof.Proof)
 
@@ -90,14 +90,14 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	// use the old logic, where we build the new certificate
-	buildParams, err := a.flowManager.GetCertificateBuildParams(ctx)
+	buildParams, err := a.baseFlow.GetCertificateBuildParams(ctx)
 	if err != nil {
 		return nil, err
 	}
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(buildParams.FromBlock, buildParams.ToBlock)
 	if err != nil {
-		return nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d : %w",
+		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
 	}
 

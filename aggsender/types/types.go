@@ -16,6 +16,22 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+type AggsenderMode string
+
+const (
+	PPMode             AggsenderMode = "PP"
+	AggchainProverMode AggsenderMode = "AggchainProver"
+)
+
+// AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender
+// based on the different prover types
+type AggsenderFlow interface {
+	// GetCertificateBuildParams returns the parameters to build a certificate
+	GetCertificateBuildParams(ctx context.Context) (*CertificateBuildParams, error)
+	// BuildCertificate builds a certificate based on the buildParams
+	BuildCertificate(ctx context.Context, buildParams *CertificateBuildParams) (*agglayer.Certificate, error)
+}
+
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
 type L1InfoTreeSyncer interface {
 	GetInfoByGlobalExitRoot(globalExitRoot common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)

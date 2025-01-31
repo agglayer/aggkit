@@ -15,17 +15,8 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
-// FlowManager is an interface that defines the methods to manage the flow of the AggSender
-// based on the different prover types
-type FlowManager interface {
-	// GetCertificateBuildParams returns the parameters to build a certificate
-	GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error)
-	// BuildCertificate builds a certificate based on the buildParams
-	BuildCertificate(ctx context.Context, buildParams *types.CertificateBuildParams) (*agglayer.Certificate, error)
-}
-
-// flowManager is a struct that holds the common logic for the different prover types
-type flowManager struct {
+// baseFlow is a struct that holds the common logic for the different prover types
+type baseFlow struct {
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
 	l2Syncer         types.L2BridgeSyncer
 	storage          db.AggSenderStorage
@@ -35,7 +26,7 @@ type flowManager struct {
 }
 
 // getBridgesAndClaims returns the bridges and claims consumed from the L2 fromBlock to toBlock
-func (f *flowManager) getBridgesAndClaims(
+func (f *baseFlow) getBridgesAndClaims(
 	ctx context.Context,
 	fromBlock, toBlock uint64,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
@@ -60,7 +51,7 @@ func (f *flowManager) getBridgesAndClaims(
 
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
-func (f *flowManager) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
+func (f *baseFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -100,7 +91,7 @@ func (f *flowManager) GetCertificateBuildParams(ctx context.Context) (*types.Cer
 
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
-func (f *flowManager) BuildCertificate(ctx context.Context,
+func (f *baseFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayer.Certificate, error) {
 	certificateParams, err := f.limitCertSize(buildParams)
 	if err != nil {
@@ -115,7 +106,7 @@ func (f *flowManager) BuildCertificate(ctx context.Context,
 
 // limitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
-func (f *flowManager) limitCertSize(fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
+func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	currentCert := fullCert
 	var previousCert *types.CertificateBuildParams
 	var err error
@@ -145,7 +136,7 @@ func (f *flowManager) limitCertSize(fullCert *types.CertificateBuildParams) (*ty
 	}
 }
 
-func (f *flowManager) buildCertificate(ctx context.Context,
+func (f *baseFlow) buildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
 	lastSentCertificateInfo *types.CertificateInfo) (*agglayer.Certificate, error) {
 	if certParams.IsEmpty() {
@@ -203,7 +194,7 @@ func convertBridgeMetadata(metadata []byte, importedBridgeMetadataAsHash bool) (
 }
 
 // convertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *flowManager) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayer.ImportedBridgeExit, error) {
+func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayer.ImportedBridgeExit, error) {
 	leafType := agglayer.LeafTypeAsset
 	if claim.IsMessage {
 		leafType = agglayer.LeafTypeMessage
@@ -239,7 +230,7 @@ func (f *flowManager) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (
 }
 
 // getBridgeExits converts bridges to agglayer.BridgeExit objects
-func (f *flowManager) getBridgeExits(bridges []bridgesync.Bridge) []*agglayer.BridgeExit {
+func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayer.BridgeExit {
 	bridgeExits := make([]*agglayer.BridgeExit, 0, len(bridges))
 
 	for _, bridge := range bridges {
@@ -262,7 +253,7 @@ func (f *flowManager) getBridgeExits(bridges []bridgesync.Bridge) []*agglayer.Br
 }
 
 // getImportedBridgeExits converts claims to agglayer.ImportedBridgeExit objects and calculates necessary proofs
-func (f *flowManager) getImportedBridgeExits(
+func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context, claims []bridgesync.Claim,
 ) ([]*agglayer.ImportedBridgeExit, error) {
 	if len(claims) == 0 {
@@ -372,7 +363,7 @@ func (f *flowManager) getImportedBridgeExits(
 }
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
-func (f *flowManager) getNextHeightAndPreviousLER(
+func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateInfo) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
 		return 0, zeroLER, nil
@@ -417,7 +408,7 @@ func (f *flowManager) getNextHeightAndPreviousLER(
 
 // ppFlow is a struct that holds the logic for the regular pessimistic proof flow
 type ppFlow struct {
-	*flowManager
+	*baseFlow
 }
 
 // newPPFlow returns a new instance of the ppFlow
@@ -427,7 +418,7 @@ func newPPFlow(log types.Logger,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer) *ppFlow {
 	return &ppFlow{
-		flowManager: &flowManager{
+		baseFlow: &baseFlow{
 			log:              log,
 			cfg:              cfg,
 			l2Syncer:         l2Syncer,
