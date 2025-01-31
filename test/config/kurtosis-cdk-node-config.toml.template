@@ -47,5 +47,9 @@ Outputs = ["stderr"]
        
 [AggSender]
 SaveCertificatesToFilesPath = "{{.zkevm_path_rw_data}}/"
+CheckStatusCertificateInterval = "1s"
+	[AggSender.MaxSubmitCertificateRate]
+		NumRequests = 20
+		Interval = "1m"
 
 

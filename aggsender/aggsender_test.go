@@ -17,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -53,7 +54,12 @@ func TestConfigString(t *testing.T) {
 		"URLRPCL2: http://l2.rpc.url\n" +
 		"BlockFinality: latestBlock\n" +
 		"EpochNotificationPercentage: 50\n" +
-		"SaveCertificatesToFilesPath: /path/to/certificates\n"
+		"SaveCertificatesToFilesPath: /path/to/certificates\n" +
+		"DryRun: false\n" +
+		"EnableRPC: false\n" +
+		"CheckStatusCertificateInterval: 0s\n" +
+		"RetryCertInmediatlyAfterInError: false\n" +
+		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"
 
 	require.Equal(t, expected, config.String())
 }
@@ -309,33 +315,69 @@ func TestAggSenderSendCertificates(t *testing.T) {
 	bridgeL2SyncerMock := mocks.NewL2BridgeSyncer(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	config := Config{
+		MaxSubmitCertificateRate: aggkitcommon.RateLimitConfig{NumRequests: 1, Interval: types.Duration{Duration: 1 * time.Second}},
+		StoragePath:              path.Join(t.TempDir(), "aggsenderTestAggSenderSendCertificates.sqlite"),
+	}
 	aggSender, err := New(
 		ctx,
 		log.WithFields("test", "unittest"),
-		Config{
-			StoragePath: path.Join(t.TempDir(), "aggsenderTestAggSenderSendCertificates.sqlite"),
-		},
+		config,
 		AggLayerMock,
 		nil,
 		bridgeL2SyncerMock,
 		epochNotifierMock)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
-	ch := make(chan aggsendertypes.EpochEvent, 2)
-	epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch)
-	err = aggSender.storage.SaveLastSentCertificate(ctx, aggsendertypes.CertificateInfo{
-		Height: 1,
-		Status: agglayer.Pending,
+
+	t.Run("regular case (1 cert send)", func(t *testing.T) {
+		aggSender.cfg.CheckStatusCertificateInterval = types.Duration{Duration: time.Microsecond}
+		ch := make(chan aggsendertypes.EpochEvent, 2)
+		epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch).Once()
+		err = aggSender.storage.SaveLastSentCertificate(ctx, aggsendertypes.CertificateInfo{
+			Height: 1,
+			Status: agglayer.Pending,
+		})
+		require.NoError(t, err)
+		AggLayerMock.EXPECT().GetCertificateHeader(mock.Anything).Return(&agglayer.CertificateHeader{
+			Status: agglayer.Pending,
+		}, nil).Once()
+
+		aggSender.sendCertificates(ctx, 1)
+		AggLayerMock.AssertExpectations(t)
+		epochNotifierMock.AssertExpectations(t)
 	})
-	AggLayerMock.EXPECT().GetCertificateHeader(mock.Anything).Return(&agglayer.CertificateHeader{
-		Status: agglayer.Pending,
-	}, nil)
-	require.NoError(t, err)
-	ch <- aggsendertypes.EpochEvent{
-		Epoch: 1,
-	}
-	go aggSender.sendCertificates(ctx)
-	time.Sleep(200 * time.Millisecond)
+
+	t.Run("check cert status and retry cert", func(t *testing.T) {
+		aggSender, err := New(
+			ctx,
+			log.WithFields("test", "unittest"),
+			config,
+			AggLayerMock,
+			nil,
+			bridgeL2SyncerMock,
+			epochNotifierMock)
+		require.NoError(t, err)
+		require.NotNil(t, aggSender)
+		aggSender.cfg.CheckStatusCertificateInterval = types.Duration{Duration: 1 * time.Millisecond}
+		ch := make(chan aggsendertypes.EpochEvent, 2)
+		epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch)
+		err = aggSender.storage.SaveLastSentCertificate(ctx, aggsendertypes.CertificateInfo{
+			Height: 1,
+			Status: agglayer.Pending,
+		})
+		AggLayerMock.EXPECT().GetCertificateHeader(mock.Anything).Return(&agglayer.CertificateHeader{
+			Status: agglayer.InError,
+		}, nil).Once()
+		require.NoError(t, err)
+		ch <- aggsendertypes.EpochEvent{
+			Epoch: 1,
+		}
+		bridgeL2SyncerMock.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(1), nil).Once()
+		bridgeL2SyncerMock.EXPECT().GetBridgesPublished(mock.Anything, mock.Anything, mock.Anything).Return([]bridgesync.Bridge{}, nil).Once()
+		aggSender.sendCertificates(ctx, 1)
+		bridgeL2SyncerMock.AssertExpectations(t)
+	})
 }
 
 //nolint:dupl
@@ -924,8 +966,8 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			}
 
 			ctx := context.TODO()
-			thereArePendingCerts := aggSender.checkPendingCertificatesStatus(ctx)
-			require.Equal(t, tt.expectedError, thereArePendingCerts)
+			checkResult := aggSender.checkPendingCertificatesStatus(ctx)
+			require.Equal(t, tt.expectedError, checkResult.existPendingCerts)
 			mockAggLayerClient.AssertExpectations(t)
 			mockStorage.AssertExpectations(t)
 		})
@@ -963,6 +1005,7 @@ func TestSendCertificate(t *testing.T) {
 				log:          log.WithFields("aggsender", 1),
 				cfg:          Config{MaxRetriesStoreCertificate: 1},
 				sequencerKey: cfg.sequencerKey,
+				rateLimiter:  aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 			}
 			mockStorage          *mocks.AggSenderStorage
 			mockL2Syncer         *mocks.L2BridgeSyncer
@@ -1661,6 +1704,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
 		sequencerKey:     privateKey,
 		cfg:              Config{},
+		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
 	mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
@@ -2044,6 +2088,13 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 			require.Equal(t, tt.expectedRetryCount, retryCount)
 		})
 	}
+}
+
+func TestNewAggSender(t *testing.T) {
+	sut, err := New(context.TODO(), log.WithFields("module", "ut"), Config{}, nil, nil, nil, nil)
+	require.NoError(t, err)
+	require.NotNil(t, sut)
+	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
 }
 
 type testDataFlags = int

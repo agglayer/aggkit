@@ -219,4 +219,10 @@ MaxCertSize = 8388608
 BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
+CheckStatusCertificateInterval = "5m"
+RetryCertInmediatlyAfterInError = true
+	[AggSender.MaxSubmitCertificateRate]
+		NumRequests = 20
+		Interval = "1h"
+
 `
