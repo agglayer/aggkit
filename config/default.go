@@ -220,4 +220,5 @@ BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
 AggkitProverURL = ""
+Mode = "PP"
 `

@@ -49,7 +49,7 @@ type AggSender struct {
 
 	status types.AggsenderStatus
 
-	flowManager FlowManager
+	flow types.AggsenderFlow
 }
 
 // New returns a new AggSender
@@ -77,10 +77,14 @@ func New(
 
 	var (
 		aggchainProofClient grpc.AggchainProofClientInterface
-		flowManager         FlowManager
+		flowManager         types.AggsenderFlow
 	)
 
-	if cfg.AggchainProofURL != "" {
+	if types.AggsenderMode(cfg.Mode) == types.AggchainProverMode {
+		if cfg.AggchainProofURL == "" {
+			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
+		}
+
 		aggchainProofClient, err = grpc.NewAggchainProofClient(cfg.AggchainProofURL)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
@@ -103,7 +107,7 @@ func New(
 		aggsenderKey:     sequencerPrivateKey,
 		epochNotifier:    epochNotifier,
 		status:           types.AggsenderStatus{Status: types.StatusNone},
-		flowManager:      flowManager,
+		flow:             flowManager,
 	}, nil
 }
 
@@ -203,7 +207,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, nil
 	}
 
-	certificateParams, err := a.flowManager.GetCertificateBuildParams(ctx)
+	certificateParams, err := a.flow.GetCertificateBuildParams(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting certificate build params: %w", err)
 	}
@@ -212,7 +216,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, nil
 	}
 
-	certificate, err := a.flowManager.BuildCertificate(ctx, certificateParams)
+	certificate, err := a.flow.BuildCertificate(ctx, certificateParams)
 	if err != nil {
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}

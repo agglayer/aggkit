@@ -43,6 +43,7 @@ func TestConfigString(t *testing.T) {
 		BlockFinality:               "latestBlock",
 		EpochNotificationPercentage: 50,
 		SaveCertificatesToFilesPath: "/path/to/certificates",
+		Mode:                        "PP",
 	}
 
 	expected := "StoragePath: /path/to/storage\n" +
@@ -59,7 +60,8 @@ func TestConfigString(t *testing.T) {
 		"BridgeMetadataAsHash: false\n" +
 		"DryRun: false\n" +
 		"EnableRPC: false\n" +
-		"AggchainProofClientURL: \n"
+		"AggchainProofClientURL: \n" +
+		"Mode: PP\n"
 
 	require.Equal(t, expected, config.String())
 }
@@ -414,7 +416,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
 		aggsenderKey:     privateKey,
 		cfg:              Config{},
-		flowManager:      newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer),
+		flow:             newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer),
 	}
 
 	mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
@@ -696,13 +698,13 @@ func TestSendCertificate(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		mockFn        func(*mocks.AggSenderStorage, *mocks.FlowManager, *mocks.L1InfoTreeSyncer, *agglayer.AgglayerClientMock)
+		mockFn        func(*mocks.AggSenderStorage, *mocks.AggsenderFlow, *mocks.L1InfoTreeSyncer, *agglayer.AgglayerClientMock)
 		expectedError string
 	}{
 		{
 			name: "error getting pending certificates",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.FlowManager,
+				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
 				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return(nil, errors.New("some error")).Once()
@@ -712,7 +714,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "has pending certificates",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.FlowManager,
+				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
 				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return(
@@ -727,7 +729,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "error getting certificate build params",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.FlowManager,
+				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
 				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
@@ -738,7 +740,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "no consumed bridges",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.FlowManager,
+				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
 				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
@@ -750,7 +752,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "error building certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.FlowManager,
+				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
 				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
@@ -764,7 +766,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "error sending certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.FlowManager,
+				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
 				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
@@ -784,7 +786,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "error saving certificate to storage",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.FlowManager,
+				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
 				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
@@ -805,7 +807,7 @@ func TestSendCertificate(t *testing.T) {
 		{
 			name: "successful sending and saving of a certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.FlowManager,
+				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
 				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
@@ -831,16 +833,16 @@ func TestSendCertificate(t *testing.T) {
 			t.Parallel()
 
 			mockStorage := mocks.NewAggSenderStorage(t)
-			mockFlowManager := mocks.NewFlowManager(t)
+			mockAggsenderFlow := mocks.NewAggsenderFlow(t)
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockAgglayerClient := agglayer.NewAgglayerClientMock(t)
-			tt.mockFn(mockStorage, mockFlowManager, mockL1InfoTreeSyncer, mockAgglayerClient)
+			tt.mockFn(mockStorage, mockAggsenderFlow, mockL1InfoTreeSyncer, mockAgglayerClient)
 
 			aggsender := &AggSender{
 				log:              log.WithFields("aggsender-test", "sendCertificate"),
 				aggsenderKey:     privateKey,
 				storage:          mockStorage,
-				flowManager:      mockFlowManager,
+				flow:             mockAggsenderFlow,
 				aggLayerClient:   mockAgglayerClient,
 				l1infoTreeSyncer: mockL1InfoTreeSyncer,
 				cfg: Config{
@@ -857,7 +859,7 @@ func TestSendCertificate(t *testing.T) {
 			}
 
 			mockStorage.AssertExpectations(t)
-			mockFlowManager.AssertExpectations(t)
+			mockAggsenderFlow.AssertExpectations(t)
 			mockL1InfoTreeSyncer.AssertExpectations(t)
 		})
 	}

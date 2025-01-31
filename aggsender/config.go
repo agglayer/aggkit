@@ -25,7 +25,6 @@ type Config struct {
 	EpochNotificationPercentage uint `mapstructure:"EpochNotificationPercentage"`
 	// SaveCertificatesToFilesPath if != "" tells  the AggSender to save the certificates to a file in this path
 	SaveCertificatesToFilesPath string `mapstructure:"SaveCertificatesToFilesPath"`
-
 	// MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
 	// 0 is infinite
 	MaxRetriesStoreCertificate int `mapstructure:"MaxRetriesStoreCertificate"`
@@ -46,6 +45,8 @@ type Config struct {
 	EnableRPC bool `mapstructure:"EnableRPC"`
 	// AggchainProofURL is the URL of the AggkitProver
 	AggchainProofURL string `mapstructure:"AggchainProofURL"`
+	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain prover mode)
+	Mode string `jsonschema:"enum=PP, enum=AggchainProver" mapstructure:"Mode"` //nolint:lll
 }
 
 // String returns a string representation of the Config
@@ -64,5 +65,6 @@ func (c Config) String() string {
 		"BridgeMetadataAsHash: " + fmt.Sprintf("%t", c.BridgeMetadataAsHash) + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
-		"AggchainProofClientURL: " + c.AggchainProofClientURL + "\n"
+		"AggchainProofClientURL: " + c.AggchainProofClientURL + "\n" +
+		"Mode: " + c.Mode + "\n"
 }
