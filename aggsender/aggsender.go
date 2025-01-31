@@ -70,7 +70,7 @@ func New(
 		return nil, err
 	}
 
-	sequencerPrivateKey, err := aggkitcommon.NewKeyFromKeystore(cfg.AggsenderPrivateKey)
+	aggsenderPrivateKey, err := aggkitcommon.NewKeyFromKeystore(cfg.AggsenderPrivateKey)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func New(
 		l2Syncer:         l2Syncer,
 		aggLayerClient:   aggLayerClient,
 		l1infoTreeSyncer: l1InfoTreeSyncer,
-		aggsenderKey:     sequencerPrivateKey,
+		aggsenderKey:     aggsenderPrivateKey,
 		epochNotifier:    epochNotifier,
 		status:           types.AggsenderStatus{Status: types.StatusNone},
 		flow:             flowManager,
