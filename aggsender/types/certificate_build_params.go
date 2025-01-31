@@ -21,6 +21,7 @@ type CertificateBuildParams struct {
 	CreatedAt           uint32
 	RetryCount          int
 	LastSentCertificate *CertificateInfo
+	AggchainProof       string
 }
 
 func (c *CertificateBuildParams) String() string {

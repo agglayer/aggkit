@@ -255,6 +255,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		ToBlock:               certificateParams.ToBlock,
 		CreatedAt:             certificateParams.CreatedAt,
 		UpdatedAt:             certificateParams.CreatedAt,
+		AggchainProof:         certificateParams.AggchainProof,
 		SignedCertificate:     string(raw),
 	}
 	// TODO: Improve this case, if a cert is not save in the storage, we are going to settle a unknown certificate
