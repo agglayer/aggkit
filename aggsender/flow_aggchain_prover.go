@@ -62,7 +62,8 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 				"but no bridges to resend the same certificate", lastSentCertificateInfo.String())
 		}
 
-		if lastSentCertificateInfo.AggchainProof == "" {
+		proof := lastSentCertificateInfo.AggchainProof
+		if proof == "" {
 			aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(lastSentCertificateInfo.FromBlock,
 				lastSentCertificateInfo.ToBlock)
 			if err != nil {
@@ -74,7 +75,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 				"so got it from the aggchain prover for range %d : %d. Proof: %s",
 				lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, aggchainProof.Proof)
 
-			lastSentCertificateInfo.AggchainProof = aggchainProof.Proof
+			proof = aggchainProof.Proof
 		}
 
 		// we need to resend the exact same certificate
@@ -86,6 +87,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			Claims:              claims,
 			LastSentCertificate: lastSentCertificateInfo,
 			CreatedAt:           lastSentCertificateInfo.CreatedAt,
+			AggchainProof:       proof,
 		}, nil
 	}
 
@@ -104,7 +106,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	a.log.Infof("fetched auth proof: %s for new certificate of block range %d : %d",
 		aggchainProof.Proof, buildParams.FromBlock, buildParams.ToBlock)
 
-	buildParams.LastSentCertificate.AggchainProof = aggchainProof.Proof
+	buildParams.AggchainProof = aggchainProof.Proof
 
 	return buildParams, nil
 }
