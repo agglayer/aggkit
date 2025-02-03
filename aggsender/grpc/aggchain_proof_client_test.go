@@ -6,6 +6,7 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -26,11 +27,12 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 	}
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
-		StartBlock:  100,
-		MaxEndBlock: 200,
+		StartBlock:     100,
+		MaxEndBlock:    200,
+		L1InfoTreeHash: common.Hash{}.Bytes(),
 	}).Return(expectedResponse, nil)
 
-	result, err := client.GenerateAggchainProof(100, 200)
+	result, err := client.GenerateAggchainProof(100, 200, common.BytesToHash([]byte{}))
 
 	assert.NoError(t, err)
 	assert.Equal(t, "dummy-proof", result.Proof)
@@ -46,11 +48,12 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 	expectedError := errors.New("Generate error")
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
-		StartBlock:  300,
-		MaxEndBlock: 400,
+		StartBlock:     300,
+		MaxEndBlock:    400,
+		L1InfoTreeHash: common.Hash{}.Bytes(),
 	}).Return((*types.GenerateAggchainProofResponse)(nil), expectedError)
 
-	result, err := client.GenerateAggchainProof(300, 400)
+	result, err := client.GenerateAggchainProof(300, 400, common.Hash{})
 
 	assert.Error(t, err)
 	assert.Nil(t, result)

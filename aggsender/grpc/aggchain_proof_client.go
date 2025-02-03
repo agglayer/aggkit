@@ -5,13 +5,14 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const TIMEOUT = 2
 
 // AggchainProofClientInterface defines an interface for aggchain proof client
 type AggchainProofClientInterface interface {
-	GenerateAggchainProof(startBlock uint64, maxEndBlock uint64) (*types.AggchainProof, error)
+	GenerateAggchainProof(startBlock uint64, maxEndBlock uint64, l1infoTreeHash common.Hash) (*types.AggchainProof, error)
 }
 
 // AggchainProofClient provides an implementation for the AggchainProofClient interface
@@ -31,17 +32,19 @@ func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
 }
 
 func (c *AggchainProofClient) GenerateAggchainProof(startBlock uint64,
-	maxEndBlock uint64) (*types.AggchainProof, error) {
+	maxEndBlock uint64, l1infoTreeHash common.Hash) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
 	defer cancel()
 
 	resp, err := c.client.GenerateAggchainProof(ctx, &types.GenerateAggchainProofRequest{
-		StartBlock:  startBlock,
-		MaxEndBlock: maxEndBlock,
+		StartBlock:     startBlock,
+		MaxEndBlock:    maxEndBlock,
+		L1InfoTreeHash: l1infoTreeHash.Bytes(),
 	})
 	if err != nil {
 		return nil, err
 	}
+
 	return &types.AggchainProof{
 		Proof:      string(resp.AggchainProof),
 		StartBlock: resp.StartBlock,
