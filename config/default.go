@@ -221,6 +221,8 @@ DryRun = false
 EnableRPC = true
 CheckStatusCertificateInterval = "5m"
 RetryCertInmediatlyAfterInError = true
+# Don't send certificate over 80% of the epoch
+ForbiddenSendCertificateAfterEpochPercentage=80
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"

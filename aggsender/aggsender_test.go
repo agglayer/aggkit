@@ -59,7 +59,8 @@ func TestConfigString(t *testing.T) {
 		"EnableRPC: false\n" +
 		"CheckStatusCertificateInterval: 0s\n" +
 		"RetryCertInmediatlyAfterInError: false\n" +
-		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"
+		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
+		"ForbiddenSendCertificateAfterEpochPercentage: 0\n"
 
 	require.Equal(t, expected, config.String())
 }

@@ -203,6 +203,14 @@ func TestBlockBeforeEpoch(t *testing.T) {
 	require.Equal(t, uint64(114), newStatus.lastBlockSeen)
 }
 
+func TestGetEpochStatus(t *testing.T) {
+	testData := newNotifierPerBlockTestData(t, nil)
+	testData.blockNotifierMock.EXPECT().GetCurrentBlockNumber().Return(uint64(105))
+	status := testData.sut.GetEpochStatus()
+	require.Equal(t, uint64(11), status.Epoch)
+	require.Equal(t, float64(0.5), status.PercentEpoch)
+}
+
 type notifierPerBlockTestData struct {
 	sut               *EpochNotifierPerBlock
 	blockNotifierMock *mocks.BlockNotifier

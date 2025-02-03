@@ -297,6 +297,10 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 			rateLimitSleepTime.String(), a.rateLimiter.String())
 		time.Sleep(*rateLimitSleepTime)
 	}
+	if a.isAllowedSendCertificateEpochPercent() {
+
+	}
+
 	a.saveCertificateToFile(signedCertificate)
 	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
 	if a.cfg.DryRun {
@@ -339,6 +343,17 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		certInfo.ID(), fromBlock, toBlock, signedCertificate.Brief())
 
 	return signedCertificate, nil
+}
+func (a *AggSender) isAllowedSendCertificateEpochPercent() bool {
+	if a.cfg.ForbiddenSendCertificateAfterEpochPercentage == 0 || a.cfg.ForbiddenSendCertificateAfterEpochPercentage >= maxPercent {
+		return true
+	}
+	status := a.epochNotifier.GetEpochStatus()
+	if status.PercentEpoch >= float64(a.cfg.ForbiddenSendCertificateAfterEpochPercentage)/100.0 {
+		a.log.Warnf("forbidden to send certificate after epoch percentage: %f", status.PercentEpoch)
+		return false
+	}
+	return true
 }
 
 // saveCertificateToStorage saves the certificate to the storage
