@@ -220,5 +220,6 @@ BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
 AggkitProverURL = ""
-Mode = "PP"
+# PessimisticProof or AggchainProver
+Mode = "PessimisticProof"
 `

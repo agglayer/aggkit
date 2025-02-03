@@ -182,8 +182,11 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 // createCertificateMetadata creates the metadata for the certificate
 // it returns: newMetadata + bool if the metadata is hashed or not
 func convertBridgeMetadata(metadata []byte, importedBridgeMetadataAsHash bool) ([]byte, bool) {
-	var metaData []byte
-	var isMetadataHashed bool
+	var (
+		metaData         []byte
+		isMetadataHashed bool
+	)
+
 	if importedBridgeMetadataAsHash && len(metadata) > 0 {
 		metaData = crypto.Keccak256(metadata)
 		isMetadataHashed = true

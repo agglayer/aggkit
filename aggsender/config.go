@@ -46,7 +46,7 @@ type Config struct {
 	// AggchainProofURL is the URL of the AggkitProver
 	AggchainProofURL string `mapstructure:"AggchainProofURL"`
 	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain prover mode)
-	Mode string `jsonschema:"enum=PP, enum=AggchainProver" mapstructure:"Mode"`
+	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProver" mapstructure:"Mode"`
 }
 
 // String returns a string representation of the Config

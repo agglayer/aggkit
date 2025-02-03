@@ -19,8 +19,8 @@ import (
 type AggsenderMode string
 
 const (
-	PPMode             AggsenderMode = "PP"
-	AggchainProverMode AggsenderMode = "AggchainProver"
+	PessimisticProofMode AggsenderMode = "PessimisticProof"
+	AggchainProverMode   AggsenderMode = "AggchainProver"
 )
 
 // AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender
