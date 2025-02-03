@@ -79,5 +79,6 @@ func (c Config) String() string {
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertInmediatlyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
-		"ForbiddenSendCertificateAfterEpochPercentage: " + fmt.Sprintf("%d", c.ForbiddenSendCertificateAfterEpochPercentage) + "\n"
+		"ForbiddenSendCertificateAfterEpochPercentage: " +
+		fmt.Sprintf("%d", c.ForbiddenSendCertificateAfterEpochPercentage) + "\n"
 }
