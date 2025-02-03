@@ -79,7 +79,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	rateLimit := createRateLimit(cfg)
+	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
 
@@ -95,11 +95,6 @@ func New(
 		status:           types.AggsenderStatus{Status: types.StatusNone},
 		rateLimiter:      rateLimit,
 	}, nil
-}
-
-func createRateLimit(cfg Config) *aggkitcommon.RateLimit {
-	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
-	return rateLimit
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {
