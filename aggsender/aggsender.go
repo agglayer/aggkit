@@ -297,7 +297,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 			rateLimitSleepTime.String(), a.rateLimiter.String())
 		time.Sleep(*rateLimitSleepTime)
 	}
-	if a.isAllowedSendCertificateEpochPercent() {
+	if !a.isAllowedSendCertificateEpochPercent() {
 		return nil, fmt.Errorf("forbidden to send certificate due epoch percentage")
 	}
 

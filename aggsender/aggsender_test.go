@@ -3,6 +3,7 @@ package aggsender
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2091,6 +2092,32 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 	}
 }
 
+func TestLimitEpochPercent_Greater(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage)
+	testData.sut.cfg.MaxCertSize = (aggsendertypes.EstimatedSizeBridgeExit * 3) + 1
+	testData.sut.cfg.ForbiddenSendCertificateAfterEpochPercentage = 80
+
+	ctx := context.TODO()
+	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
+	testData.l2syncerMock.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(100), nil).Once()
+	testData.storageMock.EXPECT().GetLastSentCertificate().Return(&aggsendertypes.CertificateInfo{
+		FromBlock: 1,
+		ToBlock:   20,
+		Status:    agglayer.Settled,
+	}, nil).Once()
+	testData.l2syncerMock.EXPECT().GetBridgesPublished(ctx, uint64(21), uint64(100)).Return(NewBridgesData(t, 0, []uint64{21, 21, 21, 22, 22, 22}), nil).Once()
+	testData.l2syncerMock.EXPECT().GetClaims(ctx, uint64(21), uint64(100)).Return(nil, nil).Once()
+	testData.l2syncerMock.EXPECT().GetExitRootByIndex(ctx, mock.Anything).Return(treeTypes.Root{}, nil).Once()
+	testData.l2syncerMock.EXPECT().OriginNetwork().Return(uint32(1)).Once()
+	testData.epochNotifierMock.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{
+		Epoch:        1,
+		PercentEpoch: 90,
+	}).Once()
+	_, err := testData.sut.sendCertificate(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "epoch percentage")
+}
+
 func TestNewAggSender(t *testing.T) {
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), Config{}, nil, nil, nil, nil)
 	require.NoError(t, err)
@@ -2111,6 +2138,7 @@ type aggsenderTestData struct {
 	l2syncerMock         *mocks.L2BridgeSyncer
 	l1InfoTreeSyncerMock *mocks.L1InfoTreeSyncer
 	storageMock          *mocks.AggSenderStorage
+	epochNotifierMock    *mocks.EpochNotifier
 	sut                  *AggSender
 	testCerts            []aggsendertypes.CertificateInfo
 }
@@ -2171,6 +2199,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	l2syncerMock := mocks.NewL2BridgeSyncer(t)
 	agglayerClientMock := agglayer.NewAgglayerClientMock(t)
 	l1InfoTreeSyncerMock := mocks.NewL1InfoTreeSyncer(t)
+	epochNotifierMock := mocks.NewEpochNotifier(t)
 	logger := log.WithFields("aggsender-test", "checkLastCertificateFromAgglayer")
 	var storageMock *mocks.AggSenderStorage
 	var storage db.AggSenderStorage
@@ -2187,6 +2216,8 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		storage, err = db.NewAggSenderSQLStorage(logger, storageConfig)
 		require.NoError(t, err)
 	}
+	privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
+	require.NoError(t, err)
 
 	ctx := context.TODO()
 	sut := &AggSender{
@@ -2198,6 +2229,9 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		cfg: Config{
 			MaxCertSize: 1024 * 1024,
 		},
+		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
+		sequencerKey:  privKey,
+		epochNotifier: epochNotifierMock,
 	}
 	testCerts := []aggsendertypes.CertificateInfo{
 		{
@@ -2220,6 +2254,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		l2syncerMock:         l2syncerMock,
 		l1InfoTreeSyncerMock: l1InfoTreeSyncerMock,
 		storageMock:          storageMock,
+		epochNotifierMock:    epochNotifierMock,
 		sut:                  sut,
 		testCerts:            testCerts,
 	}
