@@ -45,6 +45,7 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		CreatedAt:           c.CreatedAt,
 		RetryCount:          c.RetryCount,
 		LastSentCertificate: c.LastSentCertificate,
+		AggchainProof:       c.AggchainProof,
 	}
 
 	for _, bridge := range c.Bridges {

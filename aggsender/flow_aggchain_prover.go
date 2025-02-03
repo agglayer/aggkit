@@ -47,6 +47,8 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayer.InError {
+		// if the last certificate was in error, we need to resend it
+
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
 
 		bridges, claims, err := a.getBridgesAndClaims(ctx, lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock)
@@ -63,6 +65,8 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		}
 
 		proof := lastSentCertificateInfo.AggchainProof
+		toBlock := lastSentCertificateInfo.ToBlock
+
 		if proof == "" {
 			aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(lastSentCertificateInfo.FromBlock,
 				lastSentCertificateInfo.ToBlock)
@@ -72,14 +76,21 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			}
 
 			a.log.Infof("aggchainProverFlow - InError certificate did not have auth proof, "+
-				"so got it from the aggchain prover for range %d : %d. Proof: %s",
-				lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, aggchainProof.Proof)
+				"so got it from the aggchain prover for range %d : %d. Proof: %s. Requested range: %d : %d",
+				aggchainProof.StartBlock, aggchainProof.EndBlock, aggchainProof.Proof,
+				lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock)
 
 			proof = aggchainProof.Proof
+
+			if aggchainProof.EndBlock < lastSentCertificateInfo.ToBlock {
+				// aggchain prover can return a proof for a smaller range than requested
+				// so we need to adjust the toBlock
+				toBlock = aggchainProof.EndBlock
+			}
 		}
 
-		// we need to resend the exact same certificate
-		return &types.CertificateBuildParams{
+		// we need to resend the same certificate
+		buildParams := &types.CertificateBuildParams{
 			FromBlock:           lastSentCertificateInfo.FromBlock,
 			ToBlock:             lastSentCertificateInfo.ToBlock,
 			RetryCount:          lastSentCertificateInfo.RetryCount + 1,
@@ -88,7 +99,14 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			LastSentCertificate: lastSentCertificateInfo,
 			CreatedAt:           lastSentCertificateInfo.CreatedAt,
 			AggchainProof:       proof,
-		}, nil
+		}
+
+		buildParams, err = adjustBlockRange(buildParams, lastSentCertificateInfo.ToBlock, toBlock)
+		if err != nil {
+			return nil, err
+		}
+
+		return buildParams, nil
 	}
 
 	// use the old logic, where we build the new certificate
@@ -103,10 +121,32 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			buildParams.FromBlock, buildParams.ToBlock, err)
 	}
 
-	a.log.Infof("fetched auth proof: %s for new certificate of block range %d : %d",
-		aggchainProof.Proof, buildParams.FromBlock, buildParams.ToBlock)
+	a.log.Infof("aggchainProverFlow - fetched auth proof: %s Range %d : %d from aggchain prover. Requested range: %d : %d",
+		aggchainProof.Proof, aggchainProof.StartBlock, aggchainProof.EndBlock,
+		buildParams.FromBlock, buildParams.ToBlock)
 
 	buildParams.AggchainProof = aggchainProof.Proof
+
+	buildParams, err = adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
+	if err != nil {
+		return nil, err
+	}
+
+	return buildParams, nil
+}
+
+// adjustBlockRange adjusts the block range of the certificate to match the range returned by the aggchain prover
+func adjustBlockRange(buildParams *types.CertificateBuildParams,
+	requestedToBlock, aggchainProverToBlock uint64) (*types.CertificateBuildParams, error) {
+	var err error
+	if requestedToBlock != aggchainProverToBlock {
+		// if the toBlock was adjusted, we need to adjust the bridges and claims
+		// to only include the ones in the new range that aggchain prover returned
+		buildParams, err = buildParams.Range(buildParams.FromBlock, aggchainProverToBlock)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error adjusting the range of the certificate: %w", err)
+		}
+	}
 
 	return buildParams, nil
 }
