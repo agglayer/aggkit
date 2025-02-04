@@ -106,6 +106,7 @@ func L1Setup(t *testing.T) *L1Environment {
 	rdL1, err := reorgdetector.New(l1Client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorgDetectorL1,
 		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
+		FinalizedBlock:      etherman.FinalizedBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
 	go rdL1.Start(ctx) //nolint:errcheck
@@ -145,7 +146,7 @@ func L1Setup(t *testing.T) *L1Environment {
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
 		syncBlockChunkSize, etherman.LatestBlock, rdL1, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
-		retriesCount, originNetwork, false, etherman.SafeBlock)
+		retriesCount, originNetwork, false)
 	require.NoError(t, err)
 
 	go bridgeL1Sync.Start(ctx)
@@ -186,7 +187,9 @@ func L2Setup(t *testing.T) *L2Environment {
 	dbPathReorgL2 := path.Join(t.TempDir(), "ReorgDetectorL2.sqlite")
 	rdL2, err := reorgdetector.New(l2Client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorgL2,
-		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}}, //nolint:mnd
+		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100},
+		FinalizedBlock:      etherman.FinalizedBlock,
+	}, //nolint:mnd
 		reorgdetector.L2,
 	)
 	require.NoError(t, err)
@@ -208,7 +211,7 @@ func L2Setup(t *testing.T) *L2Environment {
 		ctx, dbPathL2BridgeSync, bridgeL2Addr, syncBlockChunkSize,
 		etherman.LatestBlock, rdL2, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
-		retriesCount, originNetwork, false, etherman.LatestBlock)
+		retriesCount, originNetwork, false)
 	require.NoError(t, err)
 
 	go bridgeL2Sync.Start(ctx)

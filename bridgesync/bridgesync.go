@@ -27,7 +27,7 @@ type BridgeSync struct {
 	driver    *sync.EVMDriver
 
 	originNetwork uint32
-	blockFinality etherman.BlockNumberFinality
+	reorgDetector ReorgDetector
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -45,7 +45,6 @@ func NewL1(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -62,7 +61,6 @@ func NewL1(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		finalizedBlockType,
 	)
 }
 
@@ -81,7 +79,6 @@ func NewL2(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -98,7 +95,6 @@ func NewL2(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		finalizedBlockType,
 	)
 }
 
@@ -117,7 +113,6 @@ func newBridgeSync(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID)
 	processor, err := newProcessor(dbPath, logger)
@@ -156,7 +151,7 @@ func newBridgeSync(
 		appender,
 		[]common.Address{bridge},
 		rh,
-		finalizedBlockType,
+		rd.GetFinalizedBlock(),
 	)
 	if err != nil {
 		return nil, err
@@ -176,7 +171,7 @@ func newBridgeSync(
 			"  maxRetryAttemptsAfterError: %d\n"+
 			"  retryAfterErrorPeriod: %s\n"+
 			"  syncBlockChunkSize: %d\n"+
-			"  blockFinalityType: %s\n"+
+			"  ReorgDetector: %s\n"+
 			"  waitForNewBlocksPeriod: %s",
 		syncerID,
 		dbPath,
@@ -186,7 +181,7 @@ func newBridgeSync(
 		maxRetryAttemptsAfterError,
 		retryAfterErrorPeriod.String(),
 		syncBlockChunkSize,
-		blockFinalityType,
+		rd.String(),
 		waitForNewBlocksPeriod.String(),
 	)
 
@@ -194,7 +189,7 @@ func newBridgeSync(
 		processor:     processor,
 		driver:        driver,
 		originNetwork: originNetwork,
-		blockFinality: blockFinalityType,
+		reorgDetector: rd,
 	}, nil
 }
 
@@ -282,5 +277,5 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 
 // BlockFinality returns the block finality type
 func (s *BridgeSync) BlockFinality() etherman.BlockNumberFinality {
-	return s.blockFinality
+	return s.reorgDetector.GetFinalizedBlock()
 }
