@@ -16,6 +16,22 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 )
 
+type AggsenderMode string
+
+const (
+	PessimisticProofMode AggsenderMode = "PessimisticProof"
+	AggchainProverMode   AggsenderMode = "AggchainProver"
+)
+
+// AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender
+// based on the different prover types
+type AggsenderFlow interface {
+	// GetCertificateBuildParams returns the parameters to build a certificate
+	GetCertificateBuildParams(ctx context.Context) (*CertificateBuildParams, error)
+	// BuildCertificate builds a certificate based on the buildParams
+	BuildCertificate(ctx context.Context, buildParams *CertificateBuildParams) (*agglayer.Certificate, error)
+}
+
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
 type L1InfoTreeSyncer interface {
 	GetInfoByGlobalExitRoot(globalExitRoot common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
@@ -74,6 +90,7 @@ type CertificateInfo struct {
 	CreatedAt             uint32                     `meddler:"created_at"`
 	UpdatedAt             uint32                     `meddler:"updated_at"`
 	SignedCertificate     string                     `meddler:"signed_certificate"`
+	AggchainProof         string                     `meddler:"aggchain_proof"`
 }
 
 func (c *CertificateInfo) String() string {
@@ -95,7 +112,8 @@ func (c *CertificateInfo) String() string {
 		"FromBlock: %d "+
 		"ToBlock: %d "+
 		"CreatedAt: %s "+
-		"UpdatedAt: %s",
+		"UpdatedAt: %s "+
+		"AggchainProof: %s ",
 		c.Height,
 		c.RetryCount,
 		c.CertificateID.String(),
@@ -106,6 +124,7 @@ func (c *CertificateInfo) String() string {
 		c.ToBlock,
 		time.Unix(int64(c.CreatedAt), 0),
 		time.Unix(int64(c.UpdatedAt), 0),
+		c.AggchainProof,
 	)
 }
 

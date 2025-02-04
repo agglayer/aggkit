@@ -25,7 +25,6 @@ type Config struct {
 	EpochNotificationPercentage uint `mapstructure:"EpochNotificationPercentage"`
 	// SaveCertificatesToFilesPath if != "" tells  the AggSender to save the certificates to a file in this path
 	SaveCertificatesToFilesPath string `mapstructure:"SaveCertificatesToFilesPath"`
-
 	// MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
 	// 0 is infinite
 	MaxRetriesStoreCertificate int `mapstructure:"MaxRetriesStoreCertificate"`
@@ -46,6 +45,8 @@ type Config struct {
 	EnableRPC bool `mapstructure:"EnableRPC"`
 	// AggchainProofURL is the URL of the AggkitProver
 	AggchainProofURL string `mapstructure:"AggchainProofURL"`
+	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain prover mode)
+	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProver" mapstructure:"Mode"`
 }
 
 // String returns a string representation of the Config
@@ -56,5 +57,14 @@ func (c Config) String() string {
 		"URLRPCL2: " + c.URLRPCL2 + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
-		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n"
+		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n" +
+		"MaxRetriesStoreCertificate: " + fmt.Sprintf("%d", c.MaxRetriesStoreCertificate) + "\n" +
+		"DelayBeetweenRetries: " + c.DelayBeetweenRetries.String() + "\n" +
+		"KeepCertificatesHistory: " + fmt.Sprintf("%t", c.KeepCertificatesHistory) + "\n" +
+		"MaxCertSize: " + fmt.Sprintf("%d", c.MaxCertSize) + "\n" +
+		"BridgeMetadataAsHash: " + fmt.Sprintf("%t", c.BridgeMetadataAsHash) + "\n" +
+		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
+		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
+		"AggchainProofURL: " + c.AggchainProofURL + "\n" +
+		"Mode: " + c.Mode + "\n"
 }

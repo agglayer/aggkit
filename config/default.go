@@ -219,4 +219,7 @@ MaxCertSize = 8388608
 BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
+AggkitProverURL = ""
+# PessimisticProof or AggchainProver
+Mode = "PessimisticProof"
 `

@@ -2,7 +2,6 @@ package aggsender
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,7 +17,6 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -45,6 +43,7 @@ func TestConfigString(t *testing.T) {
 		BlockFinality:               "latestBlock",
 		EpochNotificationPercentage: 50,
 		SaveCertificatesToFilesPath: "/path/to/certificates",
+		Mode:                        "PP",
 	}
 
 	expected := "StoragePath: /path/to/storage\n" +
@@ -53,221 +52,18 @@ func TestConfigString(t *testing.T) {
 		"URLRPCL2: http://l2.rpc.url\n" +
 		"BlockFinality: latestBlock\n" +
 		"EpochNotificationPercentage: 50\n" +
-		"SaveCertificatesToFilesPath: /path/to/certificates\n"
+		"SaveCertificatesToFilesPath: /path/to/certificates\n" +
+		"MaxRetriesStoreCertificate: 0\n" +
+		"DelayBeetweenRetries: 0s\n" +
+		"KeepCertificatesHistory: false\n" +
+		"MaxCertSize: 0\n" +
+		"BridgeMetadataAsHash: false\n" +
+		"DryRun: false\n" +
+		"EnableRPC: false\n" +
+		"AggchainProofURL: \n" +
+		"Mode: PP\n"
 
 	require.Equal(t, expected, config.String())
-}
-
-func TestConvertClaimToImportedBridgeExit(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		claim         bridgesync.Claim
-		expectedError bool
-		expectedExit  *agglayer.ImportedBridgeExit
-	}{
-		{
-			name: "Asset claim",
-			claim: bridgesync.Claim{
-				IsMessage:          false,
-				OriginNetwork:      1,
-				OriginAddress:      common.HexToAddress("0x123"),
-				DestinationNetwork: 2,
-				DestinationAddress: common.HexToAddress("0x456"),
-				Amount:             big.NewInt(100),
-				Metadata:           []byte("metadata"),
-				GlobalIndex:        big.NewInt(1),
-			},
-			expectedError: false,
-			expectedExit: &agglayer.ImportedBridgeExit{
-				BridgeExit: &agglayer.BridgeExit{
-					LeafType: agglayer.LeafTypeAsset,
-					TokenInfo: &agglayer.TokenInfo{
-						OriginNetwork:      1,
-						OriginTokenAddress: common.HexToAddress("0x123"),
-					},
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x456"),
-					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
-				},
-				GlobalIndex: &agglayer.GlobalIndex{
-					MainnetFlag: false,
-					RollupIndex: 0,
-					LeafIndex:   1,
-				},
-			},
-		},
-		{
-			name: "Message claim",
-			claim: bridgesync.Claim{
-				IsMessage:          true,
-				OriginNetwork:      1,
-				OriginAddress:      common.HexToAddress("0x123"),
-				DestinationNetwork: 2,
-				DestinationAddress: common.HexToAddress("0x456"),
-				Amount:             big.NewInt(100),
-				Metadata:           []byte("metadata"),
-				GlobalIndex:        big.NewInt(2),
-			},
-			expectedError: false,
-			expectedExit: &agglayer.ImportedBridgeExit{
-				BridgeExit: &agglayer.BridgeExit{
-					LeafType: agglayer.LeafTypeMessage,
-					TokenInfo: &agglayer.TokenInfo{
-						OriginNetwork:      1,
-						OriginTokenAddress: common.HexToAddress("0x123"),
-					},
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x456"),
-					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
-				},
-				GlobalIndex: &agglayer.GlobalIndex{
-					MainnetFlag: false,
-					RollupIndex: 0,
-					LeafIndex:   2,
-				},
-			},
-		},
-		{
-			name: "Invalid global index",
-			claim: bridgesync.Claim{
-				IsMessage:          false,
-				OriginNetwork:      1,
-				OriginAddress:      common.HexToAddress("0x123"),
-				DestinationNetwork: 2,
-				DestinationAddress: common.HexToAddress("0x456"),
-				Amount:             big.NewInt(100),
-				Metadata:           []byte("metadata"),
-				GlobalIndex:        new(big.Int).SetBytes([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}),
-			},
-			expectedError: true,
-			expectedExit:  nil,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			aggSender := &AggSender{}
-			exit, err := aggSender.convertClaimToImportedBridgeExit(tt.claim)
-
-			if tt.expectedError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedExit, exit)
-			}
-		})
-	}
-}
-
-func TestGetBridgeExits(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name          string
-		bridges       []bridgesync.Bridge
-		expectedExits []*agglayer.BridgeExit
-	}{
-		{
-			name: "Single bridge",
-			bridges: []bridgesync.Bridge{
-				{
-					LeafType:           agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork:      1,
-					OriginAddress:      common.HexToAddress("0x123"),
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x456"),
-					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
-				},
-			},
-			expectedExits: []*agglayer.BridgeExit{
-				{
-					LeafType: agglayer.LeafTypeAsset,
-					TokenInfo: &agglayer.TokenInfo{
-						OriginNetwork:      1,
-						OriginTokenAddress: common.HexToAddress("0x123"),
-					},
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x456"),
-					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
-				},
-			},
-		},
-		{
-			name: "Multiple bridges",
-			bridges: []bridgesync.Bridge{
-				{
-					LeafType:           agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork:      1,
-					OriginAddress:      common.HexToAddress("0x123"),
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x456"),
-					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
-				},
-				{
-					LeafType:           agglayer.LeafTypeMessage.Uint8(),
-					OriginNetwork:      3,
-					OriginAddress:      common.HexToAddress("0x789"),
-					DestinationNetwork: 4,
-					DestinationAddress: common.HexToAddress("0xabc"),
-					Amount:             big.NewInt(200),
-					Metadata:           []byte("data"),
-				},
-			},
-			expectedExits: []*agglayer.BridgeExit{
-				{
-					LeafType: agglayer.LeafTypeAsset,
-					TokenInfo: &agglayer.TokenInfo{
-						OriginNetwork:      1,
-						OriginTokenAddress: common.HexToAddress("0x123"),
-					},
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x456"),
-					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
-				},
-				{
-					LeafType: agglayer.LeafTypeMessage,
-					TokenInfo: &agglayer.TokenInfo{
-						OriginNetwork:      3,
-						OriginTokenAddress: common.HexToAddress("0x789"),
-					},
-					DestinationNetwork: 4,
-					DestinationAddress: common.HexToAddress("0xabc"),
-					Amount:             big.NewInt(200),
-					Metadata:           []byte("data"),
-				},
-			},
-		},
-		{
-			name:          "No bridges",
-			bridges:       []bridgesync.Bridge{},
-			expectedExits: []*agglayer.BridgeExit{},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			aggSender := &AggSender{}
-			exits := aggSender.getBridgeExits(tt.bridges)
-
-			require.Equal(t, tt.expectedExits, exits)
-		})
-	}
 }
 
 func TestAggSenderStart(t *testing.T) {
@@ -336,484 +132,6 @@ func TestAggSenderSendCertificates(t *testing.T) {
 	}
 	go aggSender.sendCertificates(ctx)
 	time.Sleep(200 * time.Millisecond)
-}
-
-//nolint:dupl
-func TestGetImportedBridgeExits(t *testing.T) {
-	t.Parallel()
-
-	mockProof := generateTestProof(t)
-
-	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-	mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
-		L1InfoTreeIndex:   1,
-		Timestamp:         123456789,
-		PreviousBlockHash: common.HexToHash("0xabc"),
-		GlobalExitRoot:    common.HexToHash("0x7891"),
-	}, nil)
-	mockL1InfoTreeSyncer.On("GetL1InfoTreeRootByIndex", mock.Anything, mock.Anything).Return(
-		treeTypes.Root{Hash: common.HexToHash("0x7891")}, nil)
-	mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", mock.Anything,
-		mock.Anything, mock.Anything).Return(mockProof, nil)
-
-	tests := []struct {
-		name          string
-		claims        []bridgesync.Claim
-		expectedError bool
-		expectedExits []*agglayer.ImportedBridgeExit
-	}{
-		{
-			name: "Single claim",
-			claims: []bridgesync.Claim{
-				{
-					IsMessage:           false,
-					OriginNetwork:       1,
-					OriginAddress:       common.HexToAddress("0x1234"),
-					DestinationNetwork:  2,
-					DestinationAddress:  common.HexToAddress("0x4567"),
-					Amount:              big.NewInt(111),
-					Metadata:            []byte("metadata1"),
-					GlobalIndex:         bridgesync.GenerateGlobalIndex(false, 1, 1),
-					GlobalExitRoot:      common.HexToHash("0x7891"),
-					RollupExitRoot:      common.HexToHash("0xaaab"),
-					MainnetExitRoot:     common.HexToHash("0xbbba"),
-					ProofLocalExitRoot:  mockProof,
-					ProofRollupExitRoot: mockProof,
-				},
-			},
-			expectedError: false,
-			expectedExits: []*agglayer.ImportedBridgeExit{
-				{
-					BridgeExit: &agglayer.BridgeExit{
-						LeafType: agglayer.LeafTypeAsset,
-						TokenInfo: &agglayer.TokenInfo{
-							OriginNetwork:      1,
-							OriginTokenAddress: common.HexToAddress("0x1234"),
-						},
-						DestinationNetwork: 2,
-						DestinationAddress: common.HexToAddress("0x4567"),
-						Amount:             big.NewInt(111),
-						Metadata:           []byte("metadata1"),
-					},
-					GlobalIndex: &agglayer.GlobalIndex{
-						MainnetFlag: false,
-						RollupIndex: 1,
-						LeafIndex:   1,
-					},
-					ClaimData: &agglayer.ClaimFromRollup{
-						L1Leaf: &agglayer.L1InfoTreeLeaf{
-							L1InfoTreeIndex: 1,
-							RollupExitRoot:  common.HexToHash("0xaaab"),
-							MainnetExitRoot: common.HexToHash("0xbbba"),
-							Inner: &agglayer.L1InfoTreeLeafInner{
-								GlobalExitRoot: common.HexToHash("0x7891"),
-								Timestamp:      123456789,
-								BlockHash:      common.HexToHash("0xabc"),
-							},
-						},
-						ProofLeafLER: &agglayer.MerkleProof{
-							Root:  common.HexToHash("0xc52019815b51acf67a715cae6794a20083d63fd9af45783b7adf69123dae92c8"),
-							Proof: mockProof,
-						},
-						ProofLERToRER: &agglayer.MerkleProof{
-							Root:  common.HexToHash("0xaaab"),
-							Proof: mockProof,
-						},
-						ProofGERToL1Root: &agglayer.MerkleProof{
-							Root:  common.HexToHash("0x7891"),
-							Proof: mockProof,
-						},
-					},
-				},
-			},
-		},
-		{
-			name: "Multiple claims",
-			claims: []bridgesync.Claim{
-				{
-					IsMessage:           false,
-					OriginNetwork:       1,
-					OriginAddress:       common.HexToAddress("0x123"),
-					DestinationNetwork:  2,
-					DestinationAddress:  common.HexToAddress("0x456"),
-					Amount:              big.NewInt(100),
-					Metadata:            []byte("metadata"),
-					GlobalIndex:         big.NewInt(1),
-					GlobalExitRoot:      common.HexToHash("0x7891"),
-					RollupExitRoot:      common.HexToHash("0xaaa"),
-					MainnetExitRoot:     common.HexToHash("0xbbb"),
-					ProofLocalExitRoot:  mockProof,
-					ProofRollupExitRoot: mockProof,
-				},
-				{
-					IsMessage:           true,
-					OriginNetwork:       3,
-					OriginAddress:       common.HexToAddress("0x789"),
-					DestinationNetwork:  4,
-					DestinationAddress:  common.HexToAddress("0xabc"),
-					Amount:              big.NewInt(200),
-					Metadata:            []byte("data"),
-					GlobalIndex:         bridgesync.GenerateGlobalIndex(true, 0, 2),
-					GlobalExitRoot:      common.HexToHash("0x7891"),
-					RollupExitRoot:      common.HexToHash("0xbbb"),
-					MainnetExitRoot:     common.HexToHash("0xccc"),
-					ProofLocalExitRoot:  mockProof,
-					ProofRollupExitRoot: mockProof,
-				},
-			},
-			expectedError: false,
-			expectedExits: []*agglayer.ImportedBridgeExit{
-				{
-					BridgeExit: &agglayer.BridgeExit{
-						LeafType: agglayer.LeafTypeAsset,
-						TokenInfo: &agglayer.TokenInfo{
-							OriginNetwork:      1,
-							OriginTokenAddress: common.HexToAddress("0x123"),
-						},
-						DestinationNetwork: 2,
-						DestinationAddress: common.HexToAddress("0x456"),
-						Amount:             big.NewInt(100),
-						Metadata:           []byte("metadata"),
-					},
-					GlobalIndex: &agglayer.GlobalIndex{
-						MainnetFlag: false,
-						RollupIndex: 0,
-						LeafIndex:   1,
-					},
-					ClaimData: &agglayer.ClaimFromRollup{
-						L1Leaf: &agglayer.L1InfoTreeLeaf{
-							L1InfoTreeIndex: 1,
-							RollupExitRoot:  common.HexToHash("0xaaa"),
-							MainnetExitRoot: common.HexToHash("0xbbb"),
-							Inner: &agglayer.L1InfoTreeLeafInner{
-								GlobalExitRoot: common.HexToHash("0x7891"),
-								Timestamp:      123456789,
-								BlockHash:      common.HexToHash("0xabc"),
-							},
-						},
-						ProofLeafLER: &agglayer.MerkleProof{
-							Root:  common.HexToHash("0x105e0f1144e57f6fb63f1dfc5083b1f59be3512be7cf5e63523779ad14a4d987"),
-							Proof: mockProof,
-						},
-						ProofLERToRER: &agglayer.MerkleProof{
-							Root:  common.HexToHash("0xaaa"),
-							Proof: mockProof,
-						},
-						ProofGERToL1Root: &agglayer.MerkleProof{
-							Root:  common.HexToHash("0x7891"),
-							Proof: mockProof,
-						},
-					},
-				},
-				{
-					BridgeExit: &agglayer.BridgeExit{
-						LeafType: agglayer.LeafTypeMessage,
-						TokenInfo: &agglayer.TokenInfo{
-							OriginNetwork:      3,
-							OriginTokenAddress: common.HexToAddress("0x789"),
-						},
-						DestinationNetwork: 4,
-						DestinationAddress: common.HexToAddress("0xabc"),
-						Amount:             big.NewInt(200),
-						Metadata:           []byte("data"),
-					},
-					GlobalIndex: &agglayer.GlobalIndex{
-						MainnetFlag: true,
-						RollupIndex: 0,
-						LeafIndex:   2,
-					},
-					ClaimData: &agglayer.ClaimFromMainnnet{
-						L1Leaf: &agglayer.L1InfoTreeLeaf{
-							L1InfoTreeIndex: 1,
-							RollupExitRoot:  common.HexToHash("0xbbb"),
-							MainnetExitRoot: common.HexToHash("0xccc"),
-							Inner: &agglayer.L1InfoTreeLeafInner{
-								GlobalExitRoot: common.HexToHash("0x7891"),
-								Timestamp:      123456789,
-								BlockHash:      common.HexToHash("0xabc"),
-							},
-						},
-						ProofLeafMER: &agglayer.MerkleProof{
-							Root:  common.HexToHash("0xccc"),
-							Proof: mockProof,
-						},
-						ProofGERToL1Root: &agglayer.MerkleProof{
-							Root:  common.HexToHash("0x7891"),
-							Proof: mockProof,
-						},
-					},
-				},
-			},
-		},
-		{
-			name:          "No claims",
-			claims:        []bridgesync.Claim{},
-			expectedError: false,
-			expectedExits: []*agglayer.ImportedBridgeExit{},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			aggSender := &AggSender{
-				l1infoTreeSyncer: mockL1InfoTreeSyncer,
-				log:              log.WithFields("test", "unittest"),
-			}
-			exits, err := aggSender.getImportedBridgeExits(context.Background(), tt.claims)
-
-			if tt.expectedError {
-				require.Error(t, err)
-				require.Nil(t, exits)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedExits, exits)
-			}
-		})
-	}
-}
-
-func TestBuildCertificate(t *testing.T) {
-	mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
-	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-	mockProof := generateTestProof(t)
-
-	tests := []struct {
-		name                    string
-		bridges                 []bridgesync.Bridge
-		claims                  []bridgesync.Claim
-		lastSentCertificateInfo aggsendertypes.CertificateInfo
-		fromBlock               uint64
-		toBlock                 uint64
-		mockFn                  func()
-		expectedCert            *agglayer.Certificate
-		expectedError           bool
-	}{
-		{
-			name: "Valid certificate with bridges and claims",
-			bridges: []bridgesync.Bridge{
-				{
-					LeafType:           agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork:      1,
-					OriginAddress:      common.HexToAddress("0x123"),
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x456"),
-					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
-					DepositCount:       1,
-				},
-			},
-			claims: []bridgesync.Claim{
-				{
-					IsMessage:           false,
-					OriginNetwork:       1,
-					OriginAddress:       common.HexToAddress("0x1234"),
-					DestinationNetwork:  2,
-					DestinationAddress:  common.HexToAddress("0x4567"),
-					Amount:              big.NewInt(111),
-					Metadata:            []byte("metadata1"),
-					GlobalIndex:         big.NewInt(1),
-					GlobalExitRoot:      common.HexToHash("0x7891"),
-					RollupExitRoot:      common.HexToHash("0xaaab"),
-					MainnetExitRoot:     common.HexToHash("0xbbba"),
-					ProofLocalExitRoot:  mockProof,
-					ProofRollupExitRoot: mockProof,
-				},
-			},
-			lastSentCertificateInfo: aggsendertypes.CertificateInfo{
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Height:           1,
-				Status:           agglayer.Settled,
-			},
-			fromBlock: 0,
-			toBlock:   10,
-			expectedCert: &agglayer.Certificate{
-				NetworkID:         1,
-				PrevLocalExitRoot: common.HexToHash("0x123"),
-				NewLocalExitRoot:  common.HexToHash("0x789"),
-				Metadata:          aggsendertypes.NewCertificateMetadata(0, 10, 0).ToHash(),
-				BridgeExits: []*agglayer.BridgeExit{
-					{
-						LeafType: agglayer.LeafTypeAsset,
-						TokenInfo: &agglayer.TokenInfo{
-							OriginNetwork:      1,
-							OriginTokenAddress: common.HexToAddress("0x123"),
-						},
-						DestinationNetwork: 2,
-						DestinationAddress: common.HexToAddress("0x456"),
-						Amount:             big.NewInt(100),
-						Metadata:           []byte("metadata"),
-					},
-				},
-				ImportedBridgeExits: []*agglayer.ImportedBridgeExit{
-					{
-						BridgeExit: &agglayer.BridgeExit{
-							LeafType: agglayer.LeafTypeAsset,
-							TokenInfo: &agglayer.TokenInfo{
-								OriginNetwork:      1,
-								OriginTokenAddress: common.HexToAddress("0x1234"),
-							},
-							DestinationNetwork: 2,
-							DestinationAddress: common.HexToAddress("0x4567"),
-							Amount:             big.NewInt(111),
-							Metadata:           []byte("metadata1"),
-						},
-						GlobalIndex: &agglayer.GlobalIndex{
-							MainnetFlag: false,
-							RollupIndex: 0,
-							LeafIndex:   1,
-						},
-						ClaimData: &agglayer.ClaimFromRollup{
-							L1Leaf: &agglayer.L1InfoTreeLeaf{
-								L1InfoTreeIndex: 1,
-								RollupExitRoot:  common.HexToHash("0xaaab"),
-								MainnetExitRoot: common.HexToHash("0xbbba"),
-								Inner: &agglayer.L1InfoTreeLeafInner{
-									GlobalExitRoot: common.HexToHash("0x7891"),
-									Timestamp:      123456789,
-									BlockHash:      common.HexToHash("0xabc"),
-								},
-							},
-							ProofLeafLER: &agglayer.MerkleProof{
-								Root:  common.HexToHash("0xc52019815b51acf67a715cae6794a20083d63fd9af45783b7adf69123dae92c8"),
-								Proof: mockProof,
-							},
-							ProofLERToRER: &agglayer.MerkleProof{
-								Root:  common.HexToHash("0xaaab"),
-								Proof: mockProof,
-							},
-							ProofGERToL1Root: &agglayer.MerkleProof{
-								Root:  common.HexToHash("0x7891"),
-								Proof: mockProof,
-							},
-						},
-					},
-				},
-				Height: 2,
-			},
-			mockFn: func() {
-				mockL2BridgeSyncer.On("OriginNetwork").Return(uint32(1))
-				mockL2BridgeSyncer.On("GetExitRootByIndex", mock.Anything, mock.Anything).Return(treeTypes.Root{Hash: common.HexToHash("0x789")}, nil)
-
-				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
-					L1InfoTreeIndex:   1,
-					Timestamp:         123456789,
-					PreviousBlockHash: common.HexToHash("0xabc"),
-					GlobalExitRoot:    common.HexToHash("0x7891"),
-				}, nil)
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeRootByIndex", mock.Anything, mock.Anything).Return(treeTypes.Root{Hash: common.HexToHash("0x7891")}, nil)
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", mock.Anything, mock.Anything, mock.Anything).Return(mockProof, nil)
-			},
-			expectedError: false,
-		},
-		{
-			name:    "No bridges or claims",
-			bridges: []bridgesync.Bridge{},
-			claims:  []bridgesync.Claim{},
-			lastSentCertificateInfo: aggsendertypes.CertificateInfo{
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Height:           1,
-			},
-			expectedCert:  nil,
-			expectedError: true,
-		},
-		{
-			name: "Error getting imported bridge exits",
-			bridges: []bridgesync.Bridge{
-				{
-					LeafType:           agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork:      1,
-					OriginAddress:      common.HexToAddress("0x123"),
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x456"),
-					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
-					DepositCount:       1,
-				},
-			},
-			claims: []bridgesync.Claim{
-				{
-					IsMessage:          false,
-					OriginNetwork:      1,
-					OriginAddress:      common.HexToAddress("0x1234"),
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x4567"),
-					Amount:             big.NewInt(111),
-					Metadata:           []byte("metadata1"),
-					GlobalIndex:        new(big.Int).SetBytes([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}),
-					GlobalExitRoot:     common.HexToHash("0x7891"),
-					RollupExitRoot:     common.HexToHash("0xaaab"),
-					MainnetExitRoot:    common.HexToHash("0xbbba"),
-					ProofLocalExitRoot: mockProof,
-				},
-			},
-			lastSentCertificateInfo: aggsendertypes.CertificateInfo{
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Height:           1,
-			},
-			mockFn: func() {
-				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
-					L1InfoTreeIndex:   1,
-					Timestamp:         123456789,
-					PreviousBlockHash: common.HexToHash("0xabc"),
-					GlobalExitRoot:    common.HexToHash("0x7891"),
-				}, nil)
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeRootByIndex", mock.Anything, mock.Anything).Return(
-					treeTypes.Root{Hash: common.HexToHash("0x7891")}, nil)
-			},
-			expectedCert:  nil,
-			expectedError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			mockL1InfoTreeSyncer.ExpectedCalls = nil
-			mockL2BridgeSyncer.ExpectedCalls = nil
-
-			if tt.mockFn != nil {
-				tt.mockFn()
-			}
-
-			aggSender := &AggSender{
-				l2Syncer:         mockL2BridgeSyncer,
-				l1infoTreeSyncer: mockL1InfoTreeSyncer,
-				log:              log.WithFields("test", "unittest"),
-			}
-
-			certParam := &aggsendertypes.CertificateBuildParams{
-				ToBlock: tt.toBlock,
-				Bridges: tt.bridges,
-				Claims:  tt.claims,
-			}
-			cert, err := aggSender.buildCertificate(context.Background(), certParam, &tt.lastSentCertificateInfo)
-
-			if tt.expectedError {
-				require.Error(t, err)
-				require.Nil(t, cert)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedCert, cert)
-			}
-		})
-	}
-}
-
-func generateTestProof(t *testing.T) treeTypes.Proof {
-	t.Helper()
-
-	proof := treeTypes.Proof{}
-
-	for i := 0; i < int(treeTypes.DefaultHeight) && i < 10; i++ {
-		proof[i] = common.HexToHash(fmt.Sprintf("0x%d", i))
-	}
-
-	return proof
 }
 
 func TestCheckIfCertificatesAreSettled(t *testing.T) {
@@ -928,420 +246,6 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 			require.Equal(t, tt.expectedError, thereArePendingCerts)
 			mockAggLayerClient.AssertExpectations(t)
 			mockStorage.AssertExpectations(t)
-		})
-	}
-}
-
-func TestSendCertificate(t *testing.T) {
-	t.Parallel()
-
-	privateKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	type testCfg struct {
-		name                                    string
-		sequencerKey                            *ecdsa.PrivateKey
-		shouldSendCertificate                   []interface{}
-		getLastSentCertificate                  []interface{}
-		lastL2BlockProcessed                    []interface{}
-		getBridges                              []interface{}
-		getClaims                               []interface{}
-		getInfoByGlobalExitRoot                 []interface{}
-		getL1InfoTreeRootByIndex                []interface{}
-		getL1InfoTreeMerkleProofFromIndexToRoot []interface{}
-		getExitRootByIndex                      []interface{}
-		originNetwork                           []interface{}
-		sendCertificate                         []interface{}
-		saveLastSentCertificate                 []interface{}
-		expectedError                           string
-	}
-
-	setupTest := func(cfg testCfg) (*AggSender, *mocks.AggSenderStorage, *mocks.L2BridgeSyncer,
-		*agglayer.AgglayerClientMock, *mocks.L1InfoTreeSyncer) {
-		var (
-			aggsender = &AggSender{
-				log:          log.WithFields("aggsender", 1),
-				cfg:          Config{MaxRetriesStoreCertificate: 1},
-				sequencerKey: cfg.sequencerKey,
-			}
-			mockStorage          *mocks.AggSenderStorage
-			mockL2Syncer         *mocks.L2BridgeSyncer
-			mockAggLayerClient   *agglayer.AgglayerClientMock
-			mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer
-		)
-
-		if cfg.shouldSendCertificate != nil || cfg.getLastSentCertificate != nil ||
-			cfg.saveLastSentCertificate != nil {
-			mockStorage = mocks.NewAggSenderStorage(t)
-			mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).
-				Return(cfg.shouldSendCertificate...)
-
-			aggsender.storage = mockStorage
-
-			if cfg.getLastSentCertificate != nil {
-				mockStorage.On("GetLastSentCertificate").Return(cfg.getLastSentCertificate...).Once()
-			}
-
-			if cfg.saveLastSentCertificate != nil {
-				mockStorage.On("SaveLastSentCertificate", mock.Anything, mock.Anything).Return(cfg.saveLastSentCertificate...)
-			}
-		}
-
-		if cfg.lastL2BlockProcessed != nil || cfg.originNetwork != nil ||
-			cfg.getBridges != nil || cfg.getClaims != nil || cfg.getInfoByGlobalExitRoot != nil {
-			mockL2Syncer = mocks.NewL2BridgeSyncer(t)
-
-			mockL2Syncer.On("GetLastProcessedBlock", mock.Anything).Return(cfg.lastL2BlockProcessed...).Once()
-
-			if cfg.getBridges != nil {
-				mockL2Syncer.On("GetBridgesPublished", mock.Anything, mock.Anything, mock.Anything).Return(cfg.getBridges...)
-			}
-
-			if cfg.getClaims != nil {
-				mockL2Syncer.On("GetClaims", mock.Anything, mock.Anything, mock.Anything).Return(cfg.getClaims...).Once()
-			}
-
-			if cfg.getExitRootByIndex != nil {
-				mockL2Syncer.On("GetExitRootByIndex", mock.Anything, mock.Anything).Return(cfg.getExitRootByIndex...).Once()
-			}
-
-			if cfg.originNetwork != nil {
-				mockL2Syncer.On("OriginNetwork").Return(cfg.originNetwork...).Once()
-			}
-
-			aggsender.l2Syncer = mockL2Syncer
-		}
-
-		if cfg.sendCertificate != nil {
-			mockAggLayerClient = agglayer.NewAgglayerClientMock(t)
-			mockAggLayerClient.On("SendCertificate", mock.Anything).Return(cfg.sendCertificate...).Once()
-
-			aggsender.aggLayerClient = mockAggLayerClient
-		}
-
-		if cfg.getInfoByGlobalExitRoot != nil ||
-			cfg.getL1InfoTreeRootByIndex != nil || cfg.getL1InfoTreeMerkleProofFromIndexToRoot != nil {
-			mockL1InfoTreeSyncer = mocks.NewL1InfoTreeSyncer(t)
-			mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(cfg.getInfoByGlobalExitRoot...).Once()
-
-			if cfg.getL1InfoTreeRootByIndex != nil {
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeRootByIndex", mock.Anything, mock.Anything).Return(cfg.getL1InfoTreeRootByIndex...).Once()
-			}
-
-			if cfg.getL1InfoTreeMerkleProofFromIndexToRoot != nil {
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", mock.Anything, mock.Anything, mock.Anything).
-					Return(cfg.getL1InfoTreeMerkleProofFromIndexToRoot...).Once()
-			}
-
-			aggsender.l1infoTreeSyncer = mockL1InfoTreeSyncer
-		}
-
-		return aggsender, mockStorage, mockL2Syncer, mockAggLayerClient, mockL1InfoTreeSyncer
-	}
-
-	tests := []testCfg{
-		{
-			name:                  "error getting pending certificates",
-			shouldSendCertificate: []interface{}{nil, errors.New("error getting pending")},
-			expectedError:         "error getting pending",
-		},
-		{
-			name: "should not send certificate",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{
-				{Status: agglayer.Pending},
-			}, nil},
-		},
-		{
-			name:                   "error getting last sent certificate",
-			shouldSendCertificate:  []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:   []interface{}{uint64(8), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{}, errors.New("error getting last sent certificate")},
-			expectedError:          "error getting last sent certificate",
-		},
-		{
-			name:                  "no new blocks to send certificate",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(41), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:           41,
-				CertificateID:    common.HexToHash("0x111"),
-				NewLocalExitRoot: common.HexToHash("0x13223"),
-				FromBlock:        31,
-				ToBlock:          41,
-			}, nil},
-		},
-		{
-			name:                  "get bridges error",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(59), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:           50,
-				CertificateID:    common.HexToHash("0x1111"),
-				NewLocalExitRoot: common.HexToHash("0x132233"),
-				FromBlock:        40,
-				ToBlock:          41,
-			}, nil},
-			getBridges:    []interface{}{nil, errors.New("error getting bridges")},
-			expectedError: "error getting bridges",
-		},
-		{
-			name:                  "no bridges",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(69), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:           60,
-				CertificateID:    common.HexToHash("0x11111"),
-				NewLocalExitRoot: common.HexToHash("0x1322233"),
-				FromBlock:        50,
-				ToBlock:          51,
-			}, nil},
-			getBridges: []interface{}{[]bridgesync.Bridge{}, nil},
-		},
-		{
-			name:                  "get claims error",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(79), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:           70,
-				CertificateID:    common.HexToHash("0x121111"),
-				NewLocalExitRoot: common.HexToHash("0x13122233"),
-				FromBlock:        60,
-				ToBlock:          61,
-			}, nil},
-			getBridges: []interface{}{[]bridgesync.Bridge{
-				{
-					BlockNum:      61,
-					BlockPos:      0,
-					LeafType:      agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork: 1,
-				},
-			}, nil},
-			getClaims:     []interface{}{nil, errors.New("error getting claims")},
-			expectedError: "error getting claims",
-		},
-		{
-			name:                  "error getting info by global exit root",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(89), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:           80,
-				CertificateID:    common.HexToHash("0x1321111"),
-				NewLocalExitRoot: common.HexToHash("0x131122233"),
-				FromBlock:        70,
-				ToBlock:          71,
-			}, nil},
-			getBridges: []interface{}{[]bridgesync.Bridge{
-				{
-					BlockNum:      71,
-					BlockPos:      0,
-					LeafType:      agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork: 1,
-				},
-			}, nil},
-			getClaims: []interface{}{[]bridgesync.Claim{
-				{
-					IsMessage: false,
-				},
-			}, nil},
-			getInfoByGlobalExitRoot: []interface{}{nil, errors.New("error getting info by global exit root")},
-			expectedError:           "error getting info by global exit root",
-		},
-		{
-			name:                  "error getting L1 Info tree root by index",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(89), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:           80,
-				CertificateID:    common.HexToHash("0x1321111"),
-				NewLocalExitRoot: common.HexToHash("0x131122233"),
-				FromBlock:        70,
-				ToBlock:          71,
-			}, nil},
-			getBridges: []interface{}{[]bridgesync.Bridge{
-				{
-					BlockNum:      71,
-					BlockPos:      0,
-					LeafType:      agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork: 1,
-				},
-			}, nil},
-			getClaims: []interface{}{[]bridgesync.Claim{
-				{
-					IsMessage: false,
-				},
-			}, nil},
-			getInfoByGlobalExitRoot: []interface{}{&l1infotreesync.L1InfoTreeLeaf{
-				L1InfoTreeIndex:   1,
-				BlockNumber:       1,
-				BlockPosition:     0,
-				PreviousBlockHash: common.HexToHash("0x123"),
-				Timestamp:         123456789,
-				MainnetExitRoot:   common.HexToHash("0xccc"),
-				RollupExitRoot:    common.HexToHash("0xddd"),
-				GlobalExitRoot:    common.HexToHash("0xeee"),
-			}, nil},
-			getL1InfoTreeRootByIndex: []interface{}{treeTypes.Root{}, errors.New("error getting L1 Info tree root by index")},
-			expectedError:            "error getting L1 Info tree root by index",
-		},
-		{
-			name:                  "error getting L1 Info tree merkle proof from index to root",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(89), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:           80,
-				CertificateID:    common.HexToHash("0x1321111"),
-				NewLocalExitRoot: common.HexToHash("0x131122233"),
-				FromBlock:        70,
-				ToBlock:          71,
-			}, nil},
-			getBridges: []interface{}{[]bridgesync.Bridge{
-				{
-					BlockNum:      71,
-					BlockPos:      0,
-					LeafType:      agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork: 1,
-				},
-			}, nil},
-			getClaims: []interface{}{[]bridgesync.Claim{
-				{
-					IsMessage:   false,
-					GlobalIndex: big.NewInt(1),
-				},
-			}, nil},
-			getInfoByGlobalExitRoot: []interface{}{&l1infotreesync.L1InfoTreeLeaf{
-				L1InfoTreeIndex:   1,
-				BlockNumber:       1,
-				BlockPosition:     0,
-				PreviousBlockHash: common.HexToHash("0x123"),
-				Timestamp:         123456789,
-				MainnetExitRoot:   common.HexToHash("0xccc"),
-				RollupExitRoot:    common.HexToHash("0xddd"),
-				GlobalExitRoot:    common.HexToHash("0xeee"),
-			}, nil},
-			getL1InfoTreeRootByIndex:                []interface{}{treeTypes.Root{Hash: common.HexToHash("0xeee")}, nil},
-			getL1InfoTreeMerkleProofFromIndexToRoot: []interface{}{treeTypes.Proof{}, errors.New("error getting L1 Info tree merkle proof")},
-			expectedError:                           "error getting L1 Info tree merkle proof for leaf index",
-		},
-		{
-			name:                  "send certificate error",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(99), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:                90,
-				CertificateID:         common.HexToHash("0x1121111"),
-				NewLocalExitRoot:      common.HexToHash("0x111122211"),
-				PreviousLocalExitRoot: &ler1,
-				FromBlock:             80,
-				ToBlock:               81,
-				Status:                agglayer.Settled,
-			}, nil},
-			getBridges: []interface{}{[]bridgesync.Bridge{
-				{
-					BlockNum:      81,
-					BlockPos:      0,
-					LeafType:      agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork: 1,
-					DepositCount:  1,
-				},
-			}, nil},
-			getClaims:          []interface{}{[]bridgesync.Claim{}, nil},
-			getExitRootByIndex: []interface{}{treeTypes.Root{}, nil},
-			originNetwork:      []interface{}{uint32(1), nil},
-			sendCertificate:    []interface{}{common.Hash{}, errors.New("error sending certificate")},
-			sequencerKey:       privateKey,
-			expectedError:      "error sending certificate",
-		},
-		{
-			name:                  "store last sent certificate error",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(109), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:           100,
-				CertificateID:    common.HexToHash("0x11121111"),
-				NewLocalExitRoot: common.HexToHash("0x1211122211"),
-				FromBlock:        90,
-				ToBlock:          91,
-				Status:           agglayer.Settled,
-			}, nil},
-			getBridges: []interface{}{[]bridgesync.Bridge{
-				{
-					BlockNum:      91,
-					BlockPos:      0,
-					LeafType:      agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork: 1,
-					DepositCount:  1,
-				},
-			}, nil},
-			getClaims:               []interface{}{[]bridgesync.Claim{}, nil},
-			getExitRootByIndex:      []interface{}{treeTypes.Root{}, nil},
-			originNetwork:           []interface{}{uint32(1), nil},
-			sendCertificate:         []interface{}{common.Hash{}, nil},
-			saveLastSentCertificate: []interface{}{errors.New("error saving last sent certificate in db")},
-			sequencerKey:            privateKey,
-			expectedError:           "error saving last sent certificate in db",
-		},
-		{
-			name:                  "successful sending of certificate",
-			shouldSendCertificate: []interface{}{[]*aggsendertypes.CertificateInfo{}, nil},
-			lastL2BlockProcessed:  []interface{}{uint64(119), nil},
-			getLastSentCertificate: []interface{}{&aggsendertypes.CertificateInfo{
-				Height:           110,
-				CertificateID:    common.HexToHash("0x12121111"),
-				NewLocalExitRoot: common.HexToHash("0x1221122211"),
-				FromBlock:        100,
-				ToBlock:          101,
-				Status:           agglayer.Settled,
-			}, nil},
-			getBridges: []interface{}{[]bridgesync.Bridge{
-				{
-					BlockNum:      101,
-					BlockPos:      0,
-					LeafType:      agglayer.LeafTypeAsset.Uint8(),
-					OriginNetwork: 1,
-					DepositCount:  1,
-				},
-			}, nil},
-			getClaims:               []interface{}{[]bridgesync.Claim{}, nil},
-			getExitRootByIndex:      []interface{}{treeTypes.Root{}, nil},
-			originNetwork:           []interface{}{uint32(1), nil},
-			sendCertificate:         []interface{}{common.Hash{}, nil},
-			saveLastSentCertificate: []interface{}{nil},
-			sequencerKey:            privateKey,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			aggsender, mockStorage, mockL2Syncer,
-				mockAggLayerClient, mockL1InfoTreeSyncer := setupTest(tt)
-
-			_, err := aggsender.sendCertificate(context.Background())
-
-			if tt.expectedError != "" {
-				require.ErrorContains(t, err, tt.expectedError)
-			} else {
-				require.NoError(t, err)
-			}
-
-			if mockStorage != nil {
-				mockStorage.AssertExpectations(t)
-			}
-
-			if mockL2Syncer != nil {
-				mockL2Syncer.AssertExpectations(t)
-			}
-
-			if mockAggLayerClient != nil {
-				mockAggLayerClient.AssertExpectations(t)
-			}
-
-			if mockL1InfoTreeSyncer != nil {
-				mockL1InfoTreeSyncer.AssertExpectations(t)
-			}
 		})
 	}
 }
@@ -1493,156 +397,6 @@ func TestExploratoryGenerateCert(t *testing.T) {
 	require.NoError(t, encoder.Encode(certificate))
 }
 
-func TestGetNextHeightAndPreviousLER(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name                           string
-		lastSentCertificateInfo        *aggsendertypes.CertificateInfo
-		lastSettleCertificateInfoCall  bool
-		lastSettleCertificateInfo      *aggsendertypes.CertificateInfo
-		lastSettleCertificateInfoError error
-		expectedHeight                 uint64
-		expectedPreviousLER            common.Hash
-		expectedError                  bool
-	}{
-		{
-			name: "Normal case",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.Settled,
-			},
-			expectedHeight:      11,
-			expectedPreviousLER: common.HexToHash("0x123"),
-		},
-		{
-			name:                    "First certificate",
-			lastSentCertificateInfo: nil,
-			expectedHeight:          0,
-			expectedPreviousLER:     zeroLER,
-		},
-		{
-			name: "First certificate error, with prevLER",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:                0,
-				NewLocalExitRoot:      common.HexToHash("0x123"),
-				Status:                agglayer.InError,
-				PreviousLocalExitRoot: &ler1,
-			},
-			expectedHeight:      0,
-			expectedPreviousLER: ler1,
-		},
-		{
-			name: "First certificate error, no prevLER",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:           0,
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
-			},
-			expectedHeight:      0,
-			expectedPreviousLER: zeroLER,
-		},
-		{
-			name: "n certificate error, prevLER",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:                10,
-				NewLocalExitRoot:      common.HexToHash("0x123"),
-				PreviousLocalExitRoot: &ler1,
-				Status:                agglayer.InError,
-			},
-			expectedHeight:      10,
-			expectedPreviousLER: ler1,
-		},
-		{
-			name: "last cert not closed, error",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:                10,
-				NewLocalExitRoot:      common.HexToHash("0x123"),
-				PreviousLocalExitRoot: &ler1,
-				Status:                agglayer.Pending,
-			},
-			expectedHeight:      10,
-			expectedPreviousLER: ler1,
-			expectedError:       true,
-		},
-		{
-			name: "Previous certificate in error, no prevLER",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
-			},
-			lastSettleCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:           9,
-				NewLocalExitRoot: common.HexToHash("0x3456"),
-				Status:           agglayer.Settled,
-			},
-			expectedHeight:      10,
-			expectedPreviousLER: common.HexToHash("0x3456"),
-		},
-		{
-			name: "Previous certificate in error, no prevLER. Error getting previous cert",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
-			},
-			lastSettleCertificateInfo:      nil,
-			lastSettleCertificateInfoError: errors.New("error getting last settle certificate"),
-			expectedError:                  true,
-		},
-		{
-			name: "Previous certificate in error, no prevLER. prev cert not available on storage",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
-			},
-			lastSettleCertificateInfoCall:  true,
-			lastSettleCertificateInfo:      nil,
-			lastSettleCertificateInfoError: nil,
-			expectedError:                  true,
-		},
-		{
-			name: "Previous certificate in error, no prevLER. prev cert not available on storage",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
-			},
-			lastSettleCertificateInfo: &aggsendertypes.CertificateInfo{
-				Height:           9,
-				NewLocalExitRoot: common.HexToHash("0x3456"),
-				Status:           agglayer.InError,
-			},
-			lastSettleCertificateInfoError: nil,
-			expectedError:                  true,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-			storageMock := mocks.NewAggSenderStorage(t)
-			aggSender := &AggSender{log: log.WithFields("aggsender-test", "getNextHeightAndPreviousLER"), storage: storageMock}
-			if tt.lastSettleCertificateInfoCall || tt.lastSettleCertificateInfo != nil || tt.lastSettleCertificateInfoError != nil {
-				storageMock.EXPECT().GetCertificateByHeight(mock.Anything).Return(tt.lastSettleCertificateInfo, tt.lastSettleCertificateInfoError).Once()
-			}
-			height, previousLER, err := aggSender.getNextHeightAndPreviousLER(tt.lastSentCertificateInfo)
-			if tt.expectedError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedHeight, height)
-				require.Equal(t, tt.expectedPreviousLER, previousLER)
-			}
-		})
-	}
-}
-
 func TestSendCertificate_NoClaims(t *testing.T) {
 	privateKey, err := crypto.GenerateKey()
 	require.NoError(t, err)
@@ -1652,15 +406,17 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
 	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+	logger := log.WithFields("aggsender-test", "no claims test")
 
 	aggSender := &AggSender{
-		log:              log.WithFields("aggsender-test", "no claims test"),
+		log:              logger,
 		storage:          mockStorage,
 		l2Syncer:         mockL2Syncer,
 		aggLayerClient:   mockAggLayerClient,
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
-		sequencerKey:     privateKey,
+		aggsenderKey:     privateKey,
 		cfg:              Config{},
+		flow:             newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer),
 	}
 
 	mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
@@ -1933,115 +689,178 @@ func TestCheckLastCertificateFromAgglayer_Case4ErrorUpdateStatus(t *testing.T) {
 
 	require.Error(t, err)
 }
-func TestLimitSize_FirstOneFit(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage)
-	certParams := &aggsendertypes.CertificateBuildParams{
-		FromBlock: uint64(1),
-		ToBlock:   uint64(20),
-		Bridges:   NewBridgesData(t, 1, []uint64{1}),
-	}
-	newCert, err := testData.sut.limitCertSize(certParams)
-	require.NoError(t, err)
-	require.Equal(t, certParams, newCert)
-}
 
-func TestLimitSize_FirstMinusOneFit(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage)
-	testData.sut.cfg.MaxCertSize = (aggsendertypes.EstimatedSizeBridgeExit * 3) + 1
-	certParams := &aggsendertypes.CertificateBuildParams{
-		FromBlock: uint64(1),
-		ToBlock:   uint64(20),
-		Bridges:   NewBridgesData(t, 0, []uint64{19, 19, 19, 20}),
-	}
-	newCert, err := testData.sut.limitCertSize(certParams)
-	require.NoError(t, err)
-	require.Equal(t, uint64(19), newCert.ToBlock)
-}
-
-func TestLimitSize_NoWayToFitInMaxSize(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage)
-	testData.sut.cfg.MaxCertSize = (aggsendertypes.EstimatedSizeBridgeExit * 2) + 1
-	certParams := &aggsendertypes.CertificateBuildParams{
-		FromBlock: uint64(1),
-		ToBlock:   uint64(20),
-		Bridges:   NewBridgesData(t, 0, []uint64{19, 19, 19, 20}),
-	}
-	newCert, err := testData.sut.limitCertSize(certParams)
-	require.NoError(t, err)
-	require.Equal(t, uint64(19), newCert.ToBlock)
-}
-
-func TestLimitSize_MinNumBlocks(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage)
-	testData.sut.cfg.MaxCertSize = (aggsendertypes.EstimatedSizeBridgeExit * 2) + 1
-	certParams := &aggsendertypes.CertificateBuildParams{
-		FromBlock: uint64(1),
-		ToBlock:   uint64(2),
-		Bridges:   NewBridgesData(t, 0, []uint64{1, 1, 1, 2, 2, 2}),
-	}
-	newCert, err := testData.sut.limitCertSize(certParams)
-	require.NoError(t, err)
-	require.Equal(t, uint64(1), newCert.ToBlock)
-}
-
-func TestGetLastSentBlockAndRetryCount(t *testing.T) {
+func TestSendCertificate(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name                    string
-		lastSentCertificateInfo *aggsendertypes.CertificateInfo
-		expectedBlock           uint64
-		expectedRetryCount      int
+	privateKey, err := crypto.GenerateKey()
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name          string
+		mockFn        func(*mocks.AggSenderStorage, *mocks.AggsenderFlow, *mocks.L1InfoTreeSyncer, *agglayer.AgglayerClientMock)
+		expectedError string
 	}{
 		{
-			name:                    "No last sent certificate",
-			lastSentCertificateInfo: nil,
-			expectedBlock:           0,
-			expectedRetryCount:      0,
+			name: "error getting pending certificates",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return(nil, errors.New("some error")).Once()
+			},
+			expectedError: "error getting pending certificates",
 		},
 		{
-			name: "Last sent certificate with no error",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				ToBlock: 10,
-				Status:  agglayer.Settled,
+			name: "has pending certificates",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return(
+					[]*aggsendertypes.CertificateInfo{
+						{
+							Height: 0,
+							Status: agglayer.Pending,
+						},
+					}, nil).Once()
 			},
-			expectedBlock:      10,
-			expectedRetryCount: 0,
 		},
 		{
-			name: "Last sent certificate with error and non-zero FromBlock",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				FromBlock:  5,
-				ToBlock:    10,
-				Status:     agglayer.InError,
-				RetryCount: 1,
+			name: "error getting certificate build params",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
+				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(nil, errors.New("some error")).Once()
 			},
-			expectedBlock:      4,
-			expectedRetryCount: 2,
+			expectedError: "error getting certificate build params",
 		},
 		{
-			name: "Last sent certificate with error and zero FromBlock",
-			lastSentCertificateInfo: &aggsendertypes.CertificateInfo{
-				FromBlock:  0,
-				ToBlock:    10,
-				Status:     agglayer.InError,
-				RetryCount: 1,
+			name: "no consumed bridges",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
+				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+					Bridges: []bridgesync.Bridge{},
+				}, nil).Once()
 			},
-			expectedBlock:      10,
-			expectedRetryCount: 2,
+		},
+		{
+			name: "error building certificate",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
+				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+					Bridges: []bridgesync.Bridge{{}},
+				}, nil).Once()
+				mockFlow.On("BuildCertificate", mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
+			},
+			expectedError: "error building certificate",
+		},
+		{
+			name: "error sending certificate",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
+				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+					Bridges: []bridgesync.Bridge{{}},
+				}, nil).Once()
+				mockFlow.On("BuildCertificate", mock.Anything, mock.Anything).Return(&agglayer.Certificate{
+					NetworkID:        1,
+					Height:           0,
+					NewLocalExitRoot: common.HexToHash("0x1"),
+					BridgeExits:      []*agglayer.BridgeExit{{}},
+				}, nil).Once()
+				mockAgglayerClient.On("SendCertificate", mock.Anything).Return(common.Hash{}, errors.New("some error")).Once()
+			},
+			expectedError: "error sending certificate",
+		},
+		{
+			name: "error saving certificate to storage",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
+				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+					Bridges: []bridgesync.Bridge{{}},
+				}, nil).Once()
+				mockFlow.On("BuildCertificate", mock.Anything, mock.Anything).Return(&agglayer.Certificate{
+					NetworkID:        11,
+					Height:           0,
+					NewLocalExitRoot: common.HexToHash("0x11"),
+					BridgeExits:      []*agglayer.BridgeExit{{}},
+				}, nil).Once()
+				mockAgglayerClient.On("SendCertificate", mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
+				mockStorage.On("SaveLastSentCertificate", mock.Anything, mock.Anything).Return(errors.New("some error")).Once()
+			},
+			expectedError: "error saving last sent certificate",
+		},
+		{
+			name: "successful sending and saving of a certificate",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
+				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+					Bridges: []bridgesync.Bridge{{}},
+				}, nil).Once()
+				mockFlow.On("BuildCertificate", mock.Anything, mock.Anything).Return(&agglayer.Certificate{
+					NetworkID:        11,
+					Height:           0,
+					NewLocalExitRoot: common.HexToHash("0x11"),
+					BridgeExits:      []*agglayer.BridgeExit{{}},
+				}, nil).Once()
+				mockAgglayerClient.On("SendCertificate", mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
+				mockStorage.On("SaveLastSentCertificate", mock.Anything, mock.Anything).Return(nil).Once()
+			},
 		},
 	}
 
-	for _, tt := range tests {
+	for _, tt := range testCases {
 		tt := tt
 
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			block, retryCount := getLastSentBlockAndRetryCount(tt.lastSentCertificateInfo)
+			mockStorage := mocks.NewAggSenderStorage(t)
+			mockAggsenderFlow := mocks.NewAggsenderFlow(t)
+			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			mockAgglayerClient := agglayer.NewAgglayerClientMock(t)
+			tt.mockFn(mockStorage, mockAggsenderFlow, mockL1InfoTreeSyncer, mockAgglayerClient)
 
-			require.Equal(t, tt.expectedBlock, block)
-			require.Equal(t, tt.expectedRetryCount, retryCount)
+			aggsender := &AggSender{
+				log:              log.WithFields("aggsender-test", "sendCertificate"),
+				aggsenderKey:     privateKey,
+				storage:          mockStorage,
+				flow:             mockAggsenderFlow,
+				aggLayerClient:   mockAgglayerClient,
+				l1infoTreeSyncer: mockL1InfoTreeSyncer,
+				cfg: Config{
+					MaxRetriesStoreCertificate: 1,
+				},
+			}
+
+			_, err := aggsender.sendCertificate(context.Background())
+
+			if tt.expectedError != "" {
+				require.ErrorContains(t, err, tt.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+
+			mockStorage.AssertExpectations(t)
+			mockAggsenderFlow.AssertExpectations(t)
+			mockL1InfoTreeSyncer.AssertExpectations(t)
 		})
 	}
 }
