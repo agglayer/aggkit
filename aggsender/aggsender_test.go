@@ -60,7 +60,7 @@ func TestConfigString(t *testing.T) {
 		"BridgeMetadataAsHash: false\n" +
 		"DryRun: false\n" +
 		"EnableRPC: false\n" +
-		"AggchainProofClientURL: \n" +
+		"AggchainProofURL: \n" +
 		"Mode: PP\n"
 
 	require.Equal(t, expected, config.String())

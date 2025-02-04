@@ -65,6 +65,6 @@ func (c Config) String() string {
 		"BridgeMetadataAsHash: " + fmt.Sprintf("%t", c.BridgeMetadataAsHash) + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
-		"AggchainProofClientURL: " + c.AggchainProofClientURL + "\n" +
+		"AggchainProofURL: " + c.AggchainProofURL + "\n" +
 		"Mode: " + c.Mode + "\n"
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // aggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
@@ -69,7 +70,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 		if proof == "" {
 			aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(lastSentCertificateInfo.FromBlock,
-				lastSentCertificateInfo.ToBlock)
+				lastSentCertificateInfo.ToBlock, common.Hash{})
 			if err != nil {
 				return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 					lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, err)
@@ -115,7 +116,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, err
 	}
 
-	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(buildParams.FromBlock, buildParams.ToBlock)
+	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(buildParams.FromBlock, buildParams.ToBlock, common.Hash{})
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
