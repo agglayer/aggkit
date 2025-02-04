@@ -13,6 +13,7 @@ import (
 	zkevm "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/grpc"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -49,6 +50,8 @@ type AggSender struct {
 	sequencerKey *ecdsa.PrivateKey
 
 	status types.AggsenderStatus
+
+	aggchainProofClient grpc.AggchainProofClientInterface
 }
 
 // New returns a new AggSender
@@ -74,18 +77,24 @@ func New(
 		return nil, err
 	}
 
+	aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggchainProofURL)
+	if err != nil {
+		return nil, err
+	}
+
 	logger.Infof("Aggsender Config: %s.", cfg.String())
 
 	return &AggSender{
-		cfg:              cfg,
-		log:              logger,
-		storage:          storage,
-		l2Syncer:         l2Syncer,
-		aggLayerClient:   aggLayerClient,
-		l1infoTreeSyncer: l1InfoTreeSyncer,
-		sequencerKey:     sequencerPrivateKey,
-		epochNotifier:    epochNotifier,
-		status:           types.AggsenderStatus{Status: types.StatusNone},
+		cfg:                 cfg,
+		log:                 logger,
+		storage:             storage,
+		l2Syncer:            l2Syncer,
+		aggLayerClient:      aggLayerClient,
+		l1infoTreeSyncer:    l1InfoTreeSyncer,
+		sequencerKey:        sequencerPrivateKey,
+		epochNotifier:       epochNotifier,
+		status:              types.AggsenderStatus{Status: types.StatusNone},
+		aggchainProofClient: aggchainProofClient,
 	}, nil
 }
 
