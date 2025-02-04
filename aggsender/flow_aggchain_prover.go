@@ -116,7 +116,8 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, err
 	}
 
-	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(buildParams.FromBlock, buildParams.ToBlock, common.Hash{})
+	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
+		buildParams.FromBlock, buildParams.ToBlock, common.Hash{})
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
