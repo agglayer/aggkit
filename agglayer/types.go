@@ -132,7 +132,7 @@ type Certificate struct {
 	BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
 	Metadata            common.Hash           `json:"metadata"`
-	AggchainProof       string                `json:"aggchain_proof,omitempty"`
+	AggchainProof       []byte                `json:"aggchain_proof,omitempty"`
 }
 
 // Brief returns a string with a brief cert

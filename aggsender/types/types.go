@@ -74,7 +74,7 @@ type Logger interface {
 type AggchainProof struct {
 	StartBlock uint64
 	EndBlock   uint64
-	Proof      string
+	Proof      []byte
 }
 
 type CertificateInfo struct {
@@ -90,7 +90,7 @@ type CertificateInfo struct {
 	CreatedAt             uint32                     `meddler:"created_at"`
 	UpdatedAt             uint32                     `meddler:"updated_at"`
 	SignedCertificate     string                     `meddler:"signed_certificate"`
-	AggchainProof         string                     `meddler:"aggchain_proof"`
+	AggchainProof         []byte                     `meddler:"aggchain_proof"`
 }
 
 func (c *CertificateInfo) String() string {

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/aggsender/types"
+	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -12,7 +13,13 @@ const TIMEOUT = 2
 
 // AggchainProofClientInterface defines an interface for aggchain proof client
 type AggchainProofClientInterface interface {
-	GenerateAggchainProof(startBlock uint64, maxEndBlock uint64, l1infoTreeHash common.Hash) (*types.AggchainProof, error)
+	GenerateAggchainProof(
+		startBlock uint64,
+		maxEndBlock uint64,
+		l1InfoTreeRoot common.Hash,
+		l1InfoTreeLeaf common.Hash,
+		l1InfoTreeProof treeTypes.Proof,
+	) (*types.AggchainProof, error)
 }
 
 // AggchainProofClient provides an implementation for the AggchainProofClient interface
@@ -31,22 +38,34 @@ func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
 	}, nil
 }
 
-func (c *AggchainProofClient) GenerateAggchainProof(startBlock uint64,
-	maxEndBlock uint64, l1infoTreeHash common.Hash) (*types.AggchainProof, error) {
+func (c *AggchainProofClient) GenerateAggchainProof(
+	startBlock uint64,
+	maxEndBlock uint64,
+	l1InfoTreeRoot common.Hash,
+	l1InfoTreeLeaf common.Hash,
+	l1InfoTreeProof treeTypes.Proof,
+) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
 	defer cancel()
 
+	convertedProof := make([][]byte, treeTypes.DefaultHeight)
+	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
+		convertedProof[i] = l1InfoTreeProof[i].Bytes()
+	}
+
 	resp, err := c.client.GenerateAggchainProof(ctx, &types.GenerateAggchainProofRequest{
-		StartBlock:     startBlock,
-		MaxEndBlock:    maxEndBlock,
-		L1InfoTreeHash: l1infoTreeHash.Bytes(),
+		StartBlock:      startBlock,
+		MaxEndBlock:     maxEndBlock,
+		L1InfoTreeRoot:  l1InfoTreeRoot.Bytes(),
+		L1InfoTreeLeaf:  l1InfoTreeLeaf.Bytes(),
+		L1InfoTreeProof: convertedProof,
 	})
 	if err != nil {
 		return nil, err
 	}
 
 	return &types.AggchainProof{
-		Proof:      string(resp.AggchainProof),
+		Proof:      resp.AggchainProof,
 		StartBlock: resp.StartBlock,
 		EndBlock:   resp.EndBlock,
 	}, nil

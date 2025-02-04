@@ -68,9 +68,9 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		proof := lastSentCertificateInfo.AggchainProof
 		toBlock := lastSentCertificateInfo.ToBlock
 
-		if proof == "" {
+		if len(proof) == 0 {
 			aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(lastSentCertificateInfo.FromBlock,
-				lastSentCertificateInfo.ToBlock, common.Hash{})
+				lastSentCertificateInfo.ToBlock, common.Hash{}, common.Hash{}, [32]common.Hash{})
 			if err != nil {
 				return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 					lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, err)
@@ -117,7 +117,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
-		buildParams.FromBlock, buildParams.ToBlock, common.Hash{})
+		buildParams.FromBlock, buildParams.ToBlock, common.Hash{}, common.Hash{}, [32]common.Hash{})
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
