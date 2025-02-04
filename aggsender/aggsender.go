@@ -345,12 +345,12 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	return signedCertificate, nil
 }
 func (a *AggSender) isAllowedSendCertificateEpochPercent() bool {
-	if a.cfg.ForbiddenSendCertificateAfterEpochPercentage == 0 ||
-		a.cfg.ForbiddenSendCertificateAfterEpochPercentage >= maxPercent {
+	if a.cfg.MaxEpochPercentageAllowedToSendCertificate == 0 ||
+		a.cfg.MaxEpochPercentageAllowedToSendCertificate >= maxPercent {
 		return true
 	}
 	status := a.epochNotifier.GetEpochStatus()
-	if status.PercentEpoch >= float64(a.cfg.ForbiddenSendCertificateAfterEpochPercentage)/100.0 {
+	if status.PercentEpoch >= float64(a.cfg.MaxEpochPercentageAllowedToSendCertificate)/100.0 {
 		a.log.Warnf("forbidden to send certificate after epoch percentage: %f", status.PercentEpoch)
 		return false
 	}

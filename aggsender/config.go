@@ -50,13 +50,13 @@ type Config struct {
 	// RetryCertAfterInError when a cert pass to 'InError'
 	// state the AggSender will try to resend it inmediatly
 	RetryCertAfterInError bool `mapstructure:"RetryCertAfterInError"`
-	// ForbiddenSendCertificateAfterEpochPercentage is the percentage of the epoch
+	// MaxEpochPercentageAllowedToSendCertificate is the percentage of the epoch
 	// after which the AggSender is forbidden to send the certificate.
 	// If value==0  || value >= 100 the check is disabled
 	// 0 -> Begin
 	// 50 -> Middle
 	// 100 -> End
-	ForbiddenSendCertificateAfterEpochPercentage uint `mapstructure:"ForbiddenSendCertificateAfterEpochPercentage"`
+	MaxEpochPercentageAllowedToSendCertificate uint `mapstructure:"MaxEpochPercentageAllowedToSendCertificate"`
 	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
 	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
 }
@@ -79,6 +79,6 @@ func (c Config) String() string {
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertInmediatlyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
-		"ForbiddenSendCertificateAfterEpochPercentage: " +
-		fmt.Sprintf("%d", c.ForbiddenSendCertificateAfterEpochPercentage) + "\n"
+		"MaxEpochPercentageAllowedToSendCertificate: " +
+		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n"
 }

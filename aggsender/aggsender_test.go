@@ -61,7 +61,7 @@ func TestConfigString(t *testing.T) {
 		"CheckStatusCertificateInterval: 0s\n" +
 		"RetryCertInmediatlyAfterInError: false\n" +
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
-		"ForbiddenSendCertificateAfterEpochPercentage: 0\n"
+		"MaxEpochPercentageAllowedToSendCertificate: 0\n"
 
 	require.Equal(t, expected, config.String())
 }
@@ -2095,7 +2095,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 func TestLimitEpochPercent_Greater(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage)
 	testData.sut.cfg.MaxCertSize = (aggsendertypes.EstimatedSizeBridgeExit * 3) + 1
-	testData.sut.cfg.ForbiddenSendCertificateAfterEpochPercentage = 80
+	testData.sut.cfg.MaxEpochPercentageAllowedToSendCertificate = 80
 
 	ctx := context.TODO()
 	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
