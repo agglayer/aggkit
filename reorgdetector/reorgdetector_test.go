@@ -10,6 +10,7 @@ import (
 	"time"
 
 	aggkittypes "github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/etherman"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
@@ -28,7 +29,12 @@ func Test_ReorgDetector(t *testing.T) {
 	// Create test DB dir
 	testDir := path.Join(t.TempDir(), "reorgdetectorTest_ReorgDetector.sqlite")
 
-	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)}, L1)
+	reorgDetector, err := New(clientL1.Client(),
+		Config{
+			DBPath:              testDir,
+			CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100),
+			FinalizedBlock:      etherman.FinalizedBlock,
+		}, L1)
 	require.NoError(t, err)
 
 	err = reorgDetector.Start(ctx)
