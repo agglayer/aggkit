@@ -154,6 +154,10 @@ func (BlockNumberFinality) JSONSchema() *jsonschema.Schema {
 	}
 }
 
+func (b BlockNumberFinality) IsEmpty() bool { //nolint:stylecheck
+	return b.string == ""
+}
+
 func (b BlockNumberFinality) IsFinalized() bool { //nolint:stylecheck
 	return b == FinalizedBlock
 }

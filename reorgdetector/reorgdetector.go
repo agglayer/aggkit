@@ -53,6 +53,7 @@ type ReorgDetector struct {
 }
 
 func New(client EthClient, cfg Config, network Network) (*ReorgDetector, error) {
+	log := log.WithFields("reorg-detector", network.String())
 	err := migrations.RunMigrations(cfg.DBPath)
 	if err != nil {
 		return nil, err
@@ -61,6 +62,11 @@ func New(client EthClient, cfg Config, network Network) (*ReorgDetector, error) 
 	if err != nil {
 		return nil, err
 	}
+	if cfg.FinalizedBlock.IsEmpty() {
+		log.Warnf("Finalized block is not set. Setting to finalized block")
+		cfg.FinalizedBlock = etherman.FinalizedBlock
+	}
+
 	finalizedBlockNumber, err := cfg.FinalizedBlock.ToBlockNum()
 	if err != nil {
 		return nil, err
@@ -75,7 +81,7 @@ func New(client EthClient, cfg Config, network Network) (*ReorgDetector, error) 
 		network:              network,
 		trackedBlocks:        make(map[string]*headersList),
 		subscriptions:        make(map[string]*Subscription),
-		log:                  log.WithFields("reorg-detector", network.String()),
+		log:                  log,
 	}, nil
 }
 
