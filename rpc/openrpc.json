@@ -5,93 +5,95 @@
     "version": "0.0.1"
   },
   "methods": [
-      {
-        "name": "bridge_l1InfoTreeIndexForBridge",
-        "summary": "Returns the first L1 Info Tree index in which the bridge was included. NetworkID represents the origin network. This call needs to be done to a client of the same network were the bridge tx was sent",
-        "params": [
-          {
-            "$ref": "#/components/contentDescriptors/NetworkID"
-          },
-          {
-              "$ref": "#/components/contentDescriptors/DepositCount"
+    {
+      "name": "bridge_l1InfoTreeIndexForBridge",
+      "summary": "Returns the first L1 Info Tree index in which the bridge was included. NetworkID represents the origin network. This call needs to be done to a client of the same network were the bridge tx was sent",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/NetworkID"
+        },
+        {
+          "$ref": "#/components/contentDescriptors/DepositCount"
+        }
+      ],
+      "result": {
+        "$ref": "#/components/contentDescriptors/L1InfoTreeIndex"
+      },
+      "examples": [
+        {
+          "name": "example",
+          "params": [],
+          "result": {
+            "name": "exampleResult",
+            "value": "0x1"
           }
-        ],
-        "result": {
+        }
+      ]
+    },
+    {
+      "name": "bridge_injectedInfoAfterIndex",
+      "summary": "Return the first GER injected onto the network that is linked to the given index or greater. This call is useful to understand when a bridge is ready to be claimed on its destination network",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/NetworkID"
+        },
+        {
           "$ref": "#/components/contentDescriptors/L1InfoTreeIndex"
-        },
-        "examples": [
-          {
-              "name": "example",
-              "params": [],
-              "result": {
-                  "name": "exampleResult",
-                  "value": "0x1"
-              }
-          }
-        ]
+        }
+      ],
+      "result": {
+        "$ref": "#/components/contentDescriptors/L1InfoTreeLeaf"
       },
-      {
-        "name": "bridge_injectedInfoAfterIndex",
-        "summary": "Return the first GER injected onto the network that is linked to the given index or greater. This call is useful to understand when a bridge is ready to be claimed on its destination network",
-        "params": [
-          {
-            "$ref": "#/components/contentDescriptors/NetworkID"
-          },
-          {
-              "$ref": "#/components/contentDescriptors/L1InfoTreeIndex"
-          }
-        ],
-        "result": {
-          "$ref": "#/components/contentDescriptors/L1InfoTreeLeaf"
+      "examples": []
+    },
+    {
+      "name": "bridge_getProof",
+      "summary": "Gets the proof needed to perform a claim for a given bridge",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/NetworkID"
         },
-        "examples": [ ]
-      },
-      {
-        "name": "bridge_getProof",
-        "summary": "Gets the proof needed to perform a claim for a given bridge",
-        "params": [
-          {
-            "$ref": "#/components/contentDescriptors/NetworkID"
-          },
-          {
-            "$ref": "#/components/contentDescriptors/DepositCount"
-          },
-          {
-              "$ref": "#/components/contentDescriptors/L1InfoTreeIndex"
-          }
-        ],
-        "result": {
-          "$ref": "#/components/contentDescriptors/Proof"
+        {
+          "$ref": "#/components/contentDescriptors/DepositCount"
         },
-        "examples": []
+        {
+          "$ref": "#/components/contentDescriptors/L1InfoTreeIndex"
+        }
+      ],
+      "result": {
+        "$ref": "#/components/contentDescriptors/Proof"
       },
-      {
-        "name": "bridge_sponsorClaim",
-        "summary": "Request to sponsor the claim tx for a given bridge",
-        "params": [
-          {
-            "$ref": "#/components/contentDescriptors/SponsorClaim"
-          }
-        ],
-        "result": {
-			"name": "empty",
-			"schema": {"type": "null"}
-		},
-        "examples": []
+      "examples": []
+    },
+    {
+      "name": "bridge_sponsorClaim",
+      "summary": "Request to sponsor the claim tx for a given bridge",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/SponsorClaim"
+        }
+      ],
+      "result": {
+        "name": "empty",
+        "schema": {
+          "type": "null"
+        }
       },
-      {
-        "name": "bridge_getSponsoredClaimStatus",
-        "summary": "Gets the proof needed to perform a claim for a given bridge",
-        "params": [
-          {
-            "$ref": "#/components/contentDescriptors/GlobalIndex"
-          }
-        ],
-        "result": {
-          "$ref": "#/components/contentDescriptors/ClaimStatus"
-        },
-        "examples": []
-      }
+      "examples": []
+    },
+    {
+      "name": "bridge_getSponsoredClaimStatus",
+      "summary": "Gets the proof needed to perform a claim for a given bridge",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/GlobalIndex"
+        }
+      ],
+      "result": {
+        "$ref": "#/components/contentDescriptors/ClaimStatus"
+      },
+      "examples": []
+    }
   ],
   "components": {
     "contentDescriptors": {
