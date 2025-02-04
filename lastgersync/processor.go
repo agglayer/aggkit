@@ -49,13 +49,14 @@ func newProcessor(dbPath string, loggerPrefix string) (*processor, error) {
 // GetLastProcessedBlock returns the last processed block by the processor, including blocks
 // that don't have events
 func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
-	var lastProcessedBlock uint64
+	var lastProcessedBlockNum uint64
+
 	row := p.db.QueryRow("SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
-	err := row.Scan(&lastProcessedBlock)
+	err := row.Scan(&lastProcessedBlockNum)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
-	return lastProcessedBlock, err
+	return lastProcessedBlockNum, err
 }
 
 func (p *processor) getLastIndex() (uint32, error) {
@@ -86,7 +87,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO block (num) VALUES ($1)`, block.Num); err != nil {
+	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
 		return err
 	}
 	for _, e := range block.Events {

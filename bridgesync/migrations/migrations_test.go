@@ -10,6 +10,8 @@ import (
 )
 
 func Test001(t *testing.T) {
+	t.Parallel()
+
 	dbPath := path.Join(t.TempDir(), "bridgesyncTest001.sqlite")
 
 	err := RunMigrations(dbPath)
@@ -56,6 +58,24 @@ func Test001(t *testing.T) {
 		) VALUES (1, 0, 0, 0, '0x0000', '0x0000', 0, '0x000,0x000', '0x000,0x000', '0x000', '0x000', '0x0', 0, NULL, FALSE);
 	`)
 	require.NoError(t, err)
-	err = tx.Commit()
+	require.NoError(t, tx.Commit())
+}
+
+func Test002(t *testing.T) {
+	t.Parallel()
+
+	dbPath := path.Join(t.TempDir(), "bridgesyncTest001.sqlite")
+
+	err := RunMigrations(dbPath)
 	require.NoError(t, err)
+	db, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES (1, '0x0000');`)
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit())
 }

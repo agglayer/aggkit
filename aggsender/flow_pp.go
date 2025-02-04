@@ -78,7 +78,7 @@ func (f *baseFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certif
 		return nil, err
 	}
 
-	return &types.CertificateBuildParams{
+	buildParams := &types.CertificateBuildParams{
 		FromBlock:           fromBlock,
 		ToBlock:             toBlock,
 		RetryCount:          retryCount,
@@ -86,22 +86,24 @@ func (f *baseFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certif
 		Bridges:             bridges,
 		Claims:              claims,
 		CreatedAt:           uint32(time.Now().UTC().Unix()),
-	}, nil
+	}
+
+	buildParams, err = f.limitCertSize(buildParams)
+	if err != nil {
+		return nil, fmt.Errorf("error limitCertSize: %w", err)
+	}
+
+	return buildParams, nil
 }
 
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
 func (f *baseFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayer.Certificate, error) {
-	certificateParams, err := f.limitCertSize(buildParams)
-	if err != nil {
-		return nil, fmt.Errorf("error limitCertSize: %w", err)
-	}
-
 	f.log.Infof("building certificate for %s estimatedSize=%d",
-		certificateParams.String(), certificateParams.EstimatedSize())
+		buildParams.String(), buildParams.EstimatedSize())
 
-	return f.buildCertificate(ctx, certificateParams, buildParams.LastSentCertificate)
+	return f.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
 }
 
 // limitCertSize limits certificate size based on the max size configuration parameter
@@ -408,6 +410,29 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 	}
 	return 0, zeroLER, fmt.Errorf("last certificate %s has an unknown status: %s",
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
+}
+
+// getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
+// if there is no previosly sent certificate, it returns 0 and 0
+func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
+	if lastSentCertificateInfo == nil {
+		return 0, 0
+	}
+
+	retryCount := 0
+	lastSentBlock := lastSentCertificateInfo.ToBlock
+
+	if lastSentCertificateInfo.Status == agglayer.InError {
+		// if the last certificate was in error, we need to resend it
+		// from the block before the error
+		if lastSentCertificateInfo.FromBlock > 0 {
+			lastSentBlock = lastSentCertificateInfo.FromBlock - 1
+		}
+
+		retryCount = lastSentCertificateInfo.RetryCount + 1
+	}
+
+	return lastSentBlock, retryCount
 }
 
 // ppFlow is a struct that holds the logic for the regular pessimistic proof flow

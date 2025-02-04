@@ -122,7 +122,7 @@ func TestGetLatestInfoUntilBlockIfNotFoundReturnsErrNotFound(t *testing.T) {
 	require.NoError(t, err)
 	ctx := context.Background()
 	// Fake block 1
-	_, err = sut.db.Exec(`INSERT INTO block (num) VALUES ($1)`, 1)
+	_, err = sut.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
 	require.NoError(t, err)
 
 	_, err = sut.GetLatestInfoUntilBlock(ctx, 1)

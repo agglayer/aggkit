@@ -82,7 +82,7 @@ func TestAggSenderStart(t *testing.T) {
 		aggLayerMock,
 		nil,
 		bridgeL2SyncerMock,
-		epochNotifierMock)
+		epochNotifierMock, nil)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 	ch := make(chan aggsendertypes.EpochEvent)
@@ -114,7 +114,7 @@ func TestAggSenderSendCertificates(t *testing.T) {
 		AggLayerMock,
 		nil,
 		bridgeL2SyncerMock,
-		epochNotifierMock)
+		epochNotifierMock, nil)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 	ch := make(chan aggsendertypes.EpochEvent, 2)

@@ -60,7 +60,8 @@ func New(
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 	l2Syncer types.L2BridgeSyncer,
-	epochNotifier types.EpochNotifier) (*AggSender, error) {
+	epochNotifier types.EpochNotifier,
+	l1Client types.EthClient) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
@@ -90,7 +91,8 @@ func New(
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}
 
-		flowManager = newAggchainProverFlow(logger, cfg, aggchainProofClient, storage, l1InfoTreeSyncer, l2Syncer)
+		flowManager = newAggchainProverFlow(logger, cfg, aggchainProofClient, storage,
+			l1InfoTreeSyncer, l2Syncer, l1Client)
 	} else {
 		flowManager = newPPFlow(logger, cfg, storage, l1InfoTreeSyncer, l2Syncer)
 	}

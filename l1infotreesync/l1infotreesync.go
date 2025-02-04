@@ -3,6 +3,8 @@ package l1infotreesync
 import (
 	"context"
 	"errors"
+	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/agglayer/aggkit/db"
@@ -61,8 +63,14 @@ func New(
 		return nil, err
 	}
 	if initialBlock > 0 && lastProcessedBlock < initialBlock-1 {
+		block, err := l1Client.BlockByNumber(ctx, new(big.Int).SetUint64(initialBlock-1))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get initial block %d: %w", initialBlock-1, err)
+		}
+
 		err = processor.ProcessBlock(ctx, sync.Block{
-			Num: initialBlock - 1,
+			Num:  initialBlock - 1,
+			Hash: block.Hash(),
 		})
 		if err != nil {
 			return nil, err
@@ -277,4 +285,22 @@ func (s *L1InfoTreeSync) GetInitL1InfoRootMap(ctx context.Context) (*L1InfoTreeI
 		return nil, sync.ErrInconsistentState
 	}
 	return s.processor.GetInitL1InfoRootMap(nil)
+}
+
+// GetProcessedBlockUntil returns the last block processed before the given block number or
+// the exact block num and hash associated to given block if it was processed
+func (s *L1InfoTreeSync) GetProcessedBlockUntil(ctx context.Context, blockNum uint64) (uint64, common.Hash, error) {
+	if s.processor.isHalted() {
+		return 0, common.Hash{}, sync.ErrInconsistentState
+	}
+	return s.processor.GetProcessedBlockUntil(ctx, blockNum)
+}
+
+// GetLastL1InfoTreeRootByBlockNum returns the last root processed before the given block number or
+// the root associated to the block number if it exists
+func (s *L1InfoTreeSync) GetLastL1InfoTreeRootByBlockNum(ctx context.Context, blockNum uint64) (*types.Root, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	return s.processor.l1InfoTree.GetLastRootByBlockNum(ctx, blockNum)
 }
