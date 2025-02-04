@@ -158,7 +158,7 @@ func (b BlockNumberFinality) IsEmpty() bool { //nolint:stylecheck
 	return b.string == ""
 }
 
-func (b BlockNumberFinality) IsFinalized() bool { //nolint:stylecheck
+func (b BlockNumberFinality) IsFinalized() bool {
 	return b == FinalizedBlock
 }
 
