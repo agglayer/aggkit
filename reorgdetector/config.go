@@ -19,7 +19,7 @@ type Config struct {
 	// CheckReorgsInterval is the interval to check for reorgs in tracked blocks
 	CheckReorgsInterval types.Duration `mapstructure:"CheckReorgsInterval"`
 	// FinalizedBlockType indicates the status of the blocks that will be queried in order to sync
-	// if finalizedBlock == "LatestBlock" then is like to disable reorg detector beacuse
+	// if finalizedBlock == "LatestBlock" then is like to disable reorg detector
 	// there are no chances to reorg
 	FinalizedBlock etherman.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"FinalizedBlock"` //nolint:lll
 

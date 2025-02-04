@@ -128,7 +128,7 @@ func createAggSender(
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 	agglayerClient := agglayer.NewAggLayerClient(cfg.AggLayerURL)
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient, aggsender.ConfigBlockNotifierPolling{
-		BlockFinalityType:     etherman.BlockNumberFinality(cfg.BlockFinality),
+		BlockFinalityType:     etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 	}, logger, nil)
 	if err != nil {
@@ -212,7 +212,7 @@ func createAggoracle(
 		sender,
 		l1Client,
 		syncer,
-		etherman.BlockNumberFinality(cfg.AggOracle.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
 	if err != nil {
@@ -294,7 +294,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.GlobalExitRootAddr,
 		cfg.L1InfoTreeSync.RollupManagerAddr,
 		cfg.L1InfoTreeSync.SyncBlockChunkSize,
-		etherman.BlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
 		reorgDetector,
 		l1Client,
 		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
@@ -465,7 +465,7 @@ func runLastGERSyncIfNeeded(
 		l1InfoTreeSync,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
-		etherman.BlockNumberFinality(cfg.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 	)
@@ -494,7 +494,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.BlockNumberFinality(cfg.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL1,
 		l1Client,
 		cfg.InitialBlockNum,
@@ -503,7 +503,6 @@ func runBridgeSyncL1IfNeeded(
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		false,
-		etherman.FinalizedBlock,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -530,7 +529,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.BlockNumberFinality(cfg.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL2,
 		l2Client,
 		cfg.InitialBlockNum,
@@ -539,7 +538,6 @@ func runBridgeSyncL2IfNeeded(
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		true,
-		etherman.LatestBlock,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)

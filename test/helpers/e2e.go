@@ -187,9 +187,9 @@ func L2Setup(t *testing.T) *L2Environment {
 	dbPathReorgL2 := path.Join(t.TempDir(), "ReorgDetectorL2.sqlite")
 	rdL2, err := reorgdetector.New(l2Client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorgL2,
-		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100},
+		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
 		FinalizedBlock:      etherman.FinalizedBlock,
-	}, //nolint:mnd
+	},
 		reorgdetector.L2,
 	)
 	require.NoError(t, err)
