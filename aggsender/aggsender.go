@@ -57,7 +57,7 @@ type AggSender struct {
 	rateLimiter RateLimiter
 }
 
-// New returns a new AggSender
+// New returns a new AggSender instance
 func New(
 	ctx context.Context,
 	logger *log.Logger,
