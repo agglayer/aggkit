@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
+	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -61,8 +62,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}).Return(&types.AggchainProof{
-					Proof: "some-proof", StartBlock: 1, EndBlock: 10}, nil)
+				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(&types.AggchainProof{
+					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:     1,
@@ -70,7 +71,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				RetryCount:    1,
 				Bridges:       []bridgesync.Bridge{{}},
 				Claims:        []bridgesync.Claim{{}},
-				AggchainProof: "some-proof",
+				AggchainProof: []byte("some-proof"),
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
@@ -92,8 +93,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					{BlockNum: 5}, {BlockNum: 10}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{
 					{BlockNum: 6}, {BlockNum: 9}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}).Return(&types.AggchainProof{
-					Proof: "some-proof", StartBlock: 1, EndBlock: 8}, nil)
+				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(&types.AggchainProof{
+					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:     1,
@@ -101,7 +102,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				RetryCount:    1,
 				Bridges:       []bridgesync.Bridge{{BlockNum: 5}},
 				Claims:        []bridgesync.Claim{{BlockNum: 6}},
-				AggchainProof: "some-proof",
+				AggchainProof: []byte("some-proof"),
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
@@ -118,7 +119,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					FromBlock:     1,
 					ToBlock:       10,
 					Status:        agglayer.InError,
-					AggchainProof: "existing-proof",
+					AggchainProof: []byte("existing-proof"),
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
@@ -129,12 +130,12 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				RetryCount:    1,
 				Bridges:       []bridgesync.Bridge{{}},
 				Claims:        []bridgesync.Claim{{}},
-				AggchainProof: "existing-proof",
+				AggchainProof: []byte("existing-proof"),
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock:     1,
 					ToBlock:       10,
 					Status:        agglayer.InError,
-					AggchainProof: "existing-proof",
+					AggchainProof: []byte("existing-proof"),
 				},
 			},
 		},
@@ -147,7 +148,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}).Return(nil, errors.New("some error"))
+				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10),
+					common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
 		},
@@ -160,8 +162,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(6), uint64(10), common.Hash{}).Return(&types.AggchainProof{
-					Proof: "some-proof", StartBlock: 6, EndBlock: 10}, nil)
+				mockClient.On("GenerateAggchainProof", uint64(6), uint64(10), common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(&types.AggchainProof{
+					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
@@ -170,7 +172,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				LastSentCertificate: &types.CertificateInfo{ToBlock: 5},
 				Bridges:             []bridgesync.Bridge{{}},
 				Claims:              []bridgesync.Claim{{}},
-				AggchainProof:       "some-proof",
+				AggchainProof:       []byte("some-proof"),
 				CreatedAt:           uint32(time.Now().UTC().Unix()),
 			},
 		},
@@ -185,8 +187,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					{BlockNum: 6}, {BlockNum: 10}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
 					{BlockNum: 8}, {BlockNum: 9}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(6), uint64(10), common.Hash{}).Return(&types.AggchainProof{
-					Proof: "some-proof", StartBlock: 6, EndBlock: 8}, nil)
+				mockClient.On("GenerateAggchainProof", uint64(6), uint64(10), common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(&types.AggchainProof{
+					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
@@ -195,7 +197,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				LastSentCertificate: &types.CertificateInfo{ToBlock: 5},
 				Bridges:             []bridgesync.Bridge{{BlockNum: 6}},
 				Claims:              []bridgesync.Claim{{BlockNum: 8}},
-				AggchainProof:       "some-proof",
+				AggchainProof:       []byte("some-proof"),
 				CreatedAt:           uint32(time.Now().UTC().Unix()),
 			},
 		},

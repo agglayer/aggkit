@@ -4,7 +4,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.5.1
 // - protoc             v5.29.3
-// source: aggsender.proto
+// source: aggchain_proof_generation.proto
 
 package types
 
@@ -125,5 +125,5 @@ var AggchainProofService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "aggsender.proto",
+	Metadata: "aggchain_proof_generation.proto",
 }
