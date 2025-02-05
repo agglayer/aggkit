@@ -42,7 +42,6 @@ type EVMDownloader struct {
 	log                        *log.Logger
 	finalizedBlockType         etherman.BlockNumberFinality
 	stopDownloaderOnIterationN int
-	lastBlockNumberRequested   uint64
 }
 
 func NewEVMDownloader(
@@ -154,7 +153,6 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 		blocks := d.GetEventsByBlockRange(ctx, fromBlock, requestToBlock)
 		d.log.Debugf("result events from blocks [%d to  %d] -> len(blocks)=%d",
 			fromBlock, requestToBlock, len(blocks))
-		d.lastBlockNumberRequested = requestToBlock
 		if toBlock <= lastFinalizedBlockNumber {
 			d.reportBlocks(downloadedCh, blocks, lastFinalizedBlockNumber)
 			if blocks.Len() == 0 || blocks[blocks.Len()-1].Num < toBlock {
