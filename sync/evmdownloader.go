@@ -108,12 +108,6 @@ func (d *EVMDownloader) setStopDownloaderOnIterationN(iteration int) {
 	d.stopDownloaderOnIterationN = iteration
 }
 
-// LastBlockNumberRequested returns the last block number requested by the downloader
-// maybe doesnt have data and are in unsafe zone, so no block have emitted
-func (d *EVMDownloader) LastBlockNumberRequested() uint64 {
-	return d.lastBlockNumberRequested
-}
-
 func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock) {
 	lastBlock := d.WaitForNewBlocks(ctx, 0)
 	toBlock := fromBlock + d.syncBlockChunkSize
@@ -371,8 +365,11 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 	}
 	logs := make([]types.Log, 0, len(unfilteredLogs))
 	for _, l := range unfilteredLogs {
+		if l.Removed {
+			d.log.Warnf("log removed: %+v", l)
+		}
 		for _, topic := range d.topicsToQuery {
-			if l.Topics[0] == topic {
+			if l.Topics[0] == topic && !l.Removed {
 				logs = append(logs, l)
 				break
 			}

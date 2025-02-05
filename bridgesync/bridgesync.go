@@ -207,22 +207,6 @@ func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) 
 	return s.processor.GetLastProcessedBlock(ctx)
 }
 
-func (s *BridgeSync) GetLastRequestedBlock(ctx context.Context) (uint64, error) {
-	if s.processor.isHalted() {
-		return 0, sync.ErrInconsistentState
-	}
-	storageLastBlock, err := s.processor.GetLastProcessedBlock(ctx)
-	if err != nil {
-		return 0, err
-	}
-	downloaderLastBlock := s.downloader.LastBlockNumberRequested()
-	log.Infof("storage: %d downloader: %d", storageLastBlock, downloaderLastBlock)
-	if downloaderLastBlock > storageLastBlock {
-		return downloaderLastBlock, nil
-	}
-	return storageLastBlock, nil
-}
-
 func (s *BridgeSync) GetBridgeRootByHash(ctx context.Context, root common.Hash) (*tree.Root, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
