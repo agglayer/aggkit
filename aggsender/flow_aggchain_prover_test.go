@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
+	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -61,7 +62,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}, common.Hash{}, [32]common.Hash{}).Return(&types.AggchainProof{
+				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -92,7 +93,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					{BlockNum: 5}, {BlockNum: 10}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{
 					{BlockNum: 6}, {BlockNum: 9}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}, common.Hash{}, [32]common.Hash{}).Return(&types.AggchainProof{
+				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -147,7 +148,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10), common.Hash{}, common.Hash{}, [32]common.Hash{}).Return(nil, errors.New("some error"))
+				mockClient.On("GenerateAggchainProof", uint64(1), uint64(10),
+					common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
 		},
@@ -160,7 +162,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(6), uint64(10), common.Hash{}, common.Hash{}, [32]common.Hash{}).Return(&types.AggchainProof{
+				mockClient.On("GenerateAggchainProof", uint64(6), uint64(10), common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -185,7 +187,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					{BlockNum: 6}, {BlockNum: 10}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
 					{BlockNum: 8}, {BlockNum: 9}}, nil)
-				mockClient.On("GenerateAggchainProof", uint64(6), uint64(10), common.Hash{}, common.Hash{}, [32]common.Hash{}).Return(&types.AggchainProof{
+				mockClient.On("GenerateAggchainProof", uint64(6), uint64(10), common.Hash{}, common.Hash{}, treeTypes.Proof{}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
