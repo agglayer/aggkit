@@ -177,14 +177,14 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			checkResult := a.checkPendingCertificatesStatus(ctx)
 			if !checkResult.existPendingCerts && checkResult.existNewInErrorCert {
 				if a.cfg.RetryCertAfterInError {
-					a.log.Infof("Appears an InError cert sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
+					a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
 					_, err := a.sendCertificate(ctx)
 					a.status.SetLastError(err)
 					if err != nil {
 						a.log.Error(err)
 					}
 				} else {
-					a.log.Infof("Appears an InError cert but skipping send cert because RetryCertInmediatlyAfterInError is false")
+					a.log.Infof("An InError cert exists but skipping send cert because RetryCertInmediatlyAfterInError is false")
 				}
 			}
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {

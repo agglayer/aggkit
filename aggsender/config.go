@@ -48,7 +48,7 @@ type Config struct {
 	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
 	CheckStatusCertificateInterval types.Duration `mapstructure:"CheckStatusCertificateInterval"`
 	// RetryCertAfterInError when a cert pass to 'InError'
-	// state the AggSender will try to resend it inmediatly
+	// state the AggSender will try to resend it immediately
 	RetryCertAfterInError bool `mapstructure:"RetryCertAfterInError"`
 	// MaxEpochPercentageAllowedToSendCertificate is the percentage of the epoch
 	// after which the AggSender is forbidden to send the certificate.
