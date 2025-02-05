@@ -23,8 +23,9 @@ type ReorgDetector interface {
 
 // BridgeSync manages the state of the exit tree for the bridge contract by processing Ethereum blockchain events.
 type BridgeSync struct {
-	processor *processor
-	driver    *sync.EVMDriver
+	processor  *processor
+	driver     *sync.EVMDriver
+	downloader *sync.EVMDownloader
 
 	originNetwork uint32
 	reorgDetector ReorgDetector
@@ -188,6 +189,7 @@ func newBridgeSync(
 	return &BridgeSync{
 		processor:     processor,
 		driver:        driver,
+		downloader:    downloader,
 		originNetwork: originNetwork,
 		reorgDetector: rd,
 	}, nil
@@ -203,6 +205,22 @@ func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) 
 		return 0, sync.ErrInconsistentState
 	}
 	return s.processor.GetLastProcessedBlock(ctx)
+}
+
+func (s *BridgeSync) GetLastRequestedBlock(ctx context.Context) (uint64, error) {
+	if s.processor.isHalted() {
+		return 0, sync.ErrInconsistentState
+	}
+	storageLastBlock, err := s.processor.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return 0, err
+	}
+	downloaderLastBlock := s.downloader.LastBlockNumberRequested()
+	log.Infof("storage: %d downloader: %d", storageLastBlock, downloaderLastBlock)
+	if downloaderLastBlock > storageLastBlock {
+		return downloaderLastBlock, nil
+	}
+	return storageLastBlock, nil
 }
 
 func (s *BridgeSync) GetBridgeRootByHash(ctx context.Context, root common.Hash) (*tree.Root, error) {
