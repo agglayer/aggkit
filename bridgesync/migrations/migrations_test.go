@@ -64,7 +64,7 @@ func Test001(t *testing.T) {
 func Test002(t *testing.T) {
 	t.Parallel()
 
-	dbPath := path.Join(t.TempDir(), "bridgesyncTest001.sqlite")
+	dbPath := path.Join(t.TempDir(), "bridgesyncTest002.sqlite")
 
 	err := RunMigrations(dbPath)
 	require.NoError(t, err)
