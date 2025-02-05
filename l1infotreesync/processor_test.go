@@ -1,6 +1,7 @@
 package l1infotreesync
 
 import (
+	"database/sql"
 	"fmt"
 	"path"
 	"testing"
@@ -381,4 +382,51 @@ func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
 	err = sut.ProcessBlock(context.Background(), block)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 	require.True(t, sut.halted)
+}
+
+func TestGetProcessedBlockUntil(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestGetProcessedBlockUntil.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	// Test when no blocks are present
+	_, _, err = p.GetProcessedBlockUntil(ctx, 1)
+	require.Error(t, err)
+
+	// Insert some blocks
+	_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
+	require.NoError(t, err)
+	_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 2, "0x2")
+	require.NoError(t, err)
+	_, err = p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 3, "0x3")
+	require.NoError(t, err)
+
+	// Test when blockNum is less than the first block
+	_, _, err = p.GetProcessedBlockUntil(ctx, 0)
+	require.ErrorIs(t, err, sql.ErrNoRows)
+
+	// Test when blockNum is exactly the first block
+	blockNum, blockHash, err := p.GetProcessedBlockUntil(ctx, 1)
+	require.NoError(t, err)
+	require.Equal(t, uint64(1), blockNum)
+	require.Equal(t, common.HexToHash("0x1"), blockHash)
+
+	// Test when blockNum is between two blocks
+	blockNum, blockHash, err = p.GetProcessedBlockUntil(ctx, 2)
+	require.NoError(t, err)
+	require.Equal(t, uint64(2), blockNum)
+	require.Equal(t, common.HexToHash("0x2"), blockHash)
+
+	// Test when blockNum is exactly the last block
+	blockNum, blockHash, err = p.GetProcessedBlockUntil(ctx, 3)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), blockNum)
+	require.Equal(t, common.HexToHash("0x3"), blockHash)
+
+	// Test when blockNum is greater than the last block
+	blockNum, blockHash, err = p.GetProcessedBlockUntil(ctx, 4)
+	require.NoError(t, err)
+	require.Equal(t, uint64(3), blockNum)
+	require.Equal(t, common.HexToHash("0x3"), blockHash)
 }
