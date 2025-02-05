@@ -59,3 +59,9 @@ func TestBlockNumberFinality(t *testing.T) {
 		})
 	}
 }
+
+func TestBlockNumberFinalityJSONSchema(t *testing.T) {
+	schema := BlockNumberFinality{}.JSONSchema()
+	require.Equal(t, "string", schema.Type)
+	require.Equal(t, "BlockNumberFinality", schema.Title)
+}
