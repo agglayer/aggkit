@@ -16,5 +16,6 @@ type EventNewBlock struct {
 type BlockNotifier interface {
 	// NotifyEpochStarted notifies the epoch has started.
 	Subscribe(id string) <-chan EventNewBlock
+	GetCurrentBlockNumber() uint64
 	String() string
 }

@@ -103,6 +103,14 @@ func (b *BlockNotifierPolling) Start(ctx context.Context) {
 	}
 }
 
+func (b *BlockNotifierPolling) GetCurrentBlockNumber() uint64 {
+	status := b.getGlobalStatus()
+	if status == nil {
+		return 0
+	}
+	return status.lastBlockSeen
+}
+
 func (b *BlockNotifierPolling) setGlobalStatus(status *blockNotifierPollingInternalStatus) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
