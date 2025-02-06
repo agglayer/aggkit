@@ -222,4 +222,12 @@ EnableRPC = true
 AggkitProverURL = ""
 # PessimisticProof or AggchainProver
 Mode = "PessimisticProof"
+CheckStatusCertificateInterval = "5m"
+RetryCertInmediatlyAfterInError = true
+# Don't send certificate over 80% of the epoch
+MaxEpochPercentageAllowedToSendCertificate=80
+	[AggSender.MaxSubmitCertificateRate]
+		NumRequests = 20
+		Interval = "1h"
+
 `

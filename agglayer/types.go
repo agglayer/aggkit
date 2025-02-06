@@ -135,6 +135,14 @@ type Certificate struct {
 	AggchainProof       []byte                `json:"aggchain_proof,omitempty"`
 }
 
+// ID returns a string with the ident of this cert (height/certID)
+func (c *Certificate) ID() string {
+	if c == nil {
+		return "cert{" + nilStr + "}"
+	}
+	return fmt.Sprintf("cert{height:%d, networkID:%d}", c.Height, c.NetworkID)
+}
+
 // Brief returns a string with a brief cert
 func (c *Certificate) Brief() string {
 	if c == nil {

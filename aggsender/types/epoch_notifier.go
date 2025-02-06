@@ -12,6 +12,11 @@ type EpochEvent struct {
 	ExtraInfo fmt.Stringer
 }
 
+type EpochStatus struct {
+	Epoch        uint64
+	PercentEpoch float64
+}
+
 func (e EpochEvent) String() string {
 	return fmt.Sprintf("EpochEvent: epoch=%d extra=%s", e.Epoch, e.ExtraInfo)
 }
@@ -21,5 +26,7 @@ type EpochNotifier interface {
 	Subscribe(id string) <-chan EpochEvent
 	// Start starts the notifier synchronously
 	Start(ctx context.Context)
+	// GetEpochStatus returns the current status of the epoch
+	GetEpochStatus() EpochStatus
 	String() string
 }

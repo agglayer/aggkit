@@ -148,6 +148,12 @@ function claim_tx_hash() {
     local start_time=$(date +%s)
     local current_time=$(date +%s)
     local end_time=$((current_time + timeout))
+    if [ -z $bridge_merkle_proof_url ]; then
+        echo "claim_tx_hash bad params" >&3
+        echo "claim_tx_hash: $*" >&3
+        exit 1
+    fi
+
     while true; do
         current_time=$(date +%s)
         elpased_time=$((current_time - start_time))
@@ -156,9 +162,11 @@ function claim_tx_hash() {
             echo "     $current_time > $end_time" >&3
             exit 1
         fi
+        echo "curl -s \"$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0\""
         curl -s "$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
-        if [[ $deposit_count == 0 ]]; then
+        echo "...[$(date '+%Y-%m-%d %H:%M:%S')] deposit_count=$deposit_count bridge_deposit_file=$bridge_deposit_file" >&3
+        if [[ $deposit_count == 0  ]]; then
             echo "...[$(date '+%Y-%m-%d %H:%M:%S')] ❌  the tx_hash [$tx_hash] not found (elapsed: $elpased_time / timeout:$timeout)" >&3
             sleep "$claim_frequency"
             continue
