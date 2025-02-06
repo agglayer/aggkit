@@ -107,7 +107,6 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		blockFinalityType,
 	)
 	t.Log(err)
 	assert.Error(t, err)
