@@ -19,13 +19,6 @@ const (
 	downloadBufferSize = 1000
 )
 
-type CreationFlags uint64
-
-const (
-	FlagNone                    CreationFlags = 1 << iota
-	FlagAllowWrongContractsAddr               // Allow to set wrong contract addresses
-)
-
 type ReorgDetector interface {
 	sync.ReorgDetector
 }
@@ -72,7 +65,7 @@ func NewL1(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		FlagNone,
+		finalizedBlockType,
 	)
 }
 
@@ -107,7 +100,7 @@ func NewL2(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		FlagNone,
+		finalizedBlockType,
 	)
 }
 
@@ -126,18 +119,16 @@ func newBridgeSync(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	flags CreationFlags,
+	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID)
 
 	err := sanityCheckContract(logger, bridge, ethClient)
 	if err != nil {
-		if flags&FlagAllowWrongContractsAddr == 0 {
-			return nil, err
-		} else {
-			logger.Warnf("sanityCheckContract(bridge:%s) fails sanity check but FlagAllowWrongContractsAddrs is set",
-				bridge.String())
-		}
+		logger.Errorf("sanityCheckContract(bridge:%s) fails sanity check. Err: %w",
+			bridge.String(), err)
+		return nil, err
+
 	}
 	processor, err := newProcessor(dbPath, logger)
 	if err != nil {
