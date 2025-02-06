@@ -75,3 +75,17 @@ func newCliContextConfigFlag(t *testing.T, values ...string) *cli.Context {
 	}
 	return cli.NewContext(nil, flagSet, nil)
 }
+
+func TestLoadConfigWithDeprecatedFields(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "ut_config")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	_, err = tmpFile.Write([]byte(`
+	[L1Config]
+	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
+`))
+	require.NoError(t, err)
+	ctx := newCliContextConfigFlag(t, tmpFile.Name())
+	_, err = Load(ctx)
+	require.Error(t, err)
+}

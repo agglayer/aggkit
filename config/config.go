@@ -297,7 +297,7 @@ func checkDeprecatedFields(keysOnConfig []string) error {
 
 func getDeprecatedField(fieldName string) *DeprecatedField {
 	for _, deprecatedField := range deprecatedFieldsOnConfig {
-		if deprecatedField.FieldNamePattern == fieldName {
+		if strings.ToLower(deprecatedField.FieldNamePattern) == strings.ToLower(fieldName) {
 			return &deprecatedField
 		}
 		// If the field name ends with a dot, it means FieldNamePattern*
