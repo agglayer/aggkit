@@ -65,7 +65,6 @@ func NewL1(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		finalizedBlockType,
 	)
 }
 
@@ -100,7 +99,6 @@ func NewL2(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		finalizedBlockType,
 	)
 }
 
@@ -119,7 +117,6 @@ func newBridgeSync(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID)
 
