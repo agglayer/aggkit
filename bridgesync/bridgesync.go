@@ -135,7 +135,8 @@ func newBridgeSync(
 		if flags&FlagAllowWrongContractsAddr == 0 {
 			return nil, err
 		} else {
-			logger.Warnf("sanityCheckContract(bridge:%s) fails sanity check but FlagAllowWrongContractsAddrs is set", bridge.String())
+			logger.Warnf("sanityCheckContract(bridge:%s) fails sanity check but FlagAllowWrongContractsAddrs is set",
+				bridge.String())
 		}
 	}
 	processor, err := newProcessor(dbPath, logger)
@@ -312,8 +313,10 @@ func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address, ethClien
 	}
 	lastUpdatedDespositCount, err := contract.LastUpdatedDepositCount(nil)
 	if err != nil {
-		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w", bridgeAddr.String(), err)
+		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w",
+			bridgeAddr.String(), err)
 	}
-	logger.Infof("sanityCheckContract(bridge:%s) OK. lastUpdatedDespositCount: %d", bridgeAddr.String(), lastUpdatedDespositCount)
+	logger.Infof("sanityCheckContract(bridge:%s) OK. lastUpdatedDespositCount: %d",
+		bridgeAddr.String(), lastUpdatedDespositCount)
 	return nil
 }
