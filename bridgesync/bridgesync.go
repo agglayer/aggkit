@@ -128,7 +128,6 @@ func newBridgeSync(
 		logger.Errorf("sanityCheckContract(bridge:%s) fails sanity check. Err: %w",
 			bridge.String(), err)
 		return nil, err
-
 	}
 	processor, err := newProcessor(dbPath, logger)
 	if err != nil {
