@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/ethereum/go-ethereum/common"
@@ -46,6 +47,8 @@ type processorInterface interface {
 type ReorgDetector interface {
 	Subscribe(id string) (*reorgdetector.Subscription, error)
 	AddBlockToTrack(ctx context.Context, id string, blockNum uint64, blockHash common.Hash) error
+	GetFinalizedBlockType() etherman.BlockNumberFinality
+	String() string
 }
 
 func NewEVMDriver(

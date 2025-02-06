@@ -23,10 +23,12 @@ type ReorgDetector interface {
 
 // BridgeSync manages the state of the exit tree for the bridge contract by processing Ethereum blockchain events.
 type BridgeSync struct {
-	processor *processor
-	driver    *sync.EVMDriver
+	processor  *processor
+	driver     *sync.EVMDriver
+	downloader *sync.EVMDownloader
 
 	originNetwork uint32
+	reorgDetector ReorgDetector
 	blockFinality etherman.BlockNumberFinality
 }
 
@@ -45,7 +47,6 @@ func NewL1(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -62,7 +63,6 @@ func NewL1(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		finalizedBlockType,
 	)
 }
 
@@ -81,7 +81,6 @@ func NewL2(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -98,7 +97,6 @@ func NewL2(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		finalizedBlockType,
 	)
 }
 
@@ -117,7 +115,6 @@ func newBridgeSync(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID)
 	processor, err := newProcessor(dbPath, logger)
@@ -156,7 +153,7 @@ func newBridgeSync(
 		appender,
 		[]common.Address{bridge},
 		rh,
-		finalizedBlockType,
+		rd.GetFinalizedBlockType(),
 	)
 	if err != nil {
 		return nil, err
@@ -176,7 +173,7 @@ func newBridgeSync(
 			"  maxRetryAttemptsAfterError: %d\n"+
 			"  retryAfterErrorPeriod: %s\n"+
 			"  syncBlockChunkSize: %d\n"+
-			"  blockFinalityType: %s\n"+
+			"  ReorgDetector: %s\n"+
 			"  waitForNewBlocksPeriod: %s",
 		syncerID,
 		dbPath,
@@ -186,14 +183,16 @@ func newBridgeSync(
 		maxRetryAttemptsAfterError,
 		retryAfterErrorPeriod.String(),
 		syncBlockChunkSize,
-		blockFinalityType,
+		rd.String(),
 		waitForNewBlocksPeriod.String(),
 	)
 
 	return &BridgeSync{
 		processor:     processor,
 		driver:        driver,
+		downloader:    downloader,
 		originNetwork: originNetwork,
+		reorgDetector: rd,
 		blockFinality: blockFinalityType,
 	}, nil
 }

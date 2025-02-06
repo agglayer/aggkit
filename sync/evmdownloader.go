@@ -363,8 +363,11 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 	}
 	logs := make([]types.Log, 0, len(unfilteredLogs))
 	for _, l := range unfilteredLogs {
+		if l.Removed {
+			d.log.Warnf("log removed: %+v", l)
+		}
 		for _, topic := range d.topicsToQuery {
-			if l.Topics[0] == topic {
+			if l.Topics[0] == topic && !l.Removed {
 				logs = append(logs, l)
 				break
 			}

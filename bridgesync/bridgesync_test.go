@@ -31,19 +31,20 @@ func TestNewLx(t *testing.T) {
 	bridge := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	const (
 		syncBlockChunkSize         = uint64(100)
-		blockFinalityType          = etherman.SafeBlock
 		initialBlock               = uint64(0)
 		waitForNewBlocksPeriod     = time.Second * 10
 		retryAfterErrorPeriod      = time.Second * 5
 		maxRetryAttemptsAfterError = 3
 		originNetwork              = uint32(1)
 	)
+	var blockFinalityType = etherman.SafeBlock
 
 	mockEthClient := mocksbridgesync.NewEthClienter(t)
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
-
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 	l1BridgeSync, err := NewL1(
 		ctx,
 		dbPath,
@@ -58,7 +59,6 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		blockFinalityType,
 	)
 
 	assert.NoError(t, err)
@@ -80,7 +80,6 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		blockFinalityType,
 	)
 
 	assert.NoError(t, err)
