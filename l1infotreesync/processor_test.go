@@ -429,4 +429,13 @@ func TestGetProcessedBlockUntil(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(3), blockNum)
 	require.Equal(t, common.HexToHash("0x3"), blockHash)
+
+	// Test when hash is nil
+	_, err = p.db.Exec(`INSERT INTO block (num) VALUES ($1)`, 4)
+	require.NoError(t, err)
+
+	blockNum, blockHash, err = p.GetProcessedBlockUntil(ctx, 4)
+	require.NoError(t, err)
+	require.Equal(t, uint64(4), blockNum)
+	require.Equal(t, common.Hash{}, blockHash)
 }

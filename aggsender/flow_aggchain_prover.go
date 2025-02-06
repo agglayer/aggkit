@@ -216,7 +216,9 @@ func (a *aggchainProverFlow) getLatestProcessedFinalizedBlock(ctx context.Contex
 		}
 	}
 
-	if lastProcessedBlockHash == lastFinalizedL1Block.Hash() {
+	if (lastProcessedBlockHash == common.Hash{}) || (lastProcessedBlockHash == lastFinalizedL1Block.Hash()) {
+		// if the hash is empty it means that this is an old block that was processed before this
+		// feature was added, so we will consider it finalized
 		return lastFinalizedL1Block.Number.Uint64(), nil
 	}
 

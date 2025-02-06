@@ -241,7 +241,7 @@ func (p *processor) getLastProcessedBlockWithTx(tx db.Querier) (uint64, error) {
 func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64) (uint64, common.Hash, error) {
 	var (
 		processedBlockNum  uint64
-		processedBlockHash string
+		processedBlockHash *string
 	)
 
 	row := p.db.QueryRow("SELECT num, hash FROM block WHERE num <= $1 ORDER BY num DESC LIMIT 1;", blockNum)
@@ -249,7 +249,12 @@ func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64)
 		return 0, common.Hash{}, err
 	}
 
-	return processedBlockNum, common.HexToHash(processedBlockHash), nil
+	hash := common.Hash{}
+	if processedBlockHash != nil {
+		hash = common.HexToHash(*processedBlockHash)
+	}
+
+	return processedBlockNum, hash, nil
 }
 
 // Reorg triggers a purge and reset process on the processor to leaf it on a state
