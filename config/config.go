@@ -41,6 +41,8 @@ const (
 	SaveConfigFileName = "aggkit_config.toml"
 
 	DefaultCreationFilePermissions = os.FileMode(0600)
+
+	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of config file as polygonBridgeAddr."
 )
 
 type DeprecatedFieldsError struct {
@@ -74,7 +76,16 @@ type DeprecatedField struct {
 }
 
 var (
-	deprecatedFieldsOnConfig = []DeprecatedField{}
+	deprecatedFieldsOnConfig = []DeprecatedField{
+		{
+			FieldNamePattern: "L1Config.polygonBridgeAddr",
+			Reason:           bridgeAddrSetOnWrongSection,
+		},
+		{
+			FieldNamePattern: "L2Config.polygonBridgeAddr",
+			Reason:           bridgeAddrSetOnWrongSection,
+		},
+	}
 )
 
 /*

@@ -2,8 +2,10 @@ package bridgesync
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -15,6 +17,13 @@ const (
 	l1BridgeSyncer     = "L1BridgeSyncer"
 	l2BridgeSyncer     = "L2BridgeSyncer"
 	downloadBufferSize = 1000
+)
+
+type CreationFlags uint64
+
+const (
+	FlagNone                    CreationFlags = 1 << iota
+	FlagAllowWrongContractsAddr               // Allow to set wrong contract addresses
 )
 
 type ReorgDetector interface {
@@ -63,6 +72,7 @@ func NewL1(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
+		FlagNone,
 	)
 }
 
@@ -97,6 +107,7 @@ func NewL2(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
+		FlagNone,
 	)
 }
 
@@ -115,8 +126,18 @@ func newBridgeSync(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
+	flags CreationFlags,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID)
+
+	err := sanityCheckContract(logger, bridge, ethClient)
+	if err != nil {
+		if flags&FlagAllowWrongContractsAddr == 0 {
+			return nil, err
+		} else {
+			logger.Warnf("sanityCheckContract(bridge:%s) fails sanity check but FlagAllowWrongContractsAddrs is set", bridge.String())
+		}
+	}
 	processor, err := newProcessor(dbPath, logger)
 	if err != nil {
 		return nil, err
@@ -282,4 +303,17 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 // BlockFinality returns the block finality type
 func (s *BridgeSync) BlockFinality() etherman.BlockNumberFinality {
 	return s.blockFinality
+}
+
+func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address, ethClient EthClienter) error {
+	contract, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
+	if err != nil {
+		return fmt.Errorf("sanityCheckContract(bridge:%s) fails creating contract. Err: %w", bridgeAddr.String(), err)
+	}
+	lastUpdatedDespositCount, err := contract.LastUpdatedDepositCount(nil)
+	if err != nil {
+		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w", bridgeAddr.String(), err)
+	}
+	logger.Infof("sanityCheckContract(bridge:%s) OK. lastUpdatedDespositCount: %d", bridgeAddr.String(), lastUpdatedDespositCount)
+	return nil
 }
