@@ -119,7 +119,7 @@ func (rd *ReorgDetector) String() string {
 	if rd == nil {
 		return "ReorgDetector{nil}"
 	}
-	return fmt.Sprintf("ReorgDetector{%s, %v, %s}",
+	return fmt.Sprintf("ReorgDetector{network: %s, finalized: %v, check_interval: %s}",
 		rd.network, rd.finalizedBlockName, rd.checkReorgInterval)
 }
 

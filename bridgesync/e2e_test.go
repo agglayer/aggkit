@@ -60,12 +60,12 @@ func TestBridgeEventE2E(t *testing.T) {
 		expectedBridges = append(expectedBridges, bridge)
 		expectedRoot, err := setup.L1Environment.BridgeContract.GetRoot(nil)
 		require.NoError(t, err)
-		finalizedBlock := GetFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
+		finalizedBlock := getFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
 		log.Infof("*** iteration: %d, Bridge Root: %s latestBlock:%d finalizedBlock:%d", i, common.Hash(expectedRoot).Hex(), bn, finalizedBlock)
 		bridgesSent++
 		bn, err = setup.L1Environment.SimBackend.Client().BlockNumber(ctx)
 		require.NoError(t, err)
-		finalizedBlockNumber := GetFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
+		finalizedBlockNumber := getFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
 		blocksToReorg := 1 + i%maxReorgDepth
 		// Trigger reorg but prevent to reorg a finalized block
 		if i%reorgEveryXIterations == 0 && bn-uint64(blocksToReorg) > finalizedBlockNumber {
@@ -101,7 +101,7 @@ func TestBridgeEventE2E(t *testing.T) {
 	// Wait for syncer to catch up
 	time.Sleep(time.Second * 2) // sleeping since the processor could be up to date, but have pending reorgs
 
-	lb := GetFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
+	lb := getFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
 	helpers.RequireProcessorUpdated(t, setup.L1Environment.BridgeSync, lb)
 
 	// Get bridges
@@ -127,7 +127,7 @@ func TestBridgeEventE2E(t *testing.T) {
 	require.Equal(t, expectedBridges, actualBridges)
 }
 
-func GetFinalizedBlockNumber(t *testing.T, ctx context.Context, client simulated.Client) uint64 {
+func getFinalizedBlockNumber(t *testing.T, ctx context.Context, client simulated.Client) uint64 {
 	t.Helper()
 	lastBlockFinalityType, err := etherman.FinalizedBlock.ToBlockNum()
 	require.NoError(t, err)
