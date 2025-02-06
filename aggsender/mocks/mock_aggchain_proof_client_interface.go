@@ -24,9 +24,9 @@ func (_m *AggchainProofClientInterface) EXPECT() *AggchainProofClientInterface_E
 	return &AggchainProofClientInterface_Expecter{mock: &_m.Mock}
 }
 
-// GenerateAggchainProof provides a mock function with given fields: startBlock, maxEndBlock, l1InfoTreeRoot, l1InfoTreeLeaf, l1InfoTreeProof
-func (_m *AggchainProofClientInterface) GenerateAggchainProof(startBlock uint64, maxEndBlock uint64, l1InfoTreeRoot common.Hash, l1InfoTreeLeaf common.Hash, l1InfoTreeProof types.Proof) (*aggsendertypes.AggchainProof, error) {
-	ret := _m.Called(startBlock, maxEndBlock, l1InfoTreeRoot, l1InfoTreeLeaf, l1InfoTreeProof)
+// GenerateAggchainProof provides a mock function with given fields: startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeafHash, l1InfoTreeMerkleProof
+func (_m *AggchainProofClientInterface) GenerateAggchainProof(startBlock uint64, maxEndBlock uint64, l1InfoTreeRootHash common.Hash, l1InfoTreeLeafHash common.Hash, l1InfoTreeMerkleProof types.Proof) (*aggsendertypes.AggchainProof, error) {
+	ret := _m.Called(startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeafHash, l1InfoTreeMerkleProof)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GenerateAggchainProof")
@@ -35,10 +35,10 @@ func (_m *AggchainProofClientInterface) GenerateAggchainProof(startBlock uint64,
 	var r0 *aggsendertypes.AggchainProof
 	var r1 error
 	if rf, ok := ret.Get(0).(func(uint64, uint64, common.Hash, common.Hash, types.Proof) (*aggsendertypes.AggchainProof, error)); ok {
-		return rf(startBlock, maxEndBlock, l1InfoTreeRoot, l1InfoTreeLeaf, l1InfoTreeProof)
+		return rf(startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeafHash, l1InfoTreeMerkleProof)
 	}
 	if rf, ok := ret.Get(0).(func(uint64, uint64, common.Hash, common.Hash, types.Proof) *aggsendertypes.AggchainProof); ok {
-		r0 = rf(startBlock, maxEndBlock, l1InfoTreeRoot, l1InfoTreeLeaf, l1InfoTreeProof)
+		r0 = rf(startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeafHash, l1InfoTreeMerkleProof)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*aggsendertypes.AggchainProof)
@@ -46,7 +46,7 @@ func (_m *AggchainProofClientInterface) GenerateAggchainProof(startBlock uint64,
 	}
 
 	if rf, ok := ret.Get(1).(func(uint64, uint64, common.Hash, common.Hash, types.Proof) error); ok {
-		r1 = rf(startBlock, maxEndBlock, l1InfoTreeRoot, l1InfoTreeLeaf, l1InfoTreeProof)
+		r1 = rf(startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeafHash, l1InfoTreeMerkleProof)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -62,14 +62,14 @@ type AggchainProofClientInterface_GenerateAggchainProof_Call struct {
 // GenerateAggchainProof is a helper method to define mock.On call
 //   - startBlock uint64
 //   - maxEndBlock uint64
-//   - l1InfoTreeRoot common.Hash
-//   - l1InfoTreeLeaf common.Hash
-//   - l1InfoTreeProof types.Proof
-func (_e *AggchainProofClientInterface_Expecter) GenerateAggchainProof(startBlock interface{}, maxEndBlock interface{}, l1InfoTreeRoot interface{}, l1InfoTreeLeaf interface{}, l1InfoTreeProof interface{}) *AggchainProofClientInterface_GenerateAggchainProof_Call {
-	return &AggchainProofClientInterface_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", startBlock, maxEndBlock, l1InfoTreeRoot, l1InfoTreeLeaf, l1InfoTreeProof)}
+//   - l1InfoTreeRootHash common.Hash
+//   - l1InfoTreeLeafHash common.Hash
+//   - l1InfoTreeMerkleProof types.Proof
+func (_e *AggchainProofClientInterface_Expecter) GenerateAggchainProof(startBlock interface{}, maxEndBlock interface{}, l1InfoTreeRootHash interface{}, l1InfoTreeLeafHash interface{}, l1InfoTreeMerkleProof interface{}) *AggchainProofClientInterface_GenerateAggchainProof_Call {
+	return &AggchainProofClientInterface_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeafHash, l1InfoTreeMerkleProof)}
 }
 
-func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) Run(run func(startBlock uint64, maxEndBlock uint64, l1InfoTreeRoot common.Hash, l1InfoTreeLeaf common.Hash, l1InfoTreeProof types.Proof)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
+func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) Run(run func(startBlock uint64, maxEndBlock uint64, l1InfoTreeRootHash common.Hash, l1InfoTreeLeafHash common.Hash, l1InfoTreeMerkleProof types.Proof)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(uint64), args[1].(uint64), args[2].(common.Hash), args[3].(common.Hash), args[4].(types.Proof))
 	})

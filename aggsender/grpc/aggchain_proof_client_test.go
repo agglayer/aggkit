@@ -33,11 +33,11 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 	}
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
-		StartBlock:      100,
-		MaxEndBlock:     200,
-		L1InfoTreeRoot:  common.Hash{}.Bytes(),
-		L1InfoTreeLeaf:  common.Hash{}.Bytes(),
-		L1InfoTreeProof: convertedProof,
+		StartBlock:            100,
+		MaxEndBlock:           200,
+		L1InfoTreeRootHash:    common.Hash{}.Bytes(),
+		L1InfoTreeLeafHash:    common.Hash{}.Bytes(),
+		L1InfoTreeMerkleProof: convertedProof,
 	}).Return(expectedResponse, nil)
 
 	result, err := client.GenerateAggchainProof(100, 200, common.Hash{}, common.Hash{}, [32]common.Hash{})
@@ -61,11 +61,11 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 	}
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
-		StartBlock:      300,
-		MaxEndBlock:     400,
-		L1InfoTreeRoot:  common.Hash{}.Bytes(),
-		L1InfoTreeLeaf:  common.Hash{}.Bytes(),
-		L1InfoTreeProof: convertedProof,
+		StartBlock:            300,
+		MaxEndBlock:           400,
+		L1InfoTreeRootHash:    common.Hash{}.Bytes(),
+		L1InfoTreeLeafHash:    common.Hash{}.Bytes(),
+		L1InfoTreeMerkleProof: convertedProof,
 	}).Return((*types.GenerateAggchainProofResponse)(nil), expectedError)
 
 	result, err := client.GenerateAggchainProof(300, 400, common.Hash{}, common.Hash{}, [32]common.Hash{})

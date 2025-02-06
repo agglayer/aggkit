@@ -16,9 +16,9 @@ type AggchainProofClientInterface interface {
 	GenerateAggchainProof(
 		startBlock uint64,
 		maxEndBlock uint64,
-		l1InfoTreeRoot common.Hash,
-		l1InfoTreeLeaf common.Hash,
-		l1InfoTreeProof treeTypes.Proof,
+		l1InfoTreeRootHash common.Hash,
+		l1InfoTreeLeafHash common.Hash,
+		l1InfoTreeMerkleProof treeTypes.Proof,
 	) (*types.AggchainProof, error)
 }
 
@@ -41,24 +41,24 @@ func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
 func (c *AggchainProofClient) GenerateAggchainProof(
 	startBlock uint64,
 	maxEndBlock uint64,
-	l1InfoTreeRoot common.Hash,
-	l1InfoTreeLeaf common.Hash,
-	l1InfoTreeProof treeTypes.Proof,
+	l1InfoTreeRootHash common.Hash,
+	l1InfoTreeLeafHash common.Hash,
+	l1InfoTreeMerkleProof treeTypes.Proof,
 ) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
 	defer cancel()
 
 	convertedProof := make([][]byte, treeTypes.DefaultHeight)
 	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
-		convertedProof[i] = l1InfoTreeProof[i].Bytes()
+		convertedProof[i] = l1InfoTreeMerkleProof[i].Bytes()
 	}
 
 	resp, err := c.client.GenerateAggchainProof(ctx, &types.GenerateAggchainProofRequest{
-		StartBlock:      startBlock,
-		MaxEndBlock:     maxEndBlock,
-		L1InfoTreeRoot:  l1InfoTreeRoot.Bytes(),
-		L1InfoTreeLeaf:  l1InfoTreeLeaf.Bytes(),
-		L1InfoTreeProof: convertedProof,
+		StartBlock:            startBlock,
+		MaxEndBlock:           maxEndBlock,
+		L1InfoTreeRootHash:    l1InfoTreeRootHash.Bytes(),
+		L1InfoTreeLeafHash:    l1InfoTreeLeafHash.Bytes(),
+		L1InfoTreeMerkleProof: convertedProof,
 	})
 	if err != nil {
 		return nil, err

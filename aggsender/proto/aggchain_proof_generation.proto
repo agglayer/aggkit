@@ -16,12 +16,12 @@ message GenerateAggchainProofRequest {
   uint64 start_block = 1;
   // The max end block for which the aggchain proof is requested.
   uint64 max_end_block = 2;
-  // L1 Info tree root.
-  bytes l1_info_tree_root = 3;
-  // L1 Info tree leaf.
-  bytes l1_info_tree_leaf = 4;
-  // L1 Info tree proof.
-  repeated bytes l1_info_tree_proof = 5;
+  // L1 Info tree root. (hash)
+  bytes l1_info_tree_root_hash = 3;
+  // L1 Info tree leaf. (hash)
+  bytes l1_info_tree_leaf_hash = 4;
+  // L1 Info tree proof. ([32]hash)
+  repeated bytes l1_info_tree_merkle_proof = 5;
 }
 
 // The aggchain proof response message.

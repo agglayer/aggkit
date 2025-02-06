@@ -363,9 +363,7 @@ func TestDownloadBeforeFinalized(t *testing.T) {
 			}
 			mockEthDownloader.On("GetEventsByBlockRange", mock.Anything, step.fromBlock, step.toBlock).
 				Return(step.eventsReponse, false).Once()
-			for _, eventBlock := range step.eventsReponse {
-				expectedBlocks = append(expectedBlocks, eventBlock)
-			}
+			expectedBlocks = append(expectedBlocks, step.eventsReponse...)
 			if step.getBlockHeader != nil {
 				log.Infof("iteration:%d : GetBlockHeader(%d) ", i, step.getBlockHeader.Num)
 				mockEthDownloader.On("GetBlockHeader", mock.Anything, step.getBlockHeader.Num).Return(*step.getBlockHeader, false).Once()

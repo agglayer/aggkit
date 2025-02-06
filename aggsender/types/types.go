@@ -39,6 +39,9 @@ type L1InfoTreeSyncer interface {
 		ctx context.Context, index uint32, root common.Hash,
 	) (treeTypes.Proof, error)
 	GetL1InfoTreeRootByIndex(ctx context.Context, index uint32) (treeTypes.Root, error)
+	GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error)
+	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetLastL1InfoTreeRootByBlockNum(ctx context.Context, blockNum uint64) (*treeTypes.Root, error)
 }
 
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement

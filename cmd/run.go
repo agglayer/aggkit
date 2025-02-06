@@ -150,7 +150,7 @@ func createAggSender(
 	go blockNotifier.Start(ctx)
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
-	return aggsender.New(ctx, logger, cfg, agglayerClient, l1InfoTreeSync, l2Syncer, epochNotifier)
+	return aggsender.New(ctx, logger, cfg, agglayerClient, l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient)
 }
 
 func createAggoracle(
