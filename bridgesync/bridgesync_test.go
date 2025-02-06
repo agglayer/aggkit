@@ -43,7 +43,7 @@ func TestNewLx(t *testing.T) {
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
-	mockReorgDetector.EXPECT().GetFinalizedBlock().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 	l1BridgeSync, err := NewL1(
 		ctx,
