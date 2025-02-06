@@ -148,6 +148,54 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 	)
 }
 
+func (b *BridgeEndpoints) GetBridge(networkID uint32, depositCount uint64) (interface{}, rpc.Error) {
+	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	defer cancel()
+
+	// TODO - Do we need metrics?
+
+	if networkID == 0 {
+		bridge, err := b.bridgeL1.GetBridge(ctx, depositCount)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
+		}
+		return bridge, nil
+	} else if networkID == b.networkID {
+		bridge, err := b.bridgeL2.GetBridge(ctx, depositCount)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
+		}
+		return bridge, nil
+	}
+	return nil, rpc.NewRPCError(
+		rpc.DefaultErrorCode,
+		fmt.Sprintf("this client does not support network %d", networkID),
+	)
+}
+
+func (b *BridgeEndpoints) GetBridges(networkID uint32, page uint64, pageSize uint64) (interface{}, rpc.Error) {
+	// Force valid page: must be at least 1
+	if page < 1 {
+		page = 1
+	}
+
+	// pageSize must be in [1..50]; otherwise, default to 20
+	if pageSize < 1 || pageSize > 50 {
+		pageSize = 20
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	defer cancel()
+
+	// TODO - Do we need metrics?
+
+	bridges, err := b.bridgeL1.GetBridgesPaged(ctx, page, pageSize)
+	if err != nil {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
+	}
+	return bridges, nil
+}
+
 // GetProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
 // while globalExitRoot should be already injected on the destination network.
 // This call needs to be done to a client of the same network were the bridge tx was sent

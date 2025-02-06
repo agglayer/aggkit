@@ -125,6 +125,7 @@ func newProcessor(dbPath string, logger *log.Logger) (*processor, error) {
 		log:      logger,
 	}, nil
 }
+
 func (p *processor) GetBridgesPublished(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
@@ -144,6 +145,34 @@ func (p *processor) GetBridges(
 		}
 	}()
 	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, "bridge")
+	if err != nil {
+		return nil, err
+	}
+	bridgePtrs := []*Bridge{}
+	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
+		return nil, err
+	}
+	bridgesIface := db.SlicePtrsToSlice(bridgePtrs)
+	bridges, ok := bridgesIface.([]Bridge)
+	if !ok {
+		return nil, errors.New("failed to convert from []*Bridge to []Bridge")
+	}
+	return bridges, nil
+}
+
+func (p *processor) GetBridgesPaged(
+	ctx context.Context, page, pageSize uint64,
+) ([]Bridge, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			log.Warnf("error rolling back tx: %v", err)
+		}
+	}()
+	rows, err := p.queryPaged(tx, page, pageSize, "bridge")
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +216,20 @@ func (p *processor) GetClaims(
 	return claims, nil
 }
 
+func (p *processor) queryPaged(tx db.Querier, page, pageSize uint64, table string) (*sql.Rows, error) {
+	rows, err := tx.Query(fmt.Sprintf(`
+		SELECT * FROM %s
+		LIMIT $1 OFFSET $2;
+	`, table), pageSize, (page-1)*pageSize)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
 	if err := p.isBlockProcessed(tx, toBlock); err != nil {
 		return nil, err
@@ -213,6 +256,16 @@ func (p *processor) isBlockProcessed(tx db.Querier, blockNum uint64) error {
 		return fmt.Errorf(errBlockNotProcessedFormat, blockNum, lpb)
 	}
 	return nil
+}
+
+func (p *processor) GetBridge(ctx context.Context, depositCount uint64) (Bridge, error) {
+	var bridge Bridge
+	row := p.db.QueryRow("SELECT * FROM bridge where deposit_count = $1;", depositCount)
+	err := row.Scan(&bridge)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Bridge{}, nil
+	}
+	return bridge, err
 }
 
 // GetLastProcessedBlock returns the last processed block by the processor, including blocks

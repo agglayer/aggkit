@@ -15,6 +15,12 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGetDeposit(t *testing.T) {
+}
+
+func TestGetDeposits(t *testing.T) {
+}
+
 func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 	type testCase struct {
 		description   string
