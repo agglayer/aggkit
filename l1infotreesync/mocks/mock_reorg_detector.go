@@ -76,12 +76,12 @@ func (_c *ReorgDetectorMock_AddBlockToTrack_Call) RunAndReturn(run func(context.
 	return _c
 }
 
-// GetFinalizedBlock provides a mock function with no fields
-func (_m *ReorgDetectorMock) GetFinalizedBlock() etherman.BlockNumberFinality {
+// GetFinalizedBlockType provides a mock function with no fields
+func (_m *ReorgDetectorMock) GetFinalizedBlockType() etherman.BlockNumberFinality {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetFinalizedBlock")
+		panic("no return value specified for GetFinalizedBlockType")
 	}
 
 	var r0 etherman.BlockNumberFinality
@@ -94,29 +94,29 @@ func (_m *ReorgDetectorMock) GetFinalizedBlock() etherman.BlockNumberFinality {
 	return r0
 }
 
-// ReorgDetectorMock_GetFinalizedBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFinalizedBlock'
-type ReorgDetectorMock_GetFinalizedBlock_Call struct {
+// ReorgDetectorMock_GetFinalizedBlockType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFinalizedBlockType'
+type ReorgDetectorMock_GetFinalizedBlockType_Call struct {
 	*mock.Call
 }
 
-// GetFinalizedBlock is a helper method to define mock.On call
-func (_e *ReorgDetectorMock_Expecter) GetFinalizedBlock() *ReorgDetectorMock_GetFinalizedBlock_Call {
-	return &ReorgDetectorMock_GetFinalizedBlock_Call{Call: _e.mock.On("GetFinalizedBlock")}
+// GetFinalizedBlockType is a helper method to define mock.On call
+func (_e *ReorgDetectorMock_Expecter) GetFinalizedBlockType() *ReorgDetectorMock_GetFinalizedBlockType_Call {
+	return &ReorgDetectorMock_GetFinalizedBlockType_Call{Call: _e.mock.On("GetFinalizedBlockType")}
 }
 
-func (_c *ReorgDetectorMock_GetFinalizedBlock_Call) Run(run func()) *ReorgDetectorMock_GetFinalizedBlock_Call {
+func (_c *ReorgDetectorMock_GetFinalizedBlockType_Call) Run(run func()) *ReorgDetectorMock_GetFinalizedBlockType_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *ReorgDetectorMock_GetFinalizedBlock_Call) Return(_a0 etherman.BlockNumberFinality) *ReorgDetectorMock_GetFinalizedBlock_Call {
+func (_c *ReorgDetectorMock_GetFinalizedBlockType_Call) Return(_a0 etherman.BlockNumberFinality) *ReorgDetectorMock_GetFinalizedBlockType_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *ReorgDetectorMock_GetFinalizedBlock_Call) RunAndReturn(run func() etherman.BlockNumberFinality) *ReorgDetectorMock_GetFinalizedBlock_Call {
+func (_c *ReorgDetectorMock_GetFinalizedBlockType_Call) RunAndReturn(run func() etherman.BlockNumberFinality) *ReorgDetectorMock_GetFinalizedBlockType_Call {
 	_c.Call.Return(run)
 	return _c
 }

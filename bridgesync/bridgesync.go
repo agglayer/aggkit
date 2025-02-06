@@ -29,6 +29,7 @@ type BridgeSync struct {
 
 	originNetwork uint32
 	reorgDetector ReorgDetector
+	blockFinality etherman.BlockNumberFinality
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -152,7 +153,7 @@ func newBridgeSync(
 		appender,
 		[]common.Address{bridge},
 		rh,
-		rd.GetFinalizedBlock(),
+		rd.GetFinalizedBlockType(),
 	)
 	if err != nil {
 		return nil, err
@@ -192,6 +193,7 @@ func newBridgeSync(
 		downloader:    downloader,
 		originNetwork: originNetwork,
 		reorgDetector: rd,
+		blockFinality: blockFinalityType,
 	}, nil
 }
 
@@ -279,5 +281,5 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 
 // BlockFinality returns the block finality type
 func (s *BridgeSync) BlockFinality() etherman.BlockNumberFinality {
-	return s.reorgDetector.GetFinalizedBlock()
+	return s.blockFinality
 }

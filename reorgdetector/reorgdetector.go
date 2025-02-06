@@ -39,7 +39,7 @@ type ReorgDetector struct {
 	client               EthClient
 	db                   *sql.DB
 	checkReorgInterval   time.Duration
-	finalizedBlockName   etherman.BlockNumberFinality
+	finalizedBlockType   etherman.BlockNumberFinality
 	finalizedBlockNumber *big.Int
 	network              Network
 
@@ -76,7 +76,7 @@ func New(client EthClient, cfg Config, network Network) (*ReorgDetector, error) 
 		client:               client,
 		db:                   db,
 		checkReorgInterval:   cfg.GetCheckReorgsInterval(),
-		finalizedBlockName:   cfg.FinalizedBlock,
+		finalizedBlockType:   cfg.FinalizedBlock,
 		finalizedBlockNumber: finalizedBlockNumber,
 		network:              network,
 		trackedBlocks:        make(map[string]*headersList),
@@ -86,7 +86,7 @@ func New(client EthClient, cfg Config, network Network) (*ReorgDetector, error) 
 }
 
 func (rd *ReorgDetector) IsDisabled() bool {
-	return rd.finalizedBlockName == etherman.LatestBlock
+	return rd.finalizedBlockType == etherman.LatestBlock
 }
 
 // Start starts the reorg detector
@@ -120,12 +120,12 @@ func (rd *ReorgDetector) String() string {
 		return "ReorgDetector{nil}"
 	}
 	return fmt.Sprintf("ReorgDetector{network: %s, finalized: %v, check_interval: %s}",
-		rd.network, rd.finalizedBlockName, rd.checkReorgInterval)
+		rd.network, rd.finalizedBlockType, rd.checkReorgInterval)
 }
 
-// GetFinalizedBlock returns the finalized block name
-func (rd *ReorgDetector) GetFinalizedBlock() etherman.BlockNumberFinality {
-	return rd.finalizedBlockName
+// GetFinalizedBlockType returns the finalized block name
+func (rd *ReorgDetector) GetFinalizedBlockType() etherman.BlockNumberFinality {
+	return rd.finalizedBlockType
 }
 
 // AddBlockToTrack adds a block to the tracked list for a subscriber
