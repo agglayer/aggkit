@@ -10,6 +10,7 @@ import (
 	mutex "sync"
 
 	"github.com/agglayer/aggkit/bridgesync/migrations"
+	aggkitCommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -405,14 +406,10 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 		rollupIndexFromIdx = 0
 	}
 
-	rollupIndex = convertBytesToUint32(globalIndexBytes[rollupIndexFromIdx:localExitRootFromIdx])
-	localExitRootIndex = convertBytesToUint32(globalIndexBytes[localExitRootFromIdx:])
+	rollupIndex = aggkitCommon.BytesToUint32(globalIndexBytes[rollupIndexFromIdx:localExitRootFromIdx])
+	localExitRootIndex = aggkitCommon.BytesToUint32(globalIndexBytes[localExitRootFromIdx:])
 
 	return
-}
-
-func convertBytesToUint32(bytes []byte) uint32 {
-	return uint32(big.NewInt(0).SetBytes(bytes).Uint64())
 }
 
 func (p *processor) isHalted() bool {
