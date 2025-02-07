@@ -18,11 +18,14 @@ var (
 	ZeroHash = common.HexToHash("0x0")
 )
 
+const (
+	Uint32ByteSize = 4
+	Uint64ByteSize = 8
+)
+
 // Uint64ToBytes converts a uint64 to a byte slice
 func Uint64ToBytes(num uint64) []byte {
-	const uint64ByteSize = 8
-
-	bytes := make([]byte, uint64ByteSize)
+	bytes := make([]byte, Uint64ByteSize)
 	binary.BigEndian.PutUint64(bytes, num)
 
 	return bytes
@@ -35,17 +38,17 @@ func BytesToUint64(bytes []byte) uint64 {
 
 // Uint32ToBytes converts a uint32 to a byte slice in big-endian order
 func Uint32ToBytes(num uint32) []byte {
-	const uint32ByteSize = 4
+	bytes := make([]byte, Uint32ByteSize)
+	binary.BigEndian.PutUint32(bytes, num)
 
-	key := make([]byte, uint32ByteSize)
-	binary.BigEndian.PutUint32(key, num)
-
-	return key
+	return bytes
 }
 
 // BytesToUint32 converts a byte slice to a uint32
 func BytesToUint32(bytes []byte) uint32 {
-	return binary.BigEndian.Uint32(bytes)
+	padded := make([]byte, Uint32ByteSize)
+	copy(padded[Uint32ByteSize-len(bytes):], bytes)
+	return binary.BigEndian.Uint32(padded)
 }
 
 // CalculateAccInputHash computes the hash of accumulated input data for a given batch.
