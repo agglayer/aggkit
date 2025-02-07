@@ -24,6 +24,10 @@ import (
 const (
 	globalIndexPartSize = 4
 	globalIndexMaxSize  = 9
+
+	bridgeTable       = "bridge"
+	claimTable        = "claim"
+	tokenMappingTable = "token_mapping"
 )
 
 var (
@@ -154,7 +158,7 @@ func (p *processor) GetBridges(
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, "bridge")
+	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTable)
 	if err != nil {
 		return nil, err
 	}
@@ -182,7 +186,7 @@ func (p *processor) GetClaims(
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, "claim")
+	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTable)
 	if err != nil {
 		return nil, err
 	}
@@ -318,19 +322,19 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				}
 				return sync.ErrInconsistentState
 			}
-			if err = meddler.Insert(tx, "bridge", event.Bridge); err != nil {
+			if err = meddler.Insert(tx, bridgeTable, event.Bridge); err != nil {
 				return err
 			}
 		}
 
 		if event.Claim != nil {
-			if err = meddler.Insert(tx, "claim", event.Claim); err != nil {
+			if err = meddler.Insert(tx, claimTable, event.Claim); err != nil {
 				return err
 			}
 		}
 
 		if event.TokenMapping != nil {
-			if err = meddler.Insert(tx, "token_mapping", event.TokenMapping); err != nil {
+			if err = meddler.Insert(tx, tokenMappingTable, event.TokenMapping); err != nil {
 				return err
 			}
 		}
