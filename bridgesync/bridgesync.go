@@ -2,8 +2,10 @@ package bridgesync
 
 import (
 	"context"
+	"fmt"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -117,6 +119,13 @@ func newBridgeSync(
 	syncFullClaims bool,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID)
+
+	err := sanityCheckContract(logger, bridge, ethClient)
+	if err != nil {
+		logger.Errorf("sanityCheckContract(bridge:%s) fails sanity check. Err: %w",
+			bridge.String(), err)
+		return nil, err
+	}
 	processor, err := newProcessor(dbPath, logger)
 	if err != nil {
 		return nil, err
@@ -282,4 +291,19 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 // BlockFinality returns the block finality type
 func (s *BridgeSync) BlockFinality() etherman.BlockNumberFinality {
 	return s.blockFinality
+}
+
+func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address, ethClient EthClienter) error {
+	contract, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
+	if err != nil {
+		return fmt.Errorf("sanityCheckContract(bridge:%s) fails creating contract. Err: %w", bridgeAddr.String(), err)
+	}
+	lastUpdatedDespositCount, err := contract.LastUpdatedDepositCount(nil)
+	if err != nil {
+		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w",
+			bridgeAddr.String(), err)
+	}
+	logger.Infof("sanityCheckContract(bridge:%s) OK. lastUpdatedDespositCount: %d",
+		bridgeAddr.String(), lastUpdatedDespositCount)
+	return nil
 }
