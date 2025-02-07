@@ -45,7 +45,6 @@ func TestConfigString(t *testing.T) {
 		URLRPCL2:                    "http://l2.rpc.url",
 		BlockFinality:               "latestBlock",
 		EpochNotificationPercentage: 50,
-		SaveCertificatesToFilesPath: "/path/to/certificates",
 		Mode:                        "PP",
 	}
 
@@ -55,7 +54,6 @@ func TestConfigString(t *testing.T) {
 		"URLRPCL2: http://l2.rpc.url\n" +
 		"BlockFinality: latestBlock\n" +
 		"EpochNotificationPercentage: 50\n" +
-		"SaveCertificatesToFilesPath: /path/to/certificates\n" +
 		"DryRun: false\n" +
 		"EnableRPC: false\n" +
 		"AggchainProofURL: \n" +
@@ -459,7 +457,6 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
-	mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
 	mockStorage.On("GetLastSentCertificate").Return(&aggsendertypes.CertificateInfo{
 		NewLocalExitRoot: common.HexToHash("0x123"),
 		Height:           1,
@@ -742,37 +739,11 @@ func TestSendCertificate(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name: "error getting pending certificates",
-			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
-				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
-				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return(nil, errors.New("some error")).Once()
-			},
-			expectedError: "error getting pending certificates",
-		},
-		{
-			name: "has pending certificates",
-			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockFlow *mocks.AggsenderFlow,
-				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
-				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return(
-					[]*aggsendertypes.CertificateInfo{
-						{
-							Height: 0,
-							Status: agglayer.Pending,
-						},
-					}, nil).Once()
-			},
-		},
-		{
 			name: "error getting certificate build params",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
 				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(nil, errors.New("some error")).Once()
 			},
 			expectedError: "error getting certificate build params",
@@ -783,7 +754,6 @@ func TestSendCertificate(t *testing.T) {
 				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
 				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{},
 				}, nil).Once()
@@ -795,7 +765,6 @@ func TestSendCertificate(t *testing.T) {
 				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
 				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
 				}, nil).Once()
@@ -809,7 +778,6 @@ func TestSendCertificate(t *testing.T) {
 				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
 				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
 				}, nil).Once()
@@ -829,7 +797,6 @@ func TestSendCertificate(t *testing.T) {
 				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
 				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
 				}, nil).Once()
@@ -850,7 +817,6 @@ func TestSendCertificate(t *testing.T) {
 				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockStorage.On("GetCertificatesByStatus", agglayer.NonSettledStatuses).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
 				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
 				}, nil).Once()
@@ -912,7 +878,6 @@ func TestLimitEpochPercent_Greater(t *testing.T) {
 	testData.sut.cfg.MaxEpochPercentageAllowedToSendCertificate = 80
 
 	ctx := context.TODO()
-	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
 	testData.l2syncerMock.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(100), nil).Once()
 	testData.storageMock.EXPECT().GetLastSentCertificate().Return(&aggsendertypes.CertificateInfo{
 		FromBlock: 1,

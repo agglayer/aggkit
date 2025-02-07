@@ -24,8 +24,6 @@ type Config struct {
 	// 0 -> Begin
 	// 50 -> Middle
 	EpochNotificationPercentage uint `mapstructure:"EpochNotificationPercentage"`
-	// SaveCertificatesToFilesPath if != "" tells  the AggSender to save the certificates to a file in this path
-	SaveCertificatesToFilesPath string `mapstructure:"SaveCertificatesToFilesPath"`
 	// MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
 	// 0 is infinite
 	MaxRetriesStoreCertificate int `mapstructure:"MaxRetriesStoreCertificate"`
@@ -46,8 +44,8 @@ type Config struct {
 	EnableRPC bool `mapstructure:"EnableRPC"`
 	// AggchainProofURL is the URL of the AggkitProver
 	AggchainProofURL string `mapstructure:"AggchainProofURL"`
-	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain prover mode)
-	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProver" mapstructure:"Mode"`
+	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)
+	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
 	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
 	CheckStatusCertificateInterval types.Duration `mapstructure:"CheckStatusCertificateInterval"`
 	// RetryCertAfterInError when a cert pass to 'InError'
@@ -76,7 +74,6 @@ func (c Config) String() string {
 		"URLRPCL2: " + c.URLRPCL2 + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
-		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
 		"AggchainProofURL: " + c.AggchainProofURL + "\n" +

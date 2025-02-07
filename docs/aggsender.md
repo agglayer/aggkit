@@ -12,7 +12,7 @@ The image below, depicts the `Aggsender` components (the editable link of the di
 
 ### Starting the AggSender
 
-`Aggsender` gets the epoch configuration from the `Agglayer`. 
+`Aggsender` gets the epoch configuration from the `Agglayer`.
 It checks the last certificate in DB (if exists) against the `Agglayer`, to be sure that both are on the same page:
     - If the DB is empty then get, as starting point, the last certificate `Agglayer` has.
     - If it is a fresh start, and there are no certificates before this, it will set its starting block to 1 and start polling bridges and claims from the syncer from that block.
@@ -38,7 +38,7 @@ If we have bridges, certificate will be built, signed, and sent to the `Agglayer
 
 Currently, `Agglayer` only supports one certificate per L1 epoch, per network, so we can not send more than one certificate. After the certificate is sent, we wait until the next epoch, either to resend it if its status is `InError`, or to build a new one if its status `Settled`. Also, we have no limit yet in how many bridges and claims can be sent in a single certificate. This might be something to test and check, because certificates carry a lot of data through RPC, so we might hit a limit at some point.
 
-`InError` status can mean a number of things. It can be an error that happened on the `Agglayer`. It can be an error in the data `Aggsender` sent, or the certificate was sent in between two epochs, which `Agglayer` considers invalid. Either way, the given certificate needs to be re-sent in the next epoch, with all the previously sent bridges and claims, plus the new ones that happened after them, that the syncer saw and saved. 
+`InError` status can mean a number of things. It can be an error that happened on the `Agglayer`. It can be an error in the data `Aggsender` sent, or the certificate was sent in between two epochs, which `Agglayer` considers invalid. Either way, the given certificate needs to be re-sent in the next epoch, with all the previously sent bridges and claims, plus the new ones that happened after them, that the syncer saw and saved.
 
 It is important to mention that, in the case of resending the certificate, the certificate height must be reused. If we are sending a new certificate, its height must be incremented based on the previously sent certificate.
 
@@ -101,7 +101,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | URLRPCL2                      | string             | L2 RPC                                                                                                         |
 | BlockFinality                 | string             | Block type to calculate epochs on L1.                                                                          |
 | EpochNotificationPercentage   | uint               | `0` -> at beginning of epoch <br> `100` -> at end of the epoch <br> *(default: 50)*                             |
-| SaveCertificatesToFilesPath   | string             | Default option to store the certificate as a file. <br> Files: `certificate_<height>-<tstamp>.json`            |
 | MaxRetriesStoreCertificate    | int                | Number of retries if Aggsender fails to store certificates on DB                                               |
 | DelayBeetweenRetries          | Duration           | Initial status check delay <br> Store certificate on DB delay                                                  |
 | KeepCertificatesHistory       | bool               | Instead of deleting them, discarded certificates are moved to the `certificate_info_history` table             |
@@ -109,7 +108,12 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | BridgeMetadataAsHash          | bool               | Flag indicating to import the bridge metadata as a hash                                                        |
 | DryRun                        | bool               | Flag to enable the dry-run mode. <br> In this mode, the AggSender will not send certificates to the Agglayer.   |
 | EnableRPC                     | bool               | Flag to enable the Aggsender's RPC layer                                                                       |
-
+| AggchainProofURL              | string             | URL to the Aggchain Prover                                                                                     |
+| Mode                          | string             | Defines the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)                  |
+| CheckStatusCertificateInterval| Duration           | Interval at which the AggSender will check the certificate status in Agglayer                                  |
+| RetryCertAfterInError         | bool               | Indicates if Aggsender should re-send InError certificates immediatelly after it notices their status change   |
+| MaxEpochPercentageAllowedToSendCertificate | uint  | Percentage of the epoch after which Aggsender is forbidden to send certificates to the Agglayer               |
+| MaxSubmitCertificateRate      | RateLimitConfig    | Maximum allowed rate of submission of certificates in a given time                                            |
 
 ## Use Cases
 
@@ -150,11 +154,13 @@ This paragraph explains different use cases with outcomes.
    ]
 }
 ```
+
 4. Copy this to your `launch.json` and start debugging.
 5. This will start the `aggkit` with the `aggsender` running.
 6. Navigate to the `test/bats/pp` folder (`cd test/bats/pp`).
 7. Run a test in `bridge-e2e.bats` file: `bats -f "Native gas token deposit to WETH" bridge-e2e.bats`. This will build a new certificate after it is done, and you can debug the whole process.
 
 ## Additional Documentation
+
 [1] https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html 
 [2] https://agglayer.github.io/agglayer/pessimistic_proof/index.html	
