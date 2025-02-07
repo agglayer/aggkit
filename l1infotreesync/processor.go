@@ -307,8 +307,10 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		return fmt.Errorf("insert Block. err: %w", err)
 	}
 
-	var initialL1InfoIndex uint32
-	var l1InfoLeavesAdded uint32
+	var (
+		initialL1InfoIndex uint32
+		l1InfoLeavesAdded  uint32
+	)
 	lastIndex, err := p.getLastIndex(tx)
 
 	switch {

@@ -92,11 +92,22 @@ type Claim struct {
 	IsMessage           bool           `meddler:"is_message"`
 }
 
-// Event combination of bridge and claim events
+// TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
+type TokenMapping struct {
+	BlockNum            uint64         `meddler:"block_num"`
+	BlockPos            uint64         `meddler:"block_pos"`
+	OriginNetwork       uint32         `meddler:"origin_network"`
+	OriginTokenAddress  common.Address `meddler:"origin_token_address"`
+	WrappedTokenAddress common.Address `meddler:"wrapped_token_address"`
+	Metadata            []byte         `meddler:"metadata"`
+}
+
+// Event combination of bridge, claim and token mapping events
 type Event struct {
-	Pos    uint64
-	Bridge *Bridge
-	Claim  *Claim
+	Pos          uint64
+	Bridge       *Bridge
+	Claim        *Claim
+	TokenMapping *TokenMapping
 }
 
 type processor struct {
@@ -293,6 +304,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		if !ok {
 			return errors.New("failed to convert sync.Block.Event to Event")
 		}
+
 		if event.Bridge != nil {
 			if err = p.exitTree.AddLeaf(tx, block.Num, event.Pos, types.Leaf{
 				Index: event.Bridge.DepositCount,
@@ -310,8 +322,15 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		}
+
 		if event.Claim != nil {
 			if err = meddler.Insert(tx, "claim", event.Claim); err != nil {
+				return err
+			}
+		}
+
+		if event.TokenMapping != nil {
+			if err = meddler.Insert(tx, "token_mapping", event.TokenMapping); err != nil {
 				return err
 			}
 		}
