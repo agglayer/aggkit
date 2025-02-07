@@ -77,8 +77,8 @@ func TestBigIntString(t *testing.T) {
 	require.Equal(t, claim, claimsFromDB[0])
 }
 
-func TestProceessor(t *testing.T) {
-	path := path.Join(t.TempDir(), "aggsenderTestProceessor.sqlite")
+func TestProcessor(t *testing.T) {
+	path := path.Join(t.TempDir(), "bridgeSyncerProcessor.db")
 	logger := log.WithFields("bridge-syncer", "foo")
 	p, err := newProcessor(path, logger)
 	require.NoError(t, err)
