@@ -55,6 +55,10 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
 
+	var (
+		buildParams *types.CertificateBuildParams
+	)
+
 	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayer.InError {
 		// if the last certificate was in error, we need to resend it
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
@@ -72,38 +76,8 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 				"but no bridges to resend the same certificate", lastSentCertificateInfo.String())
 		}
 
-		aggProof := lastSentCertificateInfo.AggchainProof
-		toBlock := lastSentCertificateInfo.ToBlock
-
-		if len(aggProof) == 0 {
-			proof, leaf, root, err := a.getFinalizedL1InfoTreeData(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
-			}
-
-			aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(lastSentCertificateInfo.FromBlock,
-				lastSentCertificateInfo.ToBlock, root, leaf, proof)
-			if err != nil {
-				return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
-					lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock, err)
-			}
-
-			a.log.Infof("aggchainProverFlow - InError certificate did not have auth proof, "+
-				"so got it from the aggchain prover for range %d : %d. Proof: %s. Requested range: %d : %d",
-				aggchainProof.StartBlock, aggchainProof.EndBlock, aggchainProof.Proof,
-				lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock)
-
-			aggProof = aggchainProof.Proof
-
-			if aggchainProof.EndBlock < lastSentCertificateInfo.ToBlock {
-				// aggchain prover can return a proof for a smaller range than requested
-				// so we need to adjust the toBlock
-				toBlock = aggchainProof.EndBlock
-			}
-		}
-
 		// we need to resend the same certificate
-		buildParams := &types.CertificateBuildParams{
+		buildParams = &types.CertificateBuildParams{
 			FromBlock:           lastSentCertificateInfo.FromBlock,
 			ToBlock:             lastSentCertificateInfo.ToBlock,
 			RetryCount:          lastSentCertificateInfo.RetryCount + 1,
@@ -111,21 +85,15 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			Claims:              claims,
 			LastSentCertificate: lastSentCertificateInfo,
 			CreatedAt:           lastSentCertificateInfo.CreatedAt,
-			AggchainProof:       aggProof,
 		}
+	}
 
-		buildParams, err = adjustBlockRange(buildParams, lastSentCertificateInfo.ToBlock, toBlock)
+	if buildParams == nil {
+		// use the old logic, where we build the new certificate
+		buildParams, err = a.baseFlow.GetCertificateBuildParams(ctx)
 		if err != nil {
 			return nil, err
 		}
-
-		return buildParams, nil
-	}
-
-	// use the old logic, where we build the new certificate
-	buildParams, err := a.baseFlow.GetCertificateBuildParams(ctx)
-	if err != nil {
-		return nil, err
 	}
 
 	proof, leaf, root, err := a.getFinalizedL1InfoTreeData(ctx)

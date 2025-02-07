@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
@@ -87,7 +86,7 @@ func New(
 		flowManager         types.AggsenderFlow
 	)
 
-	if types.AggsenderMode(cfg.Mode) == types.AggchainProverMode {
+	if types.AggsenderMode(cfg.Mode) == types.AggchainProofMode {
 		if cfg.AggchainProofURL == "" {
 			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
 		}
@@ -244,16 +243,6 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertificate, error) {
 	a.log.Infof("trying to send a new certificate...")
 
-	shouldSend, err := a.shouldSendCertificate()
-	if err != nil {
-		return nil, err
-	}
-
-	if !shouldSend {
-		a.log.Infof("waiting for pending certificates to be settled")
-		return nil, nil
-	}
-
 	certificateParams, err := a.flow.GetCertificateBuildParams(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting certificate build params: %w", err)
@@ -283,7 +272,6 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, fmt.Errorf("forbidden to send certificate due epoch percentage")
 	}
 
-	a.saveCertificateToFile(signedCertificate)
 	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
@@ -358,24 +346,6 @@ func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Cer
 		}
 	}
 	return nil
-}
-
-// saveCertificate saves the certificate to a tmp file
-func (a *AggSender) saveCertificateToFile(signedCertificate *agglayer.SignedCertificate) {
-	if signedCertificate == nil || a.cfg.SaveCertificatesToFilesPath == "" {
-		return
-	}
-	fn := fmt.Sprintf("%s/certificate_%04d-%07d.json",
-		a.cfg.SaveCertificatesToFilesPath, signedCertificate.Height, time.Now().Unix())
-	a.log.Infof("saving certificate to file: %s", fn)
-	jsonData, err := json.MarshalIndent(signedCertificate, "", "  ")
-	if err != nil {
-		a.log.Errorf("error marshalling certificate: %w", err)
-	}
-
-	if err = os.WriteFile(fn, jsonData, 0644); err != nil { //nolint:gosec,mnd // we are writing to a tmp file
-		a.log.Errorf("error writing certificate to file: %w", err)
-	}
 }
 
 // signCertificate signs a certificate with the sequencer key
@@ -482,17 +452,6 @@ func (a *AggSender) updateCertificateStatus(ctx context.Context,
 		return fmt.Errorf("error updating certificate. Err: %w", err)
 	}
 	return nil
-}
-
-// shouldSendCertificate checks if a certificate should be sent at given time
-// if we have pending certificates, then we wait until they are settled
-func (a *AggSender) shouldSendCertificate() (bool, error) {
-	pendingCertificates, err := a.storage.GetCertificatesByStatus(agglayer.NonSettledStatuses)
-	if err != nil {
-		return false, fmt.Errorf("error getting pending certificates: %w", err)
-	}
-
-	return len(pendingCertificates) == 0, nil
 }
 
 // checkLastCertificateFromAgglayer checks the last certificate from agglayer

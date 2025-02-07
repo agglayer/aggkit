@@ -63,7 +63,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			expectedError: "no bridges to resend the same certificate",
 		},
 		{
-			name: "resend InError certificate with no auth proof",
+			name: "resend InError certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
@@ -104,7 +104,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			},
 		},
 		{
-			name: "resend InError certificate with no auth proof - aggchain prover returned smaller range",
+			name: "resend InError certificate - aggchain prover returned smaller range",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
@@ -143,37 +143,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					FromBlock: 1,
 					ToBlock:   10,
 					Status:    agglayer.InError,
-				},
-			},
-		},
-		{
-			name: "resend InError certificate with auth proof",
-			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockProverClient *mocks.AggchainProofClientInterface,
-				mockL1Client *mocks.EthClient,
-				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
-				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
-					FromBlock:     1,
-					ToBlock:       10,
-					Status:        agglayer.InError,
-					AggchainProof: []byte("existing-proof"),
-				}, nil)
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-			},
-			expectedParams: &types.CertificateBuildParams{
-				FromBlock:     1,
-				ToBlock:       10,
-				RetryCount:    1,
-				Bridges:       []bridgesync.Bridge{{}},
-				Claims:        []bridgesync.Claim{{}},
-				AggchainProof: []byte("existing-proof"),
-				LastSentCertificate: &types.CertificateInfo{
-					FromBlock:     1,
-					ToBlock:       10,
-					Status:        agglayer.InError,
-					AggchainProof: []byte("existing-proof"),
 				},
 			},
 		},

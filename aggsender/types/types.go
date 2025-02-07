@@ -20,7 +20,7 @@ type AggsenderMode string
 
 const (
 	PessimisticProofMode AggsenderMode = "PessimisticProof"
-	AggchainProverMode   AggsenderMode = "AggchainProver"
+	AggchainProofMode    AggsenderMode = "AggchainProof"
 )
 
 // AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender

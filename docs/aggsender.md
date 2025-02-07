@@ -101,7 +101,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | URLRPCL2                      | string             | L2 RPC                                                                                                         |
 | BlockFinality                 | string             | Block type to calculate epochs on L1.                                                                          |
 | EpochNotificationPercentage   | uint               | `0` -> at beginning of epoch <br> `100` -> at end of the epoch <br> *(default: 50)*                             |
-| SaveCertificatesToFilesPath   | string             | Default option to store the certificate as a file. <br> Files: `certificate_<height>-<tstamp>.json`            |
 | MaxRetriesStoreCertificate    | int                | Number of retries if Aggsender fails to store certificates on DB                                               |
 | DelayBeetweenRetries          | Duration           | Initial status check delay <br> Store certificate on DB delay                                                  |
 | KeepCertificatesHistory       | bool               | Instead of deleting them, discarded certificates are moved to the `certificate_info_history` table             |
@@ -109,7 +108,12 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | BridgeMetadataAsHash          | bool               | Flag indicating to import the bridge metadata as a hash                                                        |
 | DryRun                        | bool               | Flag to enable the dry-run mode. <br> In this mode, the AggSender will not send certificates to the Agglayer.   |
 | EnableRPC                     | bool               | Flag to enable the Aggsender's RPC layer                                                                       |
-
+| AggchainProofURL              | string             | URL to the Aggchain Prover                                                                                     |
+| Mode                          | string             | Defines the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)                  |
+| CheckStatusCertificateInterval| Duration           | Interval at which the AggSender will check the certificate status in Agglayer                                  |
+| RetryCertAfterInError         | bool               | Indicates if Aggsender should re-send InError certificates immediatelly after it notices their status change   |
+| MaxEpochPercentageAllowedToSendCertificate | uint  | Percentage of the epoch after which Aggsender is forbidden to send certificates to the Agglayer               |
+| MaxSubmitCertificateRate      | RateLimitConfig    | Maximum allowed rate of submission of certificates in a given time                                            | 
 
 ## Use Cases
 

@@ -210,7 +210,6 @@ AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{Seque
 URLRPCL2="{{L2URL}}"
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
-SaveCertificatesToFilesPath = ""
 MaxRetriesStoreCertificate = 3
 DelayBeetweenRetries = "60s"
 KeepCertificatesHistory = true
