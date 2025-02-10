@@ -17,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/mitchellh/mapstructure"
 	"github.com/pelletier/go-toml/v2"
@@ -119,6 +120,9 @@ type Config struct {
 
 	// AggSender is the configuration of the agg sender service
 	AggSender aggsender.Config
+
+	// Prometheus is the configuration of the prometheus service
+	Prometheus prometheus.Config
 }
 
 // Load loads the configuration

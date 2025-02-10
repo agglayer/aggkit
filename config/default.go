@@ -218,4 +218,9 @@ MaxCertSize = 8388608
 BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
+
+[Prometheus]
+Enabled = true
+Host = "localhost"
+Port = 9091
 `

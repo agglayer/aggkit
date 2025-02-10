@@ -3,9 +3,12 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"runtime"
+	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
@@ -24,9 +27,11 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/rpc"
 	"github.com/ethereum/go-ethereum/ethclient"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
 )
 
@@ -114,6 +119,11 @@ func start(cliCtx *cli.Context) error {
 			}
 		}()
 	}
+
+	if cfg.Prometheus.Enabled {
+		go startPrometheusHTTPServer(cfg.Prometheus)
+	}
+
 	waitSignal(nil)
 
 	return nil
@@ -568,4 +578,31 @@ func getL2RPCUrl(c *config.Config) string {
 	}
 
 	return c.AggOracle.EVMSender.URLRPCL2
+}
+
+func startPrometheusHTTPServer(c prometheus.Config) {
+	const ten = 10
+	mux := http.NewServeMux()
+	address := fmt.Sprintf("%s:%d", c.Host, c.Port)
+	lis, err := net.Listen("tcp", address)
+	if err != nil {
+		log.Errorf("failed to create tcp listener for metrics: %v", err)
+		return
+	}
+	mux.Handle(prometheus.Endpoint, promhttp.Handler())
+
+	metricsServer := &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: ten * time.Second,
+		ReadTimeout:       ten * time.Second,
+	}
+	log.Infof("prometheus server listening on port %d", c.Port)
+	if err := metricsServer.Serve(lis); err != nil {
+		if err == http.ErrServerClosed {
+			log.Warnf("prometheus http server stopped")
+			return
+		}
+		log.Errorf("closed http connection for prometheus server: %v", err)
+		return
+	}
 }
