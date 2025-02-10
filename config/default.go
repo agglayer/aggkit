@@ -13,8 +13,6 @@ ContractVersions = "elderberry"
 IsValidiumMode = false
 
 L2Coinbase = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
-SequencerPrivateKeyPath = "/app/sequencer.keystore"
-SequencerPrivateKeyPassword = "test"
 WitnessURL = "http://localhost:8123"
 
 # Who send Proof to L1? AggLayer addr, or aggregator addr?
@@ -208,7 +206,9 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 AggLayerURL = "{{AggLayerURL}}"
-AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
+KMSKeyName = ""
+KMSConnectionTimeout = "30s"
+AggsenderPrivateKey = {Path = "/app/sequencer.keystore", Password = "test"}
 URLRPCL2="{{L2URL}}"
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50

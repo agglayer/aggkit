@@ -2,7 +2,6 @@ package aggsender
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -51,7 +50,8 @@ type AggSender struct {
 
 	cfg Config
 
-	sequencerKey *ecdsa.PrivateKey
+	signer     funcSignHash
+	signerAddr common.Address
 
 	status      types.AggsenderStatus
 	rateLimiter RateLimiter
@@ -74,8 +74,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-
-	sequencerPrivateKey, err := aggkitcommon.NewKeyFromKeystore(cfg.AggsenderPrivateKey)
+	signer, signerAddr, err := newSigner(logger, cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +89,8 @@ func New(
 		l2Syncer:         l2Syncer,
 		aggLayerClient:   aggLayerClient,
 		l1infoTreeSyncer: l1InfoTreeSyncer,
-		sequencerKey:     sequencerPrivateKey,
+		signer:           signer,
+		signerAddr:       signerAddr,
 		epochNotifier:    epochNotifier,
 		status:           types.AggsenderStatus{Status: types.StatusNone},
 		rateLimiter:      rateLimit,
@@ -699,14 +699,13 @@ func (a *AggSender) getImportedBridgeExits(
 // signCertificate signs a certificate with the sequencer key
 func (a *AggSender) signCertificate(certificate *agglayer.Certificate) (*agglayer.SignedCertificate, error) {
 	hashToSign := certificate.HashToSign()
-
-	sig, err := crypto.Sign(hashToSign.Bytes(), a.sequencerKey)
+	sig, err := a.signer(context.Background(), hashToSign)
 	if err != nil {
 		return nil, err
 	}
 
 	a.log.Infof("Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
-		crypto.PubkeyToAddress(a.sequencerKey.PublicKey).String(),
+		a.signerAddr.String(),
 		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
 		hashToSign.String(),
 	)

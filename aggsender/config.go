@@ -13,6 +13,11 @@ type Config struct {
 	StoragePath string `mapstructure:"StoragePath"`
 	// AggLayerURL is the URL of the AggLayer
 	AggLayerURL string `mapstructure:"AggLayerURL"`
+	// KMSKeyName is the name of the KMS key used to encrypt the private key
+	KMSKeyName string `mapstructure:"KMSKeyName"`
+	// KMSConnectionTimeout is the timeout for the KMS connection
+	KMSConnectionTimeout types.Duration `mapstructure:"KMSConnectionTimeout"`
+
 	// AggsenderPrivateKey is the private key which is used to sign certificates
 	AggsenderPrivateKey types.KeystoreFileConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
