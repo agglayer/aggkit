@@ -42,6 +42,8 @@ const (
 	SaveConfigFileName = "aggkit_config.toml"
 
 	DefaultCreationFilePermissions = os.FileMode(0600)
+
+	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of config file as polygonBridgeAddr."
 )
 
 type DeprecatedFieldsError struct {
@@ -75,7 +77,16 @@ type DeprecatedField struct {
 }
 
 var (
-	deprecatedFieldsOnConfig = []DeprecatedField{}
+	deprecatedFieldsOnConfig = []DeprecatedField{
+		{
+			FieldNamePattern: "L1Config.polygonBridgeAddr",
+			Reason:           bridgeAddrSetOnWrongSection,
+		},
+		{
+			FieldNamePattern: "L2Config.polygonBridgeAddr",
+			Reason:           bridgeAddrSetOnWrongSection,
+		},
+	}
 )
 
 /*
@@ -290,7 +301,7 @@ func checkDeprecatedFields(keysOnConfig []string) error {
 
 func getDeprecatedField(fieldName string) *DeprecatedField {
 	for _, deprecatedField := range deprecatedFieldsOnConfig {
-		if deprecatedField.FieldNamePattern == fieldName {
+		if strings.ToLower(deprecatedField.FieldNamePattern) == strings.ToLower(fieldName) {
 			return &deprecatedField
 		}
 		// If the field name ends with a dot, it means FieldNamePattern*

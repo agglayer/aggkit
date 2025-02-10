@@ -3,6 +3,7 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"strconv"
 	"testing"
@@ -35,7 +36,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		description        string
 		inputLogs          []types.Log
 		fromBlock, toBlock uint64
-		expectedBlocks     []EVMBlock
+		expectedBlocks     EVMBlocks
 	}
 	testCases := []testCase{}
 	ctx := context.Background()
@@ -47,7 +48,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		inputLogs:      []types.Log{},
 		fromBlock:      1,
 		toBlock:        3,
-		expectedBlocks: []EVMBlock{},
+		expectedBlocks: EVMBlocks{},
 	}
 	testCases = append(testCases, case0)
 
@@ -56,7 +57,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 	logsC1 := []types.Log{
 		*logC1,
 	}
-	blocksC1 := []EVMBlock{
+	blocksC1 := EVMBlocks{
 		{
 			EVMBlockHeader: EVMBlockHeader{
 				Num:        logC1.BlockNumber,
@@ -86,7 +87,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		*logC2_3,
 		*logC2_4,
 	}
-	blocksC2 := []EVMBlock{
+	blocksC2 := []*EVMBlock{
 		{
 			EVMBlockHeader: EVMBlockHeader{
 				Num:        logC2_1.BlockNumber,
@@ -121,7 +122,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		*logC3_3,
 		*logC3_4,
 	}
-	blocksC3 := []EVMBlock{
+	blocksC3 := EVMBlocks{
 		{
 			EVMBlockHeader: EVMBlockHeader{
 				Num:        logC3_1.BlockNumber,
@@ -195,130 +196,6 @@ func generateEvent(blockNum uint32) (*types.Log, testEvent) {
 		Data:      nil,
 	}
 	return log, testEvent(h)
-}
-
-func TestDownload(t *testing.T) {
-	/*
-		NOTE: due to the concurrent nature of this test (the function being tested runs through a goroutine)
-		if the mock doesn't match, the goroutine will get stuck and the test will timeout
-	*/
-	d := NewEVMDownloaderMock(t)
-	downloadCh := make(chan EVMBlock, 1)
-	ctx := context.Background()
-	ctx1, cancel := context.WithCancel(ctx)
-	expectedBlocks := []EVMBlock{}
-	dwnldr, _ := NewTestDownloader(t, time.Millisecond*100)
-	dwnldr.EVMDownloaderInterface = d
-
-	d.On("WaitForNewBlocks", mock.Anything, uint64(0)).
-		Return(uint64(1))
-	// iteratiion 0:
-	// last block is 1, download that block (no events and wait)
-	b1 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  1,
-			Hash: common.HexToHash("01"),
-		},
-	}
-	expectedBlocks = append(expectedBlocks, b1)
-	d.On("GetEventsByBlockRange", mock.Anything, uint64(0), uint64(1)).
-		Return([]EVMBlock{}, false)
-	d.On("GetBlockHeader", mock.Anything, uint64(1)).
-		Return(b1.EVMBlockHeader, false)
-
-	// iteration 1: wait for next block to be created
-	d.On("WaitForNewBlocks", mock.Anything, uint64(1)).
-		After(time.Millisecond * 100).
-		Return(uint64(2)).Once()
-
-	// iteration 2: block 2 has events
-	b2 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  2,
-			Hash: common.HexToHash("02"),
-		},
-	}
-	expectedBlocks = append(expectedBlocks, b2)
-	d.On("GetEventsByBlockRange", mock.Anything, uint64(2), uint64(2)).
-		Return([]EVMBlock{b2}, false)
-
-	// iteration 3: wait for next block to be created (jump to block 8)
-	d.On("WaitForNewBlocks", mock.Anything, uint64(2)).
-		After(time.Millisecond * 100).
-		Return(uint64(8)).Once()
-
-	// iteration 4: blocks 6 and 7 have events
-	b6 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  6,
-			Hash: common.HexToHash("06"),
-		},
-		Events: []interface{}{"06"},
-	}
-	b7 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  7,
-			Hash: common.HexToHash("07"),
-		},
-		Events: []interface{}{"07"},
-	}
-	b8 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  8,
-			Hash: common.HexToHash("08"),
-		},
-	}
-	expectedBlocks = append(expectedBlocks, b6, b7, b8)
-	d.On("GetEventsByBlockRange", mock.Anything, uint64(3), uint64(8)).
-		Return([]EVMBlock{b6, b7}, false)
-	d.On("GetBlockHeader", mock.Anything, uint64(8)).
-		Return(b8.EVMBlockHeader, false)
-
-	// iteration 5: wait for next block to be created (jump to block 30)
-	d.On("WaitForNewBlocks", mock.Anything, uint64(8)).
-		After(time.Millisecond * 100).
-		Return(uint64(30)).Once()
-
-	// iteration 6: from block 9 to 19, no events
-	b19 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  19,
-			Hash: common.HexToHash("19"),
-		},
-	}
-	expectedBlocks = append(expectedBlocks, b19)
-	d.On("GetEventsByBlockRange", mock.Anything, uint64(9), uint64(19)).
-		Return([]EVMBlock{}, false)
-	d.On("GetBlockHeader", mock.Anything, uint64(19)).
-		Return(b19.EVMBlockHeader, false)
-
-	// iteration 7: from block 20 to 30, events on last block
-	b30 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  30,
-			Hash: common.HexToHash("30"),
-		},
-		Events: []interface{}{testEvent(common.HexToHash("30"))},
-	}
-	expectedBlocks = append(expectedBlocks, b30)
-	d.On("GetEventsByBlockRange", mock.Anything, uint64(20), uint64(30)).
-		Return([]EVMBlock{b30}, false)
-
-	// iteration 8: wait for next block to be created (jump to block 35)
-	d.On("WaitForNewBlocks", mock.Anything, uint64(30)).
-		After(time.Millisecond * 100).
-		Return(uint64(35)).Once()
-
-	go dwnldr.Download(ctx1, 0, downloadCh)
-	for _, expectedBlock := range expectedBlocks {
-		actualBlock := <-downloadCh
-		log.Debugf("block %d received!", actualBlock.Num)
-		require.Equal(t, expectedBlock, actualBlock)
-	}
-	log.Debug("canceling")
-	cancel()
-	_, ok := <-downloadCh
-	require.False(t, ok)
 }
 
 func TestWaitForNewBlocks(t *testing.T) {
@@ -434,6 +311,81 @@ func TestGetLogs(t *testing.T) {
 	require.Equal(t, []types.Log{}, logs)
 }
 
+func TestDownloadBeforeFinalized(t *testing.T) {
+	mockEthDownloader := NewEVMDownloaderMock(t)
+
+	ctx := context.Background()
+	ctx1, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	downloader, _ := NewTestDownloader(t, time.Millisecond)
+	downloader.EVMDownloaderInterface = mockEthDownloader
+
+	steps := []struct {
+		finalizedBlock          uint64
+		fromBlock, toBlock      uint64
+		eventsReponse           EVMBlocks
+		waitForNewBlocks        bool
+		waitForNewBlocksRequest uint64
+		waitForNewBlockReply    uint64
+		getBlockHeader          *EVMBlockHeader
+	}{
+		{finalizedBlock: 33, fromBlock: 1, toBlock: 11, waitForNewBlocks: true, waitForNewBlocksRequest: 0, waitForNewBlockReply: 35, getBlockHeader: &EVMBlockHeader{Num: 11}},
+		{finalizedBlock: 33, fromBlock: 12, toBlock: 22, eventsReponse: EVMBlocks{createEVMBlock(t, 14, true)}, getBlockHeader: &EVMBlockHeader{Num: 22}},
+		// It returns the last block of range, so it don't need to create a empty one
+		{finalizedBlock: 33, fromBlock: 23, toBlock: 33, eventsReponse: EVMBlocks{createEVMBlock(t, 33, true)}},
+		// It reach the top of chain (block 35)
+		{finalizedBlock: 33, fromBlock: 34, toBlock: 35},
+		// Previous iteration we reach top of chain so we need update the latest block
+		{finalizedBlock: 33, fromBlock: 34, toBlock: 54, waitForNewBlocks: true, waitForNewBlocksRequest: 35, waitForNewBlockReply: 60},
+		// finalized block is 35, so we can reduce emit an emptyBlock and reduce the range
+		{finalizedBlock: 35, fromBlock: 34, toBlock: 60, getBlockHeader: &EVMBlockHeader{Num: 35}},
+		{finalizedBlock: 35, fromBlock: 36, toBlock: 46},
+		{finalizedBlock: 35, fromBlock: 36, toBlock: 56, eventsReponse: EVMBlocks{createEVMBlock(t, 36, false)}},
+		// Block 36 is the new last block,so it reduce the range again to [37-47]
+		{finalizedBlock: 35, fromBlock: 37, toBlock: 47},
+		{finalizedBlock: 57, fromBlock: 37, toBlock: 57, eventsReponse: EVMBlocks{createEVMBlock(t, 57, false)}},
+		{finalizedBlock: 61, fromBlock: 58, toBlock: 60, eventsReponse: EVMBlocks{createEVMBlock(t, 60, false)}},
+		{finalizedBlock: 61, fromBlock: 61, toBlock: 61, waitForNewBlocks: true, waitForNewBlocksRequest: 60, waitForNewBlockReply: 61, getBlockHeader: &EVMBlockHeader{Num: 61}},
+		{finalizedBlock: 61, fromBlock: 62, toBlock: 62, waitForNewBlocks: true, waitForNewBlocksRequest: 61, waitForNewBlockReply: 62},
+	}
+	for i := 0; i < len(steps); i++ {
+		log.Info("iteration: ", i, "------------------------------------------------")
+		downloadCh := make(chan EVMBlock, 100)
+		downloader, _ := NewTestDownloader(t, time.Millisecond)
+		downloader.EVMDownloaderInterface = mockEthDownloader
+		downloader.setStopDownloaderOnIterationN(i + 1)
+		expectedBlocks := EVMBlocks{}
+		for _, step := range steps[:i+1] {
+			mockEthDownloader.On("GetLastFinalizedBlock", mock.Anything).Return(&types.Header{Number: big.NewInt(int64(step.finalizedBlock))}, nil).Once()
+			if step.waitForNewBlocks {
+				mockEthDownloader.On("WaitForNewBlocks", mock.Anything, step.waitForNewBlocksRequest).Return(step.waitForNewBlockReply).Once()
+			}
+			mockEthDownloader.On("GetEventsByBlockRange", mock.Anything, step.fromBlock, step.toBlock).
+				Return(step.eventsReponse, false).Once()
+			for _, eventBlock := range step.eventsReponse {
+				expectedBlocks = append(expectedBlocks, eventBlock)
+			}
+			if step.getBlockHeader != nil {
+				log.Infof("iteration:%d : GetBlockHeader(%d) ", i, step.getBlockHeader.Num)
+				mockEthDownloader.On("GetBlockHeader", mock.Anything, step.getBlockHeader.Num).Return(*step.getBlockHeader, false).Once()
+				expectedBlocks = append(expectedBlocks, &EVMBlock{
+					EVMBlockHeader:   *step.getBlockHeader,
+					IsFinalizedBlock: step.getBlockHeader.Num <= step.finalizedBlock,
+				})
+			}
+		}
+		downloader.Download(ctx1, 1, downloadCh)
+		mockEthDownloader.AssertExpectations(t)
+		for _, expectedBlock := range expectedBlocks {
+			log.Debugf("waiting block %d ", expectedBlock.Num)
+			actualBlock := <-downloadCh
+			log.Debugf("block %d received!", actualBlock.Num)
+			require.Equal(t, *expectedBlock, actualBlock)
+		}
+	}
+}
+
 func buildAppender() LogAppenderMap {
 	appender := make(LogAppenderMap)
 	appender[eventSignature] = func(b *EVMBlock, l types.Log) error {
@@ -451,7 +403,24 @@ func NewTestDownloader(t *testing.T, retryPeriod time.Duration) (*EVMDownloader,
 		RetryAfterErrorPeriod:      retryPeriod,
 	}
 	clientMock := NewL2Mock(t)
-	d, err := NewEVMDownloader("test", clientMock, syncBlockChunck, etherman.LatestBlock, time.Millisecond, buildAppender(), []common.Address{contractAddr}, rh)
+	d, err := NewEVMDownloader("test",
+		clientMock, syncBlockChunck, etherman.LatestBlock, time.Millisecond,
+		buildAppender(), []common.Address{contractAddr}, rh,
+		etherman.FinalizedBlock,
+	)
 	require.NoError(t, err)
 	return d, clientMock
+}
+
+func createEVMBlock(t *testing.T, num uint64, isSafeBlock bool) *EVMBlock {
+	t.Helper()
+	return &EVMBlock{
+		IsFinalizedBlock: isSafeBlock,
+		EVMBlockHeader: EVMBlockHeader{
+			Num:        num,
+			Hash:       common.HexToHash(fmt.Sprintf("0x%.2X", num)),
+			ParentHash: common.HexToHash(fmt.Sprintf("0x%.2X", num-1)),
+			Timestamp:  uint64(time.Now().Unix()),
+		},
+	}
 }

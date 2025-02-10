@@ -3,6 +3,7 @@ package aggsender
 import (
 	"fmt"
 
+	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 )
 
@@ -34,7 +35,7 @@ type Config struct {
 	DelayBeetweenRetries types.Duration `mapstructure:"DelayBeetweenRetries"`
 	// KeepCertificatesHistory is a flag to keep the certificates history on storage
 	KeepCertificatesHistory bool `mapstructure:"KeepCertificatesHistory"`
-	// MaxCertSize is the maximum size of the certificate (the emitted certificate can be bigger that this size)
+	// MaxCertSize is the maximum size of the certificate (the emitted certificate cannot be bigger that this size)
 	// 0 is infinite
 	MaxCertSize uint `mapstructure:"MaxCertSize"`
 	// BridgeMetadataAsHash is a flag to import the bridge metadata as hash
@@ -44,6 +45,24 @@ type Config struct {
 	DryRun bool `mapstructure:"DryRun"`
 	// EnableRPC is a flag to enable the RPC for aggsender
 	EnableRPC bool `mapstructure:"EnableRPC"`
+	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
+	CheckStatusCertificateInterval types.Duration `mapstructure:"CheckStatusCertificateInterval"`
+	// RetryCertAfterInError when a cert pass to 'InError'
+	// state the AggSender will try to resend it immediately
+	RetryCertAfterInError bool `mapstructure:"RetryCertAfterInError"`
+	// MaxEpochPercentageAllowedToSendCertificate is the percentage of the epoch
+	// after which the AggSender is forbidden to send the certificate.
+	// If value==0  || value >= 100 the check is disabled
+	// 0 -> Begin
+	// 50 -> Middle
+	// 100 -> End
+	MaxEpochPercentageAllowedToSendCertificate uint `mapstructure:"MaxEpochPercentageAllowedToSendCertificate"`
+	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
+	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
+}
+
+func (c Config) CheckCertConfigBriefString() string {
+	return fmt.Sprintf("check_interval: %s, retry: %t", c.CheckStatusCertificateInterval, c.RetryCertAfterInError)
 }
 
 // String returns a string representation of the Config
@@ -54,5 +73,12 @@ func (c Config) String() string {
 		"URLRPCL2: " + c.URLRPCL2 + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
-		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n"
+		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n" +
+		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
+		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
+		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
+		"RetryCertInmediatlyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
+		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
+		"MaxEpochPercentageAllowedToSendCertificate: " +
+		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n"
 }

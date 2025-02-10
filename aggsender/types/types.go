@@ -111,6 +111,14 @@ func (c *CertificateInfo) ID() string {
 	return fmt.Sprintf("%d/%s (retry %d)", c.Height, c.CertificateID.String(), c.RetryCount)
 }
 
+// StatusString returns the string representation of the status
+func (c *CertificateInfo) StatusString() string {
+	if c == nil {
+		return "???"
+	}
+	return c.Status.String()
+}
+
 // IsClosed returns true if the certificate is closed (settled or inError)
 func (c *CertificateInfo) IsClosed() bool {
 	if c == nil {

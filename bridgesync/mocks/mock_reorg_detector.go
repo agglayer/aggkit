@@ -7,6 +7,8 @@ import (
 
 	common "github.com/ethereum/go-ethereum/common"
 
+	etherman "github.com/agglayer/aggkit/etherman"
+
 	mock "github.com/stretchr/testify/mock"
 
 	reorgdetector "github.com/agglayer/aggkit/reorgdetector"
@@ -70,6 +72,96 @@ func (_c *ReorgDetector_AddBlockToTrack_Call) Return(_a0 error) *ReorgDetector_A
 }
 
 func (_c *ReorgDetector_AddBlockToTrack_Call) RunAndReturn(run func(context.Context, string, uint64, common.Hash) error) *ReorgDetector_AddBlockToTrack_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetFinalizedBlockType provides a mock function with no fields
+func (_m *ReorgDetector) GetFinalizedBlockType() etherman.BlockNumberFinality {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetFinalizedBlockType")
+	}
+
+	var r0 etherman.BlockNumberFinality
+	if rf, ok := ret.Get(0).(func() etherman.BlockNumberFinality); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(etherman.BlockNumberFinality)
+	}
+
+	return r0
+}
+
+// ReorgDetector_GetFinalizedBlockType_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFinalizedBlockType'
+type ReorgDetector_GetFinalizedBlockType_Call struct {
+	*mock.Call
+}
+
+// GetFinalizedBlockType is a helper method to define mock.On call
+func (_e *ReorgDetector_Expecter) GetFinalizedBlockType() *ReorgDetector_GetFinalizedBlockType_Call {
+	return &ReorgDetector_GetFinalizedBlockType_Call{Call: _e.mock.On("GetFinalizedBlockType")}
+}
+
+func (_c *ReorgDetector_GetFinalizedBlockType_Call) Run(run func()) *ReorgDetector_GetFinalizedBlockType_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ReorgDetector_GetFinalizedBlockType_Call) Return(_a0 etherman.BlockNumberFinality) *ReorgDetector_GetFinalizedBlockType_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ReorgDetector_GetFinalizedBlockType_Call) RunAndReturn(run func() etherman.BlockNumberFinality) *ReorgDetector_GetFinalizedBlockType_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// String provides a mock function with no fields
+func (_m *ReorgDetector) String() string {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for String")
+	}
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// ReorgDetector_String_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'String'
+type ReorgDetector_String_Call struct {
+	*mock.Call
+}
+
+// String is a helper method to define mock.On call
+func (_e *ReorgDetector_Expecter) String() *ReorgDetector_String_Call {
+	return &ReorgDetector_String_Call{Call: _e.mock.On("String")}
+}
+
+func (_c *ReorgDetector_String_Call) Run(run func()) *ReorgDetector_String_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *ReorgDetector_String_Call) Return(_a0 string) *ReorgDetector_String_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ReorgDetector_String_Call) RunAndReturn(run func() string) *ReorgDetector_String_Call {
 	_c.Call.Return(run)
 	return _c
 }

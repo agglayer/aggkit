@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/ethereum/go-ethereum/common"
@@ -14,6 +15,7 @@ var ErrInconsistentState = errors.New("state is inconsistent, try again later on
 type Block struct {
 	Num    uint64
 	Events []interface{}
+	Hash   common.Hash
 }
 
 type evmDownloaderFull interface {
@@ -45,6 +47,8 @@ type processorInterface interface {
 type ReorgDetector interface {
 	Subscribe(id string) (*reorgdetector.Subscription, error)
 	AddBlockToTrack(ctx context.Context, id string, blockNum uint64, blockHash common.Hash) error
+	GetFinalizedBlockType() etherman.BlockNumberFinality
+	String() string
 }
 
 func NewEVMDriver(
@@ -104,9 +108,13 @@ reset:
 			d.log.Info("sync stopped due to context done")
 			cancel()
 			return
-		case b := <-downloadCh:
-			d.log.Debugf("handleNewBlock, blockNum: %d, blockHash: %s", b.Num, b.Hash)
-			d.handleNewBlock(ctx, cancel, b)
+		case b, ok := <-downloadCh:
+			if ok {
+				// when channel is closing, it is sending an empty block with num = 0, and empty hash
+				// because it is not passing object by reference, but by value, so do not handle that since it is closing
+				d.log.Debugf("handleNewBlock, blockNum: %d, blockHash: %s", b.Num, b.Hash)
+				d.handleNewBlock(ctx, cancel, b)
+			}
 		case firstReorgedBlock := <-d.reorgSub.ReorgedBlock:
 			d.log.Debug("handleReorg from block: ", firstReorgedBlock)
 			d.handleReorg(ctx, cancel, firstReorgedBlock)
@@ -125,11 +133,15 @@ func (d *EVMDriver) handleNewBlock(ctx context.Context, cancel context.CancelFun
 			d.log.Warnf("context canceled while adding block %d to tracker", b.Num)
 			return
 		default:
-			err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, b.Num, b.Hash)
-			if err != nil {
-				attempts++
-				d.log.Errorf("error adding block %d to tracker: %v", b.Num, err)
-				d.rh.Handle("handleNewBlock", attempts)
+			if !b.IsFinalizedBlock {
+				err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, b.Num, b.Hash)
+				if err != nil {
+					attempts++
+					d.log.Errorf("error adding block %d to tracker: %v", b.Num, err)
+					d.rh.Handle("handleNewBlock", attempts)
+				} else {
+					succeed = true
+				}
 			} else {
 				succeed = true
 			}
@@ -150,6 +162,7 @@ func (d *EVMDriver) handleNewBlock(ctx context.Context, cancel context.CancelFun
 			blockToProcess := Block{
 				Num:    b.Num,
 				Events: b.Events,
+				Hash:   b.Hash,
 			}
 			err := d.processor.ProcessBlock(ctx, blockToProcess)
 			if err != nil {

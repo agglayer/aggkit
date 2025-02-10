@@ -149,7 +149,7 @@ func TestNewBlockNotifierPolling(t *testing.T) {
 	testData := newBlockNotifierPollingTestData(t, nil)
 	require.NotNil(t, testData.sut)
 	_, err := NewBlockNotifierPolling(testData.ethClientMock, ConfigBlockNotifierPolling{
-		BlockFinalityType: etherman.BlockNumberFinality("invalid"),
+		BlockFinalityType: etherman.NewBlockNumberFinality("invalid"),
 	}, log.WithFields("test", "test"), nil)
 	require.Error(t, err)
 }
@@ -180,6 +180,27 @@ func TestBlockNotifierPollingStart(t *testing.T) {
 	block := <-ch
 	require.NotNil(t, block)
 	require.Equal(t, uint64(101), block.BlockNumber)
+}
+
+func TestBlockGetCurrentBlockNumber(t *testing.T) {
+	testData := newBlockNotifierPollingTestData(t, nil)
+	bn := testData.sut.GetCurrentBlockNumber()
+	require.Equal(t, uint64(0), bn, "no block means block 0")
+	hdr0 := &types.Header{
+		Number: big.NewInt(int64(10)),
+	}
+	hdr1 := &types.Header{
+		Number: big.NewInt(int64(100)),
+	}
+	testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(hdr0, nil).Once()
+	testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(hdr1, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go testData.sut.Start(ctx)
+	ch := testData.sut.Subscribe("test")
+	block := <-ch
+	require.NotNil(t, block)
+	require.Equal(t, uint64(100), testData.sut.GetCurrentBlockNumber())
 }
 
 type blockNotifierPollingTestData struct {

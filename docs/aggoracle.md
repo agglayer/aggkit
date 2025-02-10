@@ -1,4 +1,4 @@
-# AggOracle Component - Developer Documentation
+# AggOracle Component
 
 ## Overview
 
@@ -8,8 +8,8 @@ The GER is picked up from the smart contract by **LastGERSyncer** for local stor
 
 ### Key Components:
 
-- **ChainSender**: Interface for submitting GERs to the smart contract.
-- **EVMChainGERSender**: An implementation of `ChainSender`.
+- `ChainSender`: Interface for submitting GERs to the smart contract.
+- `EVMChainGERSender`: An implementation of `ChainSender` interface.
 
 ---
 

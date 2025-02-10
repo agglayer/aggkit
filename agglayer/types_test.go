@@ -1201,3 +1201,13 @@ func Test_UnmarshalClaimFromRollup(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, claim, unmarshalled)
 }
+
+func TestCertificate_ID(t *testing.T) {
+	var cert *Certificate
+	require.Equal(t, "cert{"+nilStr+"}", cert.ID())
+	cert = &Certificate{
+		NetworkID: 1,
+		Height:    2,
+	}
+	require.Equal(t, "cert{height:2, networkID:1}", cert.ID())
+}

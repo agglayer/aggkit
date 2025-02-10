@@ -77,9 +77,11 @@ ContractVersions = "{{ContractVersions}}"
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
+FinalizedBlock="FinalizedBlock"
 
 [ReorgDetectorL2]
 DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
+FinalizedBlock="LatestBlock"
 
 [L1InfoTreeSync]
 DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
@@ -101,7 +103,6 @@ WaitPeriodNextGER="100ms"
 	[AggOracle.EVMSender]
 		GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 		URLRPCL2="{{L2URL}}"
-		ChainIDL2=1337
 		GasOffset=0
 		WaitPeriodMonitorTx="100ms"
 		[AggOracle.EVMSender.EthTxManager]
@@ -122,7 +123,9 @@ WaitPeriodNextGER="100ms"
 					[AggOracle.EVMSender.EthTxManager.Etherman]
 						URL = "{{L2URL}}"
 						MultiGasProvider = false
-						L1ChainID = {{NetworkConfig.L1.L1ChainID}}
+						# L1ChainID = 0 indicates it will be set at runtime
+						# This field should be populated with L2ChainID 
+						L1ChainID = 0
 						HTTPHeaders = []
 
 [RPC]
@@ -218,7 +221,13 @@ MaxCertSize = 8388608
 BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
-
+CheckStatusCertificateInterval = "5m"
+RetryCertInmediatlyAfterInError = true
+# Don't send certificate over 80% of the epoch
+MaxEpochPercentageAllowedToSendCertificate=80
+	[AggSender.MaxSubmitCertificateRate]
+		NumRequests = 20
+		Interval = "1h"
 [Prometheus]
 Enabled = true
 Host = "localhost"

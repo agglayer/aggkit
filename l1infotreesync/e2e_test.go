@@ -70,8 +70,8 @@ func TestE2E(t *testing.T) {
 	rdm.On("AddBlockToTrack", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
-	syncer, err := l1infotreesync.New(ctx, dbPath, gerAddr, verifyAddr, 10, etherman.LatestBlock, rdm, client.Client(), time.Millisecond, 0, 100*time.Millisecond, 3,
-		l1infotreesync.FlagAllowWrongContractsAddrs)
+	syncer, err := l1infotreesync.New(ctx, dbPath, gerAddr, verifyAddr, 10, etherman.LatestBlock, rdm, client.Client(), time.Millisecond, 0, 100*time.Millisecond, 25,
+		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock)
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -154,12 +154,12 @@ func TestWithReorgs(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 30)})
+	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 30)}, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
 	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, etherman.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 25,
-		l1infotreesync.FlagAllowWrongContractsAddrs)
+		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 
@@ -221,9 +221,6 @@ func TestWithReorgs(t *testing.T) {
 	// Block 4, 5, 6 after the fork
 	helpers.CommitBlocks(t, client, 3, time.Millisecond*500)
 
-	// Make sure syncer is up to date
-	waitForSyncerToCatchUp(ctx, t, syncer, client)
-
 	// Assert rollup exit root after the fork - should be zero since there are no events in the block after the fork
 	expectedRollupExitRoot, err = verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
@@ -236,11 +233,12 @@ func TestWithReorgs(t *testing.T) {
 	require.NoError(t, err)
 	time.Sleep(time.Millisecond * 500)
 
+	helpers.CommitBlocks(t, client, 1, time.Millisecond*100)
+
 	// create some events and update the trees
 	updateL1InfoTreeAndRollupExitTree(2, 1)
 
-	// Block 4, 5, 6, 7 after the fork
-	helpers.CommitBlocks(t, client, 4, time.Millisecond*100)
+	helpers.CommitBlocks(t, client, 1, time.Millisecond*100)
 
 	// Make sure syncer is up to date
 	waitForSyncerToCatchUp(ctx, t, syncer, client)
@@ -269,12 +267,12 @@ func TestStressAndReorgs(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)})
+	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)}, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
 	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, etherman.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 100,
-		l1infotreesync.FlagAllowWrongContractsAddrs)
+		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 
@@ -305,7 +303,7 @@ func TestStressAndReorgs(t *testing.T) {
 		}
 	}
 
-	helpers.CommitBlocks(t, client, 1, time.Millisecond*10)
+	helpers.CommitBlocks(t, client, 11, time.Millisecond*10)
 
 	waitForSyncerToCatchUp(ctx, t, syncer, client)
 

@@ -34,6 +34,11 @@ var (
 	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
+type RateLimiter interface {
+	Call(msg string, allowToSleep bool) *time.Duration
+	String() string
+}
+
 // AggSender is a component that will send certificates to the aggLayer
 type AggSender struct {
 	log types.Logger
@@ -49,10 +54,11 @@ type AggSender struct {
 
 	sequencerKey *ecdsa.PrivateKey
 
-	status types.AggsenderStatus
+	status      types.AggsenderStatus
+	rateLimiter RateLimiter
 }
 
-// New returns a new AggSender
+// New returns a new AggSender instance
 func New(
 	ctx context.Context,
 	logger *log.Logger,
@@ -74,6 +80,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
+	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
 
@@ -87,6 +94,7 @@ func New(
 		sequencerKey:     sequencerPrivateKey,
 		epochNotifier:    epochNotifier,
 		status:           types.AggsenderStatus{Status: types.StatusNone},
+		rateLimiter:      rateLimit,
 	}, nil
 }
 
@@ -121,7 +129,7 @@ func (a *AggSender) Start(ctx context.Context) {
 	metrics.Register()
 	a.status.Start(time.Now().UTC())
 	a.checkInitialStatus(ctx)
-	a.sendCertificates(ctx)
+	a.sendCertificates(ctx, 0)
 }
 
 // checkInitialStatus check local status vs agglayer status
@@ -130,6 +138,7 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 	defer ticker.Stop()
 	a.status.Status = types.StatusCheckingInitialStage
 	for {
+		a.checkPendingCertificatesStatus(ctx)
 		err := a.checkLastCertificateFromAgglayer(ctx)
 		a.status.SetLastError(err)
 		if err != nil {
@@ -147,15 +156,48 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 }
 
 // sendCertificates sends certificates to the aggLayer
-func (a *AggSender) sendCertificates(ctx context.Context) {
+func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations int) {
+	var checkCertChannel <-chan time.Time
+	if a.cfg.CheckStatusCertificateInterval.Duration > 0 {
+		checkCertTicker := time.NewTicker(a.cfg.CheckStatusCertificateInterval.Duration)
+		defer checkCertTicker.Stop()
+		checkCertChannel = checkCertTicker.C
+	} else {
+		a.log.Infof("CheckStatusCertificateInterval is 0, so we are not going to check the certificate status")
+		checkCertChannel = make(chan time.Time)
+	}
+
 	chEpoch := a.epochNotifier.Subscribe("aggsender")
 	a.status.Status = types.StatusCertificateStage
+	iteration := 0
 	for {
 		select {
+		case <-checkCertChannel:
+			iteration++
+			a.log.Debugf("Checking perodical certificates status (%s)",
+				a.cfg.CheckCertConfigBriefString())
+			checkResult := a.checkPendingCertificatesStatus(ctx)
+			if !checkResult.existPendingCerts && checkResult.existNewInErrorCert {
+				if a.cfg.RetryCertAfterInError {
+					a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
+					_, err := a.sendCertificate(ctx)
+					a.status.SetLastError(err)
+					if err != nil {
+						a.log.Error(err)
+					}
+				} else {
+					a.log.Infof("An InError cert exists but skipping send cert because RetryCertInmediatlyAfterInError is false")
+				}
+			}
+			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
+				a.log.Warnf("reached number of iterations, so we are going to return")
+				return
+			}
 		case epoch := <-chEpoch:
+			iteration++
 			a.log.Infof("Epoch received: %s", epoch.String())
-			thereArePendingCerts := a.checkPendingCertificatesStatus(ctx)
-			if !thereArePendingCerts {
+			checkResult := a.checkPendingCertificatesStatus(ctx)
+			if !checkResult.existPendingCerts {
 				_, err := a.sendCertificate(ctx)
 				a.status.SetLastError(err)
 				if err != nil {
@@ -164,6 +206,11 @@ func (a *AggSender) sendCertificates(ctx context.Context) {
 			} else {
 				log.Infof("Skipping epoch %s because there are pending certificates",
 					epoch.String())
+			}
+
+			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
+				a.log.Warnf("reached number of iterations, so we are going to return")
+				return
 			}
 		case <-ctx.Done():
 			a.log.Info("AggSender stopped")
@@ -248,6 +295,16 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, fmt.Errorf("error signing certificate: %w", err)
 	}
 
+	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
+		a.log.Warnf("rate limit reached , next cert %s can be submitted after %s so sleeping. Rate:%s",
+			certificate.ID(),
+			rateLimitSleepTime.String(), a.rateLimiter.String())
+		time.Sleep(*rateLimitSleepTime)
+	}
+	if !a.isAllowedSendCertificateEpochPercent() {
+		return nil, fmt.Errorf("forbidden to send certificate due epoch percentage")
+	}
+
 	a.saveCertificateToFile(signedCertificate)
 	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
 	if a.cfg.DryRun {
@@ -291,6 +348,18 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		certInfo.ID(), fromBlock, toBlock, signedCertificate.Brief())
 
 	return signedCertificate, nil
+}
+func (a *AggSender) isAllowedSendCertificateEpochPercent() bool {
+	if a.cfg.MaxEpochPercentageAllowedToSendCertificate == 0 ||
+		a.cfg.MaxEpochPercentageAllowedToSendCertificate >= maxPercent {
+		return true
+	}
+	status := a.epochNotifier.GetEpochStatus()
+	if status.PercentEpoch >= float64(a.cfg.MaxEpochPercentageAllowedToSendCertificate)/100.0 {
+		a.log.Warnf("forbidden to send certificate after epoch percentage: %f", status.PercentEpoch)
+		return false
+	}
+	return true
 }
 
 // saveCertificateToStorage saves the certificate to the storage
@@ -662,45 +731,54 @@ func (a *AggSender) signCertificate(certificate *agglayer.Certificate) (*agglaye
 	}, nil
 }
 
+type checkCertResult struct {
+	// existPendingCerts means that there are still pending certificates
+	existPendingCerts bool
+	// existNewInErrorCert means than in this run a cert pass from xxx to InError
+	existNewInErrorCert bool
+}
+
 // checkPendingCertificatesStatus checks the status of pending certificates
 // and updates in the storage if it changed on agglayer
 // It returns:
 // bool -> if there are pending certificates
-func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) bool {
+func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCertResult {
 	pendingCertificates, err := a.storage.GetCertificatesByStatus(agglayer.NonSettledStatuses)
 	if err != nil {
 		a.log.Errorf("error getting pending certificates: %w", err)
-		return true
+		return checkCertResult{existPendingCerts: true, existNewInErrorCert: false}
 	}
 
 	a.log.Debugf("checkPendingCertificatesStatus num of pendingCertificates: %d", len(pendingCertificates))
 	thereArePendingCerts := false
-
-	for _, certificate := range pendingCertificates {
-		certificateHeader, err := a.aggLayerClient.GetCertificateHeader(certificate.CertificateID)
+	appearsNewInErrorCert := false
+	for _, certificateLocal := range pendingCertificates {
+		certificateHeader, err := a.aggLayerClient.GetCertificateHeader(certificateLocal.CertificateID)
 		if err != nil {
 			a.log.Errorf("error getting certificate header of %s from agglayer: %w",
-				certificate.ID(), err)
-			return true
+				certificateLocal.ID(), err)
+			return checkCertResult{existPendingCerts: true, existNewInErrorCert: false}
 		}
 
 		a.log.Debugf("aggLayerClient.GetCertificateHeader status [%s] of certificate %s  elapsed time:%s",
 			certificateHeader.Status,
 			certificateHeader.ID(),
-			certificate.ElapsedTimeSinceCreation())
+			certificateLocal.ElapsedTimeSinceCreation())
+		appearsNewInErrorCert = appearsNewInErrorCert ||
+			(!certificateLocal.Status.IsInError() && certificateHeader.Status.IsInError())
 
-		if err := a.updateCertificateStatus(ctx, certificate, certificateHeader); err != nil {
+		if err := a.updateCertificateStatus(ctx, certificateLocal, certificateHeader); err != nil {
 			a.log.Errorf("error updating certificate %s status in storage: %w", certificateHeader.String(), err)
-			return true
+			return checkCertResult{existPendingCerts: true, existNewInErrorCert: false}
 		}
 
-		if !certificate.IsClosed() {
+		if !certificateLocal.IsClosed() {
 			a.log.Infof("certificate %s is still pending, elapsed time:%s ",
-				certificateHeader.ID(), certificate.ElapsedTimeSinceCreation())
+				certificateHeader.ID(), certificateLocal.ElapsedTimeSinceCreation())
 			thereArePendingCerts = true
 		}
 	}
-	return thereArePendingCerts
+	return checkCertResult{existPendingCerts: thereArePendingCerts, existNewInErrorCert: appearsNewInErrorCert}
 }
 
 // updateCertificate updates the certificate status in the storage
@@ -750,70 +828,35 @@ func (a *AggSender) shouldSendCertificate() (bool, error) {
 // checkLastCertificateFromAgglayer checks the last certificate from agglayer
 func (a *AggSender) checkLastCertificateFromAgglayer(ctx context.Context) error {
 	networkID := a.l2Syncer.OriginNetwork()
-	a.log.Infof("recovery: checking last certificate from AggLayer for network %d", networkID)
-	aggLayerLastCert, err := a.aggLayerClient.GetLatestKnownCertificateHeader(networkID)
+	initialStatus, err := NewInitialStatus(a.log, networkID, a.storage, a.aggLayerClient)
 	if err != nil {
-		return fmt.Errorf("recovery: error getting latest known certificate header from agglayer: %w", err)
+		return fmt.Errorf("recovery: error retrieving initial status: %w", err)
 	}
-	a.log.Infof("recovery: last certificate from AggLayer: %s", aggLayerLastCert.String())
-	localLastCert, err := a.storage.GetLastSentCertificate()
+	initialStatus.LogData()
+	action, err := initialStatus.Process()
 	if err != nil {
-		return fmt.Errorf("recovery: error getting last sent certificate from local storage: %w", err)
+		return fmt.Errorf("recovery: error processing initial status: %w", err)
 	}
-	a.log.Infof("recovery: last certificate in storage: %s", localLastCert.String())
+	return a.executeInitialStatusAction(ctx, action, initialStatus.LocalCert)
+}
 
-	// CASE 1: No certificates in local storage and agglayer
-	if localLastCert == nil && aggLayerLastCert == nil {
+func (a *AggSender) executeInitialStatusAction(ctx context.Context,
+	action *InitialStatusResult, localCert *types.CertificateInfo) error {
+	a.log.Infof("recovery: action: %s", action.String())
+	switch action.Action {
+	case InitialStatusActionNone:
 		a.log.Info("recovery: No certificates in local storage and agglayer: initial state")
-		return nil
-	}
-	// CASE 2: No certificates in local storage but agglayer has one
-	if localLastCert == nil && aggLayerLastCert != nil {
-		a.log.Info("recovery: No certificates in local storage but agglayer have one: recovery aggSender cert: %s",
-			aggLayerLastCert.String())
-		if _, err := a.updateLocalStorageWithAggLayerCert(ctx, aggLayerLastCert); err != nil {
+	case InitialStatusActionUpdateCurrentCert:
+		if err := a.updateCertificateStatus(ctx, localCert, action.Cert); err != nil {
 			return fmt.Errorf("recovery: error updating local storage with agglayer certificate: %w", err)
 		}
-		return nil
-	}
-	// CASE 2.1: certificate in storage but not in agglayer
-	// this is a non-sense, so throw an error
-	if localLastCert != nil && aggLayerLastCert == nil {
-		return fmt.Errorf("recovery: certificate exists in storage but not in agglayer. Inconsistency")
-	}
-	// CASE 3.1: the certificate on the agglayer has less height than the one stored in the local storage
-	if aggLayerLastCert.Height < localLastCert.Height {
-		return fmt.Errorf("recovery: the last certificate in the agglayer has less height (%d) "+
-			"than the one in the local storage (%d)", aggLayerLastCert.Height, localLastCert.Height)
-	}
-	// CASE 3.2: aggsender stopped between sending to agglayer and storing to the local storage
-	if aggLayerLastCert.Height == localLastCert.Height+1 {
-		a.log.Infof("recovery: AggLayer has the next cert (height: %d), so is a recovery case: storing cert: %s",
-			aggLayerLastCert.Height, aggLayerLastCert.String())
-		// we need to store the certificate in the local storage.
-		localLastCert, err = a.updateLocalStorageWithAggLayerCert(ctx, aggLayerLastCert)
-		if err != nil {
-			log.Errorf("recovery: error updating certificate: %s, reason: %w", aggLayerLastCert.String(), err)
-			return fmt.Errorf("recovery: error updating certificate: %w", err)
+	case InitialStatusActionInsertNewCert:
+		if _, err := a.updateLocalStorageWithAggLayerCert(ctx, action.Cert); err != nil {
+			return fmt.Errorf("recovery: error new local storage with agglayer certificate: %w", err)
 		}
+	default:
+		return fmt.Errorf("recovery: unknown action: %s", action.Action)
 	}
-	// CASE 4: AggSender and AggLayer are not on the same page
-	// note: we don't need to check individual fields of the certificate
-	// because CertificateID is a hash of all the fields
-	if localLastCert.CertificateID != aggLayerLastCert.CertificateID {
-		a.log.Errorf("recovery: Local certificate:\n %s \n is different from agglayer certificate:\n %s",
-			localLastCert.String(), aggLayerLastCert.String())
-		return fmt.Errorf("recovery: mismatch between local and agglayer certificates")
-	}
-	// CASE 5: AggSender and AggLayer are at same page
-	// just update status
-	err = a.updateCertificateStatus(ctx, localLastCert, aggLayerLastCert)
-	if err != nil {
-		a.log.Errorf("recovery: error updating status certificate: %s status: %w", aggLayerLastCert.String(), err)
-		return fmt.Errorf("recovery: error updating certificate status: %w", err)
-	}
-
-	a.log.Infof("recovery: successfully checked last certificate from AggLayer for network %d", networkID)
 	return nil
 }
 
