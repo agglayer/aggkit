@@ -158,6 +158,7 @@ func (p *processor) GetBridgesPublished(
 	return p.GetBridges(ctx, fromBlock, toBlock)
 }
 
+//nolint:dupl
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
@@ -186,6 +187,7 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
+//nolint:dupl
 func (p *processor) GetClaims(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Claim, error) {
