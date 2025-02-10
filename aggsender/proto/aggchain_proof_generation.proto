@@ -22,15 +22,22 @@ message GenerateAggchainProofRequest {
   bytes l1_info_tree_leaf_hash = 4;
   // L1 Info tree proof. ([32]hash)
   repeated bytes l1_info_tree_merkle_proof = 5;
+  // Map of the GER with their inclusion proof. Note: the GER (string) is a base64 encoded string of the GER digest.
+  map<string, InclusionProof> ger_inclusion_proofs = 6;
 }
 
 // The aggchain proof response message.
 message GenerateAggchainProofResponse {
   // TODO - Define the type of aggchain proof.
-  // The start block of the aggchain proof.
+  // Aggchain proof.
   bytes aggchain_proof = 1;
   // The start block of the aggchain proof.
   uint64 start_block = 2;
   // The end block of the aggchain proof.
   uint64 end_block = 3;
+}
+
+message InclusionProof {
+  // Siblings.
+  repeated bytes siblings = 1;
 }

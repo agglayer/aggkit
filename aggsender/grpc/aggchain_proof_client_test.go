@@ -27,9 +27,9 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		EndBlock:      200,
 	}
 
-	convertedProof := make([][]byte, treeTypes.DefaultHeight)
+	convertedMerkleProof := make([][]byte, treeTypes.DefaultHeight)
 	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
-		convertedProof[i] = common.Hash{}.Bytes()
+		convertedMerkleProof[i] = common.Hash{}.Bytes()
 	}
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
@@ -37,10 +37,11 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		MaxEndBlock:           200,
 		L1InfoTreeRootHash:    common.Hash{}.Bytes(),
 		L1InfoTreeLeafHash:    common.Hash{}.Bytes(),
-		L1InfoTreeMerkleProof: convertedProof,
+		L1InfoTreeMerkleProof: convertedMerkleProof,
+		GerInclusionProofs:    make(map[string]*types.InclusionProof),
 	}).Return(expectedResponse, nil)
 
-	result, err := client.GenerateAggchainProof(100, 200, common.Hash{}, common.Hash{}, [32]common.Hash{})
+	result, err := client.GenerateAggchainProof(100, 200, common.Hash{}, common.Hash{}, [32]common.Hash{}, nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("dummy-proof"), result.Proof)
@@ -55,9 +56,9 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 
 	expectedError := errors.New("Generate error")
 
-	convertedProof := make([][]byte, treeTypes.DefaultHeight)
+	convertedMerkleProof := make([][]byte, treeTypes.DefaultHeight)
 	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
-		convertedProof[i] = common.Hash{}.Bytes()
+		convertedMerkleProof[i] = common.Hash{}.Bytes()
 	}
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
@@ -65,10 +66,11 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 		MaxEndBlock:           400,
 		L1InfoTreeRootHash:    common.Hash{}.Bytes(),
 		L1InfoTreeLeafHash:    common.Hash{}.Bytes(),
-		L1InfoTreeMerkleProof: convertedProof,
+		L1InfoTreeMerkleProof: convertedMerkleProof,
+		GerInclusionProofs:    make(map[string]*types.InclusionProof),
 	}).Return((*types.GenerateAggchainProofResponse)(nil), expectedError)
 
-	result, err := client.GenerateAggchainProof(300, 400, common.Hash{}, common.Hash{}, [32]common.Hash{})
+	result, err := client.GenerateAggchainProof(300, 400, common.Hash{}, common.Hash{}, [32]common.Hash{}, nil)
 
 	assert.Error(t, err)
 	assert.Nil(t, result)

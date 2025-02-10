@@ -19,6 +19,7 @@ type AggchainProofClientInterface interface {
 		l1InfoTreeRootHash common.Hash,
 		l1InfoTreeLeafHash common.Hash,
 		l1InfoTreeMerkleProof treeTypes.Proof,
+		gerInclusionProofs map[common.Hash]treeTypes.Proof,
 	) (*types.AggchainProof, error)
 }
 
@@ -44,13 +45,25 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	l1InfoTreeRootHash common.Hash,
 	l1InfoTreeLeafHash common.Hash,
 	l1InfoTreeMerkleProof treeTypes.Proof,
+	gerInclusionProofs map[common.Hash]treeTypes.Proof,
 ) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
 	defer cancel()
 
-	convertedProof := make([][]byte, treeTypes.DefaultHeight)
+	convertedMerkleProof := make([][]byte, treeTypes.DefaultHeight)
 	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
-		convertedProof[i] = l1InfoTreeMerkleProof[i].Bytes()
+		convertedMerkleProof[i] = l1InfoTreeMerkleProof[i].Bytes()
+	}
+
+	convertedGerInclusionProofs := make(map[string]*types.InclusionProof)
+	for k, v := range gerInclusionProofs {
+		convertedProof := make([][]byte, treeTypes.DefaultHeight)
+		for i := 0; i < int(treeTypes.DefaultHeight); i++ {
+			convertedProof[i] = v[i].Bytes()
+		}
+		convertedGerInclusionProofs[k.String()] = &types.InclusionProof{
+			Siblings: convertedProof,
+		}
 	}
 
 	resp, err := c.client.GenerateAggchainProof(ctx, &types.GenerateAggchainProofRequest{
@@ -58,7 +71,8 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		MaxEndBlock:           maxEndBlock,
 		L1InfoTreeRootHash:    l1InfoTreeRootHash.Bytes(),
 		L1InfoTreeLeafHash:    l1InfoTreeLeafHash.Bytes(),
-		L1InfoTreeMerkleProof: convertedProof,
+		L1InfoTreeMerkleProof: convertedMerkleProof,
+		GerInclusionProofs:    convertedGerInclusionProofs,
 	})
 	if err != nil {
 		return nil, err

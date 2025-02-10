@@ -101,8 +101,9 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
 
+	// TODO - @goran-ethernal
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
-		buildParams.FromBlock, buildParams.ToBlock, root, leaf, proof)
+		buildParams.FromBlock, buildParams.ToBlock, root, leaf, proof, make(map[common.Hash]treeTypes.Proof, 0))
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
