@@ -59,3 +59,56 @@ func TestAsLittleEndianSlice(t *testing.T) {
 		})
 	}
 }
+
+func TestBytesToUint32(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       []byte
+		expected    uint32
+		expectPanic bool
+	}{
+		{
+			name:     "Empty byte slice",
+			input:    []byte{},
+			expected: 0,
+		},
+		{
+			name:     "Single byte",
+			input:    []byte{0x01},
+			expected: 1,
+		},
+		{
+			name:     "Two bytes",
+			input:    []byte{0x01, 0x02},
+			expected: 258,
+		},
+		{
+			name:     "Three bytes",
+			input:    []byte{0x01, 0x02, 0x03},
+			expected: 66051,
+		},
+		{
+			name:     "Four bytes",
+			input:    []byte{0x01, 0x02, 0x03, 0x04},
+			expected: 16909060,
+		},
+		{
+			name:        "More than four bytes",
+			input:       []byte{0x01, 0x02, 0x03, 0x04, 0x05},
+			expectPanic: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.expectPanic {
+				require.Panics(t, func() {
+					_ = BytesToUint32(tt.input)
+				})
+			} else {
+				result := BytesToUint32(tt.input)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
