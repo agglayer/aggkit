@@ -48,7 +48,6 @@ func useKMSAuth(config Config) (funcSignHash, common.Address, error) {
 		return nil, common.Address{}, fmt.Errorf("failed to create managed key: %w", err)
 	}
 	return mk.SignHash, mk.EthereumAddr, nil
-
 }
 
 func useLocalAuth(config Config) (funcSignHash, common.Address, error) {

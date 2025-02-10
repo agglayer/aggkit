@@ -87,7 +87,8 @@ var (
 		},
 		{
 			FieldNamePattern: "SequencerPrivateKeyPath",
-			Reason:           "SequencerPrivateKeyPath is deprecated, use AggSender.AggsenderPrivateKey.Path instead, or AggSender.KMSKeyName",
+			Reason: "SequencerPrivateKeyPath is deprecated, use AggSender.AggsenderPrivateKey.Path instead," +
+				" or AggSender.KMSKeyName",
 		},
 		{
 			FieldNamePattern: "SequencerPrivateKeyPassword",

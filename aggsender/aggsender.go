@@ -16,7 +16,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tree"
@@ -76,7 +75,9 @@ func New(
 		return nil, err
 	}
 	signer, signerAddr, err := newSigner(logger, cfg)
-
+	if err != nil {
+		return nil, err
+	}
 	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
