@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"regexp"
 	mutex "sync"
 
 	"github.com/agglayer/aggkit/bridgesync/migrations"
@@ -26,14 +27,24 @@ const (
 	globalIndexPartSize = 4
 	globalIndexMaxSize  = 9
 
-	bridgeTable       = "bridge"
-	claimTable        = "claim"
-	tokenMappingTable = "token_mapping"
+	bridgeTableName       = "bridge"
+	claimTableName        = "claim"
+	tokenMappingTableName = "token_mapping"
 )
 
 var (
 	// errBlockNotProcessedFormat indicates that the given block(s) have not been processed yet.
 	errBlockNotProcessedFormat = fmt.Sprintf("block %%d not processed, last processed: %%d")
+
+	// tableNameRegex is the regex pattern to validate table names
+	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+)
+
+const (
+	// defaultPageSize is the default number of records to be fetched
+	defaultPageSize = uint32(50)
+	// defaultPage is the default page number to be used when fetching records
+	defaultPage = uint32(1)
 )
 
 // Bridge is the representation of a bridge event
@@ -155,11 +166,11 @@ func (p *processor) GetBridges(
 		return nil, err
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTable)
+	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTableName)
 	if err != nil {
 		return nil, err
 	}
@@ -183,11 +194,11 @@ func (p *processor) GetClaims(
 		return nil, err
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTable)
+	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTableName)
 	if err != nil {
 		return nil, err
 	}
@@ -256,7 +267,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	}
 	defer func() {
 		if err != nil {
-			if errRllbck := tx.Rollback(); errRllbck != nil {
+			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
 				log.Errorf("error while rolling back tx %v", errRllbck)
 			}
 		}
@@ -295,7 +306,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
-			if errRllbck := tx.Rollback(); errRllbck != nil {
+			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
 				log.Errorf("error while rolling back tx %v", errRllbck)
 			}
 		}
@@ -323,19 +334,19 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				}
 				return sync.ErrInconsistentState
 			}
-			if err = meddler.Insert(tx, bridgeTable, event.Bridge); err != nil {
+			if err = meddler.Insert(tx, bridgeTableName, event.Bridge); err != nil {
 				return err
 			}
 		}
 
 		if event.Claim != nil {
-			if err = meddler.Insert(tx, claimTable, event.Claim); err != nil {
+			if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
 				return err
 			}
 		}
 
 		if event.TokenMapping != nil {
-			if err = meddler.Insert(tx, tokenMappingTable, event.TokenMapping); err != nil {
+			if err = meddler.Insert(tx, tokenMappingTableName, event.TokenMapping); err != nil {
 				return err
 			}
 		}
@@ -348,6 +359,89 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 
 	p.log.Debugf("processed %d events until block %d", len(block.Events), block.Num)
 	return nil
+}
+
+// GetTotalNumberOfRecords returns the total number of records in the given table
+func (p *processor) GetTotalNumberOfRecords(tableName string) (int, error) {
+	if !tableNameRegex.MatchString(tableName) {
+		return 0, fmt.Errorf("invalid table name '%s' provided", tableName)
+	}
+
+	count := 0
+	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s;`, tableName)).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// GetTokenMappings returns the token mappings in the database
+func (p *processor) GetTokenMappings(ctx context.Context, page, pageSize *uint32) ([]*TokenMapping, int, error) {
+	if page == nil {
+		page = new(uint32)
+		*page = defaultPage
+	}
+
+	if pageSize == nil {
+		pageSize = new(uint32)
+		*pageSize = defaultPageSize
+	}
+
+	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
+	}
+
+	if *page == 0 {
+		return nil, 0, errors.New("page number must be greater than 0")
+	}
+
+	if *pageSize == 0 {
+		return nil, 0, errors.New("page size must be greater than 0")
+	}
+
+	offset := (*page - 1) * *pageSize
+
+	if int(offset) >= totalTokenMappings {
+		return nil, 0, db.ErrNotFound
+	}
+
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var rows *sql.Rows
+
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			log.Warnf("error rolling back tx: %", err)
+		}
+
+		if rows != nil {
+			if err := rows.Close(); err != nil {
+				log.Warnf("error closing rows: %s", err)
+			}
+		}
+	}()
+
+	// order by block_num DESC to get the latest entries first and paginate the results
+	query := fmt.Sprintf("SELECT * FROM %s ORDER BY block_num DESC LIMIT $1 OFFSET $2;", tokenMappingTableName)
+	rows, err = tx.QueryContext(ctx, query, *pageSize, offset)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, 0, db.ErrNotFound
+		}
+		return nil, 0, err
+	}
+
+	tokenMappings := []*TokenMapping{}
+	if err = meddler.ScanAll(rows, &tokenMappings); err != nil {
+		return nil, 0, err
+	}
+
+	return tokenMappings, totalTokenMappings, nil
 }
 
 func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
