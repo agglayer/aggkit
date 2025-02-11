@@ -332,9 +332,7 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) *ethclient.Client
 
 func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Config,
 	l1Client *ethclient.Client) uint32 {
-	if !isNeeded([]string{
-		aggkitcommon.AGGSENDER,
-	}, components) {
+	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.BRIDGE}, components) {
 		return 0
 	}
 	rollupID, err := etherman.GetRollupID(networkConfig, networkConfig.ZkEVMAddr, l1Client)
@@ -520,7 +518,7 @@ func runBridgeSyncL2IfNeeded(
 	l2Client *ethclient.Client,
 	rollupID uint32,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
+	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.BRIDGE}, components) {
 		return nil
 	}
 
