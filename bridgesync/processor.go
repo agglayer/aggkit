@@ -112,9 +112,11 @@ type Claim struct {
 type TokenMapping struct {
 	BlockNum            uint64         `meddler:"block_num"`
 	BlockPos            uint64         `meddler:"block_pos"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
 	OriginNetwork       uint32         `meddler:"origin_network"`
-	OriginTokenAddress  common.Address `meddler:"origin_token_address"`
-	WrappedTokenAddress common.Address `meddler:"wrapped_token_address"`
+	OriginTokenAddress  common.Address `meddler:"origin_token_address,address"`
+	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address"`
 	Metadata            []byte         `meddler:"metadata"`
 }
 
