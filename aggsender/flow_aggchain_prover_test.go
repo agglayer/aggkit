@@ -85,18 +85,23 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(
 					treeTypes.Proof{}, nil)
-				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
-					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{}, treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0), make([]*agglayer.ImportedBridgeExit, 0)).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil, nil)
+					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
+						BlockNumber: l1Header.Number.Uint64(),
+						Hash:        common.HexToHash("0x2"),
+					},
+					treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					make([]*agglayer.ImportedBridgeExit, 0)).Return(&types.AggchainProof{
+					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
-				FromBlock:     1,
-				ToBlock:       10,
-				RetryCount:    1,
-				Bridges:       []bridgesync.Bridge{{}},
-				Claims:        []bridgesync.Claim{{}},
-				AggchainProof: []byte("some-proof"),
+				FromBlock:                      1,
+				ToBlock:                        10,
+				RetryCount:                     1,
+				Bridges:                        []bridgesync.Bridge{{}},
+				Claims:                         []bridgesync.Claim{{}},
+				L1InfoTreeRootFromWhichToProve: &treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 0},
+				AggchainProof:                  []byte("some-proof"),
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
@@ -129,18 +134,23 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(
 					treeTypes.Proof{}, nil)
-				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
-					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{}, treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0), make([]*agglayer.ImportedBridgeExit, 0)).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 8}, nil, nil)
+					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
+						BlockNumber: l1Header.Number.Uint64(),
+						Hash:        common.HexToHash("0x2"),
+					},
+					treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					make([]*agglayer.ImportedBridgeExit, 0)).Return(&types.AggchainProof{
+					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
-				FromBlock:     1,
-				ToBlock:       8,
-				RetryCount:    1,
-				Bridges:       []bridgesync.Bridge{{BlockNum: 5}},
-				Claims:        []bridgesync.Claim{{BlockNum: 6}},
-				AggchainProof: []byte("some-proof"),
+				FromBlock:                      1,
+				ToBlock:                        8,
+				RetryCount:                     1,
+				Bridges:                        []bridgesync.Bridge{{BlockNum: 5}},
+				Claims:                         []bridgesync.Claim{{BlockNum: 6}},
+				L1InfoTreeRootFromWhichToProve: &treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 0},
+				AggchainProof:                  []byte("some-proof"),
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
@@ -168,9 +178,13 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(
 					treeTypes.Proof{}, nil)
-				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
-					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{}, treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0), make([]*agglayer.ImportedBridgeExit, 0)).Return(nil, errors.New("some error"))
+					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
+						BlockNumber: l1Header.Number.Uint64(),
+						Hash:        common.HexToHash("0x2"),
+					},
+					treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					make([]*agglayer.ImportedBridgeExit, 0)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
 		},
@@ -194,20 +208,24 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(
 					treeTypes.Proof{}, nil)
-				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(6), uint64(10),
-					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{}, treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0), make([]*agglayer.ImportedBridgeExit, 0)).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil, nil)
+					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
+						BlockNumber: l1Header.Number.Uint64(),
+						Hash:        common.HexToHash("0x2"),
+					}, treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					make([]*agglayer.ImportedBridgeExit, 0)).Return(&types.AggchainProof{
+					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
-				FromBlock:           6,
-				ToBlock:             10,
-				RetryCount:          0,
-				LastSentCertificate: &types.CertificateInfo{ToBlock: 5},
-				Bridges:             []bridgesync.Bridge{{}},
-				Claims:              []bridgesync.Claim{{}},
-				AggchainProof:       []byte("some-proof"),
-				CreatedAt:           uint32(time.Now().UTC().Unix()),
+				FromBlock:                      6,
+				ToBlock:                        10,
+				RetryCount:                     0,
+				LastSentCertificate:            &types.CertificateInfo{ToBlock: 5},
+				Bridges:                        []bridgesync.Bridge{{}},
+				Claims:                         []bridgesync.Claim{{}},
+				L1InfoTreeRootFromWhichToProve: &treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 0},
+				AggchainProof:                  []byte("some-proof"),
+				CreatedAt:                      uint32(time.Now().UTC().Unix()),
 			},
 		},
 		{
@@ -232,20 +250,24 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(
 					treeTypes.Proof{}, nil)
-				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(6), uint64(10),
-					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{}, treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0), make([]*agglayer.ImportedBridgeExit, 0)).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 8}, nil, nil)
+					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
+						BlockNumber: l1Header.Number.Uint64(),
+						Hash:        common.HexToHash("0x2"),
+					}, treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					make([]*agglayer.ImportedBridgeExit, 0)).Return(&types.AggchainProof{
+					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
-				FromBlock:           6,
-				ToBlock:             8,
-				RetryCount:          0,
-				LastSentCertificate: &types.CertificateInfo{ToBlock: 5},
-				Bridges:             []bridgesync.Bridge{{BlockNum: 6}},
-				Claims:              []bridgesync.Claim{{BlockNum: 8}},
-				AggchainProof:       []byte("some-proof"),
-				CreatedAt:           uint32(time.Now().UTC().Unix()),
+				FromBlock:                      6,
+				ToBlock:                        8,
+				RetryCount:                     0,
+				LastSentCertificate:            &types.CertificateInfo{ToBlock: 5},
+				Bridges:                        []bridgesync.Bridge{{BlockNum: 6}},
+				Claims:                         []bridgesync.Claim{{BlockNum: 8}},
+				L1InfoTreeRootFromWhichToProve: &treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 0},
+				AggchainProof:                  []byte("some-proof"),
+				CreatedAt:                      uint32(time.Now().UTC().Unix()),
 			},
 		},
 	}
@@ -291,8 +313,8 @@ func Test_AggchainProverFlow_GetFinalizedL1InfoTreeData(t *testing.T) {
 		name          string
 		mockFn        func(*mocks.L1InfoTreeSyncer, *mocks.EthClient)
 		expectedProof treeTypes.Proof
-		expectedLeaf  common.Hash
-		expectedRoot  common.Hash
+		expectedLeaf  *l1infotreesync.L1InfoTreeLeaf
+		expectedRoot  *treeTypes.Root
 		expectedError string
 	}{
 		{
@@ -346,8 +368,8 @@ func Test_AggchainProverFlow_GetFinalizedL1InfoTreeData(t *testing.T) {
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(treeTypes.Proof{}, nil)
 			},
 			expectedProof: treeTypes.Proof{},
-			expectedLeaf:  common.HexToHash("0x2"),
-			expectedRoot:  common.HexToHash("0x1"),
+			expectedLeaf:  &l1infotreesync.L1InfoTreeLeaf{Hash: common.HexToHash("0x2")},
+			expectedRoot:  &treeTypes.Root{Index: 0, Hash: common.HexToHash("0x1")},
 		},
 	}
 

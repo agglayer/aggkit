@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	treeTypes "github.com/agglayer/aggkit/tree/types"
 )
 
 const (
@@ -14,14 +15,15 @@ const (
 
 // CertificateBuildParams is a struct that holds the parameters to build a certificate
 type CertificateBuildParams struct {
-	FromBlock           uint64
-	ToBlock             uint64
-	Bridges             []bridgesync.Bridge
-	Claims              []bridgesync.Claim
-	CreatedAt           uint32
-	RetryCount          int
-	LastSentCertificate *CertificateInfo
-	AggchainProof       []byte
+	FromBlock                      uint64
+	ToBlock                        uint64
+	Bridges                        []bridgesync.Bridge
+	Claims                         []bridgesync.Claim
+	CreatedAt                      uint32
+	RetryCount                     int
+	LastSentCertificate            *CertificateInfo
+	L1InfoTreeRootFromWhichToProve *treeTypes.Root
+	AggchainProof                  []byte
 }
 
 func (c *CertificateBuildParams) String() string {
@@ -38,14 +40,15 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		return nil, fmt.Errorf("invalid range")
 	}
 	newCert := &CertificateBuildParams{
-		FromBlock:           fromBlock,
-		ToBlock:             toBlock,
-		Bridges:             make([]bridgesync.Bridge, 0),
-		Claims:              make([]bridgesync.Claim, 0),
-		CreatedAt:           c.CreatedAt,
-		RetryCount:          c.RetryCount,
-		LastSentCertificate: c.LastSentCertificate,
-		AggchainProof:       c.AggchainProof,
+		FromBlock:                      fromBlock,
+		ToBlock:                        toBlock,
+		Bridges:                        make([]bridgesync.Bridge, 0),
+		Claims:                         make([]bridgesync.Claim, 0),
+		CreatedAt:                      c.CreatedAt,
+		RetryCount:                     c.RetryCount,
+		LastSentCertificate:            c.LastSentCertificate,
+		AggchainProof:                  c.AggchainProof,
+		L1InfoTreeRootFromWhichToProve: c.L1InfoTreeRootFromWhichToProve,
 	}
 
 	for _, bridge := range c.Bridges {

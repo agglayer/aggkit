@@ -50,6 +50,7 @@ func newAggchainProverFlow(log types.Logger,
 // this function is the implementation of the FlowManager interface
 // What differentiates this function from the regular PP flow is that,
 // if the last sent certificate is in error, we need to resend the exact same certificate
+// also, it calls the aggchain prover to get the aggchain proof
 func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastSentCertificateInfo, err := a.storage.GetLastSentCertificate()
 	if err != nil {
@@ -97,21 +98,24 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		}
 	}
 
-	proof, _, root, err := a.getFinalizedL1InfoTreeData(ctx)
+	proof, leaf, root, err := a.getFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
 
-	// TODO - @goran-ethernal
+	// set the root from which to generate merkle proofs for each claim
+	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
+	buildParams.L1InfoTreeRootFromWhichToProve = root
+
+	injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, buildParams.FromBlock, buildParams.ToBlock)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
+	}
+
+	// TODO - get imported bridge exits
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
-		buildParams.FromBlock,
-		buildParams.ToBlock,
-		root,
-		l1infotreesync.L1InfoTreeLeaf{},
-		proof,
-		make(map[common.Hash]treeTypes.Proof, 0),
-		make([]*agglayer.ImportedBridgeExit, 0),
-	)
+		buildParams.FromBlock, buildParams.ToBlock, root.Hash, *leaf, proof,
+		injectedGERsProofs, make([]*agglayer.ImportedBridgeExit, 0))
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
@@ -131,40 +135,49 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	return buildParams, nil
 }
 
+// getInjectedGERsProofs returns the proofs for the injected GERs in the given block range
+// created from the last finalized L1 Info tree root
+func (a *aggchainProverFlow) getInjectedGERsProofs(
+	ctx context.Context,
+	finalizedL1InfoTreeRoot *treeTypes.Root,
+	fromBlock, toBlock uint64) (map[common.Hash]treeTypes.Proof, error) {
+	return make(map[common.Hash]treeTypes.Proof, 0), nil
+}
+
 // getFinalizedL1InfoTreeData returns the L1 Info tree data for the last finalized processed block
 // l1InfoTreeData is:
 // - the leaf data of the highest index leaf on that block and root
 // - merkle proof of given l1 info tree leaf
 // - the root of the l1 info tree on that block
 func (a *aggchainProverFlow) getFinalizedL1InfoTreeData(ctx context.Context,
-) (treeTypes.Proof, common.Hash, common.Hash, error) {
+) (treeTypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treeTypes.Root, error) {
 	lastFinalizedProcessedBlock, err := a.getLatestProcessedFinalizedBlock(ctx)
 	if err != nil {
-		return treeTypes.Proof{}, common.Hash{}, common.Hash{},
+		return treeTypes.Proof{}, nil, nil,
 			fmt.Errorf("aggchainProverFlow - error getting latest processed finalized block: %w", err)
 	}
 
 	root, err := a.l1InfoTreeSyncer.GetLastL1InfoTreeRootByBlockNum(ctx, lastFinalizedProcessedBlock)
 	if err != nil {
-		return treeTypes.Proof{}, common.Hash{}, common.Hash{},
+		return treeTypes.Proof{}, nil, nil,
 			fmt.Errorf("aggchainProverFlow - error getting last L1 Info tree root by block num %d: %w",
 				lastFinalizedProcessedBlock, err)
 	}
 
 	leaf, err := a.l1InfoTreeSyncer.GetInfoByIndex(ctx, root.Index)
 	if err != nil {
-		return treeTypes.Proof{}, common.Hash{}, common.Hash{},
+		return treeTypes.Proof{}, nil, nil,
 			fmt.Errorf("aggchainProverFlow - error getting L1 Info tree leaf by index %d: %w", root.Index, err)
 	}
 
 	proof, err := a.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx, root.Index, root.Hash)
 	if err != nil {
-		return treeTypes.Proof{}, common.Hash{}, common.Hash{},
+		return treeTypes.Proof{}, nil, nil,
 			fmt.Errorf("aggchainProverFlow - error getting L1 Info tree merkle proof from index %d to root %s: %w",
 				root.Index, root.Hash.String(), err)
 	}
 
-	return proof, leaf.Hash, root.Hash, nil
+	return proof, leaf, root, nil
 }
 
 // getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer

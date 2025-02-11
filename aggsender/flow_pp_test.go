@@ -457,7 +457,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 				l1InfoTreeSyncer: mockL1InfoTreeSyncer,
 				log:              log.WithFields("test", "unittest"),
 			}
-			exits, err := flow.getImportedBridgeExits(context.Background(), tt.claims)
+			exits, err := flow.getImportedBridgeExits(context.Background(), tt.claims, nil)
 
 			if tt.expectedError {
 				require.Error(t, err)
