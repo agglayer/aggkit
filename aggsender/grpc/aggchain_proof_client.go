@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	agglayer "github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
@@ -21,6 +22,7 @@ type AggchainProofClientInterface interface {
 		l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 		l1InfoTreeMerkleProof treeTypes.Proof,
 		gerInclusionProofs map[common.Hash]treeTypes.Proof,
+		importedBridgeExits []*agglayer.ImportedBridgeExit,
 	) (*types.AggchainProof, error)
 }
 
@@ -47,6 +49,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 	l1InfoTreeMerkleProof treeTypes.Proof,
 	gerInclusionProofs map[common.Hash]treeTypes.Proof,
+	importedBridgeExits []*agglayer.ImportedBridgeExit,
 ) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
 	defer cancel()
@@ -77,6 +80,31 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		L1InfoTreeIndex:     l1InfoTreeLeaf.L1InfoTreeIndex,
 	}
 
+	convertedImportedBridgeExits := make([]*types.ImportedBridgeExit, len(importedBridgeExits))
+	for i, importedBridgeExit := range importedBridgeExits {
+		convertedBridgeExit := &types.BridgeExit{
+			LeafType: types.LeafType(importedBridgeExit.BridgeExit.LeafType),
+			TokenInfo: &types.TokenInfo{
+				OriginNetwork:      importedBridgeExit.BridgeExit.TokenInfo.OriginNetwork,
+				OriginTokenAddress: importedBridgeExit.BridgeExit.TokenInfo.OriginTokenAddress.Bytes(),
+			},
+			DestinationNetwork: importedBridgeExit.BridgeExit.DestinationNetwork,
+			DestinationAddress: importedBridgeExit.BridgeExit.DestinationAddress.Bytes(),
+			Amount:             importedBridgeExit.BridgeExit.Amount.String(),
+			IsMetadataHashed:   importedBridgeExit.BridgeExit.IsMetadataHashed,
+			Metadata:           importedBridgeExit.BridgeExit.Metadata,
+		}
+		convertedGlobalIndex := &types.GlobalIndex{
+			MainnetFlag: importedBridgeExit.GlobalIndex.MainnetFlag,
+			RollupIndex: importedBridgeExit.GlobalIndex.RollupIndex,
+			LeafIndex:   importedBridgeExit.GlobalIndex.LeafIndex,
+		}
+		convertedImportedBridgeExits[i] = &types.ImportedBridgeExit{
+			BridgeExit:  convertedBridgeExit,
+			GlobalIndex: convertedGlobalIndex,
+		}
+	}
+
 	resp, err := c.client.GenerateAggchainProof(ctx, &types.GenerateAggchainProofRequest{
 		StartBlock:            startBlock,
 		MaxEndBlock:           maxEndBlock,
@@ -84,6 +112,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		L1InfoTreeLeaf:        convertedL1InfoTreeLeaf,
 		L1InfoTreeMerkleProof: convertedMerkleProof,
 		GerInclusionProofs:    convertedGerInclusionProofs,
+		ImportedBridgeExits:   convertedImportedBridgeExits,
 	})
 	if err != nil {
 		return nil, err

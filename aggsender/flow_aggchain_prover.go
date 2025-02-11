@@ -110,6 +110,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		l1infotreesync.L1InfoTreeLeaf{},
 		proof,
 		make(map[common.Hash]treeTypes.Proof, 0),
+		make([]*agglayer.ImportedBridgeExit, 0),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",

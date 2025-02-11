@@ -88,7 +88,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
 					common.HexToHash("0x1"), common.HexToHash("0x2"), treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0)).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil)
+					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:     1,
@@ -132,7 +132,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
 					common.HexToHash("0x1"), common.HexToHash("0x2"), treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0)).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 8}, nil)
+					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 8}, nil, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:     1,
@@ -170,7 +170,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					treeTypes.Proof{}, nil)
 				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
-					common.HexToHash("0x1"), common.HexToHash("0x2"), treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0)).Return(nil, errors.New("some error"))
+					common.HexToHash("0x1"), common.HexToHash("0x2"), treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0), nil).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
 		},
@@ -197,7 +197,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(6), uint64(10),
 					common.HexToHash("0x1"), common.HexToHash("0x2"), treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0)).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil)
+					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
@@ -235,7 +235,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				// TODO - @goran-ethernal
 				mockProverClient.On("GenerateAggchainProof", uint64(6), uint64(10),
 					common.HexToHash("0x1"), common.HexToHash("0x2"), treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0)).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 8}, nil)
+					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 8}, nil, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
