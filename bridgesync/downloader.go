@@ -143,6 +143,8 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
+			BlockTimestamp:      b.Timestamp,
+			TxHash:              l.TxHash,
 			OriginNetwork:       tokenMapping.OriginNetwork,
 			OriginTokenAddress:  tokenMapping.OriginTokenAddress,
 			WrappedTokenAddress: tokenMapping.WrappedTokenAddress,

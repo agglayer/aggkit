@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 	"github.com/stretchr/testify/require"
 )
@@ -80,38 +81,39 @@ func TestMigration0002(t *testing.T) {
 
 		INSERT INTO token_mapping (
 			block_num, 
-			block_pos, 
-			origin_network, 
-			origin_token_address, 
+			block_pos,
+			block_timestamp,
+			tx_hash,
+			origin_network,
+			origin_token_address,
 			wrapped_token_address,
 			metadata
-		) VALUES (1, 0, 2, '0x0003', '0x0005', NULL);
+		) VALUES (1, 0, 1739270804, '0xabcd', 2, '0x3', '0x5', NULL);
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
 	require.NoError(t, err)
 
 	var tokenMapping struct {
-		BlockNum            int     `meddler:"block_num"`
-		BlockPos            int     `meddler:"block_pos"`
-		OriginNetwork       int     `meddler:"origin_network"`
-		OriginTokenAddress  string  `meddler:"origin_token_address"`
-		WrappedTokenAddress string  `meddler:"wrapped_token_address"`
-		Metadata            *string `meddler:"metadata"`
+		BlockNum            uint64         `meddler:"block_num"`
+		BlockPos            uint64         `meddler:"block_pos"`
+		BlockTimestamp      uint64         `meddler:"block_timestamp"`
+		TxHash              common.Hash    `meddler:"tx_hash,hash"`
+		OriginNetwork       uint32         `meddler:"origin_network"`
+		OriginTokenAddress  common.Address `meddler:"origin_token_address,address"`
+		WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address"`
+		Metadata            []byte         `meddler:"metadata"`
 	}
 
 	err = meddler.QueryRow(db, &tokenMapping,
-		`SELECT 
-			block_num, block_pos, 
-			origin_network, origin_token_address, 
-			wrapped_token_address, metadata
-		FROM token_mapping`)
+		`SELECT * FROM token_mapping`)
 	require.NoError(t, err)
 
 	require.NotNil(t, tokenMapping)
-	require.Equal(t, 1, tokenMapping.BlockNum)
-	require.Equal(t, 0, tokenMapping.BlockPos)
-	require.Equal(t, 2, tokenMapping.OriginNetwork)
-	require.Equal(t, "0x0003", tokenMapping.OriginTokenAddress)
-	require.Equal(t, "0x0005", tokenMapping.WrappedTokenAddress)
+	require.Equal(t, uint64(1), tokenMapping.BlockNum)
+	require.Equal(t, uint64(0), tokenMapping.BlockPos)
+	require.Equal(t, uint64(1739270804), tokenMapping.BlockTimestamp)
+	require.Equal(t, uint32(2), tokenMapping.OriginNetwork)
+	require.Equal(t, common.HexToAddress("0x3"), tokenMapping.OriginTokenAddress)
+	require.Equal(t, common.HexToAddress("0x5"), tokenMapping.WrappedTokenAddress)
 }
