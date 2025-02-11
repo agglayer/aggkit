@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/tree"
+	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -146,7 +147,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 	}
 
 	bridgeExits := f.getBridgeExits(certParams.Bridges)
-	importedBridgeExits, err := f.getImportedBridgeExits(ctx, certParams.Claims)
+	importedBridgeExits, err := f.getImportedBridgeExits(ctx, certParams.Claims, certParams.L1InfoTreeRootFromWhichToProve)
 	if err != nil {
 		return nil, fmt.Errorf("error getting imported bridge exits: %w", err)
 	}
@@ -261,6 +262,7 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayer.Bridg
 // getImportedBridgeExits converts claims to agglayer.ImportedBridgeExit objects and calculates necessary proofs
 func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context, claims []bridgesync.Claim,
+	rootFromWhichToProove *treeTypes.Root,
 ) ([]*agglayer.ImportedBridgeExit, error) {
 	if len(claims) == 0 {
 		// no claims to convert
@@ -271,24 +273,31 @@ func (f *baseFlow) getImportedBridgeExits(
 		greatestL1InfoTreeIndexUsed uint32
 		importedBridgeExits         = make([]*agglayer.ImportedBridgeExit, 0, len(claims))
 		claimL1Info                 = make([]*l1infotreesync.L1InfoTreeLeaf, 0, len(claims))
+		rootToProve                 = rootFromWhichToProove
 	)
 
-	for _, claim := range claims {
-		info, err := f.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
+	if rootToProve == nil {
+		// if the l1 info tree root from which we generate proofs is not provided,
+		// we need to get the greatest L1 Info tree index used by the claims and use that as the root
+		for _, claim := range claims {
+			info, err := f.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
+			if err != nil {
+				return nil, fmt.Errorf("error getting info by global exit root: %w", err)
+			}
+
+			claimL1Info = append(claimL1Info, info)
+
+			if info.L1InfoTreeIndex > greatestL1InfoTreeIndexUsed {
+				greatestL1InfoTreeIndexUsed = info.L1InfoTreeIndex
+			}
+		}
+
+		rt, err := f.l1InfoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, greatestL1InfoTreeIndexUsed)
 		if err != nil {
-			return nil, fmt.Errorf("error getting info by global exit root: %w", err)
+			return nil, fmt.Errorf("error getting L1 Info tree root by index: %d. Error: %w", greatestL1InfoTreeIndexUsed, err)
 		}
 
-		claimL1Info = append(claimL1Info, info)
-
-		if info.L1InfoTreeIndex > greatestL1InfoTreeIndexUsed {
-			greatestL1InfoTreeIndexUsed = info.L1InfoTreeIndex
-		}
-	}
-
-	rootToProve, err := f.l1InfoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, greatestL1InfoTreeIndexUsed)
-	if err != nil {
-		return nil, fmt.Errorf("error getting L1 Info tree root by index: %d. Error: %w", greatestL1InfoTreeIndexUsed, err)
+		rootToProve = &rt
 	}
 
 	for i, claim := range claims {

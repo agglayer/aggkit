@@ -157,7 +157,7 @@ func createAggoracle(
 	cfg config.Config,
 	l1Client,
 	l2Client *ethclient.Client,
-	syncer *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
 	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config, cfg.Common)
@@ -211,7 +211,7 @@ func createAggoracle(
 		logger,
 		sender,
 		l1Client,
-		syncer,
+		l1InfoTreeSyncer,
 		etherman.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
