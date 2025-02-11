@@ -3,8 +3,10 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -24,7 +26,8 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 		expectedErr   error
 	}
 	ctx := context.Background()
-	b := newBridgeWithMocks(t)
+	networkID := uint32(1)
+	b := newBridgeWithMocks(t, networkID)
 	fooErr := errors.New("foo")
 	firstL1Info := &l1infotreesync.L1InfoTreeLeaf{
 		BlockNumber:     10,
@@ -220,7 +223,8 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		expectedErr   error
 	}
 	ctx := context.Background()
-	b := newBridgeWithMocks(t)
+	networkID := uint32(2)
+	b := newBridgeWithMocks(t, networkID)
 	fooErr := errors.New("foo")
 	firstVerified := &l1infotreesync.VerifyBatches{
 		BlockNumber: 10,
@@ -417,6 +421,82 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 	}
 }
 
+func TestGetTokenMappings(t *testing.T) {
+	networkID := uint32(10)
+	bridgeMocks := newBridgeWithMocks(t, networkID)
+
+	t.Run("GetTokenMappings for L1 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		tokenMappings := []*bridgesync.TokenMapping{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x1"),
+				OriginNetwork:       1,
+				OriginTokenAddress:  common.HexToAddress("0x1"),
+				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Metadata:            []byte("metadata"),
+			},
+		}
+
+		bridgeMocks.bridgeL1.On("GetTokenMappings", mock.Anything, &page, &pageSize).
+			Return(tokenMappings, len(tokenMappings), nil)
+
+		result, err := bridgeMocks.bridge.GetTokenMappings(0, &page, &pageSize)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		tokenMappingsResult, ok := result.(*TokenMappingsResult)
+		require.True(t, ok)
+		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
+		require.Equal(t, len(tokenMappingsResult.TokenMappings), tokenMappingsResult.TotalTokenMappings)
+
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetTokenMappings for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		tokenMappings := []*bridgesync.TokenMapping{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x1"),
+				OriginNetwork:       1,
+				OriginTokenAddress:  common.HexToAddress("0x1"),
+				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Metadata:            []byte("metadata"),
+			},
+		}
+
+		bridgeMocks.bridgeL2.On("GetTokenMappings", mock.Anything, &page, &pageSize).
+			Return(tokenMappings, len(tokenMappings), nil)
+
+		result, err := bridgeMocks.bridge.GetTokenMappings(networkID, &page, &pageSize)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		tokenMappingsResult, ok := result.(*TokenMappingsResult)
+		require.True(t, ok)
+		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
+		require.Equal(t, len(tokenMappings), tokenMappingsResult.TotalTokenMappings)
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
+	})
+
+	t.Run("GetTokenMappings with unsupported network", func(t *testing.T) {
+		unsupportedNetworkID := uint32(999)
+
+		result, err := bridgeMocks.bridge.GetTokenMappings(unsupportedNetworkID, nil, nil)
+		require.ErrorContains(t, err, fmt.Sprintf("failed to get token mappings, unsupported network %d", unsupportedNetworkID))
+		require.Nil(t, result)
+	})
+}
+
 type bridgeWithMocks struct {
 	bridge       *BridgeEndpoints
 	sponsor      *mocks.ClaimSponsorer
@@ -426,7 +506,7 @@ type bridgeWithMocks struct {
 	bridgeL2     *mocks.Bridger
 }
 
-func newBridgeWithMocks(t *testing.T) bridgeWithMocks {
+func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	t.Helper()
 	b := bridgeWithMocks{
 		sponsor:      mocks.NewClaimSponsorer(t),
@@ -437,7 +517,7 @@ func newBridgeWithMocks(t *testing.T) bridgeWithMocks {
 	}
 	logger := log.WithFields("module", "bridgerpc")
 	b.bridge = NewBridgeEndpoints(
-		logger, 0, 0, 2, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
+		logger, 0, 0, networkID, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
 	)
 	return b
 }

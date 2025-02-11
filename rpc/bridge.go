@@ -71,6 +71,12 @@ func NewBridgeEndpoints(
 	}
 }
 
+// TokenMappingsResult contains the token mappings and the total count of token mappings
+type TokenMappingsResult struct {
+	TokenMappings      []*bridgesync.TokenMapping `json:"tokenMappings"`
+	TotalTokenMappings int                        `json:"totalTokenMappings"`
+}
+
 // GetTokenMappings returns the token mappings for the given network
 func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, page, pageSize *uint32) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
@@ -87,11 +93,6 @@ func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, page, pageSize *uin
 		tokenMappingsCount int
 		err                error
 	)
-
-	type TokenMappingsResult struct {
-		TokenMappings      []*bridgesync.TokenMapping `json:"tokenMappings"`
-		TotalTokenMappings int                        `json:"totalTokenMappings"`
-	}
 
 	switch {
 	case networkID == 0:
