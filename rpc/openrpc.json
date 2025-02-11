@@ -6,6 +6,80 @@
   },
   "methods": [
     {
+      "name": "bridge_getTokenMappings",
+      "summary": "Get Token Mappings",
+      "description": "Returns the token mappings for the given network.",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/NetworkID"
+        },
+        {
+          "name": "page",
+          "description": "The page number for pagination.",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        },
+        {
+          "name": "pageSize",
+          "description": "The number of items per page for pagination.",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The token mappings result.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "tokenMappings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "blockNum": {
+                    "$ref": "#/components/schemas/BlockNumber"
+                  },
+                  "blockPos": {
+                    "$ref": "#/components/schemas/BlockPosition"
+                  },
+                  "blockTimestamp": {
+                    "type": "integer",
+                    "description": "The unix timestamp for when the block was collated"
+                  },
+                  "txHash": {
+                    "$ref": "#/components/schemas/Keccak"
+                  },
+                  "originNetwork": {
+                    "$ref": "#/components/schemas/OriginNetwork"
+                  },
+                  "originTokenAddress": {
+                    "$ref": "#/components/schemas/OriginTokenAddress"
+                  },
+                  "wrappedTokenAddress": {
+                    "$ref": "#/components/schemas/Address"
+                  },
+                  "metadata": {
+                    "$ref": "#/components/schemas/Bytes"
+                  }
+                }
+              }
+            },
+            "totalTokenMappings": {
+              "type": "integer",
+              "description": "The total number of token mappings."
+            }
+          }
+        }
+      }
+    },
+    {
       "name": "bridge_l1InfoTreeIndexForBridge",
       "summary": "Returns the first L1 Info Tree index in which the bridge was included. NetworkID represents the origin network. This call needs to be done to a client of the same network were the bridge tx was sent",
       "params": [
