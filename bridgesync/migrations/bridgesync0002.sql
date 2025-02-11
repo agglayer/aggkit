@@ -6,6 +6,8 @@ CREATE TABLE
 	token_mapping (
 		block_num INTEGER NOT NULL REFERENCES block (num) ON DELETE CASCADE,
 		block_pos INTEGER NOT NULL,
+		block_timestamp INTEGER NOT NULL,
+		tx_hash VARCHAR NOT NULL,
 		origin_network INTEGER NOT NULL,
 		origin_token_address VARCHAR NOT NULL,
 		wrapped_token_address VARCHAR NOT NULL,
