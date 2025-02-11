@@ -134,6 +134,14 @@ type Certificate struct {
 	Metadata            common.Hash           `json:"metadata"`
 }
 
+// ID returns a string with the ident of this cert (height/certID)
+func (c *Certificate) ID() string {
+	if c == nil {
+		return "cert{" + nilStr + "}"
+	}
+	return fmt.Sprintf("cert{height:%d, networkID:%d}", c.Height, c.NetworkID)
+}
+
 // Brief returns a string with a brief cert
 func (c *Certificate) Brief() string {
 	if c == nil {
@@ -751,6 +759,14 @@ func (c *CertificateHeader) ID() string {
 		return nilStr
 	}
 	return fmt.Sprintf("%d/%s", c.Height, c.CertificateID.String())
+}
+
+// StatusString returns the string representation of the status
+func (c *CertificateHeader) StatusString() string {
+	if c == nil {
+		return "???"
+	}
+	return c.Status.String()
 }
 
 func (c *CertificateHeader) String() string {

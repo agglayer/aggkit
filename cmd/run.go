@@ -128,7 +128,7 @@ func createAggSender(
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 	agglayerClient := agglayer.NewAggLayerClient(cfg.AggLayerURL)
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient, aggsender.ConfigBlockNotifierPolling{
-		BlockFinalityType:     etherman.BlockNumberFinality(cfg.BlockFinality),
+		BlockFinalityType:     etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 	}, logger, nil)
 	if err != nil {
@@ -160,6 +160,23 @@ func createAggoracle(
 	syncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
+	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config, cfg.Common)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	l2ChainID, err := ethermanClient.GetL2ChainID()
+	if err != nil {
+		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
+	}
+
+	// sanity check for the aggOracle ChainID
+	if cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID != l2ChainID {
+		logger.Warnf("Incorrect ChainID in aggOracle provided: %d expected: %d",
+			cfg.AggOracle.EVMSender.EthTxManager.Etherman.L1ChainID,
+			l2ChainID,
+		)
+	}
+
 	var sender aggoracle.ChainSender
 	switch cfg.AggOracle.TargetChainType {
 	case aggoracle.EVMChain:
@@ -195,7 +212,7 @@ func createAggoracle(
 		sender,
 		l1Client,
 		syncer,
-		etherman.BlockNumberFinality(cfg.AggOracle.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
 	if err != nil {
@@ -237,8 +254,9 @@ func waitSignal(cancelFuncs []context.CancelFunc) {
 func newReorgDetector(
 	cfg *reorgdetector.Config,
 	client *ethclient.Client,
+	network reorgdetector.Network,
 ) *reorgdetector.ReorgDetector {
-	rd, err := reorgdetector.New(client, *cfg)
+	rd, err := reorgdetector.New(client, *cfg, network)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -276,7 +294,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.GlobalExitRootAddr,
 		cfg.L1InfoTreeSync.RollupManagerAddr,
 		cfg.L1InfoTreeSync.SyncBlockChunkSize,
-		etherman.BlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
 		reorgDetector,
 		l1Client,
 		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
@@ -284,6 +302,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.RetryAfterErrorPeriod.Duration,
 		cfg.L1InfoTreeSync.MaxRetryAttemptsAfterError,
 		l1infotreesync.FlagNone,
+		etherman.FinalizedBlock,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -351,7 +370,7 @@ func runReorgDetectorL1IfNeeded(
 		components) {
 		return nil, nil
 	}
-	rd := newReorgDetector(cfg, l1Client)
+	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
 
 	errChan := make(chan error)
 	go func() {
@@ -373,7 +392,7 @@ func runReorgDetectorL2IfNeeded(
 	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
 		return nil, nil
 	}
-	rd := newReorgDetector(cfg, l2Client)
+	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
 
 	errChan := make(chan error)
 	go func() {
@@ -446,7 +465,7 @@ func runLastGERSyncIfNeeded(
 		l1InfoTreeSync,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
-		etherman.BlockNumberFinality(cfg.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 	)
@@ -475,7 +494,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.BlockNumberFinality(cfg.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL1,
 		l1Client,
 		cfg.InitialBlockNum,
@@ -510,7 +529,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.BlockNumberFinality(cfg.BlockFinality),
+		etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL2,
 		l2Client,
 		cfg.InitialBlockNum,

@@ -112,6 +112,15 @@ func (e *EpochNotifierPerBlock) Start(ctx context.Context) {
 	e.startInternal(ctx, eventNewBlockChannel)
 }
 
+// GetCurrentStatus returns the current status of the epoch
+func (e *EpochNotifierPerBlock) GetEpochStatus() types.EpochStatus {
+	currentBlock := e.blockNotifier.GetCurrentBlockNumber()
+	return types.EpochStatus{
+		Epoch:        e.epochNumber(currentBlock),
+		PercentEpoch: e.percentEpoch(currentBlock),
+	}
+}
+
 func (e *EpochNotifierPerBlock) startInternal(ctx context.Context, eventNewBlockChannel <-chan types.EventNewBlock) {
 	status := internalStatus{
 		lastBlockSeen:   e.Config.StartingEpochBlock,
