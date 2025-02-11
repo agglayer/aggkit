@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -17,7 +18,7 @@ type AggchainProofClientInterface interface {
 		startBlock uint64,
 		maxEndBlock uint64,
 		l1InfoTreeRootHash common.Hash,
-		l1InfoTreeLeafHash common.Hash,
+		l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 		l1InfoTreeMerkleProof treeTypes.Proof,
 		gerInclusionProofs map[common.Hash]treeTypes.Proof,
 	) (*types.AggchainProof, error)
@@ -43,7 +44,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	startBlock uint64,
 	maxEndBlock uint64,
 	l1InfoTreeRootHash common.Hash,
-	l1InfoTreeLeafHash common.Hash,
+	l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 	l1InfoTreeMerkleProof treeTypes.Proof,
 	gerInclusionProofs map[common.Hash]treeTypes.Proof,
 ) (*types.AggchainProof, error) {
@@ -66,11 +67,21 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		}
 	}
 
+	convertedL1InfoTreeLeaf := &types.L1InfoTreeLeaf{
+		PreviousBlockHash:   l1InfoTreeLeaf.PreviousBlockHash.Bytes(),
+		Timestamp:           l1InfoTreeLeaf.Timestamp,
+		MainnetExitRootHash: l1InfoTreeLeaf.MainnetExitRoot.Bytes(),
+		GlobalExitRootHash:  l1InfoTreeLeaf.GlobalExitRoot.Bytes(),
+		RollupExitRootHash:  l1InfoTreeLeaf.RollupExitRoot.Bytes(),
+		LeafHash:            l1InfoTreeLeaf.Hash.Bytes(),
+		L1InfoTreeIndex:     l1InfoTreeLeaf.L1InfoTreeIndex,
+	}
+
 	resp, err := c.client.GenerateAggchainProof(ctx, &types.GenerateAggchainProofRequest{
 		StartBlock:            startBlock,
 		MaxEndBlock:           maxEndBlock,
 		L1InfoTreeRootHash:    l1InfoTreeRootHash.Bytes(),
-		L1InfoTreeLeafHash:    l1InfoTreeLeafHash.Bytes(),
+		L1InfoTreeLeaf:        convertedL1InfoTreeLeaf,
 		L1InfoTreeMerkleProof: convertedMerkleProof,
 		GerInclusionProofs:    convertedGerInclusionProofs,
 	})

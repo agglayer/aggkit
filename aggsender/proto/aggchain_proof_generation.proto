@@ -18,8 +18,8 @@ message GenerateAggchainProofRequest {
   uint64 max_end_block = 2;
   // L1 Info tree root. (hash)
   bytes l1_info_tree_root_hash = 3;
-  // L1 Info tree leaf. (hash)
-  bytes l1_info_tree_leaf_hash = 4;
+  // L1 Info tree leaf
+  L1InfoTreeLeaf l1_info_tree_leaf = 4;
   // L1 Info tree proof. ([32]hash)
   repeated bytes l1_info_tree_merkle_proof = 5;
   // Map of the GER with their inclusion proof. Note: the GER (string) is a base64 encoded string of the GER digest.
@@ -40,4 +40,21 @@ message GenerateAggchainProofResponse {
 message InclusionProof {
   // Siblings.
   repeated bytes siblings = 1;
+}
+
+message L1InfoTreeLeaf {
+  // previous block hash of leaf
+  bytes previous_block_hash = 1;
+  // block number timestamp
+  uint64 timestamp = 2;
+  // mainnet exit root hash
+  bytes mainnet_exit_root_hash = 3;
+  // rollup exit root hash
+  bytes rollup_exit_root_hash = 4;
+  // global exit root hash
+  bytes global_exit_root_hash = 5;
+  // leaf hash
+  bytes leaf_hash = 6;
+  // leaf index
+  uint32 l1_info_tree_index = 7;
 }
