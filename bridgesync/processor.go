@@ -36,6 +36,12 @@ var (
 	// errBlockNotProcessedFormat indicates that the given block(s) have not been processed yet.
 	errBlockNotProcessedFormat = fmt.Sprintf("block %%d not processed, last processed: %%d")
 
+	// errInvalidPageSize indicates that the page size is invalid
+	errInvalidPageSize = errors.New("page size must be greater than 0")
+
+	// errInvalidPageNumber indicates that the page number is invalid
+	errInvalidPageNumber = errors.New("page number must be greater than 0")
+
 	// tableNameRegex is the regex pattern to validate table names
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 )
@@ -43,8 +49,8 @@ var (
 const (
 	// defaultPageSize is the default number of records to be fetched
 	defaultPageSize = uint32(50)
-	// defaultPage is the default page number to be used when fetching records
-	defaultPage = uint32(1)
+	// defaultPageNumber is the default page number to be used when fetching records
+	defaultPageNumber = uint32(1)
 )
 
 // Bridge is the representation of a bridge event
@@ -381,10 +387,10 @@ func (p *processor) GetTotalNumberOfRecords(tableName string) (int, error) {
 }
 
 // GetTokenMappings returns the token mappings in the database
-func (p *processor) GetTokenMappings(ctx context.Context, page, pageSize *uint32) ([]*TokenMapping, int, error) {
-	if page == nil {
-		page = new(uint32)
-		*page = defaultPage
+func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize *uint32) ([]*TokenMapping, int, error) {
+	if pageNumber == nil {
+		pageNumber = new(uint32)
+		*pageNumber = defaultPageNumber
 	}
 
 	if pageSize == nil {
@@ -397,16 +403,15 @@ func (p *processor) GetTokenMappings(ctx context.Context, page, pageSize *uint32
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
 	}
 
-	if *page == 0 {
-		return nil, 0, errors.New("page number must be greater than 0")
+	if *pageNumber == 0 {
+		return nil, 0, errInvalidPageNumber
 	}
 
 	if *pageSize == 0 {
-		return nil, 0, errors.New("page size must be greater than 0")
+		return nil, 0, errInvalidPageSize
 	}
 
-	offset := (*page - 1) * *pageSize
-
+	offset := (*pageNumber - 1) * *pageSize
 	if int(offset) >= totalTokenMappings {
 		return nil, 0, db.ErrNotFound
 	}
