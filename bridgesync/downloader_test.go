@@ -4,6 +4,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/bridgesync/mocks"
 	"github.com/agglayer/aggkit/sync"
@@ -17,7 +18,7 @@ func TestBuildAppender(t *testing.T) {
 	blockNum := uint64(1)
 	client := mocks.NewEthClienter(t)
 
-	abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
+	bridgeV2Abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -29,7 +30,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "bridgeEventSignature appender",
 			eventSignature: bridgeEventSignature,
 			logBuilder: func() (types.Log, error) {
-				event, err := abi.EventByID(bridgeEventSignature)
+				event, err := bridgeV2Abi.EventByID(bridgeEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -58,10 +59,41 @@ func TestBuildAppender(t *testing.T) {
 			},
 		},
 		{
+			name:           "claimEventSignaturePreEtrog appender",
+			eventSignature: claimEventSignaturePreEtrog,
+			logBuilder: func() (types.Log, error) {
+				bridgeV1Abi, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
+				require.NoError(t, err)
+
+				event, err := bridgeV1Abi.EventByID(claimEventSignaturePreEtrog)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				index := uint32(5)
+				originNetwork := uint32(6)
+				originAddress := common.HexToAddress("0x20")
+				destinationAddress := common.HexToAddress("0x30")
+				amount := big.NewInt(10)
+				data, err := event.Inputs.Pack(
+					index, originNetwork,
+					originAddress, destinationAddress, amount)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{claimEventSignaturePreEtrog},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
+		{
 			name:           "claimEventSignature appender",
 			eventSignature: claimEventSignature,
 			logBuilder: func() (types.Log, error) {
-				event, err := abi.EventByID(claimEventSignature)
+				event, err := bridgeV2Abi.EventByID(claimEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
@@ -89,7 +121,7 @@ func TestBuildAppender(t *testing.T) {
 			name:           "tokenMappingEventSignature appender",
 			eventSignature: tokenMappingEventSignature,
 			logBuilder: func() (types.Log, error) {
-				event, err := abi.EventByID(tokenMappingEventSignature)
+				event, err := bridgeV2Abi.EventByID(tokenMappingEventSignature)
 				if err != nil {
 					return types.Log{}, err
 				}
