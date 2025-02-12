@@ -50,6 +50,10 @@ func start(cliCtx *cli.Context) error {
 		logVersion()
 	}
 
+	if cfg.Prometheus.Enabled {
+		prometheus.Init()
+	}
+
 	components := cliCtx.StringSlice(config.FlagComponents)
 	l1Client := runL1ClientIfNeeded(components, cfg.Etherman.URL)
 	l2Client := runL2ClientIfNeeded(components, getL2RPCUrl(cfg))
@@ -122,6 +126,8 @@ func start(cliCtx *cli.Context) error {
 
 	if cfg.Prometheus.Enabled {
 		go startPrometheusHTTPServer(cfg.Prometheus)
+	} else {
+		log.Info("Prometheus metrics server is disabled")
 	}
 
 	waitSignal(nil)

@@ -1,6 +1,7 @@
 package metrics
 
 import (
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/prometheus"
 	prometheusClient "github.com/prometheus/client_golang/prometheus"
 )
@@ -43,8 +44,8 @@ func Register() {
 			Help: "[AGGSENDER] prover time",
 		},
 	}
-
 	prometheus.RegisterGauges(gauges...)
+	log.Info("Registered prometheus aggsender metrics")
 }
 
 // CertificateSent increments the gauge for the number of certificates sent
