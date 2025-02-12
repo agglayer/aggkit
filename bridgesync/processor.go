@@ -160,34 +160,6 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-func (p *processor) GetBridgesPaged(
-	ctx context.Context, page, pageSize uint64,
-) ([]Bridge, error) {
-	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-	if err != nil {
-		return nil, err
-	}
-	defer func() {
-		if err := tx.Rollback(); err != nil {
-			log.Warnf("error rolling back tx: %v", err)
-		}
-	}()
-	rows, err := p.queryPaged(tx, page, pageSize, "bridge")
-	if err != nil {
-		return nil, err
-	}
-	bridgePtrs := []*Bridge{}
-	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
-		return nil, err
-	}
-	bridgesIface := db.SlicePtrsToSlice(bridgePtrs)
-	bridges, ok := bridgesIface.([]Bridge)
-	if !ok {
-		return nil, errors.New("failed to convert from []*Bridge to []Bridge")
-	}
-	return bridges, nil
-}
-
 func (p *processor) GetClaims(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Claim, error) {
@@ -216,11 +188,52 @@ func (p *processor) GetClaims(
 	return claims, nil
 }
 
-func (p *processor) queryPaged(tx db.Querier, page, pageSize uint64, table string) (*sql.Rows, error) {
-	rows, err := tx.Query(fmt.Sprintf(`
-		SELECT * FROM %s
-		LIMIT $1 OFFSET $2;
-	`, table), pageSize, (page-1)*pageSize)
+func (p *processor) GetBridgesPaged(
+	ctx context.Context, page, pageSize, depositCount uint64,
+) ([]Bridge, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			log.Warnf("error rolling back tx: %v", err)
+		}
+	}()
+	orderBy := "deposit_count"
+	order := "DESC"
+	whereClause := ""
+	if depositCount > 0 {
+		whereClause = fmt.Sprintf("WHERE deposit_count = %d", depositCount)
+	}
+	rows, err := p.queryPaged(tx, page, pageSize, "bridge", orderBy, order, whereClause)
+	if err != nil {
+		return nil, err
+	}
+	bridgePtrs := []*Bridge{}
+	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
+		return nil, err
+	}
+	bridgesIface := db.SlicePtrsToSlice(bridgePtrs)
+	bridges, ok := bridgesIface.([]Bridge)
+	if !ok {
+		return nil, errors.New("failed to convert from []*Bridge to []Bridge")
+	}
+	return bridges, nil
+}
+
+func (p *processor) queryPaged(
+	tx db.Querier,
+	page, pageSize uint64,
+	table, orderBy, order, whereClause string,
+) (*sql.Rows, error) {
+	rows, err := tx.Query(`
+		SELECT *
+		FROM $1
+		$2
+		ORDER BY $3 $4
+		LIMIT $5 OFFSET $6;
+	`, table, whereClause, orderBy, order, pageSize, (page-1)*pageSize)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound
@@ -256,16 +269,6 @@ func (p *processor) isBlockProcessed(tx db.Querier, blockNum uint64) error {
 		return fmt.Errorf(errBlockNotProcessedFormat, blockNum, lpb)
 	}
 	return nil
-}
-
-func (p *processor) GetBridge(ctx context.Context, depositCount uint64) (Bridge, error) {
-	var bridge Bridge
-	row := p.db.QueryRow("SELECT * FROM bridge where deposit_count = $1;", depositCount)
-	err := row.Scan(&bridge)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Bridge{}, nil
-	}
-	return bridge, err
 }
 
 // GetLastProcessedBlock returns the last processed block by the processor, including blocks

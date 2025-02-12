@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/rpc/types"
@@ -148,39 +149,14 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 	)
 }
 
-func (b *BridgeEndpoints) GetBridge(networkID uint32, depositCount uint64) (interface{}, rpc.Error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
-	defer cancel()
-
-	// TODO - Do we need metrics?
-
-	if networkID == 0 {
-		bridge, err := b.bridgeL1.GetBridge(ctx, depositCount)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
-		}
-		return bridge, nil
-	} else if networkID == b.networkID {
-		bridge, err := b.bridgeL2.GetBridge(ctx, depositCount)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
-		}
-		return bridge, nil
-	}
-	return nil, rpc.NewRPCError(
-		rpc.DefaultErrorCode,
-		fmt.Sprintf("this client does not support network %d", networkID),
-	)
-}
-
-func (b *BridgeEndpoints) GetBridges(networkID uint32, page uint64, pageSize uint64) (interface{}, rpc.Error) {
+func (b *BridgeEndpoints) GetBridges(page, pageSize, depositCount, networkID uint64) (interface{}, rpc.Error) {
 	// Force valid page: must be at least 1
 	if page < 1 {
 		page = 1
 	}
 
-	// pageSize must be in [1..50]; otherwise, default to 20
-	if pageSize < 1 || pageSize > 50 {
+	// pageSize must be in [1..200]; otherwise, default to 20
+	if pageSize < 1 || pageSize > 200 {
 		pageSize = 20
 	}
 
@@ -189,9 +165,27 @@ func (b *BridgeEndpoints) GetBridges(networkID uint32, page uint64, pageSize uin
 
 	// TODO - Do we need metrics?
 
-	bridges, err := b.bridgeL1.GetBridgesPaged(ctx, page, pageSize)
-	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
+	var (
+		bridges []bridgesync.Bridge
+		err     error
+	)
+
+	switch {
+	case networkID == 0:
+		bridges, err = b.bridgeL1.GetBridgesPaged(ctx, page, pageSize, depositCount)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
+		}
+	case networkID == uint64(b.networkID):
+		bridges, err = b.bridgeL2.GetBridgesPaged(ctx, page, pageSize, depositCount)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
+		}
+	default:
+		return zeroHex, rpc.NewRPCError(
+			rpc.DefaultErrorCode,
+			fmt.Sprintf("this client does not support network %d", networkID),
+		)
 	}
 	return bridges, nil
 }

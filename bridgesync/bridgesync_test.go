@@ -143,8 +143,5 @@ func TestGetBridgesPublishedTopLevel(t *testing.T) {
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
 
-func TestGetBridge(t *testing.T) {
-}
-
 func TestGetBridgePaged(t *testing.T) {
 }
