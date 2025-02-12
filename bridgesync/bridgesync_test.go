@@ -276,4 +276,10 @@ func TestGetTokenMappings(t *testing.T) {
 		_, _, err := s.GetTokenMappings(context.Background(), &pageNum, &pageSize)
 		require.ErrorIs(t, err, errInvalidPageSize)
 	})
+
+	t.Run("inconsistent state", func(t *testing.T) {
+		s.processor.halted = true
+		_, _, err := s.GetTokenMappings(context.Background(), nil, nil)
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+	})
 }
