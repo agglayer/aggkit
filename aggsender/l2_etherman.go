@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// L2GERManager is an interface to interact with the GlobalExitRootManager contract
 type L2GERManager interface {
 	BridgeAddress(*bind.CallOpts) (common.Address, error)
 	FilterInsertGlobalExitRoot(opts *bind.FilterOpts, newGlobalExitRoot [][32]byte, newHashChainValue [][32]byte) (
@@ -29,16 +30,19 @@ func NewL2Etherman(l2GERManagerAddr common.Address, l2Client types.EthClient) (*
 	if err != nil {
 		return nil, err
 	}
+	return newL2Etherman(l2GERManager, l2GERManagerAddr)
+}
 
-	if err := checkGlobalExitRootManagerConctract(l2GERManager, l2GERManagerAddr); err != nil {
+func newL2Etherman(l2GERManager L2GERManager, l2GERManagerAddr common.Address) (*L2Etherman, error) {
+	if err := checkGlobalExitRootManagerContract(l2GERManager, l2GERManagerAddr); err != nil {
 		return nil, err
 	}
 
 	return &L2Etherman{l2GERManager: l2GERManager}, nil
 }
 
-// checkGlobalExitRootManagerConctract checks if the GlobalExitRootManager contract is valid on given address
-func checkGlobalExitRootManagerConctract(l2GERManager L2GERManager, contractAddr common.Address) error {
+// checkGlobalExitRootManagerContract checks if the GlobalExitRootManager contract is valid on given address
+func checkGlobalExitRootManagerContract(l2GERManager L2GERManager, contractAddr common.Address) error {
 	bridgeAddr, err := l2GERManager.BridgeAddress(nil)
 	if err != nil {
 		return fmt.Errorf("fail sanity check GlobalExitRootManagerL2(%s) Contract. Err: %w", contractAddr.String(), err)
