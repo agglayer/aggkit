@@ -78,7 +78,7 @@ type TokenMappingsResult struct {
 }
 
 // GetTokenMappings returns the token mappings for the given network
-func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, page, pageSize *uint32) (interface{}, rpc.Error) {
+func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 
@@ -96,7 +96,7 @@ func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, page, pageSize *uin
 
 	switch {
 	case networkID == 0:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, page, pageSize)
+		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize)
 		if err != nil {
 			return nil,
 				rpc.NewRPCError(rpc.DefaultErrorCode,
@@ -104,7 +104,7 @@ func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, page, pageSize *uin
 		}
 
 	case b.networkID == networkID:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, page, pageSize)
+		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
 		if err != nil {
 			return nil,
 				rpc.NewRPCError(rpc.DefaultErrorCode,
