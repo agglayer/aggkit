@@ -230,6 +230,6 @@ MaxEpochPercentageAllowedToSendCertificate=80
 		Interval = "1h"
 [Prometheus]
 Enabled = true
-Host = "127.0.0.1"
+Host = "localhost"
 Port = 9091
 `
