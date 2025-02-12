@@ -119,8 +119,10 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	}
 
 	return &types.AggchainProof{
-		Proof:      resp.AggchainProof,
-		StartBlock: resp.StartBlock,
-		EndBlock:   resp.EndBlock,
+		Proof:           resp.AggchainProof,
+		StartBlock:      resp.StartBlock,
+		EndBlock:        resp.EndBlock,
+		LocalExitRoot:   common.BytesToHash(resp.LocalExitRootHash),
+		CustomChainData: resp.CustomChainData,
 	}, nil
 }

@@ -36,6 +36,10 @@ message GenerateAggchainProofResponse {
   uint64 start_block = 2;
   // The end block of the aggchain proof.
   uint64 end_block = 3;
+  // Local exit root hash.
+  bytes local_exit_root_hash = 4;
+  // Custom chain data.
+  bytes custom_chain_data = 5;
 }
 
 message InclusionProof {

@@ -23,9 +23,11 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 	client := &AggchainProofClient{client: mockClient}
 
 	expectedResponse := &types.GenerateAggchainProofResponse{
-		AggchainProof: []byte("dummy-proof"),
-		StartBlock:    100,
-		EndBlock:      200,
+		AggchainProof:     []byte("dummy-proof"),
+		StartBlock:        100,
+		EndBlock:          200,
+		LocalExitRootHash: []byte{},
+		CustomChainData:   []byte{},
 	}
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return(expectedResponse, nil)
@@ -36,6 +38,8 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 	assert.Equal(t, []byte("dummy-proof"), result.Proof)
 	assert.Equal(t, uint64(100), result.StartBlock)
 	assert.Equal(t, uint64(200), result.EndBlock)
+	assert.Equal(t, common.Hash{}, result.LocalExitRoot)
+	assert.Equal(t, []byte{}, result.CustomChainData)
 	mockClient.AssertExpectations(t)
 }
 
