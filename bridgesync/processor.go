@@ -388,6 +388,31 @@ func (p *processor) GetTotalNumberOfRecords(tableName string) (int, error) {
 
 // GetTokenMappings returns the token mappings in the database
 func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize *uint32) ([]*TokenMapping, int, error) {
+	pageNumber, pageSize, err := p.validatePaginationParams(pageNumber, pageSize)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
+	}
+
+	offset := (*pageNumber - 1) * *pageSize
+	if int(offset) >= totalTokenMappings {
+		return nil, 0, db.ErrNotFound
+	}
+
+	tokenMappings, err := p.fetchTokenMappings(ctx, *pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return tokenMappings, totalTokenMappings, nil
+}
+
+// validatePaginationParams validates the page number and page size
+func (p *processor) validatePaginationParams(pageNumber, pageSize *uint32) (*uint32, *uint32, error) {
 	if pageNumber == nil {
 		pageNumber = new(uint32)
 		*pageNumber = defaultPageNumber
@@ -398,59 +423,49 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize *
 		*pageSize = defaultPageSize
 	}
 
-	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
-	}
-
 	if *pageNumber == 0 {
-		return nil, 0, errInvalidPageNumber
+		return nil, nil, errInvalidPageNumber
 	}
 
 	if *pageSize == 0 {
-		return nil, 0, errInvalidPageSize
+		return nil, nil, errInvalidPageSize
 	}
 
-	offset := (*pageNumber - 1) * *pageSize
-	if int(offset) >= totalTokenMappings {
-		return nil, 0, db.ErrNotFound
-	}
+	return pageNumber, pageSize, nil
+}
 
+// fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
+func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, 0, err
+		return nil, err
 	}
-
-	var rows *sql.Rows
-
 	defer func() {
 		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			log.Warnf("error rolling back tx: %", err)
-		}
-
-		if rows != nil {
-			if err := rows.Close(); err != nil {
-				log.Warnf("error closing rows: %s", err)
-			}
+			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
 
-	// order by block_num DESC to get the latest entries first and paginate the results
 	query := fmt.Sprintf("SELECT * FROM %s ORDER BY block_num DESC LIMIT $1 OFFSET $2;", tokenMappingTableName)
-	rows, err = tx.QueryContext(ctx, query, *pageSize, offset)
+	rows, err := tx.QueryContext(ctx, query, pageSize, offset)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, 0, db.ErrNotFound
+			return nil, db.ErrNotFound
 		}
-		return nil, 0, err
+		return nil, err
 	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Warnf("error closing rows: %v", err)
+		}
+	}()
 
 	tokenMappings := []*TokenMapping{}
 	if err = meddler.ScanAll(rows, &tokenMappings); err != nil {
-		return nil, 0, err
+		return nil, err
 	}
 
-	return tokenMappings, totalTokenMappings, nil
+	return tokenMappings, nil
 }
 
 func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
