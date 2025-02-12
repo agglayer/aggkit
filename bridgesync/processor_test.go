@@ -930,7 +930,7 @@ func TestProcessBlockInvalidIndex(t *testing.T) {
 func TestGetTokenMapping(t *testing.T) {
 	t.Parallel()
 
-	const tokenMappingsCount = 100
+	const tokenMappingsCount = 50
 
 	path := path.Join(t.TempDir(), "tokenMapping.db")
 	err := migrationsBridge.RunMigrations(path)
@@ -963,52 +963,52 @@ func TestGetTokenMapping(t *testing.T) {
 
 	tests := []struct {
 		name        string
-		page        uint32
+		pageNumber  uint32
 		pageSize    uint32
 		expectedLen int
 		expectedErr error
 	}{
 		{
 			name:        "First page",
-			page:        1,
+			pageNumber:  1,
 			pageSize:    10,
 			expectedLen: 10,
 			expectedErr: nil,
 		},
 		{
 			name:        "Second page",
-			page:        2,
+			pageNumber:  2,
 			pageSize:    5,
 			expectedLen: 5,
 			expectedErr: nil,
 		},
 		{
 			name:        "Last page",
-			page:        10,
+			pageNumber:  5,
 			pageSize:    10,
 			expectedLen: 10,
 			expectedErr: nil,
 		},
 		{
 			name:        "Page out of range",
-			page:        11,
+			pageNumber:  6,
 			pageSize:    10,
 			expectedLen: 0,
 			expectedErr: db.ErrNotFound,
 		},
 		{
 			name:        "Invalid page size",
-			page:        1,
+			pageNumber:  1,
 			pageSize:    0,
 			expectedLen: 0,
-			expectedErr: errors.New("page size must be greater than 0"),
+			expectedErr: errInvalidPageSize,
 		},
 		{
 			name:        "Invalid page number",
-			page:        0,
+			pageNumber:  0,
 			pageSize:    10,
 			expectedLen: 0,
-			expectedErr: errors.New("page number must be greater than 0"),
+			expectedErr: errInvalidPageNumber,
 		},
 	}
 
@@ -1017,15 +1017,15 @@ func TestGetTokenMapping(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, totalTokenMappings, err := p.GetTokenMappings(context.Background(), &tt.page, &tt.pageSize)
+			result, totalTokenMappings, err := p.GetTokenMappings(context.Background(), &tt.pageNumber, &tt.pageSize)
 			if tt.expectedErr != nil {
-				require.ErrorContains(t, err, tt.expectedErr.Error())
+				require.ErrorIs(t, err, tt.expectedErr)
 			} else {
 				require.NoError(t, err)
 				require.Len(t, result, tt.expectedLen)
 				require.Equal(t, tokenMappingsCount, totalTokenMappings)
 
-				offset := (tt.page - 1) * tt.pageSize
+				offset := (tt.pageNumber - 1) * tt.pageSize
 				for i, mapping := range result {
 					require.Equal(t, allTokenMappings[offset+uint32(i)], mapping)
 				}
