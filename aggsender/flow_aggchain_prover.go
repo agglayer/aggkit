@@ -23,6 +23,7 @@ type aggchainProverFlow struct {
 
 	l1Client            types.EthClient
 	aggchainProofClient grpc.AggchainProofClientInterface
+	l2Etherman          types.L2Etherman
 }
 
 // newAggchainProverFlow returns a new instance of the aggchainProverFlow
@@ -32,9 +33,16 @@ func newAggchainProverFlow(log types.Logger,
 	storage db.AggSenderStorage,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
-	l1Client types.EthClient) *aggchainProverFlow {
+	l1Client types.EthClient,
+	l2Client types.EthClient) (*aggchainProverFlow, error) {
+	l2Etherman, err := NewL2Etherman(cfg.GlobalExitRootL2Addr, l2Client)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error creating L2Etherman: %w", err)
+	}
+
 	return &aggchainProverFlow{
 		l1Client:            l1Client,
+		l2Etherman:          l2Etherman,
 		aggchainProofClient: aggkitProverClient,
 		baseFlow: &baseFlow{
 			log:              log,
@@ -43,7 +51,7 @@ func newAggchainProverFlow(log types.Logger,
 			storage:          storage,
 			l1InfoTreeSyncer: l1InfoTreeSyncer,
 		},
-	}
+	}, nil
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate
@@ -141,7 +149,32 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 	ctx context.Context,
 	finalizedL1InfoTreeRoot *treeTypes.Root,
 	fromBlock, toBlock uint64) (map[common.Hash]treeTypes.Proof, error) {
-	return make(map[common.Hash]treeTypes.Proof, 0), nil
+	injectedGERs, err := a.l2Etherman.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs for range %d : %d: %w",
+			fromBlock, toBlock, err)
+	}
+
+	proofs := make(map[common.Hash]treeTypes.Proof, len(injectedGERs))
+
+	for _, gerHash := range injectedGERs {
+		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(gerHash)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error getting L1 Info tree leaf by global exit root %s: %w",
+				gerHash.String(), err)
+		}
+
+		proof, err := a.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx,
+			info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error getting L1 Info tree merkle proof from index %d to root %s: %w",
+				info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash.String(), err)
+		}
+
+		proofs[gerHash] = proof
+	}
+
+	return proofs, nil
 }
 
 // getFinalizedL1InfoTreeData returns the L1 Info tree data for the last finalized processed block
