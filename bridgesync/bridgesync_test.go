@@ -181,6 +181,8 @@ func TestGetTokenMappings(t *testing.T) {
 	)
 
 	mockEthClient := mocksbridgesync.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
