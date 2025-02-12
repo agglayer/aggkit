@@ -148,9 +148,10 @@ func TestUint64ToBytes(t *testing.T) {
 
 func TestBytesToUint64(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected uint64
+		name          string
+		input         string
+		expected      uint64
+		panicExpected bool
 	}{
 		{
 			name:     "Zero",
@@ -167,13 +168,26 @@ func TestBytesToUint64(t *testing.T) {
 			input:    "00000000499602d2",
 			expected: 1234567890,
 		},
+		{
+			name:          "Value too long",
+			input:         "499602d2499602d2499602d2",
+			panicExpected: true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			inputBytes, _ := hex.DecodeString(tt.input)
-			result := BytesToUint64(inputBytes)
-			require.Equal(t, tt.expected, result)
+			inputBytes, err := hex.DecodeString(tt.input)
+			require.NoError(t, err)
+
+			if tt.panicExpected {
+				require.Panics(t, func() {
+					_ = BytesToUint64(inputBytes)
+				})
+			} else {
+				result := BytesToUint64(inputBytes)
+				require.Equal(t, tt.expected, result)
+			}
 		})
 	}
 }
