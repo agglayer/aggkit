@@ -82,7 +82,7 @@ func TestAggSenderStart(t *testing.T) {
 		aggLayerMock,
 		nil,
 		bridgeL2SyncerMock,
-		epochNotifierMock, nil)
+		epochNotifierMock, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 	ch := make(chan aggsendertypes.EpochEvent)
@@ -116,7 +116,7 @@ func TestAggSenderSendCertificates(t *testing.T) {
 		AggLayerMock,
 		nil,
 		bridgeL2SyncerMock,
-		epochNotifierMock, nil)
+		epochNotifierMock, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 
@@ -147,6 +147,7 @@ func TestAggSenderSendCertificates(t *testing.T) {
 			nil,
 			bridgeL2SyncerMock,
 			epochNotifierMock,
+			nil,
 			nil)
 		require.NoError(t, err)
 		require.NotNil(t, aggSender)
@@ -898,7 +899,7 @@ func TestLimitEpochPercent_Greater(t *testing.T) {
 }
 
 func TestNewAggSender(t *testing.T) {
-	sut, err := New(context.TODO(), log.WithFields("module", "ut"), Config{}, nil, nil, nil, nil, nil)
+	sut, err := New(context.TODO(), log.WithFields("module", "ut"), Config{}, nil, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
