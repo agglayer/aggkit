@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
 )
 
@@ -40,6 +41,7 @@ type BlockNotifierPolling struct {
 	config        ConfigBlockNotifierPolling
 	mu            sync.Mutex
 	lastStatus    *blockNotifierPollingInternalStatus
+	lastEvent     *types.EventNewBlock
 	types.GenericSubscriber[types.EventNewBlock]
 }
 
@@ -53,7 +55,7 @@ func NewBlockNotifierPolling(ethClient types.EthClient,
 	logger types.Logger,
 	subscriber types.GenericSubscriber[types.EventNewBlock]) (*BlockNotifierPolling, error) {
 	if subscriber == nil {
-		subscriber = NewGenericSubscriberImpl[types.EventNewBlock]()
+		subscriber = common.NewGenericSubscriberImpl[types.EventNewBlock]()
 	}
 	finality, err := config.BlockFinalityType.ToBlockNum()
 	if err != nil {
@@ -70,7 +72,7 @@ func NewBlockNotifierPolling(ethClient types.EthClient,
 }
 
 func (b *BlockNotifierPolling) String() string {
-	status := b.getGlobalStatus()
+	status, _ := b.getGlobalStatus()
 	res := fmt.Sprintf("BlockNotifierPolling: finality=%s", b.config.BlockFinalityType)
 	if status != nil {
 		res += fmt.Sprintf(" lastBlockSeen=%d", status.lastBlockSeen)
@@ -94,7 +96,7 @@ func (b *BlockNotifierPolling) Start(ctx context.Context) {
 		case <-ticker.C:
 			delay, newStatus, event := b.step(ctx, status)
 			status = newStatus
-			b.setGlobalStatus(status)
+			b.setGlobalStatus(status, event)
 			if event != nil {
 				b.Publish(*event)
 			}
@@ -103,28 +105,47 @@ func (b *BlockNotifierPolling) Start(ctx context.Context) {
 	}
 }
 
-func (b *BlockNotifierPolling) GetCurrentBlockNumber() uint64 {
-	status := b.getGlobalStatus()
-	if status == nil {
-		return 0
+func (b *BlockNotifierPolling) GetCurrentBlockNumber() *types.Block {
+	_, event := b.getGlobalStatus()
+	if event == nil {
+		return nil
 	}
-	return status.lastBlockSeen
+	copyBlock := event.Block
+	return &copyBlock
 }
 
-func (b *BlockNotifierPolling) setGlobalStatus(status *blockNotifierPollingInternalStatus) {
+func (b *BlockNotifierPolling) GetBlockRate() (bool, time.Duration) {
+	_, event := b.getGlobalStatus()
+	if event == nil || event.BlockRate == 0 {
+		return false, 0
+	}
+	return true, event.BlockRate
+}
+
+func (b *BlockNotifierPolling) setGlobalStatus(status *blockNotifierPollingInternalStatus,
+	event *types.EventNewBlock) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 	b.lastStatus = status
+	if event != nil {
+		b.lastEvent = event
+	}
 }
 
-func (b *BlockNotifierPolling) getGlobalStatus() *blockNotifierPollingInternalStatus {
+func (b *BlockNotifierPolling) getGlobalStatus() (*blockNotifierPollingInternalStatus, *types.EventNewBlock) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	if b.lastStatus == nil {
-		return nil
+	var retStatus *blockNotifierPollingInternalStatus
+	var retEvent *types.EventNewBlock
+	if b.lastStatus != nil {
+		copyStatus := *b.lastStatus
+		retStatus = &copyStatus
 	}
-	copyStatus := *b.lastStatus
-	return &copyStatus
+	if b.lastEvent != nil {
+		copyEvent := *b.lastEvent
+		retEvent = &copyEvent
+	}
+	return retStatus, retEvent
 }
 
 // step is the main function of the BlockNotifierPolling, it checks if there is a new block
@@ -154,7 +175,12 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 	}
 	// New blockNumber!
 	eventToEmit := &types.EventNewBlock{
-		BlockNumber:       currentBlock.Number.Uint64(),
+		Block: types.Block{
+			Number:     currentBlock.Number.Uint64(),
+			Hash:       currentBlock.Hash(),
+			ParentHash: currentBlock.ParentHash,
+			Timestamp:  time.Unix(int64(currentBlock.Time), 0),
+		},
 		BlockFinalityType: b.config.BlockFinalityType,
 	}
 	if previousState.lastBlockSeen > currentBlock.Number.Uint64() {

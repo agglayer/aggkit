@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
+	aggsenderconfig "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -121,7 +122,7 @@ func start(cliCtx *cli.Context) error {
 
 func createAggSender(
 	ctx context.Context,
-	cfg aggsender.Config,
+	cfg aggsenderconfig.Config,
 	l1EthClient *ethclient.Client,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync) (*aggsender.AggSender, error) {
@@ -135,14 +136,7 @@ func createAggSender(
 		return nil, err
 	}
 
-	notifierCfg, err := aggsender.NewConfigEpochNotifierPerBlock(agglayerClient, cfg.EpochNotificationPercentage)
-	if err != nil {
-		return nil, fmt.Errorf("cant generate config for Epoch Notifier because: %w", err)
-	}
-	epochNotifier, err := aggsender.NewEpochNotifierPerBlock(
-		blockNotifier,
-		logger,
-		*notifierCfg, nil)
+	epochNotifier, err := aggsender.NewEpochNotifier(logger, blockNotifier, agglayerClient, cfg.SubmitCertificateConfig)
 	if err != nil {
 		return nil, err
 	}

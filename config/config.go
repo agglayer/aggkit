@@ -9,7 +9,7 @@ import (
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle"
-	"github.com/agglayer/aggkit/aggsender"
+	aggsenderconfig "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/common"
@@ -85,6 +85,10 @@ var (
 			FieldNamePattern: "L2Config.polygonBridgeAddr",
 			Reason:           bridgeAddrSetOnWrongSection,
 		},
+		{
+			FieldNamePattern: "AggSender.EpochNotificationPercentage",
+			Reason:           "EpochNotificationPercentage is deprecated, use EpochNotificationPercentagePerTime",
+		},
 	}
 )
 
@@ -129,7 +133,7 @@ type Config struct {
 	LastGERSync lastgersync.Config
 
 	// AggSender is the configuration of the agg sender service
-	AggSender aggsender.Config
+	AggSender aggsenderconfig.Config
 }
 
 // Load loads the configuration

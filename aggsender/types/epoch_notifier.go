@@ -26,7 +26,8 @@ type EpochNotifier interface {
 	Subscribe(id string) <-chan EpochEvent
 	// Start starts the notifier synchronously
 	Start(ctx context.Context)
-	// GetEpochStatus returns the current status of the epoch
-	GetEpochStatus() EpochStatus
+	// CheckCanSendCertificate check if the epoch time it's ok to send a certificate
+	CheckCanSendCertificate() error
+	// String returns a string representation of the epoch notifier
 	String() string
 }

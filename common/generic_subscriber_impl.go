@@ -1,4 +1,4 @@
-package aggsender
+package common
 
 import "sync"
 
