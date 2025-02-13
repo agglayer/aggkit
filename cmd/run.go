@@ -78,6 +78,7 @@ func start(cliCtx *cli.Context) error {
 		case aggkitcommon.AGGORACLE:
 			aggOracle := createAggoracle(*cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(cliCtx.Context)
+
 		case aggkitcommon.BRIDGE:
 			rpcBridge := createBridgeRPC(
 				cfg.RPC,
