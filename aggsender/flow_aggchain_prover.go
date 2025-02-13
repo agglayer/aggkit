@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
@@ -120,10 +121,14 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
 	}
 
-	// TODO - get imported bridge exits
+	importedBridgeExits, err := a.getImportedBridgeExitsForProver(buildParams.Claims)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
+	}
+
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
 		buildParams.FromBlock, buildParams.ToBlock, root.Hash, *leaf, proof,
-		injectedGERsProofs, make([]*agglayer.ImportedBridgeExit, 0))
+		injectedGERsProofs, importedBridgeExits)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
@@ -249,6 +254,26 @@ func (a *aggchainProverFlow) getLatestProcessedFinalizedBlock(ctx context.Contex
 		"the latest finalized block: %d. Might be that syncer did not process a reorg yet. "+
 		"Expected hash: %s, got: %s", lastProcessedBlockNum,
 		lastFinalizedL1Block.Hash().String(), lastProcessedBlockHash.String())
+}
+
+// getImportedBridgeExitsForProver converts the claims to imported bridge exits
+// so that the aggchain prover can use them to generate the aggchain proof
+func (a *aggchainProverFlow) getImportedBridgeExitsForProver(
+	claims []bridgesync.Claim) ([]*agglayer.ImportedBridgeExit, error) {
+	importedBridgeExits := make([]*agglayer.ImportedBridgeExit, 0, len(claims))
+	for _, claim := range claims {
+		// we do not need claim data and proofs here, only imported bridge exit data like:
+		// - bridge exit
+		// - token info
+		// - global index
+		ibe, err := a.convertClaimToImportedBridgeExit(claim)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error converting claim to imported bridge exit: %w", err)
+		}
+		importedBridgeExits = append(importedBridgeExits, ibe)
+	}
+
+	return importedBridgeExits, nil
 }
 
 // adjustBlockRange adjusts the block range of the certificate to match the range returned by the aggchain prover
