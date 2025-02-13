@@ -79,18 +79,20 @@ func (_c *BlockNotifier_GetBlockRate_Call) RunAndReturn(run func() (bool, time.D
 }
 
 // GetCurrentBlockNumber provides a mock function with no fields
-func (_m *BlockNotifier) GetCurrentBlockNumber() types.Block {
+func (_m *BlockNotifier) GetCurrentBlockNumber() *types.Block {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetCurrentBlockNumber")
 	}
 
-	var r0 types.Block
-	if rf, ok := ret.Get(0).(func() types.Block); ok {
+	var r0 *types.Block
+	if rf, ok := ret.Get(0).(func() *types.Block); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(types.Block)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.Block)
+		}
 	}
 
 	return r0
@@ -113,12 +115,12 @@ func (_c *BlockNotifier_GetCurrentBlockNumber_Call) Run(run func()) *BlockNotifi
 	return _c
 }
 
-func (_c *BlockNotifier_GetCurrentBlockNumber_Call) Return(_a0 types.Block) *BlockNotifier_GetCurrentBlockNumber_Call {
+func (_c *BlockNotifier_GetCurrentBlockNumber_Call) Return(_a0 *types.Block) *BlockNotifier_GetCurrentBlockNumber_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *BlockNotifier_GetCurrentBlockNumber_Call) RunAndReturn(run func() types.Block) *BlockNotifier_GetCurrentBlockNumber_Call {
+func (_c *BlockNotifier_GetCurrentBlockNumber_Call) RunAndReturn(run func() *types.Block) *BlockNotifier_GetCurrentBlockNumber_Call {
 	_c.Call.Return(run)
 	return _c
 }
