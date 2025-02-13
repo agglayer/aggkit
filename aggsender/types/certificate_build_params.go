@@ -24,6 +24,7 @@ type CertificateBuildParams struct {
 	LastSentCertificate            *CertificateInfo
 	L1InfoTreeRootFromWhichToProve *treeTypes.Root
 	AggchainProof                  []byte
+	CustomChainData                []byte
 }
 
 func (c *CertificateBuildParams) String() string {
@@ -49,6 +50,7 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		LastSentCertificate:            c.LastSentCertificate,
 		AggchainProof:                  c.AggchainProof,
 		L1InfoTreeRootFromWhichToProve: c.L1InfoTreeRootFromWhichToProve,
+		CustomChainData:                c.CustomChainData,
 	}
 
 	for _, bridge := range c.Bridges {
