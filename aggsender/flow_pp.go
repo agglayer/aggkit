@@ -179,6 +179,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		Height:              height,
 		Metadata:            meta.ToHash(),
 		AggchainProof:       certParams.AggchainProof,
+		CustomChainData:     certParams.CustomChainData,
 	}, nil
 }
 

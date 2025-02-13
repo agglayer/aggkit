@@ -133,6 +133,7 @@ type Certificate struct {
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
 	Metadata            common.Hash           `json:"metadata"`
 	AggchainProof       []byte                `json:"aggchain_proof,omitempty"`
+	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 }
 
 // ID returns a string with the ident of this cert (height/certID)

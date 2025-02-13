@@ -139,6 +139,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		buildParams.FromBlock, buildParams.ToBlock)
 
 	buildParams.AggchainProof = aggchainProof.Proof
+	buildParams.CustomChainData = aggchainProof.CustomChainData
 
 	buildParams, err = adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
 	if err != nil {
