@@ -15,10 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetDeposit(t *testing.T) {
-}
-
-func TestGetDeposits(t *testing.T) {
+func TestGetBridges(t *testing.T) {
 }
 
 func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {

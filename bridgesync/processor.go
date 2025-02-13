@@ -189,11 +189,11 @@ func (p *processor) GetClaims(
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, page, pageSize, depositCount uint64,
-) ([]Bridge, error) {
+	ctx context.Context, page, pageSize uint32, depositCount uint64,
+) ([]*Bridge, uint64, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer func() {
 		if err := tx.Rollback(); err != nil {
@@ -208,23 +208,33 @@ func (p *processor) GetBridgesPaged(
 	}
 	rows, err := p.queryPaged(tx, page, pageSize, "bridge", orderBy, order, whereClause)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+	count, err := p.getTotalNumberOfRecords("bridge")
+	if err != nil {
+		return nil, 0, err
 	}
 	bridgePtrs := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	bridgesIface := db.SlicePtrsToSlice(bridgePtrs)
-	bridges, ok := bridgesIface.([]Bridge)
-	if !ok {
-		return nil, errors.New("failed to convert from []*Bridge to []Bridge")
+	return bridgePtrs, count, nil
+}
+
+// getTotalNumberOfRecords returns the total number of records in the given table
+func (p *processor) getTotalNumberOfRecords(tableName string) (uint64, error) {
+	count := 0
+	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s;`, tableName)).Scan(&count)
+	if err != nil {
+		return 0, err
 	}
-	return bridges, nil
+
+	return uint64(count), nil
 }
 
 func (p *processor) queryPaged(
 	tx db.Querier,
-	page, pageSize uint64,
+	page, pageSize uint32,
 	table, orderBy, order, whereClause string,
 ) (*sql.Rows, error) {
 	rows, err := tx.Query(`

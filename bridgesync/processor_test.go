@@ -866,10 +866,5 @@ func TestProcessBlockInvalidIndex(t *testing.T) {
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
 
-func TestGetBridgeProcessor(t *testing.T) {
-
-}
-
 func TestGetBridgesPaged(t *testing.T) {
-
 }

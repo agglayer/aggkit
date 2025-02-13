@@ -149,35 +149,38 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 	)
 }
 
-func (b *BridgeEndpoints) GetBridges(page, pageSize, depositCount, networkID uint64) (interface{}, rpc.Error) {
-	// Force valid page: must be at least 1
-	if page < 1 {
-		page = 1
-	}
+// BridgesResult contains the bridges and the total count of bridges
+type BridgesResult struct {
+	Bridges []*bridgesync.Bridge `json:"bridges"`
+	Count   uint64               `json:"count"`
+}
 
-	// pageSize must be in [1..200]; otherwise, default to 20
-	if pageSize < 1 || pageSize > 200 {
-		pageSize = 20
-	}
+func (b *BridgeEndpoints) GetBridges(page, pageSize, networkID uint32, depositCount uint64) (interface{}, rpc.Error) {
+	page, pageSize = ValidatePaginationParams(page, pageSize)
 
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 
-	// TODO - Do we need metrics?
+	c, merr := b.meter.Int64Counter("getBridges")
+	if merr != nil {
+		b.logger.Warnf("failed to create get_token_mappings counter: %s", merr)
+	}
+	c.Add(ctx, 1)
 
 	var (
-		bridges []bridgesync.Bridge
+		bridges []*bridgesync.Bridge
 		err     error
+		count   uint64
 	)
 
 	switch {
 	case networkID == 0:
-		bridges, err = b.bridgeL1.GetBridgesPaged(ctx, page, pageSize, depositCount)
+		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, page, pageSize, depositCount)
 		if err != nil {
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
 		}
-	case networkID == uint64(b.networkID):
-		bridges, err = b.bridgeL2.GetBridgesPaged(ctx, page, pageSize, depositCount)
+	case networkID == b.networkID:
+		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, page, pageSize, depositCount)
 		if err != nil {
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
 		}
@@ -187,7 +190,10 @@ func (b *BridgeEndpoints) GetBridges(page, pageSize, depositCount, networkID uin
 			fmt.Sprintf("this client does not support network %d", networkID),
 		)
 	}
-	return bridges, nil
+	return BridgesResult{
+		Bridges: bridges,
+		Count:   count,
+	}, nil
 }
 
 // GetProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
