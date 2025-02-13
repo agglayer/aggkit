@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/agglayer"
+	aggsenderconfig "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
@@ -39,13 +40,17 @@ var (
 )
 
 func TestConfigString(t *testing.T) {
-	config := Config{
-		StoragePath:                 "/path/to/storage",
-		AggLayerURL:                 "http://agglayer.url",
-		AggsenderPrivateKey:         types.KeystoreFileConfig{Path: "/path/to/key", Password: "password"},
-		URLRPCL2:                    "http://l2.rpc.url",
-		BlockFinality:               "latestBlock",
-		EpochNotificationPercentage: 50,
+	config := aggsenderconfig.Config{
+		StoragePath:         "/path/to/storage",
+		AggLayerURL:         "http://agglayer.url",
+		AggsenderPrivateKey: types.KeystoreFileConfig{Path: "/path/to/key", Password: "password"},
+		URLRPCL2:            "http://l2.rpc.url",
+		BlockFinality:       "latestBlock",
+		SubmitCertificateConfig: aggsenderconfig.SubmitCertificateConfig{
+			L1BlockCreationRate:           time.Second,
+			SubmitIfRemainsForNextEpoch:   time.Second,
+			NoSubmitIfRemainsForNextEpoch: time.Second,
+		},
 		SaveCertificatesToFilesPath: "/path/to/certificates",
 	}
 
@@ -287,7 +292,7 @@ func TestAggSenderStart(t *testing.T) {
 	aggSender, err := New(
 		ctx,
 		log.WithFields("test", "unittest"),
-		Config{
+		aggsenderconfig.Config{
 			StoragePath:          path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
 			DelayBeetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
 		},
@@ -317,7 +322,7 @@ func TestAggSenderSendCertificates(t *testing.T) {
 	bridgeL2SyncerMock := mocks.NewL2BridgeSyncer(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	config := Config{
+	config := aggsenderconfig.Config{
 		MaxSubmitCertificateRate: aggkitcommon.RateLimitConfig{NumRequests: 1, Interval: types.Duration{Duration: 1 * time.Second}},
 		StoragePath:              path.Join(t.TempDir(), "aggsenderTestAggSenderSendCertificates.sqlite"),
 	}
@@ -964,7 +969,7 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 				log:            mockLogger,
 				storage:        mockStorage,
 				aggLayerClient: mockAggLayerClient,
-				cfg:            Config{},
+				cfg:            aggsenderconfig.Config{},
 			}
 
 			ctx := context.TODO()
@@ -1005,7 +1010,7 @@ func TestSendCertificate(t *testing.T) {
 		var (
 			aggsender = &AggSender{
 				log:          log.WithFields("aggsender", 1),
-				cfg:          Config{MaxRetriesStoreCertificate: 1},
+				cfg:          aggsenderconfig.Config{MaxRetriesStoreCertificate: 1},
 				sequencerKey: cfg.sequencerKey,
 				rateLimiter:  aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 			}
@@ -1705,7 +1710,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		aggLayerClient:   mockAggLayerClient,
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
 		sequencerKey:     privateKey,
-		cfg:              Config{},
+		cfg:              aggsenderconfig.Config{},
 		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
@@ -2092,11 +2097,9 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 	}
 }
 
-func TestLimitEpochPercent_Greater(t *testing.T) {
+func TestLimitEpoch_Greater(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage)
 	testData.sut.cfg.MaxCertSize = (aggsendertypes.EstimatedSizeBridgeExit * 3) + 1
-	testData.sut.cfg.MaxEpochPercentageAllowedToSendCertificate = 80
-
 	ctx := context.TODO()
 	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil).Once()
 	testData.l2syncerMock.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(100), nil).Once()
@@ -2109,17 +2112,16 @@ func TestLimitEpochPercent_Greater(t *testing.T) {
 	testData.l2syncerMock.EXPECT().GetClaims(ctx, uint64(21), uint64(100)).Return(nil, nil).Once()
 	testData.l2syncerMock.EXPECT().GetExitRootByIndex(ctx, mock.Anything).Return(treeTypes.Root{}, nil).Once()
 	testData.l2syncerMock.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-	testData.epochNotifierMock.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{
-		Epoch:        1,
-		PercentEpoch: 90,
-	}).Once()
+	checkSendErr := fmt.Errorf("error-can-send-certificate")
+	testData.epochNotifierMock.EXPECT().CheckCanSendCertificate().Return(checkSendErr).Once()
+
 	_, err := testData.sut.sendCertificate(ctx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "epoch percentage")
+	require.Contains(t, err.Error(), checkSendErr.Error())
 }
 
 func TestNewAggSender(t *testing.T) {
-	sut, err := New(context.TODO(), log.WithFields("module", "ut"), Config{}, nil, nil, nil, nil)
+	sut, err := New(context.TODO(), log.WithFields("module", "ut"), aggsenderconfig.Config{}, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
@@ -2226,7 +2228,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		aggLayerClient:   agglayerClientMock,
 		storage:          storage,
 		l1infoTreeSyncer: l1InfoTreeSyncerMock,
-		cfg: Config{
+		cfg: aggsenderconfig.Config{
 			MaxCertSize: 1024 * 1024,
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),

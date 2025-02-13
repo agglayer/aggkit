@@ -4,10 +4,18 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/etherman"
+	"github.com/ethereum/go-ethereum/common"
 )
 
+type Block struct {
+	Number     uint64
+	Hash       common.Hash
+	ParentHash common.Hash
+	Timestamp  time.Time
+}
+
 type EventNewBlock struct {
-	BlockNumber       uint64
+	Block             Block
 	BlockFinalityType etherman.BlockNumberFinality
 	BlockRate         time.Duration
 }
@@ -16,6 +24,7 @@ type EventNewBlock struct {
 type BlockNotifier interface {
 	// NotifyEpochStarted notifies the epoch has started.
 	Subscribe(id string) <-chan EventNewBlock
-	GetCurrentBlockNumber() uint64
+	GetCurrentBlockNumber() *Block
+	GetBlockRate() (bool, time.Duration)
 	String() string
 }

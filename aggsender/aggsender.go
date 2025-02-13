@@ -12,7 +12,9 @@ import (
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	zkevm "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
+	aggsenderconfig "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
+	epochnotifier "github.com/agglayer/aggkit/aggsender/epoch_notifier"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -49,7 +51,7 @@ type AggSender struct {
 	storage        db.AggSenderStorage
 	aggLayerClient agglayer.AgglayerClientInterface
 
-	cfg Config
+	cfg aggsenderconfig.Config
 
 	sequencerKey *ecdsa.PrivateKey
 
@@ -57,11 +59,27 @@ type AggSender struct {
 	rateLimiter RateLimiter
 }
 
+func NewEpochNotifier(logger types.Logger,
+	blockNotifier types.BlockNotifier,
+	agglayerClient agglayer.AggLayerClientGetEpochConfiguration,
+	cfg aggsenderconfig.SubmitCertificateConfig) (types.EpochNotifier, error) {
+	epochConfig, err := epochnotifier.NewEpochConfigromAgglayer(agglayerClient)
+	if err != nil {
+		return nil, fmt.Errorf("error creating epoch config: %w", err)
+	}
+	trigger := epochnotifier.NewTriggerPerTime(cfg, logger)
+	res, err := epochnotifier.NewEpochNotifierBase(blockNotifier, logger, *epochConfig, trigger, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating epoch notifier: %w", err)
+	}
+	return res, nil
+}
+
 // New returns a new AggSender instance
 func New(
 	ctx context.Context,
 	logger *log.Logger,
-	cfg Config,
+	cfg aggsenderconfig.Config,
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 	l2Syncer types.L2BridgeSyncer,
@@ -297,8 +315,9 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 			rateLimitSleepTime.String(), a.rateLimiter.String())
 		time.Sleep(*rateLimitSleepTime)
 	}
-	if !a.isAllowedSendCertificateEpochPercent() {
-		return nil, fmt.Errorf("forbidden to send certificate due epoch percentage")
+	err = a.epochNotifier.CheckCanSendCertificate()
+	if err != nil {
+		return nil, fmt.Errorf("an't to send certificate due epoch. Err: %w", err)
 	}
 
 	a.saveCertificateToFile(signedCertificate)
@@ -343,18 +362,6 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		certInfo.ID(), fromBlock, toBlock, signedCertificate.Brief())
 
 	return signedCertificate, nil
-}
-func (a *AggSender) isAllowedSendCertificateEpochPercent() bool {
-	if a.cfg.MaxEpochPercentageAllowedToSendCertificate == 0 ||
-		a.cfg.MaxEpochPercentageAllowedToSendCertificate >= maxPercent {
-		return true
-	}
-	status := a.epochNotifier.GetEpochStatus()
-	if status.PercentEpoch >= float64(a.cfg.MaxEpochPercentageAllowedToSendCertificate)/100.0 {
-		a.log.Warnf("forbidden to send certificate after epoch percentage: %f", status.PercentEpoch)
-		return false
-	}
-	return true
 }
 
 // saveCertificateToStorage saves the certificate to the storage

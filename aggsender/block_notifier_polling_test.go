@@ -19,7 +19,7 @@ import (
 )
 
 func TestExploratoryBlockNotifierPolling(t *testing.T) {
-	t.Skip()
+	//t.Skip()
 	urlRPCL1 := os.Getenv("L1URL")
 	fmt.Println("URL=", urlRPCL1)
 	ethClient, err := ethclient.Dial(urlRPCL1)
@@ -27,7 +27,7 @@ func TestExploratoryBlockNotifierPolling(t *testing.T) {
 
 	sut, errSut := NewBlockNotifierPolling(ethClient,
 		ConfigBlockNotifierPolling{
-			BlockFinalityType: etherman.LatestBlock,
+			BlockFinalityType: etherman.SafeBlock,
 		}, log.WithFields("test", "test"), nil)
 	require.NoError(t, errSut)
 	go sut.Start(context.Background())
@@ -92,7 +92,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 			},
 			expectedDelay: period0_80percent,
 			expectedEvent: &aggsendertypes.EventNewBlock{
-				BlockNumber: 101,
+				Block: aggsendertypes.Block{Number: 101},
 			},
 		},
 	}
@@ -119,7 +119,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 			if tt.expectedEvent == nil {
 				require.Nil(t, event, "send_event")
 			} else {
-				require.Equal(t, tt.expectedEvent.BlockNumber, event.BlockNumber, "send_event")
+				require.Equal(t, tt.expectedEvent.Block.Number, event.Block.Number, "send_event")
 			}
 		})
 	}
@@ -179,7 +179,7 @@ func TestBlockNotifierPollingStart(t *testing.T) {
 	go testData.sut.Start(ctx)
 	block := <-ch
 	require.NotNil(t, block)
-	require.Equal(t, uint64(101), block.BlockNumber)
+	require.Equal(t, uint64(101), block.Block.Number)
 }
 
 func TestBlockGetCurrentBlockNumber(t *testing.T) {
