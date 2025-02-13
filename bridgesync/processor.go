@@ -125,6 +125,7 @@ func newProcessor(dbPath string, logger *log.Logger) (*processor, error) {
 		log:      logger,
 	}, nil
 }
+
 func (p *processor) GetBridgesPublished(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
@@ -185,6 +186,72 @@ func (p *processor) GetClaims(
 		return nil, errors.New("failed to convert from []*Claim to []Claim")
 	}
 	return claims, nil
+}
+
+func (p *processor) GetBridgesPaged(
+	ctx context.Context, page, pageSize uint32, depositCount uint64,
+) ([]*Bridge, uint64, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			log.Warnf("error rolling back tx: %v", err)
+		}
+	}()
+	orderBy := "deposit_count"
+	order := "DESC"
+	whereClause := ""
+	count, err := p.getTotalNumberOfRecords("bridge")
+	if err != nil {
+		return nil, 0, err
+	}
+	if depositCount > 0 {
+		whereClause = fmt.Sprintf("WHERE deposit_count = %d", depositCount)
+		count = 1
+	}
+	rows, err := p.queryPaged(tx, page, pageSize, "bridge", orderBy, order, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+	bridgePtrs := []*Bridge{}
+	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
+		return nil, 0, err
+	}
+	return bridgePtrs, count, nil
+}
+
+// getTotalNumberOfRecords returns the total number of records in the given table
+func (p *processor) getTotalNumberOfRecords(tableName string) (uint64, error) {
+	count := 0
+	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s;`, tableName)).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(count), nil
+}
+
+func (p *processor) queryPaged(
+	tx db.Querier,
+	page, pageSize uint32,
+	table, orderBy, order, whereClause string,
+) (*sql.Rows, error) {
+	rows, err := tx.Query(`
+		SELECT *
+		FROM $1
+		$2
+		ORDER BY $3 $4
+		LIMIT $5 OFFSET $6;
+	`, table, whereClause, orderBy, order, pageSize, (page-1)*pageSize)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, err
+	}
+	return rows, nil
 }
 
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
