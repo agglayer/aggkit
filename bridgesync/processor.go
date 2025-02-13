@@ -203,14 +203,15 @@ func (p *processor) GetBridgesPaged(
 	orderBy := "deposit_count"
 	order := "DESC"
 	whereClause := ""
-	if depositCount > 0 {
-		whereClause = fmt.Sprintf("WHERE deposit_count = %d", depositCount)
-	}
-	rows, err := p.queryPaged(tx, page, pageSize, "bridge", orderBy, order, whereClause)
+	count, err := p.getTotalNumberOfRecords("bridge")
 	if err != nil {
 		return nil, 0, err
 	}
-	count, err := p.getTotalNumberOfRecords("bridge")
+	if depositCount > 0 {
+		whereClause = fmt.Sprintf("WHERE deposit_count = %d", depositCount)
+		count = 1
+	}
+	rows, err := p.queryPaged(tx, page, pageSize, "bridge", orderBy, order, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}

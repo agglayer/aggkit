@@ -144,4 +144,7 @@ func TestGetBridgesPublishedTopLevel(t *testing.T) {
 }
 
 func TestGetBridgePaged(t *testing.T) {
+	s := BridgeSync{processor: &processor{halted: true}}
+	_, _, err := s.GetBridgesPaged(context.Background(), 0, 0, 0)
+	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
