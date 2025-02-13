@@ -57,6 +57,7 @@ func NewBridgeEndpoints(
 	bridgeL2 Bridger,
 ) *BridgeEndpoints {
 	meter := otel.Meter(meterName)
+	logger.Infof("starting bridge service (L2 network id=%d)", networkID)
 	return &BridgeEndpoints{
 		logger:       logger,
 		meter:        meter,
@@ -79,6 +80,8 @@ type TokenMappingsResult struct {
 
 // GetTokenMappings returns the token mappings for the given network
 func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
+	b.logger.Debugf("GetTokenMappings invoked (network id=%d, page number=%v, page size=%v)",
+		networkID, pageNumber, pageSize)
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 
