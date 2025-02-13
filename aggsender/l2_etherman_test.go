@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/test/helpers"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -59,7 +61,33 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 		}, mock.Anything, mock.Anything).Return(nil, errors.New("failed to create iterator"))
 
 		l2Etherman := &L2Etherman{l2GERManager: mockL2GERManager}
+
 		_, err := l2Etherman.GetInjectedGERsForRange(ctx, 1, toBlock)
 		require.ErrorContains(t, err, "failed to create iterator")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		t.Parallel()
+
+		setup := helpers.L2Setup(t)
+		setup.EthTxManagerMock.ExpectedCalls = nil
+
+		l2Etherman, err := NewL2Etherman(setup.GERAddr, setup.SimBackend.Client())
+		require.NoError(t, err)
+
+		tx, err := setup.GERContract.InsertGlobalExitRoot(setup.Auth, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"))
+		require.NoError(t, err)
+
+		// commit one block
+		setup.SimBackend.Commit()
+
+		receipt, err := setup.SimBackend.Client().TransactionReceipt(ctx, tx.Hash())
+		require.NoError(t, err)
+		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
+
+		injectedGERs, err := l2Etherman.GetInjectedGERsForRange(ctx, 1, 10)
+		require.NoError(t, err)
+		require.Len(t, injectedGERs, 1)
+		assert.Equal(t, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"), injectedGERs[0])
 	})
 }
