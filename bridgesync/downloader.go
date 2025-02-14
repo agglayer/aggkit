@@ -28,6 +28,7 @@ var (
 	))
 	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
 	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
+	tokenMappingEventSignature  = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
 	methodIDClaimAsset          = common.Hex2Bytes("ccaa2d11")
 	methodIDClaimMessage        = common.Hex2Bytes("f5efcd79")
 )
@@ -46,10 +47,12 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 	if err != nil {
 		return nil, err
 	}
+
 	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridge, client)
 	if err != nil {
 		return nil, err
 	}
+
 	appender := make(sync.LogAppenderMap)
 
 	appender[bridgeEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
@@ -125,6 +128,28 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 			}
 		}
 		b.Events = append(b.Events, Event{Claim: claim})
+		return nil
+	}
+
+	appender[tokenMappingEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
+		tokenMapping, err := bridgeContractV2.ParseNewWrappedToken(l)
+		if err != nil {
+			return fmt.Errorf(
+				"error parsing log %+v using d.bridgeContractV2.ParseNewWrappedToken: %w",
+				l, err,
+			)
+		}
+
+		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
+			BlockNum:            b.Num,
+			BlockPos:            uint64(l.Index),
+			BlockTimestamp:      b.Timestamp,
+			TxHash:              l.TxHash,
+			OriginNetwork:       tokenMapping.OriginNetwork,
+			OriginTokenAddress:  tokenMapping.OriginTokenAddress,
+			WrappedTokenAddress: tokenMapping.WrappedTokenAddress,
+			Metadata:            tokenMapping.Metadata,
+		}})
 		return nil
 	}
 
