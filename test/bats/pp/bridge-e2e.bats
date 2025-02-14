@@ -72,9 +72,10 @@ setup() {
     assert_success
 }
 
-@test "Custom gas token deposit" {
+@test "Custom gas token bridge" {
     echo "Gas token addr $gas_token_addr, L1 RPC: $l1_rpc_url" >&3
 
+    # SETUP
     # Set receiver address and query for its initial native token balance on the L2
     receiver=${RECEIVER:-"0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6"}
     local initial_receiver_balance=$(cast balance "$receiver" --rpc-url "$l2_rpc_url")
@@ -115,7 +116,7 @@ setup() {
     assert_success
     assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
 
-    # Deposit
+    # DEPOSIT
     destination_addr=$receiver
     destination_net=$l2_rpc_network_id
     amount=$wei_amount
@@ -131,5 +132,28 @@ setup() {
 
     # Validate that the native token of receiver on L2 has increased by the bridge tokens amount
     run verify_balance "$l2_rpc_url" "$native_token_addr" "$receiver" "$initial_receiver_balance" "$tokens_amount"
+    assert_success
+
+    # WITHDRAWAL
+    initial_receiver_balance=$(cast call --rpc-url "$l1_rpc_url" "$gas_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
+    assert_success
+    echo "Receiver balance of gas token on L1 $initial_receiver_balance" >&3
+
+    destination_net=$l1_rpc_network_id
+    run bridge_asset "$native_token_addr" "$l2_rpc_url"
+    assert_success
+
+    # Claim withdrawals (settle them on the L1)
+    timeout="360"
+    claim_frequency="10"
+    destination_net=$l1_rpc_network_id
+    run wait_for_claim "$timeout" "$claim_frequency" "$l1_rpc_url" "bridgeAsset"
+    assert_success
+
+    # Validate that the token of receiver on L1 has increased by the bridge tokens amount
+    run verify_balance "$l1_rpc_url" "$gas_token_addr" "$destination_addr" "$initial_receiver_balance" "$ether_value"
+    if [ $status -eq 0 ]; then
+        break
+    fi
     assert_success
 }
