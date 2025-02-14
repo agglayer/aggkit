@@ -54,6 +54,7 @@ function bridge_asset() {
         local tmp_response_file=$(mktemp)
         if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
             echo "cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes"
+
             cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes >$tmp_response_file
         else
             echo "cast send --legacy --private-key $sender_private_key --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes"
@@ -68,6 +69,7 @@ function bridge_asset() {
 function claim() {
     local destination_rpc_url="$1"
     local bridge_type="$2"
+    echo "Claiming deposits on network: $destination_net ($bridge_type)" >&3
     local claim_sig="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
     if [[ $bridge_type == "bridgeMessage" ]]; then
         claim_sig="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
@@ -123,7 +125,7 @@ function claim() {
                 exit 1
             fi
 
-            echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata" >&3
+            echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
             cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr "$claim_sig" "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
         fi
 
@@ -316,6 +318,7 @@ function wait_for_claim() {
     local claim_frequency="$2"     # claim frequency (in seconds)
     local destination_rpc_url="$3" # destination rpc url
     local bridge_type="$4"         # bridgeAsset or bridgeMessage
+
     local start_time=$(date +%s)
     local end_time=$((start_time + timeout))
 
