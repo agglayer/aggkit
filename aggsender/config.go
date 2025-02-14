@@ -5,6 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
 // Config is the configuration for the AggSender
@@ -60,6 +61,9 @@ type Config struct {
 	MaxEpochPercentageAllowedToSendCertificate uint `mapstructure:"MaxEpochPercentageAllowedToSendCertificate"`
 	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
 	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
+	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
+	// this address is needed for the AggchainProof mode of the AggSender
+	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

@@ -228,5 +228,6 @@ MaxEpochPercentageAllowedToSendCertificate=80
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
+GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 
 `
