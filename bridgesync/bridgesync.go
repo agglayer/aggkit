@@ -215,6 +215,16 @@ func newBridgeSync(
 	}, nil
 }
 
+func (s *BridgeSync) GetClaimsPaged(
+	ctx context.Context,
+	page, pageSize uint32,
+) ([]*Claim, int, error) {
+	if s.processor.isHalted() {
+		return nil, 0, sync.ErrInconsistentState
+	}
+	return s.processor.GetClaimsPaged(ctx, page, pageSize)
+}
+
 // Start starts the synchronization process
 func (s *BridgeSync) Start(ctx context.Context) {
 	s.driver.Sync(ctx)

@@ -1157,3 +1157,7 @@ func TestGetTokenMapping(t *testing.T) {
 		})
 	}
 }
+
+func TestGetClaimsPaged(t *testing.T) {
+	fmt.Println("TestGetClaimsPaged")
+}
