@@ -22,7 +22,7 @@ var (
 		Name:     config.FlagCfg,
 		Aliases:  []string{"c"},
 		Usage:    "Configuration file(s)",
-		Required: true,
+		Required: false,
 	}
 	componentsFlag = cli.StringSliceFlag{
 		Name:     config.FlagComponents,
