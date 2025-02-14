@@ -865,3 +865,6 @@ func TestProcessBlockInvalidIndex(t *testing.T) {
 	err = p.ProcessBlock(context.Background(), sync.Block{})
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
+
+func TestGetClaimsPaged(t *testing.T) {
+}
