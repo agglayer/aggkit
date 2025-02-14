@@ -54,7 +54,7 @@ setup() {
     echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
 
     echo "=== Running LxLy deposit on L1 to network: $l2_rpc_network_id native_token: $native_token_addr" >&3
-    
+
     destination_net=$l2_rpc_network_id
     run bridge_asset "$native_token_addr" "$l1_rpc_url"
     assert_success
@@ -72,8 +72,8 @@ setup() {
     assert_success
 }
 
-@test "Custom gas token bridge" {
-    echo "Gas token addr $gas_token_addr, L1 RPC: $l1_rpc_url" >&3
+@test "Custom gas token deposit" {
+    echo "Custom gas token deposit (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" >&3
 
     # SETUP
     # Set receiver address and query for its initial native token balance on the L2
@@ -133,9 +133,12 @@ setup() {
     # Validate that the native token of receiver on L2 has increased by the bridge tokens amount
     run verify_balance "$l2_rpc_url" "$native_token_addr" "$receiver" "$initial_receiver_balance" "$tokens_amount"
     assert_success
+}
 
-    # WITHDRAWAL
-    initial_receiver_balance=$(cast call --rpc-url "$l1_rpc_url" "$gas_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
+@test "Custom gas token withdrawal" {
+    echo "Custom gas token withdrawal (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" >&3
+
+    local initial_receiver_balance=$(cast call --rpc-url "$l1_rpc_url" "$gas_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
     assert_success
     echo "Receiver balance of gas token on L1 $initial_receiver_balance" >&3
 
@@ -157,3 +160,4 @@ setup() {
     fi
     assert_success
 }
+
