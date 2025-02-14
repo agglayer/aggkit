@@ -168,7 +168,10 @@ setup() {
     local erc20_bytecode=$(cat "$erc20_artifact_path" | jq -r '.bytecode')
     local erc20_deploy_output=$(cast send --rpc-url "$l1_rpc_url" --private-key "$sender_private_key" --legacy --create "$erc20_bytecode")
     assert_success
-    local l1_erc20_addr=$(echo "$erc20_deploy_output" | grep 'contractAddress' | awk '{print $2}')
+    local l1_erc20_addr=$(echo "$erc20_deploy_output" |
+        grep 'contractAddress' |
+        awk '{print $2}' |
+        tr '[:upper:]' '[:lower:]')
     echo "ERC20 contract address: $l1_erc20_addr" >&3
 
     # Mint gas token on L1
@@ -186,8 +189,7 @@ setup() {
     echo "Sender balance ($sender_addr) (ERC20 token L1): $l1_erc20_token_sender_balance [weis]" >&3
 
     # Send approve transaction to the gas token on L1
-    deposit_ether_value="0.1ether"
-    run send_tx "$l1_rpc_url" "$sender_private_key" "$l1_erc20_addr" "$approve_fn_sig" "$bridge_addr" "$deposit_ether_value"
+    run send_tx "$l1_rpc_url" "$sender_private_key" "$l1_erc20_addr" "$approve_fn_sig" "$bridge_addr" "$tokens_amount"
     assert_success
     assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
 
@@ -195,7 +197,7 @@ setup() {
     local receiver=${RECEIVER:-"0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6"}
     destination_addr=$receiver
     destination_net=$l2_rpc_network_id
-    amount=$wei_amount
+    amount=$(cast --to-unit $tokens_amount wei)
     meta_bytes="0x"
     run bridge_asset "$l1_erc20_addr" "$l1_rpc_url"
     assert_success
@@ -205,4 +207,20 @@ setup() {
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success
+
+    local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
+
+    run wait_for_expected_token "$l1_erc20_addr" 10 2
+    assert_success
+    local token_mappings_result=$output
+
+    local origin_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].OriginTokenAddress')
+    assert_equal "$l1_erc20_addr" "$origin_token_addr"
+
+    local l2_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].WrappedTokenAddress')
+    echo "L2 token addr $l2_token_addr" >&3
+
+    # TODO: @Stefan-Ethernal adjust
+    # run verify_balance "$l2_rpc_url" "$l2_token_addr" "$receiver" "$initial_receiver_balance" "$tokens_amount"
+    # assert_success
 }

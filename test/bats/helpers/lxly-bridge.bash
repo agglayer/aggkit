@@ -337,3 +337,41 @@ function wait_for_claim() {
         sleep "$claim_frequency"
     done
 }
+
+function wait_for_expected_token() {
+    local expected_origin_token="$1"
+    local max_attempts="$2"
+    local poll_frequency="$3"
+
+    local attempt=0
+    local token_mappings_result
+    local origin_token_address
+
+    while true; do
+        ((attempt++))
+
+        # Fetch token mappings from the RPC
+        token_mappings_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getTokenMappings" "$l2_rpc_network_id")
+
+        # Extract the first OriginTokenAddress (if available)
+        origin_token_address=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].OriginTokenAddress')
+
+        echo "Attempt $attempt: found OriginTokenAddress = $origin_token_address (Expected: $expected_origin_token)" >&3
+
+        # Break loop if the expected token is found
+        if [[ "$origin_token_address" == "$expected_origin_token" ]]; then
+            echo "Success: Expected OriginTokenAddress '$expected_origin_token' found. Exiting loop." >&3
+            echo "$token_mappings_result"
+            return 0
+        fi
+
+        # Fail test if max attempts are reached
+        if [[ "$attempt" -ge "$max_attempts" ]]; then
+            echo "Error: Reached max attempts ($max_attempts) without finding expected OriginTokenAddress." >&2
+            return 1
+        fi
+
+        # Sleep before the next attempt
+        sleep "$poll_frequency"
+    done
+}
