@@ -187,6 +187,71 @@ func (p *processor) GetClaims(
 	return claims, nil
 }
 
+func (p *processor) GetClaimsPaged(
+	ctx context.Context, page, pageSize uint32,
+) ([]*Claim, uint64, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			log.Warnf("error rolling back tx: %v", err)
+		}
+	}()
+	orderBy := "global_index"
+	order := "DESC"
+	whereClause := ""
+	count, err := p.getTotalNumberOfRecords("claim")
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows, err := p.queryPaged(tx, page, pageSize, "claim", orderBy, order, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+	claimPtrs := []*Claim{}
+	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
+		return nil, 0, err
+	}
+	return claimPtrs, count, nil
+}
+
+// getTotalNumberOfRecords returns the total number of records in the given table
+func (p *processor) getTotalNumberOfRecords(tableName string) (uint64, error) {
+	count := 0
+	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s;`, tableName)).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(count), nil
+}
+
+func (p *processor) queryPaged(
+	tx db.Querier,
+	page, pageSize uint32,
+	table, orderBy, order, whereClause string,
+) (*sql.Rows, error) {
+	query := fmt.Sprintf(`
+		SELECT * 
+		FROM %s 
+		%s 
+		ORDER BY %s + 0 %s 
+		LIMIT %d OFFSET %d;
+	`, table, whereClause, orderBy, order, pageSize, (page-1)*pageSize)
+
+	rows, err := tx.Query(query)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
 	if err := p.isBlockProcessed(tx, toBlock); err != nil {
 		return nil, err

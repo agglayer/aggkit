@@ -15,6 +15,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestGetClaims(t *testing.T) {
+}
+
 func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 	type testCase struct {
 		description   string

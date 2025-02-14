@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/rpc/types"
@@ -146,6 +147,53 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 		rpc.DefaultErrorCode,
 		fmt.Sprintf("this client does not support network %d", networkID),
 	)
+}
+
+// BridgesResult contains the bridges and the total count of bridges
+type ClaimsResult struct {
+	Claims []*bridgesync.Claim `json:"claims"`
+	Count  uint64              `json:"count"`
+}
+
+func (b *BridgeEndpoints) GetClaims(page, pageSize, networkID uint32) (interface{}, rpc.Error) {
+	page, pageSize = ValidatePaginationParams(page, pageSize)
+
+	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	defer cancel()
+
+	c, merr := b.meter.Int64Counter("getClaims")
+	if merr != nil {
+		b.logger.Warnf("failed to create get_token_mappings counter: %s", merr)
+	}
+	c.Add(ctx, 1)
+
+	var (
+		claims []*bridgesync.Claim
+		err    error
+		count  uint64
+	)
+
+	switch {
+	case networkID == 0:
+		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, page, pageSize)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claims, error: %s", err))
+		}
+	case networkID == b.networkID:
+		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, page, pageSize)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claims, error: %s", err))
+		}
+	default:
+		return zeroHex, rpc.NewRPCError(
+			rpc.DefaultErrorCode,
+			fmt.Sprintf("this client does not support network %d", networkID),
+		)
+	}
+	return ClaimsResult{
+		Claims: claims,
+		Count:  count,
+	}, nil
 }
 
 // GetProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
