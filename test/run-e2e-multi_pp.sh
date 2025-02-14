@@ -32,7 +32,7 @@ function build_docker_if_required(){
 function resolve_template(){
     local _TEMPLATE_FILE="$1"
     local _RESULT_VARNAME="$2"
-    local _TEMP_FILE=$(mktemp --suffix ".yml")
+    local _TEMP_FILE=$(mktemp)".yml"
     echo "rendering $_TEMPLATE_FILE to temp file $_TEMP_FILE"
     go run ../scripts/run_template.go $_TEMPLATE_FILE > $_TEMP_FILE
     ok_or_fatal "Failed to render template $_TEMPLATE_FILE"

@@ -228,5 +228,8 @@ MaxEpochPercentageAllowedToSendCertificate=80
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
-
+[Prometheus]
+Enabled = true
+Host = "localhost"
+Port = 9091
 `
