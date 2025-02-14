@@ -46,6 +46,8 @@ setup() {
     readonly l2_rpc_network_id=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'networkID() (uint32)')
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
     readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken()' | cast parse-bytes32-address)
+
+    readonly erc20_artifact_path=${ERC20_ARTIFACT_PATH:-"../../contracts/erc20mock/ERC20Mock.json"}
 }
 
 @test "Native gas token deposit to WETH" {
@@ -72,7 +74,7 @@ setup() {
     assert_success
 }
 
-@test "Custom gas token deposit" {
+@test "Custom gas token deposit (L1 -> L2)" {
     echo "Custom gas token deposit (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" >&3
 
     # SETUP
@@ -135,7 +137,7 @@ setup() {
     assert_success
 }
 
-@test "Custom gas token withdrawal" {
+@test "Custom gas token withdrawal (L2 -> L1)" {
     echo "Custom gas token withdrawal (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" >&3
 
     local initial_receiver_balance=$(cast call --rpc-url "$l1_rpc_url" "$gas_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
@@ -161,3 +163,46 @@ setup() {
     assert_success
 }
 
+@test "ERC20 token deposit (L1 -> L2)" {
+    echo "Retrieving ERC20 contract artifact from $erc20_artifact_path" >&3
+    local erc20_bytecode=$(cat "$erc20_artifact_path" | jq -r '.bytecode')
+    local erc20_deploy_output=$(cast send --rpc-url "$l1_rpc_url" --private-key "$sender_private_key" --legacy --create "$erc20_bytecode")
+    assert_success
+    local l1_erc20_addr=$(echo "$erc20_deploy_output" | grep 'contractAddress' | awk '{print $2}')
+    echo "ERC20 contract address: $l1_erc20_addr" >&3
+
+    # Mint gas token on L1
+    local tokens_amount="0.1ether"
+    local wei_amount=$(cast --to-unit $tokens_amount wei)
+    run mint_erc20_tokens "$l1_rpc_url" "$l1_erc20_addr" "$sender_private_key" "$sender_addr" "$tokens_amount"
+    assert_success
+
+    # Assert that balance of gas token (on the L1) is correct
+    run query_contract "$l1_rpc_url" "$l1_erc20_addr" "$balance_of_fn_sig" "$sender_addr"
+    assert_success
+    local l1_erc20_token_sender_balance=$(echo "$output" |
+        tail -n 1 |
+        awk '{print $1}')
+    echo "Sender balance ($sender_addr) (ERC20 token L1): $l1_erc20_token_sender_balance [weis]" >&3
+
+    # Send approve transaction to the gas token on L1
+    deposit_ether_value="0.1ether"
+    run send_tx "$l1_rpc_url" "$sender_private_key" "$l1_erc20_addr" "$approve_fn_sig" "$bridge_addr" "$deposit_ether_value"
+    assert_success
+    assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
+
+    # DEPOSIT ON L1
+    local receiver=${RECEIVER:-"0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6"}
+    destination_addr=$receiver
+    destination_net=$l2_rpc_network_id
+    amount=$wei_amount
+    meta_bytes="0x"
+    run bridge_asset "$l1_erc20_addr" "$l1_rpc_url"
+    assert_success
+
+    # Claim deposits (settle them on the L2)
+    timeout="120"
+    claim_frequency="10"
+    run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
+    assert_success
+}
