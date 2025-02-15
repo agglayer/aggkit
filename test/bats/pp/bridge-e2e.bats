@@ -45,13 +45,16 @@ setup() {
     readonly l1_rpc_network_id=$(cast call --rpc-url $l1_rpc_url $bridge_addr 'networkID() (uint32)')
     readonly l2_rpc_network_id=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'networkID() (uint32)')
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
-    readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)')
 
     readonly erc20_artifact_path=${ERC20_ARTIFACT_PATH:-"../../contracts/erc20mock/ERC20Mock.json"}
 }
 
 @test "Native gas token deposit to WETH" {
     destination_addr=$sender_addr
+    run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
+    assert_success
+    readonly weth_token_addr=$output
+
     local initial_receiver_balance=$(cast call --rpc-url "$l2_rpc_url" "$weth_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
     echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
 
@@ -64,7 +67,7 @@ setup() {
     echo "=== Running LxLy claim on L2" >&3
     timeout="120"
     claim_frequency="10"
-    run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url"
+    run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success
 
     echo "=== bridgeAsset L2 WETH: $weth_token_addr to L1 ETH" >&3
@@ -74,7 +77,7 @@ setup() {
     assert_success
 }
 
-@test "Custom gas token deposit (L1 -> L2)" {
+@test "Custom gas token deposit L1 -> L2" {
     echo "Custom gas token deposit (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" >&3
 
     # SETUP
@@ -137,7 +140,7 @@ setup() {
     assert_success
 }
 
-@test "Custom gas token withdrawal (L2 -> L1)" {
+@test "Custom gas token withdrawal L2 -> L1" {
     echo "Custom gas token withdrawal (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" >&3
 
     local initial_receiver_balance=$(cast call --rpc-url "$l1_rpc_url" "$gas_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
@@ -163,11 +166,16 @@ setup() {
     assert_success
 }
 
-@test "ERC20 token deposit (L1 -> L2)" {
+@test "ERC20 token deposit L1 -> L2" {
     echo "Retrieving ERC20 contract artifact from $erc20_artifact_path" >&3
-    local erc20_bytecode=$(cat "$erc20_artifact_path" | jq -r '.bytecode')
-    local erc20_deploy_output=$(cast send --rpc-url "$l1_rpc_url" --private-key "$sender_private_key" --legacy --create "$erc20_bytecode")
+    run cat "$erc20_artifact_path" | jq -r '.bytecode'
+    local erc20_bytecode=$output
+
+    run cast send --rpc-url "$l1_rpc_url" --private-key "$sender_private_key" --legacy --create "$erc20_bytecode"
     assert_success
+    local erc20_deploy_output=$output
+    echo "Contract deployment $erc20_deploy_output" >&3
+
     local l1_erc20_addr=$(echo "$erc20_deploy_output" |
         grep 'contractAddress' |
         awk '{print $2}' |
@@ -220,7 +228,6 @@ setup() {
     local l2_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].WrappedTokenAddress')
     echo "L2 token addr $l2_token_addr" >&3
 
-    # TODO: @Stefan-Ethernal adjust
-    # run verify_balance "$l2_rpc_url" "$l2_token_addr" "$receiver" "$initial_receiver_balance" "$tokens_amount"
-    # assert_success
+    run verify_balance "$l2_rpc_url" "$l2_token_addr" "$receiver" 0 "$tokens_amount"
+    assert_success
 }
