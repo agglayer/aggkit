@@ -46,7 +46,7 @@ setup() {
     readonly l2_rpc_network_id=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'networkID() (uint32)')
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
 
-    readonly erc20_artifact_path=${ERC20_ARTIFACT_PATH:-"../../contracts/erc20mock/ERC20Mock.json"}
+    readonly erc20_artifact_path=${ERC20_ARTIFACT_PATH:-"./test/contracts/erc20mock/ERC20Mock.json"}
 }
 
 @test "Native gas token deposit to WETH" {
@@ -168,13 +168,16 @@ setup() {
 
 @test "ERC20 token deposit L1 -> L2" {
     echo "Retrieving ERC20 contract artifact from $erc20_artifact_path" >&3
-    run cat "$erc20_artifact_path" | jq -r '.bytecode'
-    local erc20_bytecode=$output
+    # local erc20_bytecode=$(cat "$erc20_artifact_path" | jq -r '.bytecode')
+
+    run jq -r '.bytecode' "$erc20_artifact_path"
+    assert_success
+    local erc20_bytecode="$output"
 
     run cast send --rpc-url "$l1_rpc_url" --private-key "$sender_private_key" --legacy --create "$erc20_bytecode"
     assert_success
     local erc20_deploy_output=$output
-    echo "Contract deployment $erc20_deploy_output" >&3
+    echo "Contract deployment $erc20_deploy_output"
 
     local l1_erc20_addr=$(echo "$erc20_deploy_output" |
         grep 'contractAddress' |
