@@ -84,6 +84,10 @@ func (e *KeyStoreFileSign) Initialize(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
+	if privateKey == nil {
+		// If the private key is nil, the address is also nil
+		return nil
+	}
 	e.privateKey = privateKey
 	e.publicAddress = crypto.PubkeyToAddress(privateKey.PublicKey)
 	return nil
