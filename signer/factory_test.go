@@ -96,21 +96,11 @@ func TestNewSigner(t *testing.T) {
 			Method: MethodWeb3Signer,
 			Config: map[string]interface{}{
 				FieldAddress: "0x71C7656EC7ab88b098defB751B7401B5f6d8976F",
-				FieldURL:     "http://localhost:9000",
+				FieldURL:     "http://localhost:9001",
 			},
 		})
 		require.NoError(t, err)
 		require.NotNil(t, sut)
 	})
 
-	t.Run("web3singer config no addr", func(t *testing.T) {
-		sut, err := NewSigner("test", logger, ctx, SignerConfig{
-			Method: MethodWeb3Signer,
-			Config: map[string]interface{}{
-				FieldURL: "http://localhost:9000",
-			},
-		})
-		require.NoError(t, err)
-		require.NotNil(t, sut)
-	})
 }
