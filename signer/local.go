@@ -12,6 +12,10 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+const (
+	MethodLocal = "local"
+)
+
 // // AggsenderPrivateKey is the private key which is used to sign certificates
 // AggsenderPrivateKey types.KeystoreFileConfig `mapstructure:"AggsenderPrivateKey"`
 type KeyStoreFileSign struct {
@@ -24,12 +28,20 @@ type KeyStoreFileSign struct {
 
 func NewKeyStoreFileConfig(cfg SignerConfig) (types.KeystoreFileConfig, error) {
 	var res types.KeystoreFileConfig
-	if cfg.Method != "local" {
+	if cfg.Method != MethodLocal {
 		return res, fmt.Errorf("invalid signer method %s", cfg.Method)
 	}
+	pathStr, ok := cfg.Config["path"].(string)
+	if !ok {
+		return res, fmt.Errorf("field path is not string %v", cfg.Config["path"])
+	}
+	passStr, ok := cfg.Config["pass"].(string)
+	if !ok {
+		return res, fmt.Errorf("field pass is not string")
+	}
 	res = types.KeystoreFileConfig{
-		Path:     cfg.Config["path"].(string),
-		Password: cfg.Config["pass"].(string),
+		Path:     pathStr,
+		Password: passStr,
 	}
 	return res, nil
 }
@@ -39,6 +51,17 @@ func NewKeyStoreFileSign(name string, logger commontypes.Logger, file types.Keys
 		name:   name,
 		logger: logger,
 		file:   file,
+	}
+}
+
+func NewKeyStoreFileSigFromPrivateKey(name string,
+	logger commontypes.Logger,
+	privateKey *ecdsa.PrivateKey) *KeyStoreFileSign {
+	return &KeyStoreFileSign{
+		name:          name,
+		logger:        logger,
+		privateKey:    privateKey,
+		publicAddress: crypto.PubkeyToAddress(privateKey.PublicKey),
 	}
 }
 

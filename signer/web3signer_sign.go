@@ -15,24 +15,31 @@ type Web3Signer interface {
 }
 
 type Web3SignerConfig struct {
-	// Url is the url of the web3 signer
-	Url string
+	// URL is the url of the web3 signer
+	URL string
 	// Address is the address of the account to use, if not specified the first account (if only 1 exposed) will be used
 	Address common.Address
 }
 
 func NewWeb3SignerConfig(cfg SignerConfig) (Web3SignerConfig, error) {
 	var addr common.Address
-	addrStr, ok := cfg.Config["address"]
+	addrField, ok := cfg.Config["address"]
 	if ok {
-		if !common.IsHexAddress(addrStr.(string)) {
-			return Web3SignerConfig{}, fmt.Errorf("invalid address %s", addrStr.(string))
+		s, ok := addrField.(string)
+		if !ok {
+			return Web3SignerConfig{}, fmt.Errorf("field address is not string %v", addrField)
 		}
-		addr = common.HexToAddress(addrStr.(string))
+		if !common.IsHexAddress(s) {
+			return Web3SignerConfig{}, fmt.Errorf("invalid address %s", s)
+		}
+		addr = common.HexToAddress(s)
 	}
-
+	urlStr, ok := cfg.Config["url"].(string)
+	if !ok {
+		return Web3SignerConfig{}, fmt.Errorf("field url is not string %v", cfg.Config["url"])
+	}
 	return Web3SignerConfig{
-		Url:     cfg.Config["url"].(string),
+		URL:     urlStr,
 		Address: addr,
 	}, nil
 }
@@ -55,9 +62,8 @@ func NewWeb3SignerSign(name string, logger types.Logger, client Web3Signer,
 }
 
 func NewWeb3SignerSignFromConfig(name string, logger types.Logger, cfg Web3SignerConfig) *Web3SignerSign {
-	client := web3signerclient.NewWeb3SignerClient(cfg.Url)
+	client := web3signerclient.NewWeb3SignerClient(cfg.URL)
 	return NewWeb3SignerSign(name, logger, client, cfg.Address)
-
 }
 
 func (e *Web3SignerSign) Initialize(ctx context.Context) error {

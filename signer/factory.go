@@ -8,17 +8,17 @@ import (
 )
 
 var (
-	ErrUnknownSignerMethod = fmt.Errorf("Unknown signer method")
+	ErrUnknownSignerMethod = fmt.Errorf("unknown signer method")
 )
 
 func NewSigner(name string, logger types.Logger, ctx context.Context, cfg SignerConfig) (Signer, error) {
 	var res Signer
 	if cfg.Method == "" {
 		logger.Warnf("No signer method specified, defaulting to local (keystore file)")
-		cfg.Method = "local"
+		cfg.Method = MethodLocal
 	}
 	switch cfg.Method {
-	case "local":
+	case MethodLocal:
 		specificCfg, err := NewKeyStoreFileConfig(cfg)
 		if err != nil {
 			return nil, err

@@ -22,6 +22,7 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/signer"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -40,9 +41,16 @@ var (
 
 func TestConfigString(t *testing.T) {
 	config := Config{
-		StoragePath:                 "/path/to/storage",
-		AggLayerURL:                 "http://agglayer.url",
-		AggsenderPrivateKey:         types.KeystoreFileConfig{Path: "/path/to/key", Password: "password"},
+		StoragePath: "/path/to/storage",
+		AggLayerURL: "http://agglayer.url",
+		//AggsenderPrivateKey:         types.KeystoreFileConfig{Path: "/path/to/key", Password: "password"},
+		AggsenderPrivateKey: signer.SignerConfig{
+			Method: "local",
+			Config: map[string]interface{}{
+				"Path":     "/path/to/key",
+				"Password": "password",
+			},
+		},
 		URLRPCL2:                    "http://l2.rpc.url",
 		BlockFinality:               "latestBlock",
 		EpochNotificationPercentage: 50,
@@ -1002,13 +1010,11 @@ func TestSendCertificate(t *testing.T) {
 	setupTest := func(cfg testCfg) (*AggSender, *mocks.AggSenderStorage, *mocks.L2BridgeSyncer,
 		*agglayer.AgglayerClientMock, *mocks.L1InfoTreeSyncer) {
 		var (
-			signer = func(_ context.Context, hash common.Hash) ([]byte, error) {
-				return crypto.Sign(hash.Bytes(), privateKey)
-			}
+			sign      = signer.NewKeyStoreFileSigFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 			aggsender = &AggSender{
 				log:         log.WithFields("aggsender", 1),
 				cfg:         Config{MaxRetriesStoreCertificate: 1},
-				signer:      signer,
+				signer:      sign,
 				rateLimiter: aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 			}
 			mockStorage          *mocks.AggSenderStorage
@@ -1696,9 +1702,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
 	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-	signer := func(_ context.Context, hash common.Hash) ([]byte, error) {
-		return crypto.Sign(hash.Bytes(), privateKey)
-	}
+	signer := signer.NewKeyStoreFileSigFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 	aggSender := &AggSender{
 		log:              log.WithFields("aggsender-test", "no claims test"),
 		storage:          mockStorage,
@@ -2219,9 +2223,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	}
 	privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	require.NoError(t, err)
-	signer := func(_ context.Context, hash common.Hash) ([]byte, error) {
-		return crypto.Sign(hash.Bytes(), privKey)
-	}
+	signer := signer.NewKeyStoreFileSigFromPrivateKey("ut", logger, privKey)
 	ctx := context.TODO()
 	sut := &AggSender{
 		log:              logger,

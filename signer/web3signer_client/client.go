@@ -37,7 +37,9 @@ func (e *Web3SignerClient) EthAccounts(ctx context.Context) ([]common.Address, e
 	return result, nil
 }
 
-func (e *Web3SignerClient) SignHash(ctx context.Context, address common.Address, hashToSign common.Hash) ([]byte, error) {
+func (e *Web3SignerClient) SignHash(ctx context.Context,
+	address common.Address,
+	hashToSign common.Hash) ([]byte, error) {
 	params := []interface{}{address, hashToSign}
 	response, err := rpc.JSONRPCCallWithContext(ctx, e.url, "eth_sign", params...)
 	if err != nil {

@@ -32,7 +32,7 @@ func TestUnmarshalLocalConfig(t *testing.T) {
 	}
 	err = viper.Unmarshal(&cfg, decodeHooks...)
 	require.NoError(t, err)
-	require.Equal(t, "local", cfg.Signer.Method)
+	require.Equal(t, MethodLocal, cfg.Signer.Method)
 	require.Equal(t, "/app/sequencer.keystore", cfg.Signer.Config["path"])
 	require.Equal(t, "test", cfg.Signer.Config["password"])
 }
