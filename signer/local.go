@@ -114,9 +114,9 @@ func (e *LocalSign) PublicAddress() common.Address {
 	return e.publicAddress
 }
 func (e *LocalSign) String() string {
-	return fmt.Sprintf("%s path:%s, pubAddr: %s", e.logPrefix(), e.file, e.publicAddress.String())
+	return fmt.Sprintf("singer: %s path:%s, pubAddr: %s", e.logPrefix(), e.file, e.publicAddress.String())
 }
 
 func (e *LocalSign) logPrefix() string {
-	return fmt.Sprintf("localSigner[%s]: ", e.name)
+	return fmt.Sprintf("singer:%s[%s]: ", MethodLocal, e.name)
 }

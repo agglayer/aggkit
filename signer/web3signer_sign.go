@@ -9,6 +9,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+const (
+	MethodWeb3Signer = "web3signer"
+	FieldAddress     = "address"
+	FieldURL         = "url"
+)
+
 type Web3Signer interface {
 	EthAccounts(ctx context.Context) ([]common.Address, error)
 	SignHash(ctx context.Context, address common.Address, hashToSign common.Hash) ([]byte, error)
@@ -23,20 +29,26 @@ type Web3SignerConfig struct {
 
 func NewWeb3SignerConfig(cfg SignerConfig) (Web3SignerConfig, error) {
 	var addr common.Address
-	addrField, ok := cfg.Config["address"]
+	addrField, ok := cfg.Config[FieldAddress]
+	// Field Address is optional
 	if ok {
 		s, ok := addrField.(string)
 		if !ok {
-			return Web3SignerConfig{}, fmt.Errorf("field address is not string %v", addrField)
+			return Web3SignerConfig{}, fmt.Errorf("field %s is not string %v", FieldAddress, addrField)
 		}
 		if !common.IsHexAddress(s) {
-			return Web3SignerConfig{}, fmt.Errorf("invalid address %s", s)
+			return Web3SignerConfig{}, fmt.Errorf("invalid field %s: %s", FieldAddress, s)
 		}
 		addr = common.HexToAddress(s)
 	}
-	urlStr, ok := cfg.Config["url"].(string)
+	urlIntf, ok := cfg.Config[FieldURL]
+	// Field URL is mandatory
 	if !ok {
-		return Web3SignerConfig{}, fmt.Errorf("field url is not string %v", cfg.Config["url"])
+		return Web3SignerConfig{}, fmt.Errorf("field %s is not present", FieldURL)
+	}
+	urlStr, ok := urlIntf.(string)
+	if !ok {
+		return Web3SignerConfig{}, fmt.Errorf("field %s is not string %v", FieldURL, cfg.Config["url"])
 	}
 	return Web3SignerConfig{
 		URL:     urlStr,
@@ -115,9 +127,9 @@ func (e *Web3SignerSign) PublicAddress() common.Address {
 }
 
 func (e *Web3SignerSign) logPrefix() string {
-	return fmt.Sprintf("Web3SignerSign[%s]: ", e.name)
+	return fmt.Sprintf("singer: %s[%s]: ", MethodWeb3Signer, e.name)
 }
 
 func (e *Web3SignerSign) String() string {
-	return fmt.Sprintf("Web3SignerSign[%s]: pubAddr: %s", e.name, e.address.String())
+	return fmt.Sprintf("singer: %s[%s]: pubAddr: %s", MethodWeb3Signer, e.name, e.address.String())
 }

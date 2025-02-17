@@ -24,7 +24,7 @@ func NewSigner(name string, logger types.Logger, ctx context.Context, cfg Signer
 			return nil, err
 		}
 		res = NewLocalSign(name, logger, specificCfg)
-	case "web3signer":
+	case MethodWeb3Signer:
 		specificCfg, err := NewWeb3SignerConfig(cfg)
 		if err != nil {
 			return nil, err
