@@ -867,7 +867,6 @@ func TestProcessBlockInvalidIndex(t *testing.T) {
 }
 
 func TestGetBridgesPaged(t *testing.T) {
-
 	t.Parallel()
 	fromBlock := uint64(1)
 	toBlock := uint64(10)
