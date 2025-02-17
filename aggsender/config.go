@@ -5,6 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/signer"
 )
 
 // Config is the configuration for the AggSender
@@ -13,13 +14,8 @@ type Config struct {
 	StoragePath string `mapstructure:"StoragePath"`
 	// AggLayerURL is the URL of the AggLayer
 	AggLayerURL string `mapstructure:"AggLayerURL"`
-	// KMSKeyName is the name of the KMS key used to encrypt the private key
-	KMSKeyName string `mapstructure:"KMSKeyName"`
-	// KMSConnectionTimeout is the timeout for the KMS connection
-	KMSConnectionTimeout types.Duration `mapstructure:"KMSConnectionTimeout"`
-
 	// AggsenderPrivateKey is the private key which is used to sign certificates
-	AggsenderPrivateKey types.KeystoreFileConfig `mapstructure:"AggsenderPrivateKey"`
+	AggsenderPrivateKey signer.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
 	URLRPCL2 string `mapstructure:"URLRPCL2"`
 	// BlockFinality indicates which finality follows AggLayer
@@ -64,6 +60,12 @@ type Config struct {
 	MaxEpochPercentageAllowedToSendCertificate uint `mapstructure:"MaxEpochPercentageAllowedToSendCertificate"`
 	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
 	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
+
+	Signer SignerConfig
+}
+
+type SignerConfig struct {
+	Method string `jsonschema:"enum=local, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -74,7 +76,7 @@ func (c Config) CheckCertConfigBriefString() string {
 func (c Config) String() string {
 	return "StoragePath: " + c.StoragePath + "\n" +
 		"AggLayerURL: " + c.AggLayerURL + "\n" +
-		"AggsenderPrivateKeyPath: " + c.AggsenderPrivateKey.Path + "\n" +
+		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method + "\n" +
 		"URLRPCL2: " + c.URLRPCL2 + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +

@@ -18,6 +18,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/signer"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -50,8 +51,7 @@ type AggSender struct {
 
 	cfg Config
 
-	signer     funcSignHash
-	signerAddr common.Address
+	signer signer.Signer
 
 	status      types.AggsenderStatus
 	rateLimiter RateLimiter
@@ -74,7 +74,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	signer, signerAddr, err := newSigner(logger, cfg)
+	signer, err := signer.NewSigner("aggsender", logger, ctx, cfg.AggsenderPrivateKey)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,6 @@ func New(
 		aggLayerClient:   aggLayerClient,
 		l1infoTreeSyncer: l1InfoTreeSyncer,
 		signer:           signer,
-		signerAddr:       signerAddr,
 		epochNotifier:    epochNotifier,
 		status:           types.AggsenderStatus{Status: types.StatusNone},
 		rateLimiter:      rateLimit,
@@ -699,13 +698,13 @@ func (a *AggSender) getImportedBridgeExits(
 // signCertificate signs a certificate with the sequencer key
 func (a *AggSender) signCertificate(certificate *agglayer.Certificate) (*agglayer.SignedCertificate, error) {
 	hashToSign := certificate.HashToSign()
-	sig, err := a.signer(context.Background(), hashToSign)
+	sig, err := a.signer.SignHash(context.Background(), hashToSign)
 	if err != nil {
 		return nil, err
 	}
 
 	a.log.Infof("Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
-		a.signerAddr.String(),
+		a.signer.PublicAddress().String(),
 		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
 		hashToSign.String(),
 	)
