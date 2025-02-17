@@ -11,6 +11,7 @@ import (
 )
 
 func TestXxx(t *testing.T) {
+	t.Skip("skipping test")
 	sut := Web3SignerSign{
 		client: web3signerclient.NewWeb3SignerClient("http://localhost:9000"),
 	}

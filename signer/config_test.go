@@ -16,6 +16,10 @@ const (
 	configWeb3Signer = `
 	Signer = {Method = "web3signer", URL = "http://localhost:8545", Address = "0x1234567890abcdef"}
 	`
+
+	configEmpty = `
+	Signer = {}
+	`
 )
 
 func TestUnmarshalLocalConfig(t *testing.T) {
@@ -54,4 +58,22 @@ func TestUnmarshalWeb3SignerConfig(t *testing.T) {
 	require.Equal(t, "web3signer", cfg.Signer.Method)
 	require.Equal(t, "http://localhost:8545", cfg.Signer.Config["url"])
 	require.Equal(t, "0x1234567890abcdef", cfg.Signer.Config["address"])
+}
+
+func TestUnmarshalEmptyConfig(t *testing.T) {
+	cfg := struct {
+		Signer SignerConfig `jsonschema:"omitempty" mapstructure:"Signer"`
+	}{}
+	viper.SetConfigType("toml")
+	err := viper.ReadConfig(bytes.NewBuffer([]byte(configEmpty)))
+	require.NoError(t, err)
+	decodeHooks := []viper.DecoderConfigOption{
+		// this allows arrays to be decoded from env var separated by ",", example: MY_VAR="value1,value2,value3"
+		viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+			mapstructure.TextUnmarshallerHookFunc(), mapstructure.StringToSliceHookFunc(","))),
+	}
+	err = viper.Unmarshal(&cfg, decodeHooks...)
+	require.NoError(t, err)
+	require.Equal(t, "", cfg.Signer.Method)
+	require.Equal(t, 0, len(cfg.Signer.Config))
 }

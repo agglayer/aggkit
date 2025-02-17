@@ -13,7 +13,9 @@ import (
 )
 
 const (
-	MethodLocal = "local"
+	MethodLocal   = "local"
+	FieldPath     = "path"
+	FieldPassword = "password"
 )
 
 // // AggsenderPrivateKey is the private key which is used to sign certificates
@@ -26,16 +28,28 @@ type KeyStoreFileSign struct {
 	publicAddress common.Address
 }
 
+func NewLocalSignerConfig(path, pass string) SignerConfig {
+	return SignerConfig{
+		Method: MethodLocal,
+		Config: map[string]interface{}{
+			FieldPath:     path,
+			FieldPassword: pass,
+		},
+	}
+}
+
 func NewKeyStoreFileConfig(cfg SignerConfig) (types.KeystoreFileConfig, error) {
 	var res types.KeystoreFileConfig
-	if cfg.Method != MethodLocal {
-		return res, fmt.Errorf("invalid signer method %s", cfg.Method)
+	// If there are no field in the config, return empty config
+	// but if there are some field must match the expected ones
+	if len(cfg.Config) == 0 {
+		return types.KeystoreFileConfig{}, nil
 	}
-	pathStr, ok := cfg.Config["path"].(string)
+	pathStr, ok := cfg.Config[FieldPath].(string)
 	if !ok {
-		return res, fmt.Errorf("field path is not string %v", cfg.Config["path"])
+		return res, fmt.Errorf("field path is not string %v", cfg.Config[FieldPath])
 	}
-	passStr, ok := cfg.Config["pass"].(string)
+	passStr, ok := cfg.Config[FieldPassword].(string)
 	if !ok {
 		return res, fmt.Errorf("field pass is not string")
 	}
@@ -77,7 +91,7 @@ func (e *KeyStoreFileSign) Initialize(ctx context.Context) error {
 
 func (e *KeyStoreFileSign) SignHash(ctx context.Context, hash common.Hash) ([]byte, error) {
 	if e.privateKey == nil {
-		return nil, fmt.Errorf("private key is nil")
+		return nil, fmt.Errorf("%s private key is nil", e.logPrefix())
 	}
 	return crypto.Sign(hash.Bytes(), e.privateKey)
 }
@@ -86,5 +100,9 @@ func (e *KeyStoreFileSign) PublicAddress() common.Address {
 	return e.publicAddress
 }
 func (e *KeyStoreFileSign) String() string {
-	return fmt.Sprintf("local[%s]: path:%s, pubAddr: %s", e.name, e.file, e.publicAddress.String())
+	return fmt.Sprintf("%s path:%s, pubAddr: %s", e.logPrefix(), e.file, e.publicAddress.String())
+}
+
+func (e *KeyStoreFileSign) logPrefix() string {
+	return fmt.Sprintf("localSigner[%s]: ", e.name)
 }
