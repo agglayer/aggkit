@@ -19,11 +19,11 @@ func NewSigner(name string, logger types.Logger, ctx context.Context, cfg Signer
 	}
 	switch cfg.Method {
 	case MethodLocal:
-		specificCfg, err := NewKeyStoreFileConfig(cfg)
+		specificCfg, err := NewLocalConfig(cfg)
 		if err != nil {
 			return nil, err
 		}
-		res = NewKeyStoreFileSign(name, logger, specificCfg)
+		res = NewLocalSign(name, logger, specificCfg)
 	case "web3signer":
 		specificCfg, err := NewWeb3SignerConfig(cfg)
 		if err != nil {

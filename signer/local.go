@@ -20,7 +20,7 @@ const (
 
 // // AggsenderPrivateKey is the private key which is used to sign certificates
 // AggsenderPrivateKey types.KeystoreFileConfig `mapstructure:"AggsenderPrivateKey"`
-type KeyStoreFileSign struct {
+type LocalSign struct {
 	name          string
 	logger        commontypes.Logger
 	file          types.KeystoreFileConfig
@@ -28,6 +28,7 @@ type KeyStoreFileSign struct {
 	publicAddress common.Address
 }
 
+// NewLocalSignerConfig creates a generic config  (SignerConfig)
 func NewLocalSignerConfig(path, pass string) SignerConfig {
 	return SignerConfig{
 		Method: MethodLocal,
@@ -38,7 +39,8 @@ func NewLocalSignerConfig(path, pass string) SignerConfig {
 	}
 }
 
-func NewKeyStoreFileConfig(cfg SignerConfig) (types.KeystoreFileConfig, error) {
+// NewLocalConfig creates a LocalSignerConfig (specific config) from a SignerConfig
+func NewLocalConfig(cfg SignerConfig) (types.KeystoreFileConfig, error) {
 	var res types.KeystoreFileConfig
 	// If there are no field in the config, return empty config
 	// but if there are some field must match the expected ones
@@ -60,18 +62,20 @@ func NewKeyStoreFileConfig(cfg SignerConfig) (types.KeystoreFileConfig, error) {
 	return res, nil
 }
 
-func NewKeyStoreFileSign(name string, logger commontypes.Logger, file types.KeystoreFileConfig) *KeyStoreFileSign {
-	return &KeyStoreFileSign{
+// NewLocalSign creates a new LocalSign based on config
+func NewLocalSign(name string, logger commontypes.Logger, file types.KeystoreFileConfig) *LocalSign {
+	return &LocalSign{
 		name:   name,
 		logger: logger,
 		file:   file,
 	}
 }
 
-func NewKeyStoreFileSigFromPrivateKey(name string,
+// NewLocalSignFromPrivateKey creates a new LocalSign based on a private key
+func NewLocalSignFromPrivateKey(name string,
 	logger commontypes.Logger,
-	privateKey *ecdsa.PrivateKey) *KeyStoreFileSign {
-	return &KeyStoreFileSign{
+	privateKey *ecdsa.PrivateKey) *LocalSign {
+	return &LocalSign{
 		name:          name,
 		logger:        logger,
 		privateKey:    privateKey,
@@ -79,7 +83,12 @@ func NewKeyStoreFileSigFromPrivateKey(name string,
 	}
 }
 
-func (e *KeyStoreFileSign) Initialize(ctx context.Context) error {
+// Initialize initializes the LocalSign, read key if needed
+func (e *LocalSign) Initialize(ctx context.Context) error {
+	// Check if it's already initialized
+	if e.privateKey != nil {
+		return nil
+	}
 	privateKey, err := aggkitcommon.NewKeyFromKeystore(e.file)
 	if err != nil {
 		return err
@@ -93,20 +102,21 @@ func (e *KeyStoreFileSign) Initialize(ctx context.Context) error {
 	return nil
 }
 
-func (e *KeyStoreFileSign) SignHash(ctx context.Context, hash common.Hash) ([]byte, error) {
+// SignHash signs a hash
+func (e *LocalSign) SignHash(ctx context.Context, hash common.Hash) ([]byte, error) {
 	if e.privateKey == nil {
 		return nil, fmt.Errorf("%s private key is nil", e.logPrefix())
 	}
 	return crypto.Sign(hash.Bytes(), e.privateKey)
 }
 
-func (e *KeyStoreFileSign) PublicAddress() common.Address {
+func (e *LocalSign) PublicAddress() common.Address {
 	return e.publicAddress
 }
-func (e *KeyStoreFileSign) String() string {
+func (e *LocalSign) String() string {
 	return fmt.Sprintf("%s path:%s, pubAddr: %s", e.logPrefix(), e.file, e.publicAddress.String())
 }
 
-func (e *KeyStoreFileSign) logPrefix() string {
+func (e *LocalSign) logPrefix() string {
 	return fmt.Sprintf("localSigner[%s]: ", e.name)
 }

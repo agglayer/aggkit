@@ -1003,7 +1003,7 @@ func TestSendCertificate(t *testing.T) {
 	setupTest := func(cfg testCfg) (*AggSender, *mocks.AggSenderStorage, *mocks.L2BridgeSyncer,
 		*agglayer.AgglayerClientMock, *mocks.L1InfoTreeSyncer) {
 		var (
-			sign      = signer.NewKeyStoreFileSigFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
+			sign      = signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 			aggsender = &AggSender{
 				log:         log.WithFields("aggsender", 1),
 				cfg:         Config{MaxRetriesStoreCertificate: 1},
@@ -1695,7 +1695,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
 	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-	signer := signer.NewKeyStoreFileSigFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
+	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 	aggSender := &AggSender{
 		log:              log.WithFields("aggsender-test", "no claims test"),
 		storage:          mockStorage,
@@ -2216,7 +2216,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	}
 	privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	require.NoError(t, err)
-	signer := signer.NewKeyStoreFileSigFromPrivateKey("ut", logger, privKey)
+	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
 	ctx := context.TODO()
 	sut := &AggSender{
 		log:              logger,
