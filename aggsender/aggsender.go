@@ -233,6 +233,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, nil
 	}
 
+	start := time.Now()
 	lastL2BlockSynced, err := a.l2Syncer.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -283,12 +284,10 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	a.log.Infof("building certificate for %s estimatedSize=%d",
 		certificateParams.String(), certificateParams.EstimatedSize())
 
-	start := time.Now()
 	certificate, err := a.buildCertificate(ctx, certificateParams, lastSentCertificateInfo)
 	if err != nil {
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
-	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
 	signedCertificate, err := a.signCertificate(certificate)
 	if err != nil {
@@ -304,6 +303,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	if !a.isAllowedSendCertificateEpochPercent() {
 		return nil, fmt.Errorf("forbidden to send certificate due epoch percentage")
 	}
+
+	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
 	a.saveCertificateToFile(signedCertificate)
 	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
@@ -794,9 +795,9 @@ func (a *AggSender) updateCertificateStatus(ctx context.Context,
 
 	switch agglayerCert.Status {
 	case agglayer.Settled:
-		metrics.SendingSuccess()
+		metrics.Settled()
 	case agglayer.InError:
-		metrics.SendingError()
+		metrics.InError()
 	}
 
 	// That is a strange situation

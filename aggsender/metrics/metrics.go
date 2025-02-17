@@ -7,13 +7,13 @@ import (
 )
 
 const (
-	prefix                   = "aggsender_"
-	numberOfCertificatesSent = prefix + "number_of_certificates_sent"
-	numberOfSendingErrors    = prefix + "number_of_sending_errors"
-	numberOfSendingRetries   = prefix + "number_of_sending_retries"
-	numberOfSendingSuccesses = prefix + "number_of_sending_successes"
-	certificateBuildTime     = prefix + "certificate_build_time"
-	proverTime               = prefix + "prover_time"
+	prefix                      = "aggsender_"
+	numberOfCertificatesSent    = prefix + "number_of_certificates_sent"
+	numberOfCertificatesInError = prefix + "number_of_certificates_in_error"
+	numberOfSendingRetries      = prefix + "number_of_sending_retries"
+	numberOfCertificatesSettled = prefix + "number_of_sending_settled"
+	certificateBuildTime        = prefix + "certificate_build_time"
+	proverTime                  = prefix + "prover_time"
 )
 
 // Register the metrics for the aggsender package
@@ -24,16 +24,16 @@ func Register() {
 			Help: "[AGGSENDER] number of certificates sent",
 		},
 		{
-			Name: numberOfSendingErrors,
-			Help: "[AGGSENDER] number of sending errors",
+			Name: numberOfCertificatesInError,
+			Help: "[AGGSENDER] number of certificates in error",
 		},
 		{
 			Name: numberOfSendingRetries,
 			Help: "[AGGSENDER] number of sending retries",
 		},
 		{
-			Name: numberOfSendingSuccesses,
-			Help: "[AGGSENDER] number of sending successes",
+			Name: numberOfCertificatesSettled,
+			Help: "[AGGSENDER] number of certificates settled",
 		},
 		{
 			Name: certificateBuildTime,
@@ -53,9 +53,9 @@ func CertificateSent() {
 	prometheus.GaugeInc(numberOfCertificatesSent)
 }
 
-// SendingError increments the gauge for the number of sending errors
-func SendingError() {
-	prometheus.GaugeInc(numberOfSendingErrors)
+// InError increments the gauge for the number of certificates in error
+func InError() {
+	prometheus.GaugeInc(numberOfCertificatesInError)
 }
 
 // SendingRetry increments the gauge for the number of sending retries
@@ -63,9 +63,9 @@ func SendingRetry() {
 	prometheus.GaugeInc(numberOfSendingRetries)
 }
 
-// SendingSuccess increments the gauge for the number of sending successes
-func SendingSuccess() {
-	prometheus.GaugeInc(numberOfSendingSuccesses)
+// Settled increments the gauge for the number of certificates settled
+func Settled() {
+	prometheus.GaugeInc(numberOfCertificatesSettled)
 }
 
 // CertificateBuildTime sets the gauge for the certificate build time
