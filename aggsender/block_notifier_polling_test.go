@@ -149,7 +149,7 @@ func TestNewBlockNotifierPolling(t *testing.T) {
 	testData := newBlockNotifierPollingTestData(t, nil)
 	require.NotNil(t, testData.sut)
 	_, err := NewBlockNotifierPolling(testData.ethClientMock, ConfigBlockNotifierPolling{
-		BlockFinalityType: etherman.BlockNumberFinality("invalid"),
+		BlockFinalityType: etherman.NewBlockNumberFinality("invalid"),
 	}, log.WithFields("test", "test"), nil)
 	require.Error(t, err)
 }

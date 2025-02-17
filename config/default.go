@@ -77,9 +77,11 @@ ContractVersions = "{{ContractVersions}}"
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
+FinalizedBlock="FinalizedBlock"
 
 [ReorgDetectorL2]
 DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
+FinalizedBlock="LatestBlock"
 
 [L1InfoTreeSync]
 DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
