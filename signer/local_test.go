@@ -67,11 +67,11 @@ func TestNewLocalSignFromPrivateKey(t *testing.T) {
 func TestNewLocalSignEmpty(t *testing.T) {
 	logger := log.WithFields("test", "test")
 	sut := NewLocalSign("name", logger, types.KeystoreFileConfig{})
-	sut.Initialize(context.Background())
+	err := sut.Initialize(context.Background())
+	require.NoError(t, err)
 	pubAddr := sut.PublicAddress()
 	require.Equal(t, common.Address{}, pubAddr)
-	_, err := sut.SignHash(context.Background(), common.Hash{})
+	_, err = sut.SignHash(context.Background(), common.Hash{})
 	require.Error(t, err)
 	require.NotEmpty(t, sut.String())
-
 }
