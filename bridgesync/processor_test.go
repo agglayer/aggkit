@@ -77,8 +77,8 @@ func TestBigIntString(t *testing.T) {
 	require.Equal(t, claim, claimsFromDB[0])
 }
 
-func TestProceessor(t *testing.T) {
-	path := path.Join(t.TempDir(), "aggsenderTestProceessor.sqlite")
+func TestProcessor(t *testing.T) {
+	path := path.Join(t.TempDir(), "aggsenderTestProcessor.sqlite")
 	logger := log.WithFields("bridge-syncer", "foo")
 	p, err := newProcessor(path, logger)
 	require.NoError(t, err)
@@ -850,7 +850,7 @@ func TestGetBridgesPublished(t *testing.T) {
 }
 
 func TestProcessBlockInvalidIndex(t *testing.T) {
-	path := path.Join(t.TempDir(), "aggsenderTestProceessor.sqlite")
+	path := path.Join(t.TempDir(), "aggsenderTestProcessor.sqlite")
 	logger := log.WithFields("bridge-syncer", "foo")
 	p, err := newProcessor(path, logger)
 	require.NoError(t, err)
@@ -867,4 +867,136 @@ func TestProcessBlockInvalidIndex(t *testing.T) {
 }
 
 func TestGetBridgesPaged(t *testing.T) {
+
+	t.Parallel()
+	fromBlock := uint64(1)
+	toBlock := uint64(10)
+	bridges :=
+		[]Bridge{
+			{DepositCount: 1, BlockNum: 1, Amount: big.NewInt(1)},
+			{DepositCount: 2, BlockNum: 2, Amount: big.NewInt(1)},
+			{DepositCount: 3, BlockNum: 3, Amount: big.NewInt(1)},
+			{DepositCount: 4, BlockNum: 4, Amount: big.NewInt(1)},
+			{DepositCount: 5, BlockNum: 5, Amount: big.NewInt(1)},
+			{DepositCount: 6, BlockNum: 6, Amount: big.NewInt(1)},
+		}
+
+	testCases := []struct {
+		name            string
+		pageSize        uint32
+		page            uint32
+		depositCount    uint64
+		expectedCount   uint64
+		expectedBridges []*Bridge
+		expectedError   error
+	}{
+		{
+			name:          "t1",
+			pageSize:      1,
+			page:          1,
+			depositCount:  0,
+			expectedCount: 6,
+			expectedBridges: []*Bridge{
+				{DepositCount: 6, BlockNum: 6, Amount: big.NewInt(1)},
+			},
+			expectedError: nil,
+		},
+		{
+			name:          "t2",
+			pageSize:      20,
+			page:          1,
+			depositCount:  0,
+			expectedCount: 6,
+			expectedBridges: []*Bridge{
+				{DepositCount: 6, BlockNum: 6, Amount: big.NewInt(1)},
+				{DepositCount: 5, BlockNum: 5, Amount: big.NewInt(1)},
+				{DepositCount: 4, BlockNum: 4, Amount: big.NewInt(1)},
+				{DepositCount: 3, BlockNum: 3, Amount: big.NewInt(1)},
+				{DepositCount: 2, BlockNum: 2, Amount: big.NewInt(1)},
+				{DepositCount: 1, BlockNum: 1, Amount: big.NewInt(1)},
+			},
+			expectedError: nil,
+		},
+		{
+			name:          "t3",
+			pageSize:      3,
+			page:          2,
+			depositCount:  0,
+			expectedCount: 6,
+			expectedBridges: []*Bridge{
+				{DepositCount: 3, BlockNum: 3, Amount: big.NewInt(1)},
+				{DepositCount: 2, BlockNum: 2, Amount: big.NewInt(1)},
+				{DepositCount: 1, BlockNum: 1, Amount: big.NewInt(1)},
+			},
+			expectedError: nil,
+		},
+		{
+			name:          "t4",
+			pageSize:      3,
+			page:          2,
+			depositCount:  1,
+			expectedCount: 1,
+			expectedBridges: []*Bridge{
+				{DepositCount: 1, BlockNum: 1, Amount: big.NewInt(1)},
+			},
+			expectedError: nil,
+		},
+		{
+			name:            "t5",
+			pageSize:        3,
+			page:            2,
+			depositCount:    7,
+			expectedCount:   0,
+			expectedBridges: []*Bridge{},
+			expectedError:   nil,
+		},
+		{
+			name:            "t6",
+			pageSize:        2,
+			page:            20,
+			depositCount:    0,
+			expectedCount:   6,
+			expectedBridges: []*Bridge{},
+			expectedError:   nil,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncGetBridgesPaged_%s.sqlite", tc.name))
+			require.NoError(t, migrationsBridge.RunMigrations(path))
+			logger := log.WithFields("bridge-syncer", "foo")
+			p, err := newProcessor(path, logger)
+			require.NoError(t, err)
+
+			tx, err := p.db.BeginTx(context.Background(), nil)
+			require.NoError(t, err)
+
+			for i := fromBlock; i <= toBlock; i++ {
+				_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+				require.NoError(t, err)
+			}
+
+			for _, bridge := range bridges {
+				require.NoError(t, meddler.Insert(tx, "bridge", &bridge))
+			}
+
+			require.NoError(t, tx.Commit())
+
+			ctx := context.Background()
+			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount)
+
+			if tc.expectedError != nil {
+				require.Equal(t, tc.expectedError, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedBridges, bridges)
+				require.Equal(t, tc.expectedCount, count)
+			}
+		})
+	}
 }

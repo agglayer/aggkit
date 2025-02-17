@@ -209,7 +209,8 @@ func (p *processor) GetBridgesPaged(
 	}
 	if depositCount > 0 {
 		whereClause = fmt.Sprintf("WHERE deposit_count = %d", depositCount)
-		count = 1
+		page = 1
+		pageSize = 1
 	}
 	rows, err := p.queryPaged(tx, page, pageSize, "bridge", orderBy, order, whereClause)
 	if err != nil {
@@ -218,6 +219,9 @@ func (p *processor) GetBridgesPaged(
 	bridgePtrs := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
 		return nil, 0, err
+	}
+	if depositCount > 0 {
+		count = uint64(len(bridgePtrs))
 	}
 	return bridgePtrs, count, nil
 }
@@ -238,13 +242,13 @@ func (p *processor) queryPaged(
 	page, pageSize uint32,
 	table, orderBy, order, whereClause string,
 ) (*sql.Rows, error) {
-	rows, err := tx.Query(`
+	rows, err := tx.Query(fmt.Sprintf(`
 		SELECT *
-		FROM $1
-		$2
-		ORDER BY $3 $4
-		LIMIT $5 OFFSET $6;
-	`, table, whereClause, orderBy, order, pageSize, (page-1)*pageSize)
+		FROM %s
+		%s
+		ORDER BY %s %s
+		LIMIT $1 OFFSET $2;
+	`, table, whereClause, orderBy, order), pageSize, (page-1)*pageSize)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound

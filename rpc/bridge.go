@@ -185,7 +185,7 @@ func (b *BridgeEndpoints) GetBridges(page, pageSize, networkID uint32, depositCo
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
 		}
 	default:
-		return zeroHex, rpc.NewRPCError(
+		return nil, rpc.NewRPCError(
 			rpc.DefaultErrorCode,
 			fmt.Sprintf("this client does not support network %d", networkID),
 		)

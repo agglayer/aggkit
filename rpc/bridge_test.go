@@ -3,8 +3,10 @@ package rpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
+	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -15,9 +17,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestGetBridges(t *testing.T) {
-}
-
 func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 	type testCase struct {
 		description   string
@@ -27,7 +26,7 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 		expectedErr   error
 	}
 	ctx := context.Background()
-	b := newBridgeWithMocks(t)
+	b := newBridgeWithMocks(t, 1)
 	fooErr := errors.New("foo")
 	firstL1Info := &l1infotreesync.L1InfoTreeLeaf{
 		BlockNumber:     10,
@@ -223,7 +222,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		expectedErr   error
 	}
 	ctx := context.Background()
-	b := newBridgeWithMocks(t)
+	b := newBridgeWithMocks(t, 2)
 	fooErr := errors.New("foo")
 	firstVerified := &l1infotreesync.VerifyBatches{
 		BlockNumber: 10,
@@ -429,7 +428,7 @@ type bridgeWithMocks struct {
 	bridgeL2     *mocks.Bridger
 }
 
-func newBridgeWithMocks(t *testing.T) bridgeWithMocks {
+func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	t.Helper()
 	b := bridgeWithMocks{
 		sponsor:      mocks.NewClaimSponsorer(t),
@@ -440,7 +439,87 @@ func newBridgeWithMocks(t *testing.T) bridgeWithMocks {
 	}
 	logger := log.WithFields("module", "bridgerpc")
 	b.bridge = NewBridgeEndpoints(
-		logger, 0, 0, 2, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
+		logger, 0, 0, networkID, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
 	)
 	return b
+}
+
+func TestGetBridges(t *testing.T) {
+	networkID := uint32(10)
+	bridgeMocks := newBridgeWithMocks(t, networkID)
+
+	t.Run("GetBridges for L1 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		bridges := []*bridgesync.Bridge{
+			{
+				BlockNum:           1,
+				BlockPos:           1,
+				LeafType:           1,
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 10,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				DepositCount:       0,
+				Metadata:           []byte("metadata"),
+			},
+		}
+
+		bridgeMocks.bridgeL1.On("GetBridgesPaged", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(bridges, uint64(len(bridges)), nil)
+
+		result, err := bridgeMocks.bridge.GetBridges(page, pageSize, 0, 0)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		bridgesResult, ok := result.(BridgesResult)
+		require.True(t, ok)
+		require.Equal(t, bridges, bridgesResult.Bridges)
+		require.Equal(t, uint64(len(bridgesResult.Bridges)), bridgesResult.Count)
+
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetBridges for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		bridges := []*bridgesync.Bridge{
+			{
+				BlockNum:           1,
+				BlockPos:           1,
+				LeafType:           1,
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 10,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				DepositCount:       0,
+				Metadata:           []byte("metadata"),
+			},
+		}
+		bridgeMocks.bridge.networkID = 10
+
+		bridgeMocks.bridgeL2.On("GetBridgesPaged", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(bridges, uint64(len(bridges)), nil)
+
+		result, err := bridgeMocks.bridge.GetBridges(page, pageSize, 10, 0)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		bridgesResult, ok := result.(BridgesResult)
+		require.True(t, ok)
+		require.Equal(t, bridges, bridgesResult.Bridges)
+		require.Equal(t, uint64(len(bridgesResult.Bridges)), bridgesResult.Count)
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
+	})
+
+	t.Run("GetBridges with unsupported network", func(t *testing.T) {
+		unsupportedNetworkID := uint32(999)
+
+		result, err := bridgeMocks.bridge.GetBridges(0, 0, unsupportedNetworkID, 0)
+		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
+		require.Nil(t, result)
+	})
 }
