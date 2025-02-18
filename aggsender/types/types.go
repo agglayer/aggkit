@@ -75,9 +75,11 @@ type Logger interface {
 }
 
 type AggchainProof struct {
-	StartBlock uint64
-	EndBlock   uint64
-	Proof      []byte
+	StartBlock      uint64
+	EndBlock        uint64
+	Proof           []byte
+	CustomChainData []byte
+	LocalExitRoot   common.Hash
 }
 
 type CertificateInfo struct {

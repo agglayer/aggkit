@@ -4,9 +4,10 @@ import (
 	"errors"
 	"testing"
 
+	agglayer "github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -22,30 +23,23 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 	client := &AggchainProofClient{client: mockClient}
 
 	expectedResponse := &types.GenerateAggchainProofResponse{
-		AggchainProof: []byte("dummy-proof"),
-		StartBlock:    100,
-		EndBlock:      200,
+		AggchainProof:     []byte("dummy-proof"),
+		StartBlock:        100,
+		EndBlock:          200,
+		LocalExitRootHash: []byte{},
+		CustomChainData:   []byte{},
 	}
 
-	convertedProof := make([][]byte, treeTypes.DefaultHeight)
-	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
-		convertedProof[i] = common.Hash{}.Bytes()
-	}
+	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
-	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
-		StartBlock:            100,
-		MaxEndBlock:           200,
-		L1InfoTreeRootHash:    common.Hash{}.Bytes(),
-		L1InfoTreeLeafHash:    common.Hash{}.Bytes(),
-		L1InfoTreeMerkleProof: convertedProof,
-	}).Return(expectedResponse, nil)
-
-	result, err := client.GenerateAggchainProof(100, 200, common.Hash{}, common.Hash{}, [32]common.Hash{})
+	result, err := client.GenerateAggchainProof(100, 200, common.Hash{}, l1infotreesync.L1InfoTreeLeaf{}, [32]common.Hash{}, nil, nil)
 
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("dummy-proof"), result.Proof)
 	assert.Equal(t, uint64(100), result.StartBlock)
 	assert.Equal(t, uint64(200), result.EndBlock)
+	assert.Equal(t, common.Hash{}, result.LocalExitRoot)
+	assert.Equal(t, []byte{}, result.CustomChainData)
 	mockClient.AssertExpectations(t)
 }
 
@@ -55,20 +49,9 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 
 	expectedError := errors.New("Generate error")
 
-	convertedProof := make([][]byte, treeTypes.DefaultHeight)
-	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
-		convertedProof[i] = common.Hash{}.Bytes()
-	}
+	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return((*types.GenerateAggchainProofResponse)(nil), expectedError)
 
-	mockClient.On("GenerateAggchainProof", mock.Anything, &types.GenerateAggchainProofRequest{
-		StartBlock:            300,
-		MaxEndBlock:           400,
-		L1InfoTreeRootHash:    common.Hash{}.Bytes(),
-		L1InfoTreeLeafHash:    common.Hash{}.Bytes(),
-		L1InfoTreeMerkleProof: convertedProof,
-	}).Return((*types.GenerateAggchainProofResponse)(nil), expectedError)
-
-	result, err := client.GenerateAggchainProof(300, 400, common.Hash{}, common.Hash{}, [32]common.Hash{})
+	result, err := client.GenerateAggchainProof(300, 400, common.Hash{}, l1infotreesync.L1InfoTreeLeaf{}, [32]common.Hash{}, nil, make([]*agglayer.ImportedBridgeExit, 0))
 
 	assert.Error(t, err)
 	assert.Nil(t, result)

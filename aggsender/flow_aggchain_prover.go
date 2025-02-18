@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -96,13 +97,21 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		}
 	}
 
-	proof, leaf, root, err := a.getFinalizedL1InfoTreeData(ctx)
+	proof, _, root, err := a.getFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
 
+	// TODO - @goran-ethernal
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
-		buildParams.FromBlock, buildParams.ToBlock, root, leaf, proof)
+		buildParams.FromBlock,
+		buildParams.ToBlock,
+		root,
+		l1infotreesync.L1InfoTreeLeaf{},
+		proof,
+		make(map[common.Hash]treeTypes.Proof, 0),
+		make([]*agglayer.ImportedBridgeExit, 0),
+	)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)

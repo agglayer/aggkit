@@ -18,19 +18,105 @@ message GenerateAggchainProofRequest {
   uint64 max_end_block = 2;
   // L1 Info tree root. (hash)
   bytes l1_info_tree_root_hash = 3;
-  // L1 Info tree leaf. (hash)
-  bytes l1_info_tree_leaf_hash = 4;
+  // L1 Info tree leaf
+  L1InfoTreeLeaf l1_info_tree_leaf = 4;
   // L1 Info tree proof. ([32]hash)
   repeated bytes l1_info_tree_merkle_proof = 5;
+  // Map of the GER with their inclusion proof. Note: the GER (string) is a base64 encoded string of the GER digest.
+  map<string, InclusionProof> ger_inclusion_proofs = 6;
+  // bridge exits
+  repeated ImportedBridgeExit imported_bridge_exits = 7;
 }
 
 // The aggchain proof response message.
 message GenerateAggchainProofResponse {
-  // TODO - Define the type of aggchain proof.
-  // The start block of the aggchain proof.
+  // Aggchain proof.
   bytes aggchain_proof = 1;
   // The start block of the aggchain proof.
   uint64 start_block = 2;
   // The end block of the aggchain proof.
   uint64 end_block = 3;
+  // Local exit root hash.
+  bytes local_exit_root_hash = 4;
+  // Custom chain data.
+  bytes custom_chain_data = 5;
+}
+
+message InclusionProof {
+  // Siblings.
+  repeated bytes siblings = 1;
+}
+
+message L1InfoTreeLeaf {
+  // previous block hash of leaf
+  bytes previous_block_hash = 1;
+  // block number timestamp
+  uint64 timestamp = 2;
+  // mainnet exit root hash
+  bytes mainnet_exit_root_hash = 3;
+  // rollup exit root hash
+  bytes rollup_exit_root_hash = 4;
+  // global exit root hash
+  bytes global_exit_root_hash = 5;
+  // leaf hash
+  bytes leaf_hash = 6;
+  // leaf index
+  uint32 l1_info_tree_index = 7;
+}
+
+// Represents a token bridge exit originating on another network but claimed on
+// the current network.
+message ImportedBridgeExit {
+  /// The bridge exit initiated on another network, called the "sending"
+  /// network. Need to verify that the destination network matches the
+  /// current network, and that the bridge exit is included in an imported
+  /// LER
+  BridgeExit bridge_exit = 1;
+  /// The global index of the imported bridge exit.
+  GlobalIndex global_index = 2;
+}
+
+// Represents a token bridge exit from the network.
+message BridgeExit {
+  // The type of the leaf.
+  LeafType leaf_type = 1;
+  // Unique ID for the token being transferred.
+  TokenInfo token_info = 2;
+  // Network which the token is transferred to
+  uint32 destination_network = 3;
+  // Address which will own the received token
+  bytes destination_address = 4;
+  // Token amount sent
+  string amount = 5;
+  // is metadata hashed
+  bool is_metadata_hashed = 6;
+  // Metadata for the bridge exit
+  bytes metadata = 7;
+}
+
+message GlobalIndex {
+  // mainnet flag
+  bool mainnet_flag = 1;
+  // rollup index
+  uint32 rollup_index = 2;
+  // leaf index
+  uint32 leaf_index = 3;
+}
+
+enum LeafType {
+  // Unspecified leaf type.
+  LEAF_TYPE_UNSPECIFIED = 0;
+  // Transfer leaf type.
+  LEAF_TYPE_TRANSFER = 1;
+  // Message leaf type.
+  LEAF_TYPE_MESSAGE = 2;
+}
+
+// Encapsulates the information to uniquely identify a token on the origin
+// network.
+message TokenInfo {
+  // Network which the token originates from
+  uint32 origin_network = 1;
+  // The address of the token on the origin network
+  bytes origin_token_address = 2;
 }
