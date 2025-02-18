@@ -26,7 +26,8 @@ func NewEVMChainGERReader(l2GERManagerAddr common.Address, l2Client types.EthCli
 	return newEVMChainGERReader(l2GERManager, l2GERManagerAddr)
 }
 
-func newEVMChainGERReader(l2GERManager types.L2GERManagerContract, l2GERManagerAddr common.Address) (*EVMChainGERReader, error) {
+func newEVMChainGERReader(l2GERManager types.L2GERManagerContract,
+	l2GERManagerAddr common.Address) (*EVMChainGERReader, error) {
 	if err := checkGlobalExitRootManagerContract(l2GERManager, l2GERManagerAddr); err != nil {
 		return nil, err
 	}
@@ -45,7 +46,8 @@ func checkGlobalExitRootManagerContract(l2GERManager types.L2GERManagerContract,
 }
 
 // GetInjectedGERsForRange returns the injected GlobalExitRoots for the given block range
-func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context, fromBlock, toBlock uint64) ([]common.Hash, error) {
+func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context,
+	fromBlock, toBlock uint64) ([]common.Hash, error) {
 	iter, err := e.l2GERManager.FilterInsertGlobalExitRoot(
 		&bind.FilterOpts{
 			Context: ctx,
