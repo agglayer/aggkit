@@ -52,8 +52,11 @@ type Bridge struct {
 	Amount             *big.Int       `meddler:"amount,bigint"`
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp"`
+	TxHash             common.Hash    `meddler:"tx_hash"`
 }
 
+// Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
 // Hash returns the hash of the bridge event as expected by the exit tree
 func (b *Bridge) Hash() common.Hash {
 	const (
