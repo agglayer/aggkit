@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/agglayer/aggkit/agglayer"
@@ -12,9 +11,9 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type AggsenderMode string
@@ -56,16 +55,18 @@ type L2BridgeSyncer interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 }
 
-// L2Etherman is an interface defining functions that an L2Etherman should implement
-type L2Etherman interface {
+// ChainGERReader is an interface defining functions that an ChainGERReader should implement
+type ChainGERReader interface {
 	GetInjectedGERsForRange(ctx context.Context, fromBlock, toBlock uint64) ([]common.Hash, error)
 }
 
 // EthClient is an interface defining functions that an EthClient should implement
 type EthClient interface {
 	bind.ContractBackend
-	BlockNumber(ctx context.Context) (uint64, error)
-	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+	ethereum.LogFilterer
+	ethereum.BlockNumberReader
+	ethereum.ChainReader
+	bind.ContractBackend
 }
 
 // Logger is an interface that defines the methods to log messages

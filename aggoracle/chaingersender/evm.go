@@ -3,48 +3,20 @@ package chaingersender
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
+	"github.com/agglayer/aggkit/aggoracle/types"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
-	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 const insertGERFuncName = "insertGlobalExitRoot"
-
-type EthClienter interface {
-	ethereum.LogFilterer
-	ethereum.BlockNumberReader
-	ethereum.ChainReader
-	bind.ContractBackend
-}
-
-type EthTxManager interface {
-	Remove(ctx context.Context, id common.Hash) error
-	ResultsByStatus(ctx context.Context,
-		statuses []ethtxtypes.MonitoredTxStatus,
-	) ([]ethtxtypes.MonitoredTxResult, error)
-	Result(ctx context.Context, id common.Hash) (ethtxtypes.MonitoredTxResult, error)
-	Add(ctx context.Context,
-		to *common.Address,
-		value *big.Int,
-		data []byte,
-		gasOffset uint64,
-		sidecar *types.BlobTxSidecar,
-	) (common.Hash, error)
-}
-
-type L2GERManagerContract interface {
-	GlobalExitRootMap(opts *bind.CallOpts, ger [common.HashLength]byte) (*big.Int, error)
-}
 
 type EVMConfig struct {
 	GlobalExitRootL2Addr common.Address      `mapstructure:"GlobalExitRootL2"`
@@ -57,11 +29,11 @@ type EVMConfig struct {
 type EVMChainGERSender struct {
 	logger *log.Logger
 
-	l2GERManager     L2GERManagerContract
+	l2GERManager     types.L2GERManagerContract
 	l2GERManagerAddr common.Address
 	l2GERManagerAbi  *abi.ABI
 
-	ethTxMan            EthTxManager
+	ethTxMan            types.EthTxManager
 	gasOffset           uint64
 	waitPeriodMonitorTx time.Duration
 }
@@ -69,8 +41,8 @@ type EVMChainGERSender struct {
 func NewEVMChainGERSender(
 	logger *log.Logger,
 	l2GERManagerAddr common.Address,
-	l2Client EthClienter,
-	ethTxMan EthTxManager,
+	l2Client types.EthClienter,
+	ethTxMan types.EthTxManager,
 	gasOffset uint64,
 	waitPeriodMonitorTx time.Duration,
 ) (*EVMChainGERSender, error) {

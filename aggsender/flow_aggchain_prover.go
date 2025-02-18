@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/agglayer/aggkit/agglayer"
+	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -24,7 +25,7 @@ type aggchainProverFlow struct {
 
 	l1Client            types.EthClient
 	aggchainProofClient grpc.AggchainProofClientInterface
-	l2Etherman          types.L2Etherman
+	l2Etherman          types.ChainGERReader
 }
 
 // newAggchainProverFlow returns a new instance of the aggchainProverFlow
@@ -36,7 +37,7 @@ func newAggchainProverFlow(log types.Logger,
 	l2Syncer types.L2BridgeSyncer,
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*aggchainProverFlow, error) {
-	l2Etherman, err := NewL2Etherman(cfg.GlobalExitRootL2Addr, l2Client)
+	l2Etherman, err := chaingerreader.NewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error creating L2Etherman: %w", err)
 	}
