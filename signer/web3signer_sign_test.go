@@ -21,6 +21,20 @@ func TestFailsCantSetAddressToUse(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestInitialize(t *testing.T) {
+	sut := Web3SignerSign{}
+	ctx := context.TODO()
+	err := sut.Initialize(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "client is nil")
+	sut = Web3SignerSign{
+		client: mocks.NewWeb3SignerClienter(t),
+	}
+	err = sut.Initialize(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "logger is nil")
+}
+
 func TestFailsSetAddressToUse(t *testing.T) {
 	mockWeb3SignerClient := mocks.NewWeb3SignerClienter(t)
 	ctx := context.TODO()

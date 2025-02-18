@@ -106,17 +106,7 @@ func (e *Web3SignerSign) Initialize(ctx context.Context) error {
 func (e *Web3SignerSign) SignHash(ctx context.Context, hash common.Hash) ([]byte, error) {
 	var zeroAddr common.Address
 	if e.address == zeroAddr {
-		accounts, err := e.client.EthAccounts(ctx)
-		if err != nil {
-			return nil, err
-		}
-		if len(accounts) == 0 {
-			return nil, fmt.Errorf("no accounts found")
-		}
-		if len(accounts) > 1 {
-			return nil, fmt.Errorf("more than one account found, please specify the account")
-		}
-		e.address = accounts[0]
+		return nil, fmt.Errorf("no Publicaddress set. Call Initialize first")
 	}
 
 	return e.client.SignHash(ctx, e.address, hash)
