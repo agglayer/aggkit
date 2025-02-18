@@ -2,10 +2,28 @@ package aggsender
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 )
+
+type SubmitCertificateConfig struct {
+	// L1BlockCreationRate is the rate of creation blocks on L1
+	// if it's 0 it will be autodiscover
+	L1BlockCreationRate time.Duration
+	// SubmitNewCertIfRemainsForNextEpoch is the minimum time before the end of the epoch
+	// to submit a certificate
+	SubmitIfRemainsForNextEpoch time.Duration
+	// MaxTimeBeforeEndingEpoch is the maximum time before the end of the epoch
+	// if pending time > that is value we are going to wait no next epoch
+	NoSubmitIfRemainsForNextEpoch time.Duration
+}
+
+func (c SubmitCertificateConfig) String() string {
+	return fmt.Sprintf("L1BlockCreationRate: %s, SubmitIfRemainsForNextEpoch: %s, NoSubmitIfRemainsForNextEpoch: %s",
+		c.L1BlockCreationRate, c.SubmitIfRemainsForNextEpoch, c.NoSubmitIfRemainsForNextEpoch)
+}
 
 // Config is the configuration for the AggSender
 type Config struct {
@@ -19,11 +37,10 @@ type Config struct {
 	URLRPCL2 string `mapstructure:"URLRPCL2"`
 	// BlockFinality indicates which finality follows AggLayer
 	BlockFinality string `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
-	// EpochNotificationPercentage indicates the percentage of the epoch
-	// the AggSender should send the certificate
-	// 0 -> Begin
-	// 50 -> Middle
-	EpochNotificationPercentage uint `mapstructure:"EpochNotificationPercentage"`
+
+	// SubmitCertificateConfig params of the submition of certificates
+	SubmitCertificateConfig SubmitCertificateConfig
+
 	// SaveCertificatesToFilesPath if != "" tells  the AggSender to save the certificates to a file in this path
 	SaveCertificatesToFilesPath string `mapstructure:"SaveCertificatesToFilesPath"`
 
@@ -50,13 +67,7 @@ type Config struct {
 	// RetryCertAfterInError when a cert pass to 'InError'
 	// state the AggSender will try to resend it immediately
 	RetryCertAfterInError bool `mapstructure:"RetryCertAfterInError"`
-	// MaxEpochPercentageAllowedToSendCertificate is the percentage of the epoch
-	// after which the AggSender is forbidden to send the certificate.
-	// If value==0  || value >= 100 the check is disabled
-	// 0 -> Begin
-	// 50 -> Middle
-	// 100 -> End
-	MaxEpochPercentageAllowedToSendCertificate uint `mapstructure:"MaxEpochPercentageAllowedToSendCertificate"`
+
 	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
 	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
 }
@@ -72,13 +83,12 @@ func (c Config) String() string {
 		"AggsenderPrivateKeyPath: " + c.AggsenderPrivateKey.Path + "\n" +
 		"URLRPCL2: " + c.URLRPCL2 + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
-		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
+		"SubmitCertificateConfig: " + c.SubmitCertificateConfig.String() + "\n" +
 		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertInmediatlyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
-		"MaxEpochPercentageAllowedToSendCertificate: " +
-		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n"
+		"MaxEpochPercentageAllowedToSendCertificate: "
 }

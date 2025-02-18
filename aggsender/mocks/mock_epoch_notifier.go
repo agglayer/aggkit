@@ -22,47 +22,47 @@ func (_m *EpochNotifier) EXPECT() *EpochNotifier_Expecter {
 	return &EpochNotifier_Expecter{mock: &_m.Mock}
 }
 
-// GetEpochStatus provides a mock function with no fields
-func (_m *EpochNotifier) GetEpochStatus() types.EpochStatus {
+// CheckCanSendCertificate provides a mock function with no fields
+func (_m *EpochNotifier) CheckCanSendCertificate() error {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetEpochStatus")
+		panic("no return value specified for CheckCanSendCertificate")
 	}
 
-	var r0 types.EpochStatus
-	if rf, ok := ret.Get(0).(func() types.EpochStatus); ok {
+	var r0 error
+	if rf, ok := ret.Get(0).(func() error); ok {
 		r0 = rf()
 	} else {
-		r0 = ret.Get(0).(types.EpochStatus)
+		r0 = ret.Error(0)
 	}
 
 	return r0
 }
 
-// EpochNotifier_GetEpochStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEpochStatus'
-type EpochNotifier_GetEpochStatus_Call struct {
+// EpochNotifier_CheckCanSendCertificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckCanSendCertificate'
+type EpochNotifier_CheckCanSendCertificate_Call struct {
 	*mock.Call
 }
 
-// GetEpochStatus is a helper method to define mock.On call
-func (_e *EpochNotifier_Expecter) GetEpochStatus() *EpochNotifier_GetEpochStatus_Call {
-	return &EpochNotifier_GetEpochStatus_Call{Call: _e.mock.On("GetEpochStatus")}
+// CheckCanSendCertificate is a helper method to define mock.On call
+func (_e *EpochNotifier_Expecter) CheckCanSendCertificate() *EpochNotifier_CheckCanSendCertificate_Call {
+	return &EpochNotifier_CheckCanSendCertificate_Call{Call: _e.mock.On("CheckCanSendCertificate")}
 }
 
-func (_c *EpochNotifier_GetEpochStatus_Call) Run(run func()) *EpochNotifier_GetEpochStatus_Call {
+func (_c *EpochNotifier_CheckCanSendCertificate_Call) Run(run func()) *EpochNotifier_CheckCanSendCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *EpochNotifier_GetEpochStatus_Call) Return(_a0 types.EpochStatus) *EpochNotifier_GetEpochStatus_Call {
+func (_c *EpochNotifier_CheckCanSendCertificate_Call) Return(_a0 error) *EpochNotifier_CheckCanSendCertificate_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *EpochNotifier_GetEpochStatus_Call) RunAndReturn(run func() types.EpochStatus) *EpochNotifier_GetEpochStatus_Call {
+func (_c *EpochNotifier_CheckCanSendCertificate_Call) RunAndReturn(run func() error) *EpochNotifier_CheckCanSendCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }
