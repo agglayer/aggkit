@@ -441,7 +441,7 @@ func TestGetTokenMappings(t *testing.T) {
 			},
 		}
 
-		bridgeMocks.bridgeL1.On("GetTokenMappings", mock.Anything, &page, &pageSize).
+		bridgeMocks.bridgeL1.On("GetTokenMappings", mock.Anything, page, pageSize).
 			Return(tokenMappings, len(tokenMappings), nil)
 
 		result, err := bridgeMocks.bridge.GetTokenMappings(0, &page, &pageSize)
@@ -451,7 +451,7 @@ func TestGetTokenMappings(t *testing.T) {
 		tokenMappingsResult, ok := result.(*TokenMappingsResult)
 		require.True(t, ok)
 		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
-		require.Equal(t, len(tokenMappingsResult.TokenMappings), tokenMappingsResult.TotalTokenMappings)
+		require.Equal(t, len(tokenMappingsResult.TokenMappings), tokenMappingsResult.Count)
 
 		bridgeMocks.bridgeL1.AssertExpectations(t)
 	})
@@ -473,7 +473,7 @@ func TestGetTokenMappings(t *testing.T) {
 			},
 		}
 
-		bridgeMocks.bridgeL2.On("GetTokenMappings", mock.Anything, &page, &pageSize).
+		bridgeMocks.bridgeL2.On("GetTokenMappings", mock.Anything, page, pageSize).
 			Return(tokenMappings, len(tokenMappings), nil)
 
 		result, err := bridgeMocks.bridge.GetTokenMappings(networkID, &page, &pageSize)
@@ -483,7 +483,7 @@ func TestGetTokenMappings(t *testing.T) {
 		tokenMappingsResult, ok := result.(*TokenMappingsResult)
 		require.True(t, ok)
 		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
-		require.Equal(t, len(tokenMappings), tokenMappingsResult.TotalTokenMappings)
+		require.Equal(t, len(tokenMappings), tokenMappingsResult.Count)
 
 		bridgeMocks.bridgeL2.AssertExpectations(t)
 	})

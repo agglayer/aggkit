@@ -15,7 +15,7 @@ import (
 type Bridger interface {
 	GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error)
 	GetRootByLER(ctx context.Context, ler common.Hash) (*tree.Root, error)
-	GetTokenMappings(ctx context.Context, pageNumber, pageSize *uint32) ([]*bridgesync.TokenMapping, int, error)
+	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*bridgesync.TokenMapping, int, error)
 }
 
 type LastGERer interface {

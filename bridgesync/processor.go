@@ -36,21 +36,8 @@ var (
 	// errBlockNotProcessedFormat indicates that the given block(s) have not been processed yet.
 	errBlockNotProcessedFormat = fmt.Sprintf("block %%d not processed, last processed: %%d")
 
-	// errInvalidPageSize indicates that the page size is invalid
-	errInvalidPageSize = errors.New("page size must be greater than 0")
-
-	// errInvalidPageNumber indicates that the page number is invalid
-	errInvalidPageNumber = errors.New("page number must be greater than 0")
-
 	// tableNameRegex is the regex pattern to validate table names
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
-)
-
-const (
-	// defaultPageSize is the default number of records to be fetched
-	defaultPageSize = uint32(50)
-	// defaultPageNumber is the default page number to be used when fetching records
-	defaultPageNumber = uint32(1)
 )
 
 // Bridge is the representation of a bridge event
@@ -241,6 +228,27 @@ func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, ta
 	return rows, nil
 }
 
+// queryPaged returns a paged result from the given table
+func (p *processor) queryPaged(tx db.Querier,
+	offset, pageSize uint32,
+	table, orderBy, order, whereClause string,
+) (*sql.Rows, error) {
+	rows, err := tx.Query(fmt.Sprintf(`
+		SELECT *
+		FROM %s
+		%s
+		ORDER BY %s %s
+		LIMIT $1 OFFSET $2;
+	`, table, whereClause, orderBy, order), pageSize, offset)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, err
+	}
+	return rows, nil
+}
+
 func (p *processor) isBlockProcessed(tx db.Querier, blockNum uint64) error {
 	lpb, err := p.getLastProcessedBlockWithTx(tx)
 	if err != nil {
@@ -387,13 +395,7 @@ func (p *processor) GetTotalNumberOfRecords(tableName string) (int, error) {
 }
 
 // GetTokenMappings returns the token mappings in the database
-func (p *processor) GetTokenMappings(ctx context.Context,
-	pageNumberPtr, pageSizePtr *uint32) ([]*TokenMapping, int, error) {
-	pageNumber, pageSize, err := p.validatePaginationParams(pageNumberPtr, pageSizePtr)
-	if err != nil {
-		return nil, 0, err
-	}
-
+func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
 	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
@@ -418,29 +420,6 @@ func (p *processor) GetTokenMappings(ctx context.Context,
 	return tokenMappings, totalTokenMappings, nil
 }
 
-// validatePaginationParams validates the page number and page size
-func (p *processor) validatePaginationParams(pageNumber, pageSize *uint32) (uint32, uint32, error) {
-	if pageNumber == nil {
-		pageNumber = new(uint32)
-		*pageNumber = defaultPageNumber
-	}
-
-	if pageSize == nil {
-		pageSize = new(uint32)
-		*pageSize = defaultPageSize
-	}
-
-	if *pageNumber == 0 {
-		return 0, 0, errInvalidPageNumber
-	}
-
-	if *pageSize == 0 {
-		return 0, 0, errInvalidPageSize
-	}
-
-	return *pageNumber, *pageSize, nil
-}
-
 // fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
 func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -454,15 +433,16 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 		}
 	}()
 
-	query := fmt.Sprintf("SELECT * FROM %s ORDER BY block_num DESC LIMIT $1 OFFSET $2;", tokenMappingTableName)
-	rows, err := tx.QueryContext(ctx, query, pageSize, offset)
+	const (
+		orderByColumn = "block_num"
+		order         = "DESC"
+	)
+	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByColumn, order, "")
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, db.ErrNotFound
-		}
 		p.log.Errorf("failed to fetch token mappings: %v", err)
 		return nil, err
 	}
+
 	defer func() {
 		if err := rows.Close(); err != nil {
 			p.log.Warnf("error closing rows: %v", err)
