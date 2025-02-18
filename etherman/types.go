@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"math/big"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/elderberry/polygonvalidiumetrog"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/invopop/jsonschema"
 )
 
 // Block struct
@@ -93,31 +95,67 @@ type ForkID struct {
 	Version     string
 }
 
-type BlockNumberFinality string
+type BlockNumberFinality struct {
+	string `validate:"required"`
+}
 
-const (
-	SafeBlock      = BlockNumberFinality("SafeBlock")
-	FinalizedBlock = BlockNumberFinality("FinalizedBlock")
-	LatestBlock    = BlockNumberFinality("LatestBlock")
-	PendingBlock   = BlockNumberFinality("PendingBlock")
-	EarliestBlock  = BlockNumberFinality("EarliestBlock")
+func NewBlockNumberFinality(s string) BlockNumberFinality {
+	return BlockNumberFinality{s}
+}
+
+var (
+	SafeBlock      = BlockNumberFinality{"SafeBlock"}
+	FinalizedBlock = BlockNumberFinality{"FinalizedBlock"}
+	LatestBlock    = BlockNumberFinality{"LatestBlock"}
+	PendingBlock   = BlockNumberFinality{"PendingBlock"}
+	EarliestBlock  = BlockNumberFinality{"EarliestBlock"}
 )
 
 func (b *BlockNumberFinality) ToBlockNum() (*big.Int, error) {
-	switch *b {
-	case FinalizedBlock:
+	switch strings.ToUpper(b.String()) {
+	case strings.ToUpper(FinalizedBlock.String()):
 		return big.NewInt(int64(Finalized)), nil
-	case SafeBlock:
+	case strings.ToUpper(SafeBlock.String()):
 		return big.NewInt(int64(Safe)), nil
-	case PendingBlock:
+	case strings.ToUpper(PendingBlock.String()):
 		return big.NewInt(int64(Pending)), nil
-	case LatestBlock:
+	case strings.ToUpper(LatestBlock.String()):
 		return big.NewInt(int64(Latest)), nil
-	case EarliestBlock:
+	case strings.ToUpper(EarliestBlock.String()):
 		return big.NewInt(int64(Earliest)), nil
 	default:
-		return nil, fmt.Errorf("invalid finality keyword: %s", string(*b))
+		return nil, fmt.Errorf("invalid finality keyword: %s", b.String())
 	}
+}
+func (b BlockNumberFinality) String() string {
+	return b.string
+}
+
+// UnmarshalText unmarshalls BlockNumberFinality from text.
+func (d *BlockNumberFinality) UnmarshalText(data []byte) error {
+	res := BlockNumberFinality{string(data)}
+	_, err := res.ToBlockNum()
+	if err != nil {
+		return fmt.Errorf("failed to parse BlockNumberFinality %s: %w", string(data), err)
+	}
+	d.string = res.string
+	return nil
+}
+
+func (BlockNumberFinality) JSONSchema() *jsonschema.Schema {
+	return &jsonschema.Schema{
+		Type:        "string",
+		Title:       "BlockNumberFinality",
+		Description: "BlockNumberFinality is a block finality name",
+		Examples: []interface{}{
+			"SafeBlock",
+			"LatestBlock",
+		},
+	}
+}
+
+func (b BlockNumberFinality) IsEmpty() bool { //nolint:stylecheck
+	return b.string == ""
 }
 
 func (b BlockNumberFinality) IsFinalized() bool {

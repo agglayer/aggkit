@@ -31,19 +31,22 @@ func TestNewLx(t *testing.T) {
 	bridge := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	const (
 		syncBlockChunkSize         = uint64(100)
-		blockFinalityType          = etherman.SafeBlock
 		initialBlock               = uint64(0)
 		waitForNewBlocksPeriod     = time.Second * 10
 		retryAfterErrorPeriod      = time.Second * 5
 		maxRetryAttemptsAfterError = 3
 		originNetwork              = uint32(1)
 	)
+	var blockFinalityType = etherman.SafeBlock
 
 	mockEthClient := mocksbridgesync.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Times(2)
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
-
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 	l1BridgeSync, err := NewL1(
 		ctx,
 		dbPath,
@@ -58,7 +61,6 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		blockFinalityType,
 	)
 
 	assert.NoError(t, err)
@@ -80,13 +82,35 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		blockFinalityType,
 	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, l1BridgeSync)
 	assert.Equal(t, originNetwork, l2BridgdeSync.OriginNetwork())
 	assert.Equal(t, blockFinalityType, l2BridgdeSync.BlockFinality())
+
+	// Fails the sanity check of the contract address
+	mockEthClient = mocksbridgesync.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+	mockEthClient.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+	l2BridgdeSyncErr, err := NewL2(
+		ctx,
+		dbPath,
+		bridge,
+		syncBlockChunkSize,
+		blockFinalityType,
+		mockReorgDetector,
+		mockEthClient,
+		initialBlock,
+		waitForNewBlocksPeriod,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
+		originNetwork,
+		false,
+	)
+	t.Log(err)
+	assert.Error(t, err)
+	assert.Nil(t, l2BridgdeSyncErr)
 }
 
 func TestGetLastProcessedBlock(t *testing.T) {

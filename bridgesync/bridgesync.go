@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -25,10 +26,12 @@ type ReorgDetector interface {
 
 // BridgeSync manages the state of the exit tree for the bridge contract by processing Ethereum blockchain events.
 type BridgeSync struct {
-	processor *processor
-	driver    *sync.EVMDriver
+	processor  *processor
+	driver     *sync.EVMDriver
+	downloader *sync.EVMDownloader
 
 	originNetwork uint32
+	reorgDetector ReorgDetector
 	blockFinality etherman.BlockNumberFinality
 }
 
@@ -47,7 +50,6 @@ func NewL1(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -64,7 +66,6 @@ func NewL1(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		finalizedBlockType,
 	)
 }
 
@@ -83,7 +84,6 @@ func NewL2(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -100,7 +100,6 @@ func NewL2(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
-		finalizedBlockType,
 	)
 }
 
@@ -119,9 +118,15 @@ func newBridgeSync(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
-	finalizedBlockType etherman.BlockNumberFinality,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID)
+
+	err := sanityCheckContract(logger, bridge, ethClient)
+	if err != nil {
+		logger.Errorf("sanityCheckContract(bridge:%s) fails sanity check. Err: %w",
+			bridge.String(), err)
+		return nil, err
+	}
 	processor, err := newProcessor(dbPath, logger)
 	if err != nil {
 		return nil, err
@@ -164,7 +169,7 @@ func newBridgeSync(
 		appender,
 		[]common.Address{bridge},
 		rh,
-		finalizedBlockType,
+		rd.GetFinalizedBlockType(),
 	)
 	if err != nil {
 		return nil, err
@@ -184,7 +189,7 @@ func newBridgeSync(
 			"  maxRetryAttemptsAfterError: %d\n"+
 			"  retryAfterErrorPeriod: %s\n"+
 			"  syncBlockChunkSize: %d\n"+
-			"  blockFinalityType: %s\n"+
+			"  ReorgDetector: %s\n"+
 			"  waitForNewBlocksPeriod: %s",
 		syncerID,
 		dbPath,
@@ -194,14 +199,16 @@ func newBridgeSync(
 		maxRetryAttemptsAfterError,
 		retryAfterErrorPeriod.String(),
 		syncBlockChunkSize,
-		blockFinalityType,
+		rd.String(),
 		waitForNewBlocksPeriod.String(),
 	)
 
 	return &BridgeSync{
 		processor:     processor,
 		driver:        driver,
+		downloader:    downloader,
 		originNetwork: originNetwork,
+		reorgDetector: rd,
 		blockFinality: blockFinalityType,
 	}, nil
 }
@@ -291,4 +298,19 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 // BlockFinality returns the block finality type
 func (s *BridgeSync) BlockFinality() etherman.BlockNumberFinality {
 	return s.blockFinality
+}
+
+func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address, ethClient EthClienter) error {
+	contract, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
+	if err != nil {
+		return fmt.Errorf("sanityCheckContract(bridge:%s) fails creating contract. Err: %w", bridgeAddr.String(), err)
+	}
+	lastUpdatedDespositCount, err := contract.LastUpdatedDepositCount(nil)
+	if err != nil {
+		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w",
+			bridgeAddr.String(), err)
+	}
+	logger.Infof("sanityCheckContract(bridge:%s) OK. lastUpdatedDespositCount: %d",
+		bridgeAddr.String(), lastUpdatedDespositCount)
+	return nil
 }

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/etherman"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
 )
@@ -28,6 +29,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfg, err := Load(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
+	require.Equal(t, etherman.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
 }
@@ -72,4 +74,18 @@ func newCliContextConfigFlag(t *testing.T, values ...string) *cli.Context {
 		require.NoError(t, err)
 	}
 	return cli.NewContext(nil, flagSet, nil)
+}
+
+func TestLoadConfigWithDeprecatedFields(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "ut_config")
+	require.NoError(t, err)
+	defer os.Remove(tmpFile.Name())
+	_, err = tmpFile.Write([]byte(`
+	[L1Config]
+	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
+`))
+	require.NoError(t, err)
+	ctx := newCliContextConfigFlag(t, tmpFile.Name())
+	_, err = Load(ctx)
+	require.Error(t, err)
 }
