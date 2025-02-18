@@ -2,20 +2,39 @@ package signer
 
 import (
 	"context"
-	"fmt"
 	"testing"
 
-	web3signerclient "github.com/agglayer/aggkit/signer/web3signer_client"
+	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/signer/mocks"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-func TestWeb3SignerClientExploratory(t *testing.T) {
-	t.Skip("skipping test")
-	sut := Web3SignerSign{
-		client: web3signerclient.NewWeb3SignerClient("http://localhost:9000"),
-	}
-	res, err := sut.SignHash(context.Background(), common.Hash{})
+func TestFailsCantSetAddressToUse(t *testing.T) {
+	mockWeb3SignerClient := mocks.NewWeb3SignerClienter(t)
+	ctx := context.TODO()
+	logger := log.WithFields("test", "test")
+	sut := NewWeb3SignerSign("name", logger, mockWeb3SignerClient, common.Address{})
+	mockWeb3SignerClient.EXPECT().EthAccounts(ctx).Return([]common.Address{}, nil)
+	err := sut.Initialize(ctx)
+	require.Error(t, err)
+}
+
+func TestFailsSetAddressToUse(t *testing.T) {
+	mockWeb3SignerClient := mocks.NewWeb3SignerClienter(t)
+	ctx := context.TODO()
+	logger := log.WithFields("test", "test")
+	sut := NewWeb3SignerSign("name", logger, mockWeb3SignerClient, common.Address{})
+	mockWeb3SignerClient.EXPECT().EthAccounts(ctx).Return([]common.Address{
+		common.HexToAddress("0x1234"),
+	}, nil)
+	err := sut.Initialize(ctx)
 	require.NoError(t, err)
-	fmt.Print(res)
+	signData := []byte{0x01, 0x02, 0x03}
+	mockWeb3SignerClient.EXPECT().SignHash(ctx, mock.Anything, mock.Anything).Return(signData, nil)
+	sign, err := sut.SignHash(ctx, common.HexToHash("0x1234"))
+	require.NoError(t, err)
+	require.NotNil(t, sign)
+	require.Equal(t, signData, sign)
 }

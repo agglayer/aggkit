@@ -15,7 +15,7 @@ const (
 	FieldURL         = "url"
 )
 
-type Web3Signer interface {
+type Web3SignerClienter interface {
 	EthAccounts(ctx context.Context) ([]common.Address, error)
 	SignHash(ctx context.Context, address common.Address, hashToSign common.Hash) ([]byte, error)
 }
@@ -59,11 +59,11 @@ func NewWeb3SignerConfig(cfg SignerConfig) (Web3SignerConfig, error) {
 type Web3SignerSign struct {
 	name    string
 	logger  types.Logger
-	client  Web3Signer
+	client  Web3SignerClienter
 	address common.Address
 }
 
-func NewWeb3SignerSign(name string, logger types.Logger, client Web3Signer,
+func NewWeb3SignerSign(name string, logger types.Logger, client Web3SignerClienter,
 	address common.Address) *Web3SignerSign {
 	return &Web3SignerSign{
 		name:    name,
