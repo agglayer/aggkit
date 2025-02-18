@@ -108,6 +108,11 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		}
 	}
 
+	if buildParams.NumberOfBridges() == 0 {
+		// no bridges so no need to build the certificate
+		return nil, nil
+	}
+
 	proof, leaf, root, err := a.getFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)

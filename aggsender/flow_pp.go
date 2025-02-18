@@ -89,6 +89,11 @@ func (f *baseFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certif
 		CreatedAt:           uint32(time.Now().UTC().Unix()),
 	}
 
+	if buildParams.NumberOfBridges() == 0 {
+		// no bridges so no need to build the certificate
+		return nil, nil
+	}
+
 	buildParams, err = f.limitCertSize(buildParams)
 	if err != nil {
 		return nil, fmt.Errorf("error limitCertSize: %w", err)
@@ -116,7 +121,7 @@ func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types
 	for {
 		if currentCert.NumberOfBridges() == 0 {
 			// We can't reduce more the certificate, so this is the minium size
-			f.log.Warnf("We reach the minium size of bridge.Certificate size: %d >max size: %d",
+			f.log.Warnf("We reach the minium size of bridge. Certificate size: %d >max size: %d",
 				previousCert.EstimatedSize(), f.cfg.MaxCertSize)
 			return previousCert, nil
 		}
@@ -127,7 +132,7 @@ func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types
 
 		// Minimum size of the certificate
 		if currentCert.NumberOfBlocks() <= 1 {
-			f.log.Warnf("reach the minium num blocks [%d to %d].Certificate size: %d >max size: %d",
+			f.log.Warnf("reach the minium num blocks [%d to %d]. Certificate size: %d >max size: %d",
 				currentCert.FromBlock, currentCert.ToBlock, currentCert.EstimatedSize(), f.cfg.MaxCertSize)
 			return currentCert, nil
 		}
