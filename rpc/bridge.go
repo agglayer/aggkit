@@ -74,14 +74,15 @@ func NewBridgeEndpoints(
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings
 type TokenMappingsResult struct {
-	TokenMappings      []*bridgesync.TokenMapping `json:"tokenMappings"`
-	TotalTokenMappings int                        `json:"totalTokenMappings"`
+	TokenMappings []*bridgesync.TokenMapping `json:"tokenMappings"`
+	Count         int                        `json:"count"`
 }
 
 // GetTokenMappings returns the token mappings for the given network
 func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
 	b.logger.Debugf("GetTokenMappings invoked (network id=%d, page number=%v, page size=%v)",
 		networkID, pageNumber, pageSize)
+
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 
@@ -91,15 +92,19 @@ func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSiz
 	}
 	c.Add(ctx, 1)
 
+	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
+	if err != nil {
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode, err.Error())
+	}
+
 	var (
 		tokenMappings      []*bridgesync.TokenMapping
 		tokenMappingsCount int
-		err                error
 	)
 
 	switch {
 	case networkID == 0:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize)
+		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumberU32, pageSizeU32)
 		if err != nil {
 			return nil,
 				rpc.NewRPCError(rpc.DefaultErrorCode,
@@ -107,7 +112,7 @@ func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSiz
 		}
 
 	case b.networkID == networkID:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
+		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumberU32, pageSizeU32)
 		if err != nil {
 			return nil,
 				rpc.NewRPCError(rpc.DefaultErrorCode,
@@ -121,8 +126,8 @@ func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSiz
 	}
 
 	return &TokenMappingsResult{
-		TokenMappings:      tokenMappings,
-		TotalTokenMappings: tokenMappingsCount,
+		TokenMappings: tokenMappings,
+		Count:         tokenMappingsCount,
 	}, nil
 }
 

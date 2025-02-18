@@ -996,20 +996,6 @@ func TestGetTokenMapping(t *testing.T) {
 			expectedLen: 0,
 			expectedErr: db.ErrNotFound,
 		},
-		{
-			name:        "Invalid page size",
-			pageNumber:  1,
-			pageSize:    0,
-			expectedLen: 0,
-			expectedErr: errInvalidPageSize,
-		},
-		{
-			name:        "Invalid page number",
-			pageNumber:  0,
-			pageSize:    10,
-			expectedLen: 0,
-			expectedErr: errInvalidPageNumber,
-		},
 	}
 
 	for _, tt := range tests {
@@ -1017,7 +1003,7 @@ func TestGetTokenMapping(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, totalTokenMappings, err := p.GetTokenMappings(context.Background(), &tt.pageNumber, &tt.pageSize)
+			result, totalTokenMappings, err := p.GetTokenMappings(context.Background(), tt.pageNumber, tt.pageSize)
 			if tt.expectedErr != nil {
 				require.ErrorIs(t, err, tt.expectedErr)
 			} else {
