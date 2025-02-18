@@ -26,7 +26,8 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 		expectedErr   error
 	}
 	ctx := context.Background()
-	b := newBridgeWithMocks(t, 1)
+	networkID := uint32(1)
+	b := newBridgeWithMocks(t, networkID)
 	fooErr := errors.New("foo")
 	firstL1Info := &l1infotreesync.L1InfoTreeLeaf{
 		BlockNumber:     10,
@@ -222,7 +223,8 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		expectedErr   error
 	}
 	ctx := context.Background()
-	b := newBridgeWithMocks(t, 2)
+	networkID := uint32(2)
+	b := newBridgeWithMocks(t, networkID)
 	fooErr := errors.New("foo")
 	firstVerified := &l1infotreesync.VerifyBatches{
 		BlockNumber: 10,
@@ -419,6 +421,82 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 	}
 }
 
+func TestGetTokenMappings(t *testing.T) {
+	networkID := uint32(10)
+	bridgeMocks := newBridgeWithMocks(t, networkID)
+
+	t.Run("GetTokenMappings for L1 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		tokenMappings := []*bridgesync.TokenMapping{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x1"),
+				OriginNetwork:       1,
+				OriginTokenAddress:  common.HexToAddress("0x1"),
+				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Metadata:            []byte("metadata"),
+			},
+		}
+
+		bridgeMocks.bridgeL1.On("GetTokenMappings", mock.Anything, page, pageSize).
+			Return(tokenMappings, len(tokenMappings), nil)
+
+		result, err := bridgeMocks.bridge.GetTokenMappings(0, &page, &pageSize)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		tokenMappingsResult, ok := result.(*TokenMappingsResult)
+		require.True(t, ok)
+		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
+		require.Equal(t, len(tokenMappingsResult.TokenMappings), tokenMappingsResult.Count)
+
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetTokenMappings for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		tokenMappings := []*bridgesync.TokenMapping{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x1"),
+				OriginNetwork:       1,
+				OriginTokenAddress:  common.HexToAddress("0x1"),
+				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Metadata:            []byte("metadata"),
+			},
+		}
+
+		bridgeMocks.bridgeL2.On("GetTokenMappings", mock.Anything, page, pageSize).
+			Return(tokenMappings, len(tokenMappings), nil)
+
+		result, err := bridgeMocks.bridge.GetTokenMappings(networkID, &page, &pageSize)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		tokenMappingsResult, ok := result.(*TokenMappingsResult)
+		require.True(t, ok)
+		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
+		require.Equal(t, len(tokenMappings), tokenMappingsResult.Count)
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
+	})
+
+	t.Run("GetTokenMappings with unsupported network", func(t *testing.T) {
+		unsupportedNetworkID := uint32(999)
+
+		result, err := bridgeMocks.bridge.GetTokenMappings(unsupportedNetworkID, nil, nil)
+		require.ErrorContains(t, err, fmt.Sprintf("failed to get token mappings, unsupported network %d", unsupportedNetworkID))
+		require.Nil(t, result)
+	})
+}
+
 type bridgeWithMocks struct {
 	bridge       *BridgeEndpoints
 	sponsor      *mocks.ClaimSponsorer
@@ -467,16 +545,16 @@ func TestGetBridges(t *testing.T) {
 		}
 
 		bridgeMocks.bridgeL1.On("GetBridgesPaged", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return(bridges, uint64(len(bridges)), nil)
+			Return(bridges, len(bridges), nil)
 
-		result, err := bridgeMocks.bridge.GetBridges(page, pageSize, 0, 0)
+		result, err := bridgeMocks.bridge.GetBridges(0, &page, &pageSize, 0)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
 		bridgesResult, ok := result.(BridgesResult)
 		require.True(t, ok)
 		require.Equal(t, bridges, bridgesResult.Bridges)
-		require.Equal(t, uint64(len(bridgesResult.Bridges)), bridgesResult.Count)
+		require.Equal(t, len(bridgesResult.Bridges), bridgesResult.Count)
 
 		bridgeMocks.bridgeL1.AssertExpectations(t)
 	})
@@ -501,16 +579,16 @@ func TestGetBridges(t *testing.T) {
 		bridgeMocks.bridge.networkID = 10
 
 		bridgeMocks.bridgeL2.On("GetBridgesPaged", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return(bridges, uint64(len(bridges)), nil)
+			Return(bridges, len(bridges), nil)
 
-		result, err := bridgeMocks.bridge.GetBridges(page, pageSize, 10, 0)
+		result, err := bridgeMocks.bridge.GetBridges(10, &page, &pageSize, 0)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
 		bridgesResult, ok := result.(BridgesResult)
 		require.True(t, ok)
 		require.Equal(t, bridges, bridgesResult.Bridges)
-		require.Equal(t, uint64(len(bridgesResult.Bridges)), bridgesResult.Count)
+		require.Equal(t, len(bridgesResult.Bridges), bridgesResult.Count)
 
 		bridgeMocks.bridgeL2.AssertExpectations(t)
 	})
@@ -518,7 +596,7 @@ func TestGetBridges(t *testing.T) {
 	t.Run("GetBridges with unsupported network", func(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
-		result, err := bridgeMocks.bridge.GetBridges(0, 0, unsupportedNetworkID, 0)
+		result, err := bridgeMocks.bridge.GetBridges(unsupportedNetworkID, nil, nil, 0)
 		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
 		require.Nil(t, result)
 	})

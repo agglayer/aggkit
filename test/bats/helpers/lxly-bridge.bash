@@ -54,6 +54,7 @@ function bridge_asset() {
         local tmp_response_file=$(mktemp)
         if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
             echo "cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes"
+
             cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes >$tmp_response_file
         else
             echo "cast send --legacy --private-key $sender_private_key --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes"
@@ -68,6 +69,7 @@ function bridge_asset() {
 function claim() {
     local destination_rpc_url="$1"
     local bridge_type="$2"
+    echo "Claiming deposits on network: $destination_net ($bridge_type)" >&3
     local claim_sig="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
     if [[ $bridge_type == "bridgeMessage" ]]; then
         claim_sig="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
@@ -123,7 +125,7 @@ function claim() {
                 exit 1
             fi
 
-            echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata" >&3
+            echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
             cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr "$claim_sig" "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
         fi
 
@@ -166,7 +168,7 @@ function claim_tx_hash() {
         curl -s "$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
         echo "...[$(date '+%Y-%m-%d %H:%M:%S')] deposit_count=$deposit_count bridge_deposit_file=$bridge_deposit_file" >&3
-        if [[ $deposit_count == 0  ]]; then
+        if [[ $deposit_count == 0 ]]; then
             echo "...[$(date '+%Y-%m-%d %H:%M:%S')] ❌  the tx_hash [$tx_hash] not found (elapsed: $elpased_time / timeout:$timeout)" >&3
             sleep "$claim_frequency"
             continue
@@ -316,6 +318,7 @@ function wait_for_claim() {
     local claim_frequency="$2"     # claim frequency (in seconds)
     local destination_rpc_url="$3" # destination rpc url
     local bridge_type="$4"         # bridgeAsset or bridgeMessage
+
     local start_time=$(date +%s)
     local end_time=$((start_time + timeout))
 
@@ -332,5 +335,43 @@ function wait_for_claim() {
         fi
 
         sleep "$claim_frequency"
+    done
+}
+
+function wait_for_expected_token() {
+    local expected_origin_token="$1"
+    local max_attempts="$2"
+    local poll_frequency="$3"
+
+    local attempt=0
+    local token_mappings_result
+    local origin_token_address
+
+    while true; do
+        ((attempt++))
+
+        # Fetch token mappings from the RPC
+        token_mappings_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getTokenMappings" "$l2_rpc_network_id")
+
+        # Extract the first OriginTokenAddress (if available)
+        origin_token_address=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].OriginTokenAddress')
+
+        echo "Attempt $attempt: found OriginTokenAddress = $origin_token_address (Expected: $expected_origin_token)" >&3
+
+        # Break loop if the expected token is found
+        if [[ "$origin_token_address" == "$expected_origin_token" ]]; then
+            echo "Success: Expected OriginTokenAddress '$expected_origin_token' found. Exiting loop." >&3
+            echo "$token_mappings_result"
+            return 0
+        fi
+
+        # Fail test if max attempts are reached
+        if [[ "$attempt" -ge "$max_attempts" ]]; then
+            echo "Error: Reached max attempts ($max_attempts) without finding expected OriginTokenAddress." >&2
+            return 1
+        fi
+
+        # Sleep before the next attempt
+        sleep "$poll_frequency"
     done
 }

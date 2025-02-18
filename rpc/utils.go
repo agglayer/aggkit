@@ -1,18 +1,43 @@
 package rpc
 
-const DefaultPageSize = 20
-const MaxPageSize = 200
-const DefaultPage = 1
+import (
+	"fmt"
 
-func ValidatePaginationParams(page, pageSize uint32) (uint32, uint32) {
-	// Force valid page: must be at least 1
-	if page < 1 {
-		page = DefaultPage
+	"github.com/agglayer/aggkit/bridgesync"
+)
+
+const (
+	// DefaultPageSize is the default number of records to be fetched
+	DefaultPageSize = 20
+	// MaxPageSize is the maximum number of records to be fetched
+	MaxPageSize = 200
+	// DefaultPage is the default page number to be used when fetching records
+	DefaultPage = 1
+)
+
+// validatePaginationParams validates the page number and page size
+func validatePaginationParams(pageNumber, pageSize *uint32) (uint32, uint32, error) {
+	if pageNumber == nil {
+		pageNumber = new(uint32)
+		*pageNumber = DefaultPage
 	}
 
-	// pageSize must be in [1..200]; otherwise, default to 20
-	if pageSize < 1 || pageSize > MaxPageSize {
-		pageSize = DefaultPageSize
+	if pageSize == nil {
+		pageSize = new(uint32)
+		*pageSize = DefaultPageSize
 	}
-	return page, pageSize
+
+	if *pageNumber == 0 {
+		return 0, 0, bridgesync.ErrInvalidPageNumber
+	}
+
+	if *pageSize == 0 {
+		return 0, 0, bridgesync.ErrInvalidPageSize
+	}
+
+	if *pageSize > MaxPageSize {
+		return 0, 0, fmt.Errorf("page size must be less than or equal to %d", MaxPageSize)
+	}
+
+	return *pageNumber, *pageSize, nil
 }

@@ -78,8 +78,8 @@ func TestBigIntString(t *testing.T) {
 }
 
 func TestProcessor(t *testing.T) {
-	path := path.Join(t.TempDir(), "aggsenderTestProcessor.sqlite")
-	logger := log.WithFields("bridge-syncer", "foo")
+	path := path.Join(t.TempDir(), "bridgeSyncerProcessor.db")
+	logger := log.WithFields("module", "bridge-syncer")
 	p, err := newProcessor(path, logger)
 	require.NoError(t, err)
 	actions := []processAction{
@@ -352,6 +352,18 @@ func TestProcessor(t *testing.T) {
 			),
 			expectedErr: nil,
 		},
+		&getTotalRecordsAction{
+			p:           p,
+			description: "get number of claims after block5",
+			tableName:   claimTableName,
+			expectedRecordsNum: len(
+				slices.Concat(
+					eventsToClaims(block1.Events),
+					eventsToClaims(block3.Events),
+					eventsToClaims(block4.Events),
+					eventsToClaims(block5.Events),
+				)),
+		},
 	}
 
 	for _, a := range actions {
@@ -388,6 +400,30 @@ var (
 				OriginAddress:      common.HexToAddress("01"),
 				DestinationAddress: common.HexToAddress("01"),
 				Amount:             big.NewInt(1),
+			}},
+			Event{TokenMapping: &TokenMapping{
+				BlockNum:            1,
+				BlockPos:            2,
+				OriginNetwork:       1,
+				OriginTokenAddress:  common.HexToAddress("0x2"),
+				WrappedTokenAddress: common.HexToAddress("0x5"),
+				Metadata:            common.Hex2Bytes("0x56789"),
+			}},
+			Event{TokenMapping: &TokenMapping{
+				BlockNum:            1,
+				BlockPos:            3,
+				OriginNetwork:       15,
+				OriginTokenAddress:  common.HexToAddress("0x6"),
+				WrappedTokenAddress: common.HexToAddress("0x8"),
+				Metadata:            []byte{},
+			}},
+			Event{TokenMapping: &TokenMapping{
+				BlockNum:            1,
+				BlockPos:            4,
+				OriginNetwork:       5,
+				OriginTokenAddress:  common.HexToAddress("0x3"),
+				WrappedTokenAddress: common.HexToAddress("0x7"),
+				Metadata:            nil,
 			}},
 		},
 	}
@@ -583,6 +619,31 @@ func (a *processBlockAction) execute(t *testing.T) {
 
 	actualErr := a.p.ProcessBlock(context.Background(), a.block)
 	require.Equal(t, a.expectedErr, actualErr)
+}
+
+// getTotalRecordsAction
+
+type getTotalRecordsAction struct {
+	p                  *processor
+	description        string
+	tableName          string
+	expectedRecordsNum int
+}
+
+func (a *getTotalRecordsAction) method() string {
+	return "getTotalRecordsAction"
+}
+
+func (a *getTotalRecordsAction) desc() string {
+	return a.description
+}
+
+func (a *getTotalRecordsAction) execute(t *testing.T) {
+	t.Helper()
+
+	recordsNum, err := a.p.GetTotalNumberOfRecords(a.tableName)
+	require.NoError(t, err)
+	require.Equal(t, a.expectedRecordsNum, recordsNum)
 }
 
 func eventsToBridges(events []interface{}) []Bridge {
@@ -880,12 +941,32 @@ func TestGetBridgesPaged(t *testing.T) {
 			{DepositCount: 6, BlockNum: 6, Amount: big.NewInt(1)},
 		}
 
+	path := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncGetBridgesPaged.sqlite"))
+	require.NoError(t, migrationsBridge.RunMigrations(path))
+	logger := log.WithFields("bridge-syncer", "foo")
+	p, err := newProcessor(path, logger)
+	require.NoError(t, err)
+
+	tx, err := p.db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+
+	for i := fromBlock; i <= toBlock; i++ {
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+		require.NoError(t, err)
+	}
+
+	for _, bridge := range bridges {
+		require.NoError(t, meddler.Insert(tx, "bridge", &bridge))
+	}
+
+	require.NoError(t, tx.Commit())
+
 	testCases := []struct {
 		name            string
 		pageSize        uint32
 		page            uint32
 		depositCount    uint64
-		expectedCount   uint64
+		expectedCount   int
 		expectedBridges []*Bridge
 		expectedError   error
 	}{
@@ -966,26 +1047,6 @@ func TestGetBridgesPaged(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			path := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncGetBridgesPaged_%s.sqlite", tc.name))
-			require.NoError(t, migrationsBridge.RunMigrations(path))
-			logger := log.WithFields("bridge-syncer", "foo")
-			p, err := newProcessor(path, logger)
-			require.NoError(t, err)
-
-			tx, err := p.db.BeginTx(context.Background(), nil)
-			require.NoError(t, err)
-
-			for i := fromBlock; i <= toBlock; i++ {
-				_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
-				require.NoError(t, err)
-			}
-
-			for _, bridge := range bridges {
-				require.NoError(t, meddler.Insert(tx, "bridge", &bridge))
-			}
-
-			require.NoError(t, tx.Commit())
-
 			ctx := context.Background()
 			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount)
 
@@ -995,6 +1056,99 @@ func TestGetBridgesPaged(t *testing.T) {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedBridges, bridges)
 				require.Equal(t, tc.expectedCount, count)
+			}
+		})
+	}
+}
+
+func TestGetTokenMapping(t *testing.T) {
+	t.Parallel()
+
+	const tokenMappingsCount = 50
+
+	path := path.Join(t.TempDir(), "tokenMapping.db")
+	err := migrationsBridge.RunMigrations(path)
+	require.NoError(t, err)
+
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, logger)
+	require.NoError(t, err)
+
+	allTokenMappings := make([]*TokenMapping, 0, tokenMappingsCount)
+	for i := tokenMappingsCount - 1; i >= 0; i-- {
+		tokenMappingEvt := &TokenMapping{
+			BlockNum:            uint64(i + 1),
+			OriginNetwork:       uint32(i),
+			OriginTokenAddress:  common.HexToAddress(fmt.Sprintf("%d", i)),
+			WrappedTokenAddress: common.HexToAddress(fmt.Sprintf("%d", i+1)),
+		}
+
+		block := sync.Block{
+			Num:    uint64(i + 1),
+			Events: []interface{}{Event{TokenMapping: tokenMappingEvt}},
+		}
+
+		allTokenMappings = append(allTokenMappings, tokenMappingEvt)
+
+		// insert TokenMapping event to the db
+		err = p.ProcessBlock(context.Background(), block)
+		require.NoError(t, err)
+	}
+
+	tests := []struct {
+		name        string
+		pageNumber  uint32
+		pageSize    uint32
+		expectedLen int
+		expectedErr error
+	}{
+		{
+			name:        "First page",
+			pageNumber:  1,
+			pageSize:    10,
+			expectedLen: 10,
+			expectedErr: nil,
+		},
+		{
+			name:        "Second page",
+			pageNumber:  2,
+			pageSize:    5,
+			expectedLen: 5,
+			expectedErr: nil,
+		},
+		{
+			name:        "Last page",
+			pageNumber:  5,
+			pageSize:    10,
+			expectedLen: 10,
+			expectedErr: nil,
+		},
+		{
+			name:        "Page out of range",
+			pageNumber:  6,
+			pageSize:    10,
+			expectedLen: 0,
+			expectedErr: db.ErrNotFound,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, totalTokenMappings, err := p.GetTokenMappings(context.Background(), tt.pageNumber, tt.pageSize)
+			if tt.expectedErr != nil {
+				require.ErrorIs(t, err, tt.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, result, tt.expectedLen)
+				require.Equal(t, tokenMappingsCount, totalTokenMappings)
+
+				offset := (tt.pageNumber - 1) * tt.pageSize
+				for i, mapping := range result {
+					require.Equal(t, allTokenMappings[offset+uint32(i)], mapping)
+				}
 			}
 		})
 	}
