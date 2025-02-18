@@ -231,7 +231,7 @@ func TestGetTokenMappings(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("retrieve all mappings", func(t *testing.T) {
-		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), nil, nil)
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount)
 		require.NoError(t, err)
 		require.Equal(t, tokenMappingsCount, totalTokenMappings)
 		require.Equal(t, allTokenMappings, tokenMappings)
@@ -241,7 +241,7 @@ func TestGetTokenMappings(t *testing.T) {
 		pageSize := uint32(5)
 
 		for page := uint32(1); page <= 4; page++ {
-			tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), &page, &pageSize)
+			tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), page, pageSize)
 			require.NoError(t, err)
 			require.Equal(t, tokenMappingsCount, totalTokenMappings)
 
@@ -255,7 +255,7 @@ func TestGetTokenMappings(t *testing.T) {
 		pageSize := uint32(5)
 		pageNum := uint32(5)
 
-		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), &pageNum, &pageSize)
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
 		require.ErrorIs(t, err, db.ErrNotFound)
 		require.Equal(t, 0, totalTokenMappings)
 		require.Nil(t, tokenMappings)
@@ -265,21 +265,21 @@ func TestGetTokenMappings(t *testing.T) {
 		pageSize := uint32(0)
 		pageNum := uint32(0)
 
-		_, _, err := s.GetTokenMappings(context.Background(), &pageNum, &pageSize)
-		require.ErrorIs(t, err, errInvalidPageNumber)
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		require.ErrorIs(t, err, ErrInvalidPageNumber)
 	})
 
 	t.Run("provide invalid page size", func(t *testing.T) {
 		pageSize := uint32(0)
 		pageNum := uint32(4)
 
-		_, _, err := s.GetTokenMappings(context.Background(), &pageNum, &pageSize)
-		require.ErrorIs(t, err, errInvalidPageSize)
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		require.ErrorIs(t, err, ErrInvalidPageSize)
 	})
 
 	t.Run("inconsistent state", func(t *testing.T) {
 		s.processor.halted = true
-		_, _, err := s.GetTokenMappings(context.Background(), nil, nil)
+		_, _, err := s.GetTokenMappings(context.Background(), 0, 0)
 		require.ErrorIs(t, err, sync.ErrInconsistentState)
 	})
 }
