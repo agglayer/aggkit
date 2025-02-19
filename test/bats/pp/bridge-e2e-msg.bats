@@ -44,18 +44,18 @@ setup() {
     readonly l1_rpc_network_id=$(cast call --rpc-url $l1_rpc_url $bridge_addr 'networkID() (uint32)')
     readonly l2_rpc_network_id=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'networkID() (uint32)')
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
-    readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken()' | cast parse-bytes32-address)
+    readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)')
 }
 
 
-@test "transfer message" {
+@test "Transfer message" {
     echo "====== bridgeMessage L1 -> L2" >&3
     destination_addr=$sender_addr
     destination_net=$l2_rpc_network_id
     run bridge_message "$native_token_addr" "$l1_rpc_url"
     assert_success
 
-    echo "====== Claim in L2" >&3
+    echo "====== claimMessage (L2)" >&3
     timeout="120"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeMessage"

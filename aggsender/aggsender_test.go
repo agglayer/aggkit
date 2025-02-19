@@ -59,7 +59,7 @@ func TestConfigString(t *testing.T) {
 		"DryRun: false\n" +
 		"EnableRPC: false\n" +
 		"CheckStatusCertificateInterval: 0s\n" +
-		"RetryCertInmediatlyAfterInError: false\n" +
+		"RetryCertImmediatelyAfterInError: false\n" +
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
 		"MaxEpochPercentageAllowedToSendCertificate: 0\n"
 
