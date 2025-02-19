@@ -941,7 +941,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			{DepositCount: 6, BlockNum: 6, Amount: big.NewInt(1)},
 		}
 
-	path := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncGetBridgesPaged.sqlite"))
+	path := path.Join(t.TempDir(), "bridgesyncGetBridgesPaged.sqlite")
 	require.NoError(t, migrationsBridge.RunMigrations(path))
 	logger := log.WithFields("bridge-syncer", "foo")
 	p, err := newProcessor(path, logger)
@@ -1037,7 +1037,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:    0,
 			expectedCount:   6,
 			expectedBridges: []*Bridge{},
-			expectedError:   nil,
+			expectedError:   db.ErrNotFound,
 		},
 	}
 
@@ -1048,7 +1048,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount)
+			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, &tc.depositCount)
 
 			if tc.expectedError != nil {
 				require.Equal(t, tc.expectedError, err)

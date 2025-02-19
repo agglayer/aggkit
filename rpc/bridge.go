@@ -218,7 +218,7 @@ type BridgesResult struct {
 func (b *BridgeEndpoints) GetBridges(
 	networkID uint32,
 	pageNumber, pageSize *uint32,
-	depositCount uint64,
+	depositCount *uint64,
 ) (interface{}, rpc.Error) {
 	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
 	if err != nil {
@@ -228,9 +228,9 @@ func (b *BridgeEndpoints) GetBridges(
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 
-	c, merr := b.meter.Int64Counter("getBridges")
+	c, merr := b.meter.Int64Counter("get_bridges")
 	if merr != nil {
-		b.logger.Warnf("failed to create get_token_mappings counter: %s", merr)
+		b.logger.Warnf("failed to create get_bridges counter: %s", merr)
 	}
 	c.Add(ctx, 1)
 
@@ -243,12 +243,12 @@ func (b *BridgeEndpoints) GetBridges(
 	case networkID == 0:
 		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get bridges, error: %s", err))
 		}
 	case networkID == b.networkID:
 		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get deposit, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get bridges, error: %s", err))
 		}
 	default:
 		return nil, rpc.NewRPCError(

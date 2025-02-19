@@ -547,7 +547,7 @@ func TestGetBridges(t *testing.T) {
 		bridgeMocks.bridgeL1.On("GetBridgesPaged", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(bridges, len(bridges), nil)
 
-		result, err := bridgeMocks.bridge.GetBridges(0, &page, &pageSize, 0)
+		result, err := bridgeMocks.bridge.GetBridges(0, &page, &pageSize, nil)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
@@ -581,7 +581,7 @@ func TestGetBridges(t *testing.T) {
 		bridgeMocks.bridgeL2.On("GetBridgesPaged", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(bridges, len(bridges), nil)
 
-		result, err := bridgeMocks.bridge.GetBridges(10, &page, &pageSize, 0)
+		result, err := bridgeMocks.bridge.GetBridges(10, &page, &pageSize, nil)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
@@ -596,7 +596,7 @@ func TestGetBridges(t *testing.T) {
 	t.Run("GetBridges with unsupported network", func(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
-		result, err := bridgeMocks.bridge.GetBridges(unsupportedNetworkID, nil, nil, 0)
+		result, err := bridgeMocks.bridge.GetBridges(unsupportedNetworkID, nil, nil, nil)
 		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
 		require.Nil(t, result)
 	})

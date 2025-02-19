@@ -18,7 +18,7 @@ type Bridger interface {
 	GetBridgesPaged(
 		ctx context.Context,
 		pageNumber, pageSize uint32,
-		depositCount uint64,
+		depositCount *uint64,
 	) ([]*bridgesync.Bridge, int, error)
 	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*bridgesync.TokenMapping, int, error)
 }

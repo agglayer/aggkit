@@ -53,7 +53,7 @@ type Bridge struct {
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
-	TxHash             common.Hash    `meddler:"tx_hash"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash"`
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
@@ -102,6 +102,8 @@ type Claim struct {
 	DestinationNetwork  uint32         `meddler:"destination_network"`
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
 }
 
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
@@ -216,7 +218,7 @@ func (p *processor) GetClaims(
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, pageNumber, pageSize uint32, depositCount uint64,
+	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64,
 ) ([]*Bridge, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -230,25 +232,35 @@ func (p *processor) GetBridgesPaged(
 	orderBy := "deposit_count"
 	order := "DESC"
 	whereClause := ""
-	count, err := p.GetTotalNumberOfRecords("bridge")
+	count, err := p.GetTotalNumberOfRecords(bridgeTableName)
 	if err != nil {
 		return nil, 0, err
 	}
-	if depositCount > 0 {
-		whereClause = fmt.Sprintf("WHERE deposit_count = %d", depositCount)
+	if depositCount != nil && *depositCount > 0 {
+		whereClause = fmt.Sprintf("WHERE deposit_count = %d", *depositCount)
 		pageNumber = 1
 		pageSize = 1
 	}
 	offset := (pageNumber - 1) * pageSize
-	rows, err := p.queryPaged(tx, offset, pageSize, "bridge", orderBy, order, whereClause)
+	if int(offset) >= count {
+		p.log.Debugf("offset is larger than total bridges (page number=%d, page size=%d, total bridges=%d)",
+			pageNumber, pageSize, count)
+		return nil, 0, db.ErrNotFound
+	}
+	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderBy, order, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			p.log.Warnf("error closing rows: %v", err)
+		}
+	}()
 	bridgePtrs := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
 		return nil, 0, err
 	}
-	if depositCount > 0 {
+	if depositCount != nil && *depositCount > 0 {
 		count = len(bridgePtrs)
 	}
 	return bridgePtrs, count, nil

@@ -1,5 +1,9 @@
 -- +migrate Down
 DROP TABLE IF EXISTS token_mapping;
+ALTER TABLE bridge DROP COLUMN tx_hash;
+ALTER TABLE claim DROP COLUMN tx_hash;
+ALTER TABLE bridge DROP COLUMN block_timestamp;
+ALTER TABLE claim DROP COLUMN block_timestamp;
 
 -- +migrate Up
 CREATE TABLE
@@ -14,3 +18,7 @@ CREATE TABLE
 		metadata BLOB,
 		PRIMARY KEY (block_num, block_pos)
 	);
+ALTER TABLE bridge ADD COLUMN tx_hash VARCHAR;
+ALTER TABLE claim ADD COLUMN tx_hash VARCHAR;
+ALTER TABLE bridge ADD COLUMN block_timestamp INTEGER;
+ALTER TABLE claim ADD COLUMN block_timestamp INTEGER;

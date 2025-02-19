@@ -286,6 +286,6 @@ func TestGetTokenMappings(t *testing.T) {
 
 func TestGetBridgePaged(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
-	_, _, err := s.GetBridgesPaged(context.Background(), 0, 0, 0)
+	_, _, err := s.GetBridgesPaged(context.Background(), 0, 0, nil)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
