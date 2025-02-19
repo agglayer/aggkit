@@ -1,0 +1,22 @@
+// Proto definition for Agglayer Configuration Service
+
+syntax = "proto3";
+
+package proto;
+option go_package = "github.com/agglayer/aggkit/agglayer/proto/node;node";
+import "types/epoch_configuration.proto";
+
+// Service for querying the current epoch configuration.
+service AgglayerConfigurationService {
+  // Method used to get the current epoch configuration.
+  rpc GetEpochConfiguration(GetEpochConfigurationRequest) returns (GetEpochConfigurationResponse);
+}
+
+// Request to get the current epoch configuration.
+message GetEpochConfigurationRequest {}
+
+// Response to the current epoch configuration request.
+message GetEpochConfigurationResponse {
+  // The epoch configuration.
+  types.EpochConfiguration epoch_configuration = 1;
+}

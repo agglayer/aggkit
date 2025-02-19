@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+package proto.types;
+option go_package = "github.com/agglayer/aggkit/agglayer/proto/types;types";
+
+// Epoch configuration type.
+message EpochConfiguration {
+  // The genesis block of the epoch.
+  uint64 genesis_block = 1;
+  // The epoch duration.
+  uint64 epoch_duration = 2;
+}
