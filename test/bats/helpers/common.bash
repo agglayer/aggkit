@@ -312,7 +312,7 @@ function verify_balance() {
     else
         final_balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
     fi
-    echo "Final balance of $account in $rpc_url: $final_balance_wei wei" >&3
+    echo "Final balance of $account (token=$token_addr) in $rpc_url network: $final_balance_wei wei" >&3
 
     # Calculate expected final balance (initial_balance + amount)
     local expected_final_balance_wei=$(echo "$initial_balance_wei + $amount_wei" | bc)

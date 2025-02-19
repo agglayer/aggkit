@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/rpc/types"
@@ -43,7 +44,7 @@ type BridgeEndpoints struct {
 	bridgeL2     Bridger
 }
 
-// NewBridgeEndpoints returns InteropEndpoints
+// NewBridgeEndpoints returns BridgeEndpoints
 func NewBridgeEndpoints(
 	logger *log.Logger,
 	writeTimeout time.Duration,
@@ -56,6 +57,7 @@ func NewBridgeEndpoints(
 	bridgeL2 Bridger,
 ) *BridgeEndpoints {
 	meter := otel.Meter(meterName)
+	logger.Infof("starting bridge service (L2 network id=%d)", networkID)
 	return &BridgeEndpoints{
 		logger:       logger,
 		meter:        meter,
@@ -68,6 +70,65 @@ func NewBridgeEndpoints(
 		bridgeL1:     bridgeL1,
 		bridgeL2:     bridgeL2,
 	}
+}
+
+// TokenMappingsResult contains the token mappings and the total count of token mappings
+type TokenMappingsResult struct {
+	TokenMappings []*bridgesync.TokenMapping `json:"tokenMappings"`
+	Count         int                        `json:"count"`
+}
+
+// GetTokenMappings returns the token mappings for the given network
+func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
+	b.logger.Debugf("GetTokenMappings invoked (network id=%d, page number=%v, page size=%v)",
+		networkID, pageNumber, pageSize)
+
+	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	defer cancel()
+
+	c, merr := b.meter.Int64Counter("get_token_mappings")
+	if merr != nil {
+		b.logger.Warnf("failed to create get_token_mappings counter: %s", merr)
+	}
+	c.Add(ctx, 1)
+
+	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
+	if err != nil {
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode, err.Error())
+	}
+
+	var (
+		tokenMappings      []*bridgesync.TokenMapping
+		tokenMappingsCount int
+	)
+
+	switch {
+	case networkID == 0:
+		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumberU32, pageSizeU32)
+		if err != nil {
+			return nil,
+				rpc.NewRPCError(rpc.DefaultErrorCode,
+					fmt.Sprintf("failed to get token mappings for the L1 network, error: %s", err))
+		}
+
+	case b.networkID == networkID:
+		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumberU32, pageSizeU32)
+		if err != nil {
+			return nil,
+				rpc.NewRPCError(rpc.DefaultErrorCode,
+					fmt.Sprintf("failed to get token mappings for L2 network %d, error: %s", networkID, err))
+		}
+
+	default:
+		return nil,
+			rpc.NewRPCError(rpc.InvalidRequestErrorCode,
+				fmt.Sprintf("failed to get token mappings, unsupported network %d", networkID))
+	}
+
+	return &TokenMappingsResult{
+		TokenMappings: tokenMappings,
+		Count:         tokenMappingsCount,
+	}, nil
 }
 
 // L1InfoTreeIndexForBridge returns the first L1 Info Tree index in which the bridge was included.
@@ -276,7 +337,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context
 		return 0, err
 	}
 
-	// Binary search between the first and last blcoks where L1 info tree was updated.
+	// Binary search between the first and last blocks where L1 info tree was updated.
 	// Find the smallest l1 info tree index that is greater than depositCount and matches with
 	// a MER that is included on the l1 info tree
 	bestResult := lastInfo
