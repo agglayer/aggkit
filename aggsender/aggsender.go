@@ -282,7 +282,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, fmt.Errorf("error sending certificate: %w", err)
 	}
 
-	a.log.Debugf("certificate send: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
+	a.log.Debugf("certificate sent: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
 
 	raw, err := json.Marshal(signedCertificate)
 	if err != nil {

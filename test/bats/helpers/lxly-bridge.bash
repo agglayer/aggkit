@@ -166,7 +166,7 @@ function claim_tx_hash() {
         curl -s "$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
         echo "...[$(date '+%Y-%m-%d %H:%M:%S')] deposit_count=$deposit_count bridge_deposit_file=$bridge_deposit_file" >&3
-        if [[ $deposit_count == 0  ]]; then
+        if [[ $deposit_count == 0 ]]; then
             echo "...[$(date '+%Y-%m-%d %H:%M:%S')] ❌  the tx_hash [$tx_hash] not found (elapsed: $elpased_time / timeout:$timeout)" >&3
             sleep "$claim_frequency"
             continue
@@ -192,7 +192,7 @@ function claim_tx_hash() {
     readonly current_deposit=$(mktemp)
     jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
     readonly current_proof=$(mktemp)
-    echo ".... requesting merkel proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id" >&3
+    echo ".... requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id" >&3
     request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_merkle_proof_url" "$current_proof"
     echo "FILE current_deposit=$current_deposit"
     echo "FILE bridge_deposit_file=$bridge_deposit_file"

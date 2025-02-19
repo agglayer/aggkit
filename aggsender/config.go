@@ -79,7 +79,7 @@ func (c Config) String() string {
 		"AggchainProofURL: " + c.AggchainProofURL + "\n" +
 		"Mode: " + c.Mode + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
-		"RetryCertInmediatlyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
+		"RetryCertImmediatelyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"MaxEpochPercentageAllowedToSendCertificate: " +
 		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n"
