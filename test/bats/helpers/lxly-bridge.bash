@@ -192,7 +192,7 @@ function claim_tx_hash() {
     readonly current_deposit=$(mktemp)
     jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
     readonly current_proof=$(mktemp)
-    echo ".... requesting merkel proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id" >&3
+    echo ".... requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id" >&3
     request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_merkle_proof_url" "$current_proof"
     echo "FILE current_deposit=$current_deposit"
     echo "FILE bridge_deposit_file=$bridge_deposit_file"
