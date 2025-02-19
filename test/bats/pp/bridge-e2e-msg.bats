@@ -44,7 +44,7 @@ setup() {
     readonly l1_rpc_network_id=$(cast call --rpc-url $l1_rpc_url $bridge_addr 'networkID() (uint32)')
     readonly l2_rpc_network_id=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'networkID() (uint32)')
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
-    readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken()' | cast parse-bytes32-address)
+    readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)')
 }
 
 
