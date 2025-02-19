@@ -51,7 +51,7 @@ setup() {
 
 @test "Native gas token deposit to WETH" {
     destination_addr=$sender_addr
-    run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken()(address)'
+    run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
     assert_success
     readonly weth_token_addr=$output
 
