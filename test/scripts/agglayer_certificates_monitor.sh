@@ -9,13 +9,16 @@ function parse_params() {
     fi
 
     # The number of batches to be verified.
-    settle_certificates_target="$1"
+    readonly settle_certificates_target="$1"
 
     # The script timeout (in seconds).
-    timeout="$2"
+    readonly timeout="$2"
 
     # The network id of the L2 network.
-    l2_rpc_network_id="$3"
+    readonly l2_rpc_network_id="$3"
+
+    # The agglayer rpc url.
+    readonly agglayer_rpc_url="$(kurtosis port print aggkit agglayer agglayer)"
 }
 
 function check_timeout() {
@@ -28,8 +31,6 @@ function check_timeout() {
 }
 
 function check_num_certificates() {
-    readonly agglayer_rpc_url="$(kurtosis port print aggkit agglayer agglayer)"
-
     cast_output=$(cast rpc --rpc-url "$agglayer_rpc_url" "interop_getLatestKnownCertificateHeader" "$l2_rpc_network_id" 2>&1)
 
     if [ $? -ne 0 ]; then
@@ -81,7 +82,7 @@ function extract_certificate_status() {
 parse_params $*
 start_time=$(date +%s)
 end_time=$((start_time + timeout))
-echo "[$(date '+%Y-%m-%d %H:%M:%S')] Start monitoring agglayer certificates progress..."
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Start monitoring agglayer certificates (agglayer rpc url $agglayer_rpc_url, network id $l2_rpc_network_id)..." >&3
 while true; do
     check_num_certificates
     check_timeout $end_time
