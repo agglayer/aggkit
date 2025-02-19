@@ -329,7 +329,6 @@ func (f *baseFlow) getImportedBridgeExits(
 			)
 		}
 
-		claim := claims[i]
 		if ibe.GlobalIndex.MainnetFlag {
 			ibe.ClaimData = &agglayer.ClaimFromMainnnet{
 				L1Leaf: &agglayer.L1InfoTreeLeaf{
