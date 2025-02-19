@@ -7,9 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"regexp"
 	mutex "sync"
 
 	"github.com/agglayer/aggkit/bridgesync/migrations"
+	aggkitCommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -24,11 +26,18 @@ import (
 const (
 	globalIndexPartSize = 4
 	globalIndexMaxSize  = 9
+
+	bridgeTableName       = "bridge"
+	claimTableName        = "claim"
+	tokenMappingTableName = "token_mapping"
 )
 
 var (
 	// errBlockNotProcessedFormat indicates that the given block(s) have not been processed yet.
 	errBlockNotProcessedFormat = fmt.Sprintf("block %%d not processed, last processed: %%d")
+
+	// tableNameRegex is the regex pattern to validate table names
+	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 )
 
 // Bridge is the representation of a bridge event
@@ -92,11 +101,24 @@ type Claim struct {
 	IsMessage           bool           `meddler:"is_message"`
 }
 
-// Event combination of bridge and claim events
+// TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
+type TokenMapping struct {
+	BlockNum            uint64         `meddler:"block_num"`
+	BlockPos            uint64         `meddler:"block_pos"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
+	OriginNetwork       uint32         `meddler:"origin_network"`
+	OriginTokenAddress  common.Address `meddler:"origin_token_address,address"`
+	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address"`
+	Metadata            []byte         `meddler:"metadata"`
+}
+
+// Event combination of bridge, claim and token mapping events
 type Event struct {
-	Pos    uint64
-	Bridge *Bridge
-	Claim  *Claim
+	Pos          uint64
+	Bridge       *Bridge
+	Claim        *Claim
+	TokenMapping *TokenMapping
 }
 
 type processor struct {
@@ -131,6 +153,7 @@ func (p *processor) GetBridgesPublished(
 	return p.GetBridges(ctx, fromBlock, toBlock)
 }
 
+//nolint:dupl
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
@@ -139,11 +162,11 @@ func (p *processor) GetBridges(
 		return nil, err
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, "bridge")
+	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTableName)
 	if err != nil {
 		return nil, err
 	}
@@ -159,6 +182,7 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
+//nolint:dupl
 func (p *processor) GetClaims(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Claim, error) {
@@ -167,11 +191,11 @@ func (p *processor) GetClaims(
 		return nil, err
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, "claim")
+	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTableName)
 	if err != nil {
 		return nil, err
 	}
@@ -195,6 +219,27 @@ func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, ta
 		SELECT * FROM %s
 		WHERE block_num >= $1 AND block_num <= $2;
 	`, table), fromBlock, toBlock)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, err
+	}
+	return rows, nil
+}
+
+// queryPaged returns a paged result from the given table
+func (p *processor) queryPaged(tx db.Querier,
+	offset, pageSize uint32,
+	table, orderBy, order, whereClause string,
+) (*sql.Rows, error) {
+	rows, err := tx.Query(fmt.Sprintf(`
+		SELECT *
+		FROM %s
+		%s
+		ORDER BY %s %s
+		LIMIT $1 OFFSET $2;
+	`, table, whereClause, orderBy, order), pageSize, offset)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound
@@ -240,7 +285,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	}
 	defer func() {
 		if err != nil {
-			if errRllbck := tx.Rollback(); errRllbck != nil {
+			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
 				log.Errorf("error while rolling back tx %v", errRllbck)
 			}
 		}
@@ -279,7 +324,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
-			if errRllbck := tx.Rollback(); errRllbck != nil {
+			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
 				log.Errorf("error while rolling back tx %v", errRllbck)
 			}
 		}
@@ -293,6 +338,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		if !ok {
 			return errors.New("failed to convert sync.Block.Event to Event")
 		}
+
 		if event.Bridge != nil {
 			if err = p.exitTree.AddLeaf(tx, block.Num, event.Pos, types.Leaf{
 				Index: event.Bridge.DepositCount,
@@ -306,12 +352,19 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				}
 				return sync.ErrInconsistentState
 			}
-			if err = meddler.Insert(tx, "bridge", event.Bridge); err != nil {
+			if err = meddler.Insert(tx, bridgeTableName, event.Bridge); err != nil {
 				return err
 			}
 		}
+
 		if event.Claim != nil {
-			if err = meddler.Insert(tx, "claim", event.Claim); err != nil {
+			if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
+				return err
+			}
+		}
+
+		if event.TokenMapping != nil {
+			if err = meddler.Insert(tx, tokenMappingTableName, event.TokenMapping); err != nil {
 				return err
 			}
 		}
@@ -324,6 +377,85 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 
 	p.log.Debugf("processed %d events until block %d", len(block.Events), block.Num)
 	return nil
+}
+
+// GetTotalNumberOfRecords returns the total number of records in the given table
+func (p *processor) GetTotalNumberOfRecords(tableName string) (int, error) {
+	if !tableNameRegex.MatchString(tableName) {
+		return 0, fmt.Errorf("invalid table name '%s' provided", tableName)
+	}
+
+	count := 0
+	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s;`, tableName)).Scan(&count)
+	if err != nil {
+		return 0, err
+	}
+
+	return count, nil
+}
+
+// GetTokenMappings returns the token mappings in the database
+func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
+	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
+	}
+
+	if totalTokenMappings == 0 {
+		return []*TokenMapping{}, 0, nil
+	}
+
+	offset := (pageNumber - 1) * pageSize
+	if int(offset) >= totalTokenMappings {
+		p.log.Debugf("offset is larger than total token mappings (page number=%d, page size=%d, total token mappings=%d)",
+			pageNumber, pageSize, totalTokenMappings)
+		return nil, 0, db.ErrNotFound
+	}
+
+	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return tokenMappings, totalTokenMappings, nil
+}
+
+// fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
+func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		p.log.Errorf("failed to create the db transaction: %v", err)
+		return nil, err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			p.log.Warnf("error rolling back tx: %v", err)
+		}
+	}()
+
+	const (
+		orderByColumn = "block_num"
+		order         = "DESC"
+	)
+	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByColumn, order, "")
+	if err != nil {
+		p.log.Errorf("failed to fetch token mappings: %v", err)
+		return nil, err
+	}
+
+	defer func() {
+		if err := rows.Close(); err != nil {
+			p.log.Warnf("error closing rows: %v", err)
+		}
+	}()
+
+	tokenMappings := []*TokenMapping{}
+	if err = meddler.ScanAll(rows, &tokenMappings); err != nil {
+		p.log.Errorf("failed to convert token mappings to the object model: %v", err)
+		return nil, err
+	}
+
+	return tokenMappings, nil
 }
 
 func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
@@ -382,14 +514,10 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 		rollupIndexFromIdx = 0
 	}
 
-	rollupIndex = convertBytesToUint32(globalIndexBytes[rollupIndexFromIdx:localExitRootFromIdx])
-	localExitRootIndex = convertBytesToUint32(globalIndexBytes[localExitRootFromIdx:])
+	rollupIndex = aggkitCommon.BytesToUint32(globalIndexBytes[rollupIndexFromIdx:localExitRootFromIdx])
+	localExitRootIndex = aggkitCommon.BytesToUint32(globalIndexBytes[localExitRootFromIdx:])
 
 	return
-}
-
-func convertBytesToUint32(bytes []byte) uint32 {
-	return uint32(big.NewInt(0).SetBytes(bytes).Uint64())
 }
 
 func (p *processor) isHalted() bool {

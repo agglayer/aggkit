@@ -2,6 +2,7 @@ package bridgesync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -17,6 +18,14 @@ const (
 	l1BridgeSyncer     = "L1BridgeSyncer"
 	l2BridgeSyncer     = "L2BridgeSyncer"
 	downloadBufferSize = 1000
+)
+
+var (
+	// ErrInvalidPageSize indicates that the page size is invalid
+	ErrInvalidPageSize = errors.New("page size must be greater than 0")
+
+	// ErrInvalidPageNumber indicates that the page number is invalid
+	ErrInvalidPageNumber = errors.New("page number must be greater than 0")
 )
 
 type ReorgDetector interface {
@@ -244,6 +253,22 @@ func (s *BridgeSync) GetBridgesPublished(ctx context.Context, fromBlock, toBlock
 		return nil, sync.ErrInconsistentState
 	}
 	return s.processor.GetBridgesPublished(ctx, fromBlock, toBlock)
+}
+
+func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
+	if s.processor.isHalted() {
+		return nil, 0, sync.ErrInconsistentState
+	}
+
+	if pageNumber == 0 {
+		return nil, 0, ErrInvalidPageNumber
+	}
+
+	if pageSize == 0 {
+		return nil, 0, ErrInvalidPageSize
+	}
+
+	return s.processor.GetTokenMappings(ctx, pageNumber, pageSize)
 }
 
 func (s *BridgeSync) GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error) {

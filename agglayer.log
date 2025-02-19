@@ -1,0 +1,136 @@
+[agglayer] {"timestamp":"2025-02-19T09:24:53.793821Z","level":"INFO","fields":{"message":"Starting agglayer node version info: agglayer (VERGEN_IDEMPOTENT_OUTPUT) [git commit timestamp: VERGEN_IDEMPOTENT_OUTPUT]"},"target":"agglayer_node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.799762Z","level":"INFO","fields":{"message":"Starting metrics server on 0.0.0.0:9092"},"target":"agglayer_telemetry"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.800881Z","level":"WARN","fields":{"message":"Mock verifier is being used. This should only be used for testing purposes and not in production environments."},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.927864Z","level":"INFO","fields":{"message":"Storage initialized."},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.927897Z","level":"INFO","fields":{"message":"Starting BlockClock with provider: ws://el-1-geth-lighthouse:8546/"},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.934491Z","level":"INFO","fields":{"message":"Starting the BlockClock task"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.936194Z","level":"DEBUG","fields":{"message":"Current L1 Block number: 80"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.936639Z","level":"DEBUG","fields":{"message":"Successfully subscribed to the L1 Block stream"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.936648Z","level":"INFO","fields":{"message":"Node reached the genesis L1 block 41"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.936650Z","level":"DEBUG","fields":{"message":"The current block height was set to: 39"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.936666Z","level":"INFO","fields":{"message":"Clock started, current epoch 2"},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.936681Z","level":"INFO","fields":{"message":"Epoch synchronization started."},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:53.937014Z","level":"DEBUG","fields":{"message":"synchronizer: Current epoch: 2"},"target":"agglayer_node::epoch_synchronizer"}
+[agglayer] {"timestamp":"2025-02-19T09:24:54.102773Z","level":"INFO","fields":{"message":"Epoch synchronization completed, active epoch: 2."},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:54.128261Z","level":"INFO","fields":{"message":"Signer address: 0x351e560852ee001d5d19b5912a269f849f59479a"},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:54.130662Z","level":"DEBUG","fields":{"message":"RPC provider created"},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:54.135751Z","level":"DEBUG","fields":{"message":"RollupManager created"},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:54.135762Z","level":"DEBUG","fields":{"message":"Initializing the CertifierClient verifier..."},"target":"agglayer_aggregator_notifier::certifier"}
+[agglayer] {"timestamp":"2025-02-19T09:24:58.783607Z","level":"DEBUG","fields":{"message":"CertifierClient verifier successfully initialized!"},"target":"agglayer_aggregator_notifier::certifier"}
+[agglayer] {"timestamp":"2025-02-19T09:24:58.783629Z","level":"DEBUG","fields":{"message":"Connecting to the prover service..."},"target":"agglayer_aggregator_notifier::certifier"}
+[agglayer] {"timestamp":"2025-02-19T09:24:58.785805Z","level":"DEBUG","fields":{"message":"Successfully connected to the prover service!"},"target":"agglayer_aggregator_notifier::certifier"}
+[agglayer] {"timestamp":"2025-02-19T09:24:58.785822Z","level":"INFO","fields":{"message":"Certifier client created."},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:58.785829Z","level":"INFO","fields":{"message":"Epoch packing aggregator task created."},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:58.785868Z","level":"INFO","fields":{"message":"Certificate orchestrator started."},"target":"agglayer_node::node"}
+[agglayer] {"timestamp":"2025-02-19T09:24:58.786392Z","level":"INFO","fields":{"message":"Listening on 0.0.0.0:4444"},"target":"agglayer_node::rpc"}
+[agglayer] {"timestamp":"2025-02-19T09:25:04.019865Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 2"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:25:04.019892Z","level":"DEBUG","fields":{"message":"Epoch change event received: 2"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:25:04.019903Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 2"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:25:29.087338Z","level":"INFO","fields":{"message":"Received request to get epoch configuration"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:25:34.016875Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 3"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:25:34.016901Z","level":"DEBUG","fields":{"message":"Epoch change event received: 3"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:25:34.016907Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 3"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:26:04.016961Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 4"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:26:04.016988Z","level":"DEBUG","fields":{"message":"Epoch change event received: 4"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:26:04.016993Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 4"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:26:34.016440Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 5"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:26:34.016464Z","level":"DEBUG","fields":{"message":"Epoch change event received: 5"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:26:34.016469Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 5"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:27:04.018505Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 6"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:27:04.018529Z","level":"DEBUG","fields":{"message":"Epoch change event received: 6"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:27:04.018533Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 6"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:27:34.017883Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 7"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:27:34.017906Z","level":"DEBUG","fields":{"message":"Epoch change event received: 7"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:27:34.017909Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 7"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:28:04.017809Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 8"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:28:04.017832Z","level":"DEBUG","fields":{"message":"Epoch change event received: 8"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:28:04.017836Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 8"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:28:34.018730Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 9"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:28:34.018766Z","level":"DEBUG","fields":{"message":"Epoch change event received: 9"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:28:34.018770Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 9"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:29:04.016961Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 10"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:29:04.016984Z","level":"DEBUG","fields":{"message":"Epoch change event received: 10"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:29:04.016987Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 10"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:29:34.017018Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 11"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:29:34.017048Z","level":"DEBUG","fields":{"message":"Epoch change event received: 11"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:29:34.017052Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 11"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:30:04.017488Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 12"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:30:04.017510Z","level":"DEBUG","fields":{"message":"Epoch change event received: 12"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:30:04.017514Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 12"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:30:34.017576Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 13"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:30:34.017600Z","level":"DEBUG","fields":{"message":"Epoch change event received: 13"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:30:34.017603Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 13"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:31:04.017087Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 14"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:31:04.017112Z","level":"DEBUG","fields":{"message":"Epoch change event received: 14"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:31:04.017115Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 14"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:31:34.018471Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 15"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:31:34.018493Z","level":"DEBUG","fields":{"message":"Epoch change event received: 15"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:31:34.018496Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 15"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:32:04.017083Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 16"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:32:04.017104Z","level":"DEBUG","fields":{"message":"Epoch change event received: 16"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:32:04.017107Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 16"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:32:34.018005Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 17"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:32:34.018031Z","level":"DEBUG","fields":{"message":"Epoch change event received: 17"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:32:34.018035Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 17"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:33:04.016735Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 18"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:33:04.016761Z","level":"DEBUG","fields":{"message":"Epoch change event received: 18"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:33:04.016764Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 18"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:33:34.018839Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 19"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:33:34.018871Z","level":"DEBUG","fields":{"message":"Epoch change event received: 19"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:33:34.018876Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 19"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:34:04.017735Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 20"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:34:04.017758Z","level":"DEBUG","fields":{"message":"Epoch change event received: 20"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:34:04.017762Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 20"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:34:34.017611Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 21"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:34:34.017636Z","level":"DEBUG","fields":{"message":"Epoch change event received: 21"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:34:34.017639Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 21"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:35:04.016173Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 22"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:35:04.016196Z","level":"DEBUG","fields":{"message":"Epoch change event received: 22"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:35:04.016200Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 22"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:35:34.016997Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 23"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:35:34.017026Z","level":"DEBUG","fields":{"message":"Epoch change event received: 23"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:35:34.017030Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 23"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:35:41.696142Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:35:51.710185Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:36:01.724887Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:36:04.040450Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 24"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:36:04.040476Z","level":"DEBUG","fields":{"message":"Epoch change event received: 24"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:36:04.040480Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 24"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:36:11.740225Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:36:21.754178Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:36:31.768235Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:36:34.016208Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 25"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:36:34.016230Z","level":"DEBUG","fields":{"message":"Epoch change event received: 25"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:36:34.016233Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 25"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:36:41.783142Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:36:42.277026Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:36:51.797294Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:37:01.811414Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:37:04.016081Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 26"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:37:04.016106Z","level":"DEBUG","fields":{"message":"Epoch change event received: 26"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:37:04.016111Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 26"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:37:11.825335Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:37:21.840262Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:37:31.855609Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:37:34.018510Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 27"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:37:34.018544Z","level":"DEBUG","fields":{"message":"Epoch change event received: 27"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:37:34.018550Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 27"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:37:41.869877Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:37:51.883725Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:38:01.897662Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:38:04.016693Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 28"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:38:04.016716Z","level":"DEBUG","fields":{"message":"Epoch change event received: 28"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:38:04.016720Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 28"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:38:11.911518Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:38:21.926913Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:38:31.940945Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:38:34.016972Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 29"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:38:34.016995Z","level":"DEBUG","fields":{"message":"Epoch change event received: 29"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:38:34.016999Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 29"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:38:41.956312Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:38:51.970112Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:39:01.984074Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
+[agglayer] {"timestamp":"2025-02-19T09:39:04.016824Z","level":"INFO","fields":{"message":"Clock detected the end of the Epoch: 30"},"target":"agglayer_clock::block"}
+[agglayer] {"timestamp":"2025-02-19T09:39:04.016850Z","level":"DEBUG","fields":{"message":"Epoch change event received: 30"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:39:04.016853Z","level":"DEBUG","fields":{"message":"Start the settlement of the epoch 30"},"target":"agglayer_certificate_orchestrator"}
+[agglayer] {"timestamp":"2025-02-19T09:39:11.998111Z","level":"DEBUG","fields":{"message":"Received request to get the latest known certificate header for rollup 1"},"target":"agglayer_node::service"}
