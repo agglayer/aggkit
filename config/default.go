@@ -136,8 +136,8 @@ WriteTimeout = "2s"
 MaxRequestsPerIPAndSecond = 10
 
 [ClaimSponsor]
-DBPath = "{{PathRWData}}/claimsopnsor.sqlite"
-Enabled = false
+DBPath = "{{PathRWData}}/claimsponsor.sqlite"
+Enabled = true
 SenderAddr = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 BridgeAddrL2 = "0xB7098a13a48EcE087d3DA15b2D28eCE0f89819B8"
 MaxGas = 200000
@@ -152,7 +152,7 @@ GasOffset = 0
 		GetReceiptMaxTime = "250ms"
 		GetReceiptWaitInterval = "1s"
 		PrivateKeys = [
-			{Path = "/app/keystore/claimsopnsor.keystore", Password = "testonly"},
+			{Path = "/app/keystore/claimsponsor.keystore", Password = "testonly"},
 		]
 		ForcedGas = 0
 		GasPriceMarginFactor = 1
