@@ -10,6 +10,7 @@ import (
 	agglayer "github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitCommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -37,7 +38,7 @@ type AggchainProofClient struct {
 
 // NewAggchainProofClient initializes a new AggchainProof instance
 func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
-	grpcClient, err := NewClient(serverAddr)
+	grpcClient, err := aggkitCommon.NewClient(serverAddr)
 	if err != nil {
 		return nil, err
 	}

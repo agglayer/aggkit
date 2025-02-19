@@ -1,4 +1,4 @@
-package grpc
+package common
 
 import (
 	"google.golang.org/grpc"
@@ -21,6 +21,11 @@ func NewClient(serverAddr string) (*Client, error) {
 	}
 
 	return &Client{conn: conn}, nil
+}
+
+// Conn returns the gRPC connection
+func (c *Client) Conn() *grpc.ClientConn {
+	return c.conn
 }
 
 // Close closes the gRPC connection
