@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db/migrations"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/db"
@@ -29,7 +29,7 @@ type AggSenderStorage interface {
 	// DeleteCertificate deletes a certificate from the storage
 	DeleteCertificate(ctx context.Context, certificateID common.Hash) error
 	// GetCertificatesByStatus returns a list of certificates by their status
-	GetCertificatesByStatus(status []agglayer.CertificateStatus) ([]*types.CertificateInfo, error)
+	GetCertificatesByStatus(status []agglayerTypes.CertificateStatus) ([]*types.CertificateInfo, error)
 	// UpdateCertificate updates certificate in db
 	UpdateCertificate(ctx context.Context, certificate types.CertificateInfo) error
 }
@@ -67,7 +67,7 @@ func NewAggSenderSQLStorage(logger *log.Logger, cfg AggSenderSQLStorageConfig) (
 }
 
 func (a *AggSenderSQLStorage) GetCertificatesByStatus(
-	statuses []agglayer.CertificateStatus) ([]*types.CertificateInfo, error) {
+	statuses []agglayerTypes.CertificateStatus) ([]*types.CertificateInfo, error) {
 	query := "SELECT * FROM certificate_info"
 	args := make([]interface{}, len(statuses))
 

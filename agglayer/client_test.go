@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -100,7 +101,7 @@ func TestGetEpochConfigurationOkResponse(t *testing.T) {
 	clockConfig, err := sut.GetEpochConfiguration()
 	require.NotNil(t, clockConfig)
 	require.NoError(t, err)
-	require.Equal(t, ClockConfiguration{
+	require.Equal(t, types.ClockConfiguration{
 		EpochDuration: 1,
 		GenesisBlock:  1,
 	}, *clockConfig)

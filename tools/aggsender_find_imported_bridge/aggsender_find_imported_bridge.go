@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"os"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/rpcclient"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -24,8 +24,8 @@ const (
 	minimumNumArgs = 3
 )
 
-func unmarshalGlobalIndex(globalIndex string) (*agglayer.GlobalIndex, error) {
-	var globalIndexParsed agglayer.GlobalIndex
+func unmarshalGlobalIndex(globalIndex string) (*agglayerTypes.GlobalIndex, error) {
+	var globalIndexParsed agglayerTypes.GlobalIndex
 	// First try if it's already decomposed
 	err := json.Unmarshal([]byte(globalIndex), &globalIndexParsed)
 	if err != nil {
@@ -47,11 +47,11 @@ func unmarshalGlobalIndex(globalIndex string) (*agglayer.GlobalIndex, error) {
 
 // This function find out the certificate for a deposit
 // It use the aggsender RPC
-func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayer.GlobalIndex) (bool, error) {
+func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayerTypes.GlobalIndex) (bool, error) {
 	if cert == nil {
 		return false, nil
 	}
-	var certSigned agglayer.SignedCertificate
+	var certSigned agglayerTypes.SignedCertificate
 	err := json.Unmarshal([]byte(cert.SignedCertificate), &certSigned)
 	if err != nil {
 		log.Debugf("cert: %v", cert.SignedCertificate)

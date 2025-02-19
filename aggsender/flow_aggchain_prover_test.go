@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -25,22 +25,22 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 	ctx := context.Background()
 
-	ibe1 := &agglayer.ImportedBridgeExit{
-		BridgeExit: &agglayer.BridgeExit{
+	ibe1 := &agglayerTypes.ImportedBridgeExit{
+		BridgeExit: &agglayerTypes.BridgeExit{
 			LeafType:  0,
-			TokenInfo: &agglayer.TokenInfo{},
+			TokenInfo: &agglayerTypes.TokenInfo{},
 		},
-		GlobalIndex: &agglayer.GlobalIndex{
+		GlobalIndex: &agglayerTypes.GlobalIndex{
 			LeafIndex: 1,
 		},
 	}
 
-	ibe2 := &agglayer.ImportedBridgeExit{
-		BridgeExit: &agglayer.BridgeExit{
+	ibe2 := &agglayerTypes.ImportedBridgeExit{
+		BridgeExit: &agglayerTypes.BridgeExit{
 			LeafType:  0,
-			TokenInfo: &agglayer.TokenInfo{},
+			TokenInfo: &agglayerTypes.TokenInfo{},
 		},
-		GlobalIndex: &agglayer.GlobalIndex{
+		GlobalIndex: &agglayerTypes.GlobalIndex{
 			LeafIndex: 2,
 		},
 	}
@@ -80,7 +80,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayerTypes.InError,
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
 			},
@@ -98,7 +98,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayerTypes.InError,
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}, nil)
@@ -117,7 +117,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
 					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
@@ -135,7 +135,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayerTypes.InError,
 				},
 			},
 		},
@@ -151,7 +151,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayerTypes.InError,
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{
 					{BlockNum: 5}, {BlockNum: 10}}, nil)
@@ -172,7 +172,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
 					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
@@ -193,7 +193,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayerTypes.InError,
 				},
 			},
 		},
@@ -225,7 +225,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
 					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
@@ -261,7 +261,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
 					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
@@ -310,7 +310,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
 					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),

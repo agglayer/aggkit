@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	agglayer "github.com/agglayer/aggkit/agglayer"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	common "github.com/ethereum/go-ethereum/common"
 
 	context "context"
@@ -132,7 +132,7 @@ func (_c *AggSenderStorage_GetCertificateByHeight_Call) RunAndReturn(run func(ui
 }
 
 // GetCertificatesByStatus provides a mock function with given fields: status
-func (_m *AggSenderStorage) GetCertificatesByStatus(status []agglayer.CertificateStatus) ([]*types.CertificateInfo, error) {
+func (_m *AggSenderStorage) GetCertificatesByStatus(status []agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error) {
 	ret := _m.Called(status)
 
 	if len(ret) == 0 {
@@ -141,10 +141,10 @@ func (_m *AggSenderStorage) GetCertificatesByStatus(status []agglayer.Certificat
 
 	var r0 []*types.CertificateInfo
 	var r1 error
-	if rf, ok := ret.Get(0).(func([]agglayer.CertificateStatus) ([]*types.CertificateInfo, error)); ok {
+	if rf, ok := ret.Get(0).(func([]agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error)); ok {
 		return rf(status)
 	}
-	if rf, ok := ret.Get(0).(func([]agglayer.CertificateStatus) []*types.CertificateInfo); ok {
+	if rf, ok := ret.Get(0).(func([]agglayertypes.CertificateStatus) []*types.CertificateInfo); ok {
 		r0 = rf(status)
 	} else {
 		if ret.Get(0) != nil {
@@ -152,7 +152,7 @@ func (_m *AggSenderStorage) GetCertificatesByStatus(status []agglayer.Certificat
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func([]agglayer.CertificateStatus) error); ok {
+	if rf, ok := ret.Get(1).(func([]agglayertypes.CertificateStatus) error); ok {
 		r1 = rf(status)
 	} else {
 		r1 = ret.Error(1)
@@ -167,14 +167,14 @@ type AggSenderStorage_GetCertificatesByStatus_Call struct {
 }
 
 // GetCertificatesByStatus is a helper method to define mock.On call
-//   - status []agglayer.CertificateStatus
+//   - status []agglayertypes.CertificateStatus
 func (_e *AggSenderStorage_Expecter) GetCertificatesByStatus(status interface{}) *AggSenderStorage_GetCertificatesByStatus_Call {
 	return &AggSenderStorage_GetCertificatesByStatus_Call{Call: _e.mock.On("GetCertificatesByStatus", status)}
 }
 
-func (_c *AggSenderStorage_GetCertificatesByStatus_Call) Run(run func(status []agglayer.CertificateStatus)) *AggSenderStorage_GetCertificatesByStatus_Call {
+func (_c *AggSenderStorage_GetCertificatesByStatus_Call) Run(run func(status []agglayertypes.CertificateStatus)) *AggSenderStorage_GetCertificatesByStatus_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].([]agglayer.CertificateStatus))
+		run(args[0].([]agglayertypes.CertificateStatus))
 	})
 	return _c
 }
@@ -184,12 +184,12 @@ func (_c *AggSenderStorage_GetCertificatesByStatus_Call) Return(_a0 []*types.Cer
 	return _c
 }
 
-func (_c *AggSenderStorage_GetCertificatesByStatus_Call) RunAndReturn(run func([]agglayer.CertificateStatus) ([]*types.CertificateInfo, error)) *AggSenderStorage_GetCertificatesByStatus_Call {
+func (_c *AggSenderStorage_GetCertificatesByStatus_Call) RunAndReturn(run func([]agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error)) *AggSenderStorage_GetCertificatesByStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// GetLastSentCertificate provides a mock function with no fields
+// GetLastSentCertificate provides a mock function with given fields:
 func (_m *AggSenderStorage) GetLastSentCertificate() (*types.CertificateInfo, error) {
 	ret := _m.Called()
 

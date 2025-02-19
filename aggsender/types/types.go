@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -29,7 +29,8 @@ type AggsenderFlow interface {
 	// GetCertificateBuildParams returns the parameters to build a certificate
 	GetCertificateBuildParams(ctx context.Context) (*CertificateBuildParams, error)
 	// BuildCertificate builds a certificate based on the buildParams
-	BuildCertificate(ctx context.Context, buildParams *CertificateBuildParams) (*agglayer.Certificate, error)
+	BuildCertificate(ctx context.Context,
+		buildParams *CertificateBuildParams) (*agglayerTypes.Certificate, error)
 }
 
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
@@ -95,16 +96,16 @@ type CertificateInfo struct {
 	RetryCount    int         `meddler:"retry_count"`
 	CertificateID common.Hash `meddler:"certificate_id,hash"`
 	// PreviousLocalExitRoot if it's nil means no reported
-	PreviousLocalExitRoot   *common.Hash               `meddler:"previous_local_exit_root,hash"`
-	NewLocalExitRoot        common.Hash                `meddler:"new_local_exit_root,hash"`
-	FromBlock               uint64                     `meddler:"from_block"`
-	ToBlock                 uint64                     `meddler:"to_block"`
-	Status                  agglayer.CertificateStatus `meddler:"status"`
-	CreatedAt               uint32                     `meddler:"created_at"`
-	UpdatedAt               uint32                     `meddler:"updated_at"`
-	SignedCertificate       string                     `meddler:"signed_certificate"`
-	AggchainProof           []byte                     `meddler:"aggchain_proof"`
-	FinalizedL1InfoTreeRoot *common.Hash               `meddler:"finalized_l1_info_tree_root,hash"`
+	PreviousLocalExitRoot   *common.Hash                    `meddler:"previous_local_exit_root,hash"`
+	NewLocalExitRoot        common.Hash                     `meddler:"new_local_exit_root,hash"`
+	FromBlock               uint64                          `meddler:"from_block"`
+	ToBlock                 uint64                          `meddler:"to_block"`
+	Status                  agglayerTypes.CertificateStatus `meddler:"status"`
+	CreatedAt               uint32                          `meddler:"created_at"`
+	UpdatedAt               uint32                          `meddler:"updated_at"`
+	SignedCertificate       string                          `meddler:"signed_certificate"`
+	AggchainProof           []byte                          `meddler:"aggchain_proof"`
+	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
 }
 
 func (c *CertificateInfo) String() string {

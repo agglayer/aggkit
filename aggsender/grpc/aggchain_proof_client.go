@@ -7,7 +7,7 @@ import (
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	aggkitProverV1Grpc "buf.build/gen/go/agglayer/provers/grpc/go/aggkit/prover/v1/proverv1grpc"
 	aggkitProverV1Proto "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
-	agglayer "github.com/agglayer/aggkit/agglayer"
+	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitCommon "github.com/agglayer/aggkit/common"
@@ -43,7 +43,7 @@ func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
 		return nil, err
 	}
 	return &AggchainProofClient{
-		client: aggkitProverV1Grpc.NewAggchainProofServiceClient(grpcClient.conn),
+		client: aggkitProverV1Grpc.NewAggchainProofServiceClient(grpcClient.Conn()),
 	}, nil
 }
 

@@ -6,7 +6,7 @@ import (
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	aggkitProverV1Proto "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
-	agglayer "github.com/agglayer/aggkit/agglayer"
+	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	aggkitProverMocks "github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,7 +33,7 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		200,
 		common.Hash{},
 		l1infotreesync.L1InfoTreeLeaf{},
-		agglayer.MerkleProof{Root: common.Hash{}, Proof: [32]common.Hash{}},
+		agglayerTypes.MerkleProof{Root: common.Hash{}, Proof: [32]common.Hash{}},
 		nil,
 		nil,
 	)
@@ -63,7 +63,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 			BlockNumber: 1,
 			Hash:        common.HexToHash("0x2"),
 		},
-		agglayer.MerkleProof{
+		agglayerTypes.MerkleProof{
 			Root:  common.HexToHash("0x3"),
 			Proof: [32]common.Hash{common.HexToHash("0x4")},
 		},

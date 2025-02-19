@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
@@ -71,7 +71,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		buildParams *types.CertificateBuildParams
 	)
 
-	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayer.InError {
+	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayerTypes.InError {
 		// if the last certificate was in error, we need to resend it
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
 

@@ -1,4 +1,4 @@
-package agglayer
+package types
 
 import (
 	"encoding/json"

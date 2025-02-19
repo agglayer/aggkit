@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -27,7 +27,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 		name          string
 		claim         bridgesync.Claim
 		expectedError bool
-		expectedExit  *agglayer.ImportedBridgeExit
+		expectedExit  *agglayerTypes.ImportedBridgeExit
 	}{
 		{
 			name: "Asset claim",
@@ -42,10 +42,10 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 				GlobalIndex:        big.NewInt(1),
 			},
 			expectedError: false,
-			expectedExit: &agglayer.ImportedBridgeExit{
-				BridgeExit: &agglayer.BridgeExit{
-					LeafType: agglayer.LeafTypeAsset,
-					TokenInfo: &agglayer.TokenInfo{
+			expectedExit: &agglayerTypes.ImportedBridgeExit{
+				BridgeExit: &agglayerTypes.BridgeExit{
+					LeafType: agglayerTypes.LeafTypeAsset,
+					TokenInfo: &agglayerTypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x123"),
 					},
@@ -54,7 +54,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 					Amount:             big.NewInt(100),
 					Metadata:           []byte("metadata"),
 				},
-				GlobalIndex: &agglayer.GlobalIndex{
+				GlobalIndex: &agglayerTypes.GlobalIndex{
 					MainnetFlag: false,
 					RollupIndex: 0,
 					LeafIndex:   1,
@@ -74,10 +74,10 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 				GlobalIndex:        big.NewInt(2),
 			},
 			expectedError: false,
-			expectedExit: &agglayer.ImportedBridgeExit{
-				BridgeExit: &agglayer.BridgeExit{
-					LeafType: agglayer.LeafTypeMessage,
-					TokenInfo: &agglayer.TokenInfo{
+			expectedExit: &agglayerTypes.ImportedBridgeExit{
+				BridgeExit: &agglayerTypes.BridgeExit{
+					LeafType: agglayerTypes.LeafTypeMessage,
+					TokenInfo: &agglayerTypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x123"),
 					},
@@ -86,7 +86,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 					Amount:             big.NewInt(100),
 					Metadata:           []byte("metadata"),
 				},
-				GlobalIndex: &agglayer.GlobalIndex{
+				GlobalIndex: &agglayerTypes.GlobalIndex{
 					MainnetFlag: false,
 					RollupIndex: 0,
 					LeafIndex:   2,
@@ -135,13 +135,13 @@ func TestGetBridgeExits(t *testing.T) {
 	tests := []struct {
 		name          string
 		bridges       []bridgesync.Bridge
-		expectedExits []*agglayer.BridgeExit
+		expectedExits []*agglayerTypes.BridgeExit
 	}{
 		{
 			name: "Single bridge",
 			bridges: []bridgesync.Bridge{
 				{
-					LeafType:           agglayer.LeafTypeAsset.Uint8(),
+					LeafType:           agglayerTypes.LeafTypeAsset.Uint8(),
 					OriginNetwork:      1,
 					OriginAddress:      common.HexToAddress("0x123"),
 					DestinationNetwork: 2,
@@ -150,10 +150,10 @@ func TestGetBridgeExits(t *testing.T) {
 					Metadata:           []byte("metadata"),
 				},
 			},
-			expectedExits: []*agglayer.BridgeExit{
+			expectedExits: []*agglayerTypes.BridgeExit{
 				{
-					LeafType: agglayer.LeafTypeAsset,
-					TokenInfo: &agglayer.TokenInfo{
+					LeafType: agglayerTypes.LeafTypeAsset,
+					TokenInfo: &agglayerTypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x123"),
 					},
@@ -168,7 +168,7 @@ func TestGetBridgeExits(t *testing.T) {
 			name: "Multiple bridges",
 			bridges: []bridgesync.Bridge{
 				{
-					LeafType:           agglayer.LeafTypeAsset.Uint8(),
+					LeafType:           agglayerTypes.LeafTypeAsset.Uint8(),
 					OriginNetwork:      1,
 					OriginAddress:      common.HexToAddress("0x123"),
 					DestinationNetwork: 2,
@@ -177,7 +177,7 @@ func TestGetBridgeExits(t *testing.T) {
 					Metadata:           []byte("metadata"),
 				},
 				{
-					LeafType:           agglayer.LeafTypeMessage.Uint8(),
+					LeafType:           agglayerTypes.LeafTypeMessage.Uint8(),
 					OriginNetwork:      3,
 					OriginAddress:      common.HexToAddress("0x789"),
 					DestinationNetwork: 4,
@@ -186,10 +186,10 @@ func TestGetBridgeExits(t *testing.T) {
 					Metadata:           []byte("data"),
 				},
 			},
-			expectedExits: []*agglayer.BridgeExit{
+			expectedExits: []*agglayerTypes.BridgeExit{
 				{
-					LeafType: agglayer.LeafTypeAsset,
-					TokenInfo: &agglayer.TokenInfo{
+					LeafType: agglayerTypes.LeafTypeAsset,
+					TokenInfo: &agglayerTypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x123"),
 					},
@@ -199,8 +199,8 @@ func TestGetBridgeExits(t *testing.T) {
 					Metadata:           []byte("metadata"),
 				},
 				{
-					LeafType: agglayer.LeafTypeMessage,
-					TokenInfo: &agglayer.TokenInfo{
+					LeafType: agglayerTypes.LeafTypeMessage,
+					TokenInfo: &agglayerTypes.TokenInfo{
 						OriginNetwork:      3,
 						OriginTokenAddress: common.HexToAddress("0x789"),
 					},
@@ -214,7 +214,7 @@ func TestGetBridgeExits(t *testing.T) {
 		{
 			name:          "No bridges",
 			bridges:       []bridgesync.Bridge{},
-			expectedExits: []*agglayer.BridgeExit{},
+			expectedExits: []*agglayerTypes.BridgeExit{},
 		},
 	}
 
@@ -252,7 +252,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 		name          string
 		claims        []bridgesync.Claim
 		expectedError bool
-		expectedExits []*agglayer.ImportedBridgeExit
+		expectedExits []*agglayerTypes.ImportedBridgeExit
 	}{
 		{
 			name: "Single claim",
@@ -274,11 +274,11 @@ func TestGetImportedBridgeExits(t *testing.T) {
 				},
 			},
 			expectedError: false,
-			expectedExits: []*agglayer.ImportedBridgeExit{
+			expectedExits: []*agglayerTypes.ImportedBridgeExit{
 				{
-					BridgeExit: &agglayer.BridgeExit{
-						LeafType: agglayer.LeafTypeAsset,
-						TokenInfo: &agglayer.TokenInfo{
+					BridgeExit: &agglayerTypes.BridgeExit{
+						LeafType: agglayerTypes.LeafTypeAsset,
+						TokenInfo: &agglayerTypes.TokenInfo{
 							OriginNetwork:      1,
 							OriginTokenAddress: common.HexToAddress("0x1234"),
 						},
@@ -287,31 +287,31 @@ func TestGetImportedBridgeExits(t *testing.T) {
 						Amount:             big.NewInt(111),
 						Metadata:           []byte("metadata1"),
 					},
-					GlobalIndex: &agglayer.GlobalIndex{
+					GlobalIndex: &agglayerTypes.GlobalIndex{
 						MainnetFlag: false,
 						RollupIndex: 1,
 						LeafIndex:   1,
 					},
-					ClaimData: &agglayer.ClaimFromRollup{
-						L1Leaf: &agglayer.L1InfoTreeLeaf{
+					ClaimData: &agglayerTypes.ClaimFromRollup{
+						L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
 							L1InfoTreeIndex: 1,
 							RollupExitRoot:  common.HexToHash("0xaaab"),
 							MainnetExitRoot: common.HexToHash("0xbbba"),
-							Inner: &agglayer.L1InfoTreeLeafInner{
+							Inner: &agglayerTypes.L1InfoTreeLeafInner{
 								GlobalExitRoot: common.HexToHash("0x7891"),
 								Timestamp:      123456789,
 								BlockHash:      common.HexToHash("0xabc"),
 							},
 						},
-						ProofLeafLER: &agglayer.MerkleProof{
+						ProofLeafLER: &agglayerTypes.MerkleProof{
 							Root:  common.HexToHash("0xc52019815b51acf67a715cae6794a20083d63fd9af45783b7adf69123dae92c8"),
 							Proof: mockProof,
 						},
-						ProofLERToRER: &agglayer.MerkleProof{
+						ProofLERToRER: &agglayerTypes.MerkleProof{
 							Root:  common.HexToHash("0xaaab"),
 							Proof: mockProof,
 						},
-						ProofGERToL1Root: &agglayer.MerkleProof{
+						ProofGERToL1Root: &agglayerTypes.MerkleProof{
 							Root:  common.HexToHash("0x7891"),
 							Proof: mockProof,
 						},
@@ -354,11 +354,11 @@ func TestGetImportedBridgeExits(t *testing.T) {
 				},
 			},
 			expectedError: false,
-			expectedExits: []*agglayer.ImportedBridgeExit{
+			expectedExits: []*agglayerTypes.ImportedBridgeExit{
 				{
-					BridgeExit: &agglayer.BridgeExit{
-						LeafType: agglayer.LeafTypeAsset,
-						TokenInfo: &agglayer.TokenInfo{
+					BridgeExit: &agglayerTypes.BridgeExit{
+						LeafType: agglayerTypes.LeafTypeAsset,
+						TokenInfo: &agglayerTypes.TokenInfo{
 							OriginNetwork:      1,
 							OriginTokenAddress: common.HexToAddress("0x123"),
 						},
@@ -367,40 +367,40 @@ func TestGetImportedBridgeExits(t *testing.T) {
 						Amount:             big.NewInt(100),
 						Metadata:           []byte("metadata"),
 					},
-					GlobalIndex: &agglayer.GlobalIndex{
+					GlobalIndex: &agglayerTypes.GlobalIndex{
 						MainnetFlag: false,
 						RollupIndex: 0,
 						LeafIndex:   1,
 					},
-					ClaimData: &agglayer.ClaimFromRollup{
-						L1Leaf: &agglayer.L1InfoTreeLeaf{
+					ClaimData: &agglayerTypes.ClaimFromRollup{
+						L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
 							L1InfoTreeIndex: 1,
 							RollupExitRoot:  common.HexToHash("0xaaa"),
 							MainnetExitRoot: common.HexToHash("0xbbb"),
-							Inner: &agglayer.L1InfoTreeLeafInner{
+							Inner: &agglayerTypes.L1InfoTreeLeafInner{
 								GlobalExitRoot: common.HexToHash("0x7891"),
 								Timestamp:      123456789,
 								BlockHash:      common.HexToHash("0xabc"),
 							},
 						},
-						ProofLeafLER: &agglayer.MerkleProof{
+						ProofLeafLER: &agglayerTypes.MerkleProof{
 							Root:  common.HexToHash("0x105e0f1144e57f6fb63f1dfc5083b1f59be3512be7cf5e63523779ad14a4d987"),
 							Proof: mockProof,
 						},
-						ProofLERToRER: &agglayer.MerkleProof{
+						ProofLERToRER: &agglayerTypes.MerkleProof{
 							Root:  common.HexToHash("0xaaa"),
 							Proof: mockProof,
 						},
-						ProofGERToL1Root: &agglayer.MerkleProof{
+						ProofGERToL1Root: &agglayerTypes.MerkleProof{
 							Root:  common.HexToHash("0x7891"),
 							Proof: mockProof,
 						},
 					},
 				},
 				{
-					BridgeExit: &agglayer.BridgeExit{
-						LeafType: agglayer.LeafTypeMessage,
-						TokenInfo: &agglayer.TokenInfo{
+					BridgeExit: &agglayerTypes.BridgeExit{
+						LeafType: agglayerTypes.LeafTypeMessage,
+						TokenInfo: &agglayerTypes.TokenInfo{
 							OriginNetwork:      3,
 							OriginTokenAddress: common.HexToAddress("0x789"),
 						},
@@ -409,27 +409,27 @@ func TestGetImportedBridgeExits(t *testing.T) {
 						Amount:             big.NewInt(200),
 						Metadata:           []byte("data"),
 					},
-					GlobalIndex: &agglayer.GlobalIndex{
+					GlobalIndex: &agglayerTypes.GlobalIndex{
 						MainnetFlag: true,
 						RollupIndex: 0,
 						LeafIndex:   2,
 					},
-					ClaimData: &agglayer.ClaimFromMainnnet{
-						L1Leaf: &agglayer.L1InfoTreeLeaf{
+					ClaimData: &agglayerTypes.ClaimFromMainnnet{
+						L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
 							L1InfoTreeIndex: 1,
 							RollupExitRoot:  common.HexToHash("0xbbb"),
 							MainnetExitRoot: common.HexToHash("0xccc"),
-							Inner: &agglayer.L1InfoTreeLeafInner{
+							Inner: &agglayerTypes.L1InfoTreeLeafInner{
 								GlobalExitRoot: common.HexToHash("0x7891"),
 								Timestamp:      123456789,
 								BlockHash:      common.HexToHash("0xabc"),
 							},
 						},
-						ProofLeafMER: &agglayer.MerkleProof{
+						ProofLeafMER: &agglayerTypes.MerkleProof{
 							Root:  common.HexToHash("0xccc"),
 							Proof: mockProof,
 						},
-						ProofGERToL1Root: &agglayer.MerkleProof{
+						ProofGERToL1Root: &agglayerTypes.MerkleProof{
 							Root:  common.HexToHash("0x7891"),
 							Proof: mockProof,
 						},
@@ -441,7 +441,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 			name:          "No claims",
 			claims:        []bridgesync.Claim{},
 			expectedError: false,
-			expectedExits: []*agglayer.ImportedBridgeExit{},
+			expectedExits: []*agglayerTypes.ImportedBridgeExit{},
 		},
 	}
 
@@ -481,14 +481,14 @@ func TestBuildCertificate(t *testing.T) {
 		fromBlock               uint64
 		toBlock                 uint64
 		mockFn                  func()
-		expectedCert            *agglayer.Certificate
+		expectedCert            *agglayerTypes.Certificate
 		expectedError           bool
 	}{
 		{
 			name: "Valid certificate with bridges and claims",
 			bridges: []bridgesync.Bridge{
 				{
-					LeafType:           agglayer.LeafTypeAsset.Uint8(),
+					LeafType:           agglayerTypes.LeafTypeAsset.Uint8(),
 					OriginNetwork:      1,
 					OriginAddress:      common.HexToAddress("0x123"),
 					DestinationNetwork: 2,
@@ -518,19 +518,19 @@ func TestBuildCertificate(t *testing.T) {
 			lastSentCertificateInfo: types.CertificateInfo{
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Height:           1,
-				Status:           agglayer.Settled,
+				Status:           agglayerTypes.Settled,
 			},
 			fromBlock: 0,
 			toBlock:   10,
-			expectedCert: &agglayer.Certificate{
+			expectedCert: &agglayerTypes.Certificate{
 				NetworkID:         1,
 				PrevLocalExitRoot: common.HexToHash("0x123"),
 				NewLocalExitRoot:  common.HexToHash("0x789"),
 				Metadata:          types.NewCertificateMetadata(0, 10, 0).ToHash(),
-				BridgeExits: []*agglayer.BridgeExit{
+				BridgeExits: []*agglayerTypes.BridgeExit{
 					{
-						LeafType: agglayer.LeafTypeAsset,
-						TokenInfo: &agglayer.TokenInfo{
+						LeafType: agglayerTypes.LeafTypeAsset,
+						TokenInfo: &agglayerTypes.TokenInfo{
 							OriginNetwork:      1,
 							OriginTokenAddress: common.HexToAddress("0x123"),
 						},
@@ -540,11 +540,11 @@ func TestBuildCertificate(t *testing.T) {
 						Metadata:           []byte("metadata"),
 					},
 				},
-				ImportedBridgeExits: []*agglayer.ImportedBridgeExit{
+				ImportedBridgeExits: []*agglayerTypes.ImportedBridgeExit{
 					{
-						BridgeExit: &agglayer.BridgeExit{
-							LeafType: agglayer.LeafTypeAsset,
-							TokenInfo: &agglayer.TokenInfo{
+						BridgeExit: &agglayerTypes.BridgeExit{
+							LeafType: agglayerTypes.LeafTypeAsset,
+							TokenInfo: &agglayerTypes.TokenInfo{
 								OriginNetwork:      1,
 								OriginTokenAddress: common.HexToAddress("0x1234"),
 							},
@@ -553,31 +553,31 @@ func TestBuildCertificate(t *testing.T) {
 							Amount:             big.NewInt(111),
 							Metadata:           []byte("metadata1"),
 						},
-						GlobalIndex: &agglayer.GlobalIndex{
+						GlobalIndex: &agglayerTypes.GlobalIndex{
 							MainnetFlag: false,
 							RollupIndex: 0,
 							LeafIndex:   1,
 						},
-						ClaimData: &agglayer.ClaimFromRollup{
-							L1Leaf: &agglayer.L1InfoTreeLeaf{
+						ClaimData: &agglayerTypes.ClaimFromRollup{
+							L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
 								L1InfoTreeIndex: 1,
 								RollupExitRoot:  common.HexToHash("0xaaab"),
 								MainnetExitRoot: common.HexToHash("0xbbba"),
-								Inner: &agglayer.L1InfoTreeLeafInner{
+								Inner: &agglayerTypes.L1InfoTreeLeafInner{
 									GlobalExitRoot: common.HexToHash("0x7891"),
 									Timestamp:      123456789,
 									BlockHash:      common.HexToHash("0xabc"),
 								},
 							},
-							ProofLeafLER: &agglayer.MerkleProof{
+							ProofLeafLER: &agglayerTypes.MerkleProof{
 								Root:  common.HexToHash("0xc52019815b51acf67a715cae6794a20083d63fd9af45783b7adf69123dae92c8"),
 								Proof: mockProof,
 							},
-							ProofLERToRER: &agglayer.MerkleProof{
+							ProofLERToRER: &agglayerTypes.MerkleProof{
 								Root:  common.HexToHash("0xaaab"),
 								Proof: mockProof,
 							},
-							ProofGERToL1Root: &agglayer.MerkleProof{
+							ProofGERToL1Root: &agglayerTypes.MerkleProof{
 								Root:  common.HexToHash("0x7891"),
 								Proof: mockProof,
 							},
@@ -615,7 +615,7 @@ func TestBuildCertificate(t *testing.T) {
 			name: "Error getting imported bridge exits",
 			bridges: []bridgesync.Bridge{
 				{
-					LeafType:           agglayer.LeafTypeAsset.Uint8(),
+					LeafType:           agglayerTypes.LeafTypeAsset.Uint8(),
 					OriginNetwork:      1,
 					OriginAddress:      common.HexToAddress("0x123"),
 					DestinationNetwork: 2,
@@ -724,7 +724,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCertificateInfo: &types.CertificateInfo{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.Settled,
+				Status:           agglayerTypes.Settled,
 			},
 			expectedHeight:      11,
 			expectedPreviousLER: common.HexToHash("0x123"),
@@ -740,7 +740,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCertificateInfo: &types.CertificateInfo{
 				Height:                0,
 				NewLocalExitRoot:      common.HexToHash("0x123"),
-				Status:                agglayer.InError,
+				Status:                agglayerTypes.InError,
 				PreviousLocalExitRoot: &ler1,
 			},
 			expectedHeight:      0,
@@ -751,7 +751,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCertificateInfo: &types.CertificateInfo{
 				Height:           0,
 				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
+				Status:           agglayerTypes.InError,
 			},
 			expectedHeight:      0,
 			expectedPreviousLER: zeroLER,
@@ -762,7 +762,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 				Height:                10,
 				NewLocalExitRoot:      common.HexToHash("0x123"),
 				PreviousLocalExitRoot: &ler1,
-				Status:                agglayer.InError,
+				Status:                agglayerTypes.InError,
 			},
 			expectedHeight:      10,
 			expectedPreviousLER: ler1,
@@ -773,7 +773,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 				Height:                10,
 				NewLocalExitRoot:      common.HexToHash("0x123"),
 				PreviousLocalExitRoot: &ler1,
-				Status:                agglayer.Pending,
+				Status:                agglayerTypes.Pending,
 			},
 			expectedHeight:      10,
 			expectedPreviousLER: ler1,
@@ -784,12 +784,12 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCertificateInfo: &types.CertificateInfo{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
+				Status:           agglayerTypes.InError,
 			},
 			lastSettleCertificateInfo: &types.CertificateInfo{
 				Height:           9,
 				NewLocalExitRoot: common.HexToHash("0x3456"),
-				Status:           agglayer.Settled,
+				Status:           agglayerTypes.Settled,
 			},
 			expectedHeight:      10,
 			expectedPreviousLER: common.HexToHash("0x3456"),
@@ -799,7 +799,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCertificateInfo: &types.CertificateInfo{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
+				Status:           agglayerTypes.InError,
 			},
 			lastSettleCertificateInfo:      nil,
 			lastSettleCertificateInfoError: errors.New("error getting last settle certificate"),
@@ -810,7 +810,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCertificateInfo: &types.CertificateInfo{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
+				Status:           agglayerTypes.InError,
 			},
 			lastSettleCertificateInfoCall:  true,
 			lastSettleCertificateInfo:      nil,
@@ -822,12 +822,12 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCertificateInfo: &types.CertificateInfo{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayer.InError,
+				Status:           agglayerTypes.InError,
 			},
 			lastSettleCertificateInfo: &types.CertificateInfo{
 				Height:           9,
 				NewLocalExitRoot: common.HexToHash("0x3456"),
-				Status:           agglayer.InError,
+				Status:           agglayerTypes.InError,
 			},
 			lastSettleCertificateInfoError: nil,
 			expectedError:                  true,
@@ -1096,7 +1096,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 			name: "Last sent certificate with no error",
 			lastSentCertificateInfo: &types.CertificateInfo{
 				ToBlock: 10,
-				Status:  agglayer.Settled,
+				Status:  agglayerTypes.Settled,
 			},
 			expectedBlock:      10,
 			expectedRetryCount: 0,
@@ -1106,7 +1106,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 			lastSentCertificateInfo: &types.CertificateInfo{
 				FromBlock:  5,
 				ToBlock:    10,
-				Status:     agglayer.InError,
+				Status:     agglayerTypes.InError,
 				RetryCount: 1,
 			},
 			expectedBlock:      4,
@@ -1117,7 +1117,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 			lastSentCertificateInfo: &types.CertificateInfo{
 				FromBlock:  0,
 				ToBlock:    10,
-				Status:     agglayer.InError,
+				Status:     agglayerTypes.InError,
 				RetryCount: 1,
 			},
 			expectedBlock:      10,

@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	agglayer "github.com/agglayer/aggkit/agglayer"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -26,23 +26,23 @@ func (_m *AggsenderFlow) EXPECT() *AggsenderFlow_Expecter {
 }
 
 // BuildCertificate provides a mock function with given fields: ctx, buildParams
-func (_m *AggsenderFlow) BuildCertificate(ctx context.Context, buildParams *types.CertificateBuildParams) (*agglayer.Certificate, error) {
+func (_m *AggsenderFlow) BuildCertificate(ctx context.Context, buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
 	ret := _m.Called(ctx, buildParams)
 
 	if len(ret) == 0 {
 		panic("no return value specified for BuildCertificate")
 	}
 
-	var r0 *agglayer.Certificate
+	var r0 *agglayertypes.Certificate
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateBuildParams) (*agglayer.Certificate, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateBuildParams) (*agglayertypes.Certificate, error)); ok {
 		return rf(ctx, buildParams)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateBuildParams) *agglayer.Certificate); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateBuildParams) *agglayertypes.Certificate); ok {
 		r0 = rf(ctx, buildParams)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*agglayer.Certificate)
+			r0 = ret.Get(0).(*agglayertypes.Certificate)
 		}
 	}
 
@@ -74,12 +74,12 @@ func (_c *AggsenderFlow_BuildCertificate_Call) Run(run func(ctx context.Context,
 	return _c
 }
 
-func (_c *AggsenderFlow_BuildCertificate_Call) Return(_a0 *agglayer.Certificate, _a1 error) *AggsenderFlow_BuildCertificate_Call {
+func (_c *AggsenderFlow_BuildCertificate_Call) Return(_a0 *agglayertypes.Certificate, _a1 error) *AggsenderFlow_BuildCertificate_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggsenderFlow_BuildCertificate_Call) RunAndReturn(run func(context.Context, *types.CertificateBuildParams) (*agglayer.Certificate, error)) *AggsenderFlow_BuildCertificate_Call {
+func (_c *AggsenderFlow_BuildCertificate_Call) RunAndReturn(run func(context.Context, *types.CertificateBuildParams) (*agglayertypes.Certificate, error)) *AggsenderFlow_BuildCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

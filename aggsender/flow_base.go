@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -103,7 +103,7 @@ func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*type
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
 func (f *baseFlow) BuildCertificate(ctx context.Context,
-	buildParams *types.CertificateBuildParams) (*agglayer.Certificate, error) {
+	buildParams *types.CertificateBuildParams) (*agglayerTypes.Certificate, error) {
 	f.log.Infof("building certificate for %s estimatedSize=%d",
 		buildParams.String(), buildParams.EstimatedSize())
 
@@ -144,7 +144,7 @@ func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types
 
 func (f *baseFlow) buildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
-	lastSentCertificateInfo *types.CertificateInfo) (*agglayer.Certificate, error) {
+	lastSentCertificateInfo *types.CertificateInfo) (*agglayerTypes.Certificate, error) {
 	if certParams.IsEmpty() {
 		return nil, errNoBridgesAndClaims
 	}
@@ -173,7 +173,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		certParams.CreatedAt,
 	)
 
-	return &agglayer.Certificate{
+	return &agglayerTypes.Certificate{
 		NetworkID:           f.l2Syncer.OriginNetwork(),
 		PrevLocalExitRoot:   previousLER,
 		NewLocalExitRoot:    exitRoot.Hash,
@@ -205,16 +205,16 @@ func convertBridgeMetadata(metadata []byte, importedBridgeMetadataAsHash bool) (
 }
 
 // convertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayer.ImportedBridgeExit, error) {
-	leafType := agglayer.LeafTypeAsset
+func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayerTypes.ImportedBridgeExit, error) {
+	leafType := agglayerTypes.LeafTypeAsset
 	if claim.IsMessage {
-		leafType = agglayer.LeafTypeMessage
+		leafType = agglayerTypes.LeafTypeMessage
 	}
 	metaData, isMetadataIsHashed := convertBridgeMetadata(claim.Metadata, f.cfg.BridgeMetadataAsHash)
 
-	bridgeExit := &agglayer.BridgeExit{
+	bridgeExit := &agglayerTypes.BridgeExit{
 		LeafType: leafType,
-		TokenInfo: &agglayer.TokenInfo{
+		TokenInfo: &agglayerTypes.TokenInfo{
 			OriginNetwork:      claim.OriginNetwork,
 			OriginTokenAddress: claim.OriginAddress,
 		},
@@ -230,9 +230,9 @@ func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 		return nil, fmt.Errorf("error decoding global index: %w", err)
 	}
 
-	return &agglayer.ImportedBridgeExit{
+	return &agglayerTypes.ImportedBridgeExit{
 		BridgeExit: bridgeExit,
-		GlobalIndex: &agglayer.GlobalIndex{
+		GlobalIndex: &agglayerTypes.GlobalIndex{
 			MainnetFlag: mainnetFlag,
 			RollupIndex: rollupIndex,
 			LeafIndex:   leafIndex,
@@ -241,14 +241,14 @@ func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 }
 
 // getBridgeExits converts bridges to agglayer.BridgeExit objects
-func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayer.BridgeExit {
-	bridgeExits := make([]*agglayer.BridgeExit, 0, len(bridges))
+func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayerTypes.BridgeExit {
+	bridgeExits := make([]*agglayerTypes.BridgeExit, 0, len(bridges))
 
 	for _, bridge := range bridges {
 		metaData, isMetadataHashed := convertBridgeMetadata(bridge.Metadata, f.cfg.BridgeMetadataAsHash)
-		bridgeExits = append(bridgeExits, &agglayer.BridgeExit{
-			LeafType: agglayer.LeafType(bridge.LeafType),
-			TokenInfo: &agglayer.TokenInfo{
+		bridgeExits = append(bridgeExits, &agglayerTypes.BridgeExit{
+			LeafType: agglayerTypes.LeafType(bridge.LeafType),
+			TokenInfo: &agglayerTypes.TokenInfo{
 				OriginNetwork:      bridge.OriginNetwork,
 				OriginTokenAddress: bridge.OriginAddress,
 			},
@@ -263,17 +263,17 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayer.Bridg
 	return bridgeExits
 }
 
-// getImportedBridgeExits converts claims to agglayer.ImportedBridgeExit objects and calculates necessary proofs
+// getImportedBridgeExits converts claims to agglayerTypes.ImportedBridgeExit objects and calculates necessary proofs
 func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context, claims []bridgesync.Claim,
 	rootFromWhichToProve *treeTypes.Root,
-) ([]*agglayer.ImportedBridgeExit, error) {
+) ([]*agglayerTypes.ImportedBridgeExit, error) {
 	if len(claims) == 0 {
 		// no claims to convert
-		return []*agglayer.ImportedBridgeExit{}, nil
+		return []*agglayerTypes.ImportedBridgeExit{}, nil
 	}
 
-	importedBridgeExits := make([]*agglayer.ImportedBridgeExit, 0, len(claims))
+	importedBridgeExits := make([]*agglayerTypes.ImportedBridgeExit, 0, len(claims))
 
 	for i, claim := range claims {
 		l1Info, err := f.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
@@ -302,48 +302,48 @@ func (f *baseFlow) getImportedBridgeExits(
 		}
 
 		if ibe.GlobalIndex.MainnetFlag {
-			ibe.ClaimData = &agglayer.ClaimFromMainnnet{
-				L1Leaf: &agglayer.L1InfoTreeLeaf{
+			ibe.ClaimData = &agglayerTypes.ClaimFromMainnnet{
+				L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
 					L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
 					RollupExitRoot:  claim.RollupExitRoot,
 					MainnetExitRoot: claim.MainnetExitRoot,
-					Inner: &agglayer.L1InfoTreeLeafInner{
+					Inner: &agglayerTypes.L1InfoTreeLeafInner{
 						GlobalExitRoot: l1Info.GlobalExitRoot,
 						Timestamp:      l1Info.Timestamp,
 						BlockHash:      l1Info.PreviousBlockHash,
 					},
 				},
-				ProofLeafMER: &agglayer.MerkleProof{
+				ProofLeafMER: &agglayerTypes.MerkleProof{
 					Root:  claim.MainnetExitRoot,
 					Proof: claim.ProofLocalExitRoot,
 				},
-				ProofGERToL1Root: &agglayer.MerkleProof{
+				ProofGERToL1Root: &agglayerTypes.MerkleProof{
 					Root:  rootFromWhichToProve.Hash,
 					Proof: gerToL1Proof,
 				},
 			}
 		} else {
-			ibe.ClaimData = &agglayer.ClaimFromRollup{
-				L1Leaf: &agglayer.L1InfoTreeLeaf{
+			ibe.ClaimData = &agglayerTypes.ClaimFromRollup{
+				L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
 					L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
 					RollupExitRoot:  claim.RollupExitRoot,
 					MainnetExitRoot: claim.MainnetExitRoot,
-					Inner: &agglayer.L1InfoTreeLeafInner{
+					Inner: &agglayerTypes.L1InfoTreeLeafInner{
 						GlobalExitRoot: l1Info.GlobalExitRoot,
 						Timestamp:      l1Info.Timestamp,
 						BlockHash:      l1Info.PreviousBlockHash,
 					},
 				},
-				ProofLeafLER: &agglayer.MerkleProof{
+				ProofLeafLER: &agglayerTypes.MerkleProof{
 					Root: tree.CalculateRoot(ibe.BridgeExit.Hash(),
 						claim.ProofLocalExitRoot, ibe.GlobalIndex.LeafIndex),
 					Proof: claim.ProofLocalExitRoot,
 				},
-				ProofLERToRER: &agglayer.MerkleProof{
+				ProofLERToRER: &agglayerTypes.MerkleProof{
 					Root:  claim.RollupExitRoot,
 					Proof: claim.ProofRollupExitRoot,
 				},
-				ProofGERToL1Root: &agglayer.MerkleProof{
+				ProofGERToL1Root: &agglayerTypes.MerkleProof{
 					Root:  rootFromWhichToProve.Hash,
 					Proof: gerToL1Proof,
 				},
@@ -408,7 +408,7 @@ func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInf
 	retryCount := 0
 	lastSentBlock := lastSentCertificateInfo.ToBlock
 
-	if lastSentCertificateInfo.Status == agglayer.InError {
+	if lastSentCertificateInfo.Status == agglayerTypes.InError {
 		// if the last certificate was in error, we need to resend it
 		// from the block before the error
 		if lastSentCertificateInfo.FromBlock > 0 {
