@@ -52,8 +52,18 @@ type Bridge struct {
 	Amount             *big.Int       `meddler:"amount,bigint"`
 	Metadata           []byte         `meddler:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash"`
+	FromAddress        common.Address `meddler:"from_address,address"`
 }
 
+// BridgeResponse is the representation of a bridge event with additional fields
+type BridgeResponse struct {
+	Bridge
+	BridgeHash common.Hash
+}
+
+// Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
 // Hash returns the hash of the bridge event as expected by the exit tree
 func (b *Bridge) Hash() common.Hash {
 	const (
@@ -99,6 +109,8 @@ type Claim struct {
 	DestinationNetwork  uint32         `meddler:"destination_network"`
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
 }
 
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
@@ -147,6 +159,7 @@ func newProcessor(dbPath string, logger *log.Logger) (*processor, error) {
 		log:      logger,
 	}, nil
 }
+
 func (p *processor) GetBridgesPublished(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
@@ -209,6 +222,62 @@ func (p *processor) GetClaims(
 		return nil, errors.New("failed to convert from []*Claim to []Claim")
 	}
 	return claims, nil
+}
+
+func (p *processor) GetBridgesPaged(
+	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64,
+) ([]*BridgeResponse, int, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			log.Warnf("error rolling back tx: %v", err)
+		}
+	}()
+	orderBy := "deposit_count"
+	order := "DESC"
+	whereClause := ""
+	count, err := p.GetTotalNumberOfRecords(bridgeTableName)
+	if err != nil {
+		return nil, 0, err
+	}
+	if depositCount != nil && *depositCount > 0 {
+		whereClause = fmt.Sprintf("WHERE deposit_count = %d", *depositCount)
+		pageNumber = 1
+		pageSize = 1
+	}
+	offset := (pageNumber - 1) * pageSize
+	if int(offset) >= count {
+		p.log.Debugf("offset is larger than total bridges (page number=%d, page size=%d, total bridges=%d)",
+			pageNumber, pageSize, count)
+		return nil, 0, db.ErrNotFound
+	}
+	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderBy, order, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			p.log.Warnf("error closing rows: %v", err)
+		}
+	}()
+	bridgePtrs := []*Bridge{}
+	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
+		return nil, 0, err
+	}
+	bridgeResponsePtrs := make([]*BridgeResponse, len(bridgePtrs))
+	for i, bridgePtr := range bridgePtrs {
+		bridgeResponsePtrs[i] = &BridgeResponse{
+			Bridge:     *bridgePtr,
+			BridgeHash: bridgePtr.Hash(),
+		}
+	}
+	if depositCount != nil && *depositCount > 0 {
+		count = len(bridgePtrs)
+	}
+	return bridgeResponsePtrs, count, nil
 }
 
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {

@@ -209,6 +209,59 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 	)
 }
 
+// BridgesResult contains the bridges and the total count of bridges
+type BridgesResult struct {
+	Bridges []*bridgesync.BridgeResponse `json:"bridges"`
+	Count   int                          `json:"count"`
+}
+
+func (b *BridgeEndpoints) GetBridges(
+	networkID uint32,
+	pageNumber, pageSize *uint32,
+	depositCount *uint64,
+) (interface{}, rpc.Error) {
+	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
+	if err != nil {
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode, err.Error())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	defer cancel()
+
+	c, merr := b.meter.Int64Counter("get_bridges")
+	if merr != nil {
+		b.logger.Warnf("failed to create get_bridges counter: %s", merr)
+	}
+	c.Add(ctx, 1)
+
+	var (
+		bridges []*bridgesync.BridgeResponse
+		count   int
+	)
+
+	switch {
+	case networkID == 0:
+		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get bridges, error: %s", err))
+		}
+	case networkID == b.networkID:
+		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get bridges, error: %s", err))
+		}
+	default:
+		return nil, rpc.NewRPCError(
+			rpc.DefaultErrorCode,
+			fmt.Sprintf("this client does not support network %d", networkID),
+		)
+	}
+	return BridgesResult{
+		Bridges: bridges,
+		Count:   count,
+	}, nil
+}
+
 // GetProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
 // while globalExitRoot should be already injected on the destination network.
 // This call needs to be done to a client of the same network were the bridge tx was sent
