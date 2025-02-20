@@ -10,7 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -26,9 +25,9 @@ func TestNewChainGERReader(t *testing.T) {
 		mockL2GERManager := mocks.NewL2GERManagerContract(t)
 		mockL2GERManager.On("BridgeAddress", (*bind.CallOpts)(nil)).Return(validAddress, nil)
 
-		l2Etherman, err := newEVMChainGERReader(mockL2GERManager, validAddress)
-		assert.NoError(t, err)
-		assert.NotNil(t, l2Etherman)
+		gerReader, err := newEVMChainGERReader(mockL2GERManager, validAddress)
+		require.NoError(t, err)
+		require.NotNil(t, gerReader)
 		mockL2GERManager.AssertExpectations(t)
 	})
 
@@ -38,8 +37,8 @@ func TestNewChainGERReader(t *testing.T) {
 		mockL2GERManager.On("BridgeAddress", (*bind.CallOpts)(nil)).Return(invalidAddress, errors.New("invalid address"))
 
 		l2Etherman, err := newEVMChainGERReader(mockL2GERManager, invalidAddress)
-		assert.Error(t, err)
-		assert.Nil(t, l2Etherman)
+		require.Error(t, err)
+		require.Nil(t, l2Etherman)
 		mockL2GERManager.AssertExpectations(t)
 	})
 }
@@ -48,6 +47,16 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
+
+	t.Run("invalid block range", func(t *testing.T) {
+		t.Parallel()
+
+		mockL2GERManager := mocks.NewL2GERManagerContract(t)
+		gerReader := &EVMChainGERReader{l2GERManager: mockL2GERManager}
+
+		_, err := gerReader.GetInjectedGERsForRange(ctx, 10, 1)
+		require.ErrorContains(t, err, "invalid block range: fromBlock(10) > toBlock(1)")
+	})
 
 	t.Run("failed to create iterator", func(t *testing.T) {
 		t.Parallel()
@@ -60,9 +69,9 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 			End:     &toBlock,
 		}, mock.Anything, mock.Anything).Return(nil, errors.New("failed to create iterator"))
 
-		l2Etherman := &EVMChainGERReader{l2GERManager: mockL2GERManager}
+		gerReader := &EVMChainGERReader{l2GERManager: mockL2GERManager}
 
-		_, err := l2Etherman.GetInjectedGERsForRange(ctx, 1, toBlock)
+		_, err := gerReader.GetInjectedGERsForRange(ctx, 1, toBlock)
 		require.ErrorContains(t, err, "failed to create iterator")
 	})
 
@@ -72,7 +81,7 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 		setup := helpers.L2Setup(t)
 		setup.EthTxManagerMock.ExpectedCalls = nil
 
-		l2Etherman, err := NewEVMChainGERReader(setup.GERAddr, setup.SimBackend.Client())
+		gerReader, err := NewEVMChainGERReader(setup.GERAddr, setup.SimBackend.Client())
 		require.NoError(t, err)
 
 		tx, err := setup.GERContract.InsertGlobalExitRoot(setup.Auth, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"))
@@ -85,9 +94,9 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 
-		injectedGERs, err := l2Etherman.GetInjectedGERsForRange(ctx, 1, 10)
+		injectedGERs, err := gerReader.GetInjectedGERsForRange(ctx, 1, 10)
 		require.NoError(t, err)
 		require.Len(t, injectedGERs, 1)
-		assert.Equal(t, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"), injectedGERs[0])
+		require.Equal(t, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"), injectedGERs[0])
 	})
 }

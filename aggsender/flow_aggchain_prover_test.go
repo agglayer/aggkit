@@ -318,7 +318,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockL1Client := mocks.NewEthClient(t)
 			aggchainFlow := &aggchainProverFlow{
 				l1Client:            mockL1Client,
-				l2Etherman:          mockL2Etherman,
+				gerReader:           mockL2Etherman,
 				aggchainProofClient: mockAggchainProofClient,
 				baseFlow: &baseFlow{
 					l1InfoTreeSyncer: mockL1InfoTreeSyncer,
@@ -608,7 +608,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 			mockL2Etherman := mocks.NewChainGERReader(t)
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			aggchainFlow := &aggchainProverFlow{
-				l2Etherman: mockL2Etherman,
+				gerReader: mockL2Etherman,
 				baseFlow: &baseFlow{
 					l1InfoTreeSyncer: mockL1InfoTreeSyncer,
 					log:              log.WithFields("flowManager", "Test_AggchainProverFlow_GetInjectedGERsProofs"),

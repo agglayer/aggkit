@@ -25,7 +25,7 @@ type aggchainProverFlow struct {
 
 	l1Client            types.EthClient
 	aggchainProofClient grpc.AggchainProofClientInterface
-	l2Etherman          types.ChainGERReader
+	gerReader           types.ChainGERReader
 }
 
 // newAggchainProverFlow returns a new instance of the aggchainProverFlow
@@ -44,7 +44,7 @@ func newAggchainProverFlow(log types.Logger,
 
 	return &aggchainProverFlow{
 		l1Client:            l1Client,
-		l2Etherman:          l2Etherman,
+		gerReader:           l2Etherman,
 		aggchainProofClient: aggkitProverClient,
 		baseFlow: &baseFlow{
 			log:              log,
@@ -169,7 +169,7 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 	ctx context.Context,
 	finalizedL1InfoTreeRoot *treeTypes.Root,
 	fromBlock, toBlock uint64) (map[common.Hash]treeTypes.Proof, error) {
-	injectedGERs, err := a.l2Etherman.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
+	injectedGERs, err := a.gerReader.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs for range %d : %d: %w",
 			fromBlock, toBlock, err)
