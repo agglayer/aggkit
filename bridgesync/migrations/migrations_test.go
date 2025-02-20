@@ -2,6 +2,7 @@ package migrations
 
 import (
 	"context"
+	"math/big"
 	"path"
 	"testing"
 
@@ -89,6 +90,36 @@ func TestMigration0002(t *testing.T) {
 			wrapped_token_address,
 			metadata
 		) VALUES (1, 0, 1739270804, '0xabcd', 2, '0x3', '0x5', NULL);
+
+		INSERT INTO bridge (
+			block_num,
+			block_pos,
+			leaf_type,
+			origin_network,
+			origin_address,
+			destination_network,
+			destination_address,
+			amount,
+			metadata,
+			deposit_count,
+			block_timestamp,
+			tx_hash
+		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd');
+
+		INSERT INTO claim (
+			block_num,
+			block_pos,
+    		global_index,
+			origin_network,
+			origin_address,
+			destination_address,
+			amount,
+			destination_network,
+			metadata,
+			is_message,
+			block_timestamp,
+			tx_hash
+		) VALUES (1, 0, 0, 0, '0x3', '0x0000', 0, 0, NULL, FALSE, 1739270804, '0xabcd');
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
@@ -108,7 +139,6 @@ func TestMigration0002(t *testing.T) {
 	err = meddler.QueryRow(db, &tokenMapping,
 		`SELECT * FROM token_mapping`)
 	require.NoError(t, err)
-
 	require.NotNil(t, tokenMapping)
 	require.Equal(t, uint64(1), tokenMapping.BlockNum)
 	require.Equal(t, uint64(0), tokenMapping.BlockPos)
@@ -116,4 +146,46 @@ func TestMigration0002(t *testing.T) {
 	require.Equal(t, uint32(2), tokenMapping.OriginNetwork)
 	require.Equal(t, common.HexToAddress("0x3"), tokenMapping.OriginTokenAddress)
 	require.Equal(t, common.HexToAddress("0x5"), tokenMapping.WrappedTokenAddress)
+
+	var bridge struct {
+		BlockNum           uint64   `meddler:"block_num"`
+		BlockPos           uint64   `meddler:"block_pos"`
+		LeafType           uint8    `meddler:"leaf_type"`
+		OriginNetwork      uint32   `meddler:"origin_network"`
+		OriginAddress      string   `meddler:"origin_address"`
+		DestinationNetwork uint32   `meddler:"destination_network"`
+		DestinationAddress string   `meddler:"destination_address"`
+		Amount             *big.Int `meddler:"amount,bigint"`
+		Metadata           []byte   `meddler:"metadata"`
+		DepositCount       uint32   `meddler:"deposit_count"`
+		BlockTimestamp     uint64   `meddler:"block_timestamp"`
+		TxHash             string   `meddler:"tx_hash"`
+	}
+
+	err = meddler.QueryRow(db, &bridge,
+		`SELECT * FROM bridge`)
+	require.NoError(t, err)
+	require.NotNil(t, bridge)
+	require.Equal(t, uint64(1739270804), bridge.BlockTimestamp)
+
+	var claim struct {
+		BlockNum           uint64   `meddler:"block_num"`
+		BlockPos           uint64   `meddler:"block_pos"`
+		GlobalIndex        *big.Int `meddler:"global_index,bigint"`
+		OriginNetwork      uint32   `meddler:"origin_network"`
+		OriginAddress      string   `meddler:"origin_address"`
+		DestinationAddress string   `meddler:"destination_address"`
+		Amount             *big.Int `meddler:"amount,bigint"`
+		DestinationNetwork uint32   `meddler:"destination_network"`
+		Metadata           []byte   `meddler:"metadata"`
+		IsMessage          bool     `meddler:"is_message"`
+		BlockTimestamp     uint64   `meddler:"block_timestamp"`
+		TxHash             string   `meddler:"tx_hash"`
+	}
+
+	err = meddler.QueryRow(db, &claim,
+		`SELECT * FROM claim`)
+	require.NoError(t, err)
+	require.NotNil(t, claim)
+	require.Equal(t, uint64(1739270804), claim.BlockTimestamp)
 }

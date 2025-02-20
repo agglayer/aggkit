@@ -80,6 +80,107 @@
       }
     },
     {
+      "name": "bridge_getBridges",
+      "summary": "Get Bridges",
+      "description": "Returns the bridges for the given network.",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/NetworkID"
+        },
+        {
+          "name": "page",
+          "description": "The page number for pagination.",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        },
+        {
+          "name": "pageSize",
+          "description": "The number of items per page for pagination.",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        },
+        {
+          "name": "depositCount",
+          "description": "Fetch the specific deposit count bridge",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "uint64"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The bridges result.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "bridges": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "blockNum": {
+                    "$ref": "#/components/schemas/BlockNumber"
+                  },
+                  "blockPos": {
+                    "$ref": "#/components/schemas/BlockPosition"
+                  },
+                  "leafType": {
+                    "$ref": "#/components/schemas/LeafType"
+                  },
+                  "originNetwork": {
+                    "$ref": "#/components/schemas/OriginNetwork"
+                  },
+                  "originAddress": {
+                    "$ref": "#/components/schemas/OriginTokenAddress"
+                  },
+                  "destinationNetwork": {
+                    "$ref": "#/components/schemas/DestinationNetwork"
+                  },
+                  "destinationAddress": {
+                    "$ref": "#/components/schemas/DestinationAddress"
+                  },
+                  "amount": {
+                    "$ref": "#/components/schemas/Amount"
+                  },
+                  "metadata": {
+                    "$ref": "#/components/schemas/Bytes"
+                  },
+                  "depositCount": {
+                    "$ref": "#/components/schemas/DepositCount"
+                  },
+                  "blockTimestamp": {
+                    "type": "integer",
+                    "description": "The unix timestamp for when the block was collated"
+                  },
+                  "txHash": {
+                    "$ref": "#/components/schemas/Keccak"
+                  },
+                  "fromAddress": {
+                    "$ref": "#/components/schemas/Address"
+                  },
+                  "bridgeHash": {
+                    "$ref": "#/components/schemas/Keccak"
+                  }
+                }
+              }
+            },
+            "count": {
+              "type": "integer",
+              "description": "The total number of bridges."
+            }
+          }
+        }
+      }
+    },
+    {
       "name": "bridge_l1InfoTreeIndexForBridge",
       "summary": "Returns the first L1 Info Tree index in which the bridge was included. NetworkID represents the origin network. This call needs to be done to a client of the same network were the bridge tx was sent",
       "params": [
