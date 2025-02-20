@@ -97,6 +97,7 @@ func start(cliCtx *cli.Context) error {
 				l1Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				l2Client,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -124,7 +125,8 @@ func createAggSender(
 	cfg aggsender.Config,
 	l1EthClient *ethclient.Client,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-	l2Syncer *bridgesync.BridgeSync) (*aggsender.AggSender, error) {
+	l2Syncer *bridgesync.BridgeSync,
+	l2Client *ethclient.Client) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 	agglayerClient := agglayer.NewAggLayerClient(cfg.AggLayerURL)
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient, aggsender.ConfigBlockNotifierPolling{
@@ -150,14 +152,15 @@ func createAggSender(
 	go blockNotifier.Start(ctx)
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
-	return aggsender.New(ctx, logger, cfg, agglayerClient, l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient)
+	return aggsender.New(ctx, logger, cfg, agglayerClient,
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client)
 }
 
 func createAggoracle(
 	cfg config.Config,
 	l1Client,
 	l2Client *ethclient.Client,
-	syncer *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
 	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config, cfg.Common)
@@ -211,7 +214,7 @@ func createAggoracle(
 		logger,
 		sender,
 		l1Client,
-		syncer,
+		l1InfoTreeSyncer,
 		etherman.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)

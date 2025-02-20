@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/agglayer/aggkit/agglayer"
@@ -12,8 +11,9 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
 )
 
 type AggsenderMode string
@@ -55,10 +55,18 @@ type L2BridgeSyncer interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 }
 
+// ChainGERReader is an interface defining functions that an ChainGERReader should implement
+type ChainGERReader interface {
+	GetInjectedGERsForRange(ctx context.Context, fromBlock, toBlock uint64) ([]common.Hash, error)
+}
+
 // EthClient is an interface defining functions that an EthClient should implement
 type EthClient interface {
-	BlockNumber(ctx context.Context) (uint64, error)
-	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+	bind.ContractBackend
+	ethereum.LogFilterer
+	ethereum.BlockNumberReader
+	ethereum.ChainReader
+	bind.ContractBackend
 }
 
 // Logger is an interface that defines the methods to log messages
@@ -87,15 +95,16 @@ type CertificateInfo struct {
 	RetryCount    int         `meddler:"retry_count"`
 	CertificateID common.Hash `meddler:"certificate_id,hash"`
 	// PreviousLocalExitRoot if it's nil means no reported
-	PreviousLocalExitRoot *common.Hash               `meddler:"previous_local_exit_root,hash"`
-	NewLocalExitRoot      common.Hash                `meddler:"new_local_exit_root,hash"`
-	FromBlock             uint64                     `meddler:"from_block"`
-	ToBlock               uint64                     `meddler:"to_block"`
-	Status                agglayer.CertificateStatus `meddler:"status"`
-	CreatedAt             uint32                     `meddler:"created_at"`
-	UpdatedAt             uint32                     `meddler:"updated_at"`
-	SignedCertificate     string                     `meddler:"signed_certificate"`
-	AggchainProof         []byte                     `meddler:"aggchain_proof"`
+	PreviousLocalExitRoot   *common.Hash               `meddler:"previous_local_exit_root,hash"`
+	NewLocalExitRoot        common.Hash                `meddler:"new_local_exit_root,hash"`
+	FromBlock               uint64                     `meddler:"from_block"`
+	ToBlock                 uint64                     `meddler:"to_block"`
+	Status                  agglayer.CertificateStatus `meddler:"status"`
+	CreatedAt               uint32                     `meddler:"created_at"`
+	UpdatedAt               uint32                     `meddler:"updated_at"`
+	SignedCertificate       string                     `meddler:"signed_certificate"`
+	AggchainProof           []byte                     `meddler:"aggchain_proof"`
+	FinalizedL1InfoTreeRoot *common.Hash               `meddler:"finalized_l1_info_tree_root,hash"`
 }
 
 func (c *CertificateInfo) String() string {
@@ -107,6 +116,11 @@ func (c *CertificateInfo) String() string {
 	if c.PreviousLocalExitRoot != nil {
 		previousLocalExitRoot = c.PreviousLocalExitRoot.String()
 	}
+	finalizedL1InfoTreeRoot := "nil"
+	if c.FinalizedL1InfoTreeRoot != nil {
+		finalizedL1InfoTreeRoot = c.FinalizedL1InfoTreeRoot.String()
+	}
+
 	return fmt.Sprintf("aggsender.CertificateInfo: "+
 		"Height: %d "+
 		"RetryCount: %d "+
@@ -118,7 +132,8 @@ func (c *CertificateInfo) String() string {
 		"ToBlock: %d "+
 		"CreatedAt: %s "+
 		"UpdatedAt: %s "+
-		"AggchainProof: %s ",
+		"AggchainProof: %s "+
+		"FinalizedL1InfoTreeRoot: %s",
 		c.Height,
 		c.RetryCount,
 		c.CertificateID.String(),
@@ -130,6 +145,7 @@ func (c *CertificateInfo) String() string {
 		time.Unix(int64(c.CreatedAt), 0),
 		time.Unix(int64(c.UpdatedAt), 0),
 		c.AggchainProof,
+		finalizedL1InfoTreeRoot,
 	)
 }
 

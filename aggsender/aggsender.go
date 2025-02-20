@@ -65,7 +65,8 @@ func New(
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 	l2Syncer types.L2BridgeSyncer,
 	epochNotifier types.EpochNotifier,
-	l1Client types.EthClient) (*AggSender, error) {
+	l1Client types.EthClient,
+	l2Client types.EthClient) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
@@ -96,8 +97,11 @@ func New(
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}
 
-		flowManager = newAggchainProverFlow(logger, cfg, aggchainProofClient, storage,
-			l1InfoTreeSyncer, l2Syncer, l1Client)
+		flowManager, err = newAggchainProverFlow(logger, cfg, aggchainProofClient, storage,
+			l1InfoTreeSyncer, l2Syncer, l1Client, l2Client)
+		if err != nil {
+			return nil, fmt.Errorf("error creating aggchain prover flow: %w", err)
+		}
 	} else {
 		flowManager = newPPFlow(logger, cfg, storage, l1InfoTreeSyncer, l2Syncer)
 	}
@@ -290,18 +294,24 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	}
 
 	prevLER := common.BytesToHash(certificate.PrevLocalExitRoot[:])
+	var finalizedL1InfoTreeRoot *common.Hash
+	if certificateParams.L1InfoTreeRootFromWhichToProve != nil {
+		finalizedL1InfoTreeRoot = &certificateParams.L1InfoTreeRootFromWhichToProve.Hash
+	}
+
 	certInfo := types.CertificateInfo{
-		Height:                certificate.Height,
-		RetryCount:            certificateParams.RetryCount,
-		CertificateID:         certificateHash,
-		NewLocalExitRoot:      certificate.NewLocalExitRoot,
-		PreviousLocalExitRoot: &prevLER,
-		FromBlock:             certificateParams.FromBlock,
-		ToBlock:               certificateParams.ToBlock,
-		CreatedAt:             certificateParams.CreatedAt,
-		UpdatedAt:             certificateParams.CreatedAt,
-		AggchainProof:         certificateParams.AggchainProof,
-		SignedCertificate:     string(raw),
+		Height:                  certificate.Height,
+		RetryCount:              certificateParams.RetryCount,
+		CertificateID:           certificateHash,
+		NewLocalExitRoot:        certificate.NewLocalExitRoot,
+		PreviousLocalExitRoot:   &prevLER,
+		FromBlock:               certificateParams.FromBlock,
+		ToBlock:                 certificateParams.ToBlock,
+		CreatedAt:               certificateParams.CreatedAt,
+		UpdatedAt:               certificateParams.CreatedAt,
+		AggchainProof:           certificateParams.AggchainProof,
+		FinalizedL1InfoTreeRoot: finalizedL1InfoTreeRoot,
+		SignedCertificate:       string(raw),
 	}
 	// TODO: Improve this case, if a cert is not save in the storage, we are going to settle a unknown certificate
 	err = a.saveCertificateToStorage(ctx, certInfo, a.cfg.MaxRetriesStoreCertificate)
