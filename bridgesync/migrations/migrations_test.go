@@ -103,8 +103,9 @@ func TestMigration0002(t *testing.T) {
 			metadata,
 			deposit_count,
 			block_timestamp,
-			tx_hash
-		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd');
+			tx_hash,
+			from_address
+		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd', '0x123');
 
 		INSERT INTO claim (
 			block_num,
@@ -118,8 +119,9 @@ func TestMigration0002(t *testing.T) {
 			metadata,
 			is_message,
 			block_timestamp,
-			tx_hash
-		) VALUES (1, 0, 0, 0, '0x3', '0x0000', 0, 0, NULL, FALSE, 1739270804, '0xabcd');
+			tx_hash,
+			from_address
+		) VALUES (1, 0, 0, 0, '0x3', '0x0000', 0, 0, NULL, FALSE, 1739270804, '0xabcd', '0x123');
 	`)
 	require.NoError(t, err)
 	err = tx.Commit()
@@ -160,6 +162,7 @@ func TestMigration0002(t *testing.T) {
 		DepositCount       uint32   `meddler:"deposit_count"`
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
+		FromAddress        string   `meddler:"from_address"`
 	}
 
 	err = meddler.QueryRow(db, &bridge,
@@ -181,6 +184,7 @@ func TestMigration0002(t *testing.T) {
 		IsMessage          bool     `meddler:"is_message"`
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
+		FromAddress        string   `meddler:"from_address"`
 	}
 
 	err = meddler.QueryRow(db, &claim,
@@ -188,4 +192,5 @@ func TestMigration0002(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, claim)
 	require.Equal(t, uint64(1739270804), claim.BlockTimestamp)
+	require.Equal(t, "0x123", claim.FromAddress)
 }

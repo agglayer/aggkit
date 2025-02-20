@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"testing"
 
 	"github.com/agglayer/aggkit/bridgesync"
@@ -16,9 +17,6 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
-
-func TestGetClaims(t *testing.T) {
-}
 
 func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 	type testCase struct {
@@ -604,6 +602,85 @@ func TestGetBridges(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
 		result, err := bridgeMocks.bridge.GetBridges(unsupportedNetworkID, nil, nil, nil)
+		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
+		require.Nil(t, result)
+	})
+}
+
+func TestGetClaims(t *testing.T) {
+	networkID := uint32(10)
+	bridgeMocks := newBridgeWithMocks(t, networkID)
+
+	t.Run("GetClaims for L1 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		claims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				BlockPos:           1,
+				GlobalIndex:        big.NewInt(1),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 10,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				Metadata:           []byte("metadata"),
+			},
+		}
+
+		bridgeMocks.bridgeL1.On("GetClaimsPaged", mock.Anything, mock.Anything, mock.Anything).
+			Return(claims, len(claims), nil)
+
+		result, err := bridgeMocks.bridge.GetClaims(0, &page, &pageSize)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		claimsResult, ok := result.(ClaimsResult)
+		require.True(t, ok)
+		require.Equal(t, claims, claimsResult.Claims)
+		require.Equal(t, len(claimsResult.Claims), claimsResult.Count)
+
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetClaims for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		Claims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				BlockPos:           1,
+				GlobalIndex:        big.NewInt(1),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 10,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				Metadata:           []byte("metadata"),
+			},
+		}
+
+		bridgeMocks.bridge.networkID = 10
+
+		bridgeMocks.bridgeL2.On("GetClaimsPaged", mock.Anything, mock.Anything, mock.Anything).
+			Return(Claims, len(Claims), nil)
+
+		result, err := bridgeMocks.bridge.GetClaims(10, &page, &pageSize)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		claimsResult, ok := result.(ClaimsResult)
+		require.True(t, ok)
+		require.Equal(t, Claims, claimsResult.Claims)
+		require.Equal(t, len(claimsResult.Claims), claimsResult.Count)
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
+	})
+
+	t.Run("GetClaims with unsupported network", func(t *testing.T) {
+		unsupportedNetworkID := uint32(999)
+
+		result, err := bridgeMocks.bridge.GetClaims(unsupportedNetworkID, nil, nil)
 		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
 		require.Nil(t, result)
 	})

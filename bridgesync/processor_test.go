@@ -1065,6 +1065,120 @@ func TestGetBridgesPaged(t *testing.T) {
 	}
 }
 
+func TestGetClaimsPaged(t *testing.T) {
+	t.Parallel()
+	fromBlock := uint64(1)
+	toBlock := uint64(10)
+
+	// Compute uint256 max: 2^256 - 1
+	uint256Max := new(big.Int).Sub(new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil), big.NewInt(1))
+	// Compute uint64 max: 2^64 - 1
+	uint64Max := new(big.Int).Sub(new(big.Int).Exp(big.NewInt(2), big.NewInt(64), nil), big.NewInt(1))
+
+	claims :=
+		[]Claim{
+			{BlockNum: 1, BlockPos: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
+			{BlockNum: 2, BlockPos: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
+			{BlockNum: 3, BlockPos: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
+			{BlockNum: 4, BlockPos: 4, GlobalIndex: big.NewInt(4), Amount: big.NewInt(1)},
+			{BlockNum: 5, BlockPos: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+			{BlockNum: 6, BlockPos: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
+		}
+
+	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
+	require.NoError(t, migrationsBridge.RunMigrations(path))
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, logger)
+	require.NoError(t, err)
+
+	tx, err := p.db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+
+	for i := fromBlock; i <= toBlock; i++ {
+		_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+		require.NoError(t, err)
+	}
+
+	for _, claim := range claims {
+		require.NoError(t, meddler.Insert(tx, "claim", &claim))
+	}
+	require.NoError(t, tx.Commit())
+
+	testCases := []struct {
+		name           string
+		pageSize       uint32
+		page           uint32
+		expectedCount  int
+		expectedClaims []*Claim
+		expectedError  error
+	}{
+		{
+			name:          "t1",
+			pageSize:      1,
+			page:          2,
+			expectedCount: 6,
+			expectedClaims: []*Claim{
+				{BlockNum: 5, BlockPos: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+			},
+			expectedError: nil,
+		},
+		{
+			name:          "t2",
+			pageSize:      20,
+			page:          1,
+			expectedCount: 6,
+			expectedClaims: []*Claim{
+				{BlockNum: 6, BlockPos: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
+				{BlockNum: 5, BlockPos: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+				{BlockNum: 4, BlockPos: 4, GlobalIndex: big.NewInt(4), Amount: big.NewInt(1)},
+				{BlockNum: 3, BlockPos: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
+				{BlockNum: 2, BlockPos: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
+				{BlockNum: 1, BlockPos: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
+			},
+			expectedError: nil,
+		},
+		{
+			name:          "t3",
+			pageSize:      3,
+			page:          2,
+			expectedCount: 6,
+			expectedClaims: []*Claim{
+				{BlockNum: 3, BlockPos: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
+				{BlockNum: 2, BlockPos: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
+				{BlockNum: 1, BlockPos: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
+			},
+			expectedError: nil,
+		},
+		{
+			name:           "t4: offset is larger than total claims",
+			pageSize:       3,
+			page:           4,
+			expectedCount:  6,
+			expectedClaims: []*Claim{},
+			expectedError:  db.ErrNotFound,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			ctx := context.Background()
+			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize)
+
+			if tc.expectedError != nil {
+				require.Equal(t, tc.expectedError, err)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedClaims, claims)
+				require.Equal(t, tc.expectedCount, count)
+			}
+		})
+	}
+}
+
 func TestGetTokenMapping(t *testing.T) {
 	t.Parallel()
 
@@ -1156,8 +1270,4 @@ func TestGetTokenMapping(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestGetClaimsPaged(t *testing.T) {
-	fmt.Println("TestGetClaimsPaged")
 }

@@ -110,7 +110,7 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	TxHash              common.Hash    `meddler:"tx_hash"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
 	FromAddress         common.Address `meddler:"from_address,address"`
 }
 
@@ -282,7 +282,7 @@ func (p *processor) GetBridgesPaged(
 }
 
 func (p *processor) GetClaimsPaged(
-	ctx context.Context, page, pageSize uint32,
+	ctx context.Context, pageNumber, pageSize uint32,
 ) ([]*Claim, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -293,7 +293,7 @@ func (p *processor) GetClaimsPaged(
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	orderBy := "global_index"
+	orderBy := "global_index + 0"
 	order := "DESC"
 	whereClause := ""
 	count, err := p.GetTotalNumberOfRecords("claim")
@@ -301,7 +301,14 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPaged(tx, page, pageSize, "claim", orderBy, order, whereClause)
+	offset := (pageNumber - 1) * pageSize
+	if int(offset) >= count {
+		p.log.Debugf("offset is larger than total claims (page number=%d, page size=%d, total claims=%d)",
+			pageNumber, pageSize, count)
+		return nil, count, db.ErrNotFound
+	}
+
+	rows, err := p.queryPaged(tx, offset, pageSize, "claim", orderBy, order, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}

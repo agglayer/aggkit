@@ -262,7 +262,7 @@ func (b *BridgeEndpoints) GetBridges(
 	}, nil
 }
 
-// BridgesResult contains the bridges and the total count of bridges
+// ClaimsResult contains the claims and the total count of claims
 type ClaimsResult struct {
 	Claims []*bridgesync.Claim `json:"claims"`
 	Count  int                 `json:"count"`
