@@ -521,3 +521,87 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	)
 	return b
 }
+
+func TestGetBridges(t *testing.T) {
+	networkID := uint32(10)
+	bridgeMocks := newBridgeWithMocks(t, networkID)
+
+	t.Run("GetBridges for L1 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		bridges := []*bridgesync.BridgeResponse{
+			{
+				Bridge: bridgesync.Bridge{
+					BlockNum:           1,
+					BlockPos:           1,
+					LeafType:           1,
+					OriginNetwork:      0,
+					OriginAddress:      common.HexToAddress("0x1"),
+					DestinationNetwork: 10,
+					DestinationAddress: common.HexToAddress("0x2"),
+					Amount:             common.Big0,
+					DepositCount:       0,
+					Metadata:           []byte("metadata"),
+				},
+			},
+		}
+
+		bridgeMocks.bridgeL1.On("GetBridgesPaged", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(bridges, len(bridges), nil)
+
+		result, err := bridgeMocks.bridge.GetBridges(0, &page, &pageSize, nil)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		bridgesResult, ok := result.(BridgesResult)
+		require.True(t, ok)
+		require.Equal(t, bridges, bridgesResult.Bridges)
+		require.Equal(t, len(bridgesResult.Bridges), bridgesResult.Count)
+
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetBridges for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		bridges := []*bridgesync.BridgeResponse{
+			{
+				Bridge: bridgesync.Bridge{
+					BlockNum:           1,
+					BlockPos:           1,
+					LeafType:           1,
+					OriginNetwork:      0,
+					OriginAddress:      common.HexToAddress("0x1"),
+					DestinationNetwork: 10,
+					DestinationAddress: common.HexToAddress("0x2"),
+					Amount:             common.Big0,
+					DepositCount:       0,
+					Metadata:           []byte("metadata"),
+				},
+			},
+		}
+		bridgeMocks.bridge.networkID = 10
+
+		bridgeMocks.bridgeL2.On("GetBridgesPaged", mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(bridges, len(bridges), nil)
+
+		result, err := bridgeMocks.bridge.GetBridges(10, &page, &pageSize, nil)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		bridgesResult, ok := result.(BridgesResult)
+		require.True(t, ok)
+		require.Equal(t, bridges, bridgesResult.Bridges)
+		require.Equal(t, len(bridgesResult.Bridges), bridgesResult.Count)
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
+	})
+
+	t.Run("GetBridges with unsupported network", func(t *testing.T) {
+		unsupportedNetworkID := uint32(999)
+
+		result, err := bridgeMocks.bridge.GetBridges(unsupportedNetworkID, nil, nil, nil)
+		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
+		require.Nil(t, result)
+	})
+}

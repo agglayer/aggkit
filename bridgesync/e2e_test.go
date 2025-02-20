@@ -51,10 +51,17 @@ func TestBridgeEventE2E(t *testing.T) {
 		)
 		require.NoError(t, err)
 		helpers.CommitBlocks(t, setup.L1Environment.SimBackend, 1, blockTime)
-		bn, err := setup.L1Environment.SimBackend.Client().BlockNumber(ctx)
+		simulatedClient := setup.L1Environment.SimBackend.Client()
+		bn, err := simulatedClient.BlockNumber(ctx)
 		require.NoError(t, err)
 		bridge.BlockNum = bn
 		receipt, err := setup.L1Environment.SimBackend.Client().TransactionReceipt(ctx, tx.Hash())
+		require.NoError(t, err)
+		bridge.TxHash = receipt.TxHash
+		bridge.FromAddress = receipt.Logs[0].Address
+		block, err := simulatedClient.BlockByNumber(ctx, new(big.Int).SetUint64(bn))
+		require.NoError(t, err)
+		bridge.BlockTimestamp = block.Time()
 		require.NoError(t, err)
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 		expectedBridges = append(expectedBridges, bridge)

@@ -220,6 +220,17 @@ func (s *BridgeSync) Start(ctx context.Context) {
 	s.driver.Sync(ctx)
 }
 
+func (s *BridgeSync) GetBridgesPaged(
+	ctx context.Context,
+	page, pageSize uint32,
+	depositCount *uint64,
+) ([]*BridgeResponse, int, error) {
+	if s.processor.isHalted() {
+		return nil, 0, sync.ErrInconsistentState
+	}
+	return s.processor.GetBridgesPaged(ctx, page, pageSize, depositCount)
+}
+
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	if s.processor.isHalted() {
 		return 0, sync.ErrInconsistentState
