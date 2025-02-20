@@ -27,24 +27,24 @@ func (_m *Bridger) EXPECT() *Bridger_Expecter {
 }
 
 // GetBridgesPaged provides a mock function with given fields: ctx, pageNumber, pageSize, depositCount
-func (_m *Bridger) GetBridgesPaged(ctx context.Context, pageNumber uint32, pageSize uint32, depositCount *uint64) ([]*bridgesync.Bridge, int, error) {
+func (_m *Bridger) GetBridgesPaged(ctx context.Context, pageNumber uint32, pageSize uint32, depositCount *uint64) ([]*bridgesync.BridgeResponse, int, error) {
 	ret := _m.Called(ctx, pageNumber, pageSize, depositCount)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetBridgesPaged")
 	}
 
-	var r0 []*bridgesync.Bridge
+	var r0 []*bridgesync.BridgeResponse
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64) ([]*bridgesync.Bridge, int, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64) ([]*bridgesync.BridgeResponse, int, error)); ok {
 		return rf(ctx, pageNumber, pageSize, depositCount)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64) []*bridgesync.Bridge); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64) []*bridgesync.BridgeResponse); ok {
 		r0 = rf(ctx, pageNumber, pageSize, depositCount)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*bridgesync.Bridge)
+			r0 = ret.Get(0).([]*bridgesync.BridgeResponse)
 		}
 	}
 
@@ -84,12 +84,12 @@ func (_c *Bridger_GetBridgesPaged_Call) Run(run func(ctx context.Context, pageNu
 	return _c
 }
 
-func (_c *Bridger_GetBridgesPaged_Call) Return(_a0 []*bridgesync.Bridge, _a1 int, _a2 error) *Bridger_GetBridgesPaged_Call {
+func (_c *Bridger_GetBridgesPaged_Call) Return(_a0 []*bridgesync.BridgeResponse, _a1 int, _a2 error) *Bridger_GetBridgesPaged_Call {
 	_c.Call.Return(_a0, _a1, _a2)
 	return _c
 }
 
-func (_c *Bridger_GetBridgesPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, *uint64) ([]*bridgesync.Bridge, int, error)) *Bridger_GetBridgesPaged_Call {
+func (_c *Bridger_GetBridgesPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, *uint64) ([]*bridgesync.BridgeResponse, int, error)) *Bridger_GetBridgesPaged_Call {
 	_c.Call.Return(run)
 	return _c
 }

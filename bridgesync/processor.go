@@ -54,6 +54,13 @@ type Bridge struct {
 	DepositCount       uint32         `meddler:"deposit_count"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash"`
+	FromAddress        common.Address `meddler:"from_address,address"`
+}
+
+// BridgeResponse is the representation of a bridge event with additional fields
+type BridgeResponse struct {
+	Bridge
+	BridgeHash common.Hash
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
@@ -219,7 +226,7 @@ func (p *processor) GetClaims(
 
 func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64,
-) ([]*Bridge, int, error) {
+) ([]*BridgeResponse, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, 0, err
@@ -260,10 +267,17 @@ func (p *processor) GetBridgesPaged(
 	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
 		return nil, 0, err
 	}
+	bridgeResponsePtrs := make([]*BridgeResponse, len(bridgePtrs))
+	for i, bridgePtr := range bridgePtrs {
+		bridgeResponsePtrs[i] = &BridgeResponse{
+			Bridge:     *bridgePtr,
+			BridgeHash: bridgePtr.Hash(),
+		}
+	}
 	if depositCount != nil && *depositCount > 0 {
 		count = len(bridgePtrs)
 	}
-	return bridgePtrs, count, nil
+	return bridgeResponsePtrs, count, nil
 }
 
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {

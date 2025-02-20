@@ -76,6 +76,7 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 			DepositCount:       bridge.DepositCount,
 			BlockTimestamp:     b.Timestamp,
 			TxHash:             l.TxHash,
+			FromAddress:        l.Address,
 		}})
 
 		return nil

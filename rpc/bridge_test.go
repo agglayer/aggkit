@@ -529,18 +529,20 @@ func TestGetBridges(t *testing.T) {
 	t.Run("GetBridges for L1 network", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
-		bridges := []*bridgesync.Bridge{
+		bridges := []*bridgesync.BridgeResponse{
 			{
-				BlockNum:           1,
-				BlockPos:           1,
-				LeafType:           1,
-				OriginNetwork:      0,
-				OriginAddress:      common.HexToAddress("0x1"),
-				DestinationNetwork: 10,
-				DestinationAddress: common.HexToAddress("0x2"),
-				Amount:             common.Big0,
-				DepositCount:       0,
-				Metadata:           []byte("metadata"),
+				Bridge: bridgesync.Bridge{
+					BlockNum:           1,
+					BlockPos:           1,
+					LeafType:           1,
+					OriginNetwork:      0,
+					OriginAddress:      common.HexToAddress("0x1"),
+					DestinationNetwork: 10,
+					DestinationAddress: common.HexToAddress("0x2"),
+					Amount:             common.Big0,
+					DepositCount:       0,
+					Metadata:           []byte("metadata"),
+				},
 			},
 		}
 
@@ -562,18 +564,20 @@ func TestGetBridges(t *testing.T) {
 	t.Run("GetBridges for L2 network", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
-		bridges := []*bridgesync.Bridge{
+		bridges := []*bridgesync.BridgeResponse{
 			{
-				BlockNum:           1,
-				BlockPos:           1,
-				LeafType:           1,
-				OriginNetwork:      0,
-				OriginAddress:      common.HexToAddress("0x1"),
-				DestinationNetwork: 10,
-				DestinationAddress: common.HexToAddress("0x2"),
-				Amount:             common.Big0,
-				DepositCount:       0,
-				Metadata:           []byte("metadata"),
+				Bridge: bridgesync.Bridge{
+					BlockNum:           1,
+					BlockPos:           1,
+					LeafType:           1,
+					OriginNetwork:      0,
+					OriginAddress:      common.HexToAddress("0x1"),
+					DestinationNetwork: 10,
+					DestinationAddress: common.HexToAddress("0x2"),
+					Amount:             common.Big0,
+					DepositCount:       0,
+					Metadata:           []byte("metadata"),
+				},
 			},
 		}
 		bridgeMocks.bridge.networkID = 10

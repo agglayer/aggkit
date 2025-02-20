@@ -211,8 +211,8 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 
 // BridgesResult contains the bridges and the total count of bridges
 type BridgesResult struct {
-	Bridges []*bridgesync.Bridge `json:"bridges"`
-	Count   int                  `json:"count"`
+	Bridges []*bridgesync.BridgeResponse `json:"bridges"`
+	Count   int                          `json:"count"`
 }
 
 func (b *BridgeEndpoints) GetBridges(
@@ -235,7 +235,7 @@ func (b *BridgeEndpoints) GetBridges(
 	c.Add(ctx, 1)
 
 	var (
-		bridges []*bridgesync.Bridge
+		bridges []*bridgesync.BridgeResponse
 		count   int
 	)
 

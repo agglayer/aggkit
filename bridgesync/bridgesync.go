@@ -224,7 +224,7 @@ func (s *BridgeSync) GetBridgesPaged(
 	ctx context.Context,
 	page, pageSize uint32,
 	depositCount *uint64,
-) ([]*Bridge, int, error) {
+) ([]*BridgeResponse, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}
