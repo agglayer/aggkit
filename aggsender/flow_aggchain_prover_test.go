@@ -588,6 +588,14 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 			expectedError: "error getting L1 Info tree merkle proof from index 0 to root 0x0000000000000000000000000000000000000000000000000000000000000002: some error",
 		},
 		{
+			name: "error injected GER l1 info tree index greater than the finalized l1 info tree root",
+			mockFn: func(mockL2Etherman *mocks.ChainGERReader, mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
+				mockL2Etherman.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return([]common.Hash{common.HexToHash("0x1")}, nil)
+				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(&l1infotreesync.L1InfoTreeLeaf{L1InfoTreeIndex: 11}, nil)
+			},
+			expectedError: "is higher than the last finalized l1 info tree root",
+		},
+		{
 			name: "success",
 			mockFn: func(mockL2Etherman *mocks.ChainGERReader, mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
 				mockL2Etherman.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return([]common.Hash{common.HexToHash("0x1")}, nil)
@@ -618,7 +626,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 
 			tc.mockFn(mockL2Etherman, mockL1InfoTreeSyncer)
 
-			proofs, err := aggchainFlow.getInjectedGERsProofs(ctx, &treeTypes.Root{Hash: common.HexToHash("0x2")}, 1, 10)
+			proofs, err := aggchainFlow.getInjectedGERsProofs(ctx, &treeTypes.Root{Hash: common.HexToHash("0x2"), Index: 10}, 1, 10)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

@@ -9,7 +9,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/tree"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -53,6 +52,43 @@ func (f *baseFlow) getBridgesAndClaims(
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (f *baseFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
+	buildParams, err := f.getCertificateBuildParamsInternal(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	if buildParams == nil {
+		// no new blocks to send a certificate or no bridges
+		return nil, nil
+	}
+
+	if len(buildParams.Claims) > 0 {
+		var greatestL1InfoTreeIndexUsed uint32
+
+		for _, claim := range buildParams.Claims {
+			info, err := f.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
+			if err != nil {
+				return nil, fmt.Errorf("error getting info by global exit root: %s: %w", claim.GlobalExitRoot, err)
+			}
+
+			if info.L1InfoTreeIndex > greatestL1InfoTreeIndexUsed {
+				greatestL1InfoTreeIndexUsed = info.L1InfoTreeIndex
+			}
+		}
+
+		rt, err := f.l1InfoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, greatestL1InfoTreeIndexUsed)
+		if err != nil {
+			return nil, fmt.Errorf("error getting L1 Info tree root by index: %d. Error: %w", greatestL1InfoTreeIndexUsed, err)
+		}
+
+		buildParams.L1InfoTreeRootFromWhichToProve = &rt
+	}
+
+	return buildParams, nil
+}
+
+// getCertificateBuildParamsInternal returns the parameters to build a certificate
+func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -276,38 +312,15 @@ func (f *baseFlow) getImportedBridgeExits(
 	}
 
 	var (
-		greatestL1InfoTreeIndexUsed uint32
-		importedBridgeExits         = make([]*agglayer.ImportedBridgeExit, 0, len(claims))
-		claimL1Info                 = make([]*l1infotreesync.L1InfoTreeLeaf, 0, len(claims))
-		rootToProve                 = rootFromWhichToProove
+		importedBridgeExits = make([]*agglayer.ImportedBridgeExit, 0, len(claims))
+		rootToProve         = rootFromWhichToProove
 	)
 
-	if rootToProve == nil {
-		// if the l1 info tree root from which we generate proofs is not provided,
-		// we need to get the greatest L1 Info tree index used by the claims and use that as the root
-		for _, claim := range claims {
-			info, err := f.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
-			if err != nil {
-				return nil, fmt.Errorf("error getting info by global exit root: %w", err)
-			}
-
-			claimL1Info = append(claimL1Info, info)
-
-			if info.L1InfoTreeIndex > greatestL1InfoTreeIndexUsed {
-				greatestL1InfoTreeIndexUsed = info.L1InfoTreeIndex
-			}
-		}
-
-		rt, err := f.l1InfoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, greatestL1InfoTreeIndexUsed)
-		if err != nil {
-			return nil, fmt.Errorf("error getting L1 Info tree root by index: %d. Error: %w", greatestL1InfoTreeIndexUsed, err)
-		}
-
-		rootToProve = &rt
-	}
-
 	for i, claim := range claims {
-		l1Info := claimL1Info[i]
+		l1Info, err := f.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
+		if err != nil {
+			return nil, fmt.Errorf("error getting info by global exit root: %w", err)
+		}
 
 		f.log.Debugf("claim[%d]: destAddr: %s GER: %s Block: %d Pos: %d GlobalIndex: 0x%x",
 			i, claim.DestinationAddress.String(), claim.GlobalExitRoot.String(),

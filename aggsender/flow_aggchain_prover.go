@@ -102,7 +102,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 	if buildParams == nil {
 		// use the old logic, where we build the new certificate
-		buildParams, err = a.baseFlow.GetCertificateBuildParams(ctx)
+		buildParams, err = a.baseFlow.getCertificateBuildParamsInternal(ctx)
 		if err != nil {
 			return nil, err
 		}
@@ -131,6 +131,8 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
+
+	// TODO - check if bridge exits and imported bridge exits are correct for that l1 info tree root
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
 		buildParams.FromBlock, buildParams.ToBlock, root.Hash, *leaf, proof,
@@ -182,6 +184,14 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error getting L1 Info tree leaf by global exit root %s: %w",
 				gerHash.String(), err)
+		}
+
+		if info.L1InfoTreeIndex > finalizedL1InfoTreeRoot.Index {
+			// this should never happen, but if it does, we need to investigate
+			return nil, fmt.Errorf("aggchainProverFlow - L1 Info tree index: %d of injected GER: %s "+
+				"is higher than the last finalized l1 info tree root: %s index: %d",
+				info.L1InfoTreeIndex, gerHash.String(),
+				finalizedL1InfoTreeRoot.Hash, finalizedL1InfoTreeRoot.Index)
 		}
 
 		proof, err := a.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx,
