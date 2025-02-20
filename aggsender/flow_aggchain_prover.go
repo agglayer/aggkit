@@ -127,10 +127,11 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
 	}
 
-	injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, buildParams.FromBlock, buildParams.ToBlock)
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
-	}
+	// TODO - @goran-ethernal
+	// injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, buildParams.FromBlock, buildParams.ToBlock)
+	// if err != nil {
+	// 	return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
+	// }
 
 	importedBridgeExits, err := a.getImportedBridgeExitsForProver(buildParams.Claims)
 	if err != nil {
@@ -139,7 +140,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
 		buildParams.FromBlock, buildParams.ToBlock, root.Hash, *leaf, proof,
-		injectedGERsProofs, importedBridgeExits)
+		nil, importedBridgeExits)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)

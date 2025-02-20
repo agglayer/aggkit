@@ -22,8 +22,8 @@ message GenerateAggchainProofRequest {
   L1InfoTreeLeaf l1_info_tree_leaf = 4;
   // L1 Info tree proof. ([32]hash)
   repeated bytes l1_info_tree_merkle_proof = 5;
-  // Map of the GER with their inclusion proof. Note: the GER (string) is a base64 encoded string of the GER digest.
-  map<string, InclusionProof> ger_inclusion_proofs = 6;
+  // Map of the GER with their ger leaf. Note: the GER (string) is a base64 encoded string of the GER digest.
+  map<string, GerLeaf> ger_leaves = 6;
   // bridge exits
   repeated ImportedBridgeExit imported_bridge_exits = 7;
 }
@@ -42,6 +42,13 @@ message GenerateAggchainProofResponse {
   bytes custom_chain_data = 5;
 }
 
+message GerLeaf {
+  // leaf data
+  L1InfoTreeLeaf l1_info_tree_leaf = 1;
+  // Inclusion proof
+  InclusionProof inclusion_proof = 2;
+}
+
 message InclusionProof {
   // Siblings.
   repeated bytes siblings = 1;
@@ -53,13 +60,13 @@ message L1InfoTreeLeaf {
   // block number timestamp
   uint64 timestamp = 2;
   // mainnet exit root hash
-  bytes mainnet_exit_root_hash = 3;
+  optional bytes mainnet_exit_root_hash = 3;
   // rollup exit root hash
-  bytes rollup_exit_root_hash = 4;
+  optional bytes rollup_exit_root_hash = 4;
   // global exit root hash
   bytes global_exit_root_hash = 5;
   // leaf hash
-  bytes leaf_hash = 6;
+  optional bytes leaf_hash = 6;
   // leaf index
   uint32 l1_info_tree_index = 7;
 }
