@@ -233,8 +233,8 @@ function claim_tx_hash() {
     rm $current_deposit
     rm $current_proof
     rm $bridge_deposit_file
-
 }
+
 function request_merkle_proof() {
     local curr_deposit_cnt="$1"
     local curr_network_id="$2"
