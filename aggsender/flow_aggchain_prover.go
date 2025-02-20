@@ -122,7 +122,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
 	buildParams.L1InfoTreeRootFromWhichToProve = root
 
-	if err := a.checkIfClaimsArePartOfFinalizedL1InfoTree(ctx, root, buildParams.Claims); err != nil {
+	if err := a.checkIfClaimsArePartOfFinalizedL1InfoTree(root, buildParams.Claims); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
 	}
@@ -169,8 +169,9 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 }
 
 // checkIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
-func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(ctx context.Context,
-	finalizedL1InfoTreeRoot *treeTypes.Root, claims []bridgesync.Claim) error {
+func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(
+	finalizedL1InfoTreeRoot *treeTypes.Root,
+	claims []bridgesync.Claim) error {
 	for _, claim := range claims {
 		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
 		if err != nil {

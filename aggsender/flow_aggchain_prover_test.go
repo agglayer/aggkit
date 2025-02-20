@@ -763,8 +763,6 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 func Test_AggchainProverFlow_CheckIfClaimsArePartOfFinalizedL1InfoTree(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
-
 	testCases := []struct {
 		name          string
 		mockFn        func(*mocks.L1InfoTreeSyncer)
@@ -822,7 +820,7 @@ func Test_AggchainProverFlow_CheckIfClaimsArePartOfFinalizedL1InfoTree(t *testin
 
 			tc.mockFn(mockL1InfoTreeSyncer)
 
-			err := aggchainFlow.checkIfClaimsArePartOfFinalizedL1InfoTree(ctx, tc.finalizedRoot, tc.claims)
+			err := aggchainFlow.checkIfClaimsArePartOfFinalizedL1InfoTree(tc.finalizedRoot, tc.claims)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
