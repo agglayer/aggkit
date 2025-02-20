@@ -122,6 +122,11 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
 	buildParams.L1InfoTreeRootFromWhichToProve = root
 
+	if err := a.checkIfClaimsArePartOfFinalizedL1InfoTree(ctx, root, buildParams.Claims); err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
+			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
+	}
+
 	injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, buildParams.FromBlock, buildParams.ToBlock)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
@@ -131,8 +136,6 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
-
-	// TODO - check if bridge exits and imported bridge exits are correct for that l1 info tree root
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
 		buildParams.FromBlock, buildParams.ToBlock, root.Hash, *leaf, proof,
@@ -163,6 +166,26 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	return buildParams, nil
+}
+
+// checkIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
+func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(ctx context.Context,
+	finalizedL1InfoTreeRoot *treeTypes.Root, claims []bridgesync.Claim) error {
+	for _, claim := range claims {
+		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
+		if err != nil {
+			return fmt.Errorf("error getting claim info by global exit root: %s: %w", claim.GlobalExitRoot, err)
+		}
+
+		if info.L1InfoTreeIndex > finalizedL1InfoTreeRoot.Index {
+			return fmt.Errorf("claim with global exit root: %s has L1 Info tree index: %d "+
+				"higher than the last finalized l1 info tree root: %s index: %d",
+				claim.GlobalExitRoot.String(), info.L1InfoTreeIndex,
+				finalizedL1InfoTreeRoot.Hash, finalizedL1InfoTreeRoot.Index)
+		}
+	}
+
+	return nil
 }
 
 // getInjectedGERsProofs returns the proofs for the injected GERs in the given block range
