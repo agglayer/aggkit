@@ -44,7 +44,7 @@ var (
 type Bridge struct {
 	BlockNum           uint64         `meddler:"block_num" json:"block_num"`
 	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
-	BlockTimestamp     uint64         `meddler:"block_timestamp"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type" json:"leaf_type"`
 	OriginNetwork      uint32         `meddler:"origin_network" json:"origin_network"`
 	OriginAddress      common.Address `meddler:"origin_address" json:"origin_address"`
