@@ -65,7 +65,7 @@ setup() {
     local bridge_tx_hash=$output
 
     echo "=== Running LxLy claim on L2" >&3
-    timeout="120"
+    timeout="180"
     claim_frequency="10"
     run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
@@ -130,7 +130,7 @@ setup() {
     assert_success
 
     # Claim deposits (settle them on the L2)
-    timeout="60"
+    timeout="180"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success
@@ -152,7 +152,7 @@ setup() {
     assert_success
 
     # Claim withdrawals (settle them on the L1)
-    timeout="360"
+    timeout="180"
     claim_frequency="10"
     destination_net=$l1_rpc_network_id
     run wait_for_claim "$timeout" "$claim_frequency" "$l1_rpc_url" "bridgeAsset"
@@ -214,7 +214,7 @@ setup() {
     assert_success
 
     # Claim deposits (settle them on the L2)
-    timeout="120"
+    timeout="180"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success
@@ -225,10 +225,10 @@ setup() {
     assert_success
     local token_mappings_result=$output
 
-    local origin_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].OriginTokenAddress')
+    local origin_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].origin_token_address')
     assert_equal "$l1_erc20_addr" "$origin_token_addr"
 
-    local l2_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].WrappedTokenAddress')
+    local l2_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].wrapped_token_address')
     echo "L2 token addr $l2_token_addr" >&3
 
     run verify_balance "$l2_rpc_url" "$l2_token_addr" "$receiver" 0 "$tokens_amount"
