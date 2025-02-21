@@ -21,7 +21,7 @@ type AggchainProofClientInterface interface {
 		l1InfoTreeRootHash common.Hash,
 		l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 		l1InfoTreeMerkleProof treeTypes.Proof,
-		gerLeaves map[common.Hash]*types.GerLeaf,
+		gerLeaves map[common.Hash]*types.GERLeaf,
 		importedBridgeExits []*agglayer.ImportedBridgeExit,
 	) (*types.AggchainProof, error)
 }
@@ -48,7 +48,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	l1InfoTreeRootHash common.Hash,
 	l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 	l1InfoTreeMerkleProof treeTypes.Proof,
-	gerLeaves map[common.Hash]*types.GerLeaf,
+	gerLeaves map[common.Hash]*types.GERLeaf,
 	importedBridgeExits []*agglayer.ImportedBridgeExit,
 ) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
@@ -59,9 +59,24 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		convertedMerkleProof[i] = l1InfoTreeMerkleProof[i].Bytes()
 	}
 
-	convertedGerLeaves := make(map[string]*types.GerLeaf)
+	convertedGerLeaves := make(map[string]*types.GerLeaf, 0)
 	for k, v := range gerLeaves {
-		convertedGerLeaves[k.String()] = v
+		convertedInclusionProof := make([][]byte, treeTypes.DefaultHeight)
+		for i := 0; i < int(treeTypes.DefaultHeight); i++ {
+			convertedInclusionProof[i] = v.Proof[i].Bytes()
+		}
+		convertedGerLeaves[k.String()] = &types.GerLeaf{
+			InclusionProof: &types.InclusionProof{
+				Siblings: convertedInclusionProof,
+			},
+			L1InfoTreeLeaf: &types.L1InfoTreeLeaf{
+				PreviousBlockHash:  v.L1InfoTreeLeaf.PreviousBlockHash.Bytes(),
+				Timestamp:          v.L1InfoTreeLeaf.Timestamp,
+				GlobalExitRootHash: v.L1InfoTreeLeaf.GlobalExitRoot.Bytes(),
+				LeafHash:           v.L1InfoTreeLeaf.Hash.Bytes(),
+				L1InfoTreeIndex:    v.L1InfoTreeLeaf.L1InfoTreeIndex,
+			},
+		}
 	}
 
 	convertedL1InfoTreeLeaf := &types.L1InfoTreeLeaf{

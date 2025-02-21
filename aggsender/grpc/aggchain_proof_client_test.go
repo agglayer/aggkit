@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -51,8 +52,27 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return((*types.GenerateAggchainProofResponse)(nil), expectedError)
 
-	result, err := client.GenerateAggchainProof(300, 400, common.Hash{}, l1infotreesync.L1InfoTreeLeaf{}, [32]common.Hash{}, nil, make([]*agglayer.ImportedBridgeExit, 0))
-
+	result, err := client.GenerateAggchainProof(
+		300,
+		400,
+		common.BytesToHash([]byte("0x")),
+		l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber: 1,
+			Hash:        common.HexToHash("0x2"),
+		},
+		[32]common.Hash{
+			common.HexToHash("0x3"),
+		},
+		map[common.Hash]*types.GERLeaf{
+			common.HexToHash("0x4"): {
+				Proof: treeTypes.Proof{},
+				L1InfoTreeLeaf: &l1infotreesync.L1InfoTreeLeaf{
+					BlockNumber: 2,
+				},
+			},
+		},
+		make([]*agglayer.ImportedBridgeExit, 0),
+	)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Equal(t, "Generate error", err.Error())

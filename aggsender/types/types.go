@@ -90,6 +90,11 @@ type AggchainProof struct {
 	LocalExitRoot   common.Hash
 }
 
+type GERLeaf struct {
+	Proof          treeTypes.Proof
+	L1InfoTreeLeaf *l1infotreesync.L1InfoTreeLeaf
+}
+
 type CertificateInfo struct {
 	Height        uint64      `meddler:"height"`
 	RetryCount    int         `meddler:"retry_count"`
