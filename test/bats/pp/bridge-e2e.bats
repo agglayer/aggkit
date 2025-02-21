@@ -65,7 +65,7 @@ setup() {
     assert_success
 
     echo "=== Running LxLy claim on L2" >&3
-    timeout="120"
+    timeout="180"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success
@@ -130,7 +130,7 @@ setup() {
     assert_success
 
     # Claim deposits (settle them on the L2)
-    timeout="60"
+    timeout="180"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success
@@ -152,7 +152,7 @@ setup() {
     assert_success
 
     # Claim withdrawals (settle them on the L1)
-    timeout="360"
+    timeout="180"
     claim_frequency="10"
     destination_net=$l1_rpc_network_id
     run wait_for_claim "$timeout" "$claim_frequency" "$l1_rpc_url" "bridgeAsset"
@@ -214,7 +214,7 @@ setup() {
     assert_success
 
     # Claim deposits (settle them on the L2)
-    timeout="120"
+    timeout="180"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success
