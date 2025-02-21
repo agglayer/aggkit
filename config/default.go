@@ -208,8 +208,6 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 AggLayerURL = "{{AggLayerURL}}"
-KMSKeyName = ""
-KMSConnectionTimeout = "30s"
 AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
 URLRPCL2="{{L2URL}}"
 BlockFinality = "LatestBlock"
