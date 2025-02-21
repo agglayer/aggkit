@@ -307,9 +307,6 @@ func (p *processor) GetClaimsPaged(
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	orderBy := "global_index + 0"
-	order := "DESC"
-	whereClause := ""
 	count, err := p.GetTotalNumberOfRecords(claimTableName)
 	if err != nil {
 		return nil, 0, err
@@ -322,6 +319,9 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, db.ErrNotFound
 	}
 
+	orderBy := "global_index + 0"
+	order := "DESC"
+	whereClause := ""
 	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderBy, order, whereClause)
 	if err != nil {
 		return nil, 0, err
