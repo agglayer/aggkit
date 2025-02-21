@@ -264,7 +264,7 @@ func (p *processor) GetBridgesPaged(
 		pageSize = 1
 	}
 	offset := (pageNumber - 1) * pageSize
-	if int(offset) >= count {
+	if offset >= uint32(count) {
 		p.log.Debugf("offset is larger than total bridges (page number=%d, page size=%d, total bridges=%d)",
 			pageNumber, pageSize, count)
 		return nil, 0, db.ErrNotFound
@@ -316,7 +316,7 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	offset := (pageNumber - 1) * pageSize
-	if int(offset) >= count {
+	if offset >= uint32(count) {
 		p.log.Debugf("offset is larger than total claims (page number=%d, page size=%d, total claims=%d)",
 			pageNumber, pageSize, count)
 		return nil, 0, db.ErrNotFound
@@ -550,7 +550,7 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 	}
 
 	offset := (pageNumber - 1) * pageSize
-	if int(offset) >= totalTokenMappings {
+	if offset >= uint32(totalTokenMappings) {
 		p.log.Debugf("offset is larger than total token mappings (page number=%d, page size=%d, total token mappings=%d)",
 			pageNumber, pageSize, totalTokenMappings)
 		return nil, 0, db.ErrNotFound
