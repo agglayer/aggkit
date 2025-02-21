@@ -85,15 +85,6 @@ var (
 			FieldNamePattern: "L2Config.polygonBridgeAddr",
 			Reason:           bridgeAddrSetOnWrongSection,
 		},
-		{
-			FieldNamePattern: "SequencerPrivateKeyPath",
-			Reason: "SequencerPrivateKeyPath is deprecated, use AggSender.AggsenderPrivateKey.Path instead," +
-				" or AggSender.KMSKeyName",
-		},
-		{
-			FieldNamePattern: "SequencerPrivateKeyPassword",
-			Reason:           "SequencerPrivateKeyPassword is deprecated, use AggSender.AggsenderPrivateKey.Password instead",
-		},
 	}
 )
 
