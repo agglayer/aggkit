@@ -301,7 +301,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	}
 
 	a.saveCertificateToFile(signedCertificate)
-	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
+	a.log.Infof("certificate ready to be sent to AggLayer: %s", signedCertificate.Brief())
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return signedCertificate, nil
@@ -311,7 +311,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, fmt.Errorf("error sending certificate: %w", err)
 	}
 
-	a.log.Debugf("certificate send: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
+	a.log.Debugf("certificate sent: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
 
 	raw, err := json.Marshal(signedCertificate)
 	if err != nil {

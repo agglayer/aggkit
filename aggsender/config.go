@@ -84,7 +84,7 @@ func (c Config) String() string {
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
-		"RetryCertInmediatlyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
+		"RetryCertImmediatelyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"MaxEpochPercentageAllowedToSendCertificate: " +
 		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n"
