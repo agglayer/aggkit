@@ -181,6 +181,86 @@
       }
     },
     {
+      "name": "bridge_getClaims",
+      "summary": "Get Claims",
+      "description": "Returns the claims for the given network.",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/NetworkID"
+        },
+        {
+          "name": "page",
+          "description": "The page number for pagination.",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        },
+        {
+          "name": "pageSize",
+          "description": "The number of items per page for pagination.",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The claims result.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "bridges": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "globalIndex": {
+                    "$ref": "#/components/schemas/GlobalIndex"
+                  },
+                  "destinationNetwork": {
+                    "$ref": "#/components/schemas/DestinationNetwork"
+                  },
+                  "txHash": {
+                    "$ref": "#/components/schemas/Keccak"
+                  },
+                  "amount": {
+                    "$ref": "#/components/schemas/Amount"
+                  },
+                  "blockNum": {
+                    "$ref": "#/components/schemas/BlockNumber"
+                  },
+                  "fromAddress": {
+                    "$ref": "#/components/schemas/Address"
+                  },
+                  "destinationAddress": {
+                    "$ref": "#/components/schemas/DestinationAddress"
+                  },
+                  "originAddress": {
+                    "$ref": "#/components/schemas/OriginTokenAddress"
+                  },
+                  "originNetwork": {
+                    "$ref": "#/components/schemas/OriginNetwork"
+                  },
+                  "blockTimestamp": {
+                    "type": "integer",
+                    "description": "The unix timestamp for when the block was collated"
+                  }
+                }
+              }
+            },
+            "count": {
+              "type": "integer",
+              "description": "The total number of bridges."
+            }
+          }
+        }
+      }
+    },
+    {
       "name": "bridge_l1InfoTreeIndexForBridge",
       "summary": "Returns the first L1 Info Tree index in which the bridge was included. NetworkID represents the origin network. This call needs to be done to a client of the same network were the bridge tx was sent",
       "params": [
