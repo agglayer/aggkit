@@ -296,7 +296,7 @@ func (p *processor) GetClaimsPaged(
 	orderBy := "global_index + 0"
 	order := "DESC"
 	whereClause := ""
-	count, err := p.GetTotalNumberOfRecords("claim")
+	count, err := p.GetTotalNumberOfRecords(claimTableName)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -308,7 +308,7 @@ func (p *processor) GetClaimsPaged(
 		return nil, count, db.ErrNotFound
 	}
 
-	rows, err := p.queryPaged(tx, offset, pageSize, "claim", orderBy, order, whereClause)
+	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderBy, order, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
