@@ -319,13 +319,18 @@ func (p *processor) GetClaimsPaged(
 	if int(offset) >= count {
 		p.log.Debugf("offset is larger than total claims (page number=%d, page size=%d, total claims=%d)",
 			pageNumber, pageSize, count)
-		return nil, count, db.ErrNotFound
+		return nil, 0, db.ErrNotFound
 	}
 
 	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderBy, order, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			p.log.Warnf("error closing rows: %v", err)
+		}
+	}()
 	claimPtrs := []*Claim{}
 	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
 		return nil, 0, err

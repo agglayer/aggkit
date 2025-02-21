@@ -1153,7 +1153,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			name:           "t4: offset is larger than total claims",
 			pageSize:       3,
 			page:           4,
-			expectedCount:  6,
+			expectedCount:  0,
 			expectedClaims: []*ClaimResponse{},
 			expectedError:  db.ErrNotFound,
 		},

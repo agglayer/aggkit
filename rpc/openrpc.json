@@ -254,7 +254,7 @@
             },
             "count": {
               "type": "integer",
-              "description": "The total number of bridges."
+              "description": "The total number of claims."
             }
           }
         }
