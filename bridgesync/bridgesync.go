@@ -218,7 +218,7 @@ func newBridgeSync(
 func (s *BridgeSync) GetClaimsPaged(
 	ctx context.Context,
 	page, pageSize uint32,
-) ([]*Claim, int, error) {
+) ([]*ClaimResponse, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}

@@ -114,6 +114,20 @@ type Claim struct {
 	FromAddress         common.Address `meddler:"from_address,address"`
 }
 
+// ClaimResponse is the representation of a claim event with trimmed fields
+type ClaimResponse struct {
+	GlobalIndex        *big.Int
+	DestinationNetwork uint32
+	TxHash             common.Hash
+	Amount             *big.Int
+	BlockNum           uint64
+	FromAddress        common.Address
+	DestinationAddress common.Address
+	OriginAddress      common.Address
+	OriginNetwork      uint32
+	BlockTimestamp     uint64
+}
+
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
 	BlockNum            uint64         `meddler:"block_num"`
@@ -283,7 +297,7 @@ func (p *processor) GetBridgesPaged(
 
 func (p *processor) GetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32,
-) ([]*Claim, int, error) {
+) ([]*ClaimResponse, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, 0, err
@@ -316,7 +330,24 @@ func (p *processor) GetClaimsPaged(
 	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
 		return nil, 0, err
 	}
-	return claimPtrs, count, nil
+
+	claimResponsePtrs := make([]*ClaimResponse, len(claimPtrs))
+	for i, bridgePtr := range claimPtrs {
+		claimResponsePtrs[i] = &ClaimResponse{
+			GlobalIndex:        bridgePtr.GlobalIndex,
+			DestinationNetwork: bridgePtr.DestinationNetwork,
+			TxHash:             bridgePtr.TxHash,
+			Amount:             bridgePtr.Amount,
+			BlockNum:           bridgePtr.BlockNum,
+			FromAddress:        bridgePtr.FromAddress,
+			DestinationAddress: bridgePtr.DestinationAddress,
+			OriginAddress:      bridgePtr.OriginAddress,
+			OriginNetwork:      bridgePtr.OriginNetwork,
+			BlockTimestamp:     bridgePtr.BlockTimestamp,
+		}
+	}
+
+	return claimResponsePtrs, count, nil
 }
 
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {

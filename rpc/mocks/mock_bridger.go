@@ -95,24 +95,24 @@ func (_c *Bridger_GetBridgesPaged_Call) RunAndReturn(run func(context.Context, u
 }
 
 // GetClaimsPaged provides a mock function with given fields: ctx, page, pageSize
-func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32) ([]*bridgesync.Claim, int, error) {
+func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32) ([]*bridgesync.ClaimResponse, int, error) {
 	ret := _m.Called(ctx, page, pageSize)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetClaimsPaged")
 	}
 
-	var r0 []*bridgesync.Claim
+	var r0 []*bridgesync.ClaimResponse
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) ([]*bridgesync.Claim, int, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) ([]*bridgesync.ClaimResponse, int, error)); ok {
 		return rf(ctx, page, pageSize)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) []*bridgesync.Claim); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) []*bridgesync.ClaimResponse); ok {
 		r0 = rf(ctx, page, pageSize)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*bridgesync.Claim)
+			r0 = ret.Get(0).([]*bridgesync.ClaimResponse)
 		}
 	}
 
@@ -151,12 +151,12 @@ func (_c *Bridger_GetClaimsPaged_Call) Run(run func(ctx context.Context, page ui
 	return _c
 }
 
-func (_c *Bridger_GetClaimsPaged_Call) Return(_a0 []*bridgesync.Claim, _a1 int, _a2 error) *Bridger_GetClaimsPaged_Call {
+func (_c *Bridger_GetClaimsPaged_Call) Return(_a0 []*bridgesync.ClaimResponse, _a1 int, _a2 error) *Bridger_GetClaimsPaged_Call {
 	_c.Call.Return(_a0, _a1, _a2)
 	return _c
 }
 
-func (_c *Bridger_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32) ([]*bridgesync.Claim, int, error)) *Bridger_GetClaimsPaged_Call {
+func (_c *Bridger_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32) ([]*bridgesync.ClaimResponse, int, error)) *Bridger_GetClaimsPaged_Call {
 	_c.Call.Return(run)
 	return _c
 }

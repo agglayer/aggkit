@@ -264,8 +264,8 @@ func (b *BridgeEndpoints) GetBridges(
 
 // ClaimsResult contains the claims and the total count of claims
 type ClaimsResult struct {
-	Claims []*bridgesync.Claim `json:"claims"`
-	Count  int                 `json:"count"`
+	Claims []*bridgesync.ClaimResponse `json:"claims"`
+	Count  int                         `json:"count"`
 }
 
 func (b *BridgeEndpoints) GetClaims(networkID uint32,
@@ -286,7 +286,7 @@ func (b *BridgeEndpoints) GetClaims(networkID uint32,
 	c.Add(ctx, 1)
 
 	var (
-		claims []*bridgesync.Claim
+		claims []*bridgesync.ClaimResponse
 		count  int
 	)
 

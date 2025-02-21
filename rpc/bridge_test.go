@@ -614,17 +614,15 @@ func TestGetClaims(t *testing.T) {
 	t.Run("GetClaims for L1 network", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
-		claims := []*bridgesync.Claim{
+		claims := []*bridgesync.ClaimResponse{
 			{
 				BlockNum:           1,
-				BlockPos:           1,
 				GlobalIndex:        big.NewInt(1),
 				OriginNetwork:      0,
 				OriginAddress:      common.HexToAddress("0x1"),
 				DestinationNetwork: 10,
 				DestinationAddress: common.HexToAddress("0x2"),
 				Amount:             common.Big0,
-				Metadata:           []byte("metadata"),
 			},
 		}
 
@@ -646,17 +644,15 @@ func TestGetClaims(t *testing.T) {
 	t.Run("GetClaims for L2 network", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
-		Claims := []*bridgesync.Claim{
+		Claims := []*bridgesync.ClaimResponse{
 			{
 				BlockNum:           1,
-				BlockPos:           1,
 				GlobalIndex:        big.NewInt(1),
 				OriginNetwork:      0,
 				OriginAddress:      common.HexToAddress("0x1"),
 				DestinationNetwork: 10,
 				DestinationAddress: common.HexToAddress("0x2"),
 				Amount:             common.Big0,
-				Metadata:           []byte("metadata"),
 			},
 		}
 

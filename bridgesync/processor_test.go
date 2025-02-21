@@ -1077,12 +1077,12 @@ func TestGetClaimsPaged(t *testing.T) {
 
 	claims :=
 		[]Claim{
-			{BlockNum: 1, BlockPos: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
-			{BlockNum: 2, BlockPos: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-			{BlockNum: 3, BlockPos: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
-			{BlockNum: 4, BlockPos: 4, GlobalIndex: big.NewInt(4), Amount: big.NewInt(1)},
-			{BlockNum: 5, BlockPos: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
-			{BlockNum: 6, BlockPos: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
+			{BlockNum: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
+			{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
+			{BlockNum: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
+			{BlockNum: 4, GlobalIndex: big.NewInt(4), Amount: big.NewInt(1)},
+			{BlockNum: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+			{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
 		}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
@@ -1109,7 +1109,7 @@ func TestGetClaimsPaged(t *testing.T) {
 		pageSize       uint32
 		page           uint32
 		expectedCount  int
-		expectedClaims []*Claim
+		expectedClaims []*ClaimResponse
 		expectedError  error
 	}{
 		{
@@ -1117,8 +1117,8 @@ func TestGetClaimsPaged(t *testing.T) {
 			pageSize:      1,
 			page:          2,
 			expectedCount: 6,
-			expectedClaims: []*Claim{
-				{BlockNum: 5, BlockPos: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+			expectedClaims: []*ClaimResponse{
+				{BlockNum: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
 			},
 			expectedError: nil,
 		},
@@ -1127,13 +1127,13 @@ func TestGetClaimsPaged(t *testing.T) {
 			pageSize:      20,
 			page:          1,
 			expectedCount: 6,
-			expectedClaims: []*Claim{
-				{BlockNum: 6, BlockPos: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
-				{BlockNum: 5, BlockPos: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
-				{BlockNum: 4, BlockPos: 4, GlobalIndex: big.NewInt(4), Amount: big.NewInt(1)},
-				{BlockNum: 3, BlockPos: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
-				{BlockNum: 2, BlockPos: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-				{BlockNum: 1, BlockPos: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
+			expectedClaims: []*ClaimResponse{
+				{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
+				{BlockNum: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+				{BlockNum: 4, GlobalIndex: big.NewInt(4), Amount: big.NewInt(1)},
+				{BlockNum: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
+				{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
+				{BlockNum: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
 			},
 			expectedError: nil,
 		},
@@ -1142,10 +1142,10 @@ func TestGetClaimsPaged(t *testing.T) {
 			pageSize:      3,
 			page:          2,
 			expectedCount: 6,
-			expectedClaims: []*Claim{
-				{BlockNum: 3, BlockPos: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
-				{BlockNum: 2, BlockPos: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-				{BlockNum: 1, BlockPos: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
+			expectedClaims: []*ClaimResponse{
+				{BlockNum: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
+				{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
+				{BlockNum: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
 			},
 			expectedError: nil,
 		},
@@ -1154,7 +1154,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			pageSize:       3,
 			page:           4,
 			expectedCount:  6,
-			expectedClaims: []*Claim{},
+			expectedClaims: []*ClaimResponse{},
 			expectedError:  db.ErrNotFound,
 		},
 	}
