@@ -289,3 +289,9 @@ func TestGetBridgePaged(t *testing.T) {
 	_, _, err := s.GetBridgesPaged(context.Background(), 0, 0, nil)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
+
+func TestGetClaimPaged(t *testing.T) {
+	s := BridgeSync{processor: &processor{halted: true}}
+	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0)
+	require.ErrorIs(t, err, sync.ErrInconsistentState)
+}

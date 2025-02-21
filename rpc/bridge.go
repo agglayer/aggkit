@@ -209,6 +209,25 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 	)
 }
 
+func (b *BridgeEndpoints) setupRequest(
+	pageNumber, pageSize *uint32,
+	counterName string,
+) (context.Context, context.CancelFunc, uint32, uint32, rpc.Error) {
+	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
+	if err != nil {
+		return nil, nil, 0, 0, rpc.NewRPCError(rpc.InvalidRequestErrorCode, err.Error())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	c, merr := b.meter.Int64Counter(counterName)
+	if merr != nil {
+		b.logger.Warnf("failed to create %s counter: %s", counterName, merr)
+	}
+	c.Add(ctx, 1)
+
+	return ctx, cancel, pageNumberU32, pageSizeU32, nil
+}
+
 // BridgesResult contains the bridges and the total count of bridges
 type BridgesResult struct {
 	Bridges []*bridgesync.BridgeResponse `json:"bridges"`
@@ -220,23 +239,16 @@ func (b *BridgeEndpoints) GetBridges(
 	pageNumber, pageSize *uint32,
 	depositCount *uint64,
 ) (interface{}, rpc.Error) {
-	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
-	if err != nil {
-		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode, err.Error())
+	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_bridges")
+	if setupErr != nil {
+		return nil, setupErr
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
-
-	c, merr := b.meter.Int64Counter("get_bridges")
-	if merr != nil {
-		b.logger.Warnf("failed to create get_bridges counter: %s", merr)
-	}
-	c.Add(ctx, 1)
 
 	var (
 		bridges []*bridgesync.BridgeResponse
 		count   int
+		err     error
 	)
 
 	switch {
@@ -259,6 +271,50 @@ func (b *BridgeEndpoints) GetBridges(
 	return BridgesResult{
 		Bridges: bridges,
 		Count:   count,
+	}, nil
+}
+
+// ClaimsResult contains the claims and the total count of claims
+type ClaimsResult struct {
+	Claims []*bridgesync.ClaimResponse `json:"claims"`
+	Count  int                         `json:"count"`
+}
+
+func (b *BridgeEndpoints) GetClaims(networkID uint32,
+	pageNumber, pageSize *uint32,
+) (interface{}, rpc.Error) {
+	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_claims")
+	if setupErr != nil {
+		return nil, setupErr
+	}
+	defer cancel()
+
+	var (
+		claims []*bridgesync.ClaimResponse
+		count  int
+		err    error
+	)
+
+	switch {
+	case networkID == 0:
+		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claims, error: %s", err))
+		}
+	case networkID == b.networkID:
+		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claims, error: %s", err))
+		}
+	default:
+		return nil, rpc.NewRPCError(
+			rpc.DefaultErrorCode,
+			fmt.Sprintf("this client does not support network %d", networkID),
+		)
+	}
+	return ClaimsResult{
+		Claims: claims,
+		Count:  count,
 	}, nil
 }
 

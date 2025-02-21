@@ -98,6 +98,9 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
 			Amount:             claimEvent.Amount,
+			BlockTimestamp:     b.Timestamp,
+			TxHash:             l.TxHash,
+			FromAddress:        l.Address,
 		}
 		if syncFullClaims {
 			if err := setClaimCalldata(client, bridge, l.TxHash, claim); err != nil {

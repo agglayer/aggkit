@@ -94,6 +94,73 @@ func (_c *Bridger_GetBridgesPaged_Call) RunAndReturn(run func(context.Context, u
 	return _c
 }
 
+// GetClaimsPaged provides a mock function with given fields: ctx, page, pageSize
+func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32) ([]*bridgesync.ClaimResponse, int, error) {
+	ret := _m.Called(ctx, page, pageSize)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetClaimsPaged")
+	}
+
+	var r0 []*bridgesync.ClaimResponse
+	var r1 int
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) ([]*bridgesync.ClaimResponse, int, error)); ok {
+		return rf(ctx, page, pageSize)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) []*bridgesync.ClaimResponse); ok {
+		r0 = rf(ctx, page, pageSize)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*bridgesync.ClaimResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32) int); ok {
+		r1 = rf(ctx, page, pageSize)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32) error); ok {
+		r2 = rf(ctx, page, pageSize)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// Bridger_GetClaimsPaged_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetClaimsPaged'
+type Bridger_GetClaimsPaged_Call struct {
+	*mock.Call
+}
+
+// GetClaimsPaged is a helper method to define mock.On call
+//   - ctx context.Context
+//   - page uint32
+//   - pageSize uint32
+func (_e *Bridger_Expecter) GetClaimsPaged(ctx interface{}, page interface{}, pageSize interface{}) *Bridger_GetClaimsPaged_Call {
+	return &Bridger_GetClaimsPaged_Call{Call: _e.mock.On("GetClaimsPaged", ctx, page, pageSize)}
+}
+
+func (_c *Bridger_GetClaimsPaged_Call) Run(run func(ctx context.Context, page uint32, pageSize uint32)) *Bridger_GetClaimsPaged_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32))
+	})
+	return _c
+}
+
+func (_c *Bridger_GetClaimsPaged_Call) Return(_a0 []*bridgesync.ClaimResponse, _a1 int, _a2 error) *Bridger_GetClaimsPaged_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *Bridger_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32) ([]*bridgesync.ClaimResponse, int, error)) *Bridger_GetClaimsPaged_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetProof provides a mock function with given fields: ctx, depositCount, localExitRoot
 func (_m *Bridger) GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (types.Proof, error) {
 	ret := _m.Called(ctx, depositCount, localExitRoot)

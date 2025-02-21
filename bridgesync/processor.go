@@ -42,25 +42,25 @@ var (
 
 // Bridge is the representation of a bridge event
 type Bridge struct {
-	BlockNum           uint64         `meddler:"block_num"`
-	BlockPos           uint64         `meddler:"block_pos"`
-	LeafType           uint8          `meddler:"leaf_type"`
-	OriginNetwork      uint32         `meddler:"origin_network"`
-	OriginAddress      common.Address `meddler:"origin_address"`
-	DestinationNetwork uint32         `meddler:"destination_network"`
-	DestinationAddress common.Address `meddler:"destination_address"`
-	Amount             *big.Int       `meddler:"amount,bigint"`
-	Metadata           []byte         `meddler:"metadata"`
-	DepositCount       uint32         `meddler:"deposit_count"`
-	BlockTimestamp     uint64         `meddler:"block_timestamp"`
-	TxHash             common.Hash    `meddler:"tx_hash,hash"`
-	FromAddress        common.Address `meddler:"from_address,address"`
+	BlockNum           uint64         `meddler:"block_num" json:"block_num"`
+	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
+	LeafType           uint8          `meddler:"leaf_type" json:"leaf_type"`
+	OriginNetwork      uint32         `meddler:"origin_network" json:"origin_network"`
+	OriginAddress      common.Address `meddler:"origin_address" json:"origin_address"`
+	DestinationNetwork uint32         `meddler:"destination_network" json:"destination_network"`
+	DestinationAddress common.Address `meddler:"destination_address" json:"destination_address"`
+	Amount             *big.Int       `meddler:"amount,bigint" json:"amount"`
+	Metadata           []byte         `meddler:"metadata" json:"metadata"`
+	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
 }
 
 // BridgeResponse is the representation of a bridge event with additional fields
 type BridgeResponse struct {
 	Bridge
-	BridgeHash common.Hash
+	BridgeHash common.Hash `json:"bridge_hash"`
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
@@ -111,18 +111,33 @@ type Claim struct {
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
 	TxHash              common.Hash    `meddler:"tx_hash,hash"`
+	FromAddress         common.Address `meddler:"from_address,address"`
+}
+
+// ClaimResponse is the representation of a claim event with trimmed fields
+type ClaimResponse struct {
+	BlockNum           uint64         `json:"block_num"`
+	BlockTimestamp     uint64         `json:"block_timestamp"`
+	TxHash             common.Hash    `json:"tx_hash"`
+	GlobalIndex        *big.Int       `json:"global_index"`
+	OriginAddress      common.Address `json:"origin_address"`
+	OriginNetwork      uint32         `json:"origin_network"`
+	DestinationAddress common.Address `json:"destination_address"`
+	DestinationNetwork uint32         `json:"destination_network"`
+	Amount             *big.Int       `json:"amount"`
+	FromAddress        common.Address `json:"from_address"`
 }
 
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
-	BlockNum            uint64         `meddler:"block_num"`
-	BlockPos            uint64         `meddler:"block_pos"`
-	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash"`
-	OriginNetwork       uint32         `meddler:"origin_network"`
-	OriginTokenAddress  common.Address `meddler:"origin_token_address,address"`
-	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address"`
-	Metadata            []byte         `meddler:"metadata"`
+	BlockNum            uint64         `meddler:"block_num" json:"block_num"`
+	BlockPos            uint64         `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	OriginNetwork       uint32         `meddler:"origin_network" json:"origin_network"`
+	OriginTokenAddress  common.Address `meddler:"origin_token_address,address" json:"origin_token_address"`
+	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
+	Metadata            []byte         `meddler:"metadata" json:"metadata"`
 }
 
 // Event combination of bridge, claim and token mapping events
@@ -249,7 +264,7 @@ func (p *processor) GetBridgesPaged(
 		pageSize = 1
 	}
 	offset := (pageNumber - 1) * pageSize
-	if int(offset) >= count {
+	if offset >= uint32(count) {
 		p.log.Debugf("offset is larger than total bridges (page number=%d, page size=%d, total bridges=%d)",
 			pageNumber, pageSize, count)
 		return nil, 0, db.ErrNotFound
@@ -278,6 +293,66 @@ func (p *processor) GetBridgesPaged(
 		count = len(bridgePtrs)
 	}
 	return bridgeResponsePtrs, count, nil
+}
+
+func (p *processor) GetClaimsPaged(
+	ctx context.Context, pageNumber, pageSize uint32,
+) ([]*ClaimResponse, int, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			log.Warnf("error rolling back tx: %v", err)
+		}
+	}()
+	count, err := p.GetTotalNumberOfRecords(claimTableName)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	offset := (pageNumber - 1) * pageSize
+	if offset >= uint32(count) {
+		p.log.Debugf("offset is larger than total claims (page number=%d, page size=%d, total claims=%d)",
+			pageNumber, pageSize, count)
+		return nil, 0, db.ErrNotFound
+	}
+
+	orderBy := "global_index + 0"
+	order := "DESC"
+	whereClause := ""
+	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderBy, order, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			p.log.Warnf("error closing rows: %v", err)
+		}
+	}()
+	claimPtrs := []*Claim{}
+	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
+		return nil, 0, err
+	}
+
+	claimResponsePtrs := make([]*ClaimResponse, len(claimPtrs))
+	for i, bridgePtr := range claimPtrs {
+		claimResponsePtrs[i] = &ClaimResponse{
+			GlobalIndex:        bridgePtr.GlobalIndex,
+			DestinationNetwork: bridgePtr.DestinationNetwork,
+			TxHash:             bridgePtr.TxHash,
+			Amount:             bridgePtr.Amount,
+			BlockNum:           bridgePtr.BlockNum,
+			FromAddress:        bridgePtr.FromAddress,
+			DestinationAddress: bridgePtr.DestinationAddress,
+			OriginAddress:      bridgePtr.OriginAddress,
+			OriginNetwork:      bridgePtr.OriginNetwork,
+			BlockTimestamp:     bridgePtr.BlockTimestamp,
+		}
+	}
+
+	return claimResponsePtrs, count, nil
 }
 
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
@@ -475,7 +550,7 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 	}
 
 	offset := (pageNumber - 1) * pageSize
-	if int(offset) >= totalTokenMappings {
+	if offset >= uint32(totalTokenMappings) {
 		p.log.Debugf("offset is larger than total token mappings (page number=%d, page size=%d, total token mappings=%d)",
 			pageNumber, pageSize, totalTokenMappings)
 		return nil, 0, db.ErrNotFound
