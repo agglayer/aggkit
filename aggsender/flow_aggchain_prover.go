@@ -127,11 +127,10 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
 	}
 
-	// TODO - @goran-ethernal
-	// injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, buildParams.FromBlock, buildParams.ToBlock)
-	// if err != nil {
-	// 	return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
-	// }
+	injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, buildParams.FromBlock, buildParams.ToBlock)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
+	}
 
 	importedBridgeExits, err := a.getImportedBridgeExitsForProver(buildParams.Claims)
 	if err != nil {
@@ -140,7 +139,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
 		buildParams.FromBlock, buildParams.ToBlock, root.Hash, *leaf, proof,
-		nil, importedBridgeExits)
+		injectedGERsProofs, importedBridgeExits)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
@@ -195,14 +194,14 @@ func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(
 func (a *aggchainProverFlow) getInjectedGERsProofs(
 	ctx context.Context,
 	finalizedL1InfoTreeRoot *treeTypes.Root,
-	fromBlock, toBlock uint64) (map[common.Hash]treeTypes.Proof, error) {
+	fromBlock, toBlock uint64) (map[common.Hash]*types.GERLeaf, error) {
 	injectedGERs, err := a.gerReader.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs for range %d : %d: %w",
 			fromBlock, toBlock, err)
 	}
 
-	proofs := make(map[common.Hash]treeTypes.Proof, len(injectedGERs))
+	proofs := make(map[common.Hash]*types.GERLeaf, len(injectedGERs))
 
 	for _, gerHash := range injectedGERs {
 		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(gerHash)
@@ -226,7 +225,10 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 				info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash.String(), err)
 		}
 
-		proofs[gerHash] = proof
+		proofs[gerHash] = &types.GERLeaf{
+			Proof:          proof,
+			L1InfoTreeLeaf: info,
+		}
 	}
 
 	return proofs, nil
