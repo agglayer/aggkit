@@ -33,6 +33,5 @@ func NewSigner(name string, logger types.Logger, ctx context.Context, cfg Signer
 	default:
 		return nil, fmt.Errorf("unknown signer method %s", cfg.Method)
 	}
-	err := res.Initialize(ctx)
-	return res, err
+	return res, nil
 }

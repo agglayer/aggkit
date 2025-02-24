@@ -43,6 +43,7 @@ func TestFailsSetAddressToUse(t *testing.T) {
 	mockWeb3SignerClient.EXPECT().EthAccounts(ctx).Return([]common.Address{
 		common.HexToAddress("0x1234"),
 	}, nil)
+	mockWeb3SignerClient.EXPECT().SignHash(ctx, common.HexToAddress("0x1234"), mock.Anything).Return([]byte{}, nil).Once()
 	err := sut.Initialize(ctx)
 	require.NoError(t, err)
 	signData := []byte{0x01, 0x02, 0x03}

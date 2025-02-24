@@ -76,7 +76,11 @@ func New(
 	}
 	signer, err := signer.NewSigner("aggsender", logger, ctx, cfg.AggsenderPrivateKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
+	}
+	err = signer.Initialize(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
 	}
 	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
 
