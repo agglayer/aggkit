@@ -8,5 +8,6 @@ args:
   sequencer_type: erigon
   erigon_strict_mode: false
   gas_token_enabled: true
+  gas_token_address: ""
   agglayer_prover_sp1_key: {{.AGGLAYER_PROVER_SP1_KEY}}
   enable_normalcy: true
