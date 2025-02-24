@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -55,6 +57,18 @@ type Bridge struct {
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
 	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
+}
+
+// MarshalJSON for hex-encoding Metadata field
+func (b *Bridge) MarshalJSON() ([]byte, error) {
+	type Alias Bridge // Prevent recursion
+	return json.Marshal(&struct {
+		Metadata string `json:"metadata"`
+		*Alias
+	}{
+		Metadata: hex.EncodeToString(b.Metadata),
+		Alias:    (*Alias)(b),
+	})
 }
 
 // BridgeResponse is the representation of a bridge event with additional fields
@@ -138,6 +152,18 @@ type TokenMapping struct {
 	OriginTokenAddress  common.Address `meddler:"origin_token_address,address" json:"origin_token_address"`
 	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
 	Metadata            []byte         `meddler:"metadata" json:"metadata"`
+}
+
+// MarshalJSON for hex-encoding Metadata field
+func (tm *TokenMapping) MarshalJSON() ([]byte, error) {
+	type Alias TokenMapping // Prevent recursion
+	return json.Marshal(&struct {
+		Metadata string `json:"metadata"`
+		*Alias
+	}{
+		Metadata: hex.EncodeToString(tm.Metadata),
+		Alias:    (*Alias)(tm),
+	})
 }
 
 // Event combination of bridge, claim and token mapping events
