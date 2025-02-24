@@ -22,20 +22,18 @@ var (
 )
 
 type AggLayerClientGetEpochConfiguration interface {
-	GetEpochConfiguration() (*types.ClockConfiguration, error)
+	GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error)
 }
 
 type AggLayerClientRecoveryQuerier interface {
-	GetLatestSettledCertificateHeader(networkID uint32) (*types.CertificateHeader, error)
-	GetLatestPendingCertificateHeader(networkID uint32) (*types.CertificateHeader, error)
+	GetLatestSettledCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error)
+	GetLatestPendingCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error)
 }
 
 // AgglayerClientInterface is the interface that defines the methods that the AggLayerClient will implement
 type AgglayerClientInterface interface {
-	SendTx(signedTx SignedTx) (common.Hash, error)
-	WaitTxToBeMined(hash common.Hash, ctx context.Context) error
-	SendCertificate(certificate *types.SignedCertificate) (common.Hash, error)
-	GetCertificateHeader(certificateHash common.Hash) (*types.CertificateHeader, error)
+	SendCertificate(ctx context.Context, certificate *types.SignedCertificate) (common.Hash, error)
+	GetCertificateHeader(ctx context.Context, certificateHash common.Hash) (*types.CertificateHeader, error)
 	AggLayerClientGetEpochConfiguration
 	AggLayerClientRecoveryQuerier
 }

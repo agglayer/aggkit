@@ -25,9 +25,9 @@ func (_m *AgglayerClientMock) EXPECT() *AgglayerClientMock_Expecter {
 	return &AgglayerClientMock_Expecter{mock: &_m.Mock}
 }
 
-// GetCertificateHeader provides a mock function with given fields: certificateHash
-func (_m *AgglayerClientMock) GetCertificateHeader(certificateHash common.Hash) (*types.CertificateHeader, error) {
-	ret := _m.Called(certificateHash)
+// GetCertificateHeader provides a mock function with given fields: ctx, certificateHash
+func (_m *AgglayerClientMock) GetCertificateHeader(ctx context.Context, certificateHash common.Hash) (*types.CertificateHeader, error) {
+	ret := _m.Called(ctx, certificateHash)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetCertificateHeader")
@@ -35,19 +35,19 @@ func (_m *AgglayerClientMock) GetCertificateHeader(certificateHash common.Hash) 
 
 	var r0 *types.CertificateHeader
 	var r1 error
-	if rf, ok := ret.Get(0).(func(common.Hash) (*types.CertificateHeader, error)); ok {
-		return rf(certificateHash)
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) (*types.CertificateHeader, error)); ok {
+		return rf(ctx, certificateHash)
 	}
-	if rf, ok := ret.Get(0).(func(common.Hash) *types.CertificateHeader); ok {
-		r0 = rf(certificateHash)
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) *types.CertificateHeader); ok {
+		r0 = rf(ctx, certificateHash)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.CertificateHeader)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(common.Hash) error); ok {
-		r1 = rf(certificateHash)
+	if rf, ok := ret.Get(1).(func(context.Context, common.Hash) error); ok {
+		r1 = rf(ctx, certificateHash)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -61,14 +61,15 @@ type AgglayerClientMock_GetCertificateHeader_Call struct {
 }
 
 // GetCertificateHeader is a helper method to define mock.On call
+//   - ctx context.Context
 //   - certificateHash common.Hash
-func (_e *AgglayerClientMock_Expecter) GetCertificateHeader(certificateHash interface{}) *AgglayerClientMock_GetCertificateHeader_Call {
-	return &AgglayerClientMock_GetCertificateHeader_Call{Call: _e.mock.On("GetCertificateHeader", certificateHash)}
+func (_e *AgglayerClientMock_Expecter) GetCertificateHeader(ctx interface{}, certificateHash interface{}) *AgglayerClientMock_GetCertificateHeader_Call {
+	return &AgglayerClientMock_GetCertificateHeader_Call{Call: _e.mock.On("GetCertificateHeader", ctx, certificateHash)}
 }
 
-func (_c *AgglayerClientMock_GetCertificateHeader_Call) Run(run func(certificateHash common.Hash)) *AgglayerClientMock_GetCertificateHeader_Call {
+func (_c *AgglayerClientMock_GetCertificateHeader_Call) Run(run func(ctx context.Context, certificateHash common.Hash)) *AgglayerClientMock_GetCertificateHeader_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(common.Hash))
+		run(args[0].(context.Context), args[1].(common.Hash))
 	})
 	return _c
 }
@@ -78,14 +79,14 @@ func (_c *AgglayerClientMock_GetCertificateHeader_Call) Return(_a0 *types.Certif
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetCertificateHeader_Call) RunAndReturn(run func(common.Hash) (*types.CertificateHeader, error)) *AgglayerClientMock_GetCertificateHeader_Call {
+func (_c *AgglayerClientMock_GetCertificateHeader_Call) RunAndReturn(run func(context.Context, common.Hash) (*types.CertificateHeader, error)) *AgglayerClientMock_GetCertificateHeader_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// GetEpochConfiguration provides a mock function with given fields:
-func (_m *AgglayerClientMock) GetEpochConfiguration() (*types.ClockConfiguration, error) {
-	ret := _m.Called()
+// GetEpochConfiguration provides a mock function with given fields: ctx
+func (_m *AgglayerClientMock) GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetEpochConfiguration")
@@ -93,19 +94,19 @@ func (_m *AgglayerClientMock) GetEpochConfiguration() (*types.ClockConfiguration
 
 	var r0 *types.ClockConfiguration
 	var r1 error
-	if rf, ok := ret.Get(0).(func() (*types.ClockConfiguration, error)); ok {
-		return rf()
+	if rf, ok := ret.Get(0).(func(context.Context) (*types.ClockConfiguration, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func() *types.ClockConfiguration); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) *types.ClockConfiguration); ok {
+		r0 = rf(ctx)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.ClockConfiguration)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -119,13 +120,14 @@ type AgglayerClientMock_GetEpochConfiguration_Call struct {
 }
 
 // GetEpochConfiguration is a helper method to define mock.On call
-func (_e *AgglayerClientMock_Expecter) GetEpochConfiguration() *AgglayerClientMock_GetEpochConfiguration_Call {
-	return &AgglayerClientMock_GetEpochConfiguration_Call{Call: _e.mock.On("GetEpochConfiguration")}
+//   - ctx context.Context
+func (_e *AgglayerClientMock_Expecter) GetEpochConfiguration(ctx interface{}) *AgglayerClientMock_GetEpochConfiguration_Call {
+	return &AgglayerClientMock_GetEpochConfiguration_Call{Call: _e.mock.On("GetEpochConfiguration", ctx)}
 }
 
-func (_c *AgglayerClientMock_GetEpochConfiguration_Call) Run(run func()) *AgglayerClientMock_GetEpochConfiguration_Call {
+func (_c *AgglayerClientMock_GetEpochConfiguration_Call) Run(run func(ctx context.Context)) *AgglayerClientMock_GetEpochConfiguration_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		run(args[0].(context.Context))
 	})
 	return _c
 }
@@ -135,14 +137,14 @@ func (_c *AgglayerClientMock_GetEpochConfiguration_Call) Return(_a0 *types.Clock
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetEpochConfiguration_Call) RunAndReturn(run func() (*types.ClockConfiguration, error)) *AgglayerClientMock_GetEpochConfiguration_Call {
+func (_c *AgglayerClientMock_GetEpochConfiguration_Call) RunAndReturn(run func(context.Context) (*types.ClockConfiguration, error)) *AgglayerClientMock_GetEpochConfiguration_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// GetLatestPendingCertificateHeader provides a mock function with given fields: networkID
-func (_m *AgglayerClientMock) GetLatestPendingCertificateHeader(networkID uint32) (*types.CertificateHeader, error) {
-	ret := _m.Called(networkID)
+// GetLatestPendingCertificateHeader provides a mock function with given fields: ctx, networkID
+func (_m *AgglayerClientMock) GetLatestPendingCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
+	ret := _m.Called(ctx, networkID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetLatestPendingCertificateHeader")
@@ -150,19 +152,19 @@ func (_m *AgglayerClientMock) GetLatestPendingCertificateHeader(networkID uint32
 
 	var r0 *types.CertificateHeader
 	var r1 error
-	if rf, ok := ret.Get(0).(func(uint32) (*types.CertificateHeader, error)); ok {
-		return rf(networkID)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) (*types.CertificateHeader, error)); ok {
+		return rf(ctx, networkID)
 	}
-	if rf, ok := ret.Get(0).(func(uint32) *types.CertificateHeader); ok {
-		r0 = rf(networkID)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) *types.CertificateHeader); ok {
+		r0 = rf(ctx, networkID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.CertificateHeader)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(uint32) error); ok {
-		r1 = rf(networkID)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32) error); ok {
+		r1 = rf(ctx, networkID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -176,14 +178,15 @@ type AgglayerClientMock_GetLatestPendingCertificateHeader_Call struct {
 }
 
 // GetLatestPendingCertificateHeader is a helper method to define mock.On call
+//   - ctx context.Context
 //   - networkID uint32
-func (_e *AgglayerClientMock_Expecter) GetLatestPendingCertificateHeader(networkID interface{}) *AgglayerClientMock_GetLatestPendingCertificateHeader_Call {
-	return &AgglayerClientMock_GetLatestPendingCertificateHeader_Call{Call: _e.mock.On("GetLatestPendingCertificateHeader", networkID)}
+func (_e *AgglayerClientMock_Expecter) GetLatestPendingCertificateHeader(ctx interface{}, networkID interface{}) *AgglayerClientMock_GetLatestPendingCertificateHeader_Call {
+	return &AgglayerClientMock_GetLatestPendingCertificateHeader_Call{Call: _e.mock.On("GetLatestPendingCertificateHeader", ctx, networkID)}
 }
 
-func (_c *AgglayerClientMock_GetLatestPendingCertificateHeader_Call) Run(run func(networkID uint32)) *AgglayerClientMock_GetLatestPendingCertificateHeader_Call {
+func (_c *AgglayerClientMock_GetLatestPendingCertificateHeader_Call) Run(run func(ctx context.Context, networkID uint32)) *AgglayerClientMock_GetLatestPendingCertificateHeader_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(uint32))
+		run(args[0].(context.Context), args[1].(uint32))
 	})
 	return _c
 }
@@ -193,14 +196,14 @@ func (_c *AgglayerClientMock_GetLatestPendingCertificateHeader_Call) Return(_a0 
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetLatestPendingCertificateHeader_Call) RunAndReturn(run func(uint32) (*types.CertificateHeader, error)) *AgglayerClientMock_GetLatestPendingCertificateHeader_Call {
+func (_c *AgglayerClientMock_GetLatestPendingCertificateHeader_Call) RunAndReturn(run func(context.Context, uint32) (*types.CertificateHeader, error)) *AgglayerClientMock_GetLatestPendingCertificateHeader_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// GetLatestSettledCertificateHeader provides a mock function with given fields: networkID
-func (_m *AgglayerClientMock) GetLatestSettledCertificateHeader(networkID uint32) (*types.CertificateHeader, error) {
-	ret := _m.Called(networkID)
+// GetLatestSettledCertificateHeader provides a mock function with given fields: ctx, networkID
+func (_m *AgglayerClientMock) GetLatestSettledCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
+	ret := _m.Called(ctx, networkID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetLatestSettledCertificateHeader")
@@ -208,19 +211,19 @@ func (_m *AgglayerClientMock) GetLatestSettledCertificateHeader(networkID uint32
 
 	var r0 *types.CertificateHeader
 	var r1 error
-	if rf, ok := ret.Get(0).(func(uint32) (*types.CertificateHeader, error)); ok {
-		return rf(networkID)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) (*types.CertificateHeader, error)); ok {
+		return rf(ctx, networkID)
 	}
-	if rf, ok := ret.Get(0).(func(uint32) *types.CertificateHeader); ok {
-		r0 = rf(networkID)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) *types.CertificateHeader); ok {
+		r0 = rf(ctx, networkID)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.CertificateHeader)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(uint32) error); ok {
-		r1 = rf(networkID)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32) error); ok {
+		r1 = rf(ctx, networkID)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -234,14 +237,15 @@ type AgglayerClientMock_GetLatestSettledCertificateHeader_Call struct {
 }
 
 // GetLatestSettledCertificateHeader is a helper method to define mock.On call
+//   - ctx context.Context
 //   - networkID uint32
-func (_e *AgglayerClientMock_Expecter) GetLatestSettledCertificateHeader(networkID interface{}) *AgglayerClientMock_GetLatestSettledCertificateHeader_Call {
-	return &AgglayerClientMock_GetLatestSettledCertificateHeader_Call{Call: _e.mock.On("GetLatestSettledCertificateHeader", networkID)}
+func (_e *AgglayerClientMock_Expecter) GetLatestSettledCertificateHeader(ctx interface{}, networkID interface{}) *AgglayerClientMock_GetLatestSettledCertificateHeader_Call {
+	return &AgglayerClientMock_GetLatestSettledCertificateHeader_Call{Call: _e.mock.On("GetLatestSettledCertificateHeader", ctx, networkID)}
 }
 
-func (_c *AgglayerClientMock_GetLatestSettledCertificateHeader_Call) Run(run func(networkID uint32)) *AgglayerClientMock_GetLatestSettledCertificateHeader_Call {
+func (_c *AgglayerClientMock_GetLatestSettledCertificateHeader_Call) Run(run func(ctx context.Context, networkID uint32)) *AgglayerClientMock_GetLatestSettledCertificateHeader_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(uint32))
+		run(args[0].(context.Context), args[1].(uint32))
 	})
 	return _c
 }
@@ -251,14 +255,14 @@ func (_c *AgglayerClientMock_GetLatestSettledCertificateHeader_Call) Return(_a0 
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetLatestSettledCertificateHeader_Call) RunAndReturn(run func(uint32) (*types.CertificateHeader, error)) *AgglayerClientMock_GetLatestSettledCertificateHeader_Call {
+func (_c *AgglayerClientMock_GetLatestSettledCertificateHeader_Call) RunAndReturn(run func(context.Context, uint32) (*types.CertificateHeader, error)) *AgglayerClientMock_GetLatestSettledCertificateHeader_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// SendCertificate provides a mock function with given fields: certificate
-func (_m *AgglayerClientMock) SendCertificate(certificate *types.SignedCertificate) (common.Hash, error) {
-	ret := _m.Called(certificate)
+// SendCertificate provides a mock function with given fields: ctx, certificate
+func (_m *AgglayerClientMock) SendCertificate(ctx context.Context, certificate *types.SignedCertificate) (common.Hash, error) {
+	ret := _m.Called(ctx, certificate)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SendCertificate")
@@ -266,19 +270,19 @@ func (_m *AgglayerClientMock) SendCertificate(certificate *types.SignedCertifica
 
 	var r0 common.Hash
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*types.SignedCertificate) (common.Hash, error)); ok {
-		return rf(certificate)
+	if rf, ok := ret.Get(0).(func(context.Context, *types.SignedCertificate) (common.Hash, error)); ok {
+		return rf(ctx, certificate)
 	}
-	if rf, ok := ret.Get(0).(func(*types.SignedCertificate) common.Hash); ok {
-		r0 = rf(certificate)
+	if rf, ok := ret.Get(0).(func(context.Context, *types.SignedCertificate) common.Hash); ok {
+		r0 = rf(ctx, certificate)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(common.Hash)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(*types.SignedCertificate) error); ok {
-		r1 = rf(certificate)
+	if rf, ok := ret.Get(1).(func(context.Context, *types.SignedCertificate) error); ok {
+		r1 = rf(ctx, certificate)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -292,14 +296,15 @@ type AgglayerClientMock_SendCertificate_Call struct {
 }
 
 // SendCertificate is a helper method to define mock.On call
+//   - ctx context.Context
 //   - certificate *types.SignedCertificate
-func (_e *AgglayerClientMock_Expecter) SendCertificate(certificate interface{}) *AgglayerClientMock_SendCertificate_Call {
-	return &AgglayerClientMock_SendCertificate_Call{Call: _e.mock.On("SendCertificate", certificate)}
+func (_e *AgglayerClientMock_Expecter) SendCertificate(ctx interface{}, certificate interface{}) *AgglayerClientMock_SendCertificate_Call {
+	return &AgglayerClientMock_SendCertificate_Call{Call: _e.mock.On("SendCertificate", ctx, certificate)}
 }
 
-func (_c *AgglayerClientMock_SendCertificate_Call) Run(run func(certificate *types.SignedCertificate)) *AgglayerClientMock_SendCertificate_Call {
+func (_c *AgglayerClientMock_SendCertificate_Call) Run(run func(ctx context.Context, certificate *types.SignedCertificate)) *AgglayerClientMock_SendCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*types.SignedCertificate))
+		run(args[0].(context.Context), args[1].(*types.SignedCertificate))
 	})
 	return _c
 }
@@ -309,112 +314,7 @@ func (_c *AgglayerClientMock_SendCertificate_Call) Return(_a0 common.Hash, _a1 e
 	return _c
 }
 
-func (_c *AgglayerClientMock_SendCertificate_Call) RunAndReturn(run func(*types.SignedCertificate) (common.Hash, error)) *AgglayerClientMock_SendCertificate_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// SendTx provides a mock function with given fields: signedTx
-func (_m *AgglayerClientMock) SendTx(signedTx SignedTx) (common.Hash, error) {
-	ret := _m.Called(signedTx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for SendTx")
-	}
-
-	var r0 common.Hash
-	var r1 error
-	if rf, ok := ret.Get(0).(func(SignedTx) (common.Hash, error)); ok {
-		return rf(signedTx)
-	}
-	if rf, ok := ret.Get(0).(func(SignedTx) common.Hash); ok {
-		r0 = rf(signedTx)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(common.Hash)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(SignedTx) error); ok {
-		r1 = rf(signedTx)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AgglayerClientMock_SendTx_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SendTx'
-type AgglayerClientMock_SendTx_Call struct {
-	*mock.Call
-}
-
-// SendTx is a helper method to define mock.On call
-//   - signedTx SignedTx
-func (_e *AgglayerClientMock_Expecter) SendTx(signedTx interface{}) *AgglayerClientMock_SendTx_Call {
-	return &AgglayerClientMock_SendTx_Call{Call: _e.mock.On("SendTx", signedTx)}
-}
-
-func (_c *AgglayerClientMock_SendTx_Call) Run(run func(signedTx SignedTx)) *AgglayerClientMock_SendTx_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(SignedTx))
-	})
-	return _c
-}
-
-func (_c *AgglayerClientMock_SendTx_Call) Return(_a0 common.Hash, _a1 error) *AgglayerClientMock_SendTx_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AgglayerClientMock_SendTx_Call) RunAndReturn(run func(SignedTx) (common.Hash, error)) *AgglayerClientMock_SendTx_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// WaitTxToBeMined provides a mock function with given fields: hash, ctx
-func (_m *AgglayerClientMock) WaitTxToBeMined(hash common.Hash, ctx context.Context) error {
-	ret := _m.Called(hash, ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for WaitTxToBeMined")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(common.Hash, context.Context) error); ok {
-		r0 = rf(hash, ctx)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// AgglayerClientMock_WaitTxToBeMined_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WaitTxToBeMined'
-type AgglayerClientMock_WaitTxToBeMined_Call struct {
-	*mock.Call
-}
-
-// WaitTxToBeMined is a helper method to define mock.On call
-//   - hash common.Hash
-//   - ctx context.Context
-func (_e *AgglayerClientMock_Expecter) WaitTxToBeMined(hash interface{}, ctx interface{}) *AgglayerClientMock_WaitTxToBeMined_Call {
-	return &AgglayerClientMock_WaitTxToBeMined_Call{Call: _e.mock.On("WaitTxToBeMined", hash, ctx)}
-}
-
-func (_c *AgglayerClientMock_WaitTxToBeMined_Call) Run(run func(hash common.Hash, ctx context.Context)) *AgglayerClientMock_WaitTxToBeMined_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(common.Hash), args[1].(context.Context))
-	})
-	return _c
-}
-
-func (_c *AgglayerClientMock_WaitTxToBeMined_Call) Return(_a0 error) *AgglayerClientMock_WaitTxToBeMined_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *AgglayerClientMock_WaitTxToBeMined_Call) RunAndReturn(run func(common.Hash, context.Context) error) *AgglayerClientMock_WaitTxToBeMined_Call {
+func (_c *AgglayerClientMock_SendCertificate_Call) RunAndReturn(run func(context.Context, *types.SignedCertificate) (common.Hash, error)) *AgglayerClientMock_SendCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -1,6 +1,7 @@
 package aggsender
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -55,17 +56,18 @@ func (i *InitialStatusResult) String() string {
 }
 
 // NewInitialStatus creates a new InitialStatus object, get the data from AggLayer and local storage
-func NewInitialStatus(log types.Logger, networkID uint32,
+func NewInitialStatus(ctx context.Context,
+	log types.Logger, networkID uint32,
 	storage db.AggSenderStorage,
 	aggLayerClient agglayer.AggLayerClientRecoveryQuerier) (*InitialStatus, error) {
 	log.Infof("recovery: checking last settled certificate from AggLayer for network %d", networkID)
-	aggLayerLastSettledCert, err := aggLayerClient.GetLatestSettledCertificateHeader(networkID)
+	aggLayerLastSettledCert, err := aggLayerClient.GetLatestSettledCertificateHeader(ctx, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting GetLatestSettledCertificateHeader from agglayer: %w", err)
 	}
 
 	log.Infof("recovery: checking last pending certificate from AggLayer for network %d", networkID)
-	aggLayerLastPendingCert, err := aggLayerClient.GetLatestPendingCertificateHeader(networkID)
+	aggLayerLastPendingCert, err := aggLayerClient.GetLatestPendingCertificateHeader(ctx, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting GetLatestPendingCertificateHeader from agglayer: %w", err)
 	}

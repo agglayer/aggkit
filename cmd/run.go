@@ -14,7 +14,7 @@ import (
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	"github.com/agglayer/aggkit"
-	"github.com/agglayer/aggkit/agglayer"
+	agglayer "github.com/agglayer/aggkit/agglayer/grpc"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
@@ -145,16 +145,21 @@ func createAggSender(
 	l2Syncer *bridgesync.BridgeSync,
 	l2Client *ethclient.Client) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
-	agglayerClient := agglayer.NewAggLayerClient(cfg.AggLayerURL)
+	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AggLayerURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
+	}
+
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient, aggsender.ConfigBlockNotifierPolling{
 		BlockFinalityType:     etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 	}, logger, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize block notifier: %w", err)
 	}
 
-	notifierCfg, err := aggsender.NewConfigEpochNotifierPerBlock(agglayerClient, cfg.EpochNotificationPercentage)
+	notifierCfg, err := aggsender.NewConfigEpochNotifierPerBlock(ctx,
+		agglayerClient, cfg.EpochNotificationPercentage)
 	if err != nil {
 		return nil, fmt.Errorf("cant generate config for Epoch Notifier because: %w", err)
 	}

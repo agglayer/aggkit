@@ -290,7 +290,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayerTypes.SignedC
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return signedCertificate, nil
 	}
-	certificateHash, err := a.aggLayerClient.SendCertificate(signedCertificate)
+	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, signedCertificate)
 	if err != nil {
 		return nil, fmt.Errorf("error sending certificate: %w", err)
 	}
@@ -419,7 +419,7 @@ func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCer
 	thereArePendingCerts := false
 	appearsNewInErrorCert := false
 	for _, certificateLocal := range pendingCertificates {
-		certificateHeader, err := a.aggLayerClient.GetCertificateHeader(certificateLocal.CertificateID)
+		certificateHeader, err := a.aggLayerClient.GetCertificateHeader(ctx, certificateLocal.CertificateID)
 		if err != nil {
 			a.log.Errorf("error getting certificate header of %s from agglayer: %w",
 				certificateLocal.ID(), err)
@@ -483,7 +483,7 @@ func (a *AggSender) updateCertificateStatus(ctx context.Context,
 // checkLastCertificateFromAgglayer checks the last certificate from agglayer
 func (a *AggSender) checkLastCertificateFromAgglayer(ctx context.Context) error {
 	networkID := a.l2Syncer.OriginNetwork()
-	initialStatus, err := NewInitialStatus(a.log, networkID, a.storage, a.aggLayerClient)
+	initialStatus, err := NewInitialStatus(ctx, a.log, networkID, a.storage, a.aggLayerClient)
 	if err != nil {
 		return fmt.Errorf("recovery: error retrieving initial status: %w", err)
 	}

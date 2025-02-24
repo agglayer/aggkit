@@ -5,10 +5,13 @@ syntax = "proto3";
 package proto;
 option go_package = "github.com/agglayer/aggkit/agglayer/proto/node;node";
 import "types/certificate_header.proto";
-import "types/epoch_configuration.proto";
+import "types/certificate.proto";
 
 // Service for querying agglayer network state.
 service AgglayerNetworkStateService {
+  // Method used to get a CertificateHeader for a particular CertificateId.
+  rpc GetCertificateHeader(GetCertificateHeaderRequest) returns (GetCertificateHeaderResponse);
+
   // Method used to get the latest known certificate header for a network.
   rpc GetLatestKnownCertificateHeader(GetLatestKnownCertificateHeaderRequest) returns (GetLatestKnownCertificateHeaderResponse);
 
@@ -17,6 +20,18 @@ service AgglayerNetworkStateService {
 
   // Method used to get the latest pending certificate header for a network.
   rpc GetLatestPendingCertificateHeader(GetLatestPendingCertificateHeaderRequest) returns (GetLatestPendingCertificateHeaderResponse);
+}
+
+// Request to get a CertificateHeader for a particular CertificateId.
+message GetCertificateHeaderRequest {
+  // The certificate identifier.
+  types.CertificateId certificate_id = 1;
+}
+
+// Response to the CertificateHeader request.
+message GetCertificateHeaderResponse {
+  // The certificate header.
+  types.CertificateHeader certificate_header = 1;
 }
 
 // Request to get the latest known certificate header for a network.

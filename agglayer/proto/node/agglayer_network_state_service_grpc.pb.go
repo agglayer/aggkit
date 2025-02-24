@@ -21,6 +21,7 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
+	AgglayerNetworkStateService_GetCertificateHeader_FullMethodName              = "/proto.AgglayerNetworkStateService/GetCertificateHeader"
 	AgglayerNetworkStateService_GetLatestKnownCertificateHeader_FullMethodName   = "/proto.AgglayerNetworkStateService/GetLatestKnownCertificateHeader"
 	AgglayerNetworkStateService_GetLatestSettledCertificateHeader_FullMethodName = "/proto.AgglayerNetworkStateService/GetLatestSettledCertificateHeader"
 	AgglayerNetworkStateService_GetLatestPendingCertificateHeader_FullMethodName = "/proto.AgglayerNetworkStateService/GetLatestPendingCertificateHeader"
@@ -32,6 +33,8 @@ const (
 //
 // Service for querying agglayer network state.
 type AgglayerNetworkStateServiceClient interface {
+	// Method used to get a CertificateHeader for a particular CertificateId.
+	GetCertificateHeader(ctx context.Context, in *GetCertificateHeaderRequest, opts ...grpc.CallOption) (*GetCertificateHeaderResponse, error)
 	// Method used to get the latest known certificate header for a network.
 	GetLatestKnownCertificateHeader(ctx context.Context, in *GetLatestKnownCertificateHeaderRequest, opts ...grpc.CallOption) (*GetLatestKnownCertificateHeaderResponse, error)
 	// Method used to get the latest settled certificate header for a network.
@@ -46,6 +49,16 @@ type agglayerNetworkStateServiceClient struct {
 
 func NewAgglayerNetworkStateServiceClient(cc grpc.ClientConnInterface) AgglayerNetworkStateServiceClient {
 	return &agglayerNetworkStateServiceClient{cc}
+}
+
+func (c *agglayerNetworkStateServiceClient) GetCertificateHeader(ctx context.Context, in *GetCertificateHeaderRequest, opts ...grpc.CallOption) (*GetCertificateHeaderResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetCertificateHeaderResponse)
+	err := c.cc.Invoke(ctx, AgglayerNetworkStateService_GetCertificateHeader_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 func (c *agglayerNetworkStateServiceClient) GetLatestKnownCertificateHeader(ctx context.Context, in *GetLatestKnownCertificateHeaderRequest, opts ...grpc.CallOption) (*GetLatestKnownCertificateHeaderResponse, error) {
@@ -84,6 +97,8 @@ func (c *agglayerNetworkStateServiceClient) GetLatestPendingCertificateHeader(ct
 //
 // Service for querying agglayer network state.
 type AgglayerNetworkStateServiceServer interface {
+	// Method used to get a CertificateHeader for a particular CertificateId.
+	GetCertificateHeader(context.Context, *GetCertificateHeaderRequest) (*GetCertificateHeaderResponse, error)
 	// Method used to get the latest known certificate header for a network.
 	GetLatestKnownCertificateHeader(context.Context, *GetLatestKnownCertificateHeaderRequest) (*GetLatestKnownCertificateHeaderResponse, error)
 	// Method used to get the latest settled certificate header for a network.
@@ -97,6 +112,9 @@ type AgglayerNetworkStateServiceServer interface {
 type UnimplementedAgglayerNetworkStateServiceServer struct {
 }
 
+func (UnimplementedAgglayerNetworkStateServiceServer) GetCertificateHeader(context.Context, *GetCertificateHeaderRequest) (*GetCertificateHeaderResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method GetCertificateHeader not implemented")
+}
 func (UnimplementedAgglayerNetworkStateServiceServer) GetLatestKnownCertificateHeader(context.Context, *GetLatestKnownCertificateHeaderRequest) (*GetLatestKnownCertificateHeaderResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetLatestKnownCertificateHeader not implemented")
 }
@@ -118,6 +136,24 @@ type UnsafeAgglayerNetworkStateServiceServer interface {
 
 func RegisterAgglayerNetworkStateServiceServer(s grpc.ServiceRegistrar, srv AgglayerNetworkStateServiceServer) {
 	s.RegisterService(&AgglayerNetworkStateService_ServiceDesc, srv)
+}
+
+func _AgglayerNetworkStateService_GetCertificateHeader_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetCertificateHeaderRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(AgglayerNetworkStateServiceServer).GetCertificateHeader(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: AgglayerNetworkStateService_GetCertificateHeader_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(AgglayerNetworkStateServiceServer).GetCertificateHeader(ctx, req.(*GetCertificateHeaderRequest))
+	}
+	return interceptor(ctx, in, info, handler)
 }
 
 func _AgglayerNetworkStateService_GetLatestKnownCertificateHeader_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
@@ -181,6 +217,10 @@ var AgglayerNetworkStateService_ServiceDesc = grpc.ServiceDesc{
 	ServiceName: "proto.AgglayerNetworkStateService",
 	HandlerType: (*AgglayerNetworkStateServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetCertificateHeader",
+			Handler:    _AgglayerNetworkStateService_GetCertificateHeader_Handler,
+		},
 		{
 			MethodName: "GetLatestKnownCertificateHeader",
 			Handler:    _AgglayerNetworkStateService_GetLatestKnownCertificateHeader_Handler,
