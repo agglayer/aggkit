@@ -76,8 +76,11 @@ function get_bridges() {
         echo "Assertion failed. Actual count: $count"
         exit 1
     fi
-
-    echo "------- bridge_getBridges API testcase passed"
+    origin_network=$(jq -r '.bridges_result[0].origin_network' <<< "$bridges_result")
+    if [ "$count" -le 0 ]; then
+        echo "Assertion failed. Actual count: $count"
+        exit 1
+    fi
 }
 
 function claim() {
