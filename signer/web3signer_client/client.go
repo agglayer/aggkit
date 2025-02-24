@@ -49,11 +49,11 @@ func (e *Web3SignerClient) SignHash(ctx context.Context,
 	if response.Error != nil {
 		return nil, fmt.Errorf("%v %v", response.Error.Code, response.Error.Message)
 	}
-	var result []byte
-	err = json.Unmarshal(response.Result, &result)
+	var resultStr string
+	err = json.Unmarshal(response.Result, &resultStr)
 	if err != nil {
 		return nil, err
 	}
-
+	result := common.FromHex(resultStr)
 	return result, nil
 }

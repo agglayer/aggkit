@@ -34,21 +34,21 @@ func NewWeb3SignerConfig(cfg SignerConfig) (Web3SignerConfig, error) {
 	if ok {
 		s, ok := addrField.(string)
 		if !ok {
-			return Web3SignerConfig{}, fmt.Errorf("field %s is not string %v", FieldAddress, addrField)
+			return Web3SignerConfig{}, fmt.Errorf("config %s: field %s is not string %v", MethodWeb3Signer, FieldAddress, addrField)
 		}
 		if !common.IsHexAddress(s) {
-			return Web3SignerConfig{}, fmt.Errorf("invalid field %s: %s", FieldAddress, s)
+			return Web3SignerConfig{}, fmt.Errorf("config %s: invalid field %s: %s", MethodWeb3Signer, FieldAddress, s)
 		}
 		addr = common.HexToAddress(s)
 	}
 	urlIntf, ok := cfg.Config[FieldURL]
 	// Field URL is mandatory
 	if !ok {
-		return Web3SignerConfig{}, fmt.Errorf("field %s is not present", FieldURL)
+		return Web3SignerConfig{}, fmt.Errorf("config %s: field %s is not present", MethodWeb3Signer, FieldURL)
 	}
 	urlStr, ok := urlIntf.(string)
 	if !ok {
-		return Web3SignerConfig{}, fmt.Errorf("field %s is not string %v", FieldURL, cfg.Config["url"])
+		return Web3SignerConfig{}, fmt.Errorf("config %s: field %s is not string %v", MethodWeb3Signer, FieldURL, cfg.Config["url"])
 	}
 	return Web3SignerConfig{
 		URL:     urlStr,
@@ -100,13 +100,18 @@ func (e *Web3SignerSign) Initialize(ctx context.Context) error {
 		e.logger.Infof("%s Using account %v", e.logPrefix(), accounts[0])
 		e.address = accounts[0]
 	}
+	// Verify it
+	_, err := e.SignHash(ctx, common.Hash{})
+	if err != nil {
+		return fmt.Errorf("%s error verifying signer: sign hash fails: %w", e.logPrefix(), err)
+	}
 	return nil
 }
 
 func (e *Web3SignerSign) SignHash(ctx context.Context, hash common.Hash) ([]byte, error) {
 	var zeroAddr common.Address
 	if e.address == zeroAddr {
-		return nil, fmt.Errorf("no Publicaddress set. Call Initialize first")
+		return nil, fmt.Errorf("%s no Publicaddress set. Call Initialize first", e.logPrefix())
 	}
 
 	return e.client.SignHash(ctx, e.address, hash)
