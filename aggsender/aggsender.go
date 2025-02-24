@@ -307,7 +307,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
 	a.saveCertificateToFile(signedCertificate)
-	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
+	a.log.Infof("certificate ready to be sent to AggLayer: %s", signedCertificate.Brief())
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return signedCertificate, nil
