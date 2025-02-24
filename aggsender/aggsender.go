@@ -13,6 +13,7 @@ import (
 	zkevm "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/metrics"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -125,6 +126,7 @@ func (a *AggSender) GetRPCServices() []jRPC.Service {
 // Start starts the AggSender
 func (a *AggSender) Start(ctx context.Context) {
 	a.log.Info("AggSender started")
+	metrics.Register()
 	a.status.Start(time.Now().UTC())
 	a.checkInitialStatus(ctx)
 	a.sendCertificates(ctx, 0)
@@ -231,6 +233,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, nil
 	}
 
+	start := time.Now()
 	lastL2BlockSynced, err := a.l2Syncer.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -301,6 +304,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, fmt.Errorf("forbidden to send certificate due epoch percentage")
 	}
 
+	metrics.CertificateBuildTime(time.Since(start).Seconds())
+
 	a.saveCertificateToFile(signedCertificate)
 	a.log.Infof("certificate ready to be sent to AggLayer: %s", signedCertificate.Brief())
 	if a.cfg.DryRun {
@@ -312,7 +317,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, fmt.Errorf("error sending certificate: %w", err)
 	}
 
-	a.log.Debugf("certificate sent: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
+	metrics.CertificateSent()
+	a.log.Debugf("certificate send: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
 
 	raw, err := json.Marshal(signedCertificate)
 	if err != nil {
@@ -787,6 +793,13 @@ func (a *AggSender) updateCertificateStatus(ctx context.Context,
 		localCert.ID(), localCert.Status, agglayerCert.Status, localCert.ElapsedTimeSinceCreation(),
 		agglayerCert.String())
 
+	switch agglayerCert.Status {
+	case agglayer.Settled:
+		metrics.Settled()
+	case agglayer.InError:
+		metrics.InError()
+	}
+
 	// That is a strange situation
 	if agglayerCert.Status.IsOpen() && localCert.Status.IsClosed() {
 		a.log.Warnf("certificate %s is reopened! from [%s] to [%s]",
@@ -919,6 +932,7 @@ func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInf
 		}
 
 		retryCount = lastSentCertificateInfo.RetryCount + 1
+		metrics.SendingRetry()
 	}
 
 	return lastSentBlock, retryCount
