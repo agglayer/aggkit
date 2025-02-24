@@ -212,6 +212,25 @@ setup() {
     run bridge_asset "$l1_erc20_addr" "$l1_rpc_url"
     assert_success
 
+    # Execute the cast command and store JSON result
+    bridges_result=$(cast rpc --rpc-url "$l2_rpc_url" "bridge_getBridges" "$l1_rpc_network_id")
+    # Extract the "count" value from JSON
+    count=$(jq -r '.count' <<< "$bridges_result")
+    # Assert that count equals 1
+    if [ "$count" -ne 1 ]; then
+        echo "Assertion failed: count is not 1. Actual count: $count"
+        exit 1
+    fi
+    # Extract the OriginNetwork from the first array item
+    originNetwork=$(jq -r '.bridges[0].OriginNetwork' <<< "$bridges_result")
+    # Assert that originNetwork equals 0
+    if [ "$originNetwork" -ne 0 ]; then
+        echo "Assertion failed: OriginNetwork is not 0. Actual OriginNetwork: $originNetwork"
+        exit 1
+    fi
+
+    echo "Assertions passed: count is 1 and OriginNetwork is 0."
+
     # Claim deposits (settle them on the L2)
     timeout="180"
     claim_frequency="10"
