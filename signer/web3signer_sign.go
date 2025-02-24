@@ -34,7 +34,8 @@ func NewWeb3SignerConfig(cfg SignerConfig) (Web3SignerConfig, error) {
 	if ok {
 		s, ok := addrField.(string)
 		if !ok {
-			return Web3SignerConfig{}, fmt.Errorf("config %s: field %s is not string %v", MethodWeb3Signer, FieldAddress, addrField)
+			return Web3SignerConfig{}, fmt.Errorf("config %s: field %s is not string %v",
+				MethodWeb3Signer, FieldAddress, addrField)
 		}
 		if !common.IsHexAddress(s) {
 			return Web3SignerConfig{}, fmt.Errorf("config %s: invalid field %s: %s", MethodWeb3Signer, FieldAddress, s)
@@ -48,7 +49,8 @@ func NewWeb3SignerConfig(cfg SignerConfig) (Web3SignerConfig, error) {
 	}
 	urlStr, ok := urlIntf.(string)
 	if !ok {
-		return Web3SignerConfig{}, fmt.Errorf("config %s: field %s is not string %v", MethodWeb3Signer, FieldURL, cfg.Config["url"])
+		return Web3SignerConfig{}, fmt.Errorf("config %s: field %s is not string %v",
+			MethodWeb3Signer, FieldURL, cfg.Config["url"])
 	}
 	return Web3SignerConfig{
 		URL:     urlStr,
