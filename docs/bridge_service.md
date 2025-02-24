@@ -1,10 +1,10 @@
 # Bridge service component
 
-The bridge service abstracts interaction with the unified LxLy bridge. It represents decentralized indexer, that sequences the bridge data. Each bridge service sequences L1 network and a dedicated L2 one (which is uniquely defined by the network id parameter). It is implemented as a JSON RPC service.
+The bridge service abstracts interaction with the unified LxLy bridge. It represents decentralized indexer, that sequences the bridge data. Each bridge service sequences L1 network and a dedicated L2 one (which is uniquely defined by the network id parameter). Therefore, each agglayer connected chain runs its own bridge service. It is implemented as a JSON RPC service.
 
 ## Bridge flow
 
-The diagram below describes the basic L2 -> L2 bridge workflow. Note that L2 networks consist of the aggkit node and execution client.
+The diagram below describes the basic L2 -> L2 bridge workflow. Note that L2 networks consist of the `aggkit` node and execution client.
 
 ```mermaid
 sequenceDiagram
@@ -25,8 +25,30 @@ L2 (B)->>L2 (B): Send claim tx<br/>(bridge is settled on the L2 (B))
 L2 (B)-->>User: Tx hash
 ```
 
+## Indexers
+
+The bridge service relies on specific data located on different chains (such as `bridge`, `claim`, and `token mapping` events, as well as the L1 info tree). This data is retrieved using indexer components. In this paragraph, we will list and briefly describe each of them.
+
+### L1 Info Tree Sync
+
+It interacts with L1 execution layer (via RPC) in order to:
+
+- Sync the L1 info tree,
+- Generate merkle proofs,
+- Build the relation `bridge <-> L1InfoTree index` for bridges originated on L1
+- Sync the rollup exit tree (namely a tree consisted of all local exit trees, that tracks exits per rollup network), persist, generate proofs
+
+### Bridge Sync
+
+It interacts with the L2 or L1 execution layer (via RPC) in order to:
+
+- Sync bridges, claims and token mappings. Needs to be modular as it's execution client specific.
+- Build the local exit tree
+- Generate merkle proofs
+
 ## Bridging custom ERC20 token
-When a non-native ERC20 token, not yet mapped on a destination network, is bridged, its representation is deployed on the destination network using the `CREATE2` opcode. The mapping process emits the `NewWrappedToken` [event](https://github.com/0xPolygonHermez/zkevm-contracts/blob/21d3fd6ec0881731de49f1a6133fb97ed863a7ab/contracts/v2/PolygonZkEVMBridgeV2.sol#L561-L566) on the destination network. 
+
+When a non-native ERC20 token, not yet mapped on a destination network, is bridged, its representation is deployed on the destination network using the `CREATE2` opcode. The mapping process emits the `NewWrappedToken` [event](https://github.com/0xPolygonHermez/zkevm-contracts/blob/21d3fd6ec0881731de49f1a6133fb97ed863a7ab/contracts/v2/PolygonZkEVMBridgeV2.sol#L561-L566) on the destination network.
 
 Mapped token details are available via the `bridge_getTokenMappings` endpoint.
 
@@ -70,8 +92,9 @@ sequenceDiagram
     Note right of User: Bridge process completed successfully
 ```
 
-## Endpoints
-This paragraph explains a set of endpoints, that are providing indexed bridge data.
+## API
+
+This paragraph explains a set of endpoints, that are necessary in order to conduct the bridge flow described above.
 
 ### Get bridges
 <!-- TODO: @temaniarpit27 -->
@@ -127,11 +150,18 @@ Successful response (`TokenMappingResult`)
 ```
 
 Failed response (`rpc.Error`)
+
 - `code` - error code
 - `message` - error message
 
 ### L1 info tree index for bridge
 
+TBD
+
 ### Injected L1 tree info after index
 
+TBD
+
 ### Get proof
+
+TBD
