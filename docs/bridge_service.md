@@ -97,7 +97,66 @@ sequenceDiagram
 This paragraph explains a set of endpoints, that are necessary in order to conduct the bridge flow described above.
 
 ### Get bridges
-<!-- TODO: @temaniarpit27 -->
+Retrieves the bridge(s) for a specified network, supporting pagination. The bridges represent the `BridgeEvent` events emitted by the bridge contract.
+
+#### Parameters
+
+| **Name**       | **Type**  | **Description**                                                 | **Required** | **Notes**                 |
+|----------------|-----------|---------------------------------------------------------------- |--------------|---------------------------|
+| `networkID`    | `uint32`  | ID of the network to fetch bridges from.                        | Yes          | `0` for L1 (otherwise L2) |
+| `pageNumber`   | `*uint32` | Page number for pagination (pointer to `uint32`).               | No           | Defaults if `nil`.        |
+| `pageSize`     | `*uint32` | Number of items per page (pointer to `uint32`).                 | No           | Defaults if `nil`.        |
+| `depositCount` | `*uint32` | Query param for a specific Deposit Count (pointer to `uint32`). | No           | Defaults if `nil`.        |
+
+
+#### Return value
+
+Successful response (`BridgesResult`)
+
+- `bridges`: Array of bridges (Bridge) with details:
+  - `block_num`: Block number where the event was recorded.
+  - `block_pos`: Position of the log within the block.
+  - `block_timestamp`: Timestamp of the block.
+  - `leaf_type`: Type of bridge (unspecified, asset, message).
+  - `origin_network`: Network ID where the original token resides.
+  - `origin_address`: Address of the original token on the origin network.
+  - `destination_network`: Destination network where we are bridging to
+  - `destination_address`: Destination address where we are bridging to
+  - `amount`: Amount of the bridge
+  - `metadata`: Additional encoded information.
+  - `deposit_count`: Deposit count for the bridge
+  - `tx_hash`: Hash of the transaction that triggered the event.
+  - `from_address`: Address which initiated the event.
+  - `bridge_hash`: Hash of the bridge
+- `count`: Total number of bridges available.
+
+```json
+{
+  "bridges": [
+    {
+      "block_num": 11952,
+      "block_pos": 1,
+      "block_timestamp": 1739563963,
+      "leaf_type": 1,
+      "origin_network": 0,
+      "origin_address": "0xc67dc429d7bde82abf29ae609c9213276d803acf",
+      "destination_network": 0,
+      "destination_address": "0xa67dc429d7bde82abf29ae609c9213276d803acf",
+      "amount": 1,
+      "metadata": "Base64 or Hex-encoded data",
+      "deposit_count": 1,
+      "tx_hash": "0xd4c6e67a65e6cc35965d692cfc7c176d954a660bc7bef34dd5dd3491a53352b5",
+      "from_address": "0xb67dc429d7bde82abf29ae609c9213276d803acf",
+    }
+  ],
+  "count": 1
+}
+```
+
+Failed response (`rpc.Error`)
+
+- `code` - error code
+- `message` - error message
 
 ### Get claims
 <!-- TODO: @rachit77 -->
