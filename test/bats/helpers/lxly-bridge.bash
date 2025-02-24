@@ -66,6 +66,20 @@ function bridge_asset() {
     fi
 }
 
+# Bridge API testcase (bridge_getBridges)
+function get_bridges() {
+    local aggkit_node_url=$1
+    local l1_rpc_network_id=$2
+    bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$l1_rpc_network_id")
+    count=$(jq -r '.count' <<< "$bridges_result")
+    if [ "$count" -le 0 ]; then
+        echo "Assertion failed. Actual count: $count"
+        exit 1
+    fi
+
+    echo "------- bridge_getBridges API testcase passed"
+}
+
 function claim() {
     local destination_rpc_url="$1"
     local bridge_type="$2"

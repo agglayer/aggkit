@@ -50,6 +50,7 @@ setup() {
 }
 
 @test "Native gas token deposit to WETH" {
+
     destination_addr=$sender_addr
     run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
     assert_success
@@ -211,6 +212,11 @@ setup() {
     amount=$(cast --to-unit $tokens_amount wei)
     meta_bytes="0x"
     run bridge_asset "$l1_erc20_addr" "$l1_rpc_url"
+    assert_success
+
+    echo "------- bridge_getBridges API testcase"
+    local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
+    run get_bridges $aggkit_node_url $l1_rpc_network_id
     assert_success
 
     # Claim deposits (settle them on the L2)
