@@ -78,7 +78,10 @@ type TokenMappingsResult struct {
 	Count         int                        `json:"count"`
 }
 
-// GetTokenMappings returns the token mappings for the given network
+// GetTokenMappings returns the token mappings for the given network.
+// If networkID is 0, it returns the token mappings for the L1 network.
+// If networkID is the same as the client, it returns the token mappings for the L2 network.
+// The result is paginated.
 func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
 	b.logger.Debugf("GetTokenMappings invoked (network id=%d, page number=%v, page size=%v)",
 		networkID, pageNumber, pageSize)
@@ -234,11 +237,12 @@ type BridgesResult struct {
 	Count   int                          `json:"count"`
 }
 
-func (b *BridgeEndpoints) GetBridges(
-	networkID uint32,
-	pageNumber, pageSize *uint32,
-	depositCount *uint64,
-) (interface{}, rpc.Error) {
+// GetBridges returns the bridges for the given network and the total count of bridges.
+// If networkID is 0, it returns the bridges for the L1 network.
+// If networkID is the same as the client, it returns the bridges for the L2 network.
+// The result is paginated.
+func (b *BridgeEndpoints) GetBridges(networkID uint32, pageNumber, pageSize *uint32,
+	depositCount *uint64) (interface{}, rpc.Error) {
 	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_bridges")
 	if setupErr != nil {
 		return nil, setupErr
@@ -280,9 +284,11 @@ type ClaimsResult struct {
 	Count  int                         `json:"count"`
 }
 
-func (b *BridgeEndpoints) GetClaims(networkID uint32,
-	pageNumber, pageSize *uint32,
-) (interface{}, rpc.Error) {
+// GetClaims returns the claims for the given network.
+// If networkID is 0, it returns the claims for the L1 network.
+// If networkID is the same as the client, it returns the claims for the L2 network.
+// The result is paginated.
+func (b *BridgeEndpoints) GetClaims(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
 	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_claims")
 	if setupErr != nil {
 		return nil, setupErr
