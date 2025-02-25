@@ -34,7 +34,7 @@ function deploy_contract() {
 
     # Send the transaction and capture the output
     gas_price=$(cast gas-price --rpc-url "$rpc_url")
-    local comp_gas_price=$(bc -l <<< "$gas_price * 1.5" | sed 's/\..*//')
+    local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
     if [[ $? -ne 0 ]]; then
         echo "Failed to calculate gas price" >&3
         exit 1
@@ -113,7 +113,7 @@ function send_tx() {
         local sender_initial_balance receiver_initial_balance
         sender_initial_balance=$(cast balance "$sender_addr" --ether --rpc-url "$rpc_url") || return 1
         receiver_initial_balance=$(cast balance "$receiver_addr" --ether --rpc-url "$rpc_url") || return 1
-        
+
         send_eoa_transaction "$private_key" "$receiver_addr" "$value_or_function_sig" "$sender_addr" "$sender_initial_balance" "$receiver_initial_balance"
     else
         # Case: Smart contract interaction (contract interaction with function signature and parameters)
@@ -134,7 +134,7 @@ function send_eoa_transaction() {
     # Send transaction via cast
     local cast_output tx_hash
     gas_price=$(cast gas-price --rpc-url "$rpc_url")
-    local comp_gas_price=$(bc -l <<< "$gas_price * 1.5" | sed 's/\..*//')
+    local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
     if [[ $? -ne 0 ]]; then
         echo "Failed to calculate gas price" >&3
         exit 1
@@ -174,7 +174,7 @@ function send_smart_contract_transaction() {
     # Send the smart contract interaction using cast
     local cast_output tx_hash
     gas_price=$(cast gas-price --rpc-url "$rpc_url")
-    local comp_gas_price=$(bc -l <<< "$gas_price * 1.5" | sed 's/\..*//')
+    local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
     if [[ $? -ne 0 ]]; then
         echo "Failed to calculate gas price" >&3
         exit 1
@@ -304,7 +304,7 @@ function verify_balance() {
     # Trim 'ether' from ether_amount if it exists
     ether_amount=$(echo "$ether_amount" | sed 's/ether//')
     local amount_wei=$(cast --to-wei "$ether_amount")
-    
+
     # Get final balance in wei (after the operation)
     local final_balance_wei
     if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
@@ -349,7 +349,7 @@ function mint_erc20_tokens() {
     assert_success
 }
 
-function run_with_timeout(){
+function run_with_timeout() {
     local name="$1"
     local run_frequency=$2
     local timeout=$3
@@ -364,7 +364,7 @@ function run_with_timeout(){
         fi
         echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ⏳Running [$name] ..." >&3
         echo "executing: $*"
-        run $* 
+        run $*
         echo "output: $output"
         echo "result: $status"
         if [ $status -eq 0 ]; then
@@ -374,4 +374,8 @@ function run_with_timeout(){
         echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Sleep [$name] time: $run_frequency" >&3
         sleep "$run_frequency"
     done
+}
+
+function log() {
+    echo "[$(date +'%H:%M:%S')] $1" >&3
 }
