@@ -64,8 +64,14 @@ setup() {
     run bridge_asset "$native_token_addr" "$l1_rpc_url"
     assert_success
 
+    echo "------- bridge_getBridges API testcase"
+    local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
+    run get_bridges $aggkit_node_url $l1_rpc_network_id
+    assert_success
+    echo "------- bridge_getBridges API testcase passed"
+
     echo "=== Running LxLy claim on L2" >&3
-    timeout="1800"
+    timeout="180"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success
@@ -130,7 +136,7 @@ setup() {
     assert_success
 
     # Claim deposits (settle them on the L2)
-    timeout="1800"
+    timeout="180"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success
@@ -152,7 +158,7 @@ setup() {
     assert_success
 
     # Claim withdrawals (settle them on the L1)
-    timeout="1800"
+    timeout="180"
     claim_frequency="10"
     destination_net=$l1_rpc_network_id
     run wait_for_claim "$timeout" "$claim_frequency" "$l1_rpc_url" "bridgeAsset"
@@ -213,14 +219,8 @@ setup() {
     run bridge_asset "$l1_erc20_addr" "$l1_rpc_url"
     assert_success
 
-    # echo "------- bridge_getBridges API testcase"
-    # local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
-    # run get_bridges $aggkit_node_url $l1_rpc_network_id
-    # assert_success
-    # echo "------- bridge_getBridges API testcase passed"
-
     # Claim deposits (settle them on the L2)
-    timeout="1800"
+    timeout="180"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
     assert_success

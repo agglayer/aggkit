@@ -66,19 +66,49 @@ function bridge_asset() {
     fi
 }
 
-# Bridge API testcase (bridge_getBridges)
 function get_bridges() {
     local aggkit_node_url=$1
     local l1_rpc_network_id=$2
+
     bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$l1_rpc_network_id")
+
+    echo "------ bridges_result ------"
+    echo "$bridges_result"
+
     count=$(jq -r '.count' <<< "$bridges_result")
-    if [ "$count" -le 0 ]; then
-        echo "Assertion failed. Actual count: $count"
+    if [ "$count" -ne 1 ]; then
+        echo "Assertion failed. 'count' should be 1. Actual: $count"
         exit 1
     fi
-    origin_network=$(jq -r '.bridges_result[0].origin_network' <<< "$bridges_result")
-    if [ "$count" -le 0 ]; then
-        echo "Assertion failed. Actual count: $count"
+
+    required_fields=(
+        "block_num"
+        "block_pos"
+        "block_timestamp"
+        "leaf_type"
+        "origin_network"
+        "origin_address"
+        "destination_network"
+        "destination_address"
+        "amount"
+        "deposit_count"
+        "tx_hash"
+        "from_address"
+        "bridge_hash"
+    )
+
+    # Check that all required fields exist (and are not null) in bridges[0]
+    for field in "${required_fields[@]}"; do
+        value=$(jq -r --arg fld "$field" '.bridges[0][$fld]' <<< "$bridges_result")
+        if [ "$value" = "null" ] || [ -z "$value" ]; then
+            echo "Assertion failed. Missing or null '$field' in the first bridge object."
+            exit 1
+        fi
+    done
+
+    origin_network=$(jq -r '.bridges[0].origin_network' <<< "$bridges_result")
+    if [ "$origin_network" -ne 0 ]; then
+        echo "Assertion failed. 'origin_network' should be 0. Actual: $origin_network"
         exit 1
     fi
 }
@@ -115,8 +145,8 @@ function claim() {
     while read deposit_idx; do
         echo "Starting claim for tx index: "$deposit_idx >&3
         echo "Deposit info:" >&3
-        jq --arg idx $deposit_idx '.[($idx | tonumber)]' $claimable_deposit_file | tee $current_deposit >&3
 
+        jq --arg idx $deposit_idx '.[($idx | tonumber)]' $claimable_deposit_file | tee $current_deposit >&3
         curr_deposit_cnt=$(jq -r '.deposit_cnt' $current_deposit)
         curr_network_id=$(jq -r '.network_id' $current_deposit)
         curl -s "$bridge_api_url/merkle-proof?deposit_cnt=$curr_deposit_cnt&net_id=$curr_network_id" | jq '.' | tee $current_proof
