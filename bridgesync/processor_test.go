@@ -1199,6 +1199,7 @@ func TestGetTokenMapping(t *testing.T) {
 			OriginNetwork:       uint32(i),
 			OriginTokenAddress:  common.HexToAddress(fmt.Sprintf("%d", i)),
 			WrappedTokenAddress: common.HexToAddress(fmt.Sprintf("%d", i+1)),
+			Metadata:            common.Hex2Bytes(fmt.Sprintf("%x", i+1)),
 		}
 
 		block := sync.Block{
