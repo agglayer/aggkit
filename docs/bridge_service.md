@@ -97,6 +97,7 @@ sequenceDiagram
 This paragraph explains a set of endpoints, that are necessary in order to conduct the bridge flow described above.
 
 ### Get bridges
+
 Retrieves the bridge(s) for a specified network, supporting pagination. The bridges represent the `BridgeEvent` events emitted by the bridge contract.
 
 #### Parameters
@@ -159,13 +160,14 @@ Failed response (`rpc.Error`)
 - `message` - error message
 
 ### Get claims
+
 Retrieves the claim(s) for a specified network with support for pagination returning results in descending order of `GlobalIndex`. The claims represent the `ClaimEvent` events emitted by the bridge contract.
 
 #### Parameters
 
 | **Name**       | **Type**  | **Description**                                                 | **Required** | **Notes**                 |
 |----------------|-----------|---------------------------------------------------------------- |--------------|---------------------------|
-| `networkID`    | `uint32`  | ID of the network to fetch claims from.                        | Yes          | `0` for L1 (otherwise L2) |
+| `networkID`    | `uint32`  | ID of the network to fetch claims from.                         | Yes          | `0` for L1 (otherwise L2) |
 | `pageNumber`   | `*uint32` | Page number for pagination (pointer to `uint32`).               | No           | Defaults if `nil`.        |
 | `pageSize`     | `*uint32` | Number of items per page (pointer to `uint32`).                 | No           | Defaults if `nil`.        |
 
@@ -230,14 +232,14 @@ Retrieves the token mappings for a specified network, supporting pagination. The
 Successful response (`TokenMappingResult`)
 
 - `tokenMappings`: Array of token mappings (TokenMapping) with details:
-- `block_num`: Block number where the event was recorded.
-- `block_pos`: Position of the log within the block.
-- `block_timestamp`: Timestamp of the block.
-- `tx_hash`: Hash of the transaction that triggered the event.
-- `origin_network`: Network ID where the original token resides.
-- `origin_token_address`: Address of the original token on the origin network.
-- `wrapped_token_address`: Address of the deployed wrapped token on the destination network.
-- `metadata`: Additional encoded information.
+  - `block_num`: Block number where the event was recorded.
+  - `block_pos`: Position of the log within the block.
+  - `block_timestamp`: Timestamp of the block.
+  - `tx_hash`: Hash of the transaction that triggered the event.
+  - `origin_network`: Network ID where the original token resides.
+  - `origin_token_address`: Address of the original token on the origin network.
+  - `wrapped_token_address`: Address of the deployed wrapped token on the destination network.
+  - `metadata`: Additional encoded information.
 - `count`: Total number of token mappings available.
 
 ```json
