@@ -66,7 +66,7 @@ func (b *Bridge) MarshalJSON() ([]byte, error) {
 		Metadata string `json:"metadata"`
 		*Alias
 	}{
-		Metadata: hex.EncodeToString(b.Metadata),
+		Metadata: "0x" + hex.EncodeToString(b.Metadata),
 		Alias:    (*Alias)(b),
 	})
 }
@@ -155,14 +155,14 @@ type TokenMapping struct {
 }
 
 // MarshalJSON for hex-encoding Metadata field
-func (tm *TokenMapping) MarshalJSON() ([]byte, error) {
+func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 	type Alias TokenMapping // Prevent recursion
 	return json.Marshal(&struct {
 		Metadata string `json:"metadata"`
 		*Alias
 	}{
-		Metadata: hex.EncodeToString(tm.Metadata),
-		Alias:    (*Alias)(tm),
+		Metadata: "0x" + hex.EncodeToString(t.Metadata),
+		Alias:    (*Alias)(t),
 	})
 }
 
