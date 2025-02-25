@@ -18,6 +18,9 @@ func TestWeb3SignerClientUsingDockerNoKey(t *testing.T) {
 	require.NotNil(t, sut)
 	_, err := sut.SignHash(context.Background(), common.Address{}, common.Hash{})
 	require.Error(t, err)
+	addrs, err := sut.EthAccounts(context.Background())
+	require.Error(t, err)
+	require.Nil(t, addrs)
 }
 
 func startWeb3SignerDocker(t *testing.T) {
