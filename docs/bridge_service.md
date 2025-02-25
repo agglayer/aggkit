@@ -97,6 +97,7 @@ sequenceDiagram
 This paragraph explains a set of endpoints, that are necessary in order to conduct the bridge flow described above.
 
 ### Get bridges
+
 Retrieves the bridge(s) for a specified network, supporting pagination. The bridges represent the `BridgeEvent` events emitted by the bridge contract.
 
 #### Parameters
@@ -159,7 +160,58 @@ Failed response (`rpc.Error`)
 - `message` - error message
 
 ### Get claims
-<!-- TODO: @rachit77 -->
+
+Retrieves the claim(s) for a specified network with support for pagination returning results in descending order of `GlobalIndex`. The claims represent the `ClaimEvent` events emitted by the bridge contract.
+
+#### Parameters
+
+| **Name**       | **Type**  | **Description**                                                 | **Required** | **Notes**                 |
+|----------------|-----------|---------------------------------------------------------------- |--------------|---------------------------|
+| `networkID`    | `uint32`  | ID of the network to fetch claims from.                         | Yes          | `0` for L1 (otherwise L2) |
+| `pageNumber`   | `*uint32` | Page number for pagination (pointer to `uint32`).               | No           | Defaults if `nil`.        |
+| `pageSize`     | `*uint32` | Number of items per page (pointer to `uint32`).                 | No           | Defaults if `nil`.        |
+
+#### Return value
+
+Successful response (`ClaimsResult`)
+
+- `claims`: Array of claims (Claim) with details:
+  - `block_num`: Block number where the event was recorded.
+  - `block_timestamp`: Timestamp of the block.
+  - `tx_hash`: Hash of the transaction that triggered the `ClaimEvent`.
+  - `global_index`: Global index of the claim.
+  - `origin_address`: Address of the original token on the origin network.
+  - `origin_network`: Network ID where the original token resides.
+  - `destination_address`: Destination address where we are claiming.
+  - `destination_network`: Destination network where we are claiming.
+  - `amount`: Amount of the claim.
+  - `from_address`: Address which initiated the event.
+- `count`: Total number of claims available.
+
+```json
+{
+  "claims": [
+    {
+      "block_num": 11952,
+      "block_timestamp": 1739563963,
+      "tx_hash": "0x02152c9059502b05d5fa68cb796be72eba32c9b2504c004a775a80008cbc0766",
+      "global_index": 18446744073709551610,
+      "origin_address": "0xb26f25ed6bcb8dd7c1c7266e12fa4aaff48fc892",
+      "origin_network": 0,
+      "destination_address": "0x85da99c8a7c2c95964c8efd687e95e632fc533d6",
+      "destination_network": 1,
+      "amount": 100000000000000000,      
+      "from_address": "0xb67dc429d7bde82abf29ae609c9213276d803acf",
+    }
+  ],
+  "count": 1
+}
+```
+
+Failed response (`rpc.Error`)
+
+- `code` - error code
+- `message` - error message
 
 ### Get token mappings
 
@@ -180,14 +232,14 @@ Retrieves the token mappings for a specified network, supporting pagination. The
 Successful response (`TokenMappingResult`)
 
 - `tokenMappings`: Array of token mappings (TokenMapping) with details:
-- `block_num`: Block number where the event was recorded.
-- `block_pos`: Position of the log within the block.
-- `block_timestamp`: Timestamp of the block.
-- `tx_hash`: Hash of the transaction that triggered the event.
-- `origin_network`: Network ID where the original token resides.
-- `origin_token_address`: Address of the original token on the origin network.
-- `wrapped_token_address`: Address of the deployed wrapped token on the destination network.
-- `metadata`: Additional encoded information.
+  - `block_num`: Block number where the event was recorded.
+  - `block_pos`: Position of the log within the block.
+  - `block_timestamp`: Timestamp of the block.
+  - `tx_hash`: Hash of the transaction that triggered the event.
+  - `origin_network`: Network ID where the original token resides.
+  - `origin_token_address`: Address of the original token on the origin network.
+  - `wrapped_token_address`: Address of the deployed wrapped token on the destination network.
+  - `metadata`: Additional encoded information.
 - `count`: Total number of token mappings available.
 
 ```json
