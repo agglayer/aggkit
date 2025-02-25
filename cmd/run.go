@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
+	"strings"
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
@@ -145,7 +146,8 @@ func createAggSender(
 	l2Syncer *bridgesync.BridgeSync,
 	l2Client *ethclient.Client) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
-	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AggLayerURL)
+	aggLayerURL := strings.TrimPrefix(cfg.AggLayerURL, "http://")
+	agglayerClient, err := agglayer.NewAgglayerGRPCClient(aggLayerURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}

@@ -21,97 +21,96 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
-	AgglayerConfigurationService_GetEpochConfiguration_FullMethodName = "/proto.AgglayerConfigurationService/GetEpochConfiguration"
+	ConfigurationService_GetEpochConfiguration_FullMethodName = "/agglayer.node.v1.ConfigurationService/GetEpochConfiguration"
 )
 
-// AgglayerConfigurationServiceClient is the client API for AgglayerConfigurationService service.
+// ConfigurationServiceClient is the client API for ConfigurationService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // Service for querying the current epoch configuration.
-type AgglayerConfigurationServiceClient interface {
+type ConfigurationServiceClient interface {
 	// Method used to get the current epoch configuration.
 	GetEpochConfiguration(ctx context.Context, in *GetEpochConfigurationRequest, opts ...grpc.CallOption) (*GetEpochConfigurationResponse, error)
 }
 
-type agglayerConfigurationServiceClient struct {
+type configurationServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewAgglayerConfigurationServiceClient(cc grpc.ClientConnInterface) AgglayerConfigurationServiceClient {
-	return &agglayerConfigurationServiceClient{cc}
+func NewConfigurationServiceClient(cc grpc.ClientConnInterface) ConfigurationServiceClient {
+	return &configurationServiceClient{cc}
 }
 
-func (c *agglayerConfigurationServiceClient) GetEpochConfiguration(ctx context.Context, in *GetEpochConfigurationRequest, opts ...grpc.CallOption) (*GetEpochConfigurationResponse, error) {
+func (c *configurationServiceClient) GetEpochConfiguration(ctx context.Context, in *GetEpochConfigurationRequest, opts ...grpc.CallOption) (*GetEpochConfigurationResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(GetEpochConfigurationResponse)
-	err := c.cc.Invoke(ctx, AgglayerConfigurationService_GetEpochConfiguration_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, ConfigurationService_GetEpochConfiguration_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// AgglayerConfigurationServiceServer is the server API for AgglayerConfigurationService service.
-// All implementations must embed UnimplementedAgglayerConfigurationServiceServer
+// ConfigurationServiceServer is the server API for ConfigurationService service.
+// All implementations must embed UnimplementedConfigurationServiceServer
 // for forward compatibility
 //
 // Service for querying the current epoch configuration.
-type AgglayerConfigurationServiceServer interface {
+type ConfigurationServiceServer interface {
 	// Method used to get the current epoch configuration.
 	GetEpochConfiguration(context.Context, *GetEpochConfigurationRequest) (*GetEpochConfigurationResponse, error)
-	mustEmbedUnimplementedAgglayerConfigurationServiceServer()
+	mustEmbedUnimplementedConfigurationServiceServer()
 }
 
-// UnimplementedAgglayerConfigurationServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedAgglayerConfigurationServiceServer struct {
+// UnimplementedConfigurationServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedConfigurationServiceServer struct {
 }
 
-func (UnimplementedAgglayerConfigurationServiceServer) GetEpochConfiguration(context.Context, *GetEpochConfigurationRequest) (*GetEpochConfigurationResponse, error) {
+func (UnimplementedConfigurationServiceServer) GetEpochConfiguration(context.Context, *GetEpochConfigurationRequest) (*GetEpochConfigurationResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method GetEpochConfiguration not implemented")
 }
-func (UnimplementedAgglayerConfigurationServiceServer) mustEmbedUnimplementedAgglayerConfigurationServiceServer() {
-}
+func (UnimplementedConfigurationServiceServer) mustEmbedUnimplementedConfigurationServiceServer() {}
 
-// UnsafeAgglayerConfigurationServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to AgglayerConfigurationServiceServer will
+// UnsafeConfigurationServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ConfigurationServiceServer will
 // result in compilation errors.
-type UnsafeAgglayerConfigurationServiceServer interface {
-	mustEmbedUnimplementedAgglayerConfigurationServiceServer()
+type UnsafeConfigurationServiceServer interface {
+	mustEmbedUnimplementedConfigurationServiceServer()
 }
 
-func RegisterAgglayerConfigurationServiceServer(s grpc.ServiceRegistrar, srv AgglayerConfigurationServiceServer) {
-	s.RegisterService(&AgglayerConfigurationService_ServiceDesc, srv)
+func RegisterConfigurationServiceServer(s grpc.ServiceRegistrar, srv ConfigurationServiceServer) {
+	s.RegisterService(&ConfigurationService_ServiceDesc, srv)
 }
 
-func _AgglayerConfigurationService_GetEpochConfiguration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _ConfigurationService_GetEpochConfiguration_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(GetEpochConfigurationRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AgglayerConfigurationServiceServer).GetEpochConfiguration(ctx, in)
+		return srv.(ConfigurationServiceServer).GetEpochConfiguration(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AgglayerConfigurationService_GetEpochConfiguration_FullMethodName,
+		FullMethod: ConfigurationService_GetEpochConfiguration_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AgglayerConfigurationServiceServer).GetEpochConfiguration(ctx, req.(*GetEpochConfigurationRequest))
+		return srv.(ConfigurationServiceServer).GetEpochConfiguration(ctx, req.(*GetEpochConfigurationRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// AgglayerConfigurationService_ServiceDesc is the grpc.ServiceDesc for AgglayerConfigurationService service.
+// ConfigurationService_ServiceDesc is the grpc.ServiceDesc for ConfigurationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var AgglayerConfigurationService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "proto.AgglayerConfigurationService",
-	HandlerType: (*AgglayerConfigurationServiceServer)(nil),
+var ConfigurationService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "agglayer.node.v1.ConfigurationService",
+	HandlerType: (*ConfigurationServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "GetEpochConfiguration",
-			Handler:    _AgglayerConfigurationService_GetEpochConfiguration_Handler,
+			Handler:    _ConfigurationService_GetEpochConfiguration_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

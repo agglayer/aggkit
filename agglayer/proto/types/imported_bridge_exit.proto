@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package proto.types;
+package agglayer.protocol.types.v1;
 option go_package = "github.com/agglayer/aggkit/agglayer/proto/types;types";
 import "types/bytes.proto";
 import "types/bridge_exit.proto";

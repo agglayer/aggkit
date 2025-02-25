@@ -1,14 +1,14 @@
-// Proto definition for Agglayer Network State Service
+// Proto definition for Agglayer Node State Service
 
 syntax = "proto3";
 
-package proto;
+package agglayer.node.v1;
 option go_package = "github.com/agglayer/aggkit/agglayer/proto/node;node";
 import "types/certificate_header.proto";
 import "types/certificate.proto";
 
-// Service for querying agglayer network state.
-service AgglayerNetworkStateService {
+// Service for querying agglayer node state.
+service NodeStateService {
   // Method used to get a CertificateHeader for a particular CertificateId.
   rpc GetCertificateHeader(GetCertificateHeaderRequest) returns (GetCertificateHeaderResponse);
 
@@ -25,13 +25,13 @@ service AgglayerNetworkStateService {
 // Request to get a CertificateHeader for a particular CertificateId.
 message GetCertificateHeaderRequest {
   // The certificate identifier.
-  types.CertificateId certificate_id = 1;
+  protocol.types.v1.CertificateId certificate_id = 1;
 }
 
 // Response to the CertificateHeader request.
 message GetCertificateHeaderResponse {
   // The certificate header.
-  types.CertificateHeader certificate_header = 1;
+  protocol.types.v1.CertificateHeader certificate_header = 1;
 }
 
 // Request to get the latest known certificate header for a network.
@@ -43,7 +43,7 @@ message GetLatestKnownCertificateHeaderRequest {
 // Response to the latest known certificate header request.
 message GetLatestKnownCertificateHeaderResponse {
   // The latest known certificate header.
-  types.CertificateHeader certificate_header = 1;
+  protocol.types.v1.CertificateHeader certificate_header = 1;
 }
 
 // Request to get the latest settled certificate header for a network.
@@ -55,7 +55,7 @@ message GetLatestSettledCertificateHeaderRequest {
 // Response to the latest settled certificate header request.
 message GetLatestSettledCertificateHeaderResponse {
   // The latest settled certificate header.
-  types.CertificateHeader certificate_header = 1;
+  protocol.types.v1.CertificateHeader certificate_header = 1;
 }
 
 // Request to get the latest pending certificate header for a network.
@@ -67,5 +67,5 @@ message GetLatestPendingCertificateHeaderRequest {
 // Response to the latest pending certificate header request.
 message GetLatestPendingCertificateHeaderResponse {
   // The latest pending certificate header.
-  types.CertificateHeader certificate_header = 1;
+  protocol.types.v1.CertificateHeader certificate_header = 1;
 }

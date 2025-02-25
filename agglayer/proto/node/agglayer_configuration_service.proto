@@ -2,12 +2,12 @@
 
 syntax = "proto3";
 
-package proto;
+package agglayer.node.v1;
 option go_package = "github.com/agglayer/aggkit/agglayer/proto/node;node";
 import "types/epoch_configuration.proto";
 
 // Service for querying the current epoch configuration.
-service AgglayerConfigurationService {
+service ConfigurationService {
   // Method used to get the current epoch configuration.
   rpc GetEpochConfiguration(GetEpochConfigurationRequest) returns (GetEpochConfigurationResponse);
 }
@@ -18,5 +18,5 @@ message GetEpochConfigurationRequest {}
 // Response to the current epoch configuration request.
 message GetEpochConfigurationResponse {
   // The epoch configuration.
-  types.EpochConfiguration epoch_configuration = 1;
+  protocol.types.v1.EpochConfiguration epoch_configuration = 1;
 }

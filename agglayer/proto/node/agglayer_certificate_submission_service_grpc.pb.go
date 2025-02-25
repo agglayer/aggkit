@@ -21,97 +21,97 @@ import (
 const _ = grpc.SupportPackageIsVersion8
 
 const (
-	AgglayerCertificateSubmissionService_SubmitCertificate_FullMethodName = "/proto.AgglayerCertificateSubmissionService/SubmitCertificate"
+	CertificateSubmissionService_SubmitCertificate_FullMethodName = "/agglayer.node.v1.CertificateSubmissionService/SubmitCertificate"
 )
 
-// AgglayerCertificateSubmissionServiceClient is the client API for AgglayerCertificateSubmissionService service.
+// CertificateSubmissionServiceClient is the client API for CertificateSubmissionService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 //
 // Service for submitting certificate to an agglayer node.
-type AgglayerCertificateSubmissionServiceClient interface {
+type CertificateSubmissionServiceClient interface {
 	// Method used to submit a certificate.
 	SubmitCertificate(ctx context.Context, in *SubmitCertificateRequest, opts ...grpc.CallOption) (*SubmitCertificateResponse, error)
 }
 
-type agglayerCertificateSubmissionServiceClient struct {
+type certificateSubmissionServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewAgglayerCertificateSubmissionServiceClient(cc grpc.ClientConnInterface) AgglayerCertificateSubmissionServiceClient {
-	return &agglayerCertificateSubmissionServiceClient{cc}
+func NewCertificateSubmissionServiceClient(cc grpc.ClientConnInterface) CertificateSubmissionServiceClient {
+	return &certificateSubmissionServiceClient{cc}
 }
 
-func (c *agglayerCertificateSubmissionServiceClient) SubmitCertificate(ctx context.Context, in *SubmitCertificateRequest, opts ...grpc.CallOption) (*SubmitCertificateResponse, error) {
+func (c *certificateSubmissionServiceClient) SubmitCertificate(ctx context.Context, in *SubmitCertificateRequest, opts ...grpc.CallOption) (*SubmitCertificateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SubmitCertificateResponse)
-	err := c.cc.Invoke(ctx, AgglayerCertificateSubmissionService_SubmitCertificate_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, CertificateSubmissionService_SubmitCertificate_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// AgglayerCertificateSubmissionServiceServer is the server API for AgglayerCertificateSubmissionService service.
-// All implementations must embed UnimplementedAgglayerCertificateSubmissionServiceServer
+// CertificateSubmissionServiceServer is the server API for CertificateSubmissionService service.
+// All implementations must embed UnimplementedCertificateSubmissionServiceServer
 // for forward compatibility
 //
 // Service for submitting certificate to an agglayer node.
-type AgglayerCertificateSubmissionServiceServer interface {
+type CertificateSubmissionServiceServer interface {
 	// Method used to submit a certificate.
 	SubmitCertificate(context.Context, *SubmitCertificateRequest) (*SubmitCertificateResponse, error)
-	mustEmbedUnimplementedAgglayerCertificateSubmissionServiceServer()
+	mustEmbedUnimplementedCertificateSubmissionServiceServer()
 }
 
-// UnimplementedAgglayerCertificateSubmissionServiceServer must be embedded to have forward compatible implementations.
-type UnimplementedAgglayerCertificateSubmissionServiceServer struct {
+// UnimplementedCertificateSubmissionServiceServer must be embedded to have forward compatible implementations.
+type UnimplementedCertificateSubmissionServiceServer struct {
 }
 
-func (UnimplementedAgglayerCertificateSubmissionServiceServer) SubmitCertificate(context.Context, *SubmitCertificateRequest) (*SubmitCertificateResponse, error) {
+func (UnimplementedCertificateSubmissionServiceServer) SubmitCertificate(context.Context, *SubmitCertificateRequest) (*SubmitCertificateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SubmitCertificate not implemented")
 }
-func (UnimplementedAgglayerCertificateSubmissionServiceServer) mustEmbedUnimplementedAgglayerCertificateSubmissionServiceServer() {
+func (UnimplementedCertificateSubmissionServiceServer) mustEmbedUnimplementedCertificateSubmissionServiceServer() {
 }
 
-// UnsafeAgglayerCertificateSubmissionServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to AgglayerCertificateSubmissionServiceServer will
+// UnsafeCertificateSubmissionServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to CertificateSubmissionServiceServer will
 // result in compilation errors.
-type UnsafeAgglayerCertificateSubmissionServiceServer interface {
-	mustEmbedUnimplementedAgglayerCertificateSubmissionServiceServer()
+type UnsafeCertificateSubmissionServiceServer interface {
+	mustEmbedUnimplementedCertificateSubmissionServiceServer()
 }
 
-func RegisterAgglayerCertificateSubmissionServiceServer(s grpc.ServiceRegistrar, srv AgglayerCertificateSubmissionServiceServer) {
-	s.RegisterService(&AgglayerCertificateSubmissionService_ServiceDesc, srv)
+func RegisterCertificateSubmissionServiceServer(s grpc.ServiceRegistrar, srv CertificateSubmissionServiceServer) {
+	s.RegisterService(&CertificateSubmissionService_ServiceDesc, srv)
 }
 
-func _AgglayerCertificateSubmissionService_SubmitCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _CertificateSubmissionService_SubmitCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SubmitCertificateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AgglayerCertificateSubmissionServiceServer).SubmitCertificate(ctx, in)
+		return srv.(CertificateSubmissionServiceServer).SubmitCertificate(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: AgglayerCertificateSubmissionService_SubmitCertificate_FullMethodName,
+		FullMethod: CertificateSubmissionService_SubmitCertificate_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AgglayerCertificateSubmissionServiceServer).SubmitCertificate(ctx, req.(*SubmitCertificateRequest))
+		return srv.(CertificateSubmissionServiceServer).SubmitCertificate(ctx, req.(*SubmitCertificateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// AgglayerCertificateSubmissionService_ServiceDesc is the grpc.ServiceDesc for AgglayerCertificateSubmissionService service.
+// CertificateSubmissionService_ServiceDesc is the grpc.ServiceDesc for CertificateSubmissionService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var AgglayerCertificateSubmissionService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "proto.AgglayerCertificateSubmissionService",
-	HandlerType: (*AgglayerCertificateSubmissionServiceServer)(nil),
+var CertificateSubmissionService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "agglayer.node.v1.CertificateSubmissionService",
+	HandlerType: (*CertificateSubmissionServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "SubmitCertificate",
-			Handler:    _AgglayerCertificateSubmissionService_SubmitCertificate_Handler,
+			Handler:    _CertificateSubmissionService_SubmitCertificate_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

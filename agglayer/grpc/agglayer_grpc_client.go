@@ -12,9 +12,9 @@ import (
 )
 
 type AgglayerGRPCClient struct {
-	cfgService          node.AgglayerConfigurationServiceClient
-	networkStateService node.AgglayerNetworkStateServiceClient
-	submissionService   node.AgglayerCertificateSubmissionServiceClient
+	networkStateService node.NodeStateServiceClient
+	cfgService          node.ConfigurationServiceClient
+	submissionService   node.CertificateSubmissionServiceClient
 }
 
 // NewAggchainProofClient initializes a new AggchainProof instance
@@ -23,10 +23,11 @@ func NewAgglayerGRPCClient(serverAddr string) (*AgglayerGRPCClient, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return &AgglayerGRPCClient{
-		cfgService:          node.NewAgglayerConfigurationServiceClient(grpcClient.Conn()),
-		networkStateService: node.NewAgglayerNetworkStateServiceClient(grpcClient.Conn()),
-		submissionService:   node.NewAgglayerCertificateSubmissionServiceClient(grpcClient.Conn()),
+		networkStateService: node.NewNodeStateServiceClient(grpcClient.Conn()),
+		cfgService:          node.NewConfigurationServiceClient(grpcClient.Conn()),
+		submissionService:   node.NewCertificateSubmissionServiceClient(grpcClient.Conn()),
 	}, nil
 }
 

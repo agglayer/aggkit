@@ -2,12 +2,12 @@
 
 syntax = "proto3";
 
-package proto;
+package agglayer.node.v1;
 option go_package = "github.com/agglayer/aggkit/agglayer/proto/node;node";
 import "types/certificate.proto";
 
 // Service for submitting certificate to an agglayer node.
-service AgglayerCertificateSubmissionService {
+service CertificateSubmissionService {
   // Method used to submit a certificate.
   rpc SubmitCertificate(SubmitCertificateRequest)
       returns (SubmitCertificateResponse);
@@ -16,13 +16,13 @@ service AgglayerCertificateSubmissionService {
 // Type used to submit a certificate.
 message SubmitCertificateRequest {
   // The certificate to submit.
-  types.Certificate certificate = 1;
+  protocol.types.v1.Certificate certificate = 1;
 }
 
 // Type used as response to a certificate submission.
 message SubmitCertificateResponse {
   // The certificate id of the submitted certificate.
-  types.CertificateId certificate_id = 1;
+  protocol.types.v1.CertificateId certificate_id = 1;
 }
 
 // The kind of error that occurred and that are reported by the service.
