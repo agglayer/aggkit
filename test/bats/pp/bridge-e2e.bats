@@ -136,6 +136,12 @@ setup() {
     run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
+    echo "------- bridge_getClaims API testcase"
+    local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
+    run get_claims $aggkit_node_url $l1_rpc_network_id
+    assert_success
+    echo "------- bridge_getClaims API testcase passed"
+
     # Validate that the native token of receiver on L2 has increased by the bridge tokens amount
     run verify_balance "$l2_rpc_url" "$native_token_addr" "$receiver" "$initial_receiver_balance" "$tokens_amount"
     assert_success

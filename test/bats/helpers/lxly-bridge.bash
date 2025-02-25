@@ -313,3 +313,47 @@ function wait_for_expected_token() {
         sleep "$poll_frequency"
     done
 }
+
+function get_claims() {
+    local aggkit_node_url=$1
+    local l1_rpc_network_id=$2
+
+    claims_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getClaims" "$l1_rpc_network_id")
+
+    echo "------ claims_result ------"
+    echo "$claims_result"
+
+    count=$(jq -r '.count' <<< "$claims_result")
+    if [ "$count" -ne 1 ]; then
+        echo "Assertion failed. 'count' should be 1. Actual: $count"
+        exit 1
+    fi
+
+    required_fields=(
+        "block_num"
+        "block_timestamp"
+        "tx_hash"
+        "global_index"
+        "origin_address"
+        "origin_network"
+        "destination_address"
+        "destination_network"
+        "amount"
+        "from_address"
+    )
+
+    # Check that all required fields exist (and are not null) in claims[0]
+    for field in "${required_fields[@]}"; do
+        value=$(jq -r --arg fld "$field" '.claims[0][$fld]' <<< "$claims_result")
+        if [ "$value" = "null" ] || [ -z "$value" ]; then
+            echo "Assertion failed. Missing or null '$field' in the first claim object."
+            exit 1
+        fi
+    done
+
+    origin_network=$(jq -r '.claims[0].origin_network' <<< "$claims_result")
+    if [ "$origin_network" -ne 0 ]; then
+        echo "Assertion failed. 'origin_network' should be 0. Actual: $origin_network"
+        exit 1
+    fi
+}
