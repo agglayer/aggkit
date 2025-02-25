@@ -55,7 +55,7 @@ func TestUnmarshalWeb3SignerConfig(t *testing.T) {
 	}
 	err = viper.Unmarshal(&cfg, decodeHooks...)
 	require.NoError(t, err)
-	require.Equal(t, "web3signer", cfg.Signer.Method)
+	require.Equal(t, MethodWeb3Signer, cfg.Signer.Method)
 	require.Equal(t, "http://localhost:8545", cfg.Signer.Config["url"])
 	require.Equal(t, "0x1234567890abcdef", cfg.Signer.Config["address"])
 }
@@ -74,6 +74,6 @@ func TestUnmarshalEmptyConfig(t *testing.T) {
 	}
 	err = viper.Unmarshal(&cfg, decodeHooks...)
 	require.NoError(t, err)
-	require.Equal(t, "", cfg.Signer.Method)
+	require.Equal(t, "", cfg.Signer.Method.String())
 	require.Equal(t, 0, len(cfg.Signer.Config))
 }
