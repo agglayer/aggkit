@@ -10,9 +10,8 @@ import (
 )
 
 const (
-	MethodWeb3Signer = "web3signer"
-	FieldAddress     = "address"
-	FieldURL         = "url"
+	FieldAddress = "address"
+	FieldURL     = "url"
 )
 
 type Web3SignerClienter interface {
@@ -124,9 +123,9 @@ func (e *Web3SignerSign) PublicAddress() common.Address {
 }
 
 func (e *Web3SignerSign) logPrefix() string {
-	return fmt.Sprintf("singer: %s[%s]: ", MethodWeb3Signer, e.name)
+	return fmt.Sprintf("signer: %s[%s]: ", MethodWeb3Signer, e.name)
 }
 
 func (e *Web3SignerSign) String() string {
-	return fmt.Sprintf("singer: %s[%s]: pubAddr: %s", MethodWeb3Signer, e.name, e.address.String())
+	return fmt.Sprintf("signer: %s[%s]: pubAddr: %s", MethodWeb3Signer, e.name, e.address.String())
 }

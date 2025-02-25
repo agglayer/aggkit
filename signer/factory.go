@@ -7,6 +7,17 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 )
 
+type SignMethod string
+
+var (
+	MethodLocal      SignMethod = "local"
+	MethodWeb3Signer SignMethod = "web3signer"
+)
+
+func (m SignMethod) String() string {
+	return string(m)
+}
+
 var (
 	ErrUnknownSignerMethod = fmt.Errorf("unknown signer method")
 )

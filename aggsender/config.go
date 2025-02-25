@@ -70,7 +70,7 @@ func (c Config) CheckCertConfigBriefString() string {
 func (c Config) String() string {
 	return "StoragePath: " + c.StoragePath + "\n" +
 		"AggLayerURL: " + c.AggLayerURL + "\n" +
-		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method + "\n" +
+		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
 		"URLRPCL2: " + c.URLRPCL2 + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +

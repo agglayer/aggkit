@@ -13,13 +13,11 @@ import (
 )
 
 const (
-	MethodLocal   = "local"
 	FieldPath     = "path"
 	FieldPassword = "password"
 )
 
-// // AggsenderPrivateKey is the private key which is used to sign certificates
-// AggsenderPrivateKey types.KeystoreFileConfig `mapstructure:"AggsenderPrivateKey"`
+// LocalSign is a signer that uses a local keystore file
 type LocalSign struct {
 	name          string
 	logger        commontypes.Logger
@@ -39,7 +37,7 @@ func NewLocalSignerConfig(path, pass string) SignerConfig {
 	}
 }
 
-// NewLocalConfig creates a LocalSignerConfig (specific config) from a SignerConfig
+// NewLocalConfig creates a KeystoreFileConfig (specific config) from a SignerConfig
 func NewLocalConfig(cfg SignerConfig) (types.KeystoreFileConfig, error) {
 	var res types.KeystoreFileConfig
 	// If there are no field in the config, return empty config
@@ -113,10 +111,11 @@ func (e *LocalSign) SignHash(ctx context.Context, hash common.Hash) ([]byte, err
 func (e *LocalSign) PublicAddress() common.Address {
 	return e.publicAddress
 }
+
 func (e *LocalSign) String() string {
-	return fmt.Sprintf("singer: %s path:%s, pubAddr: %s", e.logPrefix(), e.file, e.publicAddress.String())
+	return fmt.Sprintf("signer: %s path:%s, pubAddr: %s", e.logPrefix(), e.file, e.publicAddress.String())
 }
 
 func (e *LocalSign) logPrefix() string {
-	return fmt.Sprintf("singer:%s[%s]: ", MethodLocal, e.name)
+	return fmt.Sprintf("signer:%s[%s]: ", MethodLocal, e.name)
 }

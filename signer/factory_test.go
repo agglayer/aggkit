@@ -86,7 +86,7 @@ func TestNewSigner(t *testing.T) {
 		require.Nil(t, sut)
 	})
 
-	t.Run("wrong web3singer config", func(t *testing.T) {
+	t.Run("wrong web3signer config", func(t *testing.T) {
 		sut, err := NewSigner("test", logger, ctx, SignerConfig{
 			Method: MethodWeb3Signer,
 			Config: map[string]interface{}{
@@ -97,7 +97,7 @@ func TestNewSigner(t *testing.T) {
 		require.Nil(t, sut)
 	})
 
-	t.Run("wrong web3singer config2", func(t *testing.T) {
+	t.Run("wrong web3signer config2", func(t *testing.T) {
 		sut, err := NewSigner("test", logger, ctx, SignerConfig{
 			Method: MethodWeb3Signer,
 			Config: map[string]interface{}{
@@ -109,7 +109,7 @@ func TestNewSigner(t *testing.T) {
 		require.Nil(t, sut)
 	})
 
-	t.Run("wrong web3singer config3", func(t *testing.T) {
+	t.Run("wrong web3signer config3", func(t *testing.T) {
 		sut, err := NewSigner("test", logger, ctx, SignerConfig{
 			Method: MethodWeb3Signer,
 			Config: map[string]interface{}{
@@ -122,7 +122,7 @@ func TestNewSigner(t *testing.T) {
 		require.Nil(t, sut)
 	})
 
-	t.Run("wrong web3singer missing URL", func(t *testing.T) {
+	t.Run("wrong web3signer missing URL", func(t *testing.T) {
 		sut, err := NewSigner("test", logger, ctx, SignerConfig{
 			Method: MethodWeb3Signer,
 			Config: map[string]interface{}{
@@ -134,7 +134,7 @@ func TestNewSigner(t *testing.T) {
 		require.Nil(t, sut)
 	})
 
-	t.Run("web3singer config", func(t *testing.T) {
+	t.Run("web3signer config", func(t *testing.T) {
 		sut, err := NewSigner("test", logger, ctx, SignerConfig{
 			Method: MethodWeb3Signer,
 			Config: map[string]interface{}{
