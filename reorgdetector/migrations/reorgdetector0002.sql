@@ -7,6 +7,8 @@ CREATE TABLE reorg_event (
     from_block  BIGINT NOT NULL,
     to_block    BIGINT NOT NULL,
     subscriber_id  VARCHAR,
+    current_hash VARCHAR,
+    tracked_hash VARCHAR,
     version string,
     extra_data  VARCHAR
 )

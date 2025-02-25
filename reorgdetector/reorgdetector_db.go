@@ -97,7 +97,7 @@ type eventReorgRow struct {
 	DetectedAt   int64  `meddler:"detected_at"`
 	FromBlock    uint64 `meddler:"from_block"`
 	ToBlock      uint64 `meddler:"to_block"`
-	SubscriberID string `meddler:"subscriber"`
+	SubscriberID string `meddler:"subscriber_id"`
 	TrackedHash  string `meddler:"tracked_hash"`
 	CurrentHash  string `meddler:"current_hash"`
 	Version      string `meddler:"version"`
