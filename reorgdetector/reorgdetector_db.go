@@ -1,10 +1,14 @@
 package reorgdetector
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/db"
+	common "github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
 
@@ -77,4 +81,43 @@ func (rd *ReorgDetector) removeTrackedBlockRange(id string, fromBlock, toBlock u
 		fromBlock, toBlock, id,
 	)
 	return err
+}
+
+type ReorgEvent struct {
+	DetectedAt   time.Time
+	FromBlock    uint64
+	ToBlock      uint64
+	SubscriberID string
+	TrackedHash  common.Hash
+	CurrentHash  common.Hash
+	ExtraData    interface{}
+}
+
+type eventReorgRow struct {
+	DetectedAt   int64  `meddler:"detected_at"`
+	FromBlock    uint64 `meddler:"from_block"`
+	ToBlock      uint64 `meddler:"to_block"`
+	SubscriberID string `meddler:"subscriber"`
+	TrackedHash  string `meddler:"tracked_hash"`
+	CurrentHash  string `meddler:"current_hash"`
+	Version      string `meddler:"version"`
+	ExtraData    string `meddler:"extra_data"`
+}
+
+func (rd *ReorgDetector) insertReorgEvent(event ReorgEvent) error {
+	extra, err := json.Marshal(event.ExtraData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal extra data: %w", err)
+	}
+	row := eventReorgRow{
+		DetectedAt:   event.DetectedAt.Unix(),
+		FromBlock:    event.FromBlock,
+		ToBlock:      event.ToBlock,
+		SubscriberID: event.SubscriberID,
+		TrackedHash:  event.TrackedHash.String(),
+		CurrentHash:  event.CurrentHash.String(),
+		Version:      aggkit.GetVersion().Brief(),
+		ExtraData:    string(extra),
+	}
+	return meddler.Insert(rd.db, "reorg_event", &row)
 }

@@ -176,7 +176,7 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 	)
 
 	subscriberIDs := rd.getSubscriberIDs()
-
+	startTime := time.Now()
 	for _, id := range subscriberIDs {
 		id := id
 
@@ -223,10 +223,27 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 
 					continue
 				}
-
+				event := ReorgEvent{
+					DetectedAt:   startTime,
+					FromBlock:    hdr.Num,
+					ToBlock:      headers[len(headers)-1].Num,
+					SubscriberID: id,
+					CurrentHash:  currentHeader.Hash(),
+					TrackedHash:  hdr.Hash,
+					ExtraData: struct {
+						Network        string
+						BlockTimestamp uint64
+					}{
+						Network:        rd.network.String(),
+						BlockTimestamp: currentHeader.Time,
+					},
+				}
+				if err := rd.insertReorgEvent(event); err != nil {
+					return fmt.Errorf("failed to insert reorg event: %w", err)
+				}
+				rd.log.Warnf("Reorg detected for subscriber %s between blocks %d and %d", id, hdr.Num, headers[len(headers)-1].Num)
 				// Notify the subscriber about the reorg
 				rd.notifySubscriber(id, hdr)
-
 				// Remove the reorged block and all the following blocks from DB
 				if err := rd.removeTrackedBlockRange(id, hdr.Num, headers[len(headers)-1].Num); err != nil {
 					return fmt.Errorf("error removing blocks from DB for subscriber %s between blocks %d and %d: %w",
