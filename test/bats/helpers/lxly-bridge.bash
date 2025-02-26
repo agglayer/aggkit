@@ -147,7 +147,6 @@ function claim() {
                 return 1
             fi
 
-            log "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
             cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr "$claim_sig" "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
         fi
 
@@ -181,23 +180,22 @@ function claim_tx_hash() {
         current_time=$(date +%s)
         elapsed_time=$((current_time - start_time))
         if ((current_time > end_time)); then
-            log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time)"
+            log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time [s])"
             exit 1
         fi
 
         log "curl -s \"$bridge_service_url/bridges/$destination_addr?limit=100&offset=0\""
         curl -s "$bridge_service_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
-        log "deposit_count=$deposit_count bridge_deposit_file=$(cat "$bridge_deposit_file")"
         if [[ $deposit_count == 0 ]]; then
-            log "❌ the tx_hash [$tx_hash] not found (elapsed: $elapsed_time / timeout:$timeout)"
+            log "❌ the tx_hash [$tx_hash] not found (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
             sleep "$claim_frequency"
             continue
         fi
 
         local ready_for_claim=$(jq -r '.[0].ready_for_claim' $bridge_deposit_file)
         if [ $ready_for_claim != "true" ]; then
-            log "⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time / timeout:$timeout)"
+            log "⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
             sleep "$claim_frequency"
             continue
         else
@@ -206,7 +204,7 @@ function claim_tx_hash() {
     done
 
     # Deposit is ready for claim
-    log "🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time)"
+    log "🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time [s])"
     local curr_claim_tx_hash=$(jq '.[0].claim_tx_hash' $bridge_deposit_file)
     if [ $curr_claim_tx_hash != "\"\"" ]; then
         log "🎉 the tx_hash $tx_hash is already claimed"
@@ -216,7 +214,7 @@ function claim_tx_hash() {
     local curr_network_id=$(jq '.[0].network_id' $bridge_deposit_file)
     readonly current_deposit=$(mktemp)
     jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
-    log "Deposit info: $(cat $current_deposit)"
+    log "🎉 Found deposit info: $(cat $current_deposit)"
     readonly current_proof=$(mktemp)
     log "🔍 requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id"
     request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_service_url" "$current_proof"
@@ -236,7 +234,7 @@ function claim_tx_hash() {
             current_time=$(date +%s)
             elapsed_time=$((current_time - start_time))
             if ((current_time > end_time)); then
-                log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time)"
+                log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time [s])"
                 exit 1
             fi
             sleep $claim_frequency
@@ -318,7 +316,7 @@ function request_claim() {
 function check_claim_revert_code() {
     local file_curl_response="$1"
     # 0x646cf558 -> AlreadyClaimed()
-    log "check revert"
+    log "check revert $file_curl_response"
     cat $file_curl_response
     cat $file_curl_response | grep "0x646cf558" >/dev/null
     if [ $? -eq 0 ]; then
