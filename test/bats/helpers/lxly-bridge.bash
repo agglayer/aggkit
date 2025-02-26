@@ -151,14 +151,14 @@ function claim_tx_hash() {
     local tx_hash="$2"
     local destination_addr="$3"
     local destination_rpc_url="$4"
-    local bridge_merkle_proof_url="$5"
+    local bridge_service_url="$5"
 
     readonly bridge_deposit_file=$(mktemp)
     local ready_for_claim="false"
     local start_time=$(date +%s)
     local current_time=$(date +%s)
     local end_time=$((current_time + timeout))
-    if [ -z $bridge_merkle_proof_url ]; then
+    if [ -z $bridge_service_url ]; then
         log "❌ claim_tx_hash bad params"
         log "❌ claim_tx_hash: $*"
         exit 1
@@ -172,10 +172,10 @@ function claim_tx_hash() {
             exit 1
         fi
 
-        log "curl -s \"$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0\""
-        curl -s "$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
+        log "curl -s \"$bridge_service_url/bridges/$destination_addr?limit=100&offset=0\""
+        curl -s "$bridge_service_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
-        log "deposit_count=$deposit_count bridge_deposit_file=$bridge_deposit_file"
+        log "deposit_count=$deposit_count bridge_deposit_file=$(cat "$bridge_deposit_file")"
         if [[ $deposit_count == 0 ]]; then
             log "❌ the tx_hash [$tx_hash] not found (elapsed: $elapsed_time / timeout:$timeout)"
             sleep "$claim_frequency"
@@ -191,6 +191,7 @@ function claim_tx_hash() {
             break
         fi
     done
+
     # Deposit is ready for claim
     log "🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time)"
     local curr_claim_tx_hash=$(jq '.[0].claim_tx_hash' $bridge_deposit_file)
@@ -204,14 +205,14 @@ function claim_tx_hash() {
     jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
     log "Deposit info: $(cat $current_deposit)"
     readonly current_proof=$(mktemp)
-    log "requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id"
-    request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_merkle_proof_url" "$current_proof"
+    log "🔍 requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id"
+    request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_service_url" "$current_proof"
 
     while true; do
         log "Requesting claim for $tx_hash..."
         request_claim $current_deposit $current_proof $destination_rpc_url
         request_result=$status
-        log "ℹ️ request_claim returns $request_result"
+        log "💡 request_claim returns $request_result"
         if [ $request_result -eq 0 ]; then
             log "🎉 Claim successful"
             break
@@ -248,9 +249,9 @@ function claim_tx_hash() {
 function request_merkle_proof() {
     local curr_deposit_cnt="$1"
     local curr_network_id="$2"
-    local bridge_merkle_proof_url="$3"
+    local bridge_service_url="$3"
     local result_proof_file="$4"
-    curl -s "$bridge_merkle_proof_url/merkle-proof?deposit_cnt=$curr_deposit_cnt&net_id=$curr_network_id" | jq '.' >$result_proof_file
+    curl -s "$bridge_service_url/merkle-proof?deposit_cnt=$curr_deposit_cnt&net_id=$curr_network_id" | jq '.' >$result_proof_file
 }
 
 # This function is used to claim a concrete tx hash
@@ -303,22 +304,21 @@ function request_claim() {
 }
 
 function check_claim_revert_code() {
-    local file_curl_reponse="$1"
+    local file_curl_response="$1"
     # 0x646cf558 -> AlreadyClaimed()
     log "check revert"
-    cat $file_curl_reponse
-    cat $file_curl_reponse | grep "0x646cf558" >/dev/null
+    cat $file_curl_response
+    cat $file_curl_response | grep "0x646cf558" >/dev/null
     if [ $? -eq 0 ]; then
         log "🎉 Deposit is already claimed (revert code 0x646cf558)"
         return 0
     fi
-    cat $file_curl_reponse | grep "0x002f6fad" >/dev/null
+    cat $file_curl_response | grep "0x002f6fad" >/dev/null
     if [ $? -eq 0 ]; then
         log "🎉 GlobalExitRootInvalid()(revert code 0x002f6fad)"
         return 2
     fi
-    log "❌ Claim failed"
-    log $file_curl_reponse
+    log "❌ Claim failed. response: $(cat $file_curl_response)"
     return 1
 }
 
