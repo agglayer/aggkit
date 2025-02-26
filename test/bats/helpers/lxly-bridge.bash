@@ -50,7 +50,7 @@ function bridge_asset() {
     log "🚀 Bridging $amount wei → $destination_addr [network: $destination_net]"
 
     if [[ $dry_run == "true" ]]; then
-        log "📝 Dry run: showing calldata only"
+        log "📝 Dry run bridge asset (showing calldata only)"
         cast calldata "$bridge_sig" "$destination_net" "$destination_addr" "$amount" "$token_addr" "$is_forced" "$meta_bytes"
     else
         local response
@@ -146,7 +146,6 @@ function claim() {
 # - destination_addr
 # export:
 # - global_index
-
 function claim_tx_hash() {
     local timeout="$1"
     tx_hash="$2"
@@ -173,7 +172,7 @@ function claim_tx_hash() {
             echo "     $current_time > $end_time" >&3
             exit 1
         fi
-        echo "curl -s \"$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0\""
+        log "curl -s \"$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0\""
         curl -s "$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
         echo "...[$(date '+%Y-%m-%d %H:%M:%S')] deposit_count=$deposit_count bridge_deposit_file=$bridge_deposit_file" >&3
@@ -192,10 +191,10 @@ function claim_tx_hash() {
         fi
     done
     # Deposit is ready for claim
-    echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time)" >&3
+    log "🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time)"
     local curr_claim_tx_hash=$(jq '.[0].claim_tx_hash' $bridge_deposit_file)
     if [ $curr_claim_tx_hash != "\"\"" ]; then
-        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉  the tx_hash $tx_hash is already claimed" >&3
+        log "🎉 the tx_hash $tx_hash is already claimed"
         exit 0
     fi
     local curr_deposit_cnt=$(jq '.[0].deposit_cnt' $bridge_deposit_file)
@@ -203,42 +202,41 @@ function claim_tx_hash() {
     readonly current_deposit=$(mktemp)
     jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
     readonly current_proof=$(mktemp)
-    echo ".... requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id" >&3
+    log "requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id"
     request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_merkle_proof_url" "$current_proof"
     echo "FILE current_deposit=$current_deposit"
     echo "FILE bridge_deposit_file=$bridge_deposit_file"
     echo "FILE current_proof=$current_proof"
 
     while true; do
-        echo ".... requesting claim for $tx_hash" >&3
+        log "requesting claim for $tx_hash"
         run request_claim $current_deposit $current_proof $destination_rpc_url
         request_result=$status
-        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉 request_claim returns $request_result" >&3
+        log "🎉 request_claim returns $request_result"
         if [ $request_result -eq 0 ]; then
-            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉 claim successful" >&3
+            log "🎉 claim successful"
             break
         fi
         if [ $request_result -eq 2 ]; then
             # GlobalExitRootInvalid() let's retry
-            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ❌ claim failed, let's retry" >&3
+            log "❌ claim failed, let's retry"
             current_time=$(date +%s)
             elapsed_time=$((current_time - start_time))
             if ((current_time > end_time)); then
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time)"
-                echo "     $current_time > $end_time" >&3
+                log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time)"
                 exit 1
             fi
             sleep $claim_frequency
             continue
         fi
         if [ $request_result -ne 0 ]; then
-            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ✅  claim successful tx_hash [$tx_hash]" >&3
+            log "✅  claim successful tx_hash [$tx_hash]"
             exit 1
         fi
     done
-    echo "....[$(date '+%Y-%m-%d %H:%M:%S')] claimed" >&3
 
     local global_index=$(jq '.global_index' $current_deposit | sed -e 's/\x1b\[[0-9;]*m//g' | tr -d '"')
+    log "$global_index deposit claimed"
     echo $global_index
 
     # clean up temp files
@@ -286,7 +284,7 @@ function request_claim() {
     local in_amount=$(jq -r '.amount' $deposit_file)
     local in_metadata=$(jq -r '.metadata' $deposit_file)
     if [[ $dry_run == "true" ]]; then
-        echo "... Not real cleaim (dry_run mode)" >&3
+        log "📝 Dry run claim (showing calldata only)"
         cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
     else
         local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
