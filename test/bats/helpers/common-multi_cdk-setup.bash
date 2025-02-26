@@ -9,7 +9,6 @@ _common_multi_setup() {
 
     kurtosis service exec $enclave contracts-001 "cat /opt/zkevm/combined-001.json" | tail -n +2 | jq '.' >combined-001.json
     kurtosis service exec $enclave contracts-002 "cat /opt/zkevm/combined-002.json" | tail -n +2 | jq '.' >combined-002.json
-    kurtosis service exec $enclave contracts-002 "cat /opt/zkevm-contracts/deployment/v2/create_rollup_parameters.json" | tail -n +2 | jq -r '.gasTokenAddress' >gas-token-address.json
 
     readonly private_key="0x12d7de8621a77640c9241b2595ba78ce443d05e94090365ab3bb5e19df82c625"
     readonly eth_address=$(cast wallet address --private-key $private_key)
@@ -31,7 +30,9 @@ _common_multi_setup() {
     readonly aggsender_find_imported_bridge="../target/aggsender_find_imported_bridge"
     echo "=== Bridge address=$bridge_address ===" >&3
     echo "=== POL address=$pol_address ===" >&3
-    echo "=== Gas token address=$gas_token_address ===" >&3
+    if [ -n "$gas_token_address" ] && [ "$gas_token_address" != "0x0" ]; then
+        echo "=== Gas token address=$gas_token_address ===" >&3
+    fi
     echo "=== L1 network id=$l1_rpc_network_id ===" >&3
     echo "=== L2 PP1 network id=$l2_pp1b_network_id ===" >&3
     echo "=== L2 PP2 network id=$l2_pp2b_network_id ===" >&3
@@ -40,7 +41,6 @@ _common_multi_setup() {
     echo "=== L2 PP2 URL=$l2_pp2_url ===" >&3
     echo "=== L2 PP1B URL=$l2_pp1b_url ===" >&3
     echo "=== L2 PP2B URL=$l2_pp2b_url ===" >&3
-
 }
 
 add_network2_to_agglayer() {
