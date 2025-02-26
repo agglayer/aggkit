@@ -17,7 +17,10 @@ _common_multi_setup() {
     readonly l2_pp2_url=$(kurtosis port print $enclave cdk-erigon-rpc-002 rpc)
     readonly bridge_address=$(cat combined-001.json | jq -r .polygonZkEVMBridgeAddress)
     readonly pol_address=$(cat combined-001.json | jq -r .polTokenAddress)
-    readonly gas_token_address=$(<gas-token-address.json)
+    readonly rollup_params_file=/opt/zkevm/create_rollup_parameters.json
+    run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | tail -n +2 | jq -r '.gasTokenAddress'"
+    assert_success
+    readonly gas_token_addr=$output
     readonly l2_pp1b_url=$(kurtosis port print $enclave zkevm-bridge-service-001 rpc)
     readonly l2_pp2b_url=$(kurtosis port print $enclave zkevm-bridge-service-002 rpc)
     readonly l2_pp1_cdk_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
@@ -30,8 +33,8 @@ _common_multi_setup() {
     readonly aggsender_find_imported_bridge="../target/aggsender_find_imported_bridge"
     echo "=== Bridge address=$bridge_address ===" >&3
     echo "=== POL address=$pol_address ===" >&3
-    if [ -n "$gas_token_address" ] && [ "$gas_token_address" != "0x0" ]; then
-        echo "=== Gas token address=$gas_token_address ===" >&3
+    if [ -n "$gas_token_addr" ] && [ "$gas_token_addr" != "0x0" ]; then
+        echo "=== Gas token address=$gas_token_addr ===" >&3
     fi
     echo "=== L1 network id=$l1_rpc_network_id ===" >&3
     echo "=== L2 PP1 network id=$l2_pp1b_network_id ===" >&3
