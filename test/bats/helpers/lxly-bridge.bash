@@ -183,13 +183,13 @@ function claim_tx_hash() {
         fi
 
         local ready_for_claim=$(jq -r '.[0].ready_for_claim' $bridge_deposit_file)
-        if [[ $ready_for_claim == "true" ]]; then
+        if [ $ready_for_claim != "true" ]; then
+            log "⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time / timeout:$timeout)"
+            sleep "$claim_frequency"
+            continue
+        else
             break
         fi
-
-        log "⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time / timeout:$timeout)"
-        sleep "$claim_frequency"
-        continue
     done
     # Deposit is ready for claim
     log "🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time)"
