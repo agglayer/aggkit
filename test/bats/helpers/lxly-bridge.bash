@@ -210,17 +210,19 @@ function claim_tx_hash() {
         log "🎉 the tx_hash $tx_hash is already claimed"
         exit 0
     fi
+
     local curr_deposit_cnt=$(jq '.[0].deposit_cnt' $bridge_deposit_file)
     local curr_network_id=$(jq '.[0].network_id' $bridge_deposit_file)
     readonly current_deposit=$(mktemp)
     jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
-    log "🎉 Found deposit info: $(cat $current_deposit)"
+    log "💡 Found deposit info: $(cat $current_deposit)"
+    
     readonly current_proof=$(mktemp)
     log "🔍 requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id"
     request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_service_url" "$current_proof"
 
     while true; do
-        log "Requesting claim for $tx_hash..."
+        log "⏳ Requesting claim for $tx_hash..."
         request_claim $current_deposit $current_proof $destination_rpc_url
         request_result=$status
         log "💡 request_claim returns $request_result"
@@ -228,6 +230,7 @@ function claim_tx_hash() {
             log "🎉 Claim successful"
             break
         fi
+
         if [ $request_result -eq 2 ]; then
             # GlobalExitRootInvalid() let's retry
             log "❌ Claim failed, let's retry"
@@ -240,6 +243,7 @@ function claim_tx_hash() {
             sleep $claim_frequency
             continue
         fi
+
         if [ $request_result -ne 0 ]; then
             log "✅ Claim successful tx_hash [$tx_hash]"
             exit 1
@@ -247,13 +251,12 @@ function claim_tx_hash() {
     done
 
     export global_index=$(jq -r '.global_index' $current_deposit)
+    log "✅ Deposit claimed ($global_index)"
 
     # clean up temp files
     rm $current_deposit
     rm $current_proof
     rm $bridge_deposit_file
-
-    log "✅ Deposit claimed ($global_index)"
 }
 
 function request_merkle_proof() {
