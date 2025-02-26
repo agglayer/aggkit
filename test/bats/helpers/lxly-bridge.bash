@@ -167,9 +167,9 @@ function claim_tx_hash() {
 
     while true; do
         current_time=$(date +%s)
-        elpased_time=$((current_time - start_time))
+        elapsed_time=$((current_time - start_time))
         if ((current_time > end_time)); then
-            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elpased_time)"
+            echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time)"
             echo "     $current_time > $end_time" >&3
             exit 1
         fi
@@ -178,13 +178,13 @@ function claim_tx_hash() {
         deposit_count=$(jq '. | length' $bridge_deposit_file)
         echo "...[$(date '+%Y-%m-%d %H:%M:%S')] deposit_count=$deposit_count bridge_deposit_file=$bridge_deposit_file" >&3
         if [[ $deposit_count == 0 ]]; then
-            echo "...[$(date '+%Y-%m-%d %H:%M:%S')] ❌  the tx_hash [$tx_hash] not found (elapsed: $elpased_time / timeout:$timeout)" >&3
+            echo "...[$(date '+%Y-%m-%d %H:%M:%S')] ❌  the tx_hash [$tx_hash] not found (elapsed: $elapsed_time / timeout:$timeout)" >&3
             sleep "$claim_frequency"
             continue
         fi
         local ready_for_claim=$(jq '.[0].ready_for_claim' $bridge_deposit_file)
         if [ $ready_for_claim != "true" ]; then
-            echo ".... [$(date '+%Y-%m-%d %H:%M:%S')] ⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elpased_time / timeout:$timeout)" >&3
+            echo ".... [$(date '+%Y-%m-%d %H:%M:%S')] ⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time / timeout:$timeout)" >&3
             sleep "$claim_frequency"
             continue
         else
@@ -192,7 +192,7 @@ function claim_tx_hash() {
         fi
     done
     # Deposit is ready for claim
-    echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elpased_time)" >&3
+    echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time)" >&3
     local curr_claim_tx_hash=$(jq '.[0].claim_tx_hash' $bridge_deposit_file)
     if [ $curr_claim_tx_hash != "\"\"" ]; then
         echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉  the tx_hash $tx_hash is already claimed" >&3
@@ -213,18 +213,18 @@ function claim_tx_hash() {
         echo ".... requesting claim for $tx_hash" >&3
         run request_claim $current_deposit $current_proof $destination_rpc_url
         request_result=$status
-        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉  request_claim returns $request_result" >&3
+        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉 request_claim returns $request_result" >&3
         if [ $request_result -eq 0 ]; then
-            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉   claim successful" >&3
+            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] 🎉 claim successful" >&3
             break
         fi
         if [ $request_result -eq 2 ]; then
             # GlobalExitRootInvalid() let's retry
-            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ❌  claim failed, let's retry" >&3
+            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ❌ claim failed, let's retry" >&3
             current_time=$(date +%s)
-            elpased_time=$((current_time - start_time))
+            elapsed_time=$((current_time - start_time))
             if ((current_time > end_time)); then
-                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elpased_time)"
+                echo "[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time)"
                 echo "     $current_time > $end_time" >&3
                 exit 1
             fi
@@ -236,8 +236,11 @@ function claim_tx_hash() {
             exit 1
         fi
     done
-    echo "....[$(date '+%Y-%m-%d %H:%M:%S')]   claimed" >&3
-    export global_index=$(jq '.global_index' $current_deposit | sed -e 's/\x1b\[[0-9;]*m//g' | tr -d '"')
+    echo "....[$(date '+%Y-%m-%d %H:%M:%S')] claimed" >&3
+
+    local global_index=$(jq '.global_index' $current_deposit | sed -e 's/\x1b\[[0-9;]*m//g' | tr -d '"')
+    echo $global_index
+
     # clean up temp files
     rm $current_deposit
     rm $current_proof
