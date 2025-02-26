@@ -251,7 +251,6 @@ function request_merkle_proof() {
     local bridge_merkle_proof_url="$3"
     local result_proof_file="$4"
     curl -s "$bridge_merkle_proof_url/merkle-proof?deposit_cnt=$curr_deposit_cnt&net_id=$curr_network_id" | jq '.' >$result_proof_file
-    echo "request_merkle_proof: $result_proof_file"
 }
 
 # This function is used to claim a concrete tx hash
@@ -293,8 +292,8 @@ function request_claim() {
             return 1
         fi
         log "Claiming deposit: global_index: $in_global_index orig_net: $in_orig_net dest_net: $in_dest_net amount:$in_amount"
-        echo "claim: mainnetExitRoot=$in_main_exit_root rollupExitRoot=$in_rollup_exit_root"
-        echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
+        log "claim: mainnetExitRoot=$in_main_exit_root rollupExitRoot=$in_rollup_exit_root"
+        log "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
         local tmp_response=$(mktemp)
         cast send --legacy --gas-price $comp_gas_price \
             --rpc-url $destination_rpc_url \
