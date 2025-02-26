@@ -377,5 +377,5 @@ function run_with_timeout() {
 }
 
 function log() {
-    echo "[$(date +'%H:%M:%S')] $1" >&3
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >&3
 }
