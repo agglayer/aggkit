@@ -233,7 +233,7 @@ function claim_tx_hash() {
 
         if [ $request_result -eq 2 ]; then
             # GlobalExitRootInvalid() let's retry
-            log "❌ Claim failed, let's retry"
+            log "⏳ Claim failed this time (GER is not yet injected on destination). We'll retry in $claim_frequency seconds "
             current_time=$(date +%s)
             elapsed_time=$((current_time - start_time))
             if ((current_time > end_time)); then
@@ -305,9 +305,9 @@ function request_claim() {
             log "❌ Failed to calculate gas price" >&3
             return 1
         fi
-        log "Claiming deposit: global_index: $in_global_index orig_net: $in_orig_net dest_net: $in_dest_net amount:$in_amount"
-        log "claim: mainnetExitRoot=$in_main_exit_root rollupExitRoot=$in_rollup_exit_root"
-        log "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
+        log "⏳ Claiming deposit: global_index: $in_global_index orig_net: $in_orig_net dest_net: $in_dest_net amount:$in_amount"
+        log "🔍 Exit roots: MainnetExitRoot=$in_main_exit_root RollupExitRoot=$in_rollup_exit_root"
+        echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
         local tmp_response=$(mktemp)
         cast send --legacy --gas-price $comp_gas_price \
             --rpc-url $destination_rpc_url \
@@ -322,7 +322,8 @@ function check_claim_revert_code() {
     response_content=$(<"$file_curl_response")
 
     # 0x646cf558 -> AlreadyClaimed()
-    log "💡 Check claim revert code $response_content"
+    log "💡 Check claim revert code"
+    log "$response_content"
 
     if grep -q "0x646cf558" <<<"$response_content"; then
         log "🎉 Deposit is already claimed (revert code 0x646cf558)"

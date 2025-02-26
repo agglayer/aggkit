@@ -64,8 +64,7 @@ setup() {
 
     echo "=== Running LxLy claim L2(PP2) to L2(PP1) for: $bridge_tx_hash" >&3
     claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_pp1_url" "$l2_pp2b_url"
-    global_index_pp2_to_pp1="$global_index"
-    log "deposit [$global_index_pp2_to_pp1]"
+    local global_index_pp2_to_pp1="$global_index"
 
     # Now we need to do a bridge on L2(PP1) to trigger a certificate to be sent to L1
     ether_value=${ETHER_VALUE:-"0.0100000054"}

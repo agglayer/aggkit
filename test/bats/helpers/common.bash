@@ -362,16 +362,16 @@ function run_with_timeout() {
             echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Exiting [$name]... Timeout reached!" >&3
             exit 1
         fi
-        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ⏳Running [$name] ..." >&3
+        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Running [$name]..." >&3
         echo "executing: $*"
         run $*
         echo "output: $output"
         echo "result: $status"
         if [ $status -eq 0 ]; then
-            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ✅  successful [$name] " >&3
+            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Executed successfully! [$name] " >&3
             break
         fi
-        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Sleep [$name] time: $run_frequency" >&3
+        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Sleep [$name] for period: $run_frequency" >&3
         sleep "$run_frequency"
     done
 }

@@ -44,10 +44,10 @@ _common_multi_setup() {
 }
 
 add_network2_to_agglayer() {
-    echo "=== Checking if  network 2 is in agglayer ===" >&3
+    echo "=== Checking if network 2 is added to agglayer ===" >&3
     local _prev=$(kurtosis service exec $enclave agglayer "grep \"2 = \" /etc/zkevm/agglayer-config.toml || true" | tail -n +2)
     if [ ! -z "$_prev" ]; then
-        echo "Network 2 already added to agglayer" >&3
+        echo "Network 2 is already added to agglayer" >&3
         return
     fi
     echo "=== Adding network 2 to agglayer ===" >&3
