@@ -182,8 +182,8 @@ function claim_tx_hash() {
             continue
         fi
 
-        local ready_for_claim=$(jq '.[0].ready_for_claim' $bridge_deposit_file)
-        if [ $ready_for_claim == "true" ]; then
+        local ready_for_claim=$(jq -r '.[0].ready_for_claim' $bridge_deposit_file)
+        if [[ $ready_for_claim == "true" ]]; then
             break
         fi
 
