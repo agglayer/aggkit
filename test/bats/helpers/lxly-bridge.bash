@@ -200,7 +200,7 @@ function claim_tx_hash() {
     local curr_network_id=$(jq '.[0].network_id' $bridge_deposit_file)
     readonly current_deposit=$(mktemp)
     jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
-    log "Deposit info: $current_deposit"
+    log "Deposit info: $(cat $current_deposit)"
     readonly current_proof=$(mktemp)
     log "requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id"
     request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_merkle_proof_url" "$current_proof"
@@ -236,13 +236,14 @@ function claim_tx_hash() {
     done
 
     local global_index=$(jq '.global_index' $current_deposit | sed -e 's/\x1b\[[0-9;]*m//g' | tr -d '"')
-    log "Deposit claimed ($global_index)"
-    echo $global_index
 
     # clean up temp files
     rm $current_deposit
     rm $current_proof
     rm $bridge_deposit_file
+    
+    log "✅ Deposit claimed ($global_index)"
+    echo $global_index
 }
 
 function request_merkle_proof() {
