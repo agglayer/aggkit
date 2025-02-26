@@ -20,15 +20,28 @@ function bridge_message() {
     log "🚀 Bridge message $amount wei → $destination_addr [network: $destination_net, token: $token_addr, rpc: $rpc_url]"
 
     if [[ $dry_run == "true" ]]; then
-        log "📝 Dry run bridge asset (showing calldata only)"
-        cast calldata $bridge_sig $destination_net $destination_addr $amount $token_addr $is_forced $meta_bytes
+        log "📝 Dry run bridge message (showing calldata only)"
+        cast calldata "$bridge_sig" "$destination_net" \
+            "$destination_addr" "$is_forced" "$meta_bytes"
     else
+        local response
         if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-            log "cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $is_forced $meta_bytes"
-            cast send --legacy --private-key $sender_private_key --value $amount --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $is_forced $meta_bytes
+            response=$(cast send --legacy --private-key "$sender_private_key" --value "$amount" \
+                --rpc-url "$rpc_url" "$bridge_addr" "$bridge_sig" "$destination_net" \
+                "$destination_addr" "$is_forced" "$meta_bytes")
         else
-            log "cast send --legacy --private-key $sender_private_key --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $is_forced $meta_bytes"
-            cast send --legacy --private-key $sender_private_key --rpc-url $rpc_url $bridge_addr $bridge_sig $destination_net $destination_addr $is_forced $meta_bytes
+            response=$(cast send --legacy --private-key "$sender_private_key" \
+                --rpc-url "$rpc_url" "$bridge_addr" "$bridge_sig" "$destination_net" \
+                "$destination_addr" "$is_forced" "$meta_bytes")
+        fi
+
+        local bridge_tx_hash=$(echo "$response" | grep "^transactionHash" | cut -f 2- -d ' ' | sed 's/ //g')
+        if [[ -n "$bridge_tx_hash" ]]; then
+            log "🎉 Success: Tx Hash → $bridge_tx_hash"
+            echo $bridge_tx_hash
+        else
+            log "❌ Error: Transaction failed (no hash returned)"
+            return 1
         fi
     fi
 }
@@ -134,7 +147,7 @@ function claim() {
                 return 1
             fi
 
-            echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata" >&3
+            log "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
             cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr "$claim_sig" "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
         fi
 
