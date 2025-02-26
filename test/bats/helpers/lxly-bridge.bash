@@ -184,7 +184,7 @@ function claim_tx_hash() {
             exit 1
         fi
 
-        log "curl -s \"$bridge_service_url/bridges/$destination_addr?limit=100&offset=0\""
+        log "🔍 curl -s \"$bridge_service_url/bridges/$destination_addr?limit=100&offset=0\""
         curl -s "$bridge_service_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
         if [[ $deposit_count == 0 ]]; then
@@ -223,7 +223,7 @@ function claim_tx_hash() {
 
     while true; do
         log "⏳ Requesting claim for $tx_hash..."
-        request_claim $current_deposit $current_proof $destination_rpc_url
+        run request_claim $current_deposit $current_proof $destination_rpc_url
         request_result=$status
         log "💡 request_claim returns $request_result"
         if [ $request_result -eq 0 ]; then
@@ -318,19 +318,24 @@ function request_claim() {
 
 function check_claim_revert_code() {
     local file_curl_response="$1"
+    local response_content
+    response_content=$(<"$file_curl_response")
+
     # 0x646cf558 -> AlreadyClaimed()
-    log "💡 Check claim revert code $(cat $file_curl_response)"
-    cat $file_curl_response | grep "0x646cf558" >/dev/null
-    if [ $? -eq 0 ]; then
+    log "💡 Check claim revert code $response_content"
+
+    if grep -q "0x646cf558" <<<"$response_content"; then
         log "🎉 Deposit is already claimed (revert code 0x646cf558)"
         return 0
     fi
-    cat $file_curl_response | grep "0x002f6fad" >/dev/null
-    if [ $? -eq 0 ]; then
-        log "🎉 GlobalExitRootInvalid()(revert code 0x002f6fad)"
+
+    # 0x002f6fad -> GlobalExitRootInvalid(), meaning that the global exit root is not yet injected to the destination network
+    if grep -q "0x002f6fad" <<<"$response_content"; then
+        log "⏳ GlobalExitRootInvalid() (revert code 0x002f6fad)"
         return 2
     fi
-    log "❌ Claim failed. response: $(cat $file_curl_response)"
+
+    log "❌ Claim failed. response: $response_content"
     return 1
 }
 

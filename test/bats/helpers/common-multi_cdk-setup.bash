@@ -50,7 +50,7 @@ add_network2_to_agglayer() {
         echo "Network 2 already added to agglayer" >&3
         return
     fi
-    echo "=== Adding network 2 to agglayer === ($_prev)" >&3
+    echo "=== Adding network 2 to agglayer ===" >&3
     kurtosis service exec $enclave agglayer "sed -i 's/\[proof\-signers\]/2 = \"http:\/\/cdk-erigon-rpc-002:8123\"\n\[proof-signers\]/i' /etc/zkevm/agglayer-config.toml"
     kurtosis service stop $enclave agglayer
     kurtosis service start $enclave agglayer
