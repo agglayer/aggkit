@@ -28,7 +28,6 @@ func Test_ReorgDetector(t *testing.T) {
 
 	// Create test DB dir
 	testDir := path.Join(t.TempDir(), "reorgdetectorTest_ReorgDetector.sqlite")
-
 	reorgDetector, err := New(clientL1.Client(),
 		Config{
 			DBPath:              testDir,
