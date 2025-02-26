@@ -235,7 +235,7 @@ function claim_tx_hash() {
         fi
     done
 
-    local global_index=$(jq -r '.global_index' $current_deposit)
+    export global_index=$(jq -r '.global_index' $current_deposit)
 
     # clean up temp files
     rm $current_deposit
@@ -243,7 +243,6 @@ function claim_tx_hash() {
     rm $bridge_deposit_file
 
     log "✅ Deposit claimed ($global_index)"
-    echo $global_index
 }
 
 function request_merkle_proof() {
