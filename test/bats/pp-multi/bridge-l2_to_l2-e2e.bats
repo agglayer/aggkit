@@ -83,5 +83,5 @@ setup() {
     assert_success
 
     echo "=== Waiting to settled certificate with imported bridge for global_index: $global_index_pp2_to_pp1"
-    wait_to_settled_certificate_containing_global_index $l2_pp1_cdk_node_url  $global_index_pp2_to_pp1
+    wait_to_settled_certificate_containing_global_index $l2_pp1_cdk_node_url $global_index_pp2_to_pp1
 }
