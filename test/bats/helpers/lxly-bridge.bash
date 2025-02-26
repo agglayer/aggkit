@@ -216,7 +216,7 @@ function claim_tx_hash() {
     readonly current_deposit=$(mktemp)
     jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
     log "💡 Found deposit info: $(cat $current_deposit)"
-    
+
     readonly current_proof=$(mktemp)
     log "🔍 requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id"
     request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_service_url" "$current_proof"
@@ -319,8 +319,7 @@ function request_claim() {
 function check_claim_revert_code() {
     local file_curl_response="$1"
     # 0x646cf558 -> AlreadyClaimed()
-    log "check revert $file_curl_response"
-    cat $file_curl_response
+    log "💡 Check claim revert code $(cat $file_curl_response)"
     cat $file_curl_response | grep "0x646cf558" >/dev/null
     if [ $? -eq 0 ]; then
         log "🎉 Deposit is already claimed (revert code 0x646cf558)"
