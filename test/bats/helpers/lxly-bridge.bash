@@ -148,7 +148,7 @@ function claim() {
 # - global_index
 function claim_tx_hash() {
     local timeout="$1"
-    tx_hash="$2"
+    local tx_hash="$2"
     local destination_addr="$3"
     local destination_rpc_url="$4"
     local bridge_merkle_proof_url="$5"
@@ -171,6 +171,7 @@ function claim_tx_hash() {
             log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time)"
             exit 1
         fi
+
         log "curl -s \"$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0\""
         curl -s "$bridge_merkle_proof_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
@@ -180,14 +181,15 @@ function claim_tx_hash() {
             sleep "$claim_frequency"
             continue
         fi
+
         local ready_for_claim=$(jq '.[0].ready_for_claim' $bridge_deposit_file)
-        if [ $ready_for_claim != "true" ]; then
-            log "⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time / timeout:$timeout)"
-            sleep "$claim_frequency"
-            continue
-        else
+        if [ $ready_for_claim == "true" ]; then
             break
         fi
+
+        log "⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time / timeout:$timeout)"
+        sleep "$claim_frequency"
+        continue
     done
     # Deposit is ready for claim
     log "🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time)"
@@ -204,9 +206,6 @@ function claim_tx_hash() {
     readonly current_proof=$(mktemp)
     log "requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id"
     request_merkle_proof "$curr_deposit_cnt" "$curr_network_id" "$bridge_merkle_proof_url" "$current_proof"
-    echo "FILE current_deposit=$current_deposit"
-    echo "FILE bridge_deposit_file=$bridge_deposit_file"
-    echo "FILE current_proof=$current_proof"
 
     while true; do
         log "Requesting claim for $tx_hash..."
@@ -235,13 +234,13 @@ function claim_tx_hash() {
         fi
     done
 
-    local global_index=$(jq '.global_index' $current_deposit | sed -e 's/\x1b\[[0-9;]*m//g' | tr -d '"')
+    local global_index=$(jq -r '.global_index' $current_deposit)
 
     # clean up temp files
     rm $current_deposit
     rm $current_proof
     rm $bridge_deposit_file
-    
+
     log "✅ Deposit claimed ($global_index)"
     echo $global_index
 }

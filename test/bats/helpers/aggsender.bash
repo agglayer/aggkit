@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-function wait_to_settled_certificate_containing_global_index(){
+function wait_to_settled_certificate_containing_global_index() {
     local _l2_pp1_cdk_node_url=$1
     local _global_index=$2
     local _check_frequency=${3:-30}
