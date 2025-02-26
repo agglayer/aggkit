@@ -2,6 +2,7 @@ deployment_stages:
   deploy_l2_contracts: true
 
 args:
+  verbosity: debug
   cdk_node_image: aggkit:latest
   agglayer_image: ghcr.io/agglayer/agglayer:main
   cdk_erigon_node_image: hermeznetwork/cdk-erigon:v2.61.16-hotfix2
