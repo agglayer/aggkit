@@ -128,11 +128,12 @@ setup() {
     meta_bytes="0x"
     run bridge_asset "$gas_token_addr" "$l1_rpc_url"
     assert_success
+    local bridge_tx_hash=$output
 
     # Claim deposits (settle them on the L2)
     timeout="180"
     claim_frequency="10"
-    run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
     # Validate that the native token of receiver on L2 has increased by the bridge tokens amount
@@ -150,12 +151,13 @@ setup() {
     destination_net=$l1_rpc_network_id
     run bridge_asset "$native_token_addr" "$l2_rpc_url"
     assert_success
+    local bridge_tx_hash=$output
 
     # Claim withdrawals (settle them on the L1)
     timeout="180"
     claim_frequency="10"
     destination_net=$l1_rpc_network_id
-    run wait_for_claim "$timeout" "$claim_frequency" "$l1_rpc_url" "bridgeAsset"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
     assert_success
 
     # Validate that the token of receiver on L1 has increased by the bridge tokens amount
@@ -212,11 +214,12 @@ setup() {
     meta_bytes="0x"
     run bridge_asset "$l1_erc20_addr" "$l1_rpc_url"
     assert_success
+    local bridge_tx_hash=$output
 
     # Claim deposits (settle them on the L2)
     timeout="180"
     claim_frequency="10"
-    run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
     local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
