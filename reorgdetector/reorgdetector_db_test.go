@@ -1,6 +1,7 @@
 package reorgdetector
 
 import (
+	"path"
 	"testing"
 	"time"
 
@@ -12,8 +13,7 @@ import (
 
 func TestInsertReorgEvent(t *testing.T) {
 	// Create test DB dir
-	//testDir := path.Join(t.TempDir(), "reorgdetectorTest_ReorgDetector.sqlite")
-	testDir := "/tmp/kk.sqlite"
+	testDir := path.Join(t.TempDir(), "reorgdetectorTest_ReorgDetector.sqlite")
 	reorgDetector, err := New(nil,
 		Config{
 			DBPath:              testDir,
