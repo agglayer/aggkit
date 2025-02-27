@@ -2,7 +2,6 @@ package aggsender
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +19,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/signer"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -52,7 +52,7 @@ type AggSender struct {
 
 	cfg Config
 
-	sequencerKey *ecdsa.PrivateKey
+	signer signer.Signer
 
 	status      types.AggsenderStatus
 	rateLimiter RateLimiter
@@ -75,10 +75,13 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-
-	sequencerPrivateKey, err := aggkitcommon.NewKeyFromKeystore(cfg.AggsenderPrivateKey)
+	signer, err := signer.NewSigner(aggkitcommon.AGGSENDER, logger, ctx, cfg.AggsenderPrivateKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
+	}
+	err = signer.Initialize(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
 	}
 	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
 
@@ -91,7 +94,7 @@ func New(
 		l2Syncer:         l2Syncer,
 		aggLayerClient:   aggLayerClient,
 		l1infoTreeSyncer: l1InfoTreeSyncer,
-		sequencerKey:     sequencerPrivateKey,
+		signer:           signer,
 		epochNotifier:    epochNotifier,
 		status:           types.AggsenderStatus{Status: types.StatusNone},
 		rateLimiter:      rateLimit,
@@ -705,14 +708,13 @@ func (a *AggSender) getImportedBridgeExits(
 // signCertificate signs a certificate with the sequencer key
 func (a *AggSender) signCertificate(certificate *agglayer.Certificate) (*agglayer.SignedCertificate, error) {
 	hashToSign := certificate.HashToSign()
-
-	sig, err := crypto.Sign(hashToSign.Bytes(), a.sequencerKey)
+	sig, err := a.signer.SignHash(context.Background(), hashToSign)
 	if err != nil {
 		return nil, err
 	}
 
 	a.log.Infof("Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
-		crypto.PubkeyToAddress(a.sequencerKey.PublicKey).String(),
+		a.signer.PublicAddress().String(),
 		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
 		hashToSign.String(),
 	)
