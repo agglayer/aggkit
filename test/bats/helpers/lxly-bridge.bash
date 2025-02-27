@@ -169,6 +169,10 @@ function claim() {
         log "Starting claim for tx index: $deposit_idx"
         log "Deposit info:"
         log jq --arg idx $deposit_idx '.[($idx | tonumber)]' $claimable_deposit_file | tee $current_deposit
+<<<<<<< HEAD
+=======
+
+>>>>>>> fe6e580af4b0db244027edac79fa519dcc02735a
         curr_deposit_cnt=$(jq -r '.deposit_cnt' $current_deposit)
         curr_network_id=$(jq -r '.network_id' $current_deposit)
         curl -s "$bridge_api_url/merkle-proof?deposit_cnt=$curr_deposit_cnt&net_id=$curr_network_id" | jq '.' | tee $current_proof
