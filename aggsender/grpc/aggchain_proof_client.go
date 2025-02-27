@@ -120,7 +120,13 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 			Amount:      &types.FixedBytes32{Value: importedBridgeExit.BridgeExit.Amount.Bytes()},
 			Metadata:    &types.FixedBytes32{Value: importedBridgeExit.BridgeExit.Metadata},
 		}
-		convertedGlobalIndex := &types.FixedBytes32{Value: bridgesync.GenerateGlobalIndex(importedBridgeExit.GlobalIndex.MainnetFlag, importedBridgeExit.GlobalIndex.RollupIndex, importedBridgeExit.GlobalIndex.LeafIndex).Bytes()}
+		convertedGlobalIndex := &types.FixedBytes32{
+			Value: bridgesync.GenerateGlobalIndex(
+				importedBridgeExit.GlobalIndex.MainnetFlag,
+				importedBridgeExit.GlobalIndex.RollupIndex,
+				importedBridgeExit.GlobalIndex.LeafIndex,
+			).Bytes(),
+		}
 		convertedImportedBridgeExits[i] = &types.ImportedBridgeExit{
 			BridgeExit:  convertedBridgeExit,
 			GlobalIndex: convertedGlobalIndex,
