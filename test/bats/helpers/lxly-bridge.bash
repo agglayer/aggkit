@@ -277,9 +277,10 @@ function check_claim_revert_code() {
 }
 
 function wait_for_expected_token() {
-    local expected_origin_token="$1"
-    local max_attempts="$2"
-    local poll_frequency="$3"
+    local aggkit_node_url="$1"
+    local expected_origin_token="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
 
     local attempt=0
     local token_mappings_result
