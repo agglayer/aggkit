@@ -30,7 +30,6 @@ func TestInsertReorgEvent(t *testing.T) {
 		TrackedHash:  common.Hash{},
 		CurrentHash:  common.Hash{},
 		Version:      "1.0",
-		ExtraData:    "extra",
 	}
 
 	err = reorgDetector.insertReorgEvent(event)

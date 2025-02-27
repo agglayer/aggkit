@@ -230,9 +230,6 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 					SubscriberID: id,
 					CurrentHash:  currentHeader.Hash(),
 					TrackedHash:  hdr.Hash,
-					ExtraData: fmt.Sprintf("network:%s, blockTstamp:%d",
-						rd.network.String(),
-						currentHeader.Time),
 				}
 				if err := rd.insertReorgEvent(event); err != nil {
 					return fmt.Errorf("failed to insert reorg event: %w", err)

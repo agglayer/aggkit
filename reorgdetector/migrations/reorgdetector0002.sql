@@ -10,6 +10,5 @@ CREATE TABLE reorg_event (
     current_hash VARCHAR,
     tracked_hash VARCHAR,
     version VARCHAR,
-    extra_data  VARCHAR,
     PRIMARY KEY (detected_at, subscriber_id, from_block, to_block)
 )

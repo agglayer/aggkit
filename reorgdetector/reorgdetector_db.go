@@ -89,7 +89,6 @@ type ReorgEvent struct {
 	TrackedHash  common.Hash `meddler:"tracked_hash,hash"`
 	CurrentHash  common.Hash `meddler:"current_hash,hash"`
 	Version      string      `meddler:"version"`
-	ExtraData    string      `meddler:"extra_data"`
 }
 
 func (rd *ReorgDetector) insertReorgEvent(event ReorgEvent) error {
