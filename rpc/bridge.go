@@ -80,26 +80,21 @@ type TokenMappingsResult struct {
 
 // GetTokenMappings returns the token mappings for the given network
 func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
-	b.logger.Debugf("GetTokenMappings invoked (network id=%d, page number=%v, page size=%v)",
-		networkID, pageNumber, pageSize)
+	b.logger.Debugf("GetTokenMappings request received (network id=%d)", networkID)
 
-	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_token_mappings")
+	if setupErr != nil {
+		return nil, setupErr
+	}
 	defer cancel()
 
-	c, merr := b.meter.Int64Counter("get_token_mappings")
-	if merr != nil {
-		b.logger.Warnf("failed to create get_token_mappings counter: %s", merr)
-	}
-	c.Add(ctx, 1)
-
-	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
-	if err != nil {
-		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode, err.Error())
-	}
+	b.logger.Debugf("fetching token mappings (network id=%d, page number=%d, page size=%d)",
+		networkID, pageNumberU32, pageSizeU32)
 
 	var (
 		tokenMappings      []*bridgesync.TokenMapping
 		tokenMappingsCount int
+		err                error
 	)
 
 	switch {
@@ -239,11 +234,16 @@ func (b *BridgeEndpoints) GetBridges(
 	pageNumber, pageSize *uint32,
 	depositCount *uint64,
 ) (interface{}, rpc.Error) {
+	b.logger.Debugf("GetBridges request received (network id=%d)", networkID)
+
 	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_bridges")
 	if setupErr != nil {
 		return nil, setupErr
 	}
 	defer cancel()
+
+	b.logger.Debugf("fetching bridges (network id=%d, page number=%d, page size=%d)",
+		networkID, pageNumberU32, pageSizeU32)
 
 	var (
 		bridges []*bridgesync.BridgeResponse
@@ -283,11 +283,16 @@ type ClaimsResult struct {
 func (b *BridgeEndpoints) GetClaims(networkID uint32,
 	pageNumber, pageSize *uint32,
 ) (interface{}, rpc.Error) {
+	b.logger.Debugf("GetClaims request received (network id=%d)", networkID)
+
 	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_claims")
 	if setupErr != nil {
 		return nil, setupErr
 	}
 	defer cancel()
+
+	b.logger.Debugf("fetching claims (network id=%d, page number=%d, page size=%d)",
+		networkID, pageNumberU32, pageSizeU32)
 
 	var (
 		claims []*bridgesync.ClaimResponse

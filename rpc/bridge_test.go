@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -438,7 +439,7 @@ func TestGetTokenMappings(t *testing.T) {
 				OriginNetwork:       1,
 				OriginTokenAddress:  common.HexToAddress("0x1"),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
-				Metadata:            []byte("metadata"),
+				Metadata:            common.Hex2Bytes("abcd"),
 			},
 		}
 
@@ -453,6 +454,14 @@ func TestGetTokenMappings(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
 		require.Equal(t, len(tokenMappingsResult.TokenMappings), tokenMappingsResult.Count)
+
+		actualJSON, marshalErr := json.Marshal(tokenMappingsResult.TokenMappings)
+		require.NoError(t, marshalErr)
+
+		expectedJSON, marshalErr := json.Marshal(tokenMappings)
+		require.NoError(t, marshalErr)
+
+		require.JSONEq(t, string(expectedJSON), string(actualJSON))
 
 		bridgeMocks.bridgeL1.AssertExpectations(t)
 	})
@@ -542,7 +551,7 @@ func TestGetBridges(t *testing.T) {
 					DestinationAddress: common.HexToAddress("0x2"),
 					Amount:             common.Big0,
 					DepositCount:       0,
-					Metadata:           []byte("metadata"),
+					Metadata:           common.Hex2Bytes("deadbeef"),
 				},
 			},
 		}
@@ -558,6 +567,14 @@ func TestGetBridges(t *testing.T) {
 		require.True(t, ok)
 		require.Equal(t, bridges, bridgesResult.Bridges)
 		require.Equal(t, len(bridgesResult.Bridges), bridgesResult.Count)
+
+		actualJSON, marshalErr := json.Marshal(bridgesResult.Bridges)
+		require.NoError(t, marshalErr)
+
+		expectedJSON, marshalErr := json.Marshal(bridges)
+		require.NoError(t, marshalErr)
+
+		require.JSONEq(t, string(expectedJSON), string(actualJSON))
 
 		bridgeMocks.bridgeL1.AssertExpectations(t)
 	})
