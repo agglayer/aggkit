@@ -8,6 +8,7 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
 	common "github.com/ethereum/go-ethereum/common"
+	"github.com/russross/meddler"
 	"github.com/stretchr/testify/require"
 )
 
@@ -34,23 +35,9 @@ func TestInsertReorgEvent(t *testing.T) {
 
 	err = reorgDetector.insertReorgEvent(event)
 	require.NoError(t, err)
-	row := reorgDetector.db.QueryRow("SELECT * FROM reorg_event WHERE subscriber_id = $1", "test")
-	var detectedAt int64
-	var fromBlock uint64
-	var toBlock uint64
-	var subscriberID string
-	var trackedHash string
-	var currentHash string
-	var version string
-	var extraData string
-	err = row.Scan(&detectedAt, &fromBlock, &toBlock, &subscriberID, &trackedHash, &currentHash, &version, &extraData)
+	eventFromDB := ReorgEvent{}
+	err = meddler.QueryRow(reorgDetector.db, &eventFromDB,
+		"SELECT * FROM reorg_event WHERE subscriber_id = $1;", "test")
 	require.NoError(t, err)
-	require.Equal(t, event.DetectedAt, detectedAt)
-	require.Equal(t, event.FromBlock, fromBlock)
-	require.Equal(t, event.ToBlock, toBlock)
-	require.Equal(t, event.SubscriberID, subscriberID)
-	require.Equal(t, event.TrackedHash.String(), trackedHash)
-	require.Equal(t, event.CurrentHash.String(), currentHash)
-	require.Equal(t, event.Version, version)
-	require.Equal(t, event.ExtraData, extraData)
+	require.Equal(t, event, eventFromDB)
 }
