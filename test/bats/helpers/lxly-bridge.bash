@@ -169,10 +169,7 @@ function claim() {
         log "Starting claim for tx index: $deposit_idx"
         log "Deposit info:"
         log jq --arg idx $deposit_idx '.[($idx | tonumber)]' $claimable_deposit_file | tee $current_deposit
-<<<<<<< HEAD
-=======
 
->>>>>>> fe6e580af4b0db244027edac79fa519dcc02735a
         curr_deposit_cnt=$(jq -r '.deposit_cnt' $current_deposit)
         curr_network_id=$(jq -r '.network_id' $current_deposit)
         curl -s "$bridge_api_url/merkle-proof?deposit_cnt=$curr_deposit_cnt&net_id=$curr_network_id" | jq '.' | tee $current_proof
@@ -389,31 +386,6 @@ function check_claim_revert_code() {
 
     log "❌ Claim failed. response: $response_content"
     return 1
-}
-
-function wait_for_claim() {
-    local timeout="$1"             # timeout (in seconds)
-    local claim_frequency="$2"     # claim frequency (in seconds)
-    local destination_rpc_url="$3" # destination rpc url
-    local bridge_type="$4"         # bridgeAsset or bridgeMessage
-
-    local start_time=$(date +%s)
-    local end_time=$((start_time + timeout))
-
-    while true; do
-        local current_time=$(date +%s)
-        if ((current_time > end_time)); then
-            log "❌ Exiting... Timeout reached!"
-            return 1
-        fi
-
-        run claim $destination_rpc_url $bridge_type
-        if [ $status -eq 0 ]; then
-            break
-        fi
-
-        sleep "$claim_frequency"
-    done
 }
 
 function wait_for_expected_token() {
