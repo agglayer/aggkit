@@ -273,10 +273,7 @@ func (f *baseFlow) getImportedBridgeExits(
 		return []*agglayer.ImportedBridgeExit{}, nil
 	}
 
-	var (
-		importedBridgeExits = make([]*agglayer.ImportedBridgeExit, 0, len(claims))
-		rootToProve         = rootFromWhichToProove
-	)
+	importedBridgeExits := make([]*agglayer.ImportedBridgeExit, 0, len(claims))
 
 	for i, claim := range claims {
 		l1Info, err := f.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
@@ -295,12 +292,12 @@ func (f *baseFlow) getImportedBridgeExits(
 		importedBridgeExits = append(importedBridgeExits, ibe)
 
 		gerToL1Proof, err := f.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(
-			ctx, l1Info.L1InfoTreeIndex, rootToProve.Hash,
+			ctx, l1Info.L1InfoTreeIndex, rootFromWhichToProove.Hash,
 		)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"error getting L1 Info tree merkle proof for leaf index: %d and root: %s. Error: %w",
-				l1Info.L1InfoTreeIndex, rootToProve.Hash, err,
+				l1Info.L1InfoTreeIndex, rootFromWhichToProove.Hash, err,
 			)
 		}
 
@@ -321,7 +318,7 @@ func (f *baseFlow) getImportedBridgeExits(
 					Proof: claim.ProofLocalExitRoot,
 				},
 				ProofGERToL1Root: &agglayer.MerkleProof{
-					Root:  rootToProve.Hash,
+					Root:  rootFromWhichToProove.Hash,
 					Proof: gerToL1Proof,
 				},
 			}
@@ -347,7 +344,7 @@ func (f *baseFlow) getImportedBridgeExits(
 					Proof: claim.ProofRollupExitRoot,
 				},
 				ProofGERToL1Root: &agglayer.MerkleProof{
-					Root:  rootToProve.Hash,
+					Root:  rootFromWhichToProove.Hash,
 					Proof: gerToL1Proof,
 				},
 			}
