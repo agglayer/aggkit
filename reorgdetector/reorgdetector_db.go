@@ -92,34 +92,9 @@ type ReorgEvent struct {
 	ExtraData    string      `meddler:"extra_data"`
 }
 
-// type eventReorgRow struct {
-// 	DetectedAt   int64  `meddler:"detected_at"`
-// 	FromBlock    uint64 `meddler:"from_block"`
-// 	ToBlock      uint64 `meddler:"to_block"`
-// 	SubscriberID string `meddler:"subscriber_id"`
-// 	TrackedHash  string `meddler:"tracked_hash"`
-// 	CurrentHash  string `meddler:"current_hash"`
-// 	Version      string `meddler:"version"`
-// 	ExtraData    string `meddler:"extra_data"`
-// }
-
 func (rd *ReorgDetector) insertReorgEvent(event ReorgEvent) error {
 	if event.Version == "" {
 		event.Version = aggkit.GetVersion().Brief()
 	}
-	// extra, err := json.Marshal(event.ExtraData)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to marshal extra data: %w", err)
-	// }
-	// row := eventReorgRow{
-	// 	DetectedAt:   event.DetectedAt.Unix(),
-	// 	FromBlock:    event.FromBlock,
-	// 	ToBlock:      event.ToBlock,
-	// 	SubscriberID: event.SubscriberID,
-	// 	TrackedHash:  event.TrackedHash.String(),
-	// 	CurrentHash:  event.CurrentHash.String(),
-	// 	Version:      aggkit.GetVersion().Brief(),
-	// 	ExtraData:    string(extra),
-	// }
 	return meddler.Insert(rd.db, "reorg_event", &event)
 }
