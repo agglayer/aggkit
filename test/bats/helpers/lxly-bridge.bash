@@ -119,6 +119,7 @@ function get_bridges() {
         "tx_hash"
         "from_address"
         "bridge_hash"
+        "metadata"
     )
 
     # Check that all required fields exist (and are not null) in bridges[0]
