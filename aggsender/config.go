@@ -5,6 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/signer"
 )
 
 // Config is the configuration for the AggSender
@@ -14,7 +15,7 @@ type Config struct {
 	// AggLayerURL is the URL of the AggLayer
 	AggLayerURL string `mapstructure:"AggLayerURL"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
-	AggsenderPrivateKey types.KeystoreFileConfig `mapstructure:"AggsenderPrivateKey"`
+	AggsenderPrivateKey signer.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
 	URLRPCL2 string `mapstructure:"URLRPCL2"`
 	// BlockFinality indicates which finality follows AggLayer
@@ -69,7 +70,7 @@ func (c Config) CheckCertConfigBriefString() string {
 func (c Config) String() string {
 	return "StoragePath: " + c.StoragePath + "\n" +
 		"AggLayerURL: " + c.AggLayerURL + "\n" +
-		"AggsenderPrivateKeyPath: " + c.AggsenderPrivateKey.Path + "\n" +
+		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
 		"URLRPCL2: " + c.URLRPCL2 + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
