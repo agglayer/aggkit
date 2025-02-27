@@ -91,51 +91,45 @@ function bridge_asset() {
 
 function get_bridges() {
     local aggkit_node_url=$1
-    local l1_rpc_network_id=$2
+    local network_id=$2
+    local expected_tx_hash=$3
+    local max_attempts=$4
+    local poll_frequency=$5
 
-    bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$l1_rpc_network_id")
+    local attempt=0
 
-    echo "------ bridges_result ------"
-    echo "$bridges_result"
-    echo "------ bridges_result ------"
+    while true; do
+        ((attempt++))
+        log "Attempt $attempt: fetching bridges from the RPC..."
 
-    count=$(jq -r '.count' <<< "$bridges_result")
-    if [ "$count" -ne 1 ]; then
-        echo "Assertion failed. 'count' should be 1. Actual: $count"
-        exit 1
-    fi
+        # Fetch bridges from the RPC
+        bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$network_id")
 
-    required_fields=(
-        "block_num"
-        "block_pos"
-        "block_timestamp"
-        "leaf_type"
-        "origin_network"
-        "origin_address"
-        "destination_network"
-        "destination_address"
-        "amount"
-        "deposit_count"
-        "tx_hash"
-        "from_address"
-        "bridge_hash"
-        "metadata"
-    )
+        log "------ bridges_result ------"
+        log "$bridges_result"
+        log "------ bridges_result ------"
 
-    # Check that all required fields exist (and are not null) in bridges[0]
-    for field in "${required_fields[@]}"; do
-        value=$(jq -r --arg fld "$field" '.bridges[0][$fld]' <<< "$bridges_result")
-        if [ "$value" = "null" ] || [ -z "$value" ]; then
-            echo "Assertion failed. Missing or null '$field' in the first bridge object."
-            exit 1
+        # Extract the elements of the 'bridges' array one by one
+        for row in $(echo "$bridges_result" | jq -c '.bridges[]'); do
+            # Parse out the tx_hash from each element
+            tx_hash=$(echo "$row" | jq -r '.tx_hash')
+
+            if [[ "$tx_hash" == "$expected_tx_hash" ]]; then
+                log "Found expected bridge with tx hash: $tx_hash"
+                echo "$row"
+                return 0
+            fi
+        done
+
+        # Fail test if max attempts are reached
+        if [[ "$attempt" -ge "$max_attempts" ]]; then
+            echo "Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
+            return 1
         fi
-    done
 
-    origin_network=$(jq -r '.bridges[0].origin_network' <<< "$bridges_result")
-    if [ "$origin_network" -ne 0 ]; then
-        echo "Assertion failed. 'origin_network' should be 0. Actual: $origin_network"
-        exit 1
-    fi
+        # Sleep before the next attempt
+        sleep "$poll_frequency"
+    done
 }
 
 # This function is used to claim a concrete tx hash

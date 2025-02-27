@@ -268,7 +268,6 @@ func (b *BridgeEndpoints) GetBridges(
 			fmt.Sprintf("this client does not support network %d", networkID),
 		)
 	}
-	fmt.Println("------------- bridges", bridges)
 	return BridgesResult{
 		Bridges: bridges,
 		Count:   count,

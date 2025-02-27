@@ -65,9 +65,18 @@ setup() {
     local bridge_tx_hash=$output
 
     echo "------- bridge_getBridges API testcase"
-    local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
-    run get_bridges $aggkit_node_url $l1_rpc_network_id
+    local aggkit_node_url
+    aggkit_node_url="$(kurtosis port print "$enclave" cdk-node-001 rpc)"
+    run get_bridges "$aggkit_node_url" "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
+    local bridge
+    bridge="$output"
+    local origin_network
+    origin_network="$(echo "$bridge" | jq -r '.origin_network')"
+    local destination_network
+    destination_network="$(echo "$bridge" | jq -r '.destination_network')"
+    assert_equal "$l1_rpc_network_id" "$origin_network"
+    assert_equal "$l2_rpc_network_id" "$destination_network"
     echo "------- bridge_getBridges API testcase passed"
 
     echo "=== Running LxLy claim on L2" >&3
