@@ -59,18 +59,18 @@ setup() {
     echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
 
     echo "=== Running LxLy deposit on L1 to network: $l2_rpc_network_id native_token: $native_token_addr" >&3
-
     destination_net=$l2_rpc_network_id
     run bridge_asset "$native_token_addr" "$l1_rpc_url"
     assert_success
+    local bridge_tx_hash=$output
 
     echo "=== Running LxLy claim on L2" >&3
     timeout="180"
     claim_frequency="10"
-    run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
-    echo "=== bridgeAsset L2 WETH: $weth_token_addr to L1 ETH" >&3
+    echo "=== Running LxLy WETH ($weth_token_addr) deposit on L2 to L1 network" >&3
     destination_addr=$sender_addr
     destination_net=0
     run bridge_asset "$weth_token_addr" "$l2_rpc_url"

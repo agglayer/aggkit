@@ -9,7 +9,6 @@ _common_multi_setup() {
 
     kurtosis service exec $enclave contracts-001 "cat /opt/zkevm/combined-001.json" | tail -n +2 | jq '.' >combined-001.json
     kurtosis service exec $enclave contracts-002 "cat /opt/zkevm/combined-002.json" | tail -n +2 | jq '.' >combined-002.json
-    kurtosis service exec $enclave contracts-002 "cat /opt/zkevm-contracts/deployment/v2/create_rollup_parameters.json" | tail -n +2 | jq -r '.gasTokenAddress' >gas-token-address.json
 
     readonly private_key="0x12d7de8621a77640c9241b2595ba78ce443d05e94090365ab3bb5e19df82c625"
     readonly eth_address=$(cast wallet address --private-key $private_key)
@@ -18,7 +17,10 @@ _common_multi_setup() {
     readonly l2_pp2_url=$(kurtosis port print $enclave cdk-erigon-rpc-002 rpc)
     readonly bridge_address=$(cat combined-001.json | jq -r .polygonZkEVMBridgeAddress)
     readonly pol_address=$(cat combined-001.json | jq -r .polTokenAddress)
-    readonly gas_token_address=$(<gas-token-address.json)
+    readonly rollup_params_file=/opt/zkevm/create_rollup_parameters.json
+    run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | tail -n +2 | jq -r '.gasTokenAddress'"
+    assert_success
+    readonly gas_token_addr=$output
     readonly l2_pp1b_url=$(kurtosis port print $enclave zkevm-bridge-service-001 rpc)
     readonly l2_pp2b_url=$(kurtosis port print $enclave zkevm-bridge-service-002 rpc)
     readonly l2_pp1_cdk_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
@@ -31,7 +33,9 @@ _common_multi_setup() {
     readonly aggsender_find_imported_bridge="../target/aggsender_find_imported_bridge"
     echo "=== Bridge address=$bridge_address ===" >&3
     echo "=== POL address=$pol_address ===" >&3
-    echo "=== Gas token address=$gas_token_address ===" >&3
+    if [ -n "$gas_token_addr" ] && [ "$gas_token_addr" != "0x0" ]; then
+        echo "=== Gas token address=$gas_token_addr ===" >&3
+    fi
     echo "=== L1 network id=$l1_rpc_network_id ===" >&3
     echo "=== L2 PP1 network id=$l2_pp1b_network_id ===" >&3
     echo "=== L2 PP2 network id=$l2_pp2b_network_id ===" >&3
@@ -40,17 +44,16 @@ _common_multi_setup() {
     echo "=== L2 PP2 URL=$l2_pp2_url ===" >&3
     echo "=== L2 PP1B URL=$l2_pp1b_url ===" >&3
     echo "=== L2 PP2B URL=$l2_pp2b_url ===" >&3
-
 }
 
 add_network2_to_agglayer() {
-    echo "=== Checking if  network 2 is in agglayer ===" >&3
+    echo "=== Checking if network 2 is added to agglayer ===" >&3
     local _prev=$(kurtosis service exec $enclave agglayer "grep \"2 = \" /etc/zkevm/agglayer-config.toml || true" | tail -n +2)
     if [ ! -z "$_prev" ]; then
-        echo "Network 2 already added to agglayer" >&3
+        echo "Network 2 is already added to agglayer" >&3
         return
     fi
-    echo "=== Adding network 2 to agglayer === ($_prev)" >&3
+    echo "=== Adding network 2 to agglayer ===" >&3
     kurtosis service exec $enclave agglayer "sed -i 's/\[proof\-signers\]/2 = \"http:\/\/cdk-erigon-rpc-002:8123\"\n\[proof-signers\]/i' /etc/zkevm/agglayer-config.toml"
     kurtosis service stop $enclave agglayer
     kurtosis service start $enclave agglayer
