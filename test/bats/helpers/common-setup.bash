@@ -16,7 +16,6 @@ _common_setup() {
     readonly balance_of_fn_sig="function balanceOf(address) (uint256)"
     readonly approve_fn_sig="function approve(address,uint256)"
 
-
     # Kurtosis enclave and service identifiers
     readonly enclave=${KURTOSIS_ENCLAVE:-aggkit}
     readonly contracts_container=${KURTOSIS_CONTRACTS:-contracts-001}
