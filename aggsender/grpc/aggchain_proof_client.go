@@ -6,6 +6,7 @@ import (
 
 	agglayer "github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -119,8 +120,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 			Amount:      &types.FixedBytes32{Value: importedBridgeExit.BridgeExit.Amount.Bytes()},
 			Metadata:    &types.FixedBytes32{Value: importedBridgeExit.BridgeExit.Metadata},
 		}
-		// TODO - How to convert global index into fixedbytes32 format. Currently it is decomposed form
-		convertedGlobalIndex := &types.FixedBytes32{}
+		convertedGlobalIndex := &types.FixedBytes32{Value: bridgesync.GenerateGlobalIndex(importedBridgeExit.GlobalIndex.MainnetFlag, importedBridgeExit.GlobalIndex.RollupIndex, importedBridgeExit.GlobalIndex.LeafIndex).Bytes()}
 		convertedImportedBridgeExits[i] = &types.ImportedBridgeExit{
 			BridgeExit:  convertedBridgeExit,
 			GlobalIndex: convertedGlobalIndex,
