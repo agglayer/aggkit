@@ -224,19 +224,15 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 					continue
 				}
 				event := ReorgEvent{
-					DetectedAt:   startTime,
+					DetectedAt:   startTime.Unix(),
 					FromBlock:    hdr.Num,
 					ToBlock:      headers[len(headers)-1].Num,
 					SubscriberID: id,
 					CurrentHash:  currentHeader.Hash(),
 					TrackedHash:  hdr.Hash,
-					ExtraData: struct {
-						Network        string
-						BlockTimestamp uint64
-					}{
-						Network:        rd.network.String(),
-						BlockTimestamp: currentHeader.Time,
-					},
+					ExtraData: fmt.Sprintf("network:%s, blockTstamp:%d",
+						rd.network.String(),
+						currentHeader.Time),
 				}
 				if err := rd.insertReorgEvent(event); err != nil {
 					return fmt.Errorf("failed to insert reorg event: %w", err)
