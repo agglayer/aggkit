@@ -272,7 +272,7 @@ setup() {
     run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 "$l1_rpc_network_id"
     assert_success
 
-    run wait_for_expected_token "$l1_erc20_addr" 10 2 "$aggkit_node_url"
+    run wait_for_expected_token "$l1_erc20_addr" 10 2 "$aggkit_node_url" "$l1_rpc_network_id"
     assert_success
     local token_mappings_result=$output
 
@@ -284,4 +284,75 @@ setup() {
 
     run verify_balance "$l2_rpc_url" "$l2_token_addr" "$receiver" 0 "$tokens_amount"
     assert_success
+}
+
+@test "ERC20 token deposit L2 -> L1" {
+    echo "Retrieving ERC20 contract artifact from $erc20_artifact_path" >&3
+
+    run jq -r '.bytecode' "$erc20_artifact_path"
+    assert_success
+    local erc20_bytecode="$output"
+
+    echo "Deploying ERC20 contract on L2 ($l2_rpc_url)" >&3
+    run cast send --rpc-url "$l2_rpc_url" --private-key "$sender_private_key" --legacy --create "$erc20_bytecode"
+    assert_success
+    local erc20_deploy_output=$output
+
+    local l2_erc20_addr=$(echo "$erc20_deploy_output" |
+        grep 'contractAddress' |
+        awk '{print $2}' |
+        tr '[:upper:]' '[:lower:]')
+    echo "ERC20 contract address: $l2_erc20_addr" >&3
+
+    # Mint ERC20 tokens on L2
+    local tokens_amount="0.1ether"
+    local wei_amount=$(cast --to-unit $tokens_amount wei)
+    run mint_erc20_tokens "$l2_rpc_url" "$l2_erc20_addr" "$sender_private_key" "$sender_addr" "$tokens_amount"
+    assert_success
+
+    # Assert that balance of ERC20 token (on the L2) is correct
+    run query_contract "$l2_rpc_url" "$l2_erc20_addr" "$balance_of_fn_sig" "$sender_addr"
+    assert_success
+    local l2_erc20_token_sender_balance=$(echo "$output" |
+        tail -n 1 |
+        awk '{print $1}')
+    echo "Sender balance ($sender_addr) (ERC20 token L2): $l2_erc20_token_sender_balance [weis]" >&3
+
+    # Send approve transaction to the ERC20 token on L2
+    run send_tx "$l2_rpc_url" "$sender_private_key" "$l2_erc20_addr" "$approve_fn_sig" "$bridge_addr" "$tokens_amount"
+    assert_success
+    assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
+
+    # DEPOSIT ON L2
+    local receiver=${RECEIVER:-"0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6"}
+    destination_addr=$receiver
+    destination_net=$l1_rpc_network_id
+    amount=$(cast --to-unit $tokens_amount wei)
+    meta_bytes="0x"
+    run bridge_asset "$l2_erc20_addr" "$l2_rpc_url"
+    assert_success
+
+    # Claim deposits (settle them on the L1)
+    timeout="180"
+    claim_frequency="10"
+    run wait_for_claim "$timeout" "$claim_frequency" "$l1_rpc_url" "bridgeAsset"
+    assert_success
+
+    run wait_for_expected_token "$l2_erc20_addr" 20 3 "$l1_rpc_network_id"
+    assert_success
+    local token_mappings_result=$output
+
+    local origin_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].origin_token_address')
+    assert_equal "$l2_erc20_addr" "$origin_token_addr"
+
+    local l1_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].wrapped_token_address')
+    echo "L1 token addr $l1_token_addr" >&3
+
+    run verify_balance "$l1_rpc_url" "$l1_token_addr" "$receiver" 0 "$tokens_amount"
+    assert_success
+
+    # TODO: @Stefan-Ethernal
+    # Bridge it back to L2
+    # Claim it again
+    # Do another exit to see if this causes any issues
 }

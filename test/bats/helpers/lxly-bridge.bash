@@ -260,7 +260,9 @@ function wait_for_expected_token() {
     local max_attempts="$2"
     local poll_frequency="$3"
     local aggkit_url="$4"
+    local network_id="$5"
 
+    local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
     local attempt=0
     local token_mappings_result
     local origin_token_address
@@ -269,7 +271,7 @@ function wait_for_expected_token() {
         ((attempt++))
 
         # Fetch token mappings from the RPC
-        token_mappings_result=$(cast rpc --rpc-url "$aggkit_url" "bridge_getTokenMappings" "$l2_rpc_network_id")
+        token_mappings_result=$(cast rpc --rpc-url "$aggkit_url" "bridge_getTokenMappings" "$network_id")
 
         # Extract the first origin_token_address (if available)
         origin_token_address=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].origin_token_address')
