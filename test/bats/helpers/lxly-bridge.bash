@@ -258,24 +258,23 @@ function check_claim_revert_code() {
 }
 
 function wait_for_expected_token() {
-    local expected_origin_token="$1"
-    local max_attempts="$2"
-    local poll_frequency="$3"
-    local aggkit_url="$4"
+    local bridge_indexer_url="$1"
+    local expected_origin_token="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
     local network_id="$5"
 
-    local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
     local attempt=0
     local token_mappings_result
     local origin_token_address
 
-    log "⏳ Waiting for expected origin_token_address $aggkit_node_url @ $enclave..."
+    log "⏳ Waiting for expected origin_token_address $bridge_indexer_url @ $enclave..."
 
     while true; do
         ((attempt++))
 
         # Fetch token mappings from the RPC
-        token_mappings_result=$(cast rpc --rpc-url "$aggkit_url" "bridge_getTokenMappings" "$network_id")
+        token_mappings_result=$(cast rpc --rpc-url "$bridge_indexer_url" "bridge_getTokenMappings" "$network_id")
 
         # Extract the first origin_token_address (if available)
         origin_token_address=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].origin_token_address')
