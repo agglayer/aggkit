@@ -67,7 +67,7 @@ setup() {
     echo "------- bridge_getBridges API testcase"
     local aggkit_node_url
     aggkit_node_url="$(kurtosis port print "$enclave" cdk-node-001 rpc)"
-    run get_bridges "$aggkit_node_url" "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
+    run get_bridge "$aggkit_node_url" "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
     local bridge
     bridge="$output"

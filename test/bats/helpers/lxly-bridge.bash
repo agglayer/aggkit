@@ -89,7 +89,7 @@ function bridge_asset() {
     fi
 }
 
-function get_bridges() {
+function get_bridge() {
     local aggkit_node_url=$1
     local network_id=$2
     local expected_tx_hash=$3
