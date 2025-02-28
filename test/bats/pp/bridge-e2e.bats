@@ -154,7 +154,7 @@ setup() {
 
     # Validate the bridge_getClaims API
     echo "------- bridge_getClaims API testcase --------"
-    run get_claims "$aggkit_node_url" "$l1_rpc_network_id" "$global_index" 10 15
+    run get_claims "$aggkit_node_url" "$l2_rpc_network_id" "$global_index" 10 15
     assert_success
 
     local origin_network="$(echo "$output" | jq -r '.origin_network')"
