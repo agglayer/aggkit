@@ -60,8 +60,8 @@ type Bridge struct {
 }
 
 // MarshalJSON for hex-encoding Metadata field
-func (b *Bridge) MarshalJSON() ([]byte, error) {
-	type Alias Bridge // Prevent recursion
+func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
+	type Alias BridgeResponse // Prevent recursion
 	return json.Marshal(&struct {
 		Metadata string `json:"metadata"`
 		*Alias
@@ -73,8 +73,8 @@ func (b *Bridge) MarshalJSON() ([]byte, error) {
 
 // BridgeResponse is the representation of a bridge event with additional fields
 type BridgeResponse struct {
-	Bridge
 	BridgeHash common.Hash `json:"bridge_hash"`
+	Bridge
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
