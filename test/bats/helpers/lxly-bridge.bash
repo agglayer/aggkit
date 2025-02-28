@@ -89,6 +89,49 @@ function bridge_asset() {
     fi
 }
 
+function get_bridge() {
+    local aggkit_node_url=$1
+    local network_id=$2
+    local expected_tx_hash=$3
+    local max_attempts=$4
+    local poll_frequency=$5
+
+    local attempt=0
+
+    while true; do
+        ((attempt++))
+        log "Attempt $attempt: fetching bridges from the RPC..."
+
+        # Fetch bridges from the RPC
+        bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$network_id")
+
+        log "------ bridges_result ------"
+        log "$bridges_result"
+        log "------ bridges_result ------"
+
+        # Extract the elements of the 'bridges' array one by one
+        for row in $(echo "$bridges_result" | jq -c '.bridges[]'); do
+            # Parse out the tx_hash from each element
+            tx_hash=$(echo "$row" | jq -r '.tx_hash')
+
+            if [[ "$tx_hash" == "$expected_tx_hash" ]]; then
+                log "Found expected bridge with tx hash: $tx_hash"
+                echo "$row"
+                return 0
+            fi
+        done
+
+        # Fail test if max attempts are reached
+        if [[ "$attempt" -ge "$max_attempts" ]]; then
+            echo "Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
+            return 1
+        fi
+
+        # Sleep before the next attempt
+        sleep "$poll_frequency"
+    done
+}
+
 # This function is used to claim a concrete tx hash
 # global vars:
 # - destination_addr
