@@ -229,7 +229,6 @@ function claim_tx_hash() {
     done
 
     export global_index=$(jq -r '.global_index' $current_deposit)
-    echo "{\"global_index\": \"$global_index\"}"
     log "✅ Deposit claimed ($global_index)"
 
     # clean up temp files
@@ -364,9 +363,11 @@ function get_claim() {
     local poll_frequency="$4"
     local attempt=0
 
+    log "🔍 Searching for claim with global_index: "$expected_global_index" (bridge indexer RPC: "$aggkit_node_url")..."
+
     while true; do
         ((attempt++))
-        log "🔍 Attempt $attempt: fetching claims from the RPC ("$aggkit_node_url")..."
+        log "🔍 Attempt $attempt"
         claims_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getClaims" "$network_id")
         log "------ claims_result ------"
         log "$claims_result"
