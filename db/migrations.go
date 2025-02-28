@@ -31,7 +31,8 @@ func RunMigrations(dbPath string, migrations []types.Migration) error {
 func RunMigrationsDB(logger *log.Logger, db *sql.DB, migrationsParam []types.Migration) error {
 	migs := &migrate.MemoryMigrationSource{Migrations: []*migrate.Migration{}}
 	// Add base migrations to general ones
-	fullmigrations := append(migrationsParam, migrations.GetBaseMigrations()...)
+	fullmigrations := migrationsParam
+	fullmigrations = append(fullmigrations, migrations.GetBaseMigrations()...)
 	for _, m := range fullmigrations {
 		prefixed := strings.ReplaceAll(m.SQL, dbPrefixReplacer, m.Prefix)
 		splitted := strings.Split(prefixed, upDownSeparator)

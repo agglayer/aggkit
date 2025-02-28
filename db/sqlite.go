@@ -49,13 +49,14 @@ func InsertValue(tx Querier, owner, key, value string) error {
 
 func GetValue(tx Querier, owner, key string) (string, error) {
 	var data kvRow
-	//err := tx.QueryRow(fmt.Sprintf("SELECT value FROM %s WHERE key = ?", tableKVName), key).Scan(&value)
-	err := meddler.QueryRow(tx, &data, fmt.Sprintf("SELECT * FROM %s WHERE owner = $1 and key = $2 LIMIT 1;", tableKVName), owner, key)
+	err := meddler.QueryRow(tx, &data, fmt.Sprintf("SELECT * FROM %s WHERE owner = $1 and key = $2 LIMIT 1;", tableKVName),
+		owner, key)
 	return data.Value, ReturnErrNotFound(err)
 }
 
 func ExistsKey(tx Querier, owner, key string) (bool, error) {
 	var count int
-	err := tx.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE owner = ? and key = ?", tableKVName), owner, key).Scan(&count)
+	err := tx.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE owner = ? and key = ?", tableKVName),
+		owner, key).Scan(&count)
 	return count > 0, ReturnErrNotFound(err)
 }
