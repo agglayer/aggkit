@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/db/migrations"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,6 +18,10 @@ import (
 )
 
 const errWhileRollbackFormat = "error while rolling back tx: %w"
+
+type RuntimeData struct {
+	NetworkID uint64
+}
 
 // AggSenderStorage is the interface that defines the methods to interact with the storage
 type AggSenderStorage interface {
@@ -32,6 +37,8 @@ type AggSenderStorage interface {
 	GetCertificatesByStatus(status []agglayer.CertificateStatus) ([]*types.CertificateInfo, error)
 	// UpdateCertificate updates certificate in db
 	UpdateCertificate(ctx context.Context, certificate types.CertificateInfo) error
+	// CheckCompatibilityData checks the compatibility data between db and runtime
+	CheckCompatibilityData(runtimeData RuntimeData) error
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -242,6 +249,10 @@ func (a *AggSenderSQLStorage) UpdateCertificate(ctx context.Context, certificate
 	a.logger.Debugf("updated certificate status - CertificateID: %s", certificate.CertificateID)
 
 	return nil
+}
+
+func (a *AggSenderSQLStorage) CheckCompatibilityData(data RuntimeData) error {
+	return db.CheckCompatibilityData(a.db, aggkitcommon.AGGSENDER, data)
 }
 
 func getSelectQueryError(height uint64, err error) error {

@@ -131,8 +131,21 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.log.Info("AggSender started")
 	metrics.Register()
 	a.status.Start(time.Now().UTC())
+	a.checkDBCompatibility(ctx)
 	a.checkInitialStatus(ctx)
 	a.sendCertificates(ctx, 0)
+}
+func (a *AggSender) checkDBCompatibility(ctx context.Context) {
+	networkID := a.l2Syncer.OriginNetwork()
+	err := db.CheckCompatibilityData(a.storage, aggkitcommon.AGGSENDER, networkID)
+	if err != nil {
+		if a.cfg.CheckDatabaseDatatMatchRunningEnvironment {
+			a.log.Fatalf("error checking compatibility data in DB, you can bypass this check"+
+				"setting AggSender.CheckDatabaseDatatMatchRunningEnvironment=false. Err: %w", err)
+		} else {
+			a.log.Warnf("error checking compatibility data: %w", err)
+		}
+	}
 }
 
 // checkInitialStatus check local status vs agglayer status

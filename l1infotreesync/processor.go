@@ -8,6 +8,7 @@ import (
 	"fmt"
 	mutex "sync"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync/migrations"
 	"github.com/agglayer/aggkit/log"
@@ -486,4 +487,8 @@ func (p *processor) isHalted() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.halted
+}
+
+func (p *processor) CheckCompatibilityData(data sync.RuntimeData) error {
+	return db.CheckCompatibilityData(p.db, aggkitcommon.L1INFOTREESYNC, data)
 }

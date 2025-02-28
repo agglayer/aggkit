@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/agglayer/aggkit/db/migrations"
 	"github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	_ "github.com/mattn/go-sqlite3"
@@ -27,9 +28,11 @@ func RunMigrations(dbPath string, migrations []types.Migration) error {
 	return RunMigrationsDB(log.GetDefaultLogger(), db, migrations)
 }
 
-func RunMigrationsDB(logger *log.Logger, db *sql.DB, migrations []types.Migration) error {
+func RunMigrationsDB(logger *log.Logger, db *sql.DB, migrationsParam []types.Migration) error {
 	migs := &migrate.MemoryMigrationSource{Migrations: []*migrate.Migration{}}
-	for _, m := range migrations {
+	// Add base migrations to general ones
+	fullmigrations := append(migrationsParam, migrations.GetBaseMigrations()...)
+	for _, m := range fullmigrations {
 		prefixed := strings.ReplaceAll(m.SQL, dbPrefixReplacer, m.Prefix)
 		splitted := strings.Split(prefixed, upDownSeparator)
 		migs.Migrations = append(migs.Migrations, &migrate.Migration{

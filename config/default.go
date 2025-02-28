@@ -225,6 +225,7 @@ CheckStatusCertificateInterval = "5m"
 RetryCertInmediatlyAfterInError = true
 # Don't send certificate over 80% of the epoch
 MaxEpochPercentageAllowedToSendCertificate=80
+CheckDatabaseCompatibilityWithRunningEnvironment = true
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"

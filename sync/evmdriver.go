@@ -25,6 +25,9 @@ type evmDownloaderFull interface {
 
 type downloader interface {
 	Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock)
+	// GetRuntimeData returns the runtime data from this downloader
+	// this is used to check that DB is compatible with the runtime data
+	GetRuntimeData(ctx context.Context) (RuntimeData, error)
 }
 
 type EVMDriver struct {
@@ -38,10 +41,16 @@ type EVMDriver struct {
 	log                *log.Logger
 }
 
+type RuntimeData struct {
+	ChainID   uint64
+	Addresses []common.Address
+}
+
 type processorInterface interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	ProcessBlock(ctx context.Context, block Block) error
 	Reorg(ctx context.Context, firstReorgedBlock uint64) error
+	CheckCompatibilityData(data RuntimeData) error
 }
 
 type ReorgDetector interface {
@@ -82,7 +91,23 @@ reset:
 		lastProcessedBlock uint64
 		attempts           int
 		err                error
+		runtimeData        RuntimeData
 	)
+	for {
+		runtimeData, err = d.downloader.GetRuntimeData(ctx)
+		if err != nil {
+			attempts++
+			d.log.Error("error getting current runtime Data from processor: ", err)
+			d.rh.Handle("Sync", attempts)
+			continue
+		}
+		break
+	}
+	err = d.processor.CheckCompatibilityData(runtimeData)
+	if err != nil {
+		d.log.Fatal("error checking compatibility data between downloader(rumtime) and processor(db): ",
+			err)
+	}
 
 	for {
 		lastProcessedBlock, err = d.processor.GetLastProcessedBlock(ctx)
