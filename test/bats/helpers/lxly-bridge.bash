@@ -358,7 +358,7 @@ function wait_for_expected_token() {
     done
 }
 
-function get_claims() {
+function get_claim() {
     local aggkit_node_url=$1
     local l1_rpc_network_id=$2
     local expected_global_index=$3
@@ -368,16 +368,16 @@ function get_claims() {
 
     while true; do
         ((attempt++))
-        echo "🔍 Attempt $attempt: fetching claims from the RPC..." >&3
+        log "🔍 Attempt $attempt: fetching claims from the RPC ("$aggkit_node_url")..."
         claims_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getClaims" "$l1_rpc_network_id")
-        echo "------ claims_result ------" >&3
-        echo "$claims_result" >&3
+        log "------ claims_result ------"
+        log "$claims_result"
 
         for row in $(echo "$claims_result" | jq -c '.claims[]'); do
             global_index=$(jq -r '.global_index' <<< "$row")
 
             if [[ "$global_index" == "$expected_global_index" ]]; then
-                echo "🎉 Success: Expected global_index '$expected_global_index' found. Exiting loop." >&3
+                log "🎉 Success: Expected global_index '$expected_global_index' found. Exiting loop."
                 required_fields=(
                     "block_num"
                     "block_timestamp"
@@ -406,7 +406,7 @@ function get_claims() {
 
         # Fail test if max attempts are reached
         if [[ "$attempt" -ge "$max_attempts" ]]; then
-            echo "❌ Error: Reached max attempts ($max_attempts) without finding expected claim with global index." >&2
+            echo "❌ Error: Reached max attempts ($max_attempts) without finding expected claim with global index ($expected_global_index)." >&2
             return 1
         fi
 
