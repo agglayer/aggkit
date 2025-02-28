@@ -419,7 +419,7 @@ setup() {
     run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
     assert_success
 
-     echo "==== 💰 Verifying balance on L1 ($l1_rpc_url)" >&3
+    echo "==== 💰 Verifying balance on L1 ($l1_rpc_url)" >&3
     run verify_balance "$l1_rpc_url" "$l1_wrapped_token_addr" "$destination_addr" "$l1_wrapped_token_balance" "$tokens_amount"
     assert_success
 }
