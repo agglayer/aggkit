@@ -137,10 +137,16 @@ setup() {
     run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
-    echo "------- bridge_getClaims API testcase"
-    run get_claims $aggkit_node_url $l1_rpc_network_id
+    # Validate the bridge_getClaims API
+    echo "------- bridge_getClaims API testcase --------"
+    run get_claims "$aggkit_node_url" "$l1_rpc_network_id" "$global_index" 10 3
     assert_success
-    echo "------- bridge_getClaims API testcase passed"
+
+    local origin_network="$(echo "$output" | jq -r '.origin_network')"
+    local destination_network="$(echo "$output" | jq -r '.destination_network')"
+    assert_equal "$l1_rpc_network_id" "$origin_network"
+    assert_equal "$l2_rpc_network_id" "$destination_network"
+    echo "🚀🚀 bridge_getClaims API testcase passed" >&3
 
     # Validate that the native token of receiver on L2 has increased by the bridge tokens amount
     run verify_balance "$l2_rpc_url" "$native_token_addr" "$receiver" "$initial_receiver_balance" "$tokens_amount"
