@@ -90,11 +90,10 @@ function bridge_asset() {
 }
 
 function get_bridge() {
-    local aggkit_node_url=$1
-    local network_id=$2
-    local expected_tx_hash=$3
-    local max_attempts=$4
-    local poll_frequency=$5
+    local network_id="$1"
+    local expected_tx_hash="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
 
     local attempt=0
 
@@ -320,10 +319,9 @@ function check_claim_revert_code() {
 }
 
 function wait_for_expected_token() {
-    local aggkit_node_url="$1"
-    local expected_origin_token="$2"
-    local max_attempts="$3"
-    local poll_frequency="$4"
+    local expected_origin_token="$1"
+    local max_attempts="$2"
+    local poll_frequency="$3"
 
     local attempt=0
     local token_mappings_result
@@ -359,17 +357,16 @@ function wait_for_expected_token() {
 }
 
 function get_claim() {
-    local aggkit_node_url=$1
-    local l1_rpc_network_id=$2
-    local expected_global_index=$3
-    local max_attempts=$4
-    local poll_frequency=$5
+    local network_id="$1"
+    local expected_global_index="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
     local attempt=0
 
     while true; do
         ((attempt++))
         log "🔍 Attempt $attempt: fetching claims from the RPC ("$aggkit_node_url")..."
-        claims_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getClaims" "$l1_rpc_network_id")
+        claims_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getClaims" "$network_id")
         log "------ claims_result ------"
         log "$claims_result"
 

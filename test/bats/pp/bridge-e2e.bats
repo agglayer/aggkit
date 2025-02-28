@@ -40,7 +40,7 @@ setup() {
 
     readonly l1_rpc_url=${L1_ETH_RPC_URL:-"$(kurtosis port print $enclave el-1-geth-lighthouse rpc)"}
     readonly bridge_api_url=${BRIDGE_API_URL:-"$(kurtosis port print $enclave zkevm-bridge-service-001 rpc)"}
-    readonly aggkit_node_url=${AGGKIT_NODE_URL:-$"(kurtosis port print $enclave cdk-node-001 rpc)"}
+    readonly aggkit_node_url=${AGGKIT_NODE_URL:-"$(kurtosis port print $enclave cdk-node-001 rpc)"}
 
     readonly dry_run=${DRY_RUN:-"false"}
     readonly l1_rpc_network_id=$(cast call --rpc-url $l1_rpc_url $bridge_addr 'networkID() (uint32)')
@@ -66,9 +66,7 @@ setup() {
     local bridge_tx_hash=$output
 
     echo "------- bridge_getBridges API testcase"
-    local aggkit_node_url
-    aggkit_node_url="$(kurtosis port print "$enclave" cdk-node-001 rpc)"
-    run get_bridge "$aggkit_node_url" "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
     local bridge
     bridge="$output"
@@ -154,7 +152,7 @@ setup() {
 
     # Validate the bridge_getClaims API
     echo "------- bridge_getClaims API testcase --------"
-    run get_claim "$aggkit_node_url" "$l2_rpc_network_id" "$global_index" 10 3
+    run get_claim "$l2_rpc_network_id" "$global_index" 10 3
     assert_success
 
     local origin_network="$(echo "$output" | jq -r '.origin_network')"
@@ -249,7 +247,7 @@ setup() {
     run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
-    run wait_for_expected_token "$aggkit_node_url" "$l1_erc20_addr" 10 2
+    run wait_for_expected_token "$l1_erc20_addr" 10 2
     assert_success
     local token_mappings_result=$output
 
