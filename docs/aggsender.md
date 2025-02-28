@@ -16,6 +16,8 @@ The image below, depicts the `Aggsender` components (the editable link of the di
 It checks the last certificate in DB (if exists) against the `Agglayer`, to be sure that both are on the same page:
     - If the DB is empty then get, as starting point, the last certificate `Agglayer` has.
     - If it is a fresh start, and there are no certificates before this, it will set its starting block to 1 and start polling bridges and claims from the syncer from that block.
+    - If `Aggsender` is not on the same page as `Agglayer` it will log error and not proceed with the process of building new certificates, because this case means that there was another player involved that sent a certificate in place of the `Aggsender` which is an invalid case since `Aggsender` is a single instance per L2 network. It can also happen if we put a different `Aggsender` db (from a different network).
+    - If both `Aggsender` and `Agglayer` have the same certificate, then `Aggsender` will start the certificate monitoring and build process since this is a valid use case.
 
 ```mermaid
 sequenceDiagram
@@ -28,23 +30,23 @@ sequenceDiagram
     Aggsender->>Agglayer: Send certificate
 ```
 
-### Build a certificate
+### PessimisticProof Mode
 
-`Aggsender` will wait until the epoch event is triggered and ask the `L2BridgeSyncer` if there are new bridge to be sent to `Agglayer`. Once we reach the moment in epoch when we need to send a certificate, the `Aggsender` will poll all the bridges and claims from the bridge syncer, based on the last sent L2 block to the `Agglayer`, until the block that the syncer has.
+`Aggsender` will wait until the epoch event is triggered and ask the `L2BridgeSyncer` if there are new bridges and claims to be sent to `Agglayer`. Once we reach the moment in epoch when we need to send a certificate, the `Aggsender` will poll all the bridges and claims from the bridge syncer, based on the last sent L2 block to the `Agglayer`, until the block that the syncer has.
 
 It is important to mention that no certificate will be sent to the `Agglayer` if the syncer has no bridges, since bridges change the Local Exit Root (`LER`).
 
 If we have bridges, certificate will be built, signed, and sent to the `Agglayer` using the provided `Agglayer` RPC URL.
 
-Currently, `Agglayer` only supports one certificate per L1 epoch, per network, so we can not send more than one certificate. After the certificate is sent, we wait until the next epoch, either to resend it if its status is `InError`, or to build a new one if its status `Settled`. Also, we have no limit yet in how many bridges and claims can be sent in a single certificate. This might be something to test and check, because certificates carry a lot of data through RPC, so we might hit a limit at some point.
+Currently, `Agglayer` only supports one certificate per L1 epoch, per network, so we can not send more than one certificate. After the certificate is sent, we wait until the next epoch, either to resend it if its status is `InError`, or to build a new one if its status `Settled`. Also, we have no limit yet in how many bridges and claims can be sent in a single certificate. This might be something to test and check, because certificates carry a lot of data through RPC, so we might hit the rpc layer limit at some point. For this reason, we introduced the `MaxCertSize` configuration parameter on the `Aggsender`, where the user can define the maximum size of the certificate (based on the rpc communication layer limit) in bytes, and the `Aggsender` will limit the number of bridges and claims it will send to the `Agglayer` based on this parameter. Since both bridges and claims carry fixed size of data (each field is a fixed size field), we can we great precision calculate the size of a certificate.
 
-`InError` status can mean a number of things. It can be an error that happened on the `Agglayer`. It can be an error in the data `Aggsender` sent, or the certificate was sent in between two epochs, which `Agglayer` considers invalid. Either way, the given certificate needs to be re-sent in the next epoch, with all the previously sent bridges and claims, plus the new ones that happened after them, that the syncer saw and saved.
+`InError` status on a certificate can mean a number of things. It can be an error that happened on the `Agglayer`. It can be an error in the data `Aggsender` sent, or the certificate was sent in between two epochs, which `Agglayer` considers invalid. Either way, the given certificate needs to be re-sent in the next epoch (or immediately after we notice its status change based on the `RetryCertAfterInError` config parameter), with all the previously sent bridges and claims, plus the new ones that happened after them, that the syncer saw and saved.
 
 It is important to mention that, in the case of resending the certificate, the certificate height must be reused. If we are sending a new certificate, its height must be incremented based on the previously sent certificate.
 
-Suppose the previously sent certificate was not marked as `InError`, or `Settled` on the `Agglayer`. In that case, we can not send/resend the certificate, even though a new epoch event is handled.
+Suppose the previously sent certificate was not marked as `InError`, or `Settled` on the `Agglayer`. In that case, we can not send/resend the certificate, even though a new epoch event is handled since it was not processed yet by the `Agglayer` (neither `Settled` nor marked as `InError`).
 
-The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer`.
+The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer` in `PessimisticProof` mode.
 
 ```mermaid
 sequenceDiagram
@@ -55,7 +57,7 @@ sequenceDiagram
     participant AggLayer
     participant L2BridgeSyncer
     participant L1InfoTreeSync
-    participant Aggsender
+    participant AggSender
 
     User->>L1RPC: bridge (L1->L2)
     L1RPC->>Bridge: bridgeAsset
@@ -72,9 +74,60 @@ sequenceDiagram
     AggSender->>L1InfoTreeSync: check latest sent certificate
     AggSender->>L2BridgeSyncer: get published bridges
     AggSender->>L2BridgeSyncer: get imported bridge exits
-    Note right of AggSender: generate a Merkle proof for each importedBridgee
-    AggSender->>L1InfoTreeSync: get claims
-    AggSender->>L1InfoTreeSync: get l1 info tree merkle proof from index to root
+    Note right of AggSender: generate a Merkle proof for each imported bridge exit
+    AggSender->>L1InfoTreeSync: get l1 info tree merkle proof for imported bridge exits
+    AggSender->>AggLayer: send certificate
+```
+
+### AggchainProof mode
+
+In essence, the `AggchainProof` mode follows the same logic and flow as `PessimisticProof` mode. Only difference is in two points:
+- calling the `aggchain prover` to generate an `aggchain proof` that will be sent in the certfiicate to the `Agglayer`.
+- resending an `InError` certficate does not expand it with new bridges and events that the syncer might have gotten in the meantime. This is done because `aggchain prover` already generated a proof for a given block range, and since proof generation can be a long process, this is a small optimization. Note that 
+this might change in the future.
+
+Calling the `aggchain prover` is done right before signing and sending the certificate to the `Agglayer`. To generate an `aggchain proof` prover needs couple of things:
+- block range on L2 for which we are trying to generate a certificate.
+- finalized L1 info tree root and its leaf and proof on the L1 info tree. Basically, this is the latest finalized l1 info tree root needed by the prover to generate the proof. This root is also use to generate merkle proof for every imported bridge exit (claim) in certificate.
+- injected GlobalExitRoot's on L2 and their leaves and proofs. Merkle proofs of the injected GERs are calculated based on the finalized L1 info tree root.
+- imported bridge exits (claims) we intend to include in the certificate for the given block range.
+
+The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer` in `PessimisticProof` mode.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant L1RPC as L1 Network
+    participant L2RPC as L2 Network
+    participant Bridge as Bridge Smart Contract
+    participant AggLayer
+    participant L2BridgeSyncer
+    participant L1InfoTreeSync
+    participant AggSender
+    participant AggchainProver
+
+    User->>L1RPC: bridge (L1->L2)
+    L1RPC->>Bridge: bridgeAsset
+    Bridge->>AggLayer: updateL1InfoTree
+    Bridge->>Bridge: auto claim
+
+    User->>L2RPC: bridge (L2->L1)
+    L2RPC->>L2BridgeSyncer: bridgeAsset emits bridgeEvent
+
+    User->>L2RPC: claimAsset
+    L2RPC->>L1InfoTreeSync: claimEvent
+
+    AggSender->>AggSender: wait for epoch to elapse
+    AggSender->>L1InfoTreeSync: check latest sent certificate
+    AggSender->>L2BridgeSyncer: get published bridges
+    AggSender->>L2BridgeSyncer: get imported bridge exits
+    AggSender->>L1InfoTreeSync: get finalized l1 info tree root
+    AggSender->>L2RPC: get injected GERs
+    Note right of AggSender: generate a Merkle proof for each injected GER
+    AggSender->>L1InfoTreeSync: get l1 info tree merkle proof for injected GERs
+    AggSender->>AggchainProver: generate aggchain proof
+    Note right of AggSender: generate a Merkle proof for each imported bridge exit
+    AggSender->>L1InfoTreeSync: get l1 info tree merkle proof for imported bridge exits
     AggSender->>AggLayer: send certificate
 ```
 
@@ -84,36 +137,40 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 
 | Field Name               | Description                                                                 |
 |--------------------------|-----------------------------------------------------------------------------|
-| `network_id`               | This is the id of the rollup (>0)                                          |
-| `height`                   | Order of certificates. First one is 0                                      |
-| `prev_local_exit_root`     | The first one must be the one in SMC (currently is a 0x000…00)             |
-| `new_local_exit_root`      | It’s the root after bridge_exits                                           |
+| `network_id`               | This is the id of the rollup (>0)                                                       |
+| `height`                   | Order of certificates. First one is 0                                                   |
+| `prev_local_exit_root`     | The first one must be the one in SMC (currently is a 0x000…00)                          |
+| `new_local_exit_root`      | It’s the root after bridge_exits                                                        |
 | `bridge_exits`             | These are the leaves of the LER tree included in this certificate. (bridgeAssert calls) |
-| `imported_bridge_exits` (claims) | These are the claims done in this network                                |
+| `imported_bridge_exits`    | These are the claims done in this network                                               |
+| `aggchain_params`          | Aggchain params returned by the aggchain prover                                         |
+| `aggchain_proof`           | Aggchain proof generated by the aggchain prover                                         |
+| `custom_chain_data`        | Custom chain data returned by the aggchain prover                                       |
 
 ## Configuration
 
 | Name                          | Type               | Description                                                                                                     |
 |-------------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------|
-| StoragePath                   | string             | Path where to store Aggsender DB                                                                                |
-| AggLayerURL                   | string             | URL to Agglayer                                                                                                |
-| AggsenderPrivateKey           | KeystoreFileConfig | Private key used to sign the certificate on the Aggsender before sending it to the Agglayer. Must be configured the same as on Agglayer. |
-| URLRPCL2                      | string             | L2 RPC                                                                                                         |
-| BlockFinality                 | string             | Block type to calculate epochs on L1.                                                                          |
-| EpochNotificationPercentage   | uint               | `0` -> at beginning of epoch <br> `100` -> at end of the epoch <br> *(default: 50)*                             |
-| MaxRetriesStoreCertificate    | int                | Number of retries if Aggsender fails to store certificates on DB                                               |
-| DelayBeetweenRetries          | Duration           | Initial status check delay <br> Store certificate on DB delay                                                  |
-| KeepCertificatesHistory       | bool               | Instead of deleting them, discarded certificates are moved to the `certificate_info_history` table             |
-| MaxCertSize                   | uint               | The maximum size of the certificate. <br> `0` means infinite size.                                             |
-| BridgeMetadataAsHash          | bool               | Flag indicating to import the bridge metadata as a hash                                                        |
-| DryRun                        | bool               | Flag to enable the dry-run mode. <br> In this mode, the AggSender will not send certificates to the Agglayer.   |
-| EnableRPC                     | bool               | Flag to enable the Aggsender's RPC layer                                                                       |
-| AggchainProofURL              | string             | URL to the Aggchain Prover                                                                                     |
-| Mode                          | string             | Defines the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)                  |
-| CheckStatusCertificateInterval| Duration           | Interval at which the AggSender will check the certificate status in Agglayer                                  |
-| RetryCertAfterInError         | bool               | Indicates if Aggsender should re-send InError certificates immediatelly after it notices their status change   |
-| MaxEpochPercentageAllowedToSendCertificate | uint  | Percentage of the epoch after which Aggsender is forbidden to send certificates to the Agglayer               |
-| MaxSubmitCertificateRate      | RateLimitConfig    | Maximum allowed rate of submission of certificates in a given time                                            |
+| StoragePath                   | string             | Path where to store Aggsender DB                                                                     |
+| AggLayerURL                   | string             | URL to Agglayer                                                                                      |
+| AggsenderPrivateKey           | KeystoreFileConfig | Private key used to sign the certificate on the Aggsender before sending it to the Agglayer. Must be configured the same as on Agglayer.                                                                                                                         |
+| URLRPCL2                      | string             | L2 RPC                                                                                               |
+| BlockFinality                 | string             | Indicates which finality the AggLayer follows (FinalizedBlock, SafeBlock, LatestBlock, PendingBlock, EarliestBlock)                                                                                                                                              |
+| EpochNotificationPercentage   | uint               | Indicates the percentage of the epoch on which the AggSender should send the certificate. `0` -> at beginning of epoch <br> `100` -> at end of the epoch <br> *(default: 50)*                                                                                   |
+| MaxRetriesStoreCertificate    | int                | Number of retries if Aggsender fails to store certificates on DB. <br> *(default: 0 - infinite number of retries)*                                                                                                                                                   |
+| DelayBeetweenRetries          | Duration           | Initial status check delay between retries <br> Store certificate on DB delay between retries        |
+| KeepCertificatesHistory       | bool               | Instead of deleting them, discarded certificates are moved to the `certificate_info_history` table   |
+| MaxCertSize                   | uint               | The maximum size of the certificate. <br> `0` means infinite size.                                   |
+| BridgeMetadataAsHash          | bool               | Flag indicating to import the bridge metadata as a hash                                              |
+| DryRun                        | bool               | Flag to enable the dry-run mode. <br> In this mode, the AggSender will not send certificates to the Agglayer. Useful when debugging the certficates build process on Aggsender.                                                                                 |
+| EnableRPC                     | bool               | Flag to enable the Aggsender's RPC layer                                                             |
+| AggchainProofURL              | string             | URL to the Aggchain Prover                                                                           |
+| Mode                          | string             | Defines the mode of the AggSender (regular PessimisticProof mode or the AggchainProof mode)          |
+| CheckStatusCertificateInterval| Duration           | Interval at which the AggSender will check the certificate status in Agglayer                        |
+| RetryCertAfterInError         | bool               | Indicates if Aggsender should re-send InError certificates immediatelly after it notices their status change                                                                                                                                                      |
+| MaxEpochPercentageAllowedToSendCertificate | uint  | Percentage of the epoch after which Aggsender is forbidden to send certificates to the Agglayer      |
+| MaxSubmitCertificateRate      | RateLimitConfig    | Maximum allowed rate of submission of certificates in a given time                                   |
+| GlobalExitRootL2Addr          | Address            | Address of the GlobalExitRootManager contract on l2 sovereign chain. This address is needed for the AggchainProof mode of the AggSender                                                                                                                         |
 
 ## Use Cases
 
@@ -186,5 +243,7 @@ http://localhost:9091/metrics
 
 ## Additional Documentation
 
-[1] https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html 
-[2] https://agglayer.github.io/agglayer/pessimistic_proof/index.html	
+[1] AggLayer integration guide_WIP
+[2] https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html 
+[3] initial PR: https://github.com/0xPolygon/cdk/pull/22 
+[4] https://agglayer.github.io/agglayer/pessimistic_proof/index.html	
