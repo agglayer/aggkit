@@ -136,3 +136,7 @@ func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 	}
 	return e, nil
 }
+
+func (p *processor) CheckCompatibilityData(data sync.RuntimeData) error {
+	return db.CheckCompatibilityData(p.db, "lastgersync", data)
+}

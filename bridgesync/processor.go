@@ -397,3 +397,7 @@ func (p *processor) isHalted() bool {
 	defer p.mu.RUnlock()
 	return p.halted
 }
+
+func (p *processor) CheckCompatibilityData(data sync.RuntimeData) error {
+	return db.CheckCompatibilityData(p.db, "bridgesync", data)
+}

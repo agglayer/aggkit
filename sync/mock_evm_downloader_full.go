@@ -114,6 +114,62 @@ func (_c *EVMDownloaderMock_GetBlockHeader_Call) RunAndReturn(run func(context.C
 	return _c
 }
 
+// GetChainID provides a mock function with given fields: ctx
+func (_m *EVMDownloaderMock) GetChainID(ctx context.Context) (uint64, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetChainID")
+	}
+
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (uint64, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) uint64); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// EVMDownloaderMock_GetChainID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetChainID'
+type EVMDownloaderMock_GetChainID_Call struct {
+	*mock.Call
+}
+
+// GetChainID is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *EVMDownloaderMock_Expecter) GetChainID(ctx interface{}) *EVMDownloaderMock_GetChainID_Call {
+	return &EVMDownloaderMock_GetChainID_Call{Call: _e.mock.On("GetChainID", ctx)}
+}
+
+func (_c *EVMDownloaderMock_GetChainID_Call) Run(run func(ctx context.Context)) *EVMDownloaderMock_GetChainID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *EVMDownloaderMock_GetChainID_Call) Return(_a0 uint64, _a1 error) *EVMDownloaderMock_GetChainID_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *EVMDownloaderMock_GetChainID_Call) RunAndReturn(run func(context.Context) (uint64, error)) *EVMDownloaderMock_GetChainID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEventsByBlockRange provides a mock function with given fields: ctx, fromBlock, toBlock
 func (_m *EVMDownloaderMock) GetEventsByBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) EVMBlocks {
 	ret := _m.Called(ctx, fromBlock, toBlock)
@@ -268,6 +324,62 @@ func (_c *EVMDownloaderMock_GetLogs_Call) Return(_a0 []types.Log) *EVMDownloader
 }
 
 func (_c *EVMDownloaderMock_GetLogs_Call) RunAndReturn(run func(context.Context, uint64, uint64) []types.Log) *EVMDownloaderMock_GetLogs_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetRuntimeData provides a mock function with given fields: ctx
+func (_m *EVMDownloaderMock) GetRuntimeData(ctx context.Context) (RuntimeData, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRuntimeData")
+	}
+
+	var r0 RuntimeData
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (RuntimeData, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) RuntimeData); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(RuntimeData)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// EVMDownloaderMock_GetRuntimeData_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRuntimeData'
+type EVMDownloaderMock_GetRuntimeData_Call struct {
+	*mock.Call
+}
+
+// GetRuntimeData is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *EVMDownloaderMock_Expecter) GetRuntimeData(ctx interface{}) *EVMDownloaderMock_GetRuntimeData_Call {
+	return &EVMDownloaderMock_GetRuntimeData_Call{Call: _e.mock.On("GetRuntimeData", ctx)}
+}
+
+func (_c *EVMDownloaderMock_GetRuntimeData_Call) Run(run func(ctx context.Context)) *EVMDownloaderMock_GetRuntimeData_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *EVMDownloaderMock_GetRuntimeData_Call) Return(_a0 RuntimeData, _a1 error) *EVMDownloaderMock_GetRuntimeData_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *EVMDownloaderMock_GetRuntimeData_Call) RunAndReturn(run func(context.Context) (RuntimeData, error)) *EVMDownloaderMock_GetRuntimeData_Call {
 	_c.Call.Return(run)
 	return _c
 }

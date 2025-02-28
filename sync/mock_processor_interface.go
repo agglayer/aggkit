@@ -21,6 +21,52 @@ func (_m *ProcessorMock) EXPECT() *ProcessorMock_Expecter {
 	return &ProcessorMock_Expecter{mock: &_m.Mock}
 }
 
+// CheckCompatibilityData provides a mock function with given fields: data
+func (_m *ProcessorMock) CheckCompatibilityData(data RuntimeData) error {
+	ret := _m.Called(data)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckCompatibilityData")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(RuntimeData) error); ok {
+		r0 = rf(data)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// ProcessorMock_CheckCompatibilityData_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckCompatibilityData'
+type ProcessorMock_CheckCompatibilityData_Call struct {
+	*mock.Call
+}
+
+// CheckCompatibilityData is a helper method to define mock.On call
+//   - data RuntimeData
+func (_e *ProcessorMock_Expecter) CheckCompatibilityData(data interface{}) *ProcessorMock_CheckCompatibilityData_Call {
+	return &ProcessorMock_CheckCompatibilityData_Call{Call: _e.mock.On("CheckCompatibilityData", data)}
+}
+
+func (_c *ProcessorMock_CheckCompatibilityData_Call) Run(run func(data RuntimeData)) *ProcessorMock_CheckCompatibilityData_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(RuntimeData))
+	})
+	return _c
+}
+
+func (_c *ProcessorMock_CheckCompatibilityData_Call) Return(_a0 error) *ProcessorMock_CheckCompatibilityData_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *ProcessorMock_CheckCompatibilityData_Call) RunAndReturn(run func(RuntimeData) error) *ProcessorMock_CheckCompatibilityData_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLastProcessedBlock provides a mock function with given fields: ctx
 func (_m *ProcessorMock) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	ret := _m.Called(ctx)
