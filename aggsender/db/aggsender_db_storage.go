@@ -20,7 +20,7 @@ import (
 const errWhileRollbackFormat = "error while rolling back tx: %w"
 
 type RuntimeData struct {
-	NetworkID uint64
+	NetworkID uint32
 }
 
 // AggSenderStorage is the interface that defines the methods to interact with the storage

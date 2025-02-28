@@ -135,13 +135,13 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.checkInitialStatus(ctx)
 	a.sendCertificates(ctx, 0)
 }
-func (a *AggSender) checkDBCompatibility(ctx context.Context) {
+func (a *AggSender) checkDBCompatibility(_ context.Context) {
 	networkID := a.l2Syncer.OriginNetwork()
-	err := db.CheckCompatibilityData(a.storage, aggkitcommon.AGGSENDER, networkID)
+	err := a.storage.CheckCompatibilityData(db.RuntimeData{NetworkID: networkID})
 	if err != nil {
-		if a.cfg.CheckDatabaseDatatMatchRunningEnvironment {
+		if a.cfg.CheckDatabaseCompatibilityWithRunningEnvironment {
 			a.log.Fatalf("error checking compatibility data in DB, you can bypass this check"+
-				"setting AggSender.CheckDatabaseDatatMatchRunningEnvironment=false. Err: %w", err)
+				"setting AggSender.CheckDatabaseCompatibilityWithRunningEnvironment=false. Err: %w", err)
 		} else {
 			a.log.Warnf("error checking compatibility data: %w", err)
 		}
