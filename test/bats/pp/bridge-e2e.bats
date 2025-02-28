@@ -325,8 +325,7 @@ setup() {
     assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
 
     # Deposit on L2
-    local receiver=${RECEIVER:-"0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6"}
-    destination_addr=$receiver
+    destination_addr=$sender_addr
     destination_net=$l1_rpc_network_id
     amount=$(cast --to-unit $tokens_amount wei)
     meta_bytes="0x"
@@ -354,10 +353,6 @@ setup() {
 
     # TODO: @Stefan-Ethernal
     # Do another exit to see if this causes any issues (L1 -> L2)
-
-    # Mint ERC20 (wrapped) token on L1
-    run mint_erc20_tokens "$l1_rpc_url" "$l1_wrapped_token_addr" "$sender_private_key" "$sender_addr" "$tokens_amount"
-    assert_success
 
     # Send approve transaction to the ERC20 token on L1
     run send_tx "$l1_rpc_url" "$sender_private_key" "$l1_wrapped_token_addr" "$approve_fn_sig" "$bridge_addr" "$tokens_amount"
