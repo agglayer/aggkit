@@ -23,7 +23,7 @@ function deploy_contract() {
         return 1
     fi
 
-    echo "Attempting to deploy contract artifact '$contract_artifact' to $rpc_url (sender: $sender)" >&3
+    log "🚀 Attempting to deploy contract artifact '$contract_artifact' to $rpc_url (sender: $sender)"
 
     # Get bytecode from the contract artifact
     local bytecode=$(jq -r .bytecode "$contract_artifact")
@@ -36,7 +36,7 @@ function deploy_contract() {
     gas_price=$(cast gas-price --rpc-url "$rpc_url")
     local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
     if [[ $? -ne 0 ]]; then
-        echo "Failed to calculate gas price" >&3
+        log "Failed to calculate gas price"
         exit 1
     fi
     local cast_output=$(cast send --rpc-url "$rpc_url" \
@@ -53,12 +53,12 @@ function deploy_contract() {
         return 1
     fi
 
-    echo "Deploy contract output:" >&3
-    echo "$cast_output" >&3
+    echo "Deploy contract output:"
+    echo "$cast_output"
 
     # Extract the contract address from the output
     local deployed_contract_address=$(echo "$cast_output" | grep 'contractAddress' | sed 's/contractAddress\s\+//')
-    echo "Deployed contract address: $deployed_contract_address" >&3
+    log "📜 Deployed contract address: $deployed_contract_address"
 
     if [[ -z "$deployed_contract_address" ]]; then
         echo "Error: Failed to extract deployed contract address"
@@ -129,33 +129,34 @@ function send_eoa_transaction() {
     local sender_initial_balance="$5"
     local receiver_initial_balance="$6"
 
-    echo "Sending EOA transaction (from: $sender, rpc url: $rpc_url) to: $receiver_addr with value: $value" >&3
+    log "✉️ Sending EOA transaction (from: $sender, rpc url: $rpc_url) to: $receiver_addr with value: $value"
 
     # Send transaction via cast
     local cast_output tx_hash
     gas_price=$(cast gas-price --rpc-url "$rpc_url")
     local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
     if [[ $? -ne 0 ]]; then
-        echo "Failed to calculate gas price" >&3
+        log "❌ Failed to calculate gas price"
         exit 1
     fi
-    echo "cast send --gas-price $comp_gas_price --rpc-url $rpc_url --private-key $private_key $receiver_addr --value $value --legacy" >&3
+    log "cast send --gas-price $comp_gas_price --rpc-url $rpc_url --private-key $private_key $receiver_addr --value $value --legacy"
     cast_output=$(cast send --gas-price $comp_gas_price --rpc-url "$rpc_url" --private-key "$private_key" "$receiver_addr" --value "$value" --legacy 2>&1)
     if [[ $? -ne 0 ]]; then
-        echo "Error: Failed to send transaction. Output:"
-        echo "$cast_output"
+        log "❌ Failed to send transaction. Output:"
+        log "$cast_output"
+        echo $"cast_output"
         return 1
     fi
 
     tx_hash=$(extract_tx_hash "$cast_output")
     [[ -z "$tx_hash" ]] && {
-        echo "Error: Failed to extract transaction hash."
+        log "❌ Failed to extract transaction hash."
         return 1
     }
 
     check_balances "$sender" "$receiver_addr" "$value" "$tx_hash" "$sender_initial_balance" "$receiver_initial_balance"
     if [[ $? -ne 0 ]]; then
-        echo "Error: Balance not updated correctly."
+        log "❌ Balance not updated correctly."
         return 1
     fi
 
@@ -169,26 +170,27 @@ function send_smart_contract_transaction() {
     shift 3
     local params=("$@")
 
-    echo "Sending smart contract transaction to $receiver_addr with function signature: '$function_sig' and params: ${params[*]}" >&3
+    log "✉️ Sending smart contract transaction to $receiver_addr with function signature: '$function_sig' and params: ${params[*]}"
 
     # Send the smart contract interaction using cast
     local cast_output tx_hash
     gas_price=$(cast gas-price --rpc-url "$rpc_url")
     local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
     if [[ $? -ne 0 ]]; then
-        echo "Failed to calculate gas price" >&3
+        echo "❌ Failed to calculate gas price"
         exit 1
     fi
     cast_output=$(cast send "$receiver_addr" --rpc-url "$rpc_url" --private-key "$private_key" --gas-price $comp_gas_price --legacy "$function_sig" "${params[@]}" 2>&1)
     if [[ $? -ne 0 ]]; then
-        echo "Error: Failed to send transaction. Output:"
+        log "❌ Failed to send transaction. Output:"
+        log "$cast_output"
         echo "$cast_output"
         return 1
     fi
 
     tx_hash=$(extract_tx_hash "$cast_output")
     [[ -z "$tx_hash" ]] && {
-        echo "Error: Failed to extract transaction hash."
+        log "❌ Failed to extract transaction hash."
         return 1
     }
 
@@ -207,7 +209,7 @@ function query_contract() {
     shift 3                  # Shift past the first 3 arguments
     local params=("$@")      # Collect remaining arguments as parameters array
 
-    echo "Querying state of $addr account (RPC URL: $rpc_url) with function signature: '$funcSignature' and params: ${params[*]}" >&3
+    log "🔍 Querying state of $addr account (RPC URL: $rpc_url) with function signature: '$funcSignature' and params: ${params[*]}"
 
     # Check if rpc url is available
     if [[ -z "$rpc_url" ]]; then
@@ -312,16 +314,16 @@ function verify_balance() {
     else
         final_balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
     fi
-    echo "Final balance of $account (token=$token_addr) in $rpc_url network: $final_balance_wei wei" >&3
+    log "💰 Final balance of $account (token=$token_addr) in $rpc_url network: $final_balance_wei wei"
 
     # Calculate expected final balance (initial_balance + amount)
     local expected_final_balance_wei=$(echo "$initial_balance_wei + $amount_wei" | bc)
 
     # Check if final_balance matches the expected final balance
     if [ "$(echo "$final_balance_wei == $expected_final_balance_wei" | bc)" -eq 1 ]; then
-        echo "✅ Balance verification successful: final balance is correct."
+        log "✅ Balance verification successful: final balance is correct."
     else
-        echo "❌ Balance verification failed: expected $expected_final_balance_wei but got $final_balance_wei." >&3
+        log "❌ Balance verification failed: expected $expected_final_balance_wei but got $final_balance_wei."
         exit 1
     fi
 }
@@ -339,7 +341,7 @@ function mint_erc20_tokens() {
     local erc20_token_balance=$(echo "$output" | tail -n 1)
 
     # Log the account's current gas token balance
-    echo "Initial account balance: $erc20_token_balance wei" >&3
+    log "💰 Initial account balance: $erc20_token_balance wei"
 
     # Convert tokens_amount to Wei for comparison
     local wei_amount=$(cast --to-unit "$tokens_amount" wei)
@@ -359,19 +361,20 @@ function run_with_timeout() {
     while true; do
         local current_time=$(date +%s)
         if ((current_time > end_time)); then
-            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ❌ Exiting [$name]... Timeout reached!" >&3
+            log "❌ Exiting [$name]... Timeout reached!"
             exit 1
         fi
-        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Running [$name]..." >&3
+        log "⏳ Running [$name]..."
         echo "executing: $*"
         run $*
         echo "output: $output"
         echo "result: $status"
         if [ $status -eq 0 ]; then
-            echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ✅ Executed successfully! [$name] " >&3
+            log "✅ Executed successfully! [$name]"
             break
         fi
-        echo "....[$(date '+%Y-%m-%d %H:%M:%S')] ⏳ Sleep [$name] for period: $run_frequency" >&3
+
+        log "⏳ Sleep [$name] for period: $run_frequency"
         sleep "$run_frequency"
     done
 }
