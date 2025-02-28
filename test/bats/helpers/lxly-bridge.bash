@@ -14,7 +14,7 @@ function bridge_message() {
     else
         local balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$sender_addr" | awk '{print $1}')
         local token_balance=$(cast --from-wei "$balance_wei")
-        log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
+        log "💎 $sender_addr token ($token_addr) balance: $token_balance [eth]"
     fi
 
     log "🚀 Bridge message $amount wei → $destination_addr [network: $destination_net, token: $token_addr, rpc: $rpc_url]"
@@ -57,10 +57,10 @@ function bridge_asset() {
     else
         local balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$sender_addr" | awk '{print $1}')
         local token_balance=$(cast --from-wei "$balance_wei")
-        log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
+        log "💎 $sender_addr token ($token_addr) balance: $token_balance [eth]"
     fi
 
-    log "🚀 Bridge asset $amount wei → $destination_addr [network: $destination_net]"
+    log "🚀 Bridge asset $amount wei → $destination_addr [network: $destination_net, rpc url: $rpc_url]"
 
     if [[ $dry_run == "true" ]]; then
         log "📝 Dry run bridge asset (showing calldata only)"
@@ -84,6 +84,8 @@ function bridge_asset() {
             echo $bridge_tx_hash
         else
             log "❌ Error: Transaction failed (no hash returned)"
+            log "Response:"
+            log "$response"
             return 1
         fi
     fi

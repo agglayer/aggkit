@@ -174,7 +174,7 @@ setup() {
 }
 
 @test "Custom gas token deposit L2 -> L1" {
-    log "🪙 Custom gas token deposit (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" 
+    log "🪙 Custom gas token deposit (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)"
 
     local initial_receiver_balance=$(cast call --rpc-url "$l1_rpc_url" "$gas_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
     assert_success
@@ -306,7 +306,7 @@ setup() {
     log "📜 ERC20 contract address: $l2_erc20_addr"
 
     # Mint ERC20 tokens on L2
-    local tokens_amount="0.1ether"
+    local tokens_amount="10ether"
     local wei_amount=$(cast --to-unit $tokens_amount wei)
     run mint_erc20_tokens "$l2_rpc_url" "$l2_erc20_addr" "$sender_private_key" "$sender_addr" "$tokens_amount"
     assert_success
@@ -323,10 +323,15 @@ setup() {
     run send_tx "$l2_rpc_url" "$sender_private_key" "$l2_erc20_addr" "$approve_fn_sig" "$bridge_addr" "$tokens_amount"
     assert_success
     assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
+    run query_contract "$l2_rpc_url" "$l2_erc20_addr" "allowance(address owner, address spender)(uint256)" "$sender_addr" "$bridge_addr"
+    assert_success
+    log "🔐 Allowance for bridge contract: $output"
 
     # Deposit on L2
+    echo "==== 🚀 Depositing ERC20 token on L2 ($l2_rpc_url)" >&3
     destination_addr=$sender_addr
     destination_net=$l1_rpc_network_id
+    tokens_amount="1ether"
     amount=$(cast --to-unit $tokens_amount wei)
     meta_bytes="0x"
     run bridge_asset "$l2_erc20_addr" "$l2_rpc_url"
@@ -334,6 +339,7 @@ setup() {
     local bridge_tx_hash=$output
 
     # Claim deposit (settle it on the L1)
+    echo "==== 🔐 Claiming ERC20 token deposit on L1 ($l1_rpc_url)" >&3
     timeout="180"
     claim_frequency="10"
     run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
@@ -347,7 +353,7 @@ setup() {
     assert_equal "$l2_erc20_addr" "$origin_token_addr"
 
     local l1_wrapped_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].wrapped_token_address')
-    log "🪙 L1 wrapped token address $l1_wrapped_token_addr"
+    log "🪙  L1 wrapped token address $l1_wrapped_token_addr"
 
     run verify_balance "$l1_rpc_url" "$l1_wrapped_token_addr" "$receiver" 0 "$tokens_amount"
     assert_success
@@ -356,12 +362,15 @@ setup() {
     # Do another exit to see if this causes any issues (L1 -> L2)
 
     # Send approve transaction to the ERC20 token on L1
+    tokens_amount="1ether"
     run send_tx "$l1_rpc_url" "$sender_private_key" "$l1_wrapped_token_addr" "$approve_fn_sig" "$bridge_addr" "$tokens_amount"
     assert_success
     assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
 
     # Deposit the L1 wrapped token (bridge L1 -> L2)
-    destination_addr=$receiver
+    echo "==== 🚀 Depositing L1 wrapped token on L1 ($l1_rpc_url)" >&3
+    destination_addr=$sender_addr
+    echo "destination addr: $destination_addr"
     destination_net=$l2_rpc_network_id
     amount=$(cast --to-unit $tokens_amount wei)
     meta_bytes="0x"
@@ -370,11 +379,13 @@ setup() {
     local bridge_tx_hash=$output
 
     # Claim deposit (settle it on the L2)
+    echo "==== 🔐 Claiming deposit on L2 ($l2_rpc_url)" >&3
     timeout="180"
     claim_frequency="10"
     run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
-    run verify_balance "$l2_rpc_url" "$l2_erc20_addr" "$receiver" 0 "$tokens_amount"
+    echo "==== 💰 Verifying balance on L2 ($l2_rpc_url)" >&3
+    run verify_balance "$l2_rpc_url" "$l2_erc20_addr" "$receiver" "$l2_erc20_token_sender_balance" "$tokens_amount"
     assert_success
 }
