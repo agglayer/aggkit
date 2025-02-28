@@ -49,12 +49,12 @@ setup() {
     readonly erc20_artifact_path=${ERC20_ARTIFACT_PATH:-"./contracts/erc20mock/ERC20Mock.json"}
 }
 
-@test "Native gas token deposit to WETH" {
-    destination_addr=$sender_addr
+@test "Native gas token bridge L1 -> L2" {
     run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
     assert_success
     readonly weth_token_addr=$output
 
+    destination_addr=$sender_addr
     local initial_receiver_balance=$(cast call --rpc-url "$l2_rpc_url" "$weth_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
     echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
 
@@ -173,14 +173,14 @@ setup() {
     assert_success
 }
 
-@test "Custom gas token withdrawal L2 -> L1" {
-    echo "Custom gas token withdrawal (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" >&3
+@test "Custom gas token deposit L2 -> L1" {
+    echo "Custom gas token deposit (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" >&3
 
     local initial_receiver_balance=$(cast call --rpc-url "$l1_rpc_url" "$gas_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
     assert_success
     echo "Receiver balance of gas token on L1 $initial_receiver_balance" >&3
 
-    # Deposit token on L2
+    # Deposit token (on L2)
     destination_net=$l1_rpc_network_id
     run bridge_asset "$native_token_addr" "$l2_rpc_url"
     assert_success

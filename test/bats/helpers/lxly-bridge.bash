@@ -267,6 +267,8 @@ function wait_for_expected_token() {
     local token_mappings_result
     local origin_token_address
 
+    echo "Waiting for expected origin_token_address $aggkit_node_url @ $enclave..." >&3
+
     while true; do
         ((attempt++))
 
