@@ -147,12 +147,12 @@ setup() {
     # Claim deposits (settle them on the L2)
     timeout="180"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
-    assert_success
+    claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    local claim_global_index="$global_index"
 
     # Validate the bridge_getClaims API
     echo "------- bridge_getClaims API testcase --------"
-    run get_claim "$l2_rpc_network_id" "$global_index" 10 3
+    run get_claim "$l2_rpc_network_id" "$claim_global_index" 10 3
     assert_success
 
     local origin_network="$(echo "$output" | jq -r '.origin_network')"
