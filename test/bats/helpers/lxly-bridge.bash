@@ -229,6 +229,7 @@ function claim_tx_hash() {
     done
 
     export global_index=$(jq -r '.global_index' $current_deposit)
+    echo "{\"global_index\": \"$global_index\"}"
     log "✅ Deposit claimed ($global_index)"
 
     # clean up temp files

@@ -151,8 +151,9 @@ setup() {
     assert_success
 
     # Validate the bridge_getClaims API
+    local claim_global_index=$(echo "$output" | jq -r '.global_index')
     echo "------- bridge_getClaims API testcase --------"
-    run get_claim "$l2_rpc_network_id" "$global_index" 10 3
+    run get_claim "$l2_rpc_network_id" "$claim_global_index" 10 3
     assert_success
 
     local origin_network="$(echo "$output" | jq -r '.origin_network')"
