@@ -338,6 +338,13 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
 
+    run query_contract "$l2_rpc_url" "$l2_erc20_addr" "$balance_of_fn_sig" "$sender_addr"
+    assert_success
+    local l2_erc20_token_sender_balance=$(echo "$output" |
+        tail -n 1 |
+        awk '{print $1}')
+    log "💰 Sender balance ($sender_addr) (ERC20 token L2): $l2_erc20_token_sender_balance [weis]"
+
     # Claim deposit (settle it on the L1)
     echo "==== 🔐 Claiming ERC20 token deposit on L1 ($l1_rpc_url)" >&3
     timeout="180"
