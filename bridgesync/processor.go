@@ -29,8 +29,13 @@ const (
 	globalIndexPartSize = 4
 	globalIndexMaxSize  = 9
 
-	bridgeTableName       = "bridge"
-	claimTableName        = "claim"
+	// bridgeTableName is the name of the table that stores bridge events
+	bridgeTableName = "bridge"
+
+	// claimTableName is the name of the table that stores claim events
+	claimTableName = "claim"
+
+	// tokenMappingTableName is the name of the table that stores token mapping events
 	tokenMappingTableName = "token_mapping"
 )
 
@@ -57,24 +62,6 @@ type Bridge struct {
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
 	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
-}
-
-// MarshalJSON for hex-encoding Metadata field
-func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
-	type Alias BridgeResponse // Prevent recursion
-	return json.Marshal(&struct {
-		Metadata string `json:"metadata"`
-		*Alias
-	}{
-		Metadata: "0x" + hex.EncodeToString(b.Metadata),
-		Alias:    (*Alias)(b),
-	})
-}
-
-// BridgeResponse is the representation of a bridge event with additional fields
-type BridgeResponse struct {
-	BridgeHash common.Hash `json:"bridge_hash"`
-	Bridge
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
@@ -104,6 +91,24 @@ func (b *Bridge) Hash() common.Hash {
 		b.Amount.FillBytes(buf[:]),
 		metaHash,
 	))
+}
+
+// BridgeResponse is the representation of a bridge event with additional fields
+type BridgeResponse struct {
+	BridgeHash common.Hash `json:"bridge_hash"`
+	Bridge
+}
+
+// MarshalJSON for hex-encoding Metadata field
+func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
+	type Alias BridgeResponse // Prevent recursion
+	return json.Marshal(&struct {
+		Metadata string `json:"metadata"`
+		*Alias
+	}{
+		Metadata: "0x" + hex.EncodeToString(b.Metadata),
+		Alias:    (*Alias)(b),
+	})
 }
 
 // Claim representation of a claim event
