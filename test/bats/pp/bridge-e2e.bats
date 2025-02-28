@@ -331,11 +331,12 @@ setup() {
     meta_bytes="0x"
     run bridge_asset "$l2_erc20_addr" "$l2_rpc_url"
     assert_success
+    local bridge_tx_hash=$output
 
     # Claim deposit (settle it on the L1)
     timeout="180"
     claim_frequency="10"
-    run wait_for_claim "$timeout" "$claim_frequency" "$l1_rpc_url" "bridgeAsset"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
     assert_success
 
     run wait_for_expected_token "$l2_erc20_addr" 15 2 "$l1_rpc_network_id"
@@ -366,11 +367,12 @@ setup() {
     meta_bytes="0x"
     run bridge_asset "$l1_wrapped_token_addr" "$l1_rpc_url"
     assert_success
+    local bridge_tx_hash=$output
 
     # Claim deposit (settle it on the L2)
     timeout="180"
     claim_frequency="10"
-    run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
     run verify_balance "$l2_rpc_url" "$l2_erc20_addr" "$receiver" 0 "$tokens_amount"
