@@ -131,7 +131,7 @@ setup() {
     assert_success
     assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
 
-    # DEPOSIT
+    # Deposit token (on L1)
     destination_addr=$receiver
     destination_net=$l2_rpc_network_id
     amount=$wei_amount
@@ -180,6 +180,7 @@ setup() {
     assert_success
     echo "Receiver balance of gas token on L1 $initial_receiver_balance" >&3
 
+    # Deposit token on L2
     destination_net=$l1_rpc_network_id
     run bridge_asset "$native_token_addr" "$l2_rpc_url"
     assert_success
@@ -246,7 +247,7 @@ setup() {
     assert_success
     assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
 
-    # DEPOSIT ON L1
+    # Deposit on L1
     local receiver=${RECEIVER:-"0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6"}
     destination_addr=$receiver
     destination_net=$l2_rpc_network_id
@@ -279,10 +280,10 @@ setup() {
     local origin_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].origin_token_address')
     assert_equal "$l1_erc20_addr" "$origin_token_addr"
 
-    local l2_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].wrapped_token_address')
-    echo "L2 token addr $l2_token_addr" >&3
+    local l2_wrapped_token=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].wrapped_token_address')
+    echo "L2 wrapped token address $l2_wrapped_token" >&3
 
-    run verify_balance "$l2_rpc_url" "$l2_token_addr" "$receiver" 0 "$tokens_amount"
+    run verify_balance "$l2_rpc_url" "$l2_wrapped_token" "$receiver" 0 "$tokens_amount"
     assert_success
 }
 
@@ -323,7 +324,7 @@ setup() {
     assert_success
     assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
 
-    # DEPOSIT ON L2
+    # Deposit on L2
     local receiver=${RECEIVER:-"0x85dA99c8a7C2C95964c8EfD687E95E632Fc533D6"}
     destination_addr=$receiver
     destination_net=$l1_rpc_network_id
@@ -332,27 +333,51 @@ setup() {
     run bridge_asset "$l2_erc20_addr" "$l2_rpc_url"
     assert_success
 
-    # Claim deposits (settle them on the L1)
+    # Claim deposit (settle it on the L1)
     timeout="180"
     claim_frequency="10"
     run wait_for_claim "$timeout" "$claim_frequency" "$l1_rpc_url" "bridgeAsset"
     assert_success
 
-    run wait_for_expected_token "$l2_erc20_addr" 20 3 "$l1_rpc_network_id"
+    run wait_for_expected_token "$l2_erc20_addr" 15 2 "$l1_rpc_network_id"
     assert_success
     local token_mappings_result=$output
 
     local origin_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].origin_token_address')
     assert_equal "$l2_erc20_addr" "$origin_token_addr"
 
-    local l1_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].wrapped_token_address')
-    echo "L1 token addr $l1_token_addr" >&3
+    local l1_wrapped_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].wrapped_token_address')
+    echo "L1 wrapped token address $l1_wrapped_token_addr" >&3
 
-    run verify_balance "$l1_rpc_url" "$l1_token_addr" "$receiver" 0 "$tokens_amount"
+    run verify_balance "$l1_rpc_url" "$l1_wrapped_token_addr" "$receiver" 0 "$tokens_amount"
     assert_success
 
     # TODO: @Stefan-Ethernal
-    # Bridge it back to L2
-    # Claim it again
-    # Do another exit to see if this causes any issues
+    # Do another exit to see if this causes any issues (L1 -> L2)
+
+    # Mint ERC20 (wrapped) token on L1
+    run mint_erc20_tokens "$l1_rpc_url" "$l1_wrapped_token_addr" "$sender_private_key" "$sender_addr" "$tokens_amount"
+    assert_success
+
+    # Send approve transaction to the ERC20 token on L1
+    run send_tx "$l1_rpc_url" "$sender_private_key" "$l1_wrapped_token_addr" "$approve_fn_sig" "$bridge_addr" "$tokens_amount"
+    assert_success
+    assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
+
+    # Deposit the L1 wrapped token (bridge L1 -> L2)
+    destination_addr=$receiver
+    destination_net=$l2_rpc_network_id
+    amount=$(cast --to-unit $tokens_amount wei)
+    meta_bytes="0x"
+    run bridge_asset "$l1_wrapped_token_addr" "$l1_rpc_url"
+    assert_success
+
+    # Claim deposit (settle it on the L2)
+    timeout="180"
+    claim_frequency="10"
+    run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeAsset"
+    assert_success
+
+    run verify_balance "$l2_rpc_url" "$l2_erc20_addr" "$receiver" 0 "$tokens_amount"
+    assert_success
 }
