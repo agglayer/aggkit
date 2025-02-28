@@ -41,6 +41,8 @@ type EVMDriver struct {
 	log                *log.Logger
 }
 
+// RuntimeData is the data that is used to check that the DB is compatible with the runtime data
+// basically it contains the relevant data from runtime environment
 type RuntimeData struct {
 	ChainID   uint64
 	Addresses []common.Address
@@ -97,7 +99,7 @@ reset:
 		runtimeData, err = d.downloader.GetRuntimeData(ctx)
 		if err != nil {
 			attempts++
-			d.log.Error("error getting current runtime Data from processor: ", err)
+			d.log.Error("error getting current runtime data from processor: ", err)
 			d.rh.Handle("Sync", attempts)
 			continue
 		}

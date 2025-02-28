@@ -52,6 +52,8 @@ func TestSync(t *testing.T) {
 		green bool
 	}
 	reorg1Completed := reorgSemaphore{}
+	dm.EXPECT().GetRuntimeData(ctx).Return(RuntimeData{}, nil)
+	pm.EXPECT().CheckCompatibilityData(RuntimeData{}).Return(nil)
 	dm.On("Download", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		ctx, ok := args.Get(0).(context.Context)
 		if !ok {
