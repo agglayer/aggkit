@@ -6,6 +6,7 @@ import (
 
 	agglayer "github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,8 +21,8 @@ type AggchainProofClientInterface interface {
 		maxEndBlock uint64,
 		l1InfoTreeRootHash common.Hash,
 		l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
-		l1InfoTreeMerkleProof treeTypes.Proof,
-		gerInclusionProofs map[common.Hash]treeTypes.Proof,
+		l1InfoTreeMerkleProof agglayer.MerkleProof,
+		gerLeaves map[common.Hash]*agglayer.ClaimFromMainnnet,
 		importedBridgeExits []*agglayer.ImportedBridgeExit,
 	) (*types.AggchainProof, error)
 }
@@ -47,37 +48,63 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	maxEndBlock uint64,
 	l1InfoTreeRootHash common.Hash,
 	l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
-	l1InfoTreeMerkleProof treeTypes.Proof,
-	gerInclusionProofs map[common.Hash]treeTypes.Proof,
+	l1InfoTreeMerkleProof agglayer.MerkleProof,
+	gerLeaves map[common.Hash]*agglayer.ClaimFromMainnnet,
 	importedBridgeExits []*agglayer.ImportedBridgeExit,
 ) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
 	defer cancel()
 
-	convertedMerkleProof := make([][]byte, treeTypes.DefaultHeight)
-	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
-		convertedMerkleProof[i] = l1InfoTreeMerkleProof[i].Bytes()
-	}
-
-	convertedGerInclusionProofs := make(map[string]*types.InclusionProof)
-	for k, v := range gerInclusionProofs {
-		convertedProof := make([][]byte, treeTypes.DefaultHeight)
-		for i := 0; i < int(treeTypes.DefaultHeight); i++ {
-			convertedProof[i] = v[i].Bytes()
-		}
-		convertedGerInclusionProofs[k.String()] = &types.InclusionProof{
-			Siblings: convertedProof,
-		}
-	}
-
 	convertedL1InfoTreeLeaf := &types.L1InfoTreeLeaf{
-		PreviousBlockHash:   l1InfoTreeLeaf.PreviousBlockHash.Bytes(),
-		Timestamp:           l1InfoTreeLeaf.Timestamp,
-		MainnetExitRootHash: l1InfoTreeLeaf.MainnetExitRoot.Bytes(),
-		GlobalExitRootHash:  l1InfoTreeLeaf.GlobalExitRoot.Bytes(),
-		RollupExitRootHash:  l1InfoTreeLeaf.RollupExitRoot.Bytes(),
-		LeafHash:            l1InfoTreeLeaf.Hash.Bytes(),
-		L1InfoTreeIndex:     l1InfoTreeLeaf.L1InfoTreeIndex,
+		Inner: &types.L1InfoTreeLeafInner{
+			GlobalExitRoot: &types.FixedBytes32{Value: l1InfoTreeLeaf.GlobalExitRoot[:]},
+			BlockHash:      &types.FixedBytes32{Value: l1InfoTreeLeaf.Hash[:]},
+			Timestamp:      l1InfoTreeLeaf.Timestamp,
+		},
+		Mer:             &types.FixedBytes32{Value: l1InfoTreeLeaf.MainnetExitRoot[:]},
+		Rer:             &types.FixedBytes32{Value: l1InfoTreeLeaf.RollupExitRoot[:]},
+		L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
+	}
+
+	convertedMerkleProofSiblings := make([]*types.FixedBytes32, treeTypes.DefaultHeight)
+	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
+		convertedMerkleProofSiblings[i] = &types.FixedBytes32{Value: l1InfoTreeMerkleProof.Proof[i][:]}
+	}
+	convertedMerkleProof := &types.MerkleProof{
+		Root:     &types.FixedBytes32{Value: l1InfoTreeMerkleProof.Root[:]},
+		Siblings: convertedMerkleProofSiblings,
+	}
+
+	convertedGerLeaves := make(map[string]*types.ClaimFromMainnet, 0)
+	for k, v := range gerLeaves {
+		convertedProofLeafMerSiblings := make([]*types.FixedBytes32, treeTypes.DefaultHeight)
+		for i := 0; i < int(treeTypes.DefaultHeight); i++ {
+			convertedProofLeafMerSiblings[i] = &types.FixedBytes32{Value: v.ProofLeafMER.Proof[i][:]}
+		}
+		convertedProofGerL1RootSiblings := make([]*types.FixedBytes32, treeTypes.DefaultHeight)
+		for i := 0; i < int(treeTypes.DefaultHeight); i++ {
+			convertedProofGerL1RootSiblings[i] = &types.FixedBytes32{Value: v.ProofLeafMER.Proof[i][:]}
+		}
+		convertedGerLeaves[k.String()] = &types.ClaimFromMainnet{
+			ProofLeafMer: &types.MerkleProof{
+				Root:     &types.FixedBytes32{Value: v.ProofLeafMER.Root[:]},
+				Siblings: convertedProofLeafMerSiblings,
+			},
+			ProofGerL1Root: &types.MerkleProof{
+				Root:     &types.FixedBytes32{Value: v.ProofGERToL1Root.Root[:]},
+				Siblings: convertedProofGerL1RootSiblings,
+			},
+			L1Leaf: &types.L1InfoTreeLeaf{
+				L1InfoTreeIndex: v.L1Leaf.L1InfoTreeIndex,
+				Rer:             &types.FixedBytes32{Value: v.L1Leaf.RollupExitRoot[:]},
+				Mer:             &types.FixedBytes32{Value: v.L1Leaf.MainnetExitRoot[:]},
+				Inner: &types.L1InfoTreeLeafInner{
+					GlobalExitRoot: &types.FixedBytes32{Value: v.L1Leaf.Inner.GlobalExitRoot[:]},
+					BlockHash:      &types.FixedBytes32{Value: v.L1Leaf.Inner.BlockHash[:]},
+					Timestamp:      v.L1Leaf.Inner.Timestamp,
+				},
+			},
+		}
 	}
 
 	convertedImportedBridgeExits := make([]*types.ImportedBridgeExit, len(importedBridgeExits))
@@ -86,18 +113,19 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 			LeafType: types.LeafType(importedBridgeExit.BridgeExit.LeafType),
 			TokenInfo: &types.TokenInfo{
 				OriginNetwork:      importedBridgeExit.BridgeExit.TokenInfo.OriginNetwork,
-				OriginTokenAddress: importedBridgeExit.BridgeExit.TokenInfo.OriginTokenAddress.Bytes(),
+				OriginTokenAddress: &types.FixedBytes20{Value: importedBridgeExit.BridgeExit.TokenInfo.OriginTokenAddress[:]},
 			},
-			DestinationNetwork: importedBridgeExit.BridgeExit.DestinationNetwork,
-			DestinationAddress: importedBridgeExit.BridgeExit.DestinationAddress.Bytes(),
-			Amount:             importedBridgeExit.BridgeExit.Amount.String(),
-			IsMetadataHashed:   importedBridgeExit.BridgeExit.IsMetadataHashed,
-			Metadata:           importedBridgeExit.BridgeExit.Metadata,
+			DestNetwork: importedBridgeExit.BridgeExit.DestinationNetwork,
+			DestAddress: &types.FixedBytes20{Value: importedBridgeExit.BridgeExit.DestinationAddress[:]},
+			Amount:      &types.FixedBytes32{Value: importedBridgeExit.BridgeExit.Amount.Bytes()},
+			Metadata:    &types.FixedBytes32{Value: importedBridgeExit.BridgeExit.Metadata},
 		}
-		convertedGlobalIndex := &types.GlobalIndex{
-			MainnetFlag: importedBridgeExit.GlobalIndex.MainnetFlag,
-			RollupIndex: importedBridgeExit.GlobalIndex.RollupIndex,
-			LeafIndex:   importedBridgeExit.GlobalIndex.LeafIndex,
+		convertedGlobalIndex := &types.FixedBytes32{
+			Value: bridgesync.GenerateGlobalIndex(
+				importedBridgeExit.GlobalIndex.MainnetFlag,
+				importedBridgeExit.GlobalIndex.RollupIndex,
+				importedBridgeExit.GlobalIndex.LeafIndex,
+			).Bytes(),
 		}
 		convertedImportedBridgeExits[i] = &types.ImportedBridgeExit{
 			BridgeExit:  convertedBridgeExit,
@@ -108,10 +136,10 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	resp, err := c.client.GenerateAggchainProof(ctx, &types.GenerateAggchainProofRequest{
 		StartBlock:            startBlock,
 		MaxEndBlock:           maxEndBlock,
-		L1InfoTreeRootHash:    l1InfoTreeRootHash.Bytes(),
+		L1InfoTreeRootHash:    &types.FixedBytes32{Value: l1InfoTreeRootHash.Bytes()},
 		L1InfoTreeLeaf:        convertedL1InfoTreeLeaf,
 		L1InfoTreeMerkleProof: convertedMerkleProof,
-		GerInclusionProofs:    convertedGerInclusionProofs,
+		GerLeaves:             convertedGerLeaves,
 		ImportedBridgeExits:   convertedImportedBridgeExits,
 	})
 	if err != nil {
@@ -122,7 +150,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		Proof:           resp.AggchainProof,
 		StartBlock:      resp.StartBlock,
 		EndBlock:        resp.EndBlock,
-		LocalExitRoot:   common.BytesToHash(resp.LocalExitRootHash),
+		LocalExitRoot:   common.Hash(resp.LocalExitRootHash.Value),
 		CustomChainData: resp.CustomChainData,
 	}, nil
 }

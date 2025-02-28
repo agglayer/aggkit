@@ -138,8 +138,17 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
-		buildParams.FromBlock, buildParams.ToBlock, root.Hash, *leaf, proof,
-		injectedGERsProofs, importedBridgeExits)
+		buildParams.FromBlock,
+		buildParams.ToBlock,
+		root.Hash,
+		*leaf,
+		agglayer.MerkleProof{
+			Root:  root.Hash,
+			Proof: proof,
+		},
+		injectedGERsProofs,
+		importedBridgeExits,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
 			buildParams.FromBlock, buildParams.ToBlock, err)
@@ -194,14 +203,14 @@ func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(
 func (a *aggchainProverFlow) getInjectedGERsProofs(
 	ctx context.Context,
 	finalizedL1InfoTreeRoot *treeTypes.Root,
-	fromBlock, toBlock uint64) (map[common.Hash]treeTypes.Proof, error) {
+	fromBlock, toBlock uint64) (map[common.Hash]*agglayer.ClaimFromMainnnet, error) {
 	injectedGERs, err := a.gerReader.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs for range %d : %d: %w",
 			fromBlock, toBlock, err)
 	}
 
-	proofs := make(map[common.Hash]treeTypes.Proof, len(injectedGERs))
+	proofs := make(map[common.Hash]*agglayer.ClaimFromMainnnet, len(injectedGERs))
 
 	for _, gerHash := range injectedGERs {
 		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(gerHash)
@@ -225,7 +234,19 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 				info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash.String(), err)
 		}
 
-		proofs[gerHash] = proof
+		proofs[gerHash] = &agglayer.ClaimFromMainnnet{
+			ProofGERToL1Root: &agglayer.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
+			L1Leaf: &agglayer.L1InfoTreeLeaf{
+				L1InfoTreeIndex: info.L1InfoTreeIndex,
+				RollupExitRoot:  info.RollupExitRoot,
+				MainnetExitRoot: info.MainnetExitRoot,
+				Inner: &agglayer.L1InfoTreeLeafInner{
+					GlobalExitRoot: info.GlobalExitRoot,
+					BlockHash:      info.PreviousBlockHash,
+					Timestamp:      info.Timestamp,
+				},
+			},
+		}
 	}
 
 	return proofs, nil

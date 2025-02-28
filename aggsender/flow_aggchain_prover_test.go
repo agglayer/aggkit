@@ -117,7 +117,10 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					agglayer.MerkleProof{
+						Root:  common.HexToHash("0x1"),
+						Proof: treeTypes.Proof{},
+					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
 					[]*agglayer.ImportedBridgeExit{ibe1}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil)
 			},
@@ -169,7 +172,10 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					agglayer.MerkleProof{
+						Root:  common.HexToHash("0x1"),
+						Proof: treeTypes.Proof{},
+					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
 					[]*agglayer.ImportedBridgeExit{ibe1, ibe2}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 8}, nil)
 			},
@@ -216,7 +222,10 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					agglayer.MerkleProof{
+						Root:  common.HexToHash("0x1"),
+						Proof: treeTypes.Proof{},
+					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
 					[]*agglayer.ImportedBridgeExit{ibe1}).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
@@ -248,7 +257,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
-					}, treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					},
+					agglayer.MerkleProof{
+						Root:  common.HexToHash("0x1"),
+						Proof: treeTypes.Proof{},
+					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
 					[]*agglayer.ImportedBridgeExit{ibe1}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil)
 			},
@@ -293,7 +306,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
-					}, treeTypes.Proof{}, make(map[common.Hash]treeTypes.Proof, 0),
+					},
+					agglayer.MerkleProof{
+						Root:  common.HexToHash("0x1"),
+						Proof: treeTypes.Proof{},
+					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
 					[]*agglayer.ImportedBridgeExit{ibe1, ibe2}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 8}, nil)
 			},
@@ -566,7 +583,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 	testCases := []struct {
 		name           string
 		mockFn         func(*mocks.ChainGERReader, *mocks.L1InfoTreeSyncer)
-		expectedProofs map[common.Hash]treeTypes.Proof
+		expectedProofs map[common.Hash]*agglayer.ClaimFromMainnnet
 		expectedError  string
 	}{
 		{
@@ -605,11 +622,37 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 			name: "success",
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return([]common.Hash{common.HexToHash("0x1")}, nil)
-				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(&l1infotreesync.L1InfoTreeLeaf{L1InfoTreeIndex: 0}, nil)
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x2")).Return(treeTypes.Proof{}, nil)
+				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex:   1,
+						BlockNumber:       111,
+						PreviousBlockHash: common.HexToHash("0x22"),
+						Timestamp:         112,
+						MainnetExitRoot:   common.HexToHash("0x11"),
+						RollupExitRoot:    common.HexToHash("0x33"),
+						GlobalExitRoot:    common.HexToHash("0x1"),
+					},
+					nil,
+				)
+				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(1), common.HexToHash("0x2")).Return(treeTypes.Proof{}, nil)
 			},
-			expectedProofs: map[common.Hash]treeTypes.Proof{
-				common.HexToHash("0x1"): {},
+			expectedProofs: map[common.Hash]*agglayer.ClaimFromMainnnet{
+				common.HexToHash("0x1"): {
+					ProofGERToL1Root: &agglayer.MerkleProof{
+						Proof: treeTypes.Proof{},
+						Root:  common.HexToHash("0x2"),
+					},
+					L1Leaf: &agglayer.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 1,
+						RollupExitRoot:  common.HexToHash("0x33"),
+						MainnetExitRoot: common.HexToHash("0x11"),
+						Inner: &agglayer.L1InfoTreeLeafInner{
+							GlobalExitRoot: common.HexToHash("0x1"),
+							BlockHash:      common.HexToHash("0x22"),
+							Timestamp:      112,
+						},
+					},
+				},
 			},
 		},
 	}

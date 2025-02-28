@@ -21,7 +21,7 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	AggchainProofService_GenerateAggchainProof_FullMethodName = "/types.AggchainProofService/GenerateAggchainProof"
+	AggchainProofService_GenerateAggchainProof_FullMethodName = "/proto.AggchainProofService/GenerateAggchainProof"
 )
 
 // AggchainProofServiceClient is the client API for AggchainProofService service.
@@ -116,7 +116,7 @@ func _AggchainProofService_GenerateAggchainProof_Handler(srv interface{}, ctx co
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var AggchainProofService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "types.AggchainProofService",
+	ServiceName: "proto.AggchainProofService",
 	HandlerType: (*AggchainProofServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
