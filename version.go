@@ -52,3 +52,9 @@ func (f FullVersion) String() string {
 		f.Version, f.GitRev, f.GitBranch,
 		f.GoVersion, f.BuildDate, f.OS, f.Arch)
 }
+
+func (f FullVersion) Brief() string {
+	return fmt.Sprintf("%s - %s / %s - build:%s os:%s/%s",
+		f.Version, f.GitRev, f.GitBranch,
+		f.BuildDate, f.OS, f.Arch)
+}
