@@ -129,7 +129,7 @@ function send_eoa_transaction() {
     local sender_initial_balance="$5"
     local receiver_initial_balance="$6"
 
-    log "✉️ Sending EOA transaction (from: $sender, rpc url: $rpc_url) to: $receiver_addr with value: $value"
+    log "📨 Sending EOA transaction (from: $sender, rpc url: $rpc_url) to: $receiver_addr with value: $value"
 
     # Send transaction via cast
     local cast_output tx_hash
@@ -170,7 +170,7 @@ function send_smart_contract_transaction() {
     shift 3
     local params=("$@")
 
-    log "✉️ Sending smart contract transaction to $receiver_addr with function signature: '$function_sig' and params: ${params[*]}"
+    log "📨 Sending smart contract transaction to $receiver_addr with function signature: '$function_sig' and params: ${params[*]}"
 
     # Send the smart contract interaction using cast
     local cast_output tx_hash

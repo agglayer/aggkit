@@ -267,7 +267,7 @@ function wait_for_expected_token() {
     local token_mappings_result
     local origin_token_address
 
-    echo "Waiting for expected origin_token_address $aggkit_node_url @ $enclave..." >&3
+    log "⏳ Waiting for expected origin_token_address $aggkit_node_url @ $enclave..."
 
     while true; do
         ((attempt++))
@@ -278,11 +278,11 @@ function wait_for_expected_token() {
         # Extract the first origin_token_address (if available)
         origin_token_address=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].origin_token_address')
 
-        echo "Attempt $attempt: found origin_token_address = $origin_token_address (Expected: $expected_origin_token)" >&3
+        log "Attempt $attempt: found origin_token_address = $origin_token_address (Expected: $expected_origin_token)"
 
         # Break loop if the expected token is found
         if [[ "$origin_token_address" == "$expected_origin_token" ]]; then
-            echo "Success: Expected origin_token_address '$expected_origin_token' found. Exiting loop." >&3
+            log "✅ Expected origin_token_address '$expected_origin_token' found. Exiting loop."
             echo "$token_mappings_result"
             return 0
         fi
