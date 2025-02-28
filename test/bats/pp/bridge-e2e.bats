@@ -325,7 +325,7 @@ setup() {
     assert_output --regexp "Transaction successful \(transaction hash: 0x[a-fA-F0-9]{64}\)"
     run query_contract "$l2_rpc_url" "$l2_erc20_addr" "allowance(address owner, address spender)(uint256)" "$sender_addr" "$bridge_addr"
     assert_success
-    log "🔐 Allowance for bridge contract: $output"
+    log "🔐 Allowance for bridge contract: $output [weis]"
 
     # Deposit on L2
     echo "==== 🚀 Depositing ERC20 token on L2 ($l2_rpc_url)" >&3
@@ -355,7 +355,7 @@ setup() {
     local l1_wrapped_token_addr=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].wrapped_token_address')
     log "🪙  L1 wrapped token address $l1_wrapped_token_addr"
 
-    run verify_balance "$l1_rpc_url" "$l1_wrapped_token_addr" "$receiver" 0 "$tokens_amount"
+    run verify_balance "$l1_rpc_url" "$l1_wrapped_token_addr" "$destination_addr" 0 "$tokens_amount"
     assert_success
 
     # TODO: @Stefan-Ethernal
@@ -370,7 +370,6 @@ setup() {
     # Deposit the L1 wrapped token (bridge L1 -> L2)
     echo "==== 🚀 Depositing L1 wrapped token on L1 ($l1_rpc_url)" >&3
     destination_addr=$sender_addr
-    echo "destination addr: $destination_addr"
     destination_net=$l2_rpc_network_id
     amount=$(cast --to-unit $tokens_amount wei)
     meta_bytes="0x"
@@ -386,6 +385,6 @@ setup() {
     assert_success
 
     echo "==== 💰 Verifying balance on L2 ($l2_rpc_url)" >&3
-    run verify_balance "$l2_rpc_url" "$l2_erc20_addr" "$receiver" "$l2_erc20_token_sender_balance" "$tokens_amount"
+    run verify_balance "$l2_rpc_url" "$l2_erc20_addr" "$destination_addr" "$l2_erc20_token_sender_balance" "$tokens_amount"
     assert_success
 }
