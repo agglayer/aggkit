@@ -40,7 +40,7 @@ setup() {
 
     readonly l1_rpc_url=${L1_ETH_RPC_URL:-"$(kurtosis port print $enclave el-1-geth-lighthouse rpc)"}
     readonly bridge_api_url=${BRIDGE_API_URL:-"$(kurtosis port print $enclave zkevm-bridge-service-001 rpc)"}
-    readonly aggkit_node_url=${AGGKIT_NODE_URL:-$"kurtosis port print $enclave cdk-node-001 rpc"}
+    readonly aggkit_node_url=${AGGKIT_NODE_URL:-$"(kurtosis port print $enclave cdk-node-001 rpc)"}
 
     readonly dry_run=${DRY_RUN:-"false"}
     readonly l1_rpc_network_id=$(cast call --rpc-url $l1_rpc_url $bridge_addr 'networkID() (uint32)')
