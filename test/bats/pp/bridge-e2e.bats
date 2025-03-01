@@ -81,7 +81,7 @@ setup() {
     echo "=== Running LxLy claim on L2" >&3
     timeout="180"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
     echo "=== Running LxLy WETH ($weth_token_addr) deposit on L2 to L1 network" >&3
@@ -147,8 +147,9 @@ setup() {
     # Claim deposits (settle them on the L2)
     timeout="180"
     claim_frequency="10"
-    claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
-    local claim_global_index="$global_index"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    assert_success
+    local claim_global_index="$output"
 
     # Validate the bridge_getClaims API
     echo "------- bridge_getClaims API testcase --------"
@@ -182,7 +183,7 @@ setup() {
     timeout="180"
     claim_frequency="10"
     destination_net=$l1_rpc_network_id
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
     assert_success
 
     # Validate that the token of receiver on L1 has increased by the bridge tokens amount
@@ -244,7 +245,7 @@ setup() {
     # Claim deposits (settle them on the L2)
     timeout="180"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
     run wait_for_expected_token "$l1_erc20_addr" 10 2

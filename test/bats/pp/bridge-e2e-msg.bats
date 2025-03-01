@@ -59,7 +59,7 @@ setup() {
     echo "====== claimMessage (L2)" >&3
     timeout="120"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
     echo "====== bridgeMessage L2 -> L1" >&3
