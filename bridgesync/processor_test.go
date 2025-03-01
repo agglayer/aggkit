@@ -933,12 +933,13 @@ func TestGetBridgesPaged(t *testing.T) {
 	toBlock := uint64(10)
 	bridges :=
 		[]Bridge{
-			{DepositCount: 1, BlockNum: 1, Amount: big.NewInt(1)},
-			{DepositCount: 2, BlockNum: 2, Amount: big.NewInt(1)},
-			{DepositCount: 3, BlockNum: 3, Amount: big.NewInt(1)},
-			{DepositCount: 4, BlockNum: 4, Amount: big.NewInt(1)},
-			{DepositCount: 5, BlockNum: 5, Amount: big.NewInt(1)},
-			{DepositCount: 6, BlockNum: 6, Amount: big.NewInt(1)},
+			{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1)},
+			{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)},
+			{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1)},
+			{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1)},
+			{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1)},
+			{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1)},
+			{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1)},
 		}
 	bridgeHashMap := make(map[uint64]common.Hash)
 	for _, bridge := range bridges {
@@ -963,13 +964,17 @@ func TestGetBridgesPaged(t *testing.T) {
 		require.NoError(t, meddler.Insert(tx, "bridge", &bridge))
 	}
 
+	depositCountPtr := func(i uint64) *uint64 {
+		return &i
+	}
+
 	require.NoError(t, tx.Commit())
 
 	testCases := []struct {
 		name            string
 		pageSize        uint32
 		page            uint32
-		depositCount    uint64
+		depositCount    *uint64
 		expectedCount   int
 		expectedBridges []*BridgeResponse
 		expectedError   error
@@ -978,10 +983,10 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:          "t1",
 			pageSize:      1,
 			page:          1,
-			depositCount:  0,
-			expectedCount: 6,
+			depositCount:  nil,
+			expectedCount: 7,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 6, BlockNum: 6, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[6]},
+				{Bridge: Bridge{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[6]},
 			},
 			expectedError: nil,
 		},
@@ -989,15 +994,16 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:          "t2",
 			pageSize:      20,
 			page:          1,
-			depositCount:  0,
-			expectedCount: 6,
+			depositCount:  nil,
+			expectedCount: 7,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 6, BlockNum: 6, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[6]},
-				{Bridge: Bridge{DepositCount: 5, BlockNum: 5, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[5]},
-				{Bridge: Bridge{DepositCount: 4, BlockNum: 4, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[4]},
-				{Bridge: Bridge{DepositCount: 3, BlockNum: 3, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[3]},
-				{Bridge: Bridge{DepositCount: 2, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[2]},
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 1, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
+				{Bridge: Bridge{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[6]},
+				{Bridge: Bridge{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[5]},
+				{Bridge: Bridge{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[4]},
+				{Bridge: Bridge{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[3]},
+				{Bridge: Bridge{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[2]},
+				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
+				{Bridge: Bridge{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
 			},
 			expectedError: nil,
 		},
@@ -1005,12 +1011,12 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:          "t3",
 			pageSize:      3,
 			page:          2,
-			depositCount:  0,
-			expectedCount: 6,
+			depositCount:  nil,
+			expectedCount: 7,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 3, BlockNum: 3, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[3]},
-				{Bridge: Bridge{DepositCount: 2, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[2]},
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 1, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
+				{Bridge: Bridge{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[3]},
+				{Bridge: Bridge{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[2]},
+				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
 			},
 			expectedError: nil,
 		},
@@ -1018,30 +1024,43 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:          "t4",
 			pageSize:      3,
 			page:          2,
-			depositCount:  1,
+			depositCount:  depositCountPtr(1),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 1, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
+				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
 			},
 			expectedError: nil,
 		},
 		{
-			name:            "t5",
-			pageSize:        3,
-			page:            2,
-			depositCount:    7,
-			expectedCount:   0,
-			expectedBridges: []*BridgeResponse{},
-			expectedError:   nil,
+			name:          "t5",
+			pageSize:      3,
+			page:          2,
+			depositCount:  depositCountPtr(1),
+			expectedCount: 1,
+			expectedBridges: []*BridgeResponse{
+				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[2]},
+			},
+			expectedError: nil,
 		},
 		{
 			name:            "t6",
 			pageSize:        2,
 			page:            20,
-			depositCount:    0,
-			expectedCount:   6,
+			depositCount:    nil,
+			expectedCount:   7,
 			expectedBridges: []*BridgeResponse{},
 			expectedError:   db.ErrNotFound,
+		},
+		{
+			name:          "t7",
+			pageSize:      1,
+			page:          1,
+			depositCount:  depositCountPtr(0),
+			expectedCount: 1,
+			expectedBridges: []*BridgeResponse{
+				{Bridge: Bridge{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[0]},
+			},
+			expectedError: nil,
 		},
 	}
 
@@ -1052,7 +1071,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, &tc.depositCount)
+			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount)
 
 			if tc.expectedError != nil {
 				require.Equal(t, tc.expectedError, err)
