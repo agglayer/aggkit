@@ -89,48 +89,6 @@ function bridge_asset() {
     fi
 }
 
-function get_bridge() {
-    local network_id="$1"
-    local expected_tx_hash="$2"
-    local max_attempts="$3"
-    local poll_frequency="$4"
-
-    local attempt=0
-
-    while true; do
-        ((attempt++))
-        log "Attempt $attempt: fetching bridges from the RPC..."
-
-        # Fetch bridges from the RPC
-        bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$network_id")
-
-        log "------ bridges_result ------"
-        log "$bridges_result"
-        log "------ bridges_result ------"
-
-        # Extract the elements of the 'bridges' array one by one
-        for row in $(echo "$bridges_result" | jq -c '.bridges[]'); do
-            # Parse out the tx_hash from each element
-            tx_hash=$(echo "$row" | jq -r '.tx_hash')
-
-            if [[ "$tx_hash" == "$expected_tx_hash" ]]; then
-                log "Found expected bridge with tx hash: $tx_hash"
-                echo "$row"
-                return 0
-            fi
-        done
-
-        # Fail test if max attempts are reached
-        if [[ "$attempt" -ge "$max_attempts" ]]; then
-            echo "Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
-            return 1
-        fi
-
-        # Sleep before the next attempt
-        sleep "$poll_frequency"
-    done
-}
-
 # This function is used to claim a bridge using concrete tx hash
 # params:
 # - timeout - timeout in seconds
@@ -366,6 +324,48 @@ function wait_for_expected_token() {
     done
 }
 
+function get_bridge() {
+    local network_id="$1"
+    local expected_tx_hash="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
+
+    local attempt=0
+
+    log "🔍 Searching for bridge with tx_hash: "$expected_tx_hash" (bridge indexer RPC: "$aggkit_node_url")..."
+
+    while true; do
+        ((attempt++))
+        log "🔍 Attempt $attempt"
+
+        # Fetch bridges from the RPC
+        bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$network_id")
+
+        # Extract the elements of the 'bridges' array one by one
+        for row in $(echo "$bridges_result" | jq -c '.bridges[]'); do
+            # Parse out the tx_hash from each element
+            tx_hash=$(echo "$row" | jq -r '.tx_hash')
+
+            if [[ "$tx_hash" == "$expected_tx_hash" ]]; then
+                log "🎉 Found expected bridge with tx hash: $tx_hash"
+                echo "$row"
+                return 0
+            fi
+        done
+
+        # Fail test if max attempts are reached
+        if [[ "$attempt" -ge "$max_attempts" ]]; then
+            log "🔍 Bridges result:"
+            log "$bridges_result"
+            echo "❌ Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
+            return 1
+        fi
+
+        # Sleep before the next attempt
+        sleep "$poll_frequency"
+    done
+}
+
 function get_claim() {
     local network_id="$1"
     local expected_global_index="$2"
@@ -379,8 +379,6 @@ function get_claim() {
         ((attempt++))
         log "🔍 Attempt $attempt"
         claims_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getClaims" "$network_id")
-        log "------ claims_result ------"
-        log "$claims_result"
 
         for row in $(echo "$claims_result" | jq -c '.claims[]'); do
             global_index=$(jq -r '.global_index' <<<"$row")
@@ -403,8 +401,11 @@ function get_claim() {
                 for field in "${required_fields[@]}"; do
                     value=$(jq -r --arg fld "$field" '.[$fld]' <<<"$row")
                     if [ "$value" = "null" ] || [ -z "$value" ]; then
+                        log "🔍 Claims result:"
+                        log "$claims_result"
+
                         echo "❌ Error: Assertion failed missing or null '$field' in the claim object." >&2
-                        exit 1
+                        return 1
                     fi
                 done
 
@@ -415,6 +416,9 @@ function get_claim() {
 
         # Fail test if max attempts are reached
         if [[ "$attempt" -ge "$max_attempts" ]]; then
+            log "🔍 Claims result:"
+            log "$claims_result"
+
             echo "❌ Error: Reached max attempts ($max_attempts) without finding expected claim with global index ($expected_global_index)." >&2
             return 1
         fi
