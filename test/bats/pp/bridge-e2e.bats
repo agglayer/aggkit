@@ -185,7 +185,6 @@ setup() {
 
 @test "ERC20 token deposit L1 -> L2" {
     echo "Retrieving ERC20 contract artifact from $erc20_artifact_path" >&3
-    # local erc20_bytecode=$(cat "$erc20_artifact_path" | jq -r '.bytecode')
 
     run jq -r '.bytecode' "$erc20_artifact_path"
     assert_success

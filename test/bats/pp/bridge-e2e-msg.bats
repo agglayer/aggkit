@@ -47,7 +47,6 @@ setup() {
     readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)')
 }
 
-
 @test "Transfer message" {
     echo "====== bridgeMessage L1 -> L2" >&3
     destination_addr=$sender_addr
