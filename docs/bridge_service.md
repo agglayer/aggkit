@@ -267,7 +267,27 @@ Failed response (`rpc.Error`)
 
 ### L1 info tree index for bridge
 
-TBD
+L1InfoTreeIndexForBridge returns the first L1 info tree index where the specified bridge transaction was included. This method must be called against a client connected to the same network in which the bridge transaction was sent.
+
+#### Parameters
+
+| **Name**       | **Type** | **Description**                                                      | **Required** | **Notes**                       |
+|----------------|----------|----------------------------------------------------------------------|--------------|---------------------------------|
+| `networkID`    | `uint32` | ID of the network to fetch L1 info tree index.                       | Yes          | `0` for L1(otherwise L2)        |
+| `depositCount` | `uint32` | Deposit count of the bridge for we have requested L1 info tree index | Yes          |                                 |
+
+---
+
+#### Return value
+
+Successful response
+
+- uint32
+
+Failed response (`rpc.Error`)
+
+- `code` - error code
+- `message` - error message
 
 ### Injected L1 tree info after index
 
