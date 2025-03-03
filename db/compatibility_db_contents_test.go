@@ -33,7 +33,7 @@ func TestCheckCompatibilityData(t *testing.T) {
 	}{
 		A: "value2",
 	}
-	// Data change, so error compatiblity
+	// Data change, so error compatibility
 	err = CheckCompatibilityData(db, owner, data2)
 	require.Error(t, err)
 }
