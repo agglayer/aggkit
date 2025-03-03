@@ -59,7 +59,8 @@ func New(
 		return nil, err
 	}
 
-	driver, err := sync.NewEVMDriver(rdL2, processor, downloader, reorgDetectorID, downloadBufferSize, rh, requireStorageContentCompatibility)
+	driver, err := sync.NewEVMDriver(rdL2, processor, downloader, reorgDetectorID,
+		downloadBufferSize, rh, requireStorageContentCompatibility)
 	if err != nil {
 		return nil, err
 	}

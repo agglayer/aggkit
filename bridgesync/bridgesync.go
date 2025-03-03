@@ -173,7 +173,8 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID, downloadBufferSize, rh, requireStorageContentCompatibility)
+	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID,
+		downloadBufferSize, rh, requireStorageContentCompatibility)
 	if err != nil {
 		return nil, err
 	}

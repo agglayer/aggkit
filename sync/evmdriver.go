@@ -53,7 +53,7 @@ type RuntimeData struct {
 }
 
 func (r RuntimeData) String() string {
-	res := "ChainID: " + string(r.ChainID) + ", Addresses: "
+	res := fmt.Sprintf("ChainID: %d, Addresses: ", r.ChainID)
 	for _, addr := range r.Addresses {
 		res += addr.String() + ", "
 	}
@@ -65,11 +65,11 @@ func (r RuntimeData) IsCompatible(other RuntimeData) error {
 		return fmt.Errorf("chain ID mismatch: %d != %d", r.ChainID, other.ChainID)
 	}
 	if len(r.Addresses) != len(other.Addresses) {
-		return fmt.Errorf("Addresses len mishmatch: %d != %d", len(r.Addresses), len(other.Addresses))
+		return fmt.Errorf("addresses len mishmatch: %d != %d", len(r.Addresses), len(other.Addresses))
 	}
 	for i, addr := range r.Addresses {
 		if addr != other.Addresses[i] {
-			return fmt.Errorf("Addresses[%d] mishmatch: %s != %s", i, addr.String(), other.Addresses[i].String())
+			return fmt.Errorf("addresses[%d] mishmatch: %s != %s", i, addr.String(), other.Addresses[i].String())
 		}
 	}
 	return nil

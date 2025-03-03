@@ -51,7 +51,9 @@ type CompatibilityCheck[T CompatibilityComparer[T]] struct {
 
 func NewCompatibilityCheck[T CompatibilityComparer[T]](
 	requireStorageContentCompatibility bool,
-	ownerName string, runtimeDataGetter CompatibilityDataGetter[T], storage CompatibilityDataStorager[T]) *CompatibilityCheck[T] {
+	ownerName string,
+	runtimeDataGetter CompatibilityDataGetter[T],
+	storage CompatibilityDataStorager[T]) *CompatibilityCheck[T] {
 	return &CompatibilityCheck[T]{
 		RequireStorageContentCompatibility: requireStorageContentCompatibility,
 		OwnerName:                          ownerName,
@@ -83,9 +85,11 @@ func (s *CompatibilityCheck[T]) Check(ctx context.Context, tx db.Querier) error 
 	err = runtimeData.IsCompatible(storageData)
 	if err != nil {
 		if s.RequireStorageContentCompatibility {
-			return fmt.Errorf("compatibilityCheck: data on DB is [%s] != runtime [%s]. Err: %w", storageData.String(), runtimeData.String(), err)
+			return fmt.Errorf("compatibilityCheck: data on DB is [%s] != runtime [%s]. Err: %w",
+				storageData.String(), runtimeData.String(), err)
 		} else {
-			s.Logger.Warnf("compatibilityCheck: data on DB is [%s] != runtime [%s]. Err: %w", storageData.String(), runtimeData.String(), err)
+			s.Logger.Warnf("compatibilityCheck: data on DB is [%s] != runtime [%s]. Err: %w",
+				storageData.String(), runtimeData.String(), err)
 		}
 	}
 	return nil
@@ -117,14 +121,15 @@ type KeyValueToCompatibilityStorage[T any] struct {
 	OwnerName string
 }
 
-func NewKeyValueToCompatibilityStorage[T any](kvStorage KeyValueStorager, ownerName string) *KeyValueToCompatibilityStorage[T] {
+func NewKeyValueToCompatibilityStorage[T any](kvStorage KeyValueStorager,
+	ownerName string) *KeyValueToCompatibilityStorage[T] {
 	return &KeyValueToCompatibilityStorage[T]{
 		KVStorage: kvStorage,
 		OwnerName: ownerName}
-
 }
 
-func (s *KeyValueToCompatibilityStorage[T]) GetCompatibilityData(ctx context.Context, tx db.Querier) (bool, T, error) {
+func (s *KeyValueToCompatibilityStorage[T]) GetCompatibilityData(ctx context.Context,
+	tx db.Querier) (bool, T, error) {
 	var runtimeDataUnmarshaled T
 	var err error
 	runtimeDataRaw, err := s.KVStorage.GetValue(tx, s.OwnerName, compatibilityContentKey)
@@ -136,7 +141,8 @@ func (s *KeyValueToCompatibilityStorage[T]) GetCompatibilityData(ctx context.Con
 	}
 	err = json.Unmarshal([]byte(runtimeDataRaw), &runtimeDataUnmarshaled)
 	if err != nil {
-		return false, runtimeDataUnmarshaled, fmt.Errorf("compatibilityCheck: fails to unmarshal runtime data from storage. Err: %w", err)
+		return false, runtimeDataUnmarshaled,
+			fmt.Errorf("compatibilityCheck: fails to unmarshal runtime data from storage. Err: %w", err)
 	}
 
 	return true, runtimeDataUnmarshaled, nil
