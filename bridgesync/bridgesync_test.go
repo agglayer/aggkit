@@ -61,6 +61,7 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
+		true,
 	)
 
 	assert.NoError(t, err)
@@ -82,6 +83,7 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
+		true,
 	)
 
 	assert.NoError(t, err)
@@ -107,6 +109,7 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
+		true,
 	)
 	t.Log(err)
 	assert.Error(t, err)

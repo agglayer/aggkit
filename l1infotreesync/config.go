@@ -17,4 +17,7 @@ type Config struct {
 	InitialBlock               uint64         `mapstructure:"InitialBlock"`
 	RetryAfterErrorPeriod      types.Duration `mapstructure:"RetryAfterErrorPeriod"`
 	MaxRetryAttemptsAfterError int            `mapstructure:"MaxRetryAttemptsAfterError"`
+	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
+	// is compatible with the running environment
+	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
 }

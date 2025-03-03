@@ -3,7 +3,10 @@ package sync
 import (
 	"context"
 	"errors"
+	"fmt"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -30,28 +33,16 @@ type downloader interface {
 	GetRuntimeData(ctx context.Context) (RuntimeData, error)
 }
 
-type Logger interface {
-	Fatal(args ...interface{})
-	Fatalf(format string, args ...interface{})
-	Info(args ...interface{})
-	Infof(format string, args ...interface{})
-	Error(args ...interface{})
-	Errorf(format string, args ...interface{})
-	Warn(args ...interface{})
-	Warnf(format string, args ...interface{})
-	Debug(args ...interface{})
-	Debugf(format string, args ...interface{})
-}
-
 type EVMDriver struct {
-	reorgDetector      ReorgDetector
-	reorgSub           *reorgdetector.Subscription
-	processor          processorInterface
-	downloader         downloader
-	reorgDetectorID    string
-	downloadBufferSize int
-	rh                 *RetryHandler
-	log                Logger
+	reorgDetector        ReorgDetector
+	reorgSub             *reorgdetector.Subscription
+	processor            processorInterface
+	downloader           downloader
+	reorgDetectorID      string
+	downloadBufferSize   int
+	rh                   *RetryHandler
+	log                  aggkitcommon.Logger
+	compatibilityChecker compatibility.CompatibilityChecker
 }
 
 // RuntimeData is the data that is used to check that the DB is compatible with the runtime data
@@ -61,11 +52,35 @@ type RuntimeData struct {
 	Addresses []common.Address
 }
 
+func (r RuntimeData) String() string {
+	res := "ChainID: " + string(r.ChainID) + ", Addresses: "
+	for _, addr := range r.Addresses {
+		res += addr.String() + ", "
+	}
+	return res
+}
+
+func (r RuntimeData) IsCompatible(other RuntimeData) error {
+	if r.ChainID != other.ChainID {
+		return fmt.Errorf("chain ID mismatch: %d != %d", r.ChainID, other.ChainID)
+	}
+	if len(r.Addresses) != len(other.Addresses) {
+		return fmt.Errorf("Addresses len mishmatch: %d != %d", len(r.Addresses), len(other.Addresses))
+	}
+	for i, addr := range r.Addresses {
+		if addr != other.Addresses[i] {
+			return fmt.Errorf("Addresses[%d] mishmatch: %s != %s", i, addr.String(), other.Addresses[i].String())
+		}
+	}
+	return nil
+}
+
 type processorInterface interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	ProcessBlock(ctx context.Context, block Block) error
 	Reorg(ctx context.Context, firstReorgedBlock uint64) error
-	CheckCompatibilityData(data RuntimeData) error
+	// CheckCompatibilityData is the interface to set / retrieve the compatibility data to storage
+	compatibility.CompatibilityDataStorager[RuntimeData]
 }
 
 type ReorgDetector interface {
@@ -82,21 +97,29 @@ func NewEVMDriver(
 	reorgDetectorID string,
 	downloadBufferSize int,
 	rh *RetryHandler,
+	requireStorageContentCompatibility bool,
 ) (*EVMDriver, error) {
 	logger := log.WithFields("syncer", reorgDetectorID)
 	reorgSub, err := reorgDetector.Subscribe(reorgDetectorID)
 	if err != nil {
 		return nil, err
 	}
+	compatibilityChecker := compatibility.NewCompatibilityCheck[RuntimeData](
+		requireStorageContentCompatibility,
+		reorgDetectorID,
+		downloader.GetRuntimeData,
+		processor)
+
 	return &EVMDriver{
-		reorgDetector:      reorgDetector,
-		reorgSub:           reorgSub,
-		processor:          processor,
-		downloader:         downloader,
-		reorgDetectorID:    reorgDetectorID,
-		downloadBufferSize: downloadBufferSize,
-		rh:                 rh,
-		log:                logger,
+		reorgDetector:        reorgDetector,
+		reorgSub:             reorgSub,
+		processor:            processor,
+		downloader:           downloader,
+		reorgDetectorID:      reorgDetectorID,
+		downloadBufferSize:   downloadBufferSize,
+		rh:                   rh,
+		log:                  logger,
+		compatibilityChecker: compatibilityChecker,
 	}, nil
 }
 
@@ -106,24 +129,17 @@ reset:
 		lastProcessedBlock uint64
 		attempts           int
 		err                error
-		runtimeData        RuntimeData
 	)
 	for {
-		runtimeData, err = d.downloader.GetRuntimeData(ctx)
+		err = d.compatibilityChecker.Check(ctx, nil)
 		if err != nil {
 			attempts++
-			d.log.Error("error getting current runtime data from processor: ", err)
+			d.log.Error("error checking compatibility data between downloader(runtime) and processor (db): ", err)
 			d.rh.Handle("Sync", attempts)
 			continue
 		}
 		break
 	}
-	err = d.processor.CheckCompatibilityData(runtimeData)
-	if err != nil {
-		d.log.Fatal("error checking compatibility data between downloader(rumtime) and processor(db): ",
-			err)
-	}
-
 	for {
 		lastProcessedBlock, err = d.processor.GetLastProcessedBlock(ctx)
 		if err != nil {

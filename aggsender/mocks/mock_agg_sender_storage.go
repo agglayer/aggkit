@@ -8,8 +8,6 @@ import (
 
 	context "context"
 
-	db "github.com/agglayer/aggkit/aggsender/db"
-
 	mock "github.com/stretchr/testify/mock"
 
 	types "github.com/agglayer/aggkit/aggsender/types"
@@ -26,52 +24,6 @@ type AggSenderStorage_Expecter struct {
 
 func (_m *AggSenderStorage) EXPECT() *AggSenderStorage_Expecter {
 	return &AggSenderStorage_Expecter{mock: &_m.Mock}
-}
-
-// CheckCompatibilityData provides a mock function with given fields: runtimeData
-func (_m *AggSenderStorage) CheckCompatibilityData(runtimeData db.RuntimeData) error {
-	ret := _m.Called(runtimeData)
-
-	if len(ret) == 0 {
-		panic("no return value specified for CheckCompatibilityData")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(db.RuntimeData) error); ok {
-		r0 = rf(runtimeData)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// AggSenderStorage_CheckCompatibilityData_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckCompatibilityData'
-type AggSenderStorage_CheckCompatibilityData_Call struct {
-	*mock.Call
-}
-
-// CheckCompatibilityData is a helper method to define mock.On call
-//   - runtimeData db.RuntimeData
-func (_e *AggSenderStorage_Expecter) CheckCompatibilityData(runtimeData interface{}) *AggSenderStorage_CheckCompatibilityData_Call {
-	return &AggSenderStorage_CheckCompatibilityData_Call{Call: _e.mock.On("CheckCompatibilityData", runtimeData)}
-}
-
-func (_c *AggSenderStorage_CheckCompatibilityData_Call) Run(run func(runtimeData db.RuntimeData)) *AggSenderStorage_CheckCompatibilityData_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(db.RuntimeData))
-	})
-	return _c
-}
-
-func (_c *AggSenderStorage_CheckCompatibilityData_Call) Return(_a0 error) *AggSenderStorage_CheckCompatibilityData_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *AggSenderStorage_CheckCompatibilityData_Call) RunAndReturn(run func(db.RuntimeData) error) *AggSenderStorage_CheckCompatibilityData_Call {
-	_c.Call.Return(run)
-	return _c
 }
 
 // DeleteCertificate provides a mock function with given fields: ctx, certificateID

@@ -2125,9 +2125,7 @@ func TestNewAggSender(t *testing.T) {
 
 func TestCheckDBCompatibility(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage)
-	testData.l2syncerMock.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-	testData.sut.cfg.CheckDatabaseCompatibilityWithRunningEnvironment = false
-	testData.storageMock.EXPECT().CheckCompatibilityData(mock.Anything).Return(fmt.Errorf("error")).Once()
+	testData.sut.cfg.RequireStorageContentCompatibility = false
 	testData.sut.checkDBCompatibility(testData.ctx)
 }
 

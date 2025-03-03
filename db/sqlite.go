@@ -34,6 +34,14 @@ func ReturnErrNotFound(err error) error {
 	return err
 }
 
+type KeyValueStorage struct {
+	*sql.DB
+}
+
+func NewKeyValueStorage(db *sql.DB) *KeyValueStorage {
+	return &KeyValueStorage{db}
+}
+
 type kvRow struct {
 	Owner string `meddler:"owner"`
 	Key   string `meddler:"key"`
@@ -42,20 +50,29 @@ type kvRow struct {
 	UpdatedAt int64  `meddler:"updated_at"`
 }
 
-func InsertValue(tx Querier, owner, key, value string) error {
+func (kv *KeyValueStorage) InsertValue(tx Querier, owner, key, value string) error {
 	updateAt := funcTimeNow().Unix()
+	if tx == nil {
+		tx = kv.DB
+	}
 	return meddler.Insert(tx, tableKVName, &kvRow{Owner: owner, Key: key, Value: value, UpdatedAt: updateAt})
 }
 
-func GetValue(tx Querier, owner, key string) (string, error) {
+func (kv *KeyValueStorage) GetValue(tx Querier, owner, key string) (string, error) {
 	var data kvRow
+	if tx == nil {
+		tx = kv.DB
+	}
 	err := meddler.QueryRow(tx, &data, fmt.Sprintf("SELECT * FROM %s WHERE owner = $1 and key = $2 LIMIT 1;", tableKVName),
 		owner, key)
 	return data.Value, ReturnErrNotFound(err)
 }
 
-func ExistsKey(tx Querier, owner, key string) (bool, error) {
+func (kv *KeyValueStorage) ExistsKey(tx Querier, owner, key string) (bool, error) {
 	var count int
+	if tx == nil {
+		tx = kv.DB
+	}
 	err := tx.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE owner = ? and key = ?", tableKVName),
 		owner, key).Scan(&count)
 	return count > 0, ReturnErrNotFound(err)

@@ -17,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/signer"
@@ -41,14 +42,15 @@ type RateLimiter interface {
 
 // AggSender is a component that will send certificates to the aggLayer
 type AggSender struct {
-	log types.Logger
+	log aggkitcommon.Logger
 
 	l2Syncer         types.L2BridgeSyncer
 	l1infoTreeSyncer types.L1InfoTreeSyncer
 	epochNotifier    types.EpochNotifier
 
-	storage        db.AggSenderStorage
-	aggLayerClient agglayer.AgglayerClientInterface
+	storage                      db.AggSenderStorage
+	aggLayerClient               agglayer.AgglayerClientInterface
+	compatibilityStoragedChecker compatibility.CompatibilityChecker
 
 	cfg Config
 
@@ -87,17 +89,27 @@ func New(
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
 
+	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck[db.RuntimeData](
+		cfg.RequireStorageContentCompatibility,
+		aggkitcommon.AGGSENDER,
+		func(ctx context.Context) (db.RuntimeData, error) {
+			return db.RuntimeData{NetworkID: l2Syncer.OriginNetwork()}, nil
+		},
+		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
+	)
+
 	return &AggSender{
-		cfg:              cfg,
-		log:              logger,
-		storage:          storage,
-		l2Syncer:         l2Syncer,
-		aggLayerClient:   aggLayerClient,
-		l1infoTreeSyncer: l1InfoTreeSyncer,
-		signer:           signer,
-		epochNotifier:    epochNotifier,
-		status:           types.AggsenderStatus{Status: types.StatusNone},
-		rateLimiter:      rateLimit,
+		cfg:                          cfg,
+		log:                          logger,
+		storage:                      storage,
+		l2Syncer:                     l2Syncer,
+		aggLayerClient:               aggLayerClient,
+		l1infoTreeSyncer:             l1InfoTreeSyncer,
+		signer:                       signer,
+		epochNotifier:                epochNotifier,
+		status:                       types.AggsenderStatus{Status: types.StatusNone},
+		rateLimiter:                  rateLimit,
+		compatibilityStoragedChecker: compatibilityStoragedChecker,
 	}, nil
 }
 
@@ -135,16 +147,14 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.checkInitialStatus(ctx)
 	a.sendCertificates(ctx, 0)
 }
-func (a *AggSender) checkDBCompatibility(_ context.Context) {
-	networkID := a.l2Syncer.OriginNetwork()
-	err := a.storage.CheckCompatibilityData(db.RuntimeData{NetworkID: networkID})
+func (a *AggSender) checkDBCompatibility(ctx context.Context) {
+	if a.compatibilityStoragedChecker == nil {
+		a.log.Warnf("compatibilityStoragedChecker is nil, so we are not going to check the compatibility")
+		return
+	}
+	err := a.compatibilityStoragedChecker.Check(ctx, nil)
 	if err != nil {
-		if a.cfg.CheckDatabaseCompatibilityWithRunningEnvironment {
-			a.log.Fatalf("error checking compatibility data in DB, you can bypass this check"+
-				"setting AggSender.CheckDatabaseCompatibilityWithRunningEnvironment=false. Err: %w", err)
-		} else {
-			a.log.Warnf("error checking compatibility data: %w", err)
-		}
+		a.log.Fatalf("error checking compatibility data in DB, you can bypass this check using config file")
 	}
 }
 

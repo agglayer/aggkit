@@ -17,11 +17,12 @@ func TestSqlite(t *testing.T) {
 	err = RunMigrationsDB(logger, db, []types.Migration{})
 	require.NoError(t, err)
 	owner := "unittest"
-	_, err = GetValue(db, owner, "key")
+	kv := KeyValueStorage{db}
+	_, err = kv.GetValue(db, owner, "key")
 	require.ErrorIs(t, err, ErrNotFound)
-	err = InsertValue(db, owner, "key", "value")
+	err = kv.InsertValue(db, owner, "key", "value")
 	require.NoError(t, err)
-	value, err := GetValue(db, owner, "key")
+	value, err := kv.GetValue(db, owner, "key")
 	require.NoError(t, err)
 	require.Equal(t, "value", value)
 }

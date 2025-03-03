@@ -32,6 +32,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, etherman.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
+	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
