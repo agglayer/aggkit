@@ -271,7 +271,35 @@ TBD
 
 ### Injected L1 tree info after index
 
-TBD
+The InjectedInfoAfterIndex endpoint returns the first Global Exit Root (GER) injected into the network with an index equal to or greater than the provided value. This endpoint is useful for determining when a bridge becomes eligible for claiming on its destination network.
+
+#### Parameters
+
+| **Name**       | **Type** | **Description**                                                      | **Required** | **Notes**                       |
+|----------------|----------|----------------------------------------------------------------------|--------------|---------------------------------|
+| networkID    | uint32 | ID of the network to fetch L1 info tree index.                       | Yes          | 0 for L1(otherwise L2)        |
+| l1InfoTreeIndex | uint32 | The starting index in the L1 info tree used to query for GER info. | Yes          |                                 |
+
+---
+
+#### Return value
+
+Successful response (`L1InfoTreeLeaf`)
+
+- `block_num`: Block number where the event was recorded.
+- `block_pos`: Position of the log within the block.
+- `position`: Position of the leaf in the L1 info tree.
+- `previous_block_hash`: Hash of the previous block.
+- `timestamp`: Timestamp of the block.
+- `mainnet_exit_root`: Mainnet exit root.
+- `rollup_exit_root`: Rollup exit root.
+- `global_exit_root`: Global exit root.
+- `hash`: Hash of the leaf.
+
+Failed response (`rpc.Error`)
+
+- `code` - error code
+- `message` - error message
 
 ### Get proof
 
