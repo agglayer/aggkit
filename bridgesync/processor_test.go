@@ -1091,16 +1091,20 @@ func TestGetClaimsPaged(t *testing.T) {
 
 	// Compute uint256 max: 2^256 - 1
 	uint256Max := new(big.Int).Sub(new(big.Int).Exp(big.NewInt(2), big.NewInt(256), nil), big.NewInt(1))
-	// Compute uint64 max: 2^64 - 1
+	// Compute uint64 max: 2^64 - 1 = 18446744073709551615
 	uint64Max := new(big.Int).Sub(new(big.Int).Exp(big.NewInt(2), big.NewInt(64), nil), big.NewInt(1))
+	num1 := new(big.Int)
+	num1.SetString("18446744073709551617", 10)
+	num2 := new(big.Int)
+	num2.SetString("18446744073709551618", 10)
 
 	claims :=
 		[]Claim{
-			{BlockNum: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
+			{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1)},
 			{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-			{BlockNum: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
-			{BlockNum: 4, GlobalIndex: big.NewInt(4), Amount: big.NewInt(1)},
-			{BlockNum: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+			{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+			{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1)},
+			{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1)},
 			{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
 		}
 
@@ -1137,7 +1141,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			page:          2,
 			expectedCount: 6,
 			expectedClaims: []*ClaimResponse{
-				{BlockNum: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+				{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1)},
 			},
 			expectedError: nil,
 		},
@@ -1148,11 +1152,11 @@ func TestGetClaimsPaged(t *testing.T) {
 			expectedCount: 6,
 			expectedClaims: []*ClaimResponse{
 				{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
-				{BlockNum: 5, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
-				{BlockNum: 4, GlobalIndex: big.NewInt(4), Amount: big.NewInt(1)},
-				{BlockNum: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
+				{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1)},
+				{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1)},
+				{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+				{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1)},
 				{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-				{BlockNum: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
 			},
 			expectedError: nil,
 		},
@@ -1162,9 +1166,9 @@ func TestGetClaimsPaged(t *testing.T) {
 			page:          2,
 			expectedCount: 6,
 			expectedClaims: []*ClaimResponse{
-				{BlockNum: 3, GlobalIndex: big.NewInt(3), Amount: big.NewInt(1)},
+				{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
+				{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1)},
 				{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-				{BlockNum: 1, GlobalIndex: big.NewInt(1), Amount: big.NewInt(1)},
 			},
 			expectedError: nil,
 		},

@@ -22,6 +22,7 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/signer"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -42,7 +43,7 @@ func TestConfigString(t *testing.T) {
 	config := Config{
 		StoragePath:                 "/path/to/storage",
 		AggLayerURL:                 "http://agglayer.url",
-		AggsenderPrivateKey:         types.KeystoreFileConfig{Path: "/path/to/key", Password: "password"},
+		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                    "http://l2.rpc.url",
 		BlockFinality:               "latestBlock",
 		EpochNotificationPercentage: 50,
@@ -51,7 +52,7 @@ func TestConfigString(t *testing.T) {
 
 	expected := "StoragePath: /path/to/storage\n" +
 		"AggLayerURL: http://agglayer.url\n" +
-		"AggsenderPrivateKeyPath: /path/to/key\n" +
+		"AggsenderPrivateKey: local\n" +
 		"URLRPCL2: http://l2.rpc.url\n" +
 		"BlockFinality: latestBlock\n" +
 		"EpochNotificationPercentage: 50\n" +
@@ -984,7 +985,6 @@ func TestSendCertificate(t *testing.T) {
 
 	type testCfg struct {
 		name                                    string
-		sequencerKey                            *ecdsa.PrivateKey
 		shouldSendCertificate                   []interface{}
 		getLastSentCertificate                  []interface{}
 		lastL2BlockProcessed                    []interface{}
@@ -1003,11 +1003,12 @@ func TestSendCertificate(t *testing.T) {
 	setupTest := func(cfg testCfg) (*AggSender, *mocks.AggSenderStorage, *mocks.L2BridgeSyncer,
 		*agglayer.AgglayerClientMock, *mocks.L1InfoTreeSyncer) {
 		var (
+			sign      = signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 			aggsender = &AggSender{
-				log:          log.WithFields("aggsender", 1),
-				cfg:          Config{MaxRetriesStoreCertificate: 1},
-				sequencerKey: cfg.sequencerKey,
-				rateLimiter:  aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
+				log:         log.WithFields("aggsender", 1),
+				cfg:         Config{MaxRetriesStoreCertificate: 1},
+				signer:      sign,
+				rateLimiter: aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 			}
 			mockStorage          *mocks.AggSenderStorage
 			mockL2Syncer         *mocks.L2BridgeSyncer
@@ -1293,7 +1294,6 @@ func TestSendCertificate(t *testing.T) {
 			getExitRootByIndex: []interface{}{treeTypes.Root{}, nil},
 			originNetwork:      []interface{}{uint32(1), nil},
 			sendCertificate:    []interface{}{common.Hash{}, errors.New("error sending certificate")},
-			sequencerKey:       privateKey,
 			expectedError:      "error sending certificate",
 		},
 		{
@@ -1322,7 +1322,6 @@ func TestSendCertificate(t *testing.T) {
 			originNetwork:           []interface{}{uint32(1), nil},
 			sendCertificate:         []interface{}{common.Hash{}, nil},
 			saveLastSentCertificate: []interface{}{errors.New("error saving last sent certificate in db")},
-			sequencerKey:            privateKey,
 			expectedError:           "error saving last sent certificate in db",
 		},
 		{
@@ -1351,7 +1350,6 @@ func TestSendCertificate(t *testing.T) {
 			originNetwork:           []interface{}{uint32(1), nil},
 			sendCertificate:         []interface{}{common.Hash{}, nil},
 			saveLastSentCertificate: []interface{}{nil},
-			sequencerKey:            privateKey,
 		},
 	}
 
@@ -1697,14 +1695,14 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
 	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-
+	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 	aggSender := &AggSender{
 		log:              log.WithFields("aggsender-test", "no claims test"),
 		storage:          mockStorage,
 		l2Syncer:         mockL2Syncer,
 		aggLayerClient:   mockAggLayerClient,
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
-		sequencerKey:     privateKey,
+		signer:           signer,
 		cfg:              Config{},
 		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
@@ -2218,7 +2216,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	}
 	privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	require.NoError(t, err)
-
+	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
 	ctx := context.TODO()
 	sut := &AggSender{
 		log:              logger,
@@ -2230,7 +2228,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 			MaxCertSize: 1024 * 1024,
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
-		sequencerKey:  privKey,
+		signer:        signer,
 		epochNotifier: epochNotifierMock,
 	}
 	testCerts := []aggsendertypes.CertificateInfo{
