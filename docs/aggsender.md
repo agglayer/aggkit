@@ -139,7 +139,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 |--------------------------|-----------------------------------------------------------------------------|
 | `network_id`               | This is the id of the rollup (>0)                                                       |
 | `height`                   | Order of certificates. First one is 0                                                   |
-| `prev_local_exit_root`     | The first one must be the one in SMC (currently is a 0x000…00)                          |
+| `prev_local_exit_root`     | The first one must be the one in smart contract (currently is a 0x000…00)                          |
 | `new_local_exit_root`      | It’s the root after bridge_exits                                                        |
 | `bridge_exits`             | These are the leaves of the LER tree included in this certificate. (bridgeAssert calls) |
 | `imported_bridge_exits`    | These are the claims done in this network                                               |
