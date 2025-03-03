@@ -289,7 +289,7 @@ func (p *processor) GetBridgesPaged(
 	if err != nil {
 		return nil, 0, err
 	}
-	if depositCount != nil && *depositCount > 0 {
+	if depositCount != nil {
 		whereClause = fmt.Sprintf("WHERE deposit_count = %d", *depositCount)
 		pageNumber = 1
 		pageSize = 1
@@ -320,7 +320,7 @@ func (p *processor) GetBridgesPaged(
 			BridgeHash: bridgePtr.Hash(),
 		}
 	}
-	if depositCount != nil && *depositCount > 0 {
+	if depositCount != nil {
 		count = len(bridgePtrs)
 	}
 	return bridgeResponsePtrs, count, nil

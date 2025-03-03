@@ -40,6 +40,7 @@ setup() {
 
     readonly l1_rpc_url=${L1_ETH_RPC_URL:-"$(kurtosis port print $enclave el-1-geth-lighthouse rpc)"}
     readonly bridge_api_url=${BRIDGE_API_URL:-"$(kurtosis port print $enclave zkevm-bridge-service-001 rpc)"}
+    readonly aggkit_node_url=${AGGKIT_NODE_URL:-"$(kurtosis port print $enclave cdk-node-001 rpc)"}
 
     readonly dry_run=${DRY_RUN:-"false"}
     readonly l1_rpc_network_id=$(cast call --rpc-url $l1_rpc_url $bridge_addr 'networkID() (uint32)')
@@ -64,23 +65,24 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
 
+<<<<<<< HEAD
     echo "------- bridge_getBridges API testcase"
+=======
+    echo "=== Retrieve bridge from bridge_getBridges API" >&3
+>>>>>>> a001d76ff86b256092f71f888b9b94c31b4b3166
     run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
-    local bridge
-    bridge="$output"
-    local origin_network
-    origin_network="$(echo "$bridge" | jq -r '.origin_network')"
-    local destination_network
-    destination_network="$(echo "$bridge" | jq -r '.destination_network')"
+    
+    local bridge="$output"
+    local origin_network="$(echo "$bridge" | jq -r '.origin_network')"
+    local destination_network="$(echo "$bridge" | jq -r '.destination_network')"
     assert_equal "$l1_rpc_network_id" "$origin_network"
     assert_equal "$l2_rpc_network_id" "$destination_network"
-    echo "------- bridge_getBridges API testcase passed"
 
     echo "=== Running LxLy claim on L2" >&3
     timeout="180"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
     echo "=== Running LxLy WETH ($weth_token_addr) deposit on L2 to L1 network" >&3
@@ -175,8 +177,20 @@ setup() {
     # Claim deposits (settle them on the L2)
     timeout="180"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
+    local claim_global_index="$output"
+
+    # Validate the bridge_getClaims API
+    echo "------- bridge_getClaims API testcase --------"
+    run get_claim "$l2_rpc_network_id" "$claim_global_index" 10 3
+    assert_success
+
+    local origin_network="$(echo "$output" | jq -r '.origin_network')"
+    local destination_network="$(echo "$output" | jq -r '.destination_network')"
+    assert_equal "$l1_rpc_network_id" "$origin_network"
+    assert_equal "$l2_rpc_network_id" "$destination_network"
+    echo "🚀🚀 bridge_getClaims API testcase passed" >&3
 
     # Validate that the native token of receiver on L2 has increased by the bridge tokens amount
     run verify_balance "$l2_rpc_url" "$native_token_addr" "$receiver" "$initial_receiver_balance" "$tokens_amount"
@@ -199,7 +213,7 @@ setup() {
     timeout="180"
     claim_frequency="10"
     destination_net=$l1_rpc_network_id
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
     assert_success
 
     # Validate that the token of receiver on L1 has increased by the bridge tokens amount
@@ -212,7 +226,6 @@ setup() {
 
 @test "ERC20 token deposit L1 -> L2" {
     echo "Retrieving ERC20 contract artifact from $erc20_artifact_path" >&3
-    # local erc20_bytecode=$(cat "$erc20_artifact_path" | jq -r '.bytecode')
 
     run jq -r '.bytecode' "$erc20_artifact_path"
     assert_success
@@ -261,10 +274,8 @@ setup() {
     # Claim deposits (settle them on the L2)
     timeout="180"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
-
-    local aggkit_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
 
     run wait_for_expected_token "$l1_erc20_addr" 10 2
     assert_success
