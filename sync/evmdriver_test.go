@@ -308,5 +308,4 @@ func TestCheckCompatibility(t *testing.T) {
 			driver.Sync(context.Background())
 		}, "should stop because GetLastProcessedBlock failed")
 	})
-
 }
