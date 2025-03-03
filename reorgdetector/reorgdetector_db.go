@@ -4,7 +4,9 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/db"
+	common "github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
 
@@ -77,4 +79,21 @@ func (rd *ReorgDetector) removeTrackedBlockRange(id string, fromBlock, toBlock u
 		fromBlock, toBlock, id,
 	)
 	return err
+}
+
+type ReorgEvent struct {
+	DetectedAt   int64       `meddler:"detected_at"`
+	FromBlock    uint64      `meddler:"from_block"`
+	ToBlock      uint64      `meddler:"to_block"`
+	SubscriberID string      `meddler:"subscriber_id"`
+	TrackedHash  common.Hash `meddler:"tracked_hash,hash"`
+	CurrentHash  common.Hash `meddler:"current_hash,hash"`
+	Version      string      `meddler:"version"`
+}
+
+func (rd *ReorgDetector) insertReorgEvent(event ReorgEvent) error {
+	if event.Version == "" {
+		event.Version = aggkit.GetVersion().Brief()
+	}
+	return meddler.Insert(rd.db, "reorg_event", &event)
 }
