@@ -21,6 +21,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/signer"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -41,7 +42,7 @@ func TestConfigString(t *testing.T) {
 	config := Config{
 		StoragePath:                 "/path/to/storage",
 		AggLayerURL:                 "http://agglayer.url",
-		AggsenderPrivateKey:         types.KeystoreFileConfig{Path: "/path/to/key", Password: "password"},
+		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                    "http://l2.rpc.url",
 		BlockFinality:               "latestBlock",
 		EpochNotificationPercentage: 50,
@@ -50,7 +51,7 @@ func TestConfigString(t *testing.T) {
 
 	expected := "StoragePath: /path/to/storage\n" +
 		"AggLayerURL: http://agglayer.url\n" +
-		"AggsenderPrivateKeyPath: /path/to/key\n" +
+		"AggsenderPrivateKey: local\n" +
 		"URLRPCL2: http://l2.rpc.url\n" +
 		"BlockFinality: latestBlock\n" +
 		"EpochNotificationPercentage: 50\n" +
@@ -445,14 +446,14 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
 	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 	logger := log.WithFields("aggsender-test", "no claims test")
-
+	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 	aggSender := &AggSender{
 		log:              logger,
 		storage:          mockStorage,
 		l2Syncer:         mockL2Syncer,
 		aggLayerClient:   mockAggLayerClient,
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
-		aggsenderKey:     privateKey,
+		signer:           signer,
 		cfg:              Config{},
 		flow:             newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer),
 		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
@@ -731,9 +732,6 @@ func TestCheckLastCertificateFromAgglayer_Case4ErrorUpdateStatus(t *testing.T) {
 func TestSendCertificate(t *testing.T) {
 	t.Parallel()
 
-	privateKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
 	testCases := []struct {
 		name          string
 		mockFn        func(*mocks.AggSenderStorage, *mocks.AggsenderFlow, *mocks.L1InfoTreeSyncer, *agglayer.AgglayerClientMock)
@@ -845,9 +843,14 @@ func TestSendCertificate(t *testing.T) {
 			mockAgglayerClient := agglayer.NewAgglayerClientMock(t)
 			tt.mockFn(mockStorage, mockAggsenderFlow, mockL1InfoTreeSyncer, mockAgglayerClient)
 
+			logger := log.WithFields("aggsender-test", "sendCertificate")
+			privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
+			require.NoError(t, err)
+			signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
+
 			aggsender := &AggSender{
-				log:              log.WithFields("aggsender-test", "sendCertificate"),
-				aggsenderKey:     privateKey,
+				log:              logger,
+				signer:           signer,
 				storage:          mockStorage,
 				flow:             mockAggsenderFlow,
 				aggLayerClient:   mockAgglayerClient,
@@ -858,7 +861,7 @@ func TestSendCertificate(t *testing.T) {
 				},
 			}
 
-			_, err := aggsender.sendCertificate(context.Background())
+			_, err = aggsender.sendCertificate(context.Background())
 
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
@@ -998,7 +1001,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	}
 	privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	require.NoError(t, err)
-
+	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
 	ctx := context.TODO()
 	sut := &AggSender{
 		log:              logger,
@@ -1010,7 +1013,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 			MaxCertSize: 1024 * 1024,
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
-		aggsenderKey:  privKey,
+		signer:        signer,
 		epochNotifier: epochNotifierMock,
 		flow:          newPPFlow(logger, Config{}, storage, l1InfoTreeSyncerMock, l2syncerMock),
 	}

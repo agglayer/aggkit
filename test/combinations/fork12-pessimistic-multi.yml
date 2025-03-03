@@ -1,14 +1,19 @@
+deployment_stages:
+  deploy_l2_contracts: true
+
 args:
+  verbosity: debug
   cdk_node_image: aggkit:latest
   agglayer_image: ghcr.io/agglayer/agglayer:main
-  cdk_erigon_node_image: hermeznetwork/cdk-erigon:v2.61.9-RC1
-  zkevm_contracts_image: leovct/zkevm-contracts:v9.0.0-rc.5-pp-fork.12
+  cdk_erigon_node_image: hermeznetwork/cdk-erigon:v2.61.16-hotfix2
+  zkevm_contracts_image: leovct/zkevm-contracts:v9.0.0-rc.6-pp-fork.12
   additional_services: []
   consensus_contract_type: pessimistic
   sequencer_type: erigon
   erigon_strict_mode: false
   gas_token_enabled: false
-  zkevm_use_real_verifier: false
   enable_normalcy: true
   verifier_program_vkey: 0x00766aa16a6efe4ac05c0fe21d4b50f9631dbd1a2663a982da861427085ea2ea
-  agglayer_prover_sp1_key: {{.AGGLAYER_PROVER_SP1_KEY}}
+  agglayer_prover_sp1_key: ''
+  zkevm_use_real_verifier: false
+  agglayer_prover_primary_prover: mock-prover

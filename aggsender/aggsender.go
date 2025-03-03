@@ -2,7 +2,6 @@ package aggsender
 
 import (
 	"context"
-	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,13 +12,14 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
+	"github.com/agglayer/aggkit/aggsender/metrics"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/signer"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 const signatureSize = 65
@@ -49,7 +49,7 @@ type AggSender struct {
 
 	cfg Config
 
-	aggsenderKey *ecdsa.PrivateKey
+	signer signer.Signer
 
 	status      types.AggsenderStatus
 	rateLimiter RateLimiter
@@ -75,10 +75,13 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-
-	aggsenderPrivateKey, err := aggkitcommon.NewKeyFromKeystore(cfg.AggsenderPrivateKey)
+	signer, err := signer.NewSigner(aggkitcommon.AGGSENDER, logger, ctx, cfg.AggsenderPrivateKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
+	}
+	err = signer.Initialize(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
 	}
 	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
 
@@ -115,7 +118,7 @@ func New(
 		l2Syncer:         l2Syncer,
 		aggLayerClient:   aggLayerClient,
 		l1infoTreeSyncer: l1InfoTreeSyncer,
-		aggsenderKey:     aggsenderPrivateKey,
+		signer:           signer,
 		epochNotifier:    epochNotifier,
 		status:           types.AggsenderStatus{Status: types.StatusNone},
 		flow:             flowManager,
@@ -151,6 +154,7 @@ func (a *AggSender) GetRPCServices() []jRPC.Service {
 // Start starts the AggSender
 func (a *AggSender) Start(ctx context.Context) {
 	a.log.Info("AggSender started")
+	metrics.Register()
 	a.status.Start(time.Now().UTC())
 	a.checkInitialStatus(ctx)
 	a.sendCertificates(ctx, 0)
@@ -247,6 +251,8 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertificate, error) {
 	a.log.Infof("trying to send a new certificate...")
 
+	start := time.Now()
+
 	certificateParams, err := a.flow.GetCertificateBuildParams(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting certificate build params: %w", err)
@@ -277,6 +283,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	}
 
 	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
+	metrics.CertificateBuildTime(time.Since(start).Seconds())
+
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return signedCertificate, nil
@@ -286,7 +294,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, fmt.Errorf("error sending certificate: %w", err)
 	}
 
-	a.log.Debugf("certificate sent: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
+	metrics.CertificateSent()
+	a.log.Debugf("certificate send: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
 
 	raw, err := json.Marshal(signedCertificate)
 	if err != nil {
@@ -361,14 +370,13 @@ func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Cer
 // signCertificate signs a certificate with the sequencer key
 func (a *AggSender) signCertificate(certificate *agglayer.Certificate) (*agglayer.SignedCertificate, error) {
 	hashToSign := certificate.HashToSign()
-
-	sig, err := crypto.Sign(hashToSign.Bytes(), a.aggsenderKey)
+	sig, err := a.signer.SignHash(context.Background(), hashToSign)
 	if err != nil {
 		return nil, err
 	}
 
 	a.log.Infof("Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
-		crypto.PubkeyToAddress(a.aggsenderKey.PublicKey).String(),
+		a.signer.PublicAddress().String(),
 		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
 		hashToSign.String(),
 	)
@@ -448,6 +456,13 @@ func (a *AggSender) updateCertificateStatus(ctx context.Context,
 	a.log.Infof("certificate %s changed status from [%s] to [%s] elapsed time: %s full_cert (agglayer): %s",
 		localCert.ID(), localCert.Status, agglayerCert.Status, localCert.ElapsedTimeSinceCreation(),
 		agglayerCert.String())
+
+	switch agglayerCert.Status {
+	case agglayer.Settled:
+		metrics.Settled()
+	case agglayer.InError:
+		metrics.InError()
+	}
 
 	// That is a strange situation
 	if agglayerCert.Status.IsOpen() && localCert.Status.IsClosed() {

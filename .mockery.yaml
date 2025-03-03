@@ -93,3 +93,7 @@ packages:
       EthClienter:
         config:
           mockname: "L2Mock"
+  github.com/agglayer/aggkit/signer:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true

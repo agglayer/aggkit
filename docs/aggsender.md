@@ -160,6 +160,30 @@ This paragraph explains different use cases with outcomes.
 6. Navigate to the `test/bats/pp` folder (`cd test/bats/pp`).
 7. Run a test in `bridge-e2e.bats` file: `bats -f "Native gas token deposit to WETH" bridge-e2e.bats`. This will build a new certificate after it is done, and you can debug the whole process.
 
+## Prometheus Endpoint
+
+If enabled in the configuration, Aggsender exposes the following Prometheus metrics:
+
+- Total number of certificates sent  
+- Number of sending errors  
+- Number of successful sends  
+- Certificate build time  
+- Prover execution time  
+
+### Configuration Example
+
+To enable Prometheus metrics, configure Aggsender as follows:
+
+```ini
+[Prometheus]
+Enabled = true
+Host = "localhost"
+Port = 9091
+```
+
+With this configuration, the metrics will be available at:
+http://localhost:9091/metrics
+
 ## Additional Documentation
 
 [1] https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html 
