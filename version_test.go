@@ -52,5 +52,5 @@ func TestJSONMarshal(t *testing.T) {
 
 	b, err := json.Marshal(data)
 	require.NoError(t, err)
-	require.Equal(t, `{"Version":"v0.1.0","GitRev":"4ebab70","GitBranch":"test","BuildDate":"Fri, 17 Jun 1988 01:58:00 +0200","GoVersion":"go1.16.3","OS":"linux","Arch":"amd64"}`, string(b))
+	require.Equal(t, `{"version":"v0.1.0","git_revision":"4ebab70","git_branch":"test","build_date":"Fri, 17 Jun 1988 01:58:00 +0200","go_version":"go1.16.3","os":"linux","arch":"amd64"}`, string(b))
 }

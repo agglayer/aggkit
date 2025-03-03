@@ -12,7 +12,7 @@ import (
 // HealthResponse represents the JSON response structure
 type HealthResponse struct {
 	IsHealthy bool               `json:"is_healthy"`
-	Version   aggkit.FullVersion `json:"version"`
+	Version   aggkit.FullVersion `json:"version_info"`
 }
 
 // HealthCheckHandler encapsulates logic that serves the HTTP request for health checks
