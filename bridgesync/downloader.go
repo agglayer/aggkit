@@ -287,30 +287,30 @@ func decodeClaimCallDataAndSetIfFound(data []interface{}, claim *Claim) (bool, e
 		return false, nil
 	} else {
 		proofLER := [tree.DefaultHeight]common.Hash{}
-		proofLERBytes, ok := data[0].([32][32]byte)
+		proofLERBytes, ok := data[0].([tree.DefaultHeight][common.HashLength]byte)
 		if !ok {
 			return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
 		}
 
 		proofRER := [tree.DefaultHeight]common.Hash{}
-		proofRERBytes, ok := data[1].([32][32]byte)
+		proofRERBytes, ok := data[1].([tree.DefaultHeight][common.HashLength]byte)
 		if !ok {
 			return false, fmt.Errorf("unexpected type for proofRERBytes, expected [32][32]byte got '%T'", data[1])
 		}
 
-		for i := 0; i < int(tree.DefaultHeight); i++ {
+		for i := range int(tree.DefaultHeight) {
 			proofLER[i] = proofLERBytes[i]
 			proofRER[i] = proofRERBytes[i]
 		}
 		claim.ProofLocalExitRoot = proofLER
 		claim.ProofRollupExitRoot = proofRER
 
-		claim.MainnetExitRoot, ok = data[3].([32]byte)
+		claim.MainnetExitRoot, ok = data[3].([common.HashLength]byte)
 		if !ok {
 			return false, fmt.Errorf("unexpected type for 'MainnetExitRoot'. Expected '[32]byte', got '%T'", data[3])
 		}
 
-		claim.RollupExitRoot, ok = data[4].([32]byte)
+		claim.RollupExitRoot, ok = data[4].([common.HashLength]byte)
 		if !ok {
 			return false, fmt.Errorf("unexpected type for 'RollupExitRoot'. Expected '[32]byte', got '%T'", data[4])
 		}
