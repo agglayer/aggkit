@@ -16,6 +16,7 @@ import (
 
 var (
 	reorgDetectorID = "foo"
+	forcedError     = errors.New("forced error")
 )
 
 func TestSync(t *testing.T) {
@@ -234,4 +235,74 @@ func TestHandleReorg(t *testing.T) {
 	go driver.handleReorg(ctx, cancel, firstReorgedBlock)
 	done = <-reorgProcessed
 	require.True(t, done)
+}
+
+type loggerPanicMock struct {
+}
+
+func (l *loggerPanicMock) Fatal(args ...any) {
+	panic("should not call log.Fatal")
+}
+
+func (l *loggerPanicMock) Fatalf(format string, args ...any) {
+	panic("should not call log.Fatalf")
+}
+func (l *loggerPanicMock) Info(args ...any) {
+	log.Info(args...)
+}
+func (l *loggerPanicMock) Infof(format string, args ...any) {
+	log.Infof(format, args...)
+}
+func (l *loggerPanicMock) Error(args ...any) {
+	log.Error(args...)
+}
+func (l *loggerPanicMock) Errorf(format string, args ...any) {
+	log.Errorf(format, args...)
+}
+func (l *loggerPanicMock) Warn(args ...any) {
+	log.Warn(args...)
+}
+func (l *loggerPanicMock) Warnf(format string, args ...any) {
+	log.Warnf(format, args...)
+}
+func (l *loggerPanicMock) Debug(args ...any) {
+	log.Debug(args...)
+}
+func (l *loggerPanicMock) Debugf(format string, args ...any) {
+	log.Debugf(format, args...)
+}
+
+func TestCheckCompatibility(t *testing.T) {
+	reorgDetectorMock := NewReorgDetectorMock(t)
+	processorMock := NewProcessorMock(t)
+	evmDownloaderMock := NewEVMDownloaderMock(t)
+	retryHandler := &RetryHandler{
+		MaxRetryAttemptsAfterError: 1,
+		RetryAfterErrorPeriod:      time.Millisecond * 1,
+	}
+	reorgDetectorMock.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
+
+	driver, err := NewEVMDriver(reorgDetectorMock, processorMock, evmDownloaderMock, reorgDetectorID, 10, retryHandler)
+	require.NoError(t, err)
+	t.Run("pass compatibility check", func(t *testing.T) {
+		evmDownloaderMock.EXPECT().GetRuntimeData(context.Background()).Return(RuntimeData{}, nil)
+		processorMock.EXPECT().CheckCompatibilityData(RuntimeData{}).Return(nil)
+		processorMock.EXPECT().GetLastProcessedBlock(context.Background()).Return(uint64(1), forcedError)
+		LogFatalf = func(format string, args ...any) {
+			panic("should not call log.Fatalf")
+		}
+		require.Panics(t, func() {
+			driver.Sync(context.Background())
+		}, "should stop because GetLastProcessedBlock failed")
+	})
+
+	t.Run("fail compatibility check", func(t *testing.T) {
+		evmDownloaderMock.EXPECT().GetRuntimeData(context.Background()).Return(RuntimeData{}, nil)
+		processorMock.EXPECT().CheckCompatibilityData(RuntimeData{}).Return(forcedError)
+		// This log, in case of fatal, calls Panic insted of Exit() so it can be catched by the test
+		driver.log = &loggerPanicMock{}
+		require.Panics(t, func() {
+			driver.Sync(context.Background())
+		}, "should stop because CheckCompatibilityData failed, this invoke a log.Fatal")
+	})
 }

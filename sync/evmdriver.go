@@ -30,6 +30,19 @@ type downloader interface {
 	GetRuntimeData(ctx context.Context) (RuntimeData, error)
 }
 
+type Logger interface {
+	Fatal(args ...interface{})
+	Fatalf(format string, args ...interface{})
+	Info(args ...interface{})
+	Infof(format string, args ...interface{})
+	Error(args ...interface{})
+	Errorf(format string, args ...interface{})
+	Warn(args ...interface{})
+	Warnf(format string, args ...interface{})
+	Debug(args ...interface{})
+	Debugf(format string, args ...interface{})
+}
+
 type EVMDriver struct {
 	reorgDetector      ReorgDetector
 	reorgSub           *reorgdetector.Subscription
@@ -38,7 +51,7 @@ type EVMDriver struct {
 	reorgDetectorID    string
 	downloadBufferSize int
 	rh                 *RetryHandler
-	log                *log.Logger
+	log                Logger
 }
 
 // RuntimeData is the data that is used to check that the DB is compatible with the runtime data
