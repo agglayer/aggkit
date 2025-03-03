@@ -90,11 +90,10 @@ function bridge_asset() {
 }
 
 function get_bridge() {
-    local aggkit_node_url=$1
-    local network_id=$2
-    local expected_tx_hash=$3
-    local max_attempts=$4
-    local poll_frequency=$5
+    local network_id=$1
+    local expected_tx_hash=$2
+    local max_attempts=$3
+    local poll_frequency=$4
 
     local attempt=0
 
@@ -133,11 +132,10 @@ function get_bridge() {
 }
 
 function l1InfoTreeIndexForBridge() {
-    local aggkit_node_url=$1
-    local network_id=$2
-    local expected_deposit_count=$3
-    local max_attempts=$4
-    local poll_frequency=$5
+    local network_id=$1
+    local expected_deposit_count=$2
+    local max_attempts=$3
+    local poll_frequency=$4
 
     local attempt=0
 

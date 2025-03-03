@@ -65,9 +65,7 @@ setup() {
     local bridge_tx_hash=$output
 
     echo "------- bridge_getBridges API testcase"
-    local aggkit_node_url
-    aggkit_node_url="$(kurtosis port print "$enclave" cdk-node-001 rpc)"
-    run get_bridge "$aggkit_node_url" "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
     local bridge
     bridge="$output"
@@ -108,13 +106,13 @@ setup() {
     local bridge_tx_hash=$output
 
     echo "------- l1InfoTreeIndexForBridge API testcase"
-    run get_bridge "$aggkit_node_url" "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
     local bridge
     bridge="$output"
     local deposit_count
     deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run l1InfoTreeIndexForBridge "$aggkit_node_url" "$l1_rpc_network_id" "$deposit_count" 10 3
+    run l1InfoTreeIndexForBridge "$l1_rpc_network_id" "$deposit_count" 10 3
     local l1_info_tree_index
     l1_info_tree_index="$output"
     assert_equal "$l1_info_tree_index" 2
