@@ -1,6 +1,7 @@
 package aggkit
 
 import (
+	"encoding/json"
 	"fmt"
 	"testing"
 
@@ -36,4 +37,20 @@ Go version:   go1.16.3
 Built:        Fri, 17 Jun 1988 01:58:00 +0200
 OS/Arch:      linux/amd64
 `, data.String())
+}
+
+func TestJSONMarshal(t *testing.T) {
+	data := FullVersion{
+		Version:   "v0.1.0",
+		GitRev:    "4ebab70",
+		GitBranch: "test",
+		BuildDate: "Fri, 17 Jun 1988 01:58:00 +0200",
+		GoVersion: "go1.16.3",
+		OS:        "linux",
+		Arch:      "amd64",
+	}
+
+	b, err := json.Marshal(data)
+	require.NoError(t, err)
+	require.Equal(t, `{"Version":"v0.1.0","GitRev":"4ebab70","GitBranch":"test","BuildDate":"Fri, 17 Jun 1988 01:58:00 +0200","GoVersion":"go1.16.3","OS":"linux","Arch":"amd64"}`, string(b))
 }
