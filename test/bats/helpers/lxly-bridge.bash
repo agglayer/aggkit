@@ -89,48 +89,6 @@ function bridge_asset() {
     fi
 }
 
-function get_bridge() {
-    local network_id=$1
-    local expected_tx_hash=$2
-    local max_attempts=$3
-    local poll_frequency=$4
-
-    local attempt=0
-
-    while true; do
-        ((attempt++))
-        log "Attempt $attempt: fetching bridges from the RPC..."
-
-        # Fetch bridges from the RPC
-        bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$network_id")
-
-        log "------ bridges_result ------"
-        log "$bridges_result"
-        log "------ bridges_result ------"
-
-        # Extract the elements of the 'bridges' array one by one
-        for row in $(echo "$bridges_result" | jq -c '.bridges[]'); do
-            # Parse out the tx_hash from each element
-            tx_hash=$(echo "$row" | jq -r '.tx_hash')
-
-            if [[ "$tx_hash" == "$expected_tx_hash" ]]; then
-                log "Found expected bridge with tx hash: $tx_hash"
-                echo "$row"
-                return 0
-            fi
-        done
-
-        # Fail test if max attempts are reached
-        if [[ "$attempt" -ge "$max_attempts" ]]; then
-            echo "Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
-            return 1
-        fi
-
-        # Sleep before the next attempt
-        sleep "$poll_frequency"
-    done
-}
-
 function l1InfoTreeIndexForBridge() {
     local network_id=$1
     local expected_deposit_count=$2
