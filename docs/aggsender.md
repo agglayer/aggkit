@@ -151,7 +151,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 
 | Name                          | Type               | Description                                                                                                     |
 |-------------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------|
-| StoragePath                   | string             | Path where to store Aggsender DB                                                                     |
+| StoragePath                   | string             | Full file path (with file name) where to store Aggsender DB                                          |
 | AggLayerURL                   | string             | URL to Agglayer                                                                                      |
 | AggsenderPrivateKey           | KeystoreFileConfig | Private key used to sign the certificate on the Aggsender before sending it to the Agglayer. Must be configured the same as on Agglayer.                                                                                                                         |
 | URLRPCL2                      | string             | L2 RPC                                                                                               |
