@@ -24,6 +24,7 @@ import (
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/healthcheck"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
@@ -116,7 +117,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}
 	if len(rpcServices) > 0 {
-		rpcServer := createRPC(cfg.RPC, rpcServices)
+		rpcServer := createRPC(cfg, rpcServices)
 		go func() {
 			if err := rpcServer.Start(); err != nil {
 				log.Fatal(err)
@@ -592,9 +593,22 @@ func createBridgeRPC(
 	return services
 }
 
-func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
+func createRPC(cfg *config.Config, services []jRPC.Service) *jRPC.Server {
 	logger := log.WithFields("module", "RPC")
-	return jRPC.NewServer(cfg, services, jRPC.WithLogger(logger.GetSugaredLogger()))
+
+	healthHandler := healthcheck.NewHandler(logger)
+
+	defer func() {
+		if r := recover(); r != nil {
+			// Set health status to false if there's a panic
+			healthHandler.SetHealthStatus(false)
+			logger.Errorf("Recovered from panic: %v", r)
+		}
+	}()
+
+	return jRPC.NewServer(cfg.RPC, services,
+		jRPC.WithLogger(logger.GetSugaredLogger()),
+		jRPC.WithHealthHandler(healthHandler))
 }
 
 func getL2RPCUrl(c *config.Config) string {
