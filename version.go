@@ -21,13 +21,13 @@ func PrintVersion(w io.Writer) {
 }
 
 type FullVersion struct {
-	Version   string `json:"version"`
-	GitRev    string `json:"git_revision"`
-	GitBranch string `json:"git_branch"`
-	BuildDate string `json:"build_date"`
-	GoVersion string `json:"go_version"`
-	OS        string `json:"os"`
-	Arch      string `json:"arch"`
+	Version   string
+	GitRev    string
+	GitBranch string
+	BuildDate string
+	GoVersion string
+	OS        string
+	Arch      string
 }
 
 func GetVersion() FullVersion {

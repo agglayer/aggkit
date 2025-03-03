@@ -21,5 +21,5 @@ func TestHealthCheckHandler_ServeHTTP_Healthy(t *testing.T) {
 
 	// Check the response code and body
 	require.Equal(t, http.StatusOK, rr.Code)
-	require.Contains(t, rr.Body.String(), `"is_healthy":true`)
+	require.Contains(t, rr.Body.String(), `{"is_healthy": true}`)
 }
