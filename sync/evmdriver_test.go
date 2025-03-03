@@ -16,7 +16,7 @@ import (
 
 var (
 	reorgDetectorID = "foo"
-	forcedError     = errors.New("forced error")
+	errUnittest     = errors.New("unittest error")
 )
 
 func TestSync(t *testing.T) {
@@ -287,7 +287,7 @@ func TestCheckCompatibility(t *testing.T) {
 	t.Run("pass compatibility check", func(t *testing.T) {
 		evmDownloaderMock.EXPECT().GetRuntimeData(context.Background()).Return(RuntimeData{}, nil)
 		processorMock.EXPECT().CheckCompatibilityData(RuntimeData{}).Return(nil)
-		processorMock.EXPECT().GetLastProcessedBlock(context.Background()).Return(uint64(1), forcedError)
+		processorMock.EXPECT().GetLastProcessedBlock(context.Background()).Return(uint64(1), errUnittest)
 		LogFatalf = func(format string, args ...any) {
 			panic("should not call log.Fatalf")
 		}
@@ -298,7 +298,7 @@ func TestCheckCompatibility(t *testing.T) {
 
 	t.Run("fail compatibility check", func(t *testing.T) {
 		evmDownloaderMock.EXPECT().GetRuntimeData(context.Background()).Return(RuntimeData{}, nil)
-		processorMock.EXPECT().CheckCompatibilityData(RuntimeData{}).Return(forcedError)
+		processorMock.EXPECT().CheckCompatibilityData(RuntimeData{}).Return(errUnittest)
 		// This log, in case of fatal, calls Panic insted of Exit() so it can be catched by the test
 		driver.log = &loggerPanicMock{}
 		require.Panics(t, func() {
