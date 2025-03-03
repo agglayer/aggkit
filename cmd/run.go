@@ -597,15 +597,6 @@ func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
 	logger := log.WithFields("module", "RPC")
 
 	healthHandler := healthcheck.NewHealthCheckHandler(logger)
-
-	defer func() {
-		if r := recover(); r != nil {
-			// Set health status to false if there's a panic
-			healthHandler.SetHealthStatus(false)
-			logger.Errorf("Recovered from panic: %v", r)
-		}
-	}()
-
 	return jRPC.NewServer(cfg, services,
 		jRPC.WithLogger(logger.GetSugaredLogger()),
 		jRPC.WithHealthHandler(healthHandler))

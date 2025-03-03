@@ -3,7 +3,6 @@ package healthcheck
 import (
 	"encoding/json"
 	"net/http"
-	"sync/atomic"
 
 	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/log"
@@ -17,33 +16,24 @@ type HealthResponse struct {
 
 // HealthCheckHandler encapsulates logic that serves the HTTP request for health checks
 type HealthCheckHandler struct {
-	logger    *log.Logger
-	isHealthy atomic.Bool
+	logger *log.Logger
 }
 
 var _ http.Handler = (*HealthCheckHandler)(nil)
 
 // NewHealthCheckHandler creates a new healthcheck http handler
 func NewHealthCheckHandler(logger *log.Logger) *HealthCheckHandler {
-	s := &HealthCheckHandler{logger: logger}
-	s.isHealthy.Store(true)
-
-	return s
+	return &HealthCheckHandler{logger: logger}
 }
 
 // HealthHandler is a health check handler
 func (h *HealthCheckHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if h.isHealthy.Load() {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusInternalServerError)
-	}
-	version := aggkit.GetVersion()
+	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 
 	resp := &HealthResponse{
-		IsHealthy: h.isHealthy.Load(),
-		Version:   version,
+		IsHealthy: true,
+		Version:   aggkit.GetVersion(),
 	}
 
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
@@ -51,9 +41,4 @@ func (h *HealthCheckHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 		http.Error(w, `{"error": "failed to encode health check response"}`, http.StatusInternalServerError)
 	}
-}
-
-// SetHealthStatus sets isHealthy indicator atomically.
-func (h *HealthCheckHandler) SetHealthStatus(isHealthy bool) {
-	h.isHealthy.Store(isHealthy)
 }
