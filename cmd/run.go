@@ -117,7 +117,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}
 	if len(rpcServices) > 0 {
-		rpcServer := createRPC(cfg, rpcServices)
+		rpcServer := createRPC(cfg.RPC, rpcServices)
 		go func() {
 			if err := rpcServer.Start(); err != nil {
 				log.Fatal(err)
@@ -593,7 +593,7 @@ func createBridgeRPC(
 	return services
 }
 
-func createRPC(cfg *config.Config, services []jRPC.Service) *jRPC.Server {
+func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
 	logger := log.WithFields("module", "RPC")
 
 	healthHandler := healthcheck.NewHealthCheckHandler(logger)
@@ -606,7 +606,7 @@ func createRPC(cfg *config.Config, services []jRPC.Service) *jRPC.Server {
 		}
 	}()
 
-	return jRPC.NewServer(cfg.RPC, services,
+	return jRPC.NewServer(cfg, services,
 		jRPC.WithLogger(logger.GetSugaredLogger()),
 		jRPC.WithHealthHandler(healthHandler))
 }
