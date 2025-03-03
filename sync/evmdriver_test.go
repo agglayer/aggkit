@@ -295,6 +295,15 @@ func TestCheckCompatibility(t *testing.T) {
 			driver.Sync(context.Background())
 		}, "should stop because GetLastProcessedBlock failed")
 	})
+	t.Run("fails GetRuntimeData", func(t *testing.T) {
+		evmDownloaderMock.EXPECT().GetRuntimeData(context.Background()).Return(RuntimeData{}, errUnittest)
+		LogFatalf = func(format string, args ...any) {
+			panic("should not call log.Fatalf")
+		}
+		require.Panics(t, func() {
+			driver.Sync(context.Background())
+		}, "should stop because GetLastProcessedBlock failed")
+	})
 
 	t.Run("fail compatibility check", func(t *testing.T) {
 		evmDownloaderMock.EXPECT().GetRuntimeData(context.Background()).Return(RuntimeData{}, nil)

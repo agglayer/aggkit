@@ -19,7 +19,6 @@ func TestSqlite(t *testing.T) {
 	owner := "unittest"
 	_, err = GetValue(db, owner, "key")
 	require.ErrorIs(t, err, ErrNotFound)
-
 	err = InsertValue(db, owner, "key", "value")
 	require.NoError(t, err)
 	value, err := GetValue(db, owner, "key")
