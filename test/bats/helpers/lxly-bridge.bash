@@ -89,55 +89,16 @@ function bridge_asset() {
     fi
 }
 
-function get_bridge() {
-    local aggkit_node_url=$1
-    local network_id=$2
-    local expected_tx_hash=$3
-    local max_attempts=$4
-    local poll_frequency=$5
-
-    local attempt=0
-
-    while true; do
-        ((attempt++))
-        log "Attempt $attempt: fetching bridges from the RPC..."
-
-        # Fetch bridges from the RPC
-        bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$network_id")
-
-        log "------ bridges_result ------"
-        log "$bridges_result"
-        log "------ bridges_result ------"
-
-        # Extract the elements of the 'bridges' array one by one
-        for row in $(echo "$bridges_result" | jq -c '.bridges[]'); do
-            # Parse out the tx_hash from each element
-            tx_hash=$(echo "$row" | jq -r '.tx_hash')
-
-            if [[ "$tx_hash" == "$expected_tx_hash" ]]; then
-                log "Found expected bridge with tx hash: $tx_hash"
-                echo "$row"
-                return 0
-            fi
-        done
-
-        # Fail test if max attempts are reached
-        if [[ "$attempt" -ge "$max_attempts" ]]; then
-            echo "Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
-            return 1
-        fi
-
-        # Sleep before the next attempt
-        sleep "$poll_frequency"
-    done
-}
-
-# This function is used to claim a concrete tx hash
-# global vars:
-# - destination_addr
-# export:
+# This function is used to claim a bridge using concrete tx hash
+# params:
+# - timeout - timeout in seconds
+# - tx_hash - tx hash of the bridge
+# - destination_addr - destination address
+# - destination_rpc_url - url of destination rpc
+# - bridge_service_url - url of bridge service
+# returns:
 # - global_index
-function claim_tx_hash() {
+function claim_bridge_by_tx_hash() {
     local timeout="$1"
     local tx_hash="$2"
     local destination_addr="$3"
@@ -149,10 +110,11 @@ function claim_tx_hash() {
     local start_time=$(date +%s)
     local current_time=$(date +%s)
     local end_time=$((current_time + timeout))
-    if [ -z $bridge_service_url ]; then
-        log "❌ claim_tx_hash bad params"
-        log "❌ claim_tx_hash: $*"
-        exit 1
+
+    if [ -z "$bridge_service_url" ]; then
+        log "❌ claim_bridge_by_tx_hash bad params"
+        log "❌ claim_bridge_by_tx_hash: $*"
+        return 1
     fi
 
     while true; do
@@ -160,20 +122,20 @@ function claim_tx_hash() {
         elapsed_time=$((current_time - start_time))
         if ((current_time > end_time)); then
             log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time [s])"
-            exit 1
+            return 1
         fi
 
         log "🔍 curl -s \"$bridge_service_url/bridges/$destination_addr?limit=100&offset=0\""
-        curl -s "$bridge_service_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
-        deposit_count=$(jq '. | length' $bridge_deposit_file)
-        if [[ $deposit_count == 0 ]]; then
+        curl -s "$bridge_service_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >"$bridge_deposit_file"
+        deposit_count=$(jq '. | length' "$bridge_deposit_file")
+        if [[ "$deposit_count" == 0 ]]; then
             log "❌ the tx_hash [$tx_hash] not found (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
             sleep "$claim_frequency"
             continue
         fi
 
-        local ready_for_claim=$(jq -r '.[0].ready_for_claim' $bridge_deposit_file)
-        if [ $ready_for_claim != "true" ]; then
+        local ready_for_claim=$(jq -r '.[0].ready_for_claim' "$bridge_deposit_file")
+        if [ "$ready_for_claim" != "true" ]; then
             log "⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
             sleep "$claim_frequency"
             continue
@@ -184,17 +146,20 @@ function claim_tx_hash() {
 
     # Deposit is ready for claim
     log "🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time [s])"
-    local curr_claim_tx_hash=$(jq '.[0].claim_tx_hash' $bridge_deposit_file)
-    if [ $curr_claim_tx_hash != "\"\"" ]; then
-        log "🎉 the tx_hash $tx_hash is already claimed"
-        exit 0
+    local curr_claim_tx_hash=$(jq -r '.[0].claim_tx_hash' "$bridge_deposit_file")
+    if [ "$curr_claim_tx_hash" != "" ]; then
+        local global_index=$(jq -r '.[0].global_index' "$bridge_deposit_file")
+        echo "$global_index"
+        log "🎉 the bridge with tx_hash: "$tx_hash" is already claimed (global_index "$global_index")"
+        return 0
     fi
 
-    local curr_deposit_cnt=$(jq '.[0].deposit_cnt' $bridge_deposit_file)
-    local curr_network_id=$(jq '.[0].network_id' $bridge_deposit_file)
+    local curr_deposit_cnt=$(jq -r '.[0].deposit_cnt' "$bridge_deposit_file")
+    local curr_network_id=$(jq -r '.[0].network_id' "$bridge_deposit_file")
+
     readonly current_deposit=$(mktemp)
-    jq '.[(0|tonumber)]' $bridge_deposit_file | tee $current_deposit
-    log "💡 Found deposit info: $(cat $current_deposit)"
+    jq '.[0]' "$bridge_deposit_file" >"$current_deposit"
+    log "💡 Found deposit info: $(cat "$current_deposit")"
 
     readonly current_proof=$(mktemp)
     log "🔍 requesting merkle proof for $tx_hash deposit_cnt=$curr_deposit_cnt network_id: $curr_network_id"
@@ -202,40 +167,42 @@ function claim_tx_hash() {
 
     while true; do
         log "⏳ Requesting claim for $tx_hash..."
-        run request_claim $current_deposit $current_proof $destination_rpc_url
+        run request_claim "$current_deposit" "$current_proof" "$destination_rpc_url"
         request_result=$status
         log "💡 request_claim returns $request_result"
-        if [ $request_result -eq 0 ]; then
+        if [ "$request_result" -eq 0 ]; then
             log "🎉 Claim successful"
             break
         fi
 
-        if [ $request_result -eq 2 ]; then
+        if [ "$request_result" -eq 2 ]; then
             # GlobalExitRootInvalid() let's retry
-            log "⏳ Claim failed this time (GER is not yet injected on destination). We'll retry in $claim_frequency seconds "
+            log "⏳ Claim failed this time (GER is not yet injected on destination). We'll retry in $claim_frequency seconds"
             current_time=$(date +%s)
             elapsed_time=$((current_time - start_time))
             if ((current_time > end_time)); then
+                rm "$current_deposit" "$current_proof" "$bridge_deposit_file"
                 log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time [s])"
-                exit 1
+                return 1
             fi
-            sleep $claim_frequency
+            sleep "$claim_frequency"
             continue
         fi
 
-        if [ $request_result -ne 0 ]; then
-            log "✅ Claim successful tx_hash [$tx_hash]"
-            exit 1
+        if [ "$request_result" -ne 0 ]; then
+            rm "$current_deposit" "$current_proof" "$bridge_deposit_file"
+            log "❌ Claim is not successful tx_hash [$tx_hash]"
+            return 1
         fi
     done
 
-    export global_index=$(jq -r '.global_index' $current_deposit)
-    log "✅ Deposit claimed ($global_index)"
+    local global_index=$(jq -r '.[0].global_index' "$bridge_deposit_file")
+    log "✅ Deposit claimed (global_index: $global_index)"
 
-    # clean up temp files
-    rm $current_deposit
-    rm $current_proof
-    rm $bridge_deposit_file
+    # Clean up temp files
+    rm "$current_deposit" "$current_proof" "$bridge_deposit_file"
+
+    echo "$global_index"
 }
 
 function request_merkle_proof() {
@@ -349,6 +316,110 @@ function wait_for_expected_token() {
         # Fail test if max attempts are reached
         if [[ "$attempt" -ge "$max_attempts" ]]; then
             echo "Error: Reached max attempts ($max_attempts) without finding expected origin_token_address." >&2
+            return 1
+        fi
+
+        # Sleep before the next attempt
+        sleep "$poll_frequency"
+    done
+}
+
+function get_bridge() {
+    local network_id="$1"
+    local expected_tx_hash="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
+
+    local attempt=0
+
+    log "🔍 Searching for bridge with tx_hash: "$expected_tx_hash" (bridge indexer RPC: "$aggkit_node_url")..."
+
+    while true; do
+        ((attempt++))
+        log "🔍 Attempt $attempt"
+
+        # Fetch bridges from the RPC
+        bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$network_id")
+
+        # Extract the elements of the 'bridges' array one by one
+        for row in $(echo "$bridges_result" | jq -c '.bridges[]'); do
+            # Parse out the tx_hash from each element
+            tx_hash=$(echo "$row" | jq -r '.tx_hash')
+
+            if [[ "$tx_hash" == "$expected_tx_hash" ]]; then
+                log "🎉 Found expected bridge with tx hash: $tx_hash"
+                echo "$row"
+                return 0
+            fi
+        done
+
+        # Fail test if max attempts are reached
+        if [[ "$attempt" -ge "$max_attempts" ]]; then
+            log "🔍 Bridges result:"
+            log "$bridges_result"
+            echo "❌ Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
+            return 1
+        fi
+
+        # Sleep before the next attempt
+        sleep "$poll_frequency"
+    done
+}
+
+function get_claim() {
+    local network_id="$1"
+    local expected_global_index="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
+    local attempt=0
+
+    log "🔍 Searching for claim with global_index: "$expected_global_index" (bridge indexer RPC: "$aggkit_node_url")..."
+
+    while true; do
+        ((attempt++))
+        log "🔍 Attempt $attempt"
+        claims_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getClaims" "$network_id")
+
+        for row in $(echo "$claims_result" | jq -c '.claims[]'); do
+            global_index=$(jq -r '.global_index' <<<"$row")
+
+            if [[ "$global_index" == "$expected_global_index" ]]; then
+                log "🎉 Success: Expected global_index '$expected_global_index' found. Exiting loop."
+                required_fields=(
+                    "block_num"
+                    "block_timestamp"
+                    "tx_hash"
+                    "global_index"
+                    "origin_address"
+                    "origin_network"
+                    "destination_address"
+                    "destination_network"
+                    "amount"
+                    "from_address"
+                )
+                # Check that all required fields exist (and are not null) in claims[0]
+                for field in "${required_fields[@]}"; do
+                    value=$(jq -r --arg fld "$field" '.[$fld]' <<<"$row")
+                    if [ "$value" = "null" ] || [ -z "$value" ]; then
+                        log "🔍 Claims result:"
+                        log "$claims_result"
+
+                        echo "❌ Error: Assertion failed missing or null '$field' in the claim object." >&2
+                        return 1
+                    fi
+                done
+
+                echo "$row"
+                return 0
+            fi
+        done
+
+        # Fail test if max attempts are reached
+        if [[ "$attempt" -ge "$max_attempts" ]]; then
+            log "🔍 Claims result:"
+            log "$claims_result"
+
+            echo "❌ Error: Reached max attempts ($max_attempts) without finding expected claim with global index ($expected_global_index)." >&2
             return 1
         fi
 
