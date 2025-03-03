@@ -1,8 +1,8 @@
 setup() {
-    load '../../helpers/common-setup'
+    load '../helpers/common-setup'
     _common_setup
-    load '../../helpers/common'
-    load '../../helpers/lxly-bridge-test'
+    load '../helpers/common'
+    load '../helpers/lxly-bridge'
 
     if [ -z "$BRIDGE_ADDRESS" ]; then
         local combined_json_file="/opt/zkevm/combined.json"
@@ -53,14 +53,15 @@ setup() {
     destination_net=$l2_rpc_network_id
     run bridge_message "$native_token_addr" "$l1_rpc_url"
     assert_success
+    local bridge_tx_hash=$output
 
     echo "====== claimMessage (L2)" >&3
     timeout="120"
     claim_frequency="10"
-    run wait_for_claim "$timeout" "$claim_frequency" "$l2_rpc_url" "bridgeMessage"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
-    echo "====== bridgeMessage L2->L1" >&3
+    echo "====== bridgeMessage L2 -> L1" >&3
     destination_net=0
     run bridge_message "$destination_addr" "$l2_rpc_url"
     assert_success

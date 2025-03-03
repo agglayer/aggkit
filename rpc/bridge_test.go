@@ -553,6 +553,7 @@ func TestGetBridges(t *testing.T) {
 					DepositCount:       0,
 					Metadata:           common.Hex2Bytes("deadbeef"),
 				},
+				BridgeHash: common.HexToHash("0x1"),
 			},
 		}
 
@@ -596,6 +597,7 @@ func TestGetBridges(t *testing.T) {
 					DepositCount:       0,
 					Metadata:           []byte("metadata"),
 				},
+				BridgeHash: common.HexToHash("0x1"),
 			},
 		}
 		bridgeMocks.bridge.networkID = 10
