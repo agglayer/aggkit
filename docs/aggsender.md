@@ -46,7 +46,7 @@ It is important to mention that, in the case of resending the certificate, the c
 
 Suppose the previously sent certificate was not marked as `InError`, or `Settled` on the `Agglayer`. In that case, we can not send/resend the certificate, even though a new epoch event is handled since it was not processed yet by the `Agglayer` (neither `Settled` nor marked as `InError`).
 
-The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer` in `PessimisticProof` mode.
+The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer` in the `PessimisticProof` mode.
 
 ```mermaid
 sequenceDiagram
@@ -67,8 +67,8 @@ sequenceDiagram
     User->>L2RPC: bridge (L2->L1)
     L2RPC->>L2BridgeSyncer: bridgeAsset emits bridgeEvent
 
-    User->>L2RPC: claimAsset
-    L2RPC->>L1InfoTreeSync: claimEvent
+    User->>L2RPC: claimAsset emits claimEvent
+    L2RPC->>L1InfoTreeSync: index claimEvent
 
     AggSender->>AggSender: wait for epoch to elapse
     AggSender->>L1InfoTreeSync: check latest sent certificate
@@ -88,11 +88,11 @@ this might change in the future.
 
 Calling the `aggchain prover` is done right before signing and sending the certificate to the `Agglayer`. To generate an `aggchain proof` prover needs couple of things:
 - block range on L2 for which we are trying to generate a certificate.
-- finalized L1 info tree root and its leaf and proof on the L1 info tree. Basically, this is the latest finalized l1 info tree root needed by the prover to generate the proof. This root is also use to generate merkle proof for every imported bridge exit (claim) in certificate.
+- finalized L1 info tree root, leaf, and proof on the L1 info tree. Basically, this is the latest finalized l1 info tree root needed by the prover to generate the proof. This root is also use to generate merkle proof for every imported bridge exit (claim) in certificate.
 - injected GlobalExitRoot's on L2 and their leaves and proofs. Merkle proofs of the injected GERs are calculated based on the finalized L1 info tree root.
 - imported bridge exits (claims) we intend to include in the certificate for the given block range.
 
-The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer` in `PessimisticProof` mode.
+The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer` in the `AggchainProof` mode.
 
 ```mermaid
 sequenceDiagram
