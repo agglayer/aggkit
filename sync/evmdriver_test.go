@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	compmocks "github.com/agglayer/aggkit/db/compatibility/mocks"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,6 +28,8 @@ func TestSync(t *testing.T) {
 	rdm := NewReorgDetectorMock(t)
 	pm := NewProcessorMock(t)
 	dm := NewEVMDownloaderMock(t)
+	compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
+
 	firstReorgedBlock := make(chan uint64)
 	reorgProcessed := make(chan bool)
 	rdm.On("Subscribe", reorgDetectorID).Return(&reorgdetector.Subscription{
@@ -35,6 +38,7 @@ func TestSync(t *testing.T) {
 	}, nil)
 	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, true)
 	require.NoError(t, err)
+	driver.compatibilityChecker = compatibilityCheckerMock
 	ctx := context.Background()
 	expectedBlock1 := EVMBlock{
 		EVMBlockHeader: EVMBlockHeader{
@@ -53,7 +57,7 @@ func TestSync(t *testing.T) {
 		green bool
 	}
 	reorg1Completed := reorgSemaphore{}
-	dm.EXPECT().GetRuntimeData(ctx).Return(RuntimeData{}, nil)
+	compatibilityCheckerMock.EXPECT().Check(ctx, mock.Anything).Return(nil)
 	dm.On("Download", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
 		ctx, ok := args.Get(0).(context.Context)
 		if !ok {
@@ -87,7 +91,6 @@ func TestSync(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 		}
 	})
-
 	// Mocking this actions, the driver should "store" all the blocks from the downloader
 	pm.On("GetLastProcessedBlock", ctx).
 		Return(uint64(3), nil)
@@ -279,12 +282,15 @@ func TestCheckCompatibility(t *testing.T) {
 		MaxRetryAttemptsAfterError: 1,
 		RetryAfterErrorPeriod:      time.Millisecond * 1,
 	}
+	compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
+
 	reorgDetectorMock.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
 
 	driver, err := NewEVMDriver(reorgDetectorMock, processorMock, evmDownloaderMock, reorgDetectorID, 10, retryHandler, true)
 	require.NoError(t, err)
+	driver.compatibilityChecker = compatibilityCheckerMock
 	t.Run("pass compatibility check", func(t *testing.T) {
-		evmDownloaderMock.EXPECT().GetRuntimeData(context.Background()).Return(RuntimeData{}, nil)
+		compatibilityCheckerMock.EXPECT().Check(context.Background(), nil).Return(nil)
 		processorMock.EXPECT().GetLastProcessedBlock(context.Background()).Return(uint64(1), errUnittest)
 		LogFatalf = func(format string, args ...any) {
 			panic("should not call log.Fatalf")
@@ -293,8 +299,8 @@ func TestCheckCompatibility(t *testing.T) {
 			driver.Sync(context.Background())
 		}, "should stop because GetLastProcessedBlock failed")
 	})
-	t.Run("fails GetRuntimeData", func(t *testing.T) {
-		evmDownloaderMock.EXPECT().GetRuntimeData(context.Background()).Return(RuntimeData{}, errUnittest)
+	t.Run("fails compatibility check ", func(t *testing.T) {
+		compatibilityCheckerMock.EXPECT().Check(context.Background(), nil).Return(errUnittest)
 		LogFatalf = func(format string, args ...any) {
 			panic("should not call log.Fatalf")
 		}
@@ -303,12 +309,4 @@ func TestCheckCompatibility(t *testing.T) {
 		}, "should stop because GetLastProcessedBlock failed")
 	})
 
-	t.Run("fail compatibility check", func(t *testing.T) {
-		evmDownloaderMock.EXPECT().GetRuntimeData(context.Background()).Return(RuntimeData{}, nil)
-		// This log, in case of fatal, calls Panic insted of Exit() so it can be catched by the test
-		driver.log = &loggerPanicMock{}
-		require.Panics(t, func() {
-			driver.Sync(context.Background())
-		}, "should stop because CheckCompatibilityData failed, this invoke a log.Fatal")
-	})
 }
