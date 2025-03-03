@@ -65,11 +65,7 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
 
-<<<<<<< HEAD
-    echo "------- bridge_getBridges API testcase"
-=======
     echo "=== Retrieve bridge from bridge_getBridges API" >&3
->>>>>>> a001d76ff86b256092f71f888b9b94c31b4b3166
     run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
     
