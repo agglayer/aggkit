@@ -596,7 +596,7 @@ func createBridgeRPC(
 func createRPC(cfg *config.Config, services []jRPC.Service) *jRPC.Server {
 	logger := log.WithFields("module", "RPC")
 
-	healthHandler := healthcheck.NewHandler(logger)
+	healthHandler := healthcheck.NewHealthCheckHandler(logger)
 
 	defer func() {
 		if r := recover(); r != nil {

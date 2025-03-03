@@ -23,8 +23,8 @@ type HealthCheckHandler struct {
 
 var _ http.Handler = (*HealthCheckHandler)(nil)
 
-// NewHandler creates a new healthcheck http handler
-func NewHandler(logger *log.Logger) *HealthCheckHandler {
+// NewHealthCheckHandler creates a new healthcheck http handler
+func NewHealthCheckHandler(logger *log.Logger) *HealthCheckHandler {
 	s := &HealthCheckHandler{logger: logger}
 	s.isHealthy.Store(true)
 
