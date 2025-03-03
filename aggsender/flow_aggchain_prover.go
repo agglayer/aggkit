@@ -142,7 +142,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		buildParams.ToBlock,
 		root.Hash,
 		*leaf,
-		agglayer.MerkleProof{
+		agglayerTypes.MerkleProof{
 			Root:  root.Hash,
 			Proof: proof,
 		},

@@ -459,9 +459,9 @@ func (a *AggSender) updateCertificateStatus(ctx context.Context,
 		agglayerCert.String())
 
 	switch agglayerCert.Status {
-	case agglayer.Settled:
+	case agglayerTypes.Settled:
 		metrics.Settled()
-	case agglayer.InError:
+	case agglayerTypes.InError:
 		metrics.InError()
 	}
 
