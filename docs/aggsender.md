@@ -243,7 +243,6 @@ http://localhost:9091/metrics
 
 ## Additional Documentation
 
-[1] AggLayer integration guide_WIP
-[2] https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html 
-[3] initial PR: https://github.com/0xPolygon/cdk/pull/22 
-[4] https://agglayer.github.io/agglayer/pessimistic_proof/index.html	
+[1] https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html 
+[2] initial PR: https://github.com/0xPolygon/cdk/pull/22 
+[3] https://agglayer.github.io/agglayer/pessimistic_proof/index.html	
