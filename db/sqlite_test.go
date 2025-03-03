@@ -17,6 +17,9 @@ func TestSqlite(t *testing.T) {
 	err = RunMigrationsDB(logger, db, []types.Migration{})
 	require.NoError(t, err)
 	owner := "unittest"
+	_, err = GetValue(db, owner, "key")
+	require.ErrorIs(t, err, ErrNotFound)
+
 	err = InsertValue(db, owner, "key", "value")
 	require.NoError(t, err)
 	value, err := GetValue(db, owner, "key")
