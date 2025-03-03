@@ -20,6 +20,7 @@ import (
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/keccak256"
 	"github.com/russross/meddler"
 	_ "modernc.org/sqlite"
@@ -133,6 +134,89 @@ type Claim struct {
 	FromAddress         common.Address `meddler:"from_address,address"`
 }
 
+func (c *Claim) decodeCalldata(data []any) (bool, error) {
+	/* Unpack method inputs. Note that both claimAsset and claimMessage have the same interface
+	for the relevant parts
+	claimAsset(
+		0: smtProofLocalExitRoot,
+		1: smtProofRollupExitRoot,
+		2: globalIndex,
+		3: mainnetExitRoot,
+		4: rollupExitRoot,
+		5: originNetwork,
+		6: originTokenAddress,
+		7: destinationNetwork,
+		8: destinationAddress,
+		9: amount,
+		10: metadata,
+	)
+	claimMessage(
+		0: smtProofLocalExitRoot,
+		1: smtProofRollupExitRoot,
+		2: globalIndex,
+		3: mainnetExitRoot,
+		4: rollupExitRoot,
+		5: originNetwork,
+		6: originAddress,
+		7: destinationNetwork,
+		8: destinationAddress,
+		9: amount,
+		10: metadata,
+	)
+	*/
+	actualGlobalIndex, ok := data[2].(*big.Int)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for actualGlobalIndex, expected *big.Int got '%T'", data[2])
+	}
+	if actualGlobalIndex.Cmp(c.GlobalIndex) != 0 {
+		// not the claim we're looking for
+		return false, nil
+	} else {
+		proofLER := [types.DefaultHeight]common.Hash{}
+		proofLERBytes, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
+		if !ok {
+			return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
+		}
+
+		proofRER := [types.DefaultHeight]common.Hash{}
+		proofRERBytes, ok := data[1].([types.DefaultHeight][common.HashLength]byte)
+		if !ok {
+			return false, fmt.Errorf("unexpected type for proofRERBytes, expected [32][32]byte got '%T'", data[1])
+		}
+
+		for i := range int(types.DefaultHeight) {
+			proofLER[i] = proofLERBytes[i]
+			proofRER[i] = proofRERBytes[i]
+		}
+		c.ProofLocalExitRoot = proofLER
+		c.ProofRollupExitRoot = proofRER
+
+		c.MainnetExitRoot, ok = data[3].([common.HashLength]byte)
+		if !ok {
+			return false, fmt.Errorf("unexpected type for 'MainnetExitRoot'. Expected '[32]byte', got '%T'", data[3])
+		}
+
+		c.RollupExitRoot, ok = data[4].([common.HashLength]byte)
+		if !ok {
+			return false, fmt.Errorf("unexpected type for 'RollupExitRoot'. Expected '[32]byte', got '%T'", data[4])
+		}
+
+		c.DestinationNetwork, ok = data[7].(uint32)
+		if !ok {
+			return false, fmt.Errorf("unexpected type for 'DestinationNetwork'. Expected 'uint32', got '%T'", data[7])
+		}
+
+		c.Metadata, ok = data[10].([]byte)
+		if !ok {
+			return false, fmt.Errorf("unexpected type for 'claim Metadata'. Expected '[]byte', got '%T'", data[10])
+		}
+
+		c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
+
+		return true, nil
+	}
+}
+
 // ClaimResponse is the representation of a claim event with trimmed fields
 type ClaimResponse struct {
 	BlockNum           uint64         `json:"block_num"`
@@ -157,6 +241,7 @@ type TokenMapping struct {
 	OriginTokenAddress  common.Address `meddler:"origin_token_address,address" json:"origin_token_address"`
 	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
 	Metadata            []byte         `meddler:"metadata" json:"metadata"`
+	Calldata            []byte         `meddler:"calldata" json:"calldata"`
 }
 
 // MarshalJSON for hex-encoding Metadata field

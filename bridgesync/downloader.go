@@ -11,7 +11,6 @@ import (
 	rpcTypes "github.com/0xPolygon/cdk-rpc/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/sync"
-	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -184,11 +183,7 @@ func setClaimCalldata(client EthClienter, bridge common.Address, txHash common.H
 	// find the claim linked to the event using DFS
 	callStack := stack.New()
 	callStack.Push(*c)
-	for {
-		if callStack.Len() == 0 {
-			break
-		}
-
+	for callStack.Len() > 0 {
 		currentCallInterface := callStack.Pop()
 		currentCall, ok := currentCallInterface.(call)
 		if !ok {
@@ -196,10 +191,7 @@ func setClaimCalldata(client EthClienter, bridge common.Address, txHash common.H
 		}
 
 		if currentCall.To == bridge {
-			found, err := setClaimIfFoundOnInput(
-				currentCall.Input,
-				claim,
-			)
+			found, err := claim.setClaimIfFoundOnInput(currentCall.Input)
 			if err != nil {
 				return err
 			}
@@ -214,7 +206,7 @@ func setClaimCalldata(client EthClienter, bridge common.Address, txHash common.H
 	return db.ErrNotFound
 }
 
-func setClaimIfFoundOnInput(input []byte, claim *Claim) (bool, error) {
+func (c *Claim) setClaimIfFoundOnInput(input []byte) (bool, error) {
 	smcAbi, err := abi.JSON(strings.NewReader(polygonzkevmbridgev2.Polygonzkevmbridgev2ABI))
 	if err != nil {
 		return false, err
@@ -231,14 +223,12 @@ func setClaimIfFoundOnInput(input []byte, claim *Claim) (bool, error) {
 	}
 	// Ignore other methods
 	if bytes.Equal(methodID, methodIDClaimAsset) || bytes.Equal(methodID, methodIDClaimMessage) {
-		found, err := decodeClaimCallDataAndSetIfFound(data, claim)
+		found, err := c.decodeCalldata(data)
 		if err != nil {
 			return false, err
 		}
 		if found {
-			if bytes.Equal(methodID, methodIDClaimMessage) {
-				claim.IsMessage = true
-			}
+			c.IsMessage = bytes.Equal(methodID, methodIDClaimMessage)
 			return true, nil
 		}
 		return false, nil
@@ -248,85 +238,29 @@ func setClaimIfFoundOnInput(input []byte, claim *Claim) (bool, error) {
 	// TODO: support both claim asset & message, check if previous versions need special treatment
 }
 
-func decodeClaimCallDataAndSetIfFound(data []interface{}, claim *Claim) (bool, error) {
-	/* Unpack method inputs. Note that both claimAsset and claimMessage have the same interface
-	for the relevant parts
-	claimAsset(
-		0: smtProofLocalExitRoot,
-		1: smtProofRollupExitRoot,
-		2: globalIndex,
-		3: mainnetExitRoot,
-		4: rollupExitRoot,
-		5: originNetwork,
-		6: originTokenAddress,
-		7: destinationNetwork,
-		8: destinationAddress,
-		9: amount,
-		10: metadata,
-	)
-	claimMessage(
-		0: smtProofLocalExitRoot,
-		1: smtProofRollupExitRoot,
-		2: globalIndex,
-		3: mainnetExitRoot,
-		4: rollupExitRoot,
-		5: originNetwork,
-		6: originAddress,
-		7: destinationNetwork,
-		8: destinationAddress,
-		9: amount,
-		10: metadata,
-	)
-	*/
-	actualGlobalIndex, ok := data[2].(*big.Int)
-	if !ok {
-		return false, fmt.Errorf("unexpected type for actualGlobalIndex, expected *big.Int got '%T'", data[2])
-	}
-	if actualGlobalIndex.Cmp(claim.GlobalIndex) != 0 {
-		// not the claim we're looking for
-		return false, nil
-	} else {
-		proofLER := [tree.DefaultHeight]common.Hash{}
-		proofLERBytes, ok := data[0].([tree.DefaultHeight][common.HashLength]byte)
-		if !ok {
-			return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
-		}
+// Pre-Etrog bridge contract claim event
+// function claimAsset(
+// 	bytes32[_DEPOSIT_CONTRACT_TREE_DEPTH] calldata smtProof,
+// 	uint32 index,
+// 	bytes32 mainnetExitRoot,
+// 	bytes32 rollupExitRoot,
+// 	uint32 originNetwork,
+// 	address originTokenAddress,
+// 	uint32 destinationNetwork,
+// 	address destinationAddress,
+// 	uint256 amount,
+// 	bytes calldata metadata
+// )
 
-		proofRER := [tree.DefaultHeight]common.Hash{}
-		proofRERBytes, ok := data[1].([tree.DefaultHeight][common.HashLength]byte)
-		if !ok {
-			return false, fmt.Errorf("unexpected type for proofRERBytes, expected [32][32]byte got '%T'", data[1])
-		}
-
-		for i := range int(tree.DefaultHeight) {
-			proofLER[i] = proofLERBytes[i]
-			proofRER[i] = proofRERBytes[i]
-		}
-		claim.ProofLocalExitRoot = proofLER
-		claim.ProofRollupExitRoot = proofRER
-
-		claim.MainnetExitRoot, ok = data[3].([common.HashLength]byte)
-		if !ok {
-			return false, fmt.Errorf("unexpected type for 'MainnetExitRoot'. Expected '[32]byte', got '%T'", data[3])
-		}
-
-		claim.RollupExitRoot, ok = data[4].([common.HashLength]byte)
-		if !ok {
-			return false, fmt.Errorf("unexpected type for 'RollupExitRoot'. Expected '[32]byte', got '%T'", data[4])
-		}
-
-		claim.DestinationNetwork, ok = data[7].(uint32)
-		if !ok {
-			return false, fmt.Errorf("unexpected type for 'DestinationNetwork'. Expected 'uint32', got '%T'", data[7])
-		}
-
-		claim.Metadata, ok = data[10].([]byte)
-		if !ok {
-			return false, fmt.Errorf("unexpected type for 'claim Metadata'. Expected '[]byte', got '%T'", data[10])
-		}
-
-		claim.GlobalExitRoot = crypto.Keccak256Hash(claim.MainnetExitRoot.Bytes(), claim.RollupExitRoot.Bytes())
-
-		return true, nil
-	}
-}
+// function claimMessage(
+// 	bytes32[_DEPOSIT_CONTRACT_TREE_DEPTH] calldata smtProof,
+// 	uint32 index,
+// 	bytes32 mainnetExitRoot,
+// 	bytes32 rollupExitRoot,
+// 	uint32 originNetwork,
+// 	address originAddress,
+// 	uint32 destinationNetwork,
+// 	address destinationAddress,
+// 	uint256 amount,
+// 	bytes calldata metadata
+// )
