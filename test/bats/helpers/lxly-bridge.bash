@@ -89,7 +89,7 @@ function bridge_asset() {
     fi
 }
 
-function l1InfoTreeIndexForBridge() {
+function find_l1_info_tree_index_for_bridge() {
     local network_id=$1
     local expected_deposit_count=$2
     local max_attempts=$3
