@@ -91,7 +91,6 @@ func New(
 
 	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck[db.RuntimeData](
 		cfg.RequireStorageContentCompatibility,
-		aggkitcommon.AGGSENDER,
 		func(ctx context.Context) (db.RuntimeData, error) {
 			return db.RuntimeData{NetworkID: l2Syncer.OriginNetwork()}, nil
 		},

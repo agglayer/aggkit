@@ -30,7 +30,7 @@ func TestCheckCompatibilityData(t *testing.T) {
 	getterFunc := func(ctx context.Context) (testBindData, error) {
 		return testBindData{a: 1}, nil
 	}
-	sut := NewCompatibilityCheck[testBindData](true, "unittest", getterFunc, storageMock)
+	sut := NewCompatibilityCheck[testBindData](true, getterFunc, storageMock)
 	ctx := context.Background()
 
 	t.Run("Fails read from DB", func(t *testing.T) {
@@ -77,8 +77,6 @@ func TestCheckCompatibilityData(t *testing.T) {
 
 func TestInitialize(t *testing.T) {
 	sut := CompatibilityCheck[testBindData]{}
-	require.ErrorContains(t, sut.initialize(), "owner")
-	sut.OwnerName = "unittest"
 	require.ErrorContains(t, sut.initialize(), "data getter")
 	sut.RuntimeDataGetter = func(ctx context.Context) (testBindData, error) { return testBindData{}, nil }
 	require.ErrorContains(t, sut.initialize(), "storage")

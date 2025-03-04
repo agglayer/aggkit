@@ -2,7 +2,6 @@ package compatibility
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -12,12 +11,16 @@ import (
 	"github.com/agglayer/aggkit/log"
 )
 
-const (
-	compatibilityContentKey = "compatibility_content"
-)
+/*
+This file contains the compatibility check logic:
+The usage is:
+- Add a field `CompatibilityChecker` in your class
+- Create a checker with the NewCompatibilityCheck function
+- Invoke the Check method in your class
+*/
 
-var ErrIncompatibleData = errors.New("incompatible data")
-
+// CompatibilityChecker is the interface that defines the methods to check the compatibility
+// the object CompatibilityCheck[T] implements this interface
 type CompatibilityChecker interface {
 	Check(ctx context.Context, tx db.Querier) error
 }
@@ -34,29 +37,31 @@ type CompatibilityDataStorager[T any] interface {
 	SetCompatibilityData(ctx context.Context, tx db.Querier, data T) error
 }
 
+// RuntimeDataGetterFunc is a function that returns the runtime data
 type RuntimeDataGetterFunc[T comptypes.CompatibilityComparer[T]] func(ctx context.Context) (T, error)
 
+// CompatibilityCheck is the object that checks the compatibility between the runtime data and the data stored in the storage
+// it's the implementation of the CompatibilityChecker interface
 type CompatibilityCheck[T comptypes.CompatibilityComparer[T]] struct {
 	RequireStorageContentCompatibility bool
-	OwnerName                          string
 	RuntimeDataGetter                  RuntimeDataGetterFunc[T]
 	Storage                            CompatibilityDataStorager[T]
 	Logger                             common.Logger
 }
 
+// NewCompatibilityCheck creates a new CompatibilityCheck object
 func NewCompatibilityCheck[T comptypes.CompatibilityComparer[T]](
 	requireStorageContentCompatibility bool,
-	ownerName string,
 	runtimeDataGetter RuntimeDataGetterFunc[T],
 	storage CompatibilityDataStorager[T]) *CompatibilityCheck[T] {
 	return &CompatibilityCheck[T]{
 		RequireStorageContentCompatibility: requireStorageContentCompatibility,
-		OwnerName:                          ownerName,
 		RuntimeDataGetter:                  runtimeDataGetter,
 		Storage:                            storage,
 	}
 }
 
+// Check checks the compatibility between the runtime data and the data stored in the storage
 func (s *CompatibilityCheck[T]) Check(ctx context.Context, tx db.Querier) error {
 	err := s.initialize()
 	if err != nil {
@@ -99,9 +104,6 @@ func (s *CompatibilityCheck[T]) initialize() error {
 	if s.Logger == nil {
 		s.Logger = log.WithFields("module", "compatibilityCheck")
 	}
-	if s.OwnerName == "" {
-		return errors.New("compatibilityCheck: owner name is empty, please set it")
-	}
 	if s.RuntimeDataGetter == nil {
 		return errors.New("compatibilityCheck: runtime data getter is nil, please set it")
 	}
@@ -109,49 +111,4 @@ func (s *CompatibilityCheck[T]) initialize() error {
 		return errors.New("compatibilityCheck: storage is nil, please set it")
 	}
 	return nil
-}
-
-type KeyValueStorager interface {
-	InsertValue(tx db.Querier, owner, key, value string) error
-	GetValue(tx db.Querier, owner, key string) (string, error)
-}
-
-type KeyValueToCompatibilityStorage[T any] struct {
-	KVStorage KeyValueStorager
-	OwnerName string
-}
-
-func NewKeyValueToCompatibilityStorage[T any](kvStorage KeyValueStorager,
-	ownerName string) *KeyValueToCompatibilityStorage[T] {
-	return &KeyValueToCompatibilityStorage[T]{
-		KVStorage: kvStorage,
-		OwnerName: ownerName}
-}
-
-func (s *KeyValueToCompatibilityStorage[T]) GetCompatibilityData(ctx context.Context,
-	tx db.Querier) (bool, T, error) {
-	var runtimeDataUnmarshaled T
-	var err error
-	runtimeDataRaw, err := s.KVStorage.GetValue(tx, s.OwnerName, compatibilityContentKey)
-	if err != nil && errors.Is(err, db.ErrNotFound) {
-		return false, runtimeDataUnmarshaled, nil
-	}
-	if err != nil {
-		return false, runtimeDataUnmarshaled, err
-	}
-	err = json.Unmarshal([]byte(runtimeDataRaw), &runtimeDataUnmarshaled)
-	if err != nil {
-		return false, runtimeDataUnmarshaled,
-			fmt.Errorf("compatibilityCheck: fails to unmarshal runtime data from storage. Err: %w", err)
-	}
-
-	return true, runtimeDataUnmarshaled, nil
-}
-
-func (s *KeyValueToCompatibilityStorage[T]) SetCompatibilityData(ctx context.Context, tx db.Querier, data T) error {
-	dataStr, err := json.Marshal(data)
-	if err != nil {
-		return fmt.Errorf("compatibilityCheck: fails to marshal runtime data. Err: %w", err)
-	}
-	return s.KVStorage.InsertValue(tx, s.OwnerName, compatibilityContentKey, string(dataStr))
 }

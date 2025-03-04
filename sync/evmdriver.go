@@ -106,7 +106,6 @@ func NewEVMDriver(
 	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck[RuntimeData](
 		requireStorageContentCompatibility,
-		reorgDetectorID,
 		downloader.GetRuntimeData,
 		processor)
 
