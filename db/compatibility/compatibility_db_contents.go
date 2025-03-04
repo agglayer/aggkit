@@ -89,7 +89,8 @@ func (s *CompatibilityCheck[T]) Check(ctx context.Context, tx db.Querier) error 
 			return nil
 		}
 	}
-	s.Logger.Infof("compatibilityCheck: data in DB[%s] is compatible with [%s]", storageData.String(), runtimeData.String())
+	s.Logger.Infof("compatibilityCheck: data in DB[%s] is compatible with [%s]",
+		storageData.String(), runtimeData.String())
 
 	return nil
 }
