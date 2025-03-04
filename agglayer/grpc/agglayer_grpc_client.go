@@ -14,7 +14,8 @@ import (
 )
 
 var (
-	errHasAggProofAndSig  = errors.New("certificate can either have an aggchain proof or a signature, it can not have both")
+	errHasAggProofAndSig = errors.New("certificate can either have an aggchain proof or a signature, " +
+		"it can not have both")
 	errHasNoAggProofOrSig = errors.New("certificate must have an aggchain proof or a signature")
 )
 

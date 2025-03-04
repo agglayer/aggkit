@@ -77,14 +77,14 @@ func (p *ppFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
-func (f *ppFlow) BuildCertificate(ctx context.Context,
+func (p *ppFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayerTypes.Certificate, error) {
-	certificate, err := f.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
+	certificate, err := p.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
 	if err != nil {
 		return nil, err
 	}
 
-	signedCert, err := f.signCertificate(ctx, certificate)
+	signedCert, err := p.signCertificate(ctx, certificate)
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error signing certificate: %w", err)
 	}
@@ -93,15 +93,16 @@ func (f *ppFlow) BuildCertificate(ctx context.Context,
 }
 
 // signCertificate signs a certificate with the aggsender key
-func (f *ppFlow) signCertificate(ctx context.Context, certificate *agglayerTypes.Certificate) (*agglayerTypes.Certificate, error) {
+func (p *ppFlow) signCertificate(ctx context.Context,
+	certificate *agglayerTypes.Certificate) (*agglayerTypes.Certificate, error) {
 	hashToSign := certificate.HashToSign()
-	sig, err := f.signer.SignHash(ctx, hashToSign)
+	sig, err := p.signer.SignHash(ctx, hashToSign)
 	if err != nil {
 		return nil, err
 	}
 
-	f.log.Infof("ppFlopw - Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
-		f.signer.PublicAddress().String(),
+	p.log.Infof("ppFlopw - Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
+		p.signer.PublicAddress().String(),
 		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
 		hashToSign.String(),
 	)
