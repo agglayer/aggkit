@@ -4,13 +4,18 @@ import (
 	"context"
 	"fmt"
 
+	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/signer"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // ppFlow is a struct that holds the logic for the regular pessimistic proof flow
 type ppFlow struct {
 	*baseFlow
+
+	signer signer.Signer
 }
 
 // newPPFlow returns a new instance of the ppFlow
@@ -18,8 +23,10 @@ func newPPFlow(log types.Logger,
 	cfg Config,
 	storage db.AggSenderStorage,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	l2Syncer types.L2BridgeSyncer) *ppFlow {
+	l2Syncer types.L2BridgeSyncer,
+	signer signer.Signer) *ppFlow {
 	return &ppFlow{
+		signer: signer,
 		baseFlow: &baseFlow{
 			log:              log,
 			cfg:              cfg,
@@ -66,4 +73,40 @@ func (p *ppFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 	}
 
 	return buildParams, nil
+}
+
+// BuildCertificate builds a certificate based on the buildParams
+// this function is the implementation of the FlowManager interface
+func (f *ppFlow) BuildCertificate(ctx context.Context,
+	buildParams *types.CertificateBuildParams) (*agglayerTypes.Certificate, error) {
+	certificate, err := f.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
+	if err != nil {
+		return nil, err
+	}
+
+	signedCert, err := f.signCertificate(ctx, certificate)
+	if err != nil {
+		return nil, fmt.Errorf("ppFlow - error signing certificate: %w", err)
+	}
+
+	return signedCert, nil
+}
+
+// signCertificate signs a certificate with the aggsender key
+func (f *ppFlow) signCertificate(ctx context.Context, certificate *agglayerTypes.Certificate) (*agglayerTypes.Certificate, error) {
+	hashToSign := certificate.HashToSign()
+	sig, err := f.signer.SignHash(ctx, hashToSign)
+	if err != nil {
+		return nil, err
+	}
+
+	f.log.Infof("ppFlopw - Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
+		f.signer.PublicAddress().String(),
+		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
+		hashToSign.String(),
+	)
+
+	certificate.Signature = sig
+
+	return certificate, nil
 }

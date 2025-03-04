@@ -14,8 +14,10 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/signer"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -1057,12 +1059,16 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			privateKey, err := crypto.GenerateKey()
+			require.NoError(t, err)
+
+			signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			ppFlow := newPPFlow(
 				log.WithFields("flowManager", "Test_PPFlow_GetCertificateBuildParams"), Config{},
-				mockStorage, mockL1InfoTreeSyncer, mockL2Syncer)
+				mockStorage, mockL1InfoTreeSyncer, mockL2Syncer, signer)
 
 			tc.mockFn(mockStorage, mockL2Syncer, mockL1InfoTreeSyncer)
 

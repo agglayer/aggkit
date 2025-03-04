@@ -51,7 +51,7 @@ func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayerT
 	if cert == nil {
 		return false, nil
 	}
-	var certSigned agglayerTypes.SignedCertificate
+	var certSigned agglayerTypes.Certificate
 	err := json.Unmarshal([]byte(cert.SignedCertificate), &certSigned)
 	if err != nil {
 		log.Debugf("cert: %v", cert.SignedCertificate)

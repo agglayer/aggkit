@@ -198,6 +198,21 @@ func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(
 	return nil
 }
 
+// BuildCertificate builds a certificate based on the buildParams
+// this function is the implementation of the FlowManager interface
+func (a *aggchainProverFlow) BuildCertificate(ctx context.Context,
+	buildParams *types.CertificateBuildParams) (*agglayerTypes.Certificate, error) {
+	cert, err := a.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
+	if err != nil {
+		return nil, err
+	}
+
+	cert.AggchainProof = buildParams.AggchainProof
+	cert.CustomChainData = buildParams.CustomChainData
+
+	return cert, nil
+}
+
 // getInjectedGERsProofs returns the proofs for the injected GERs in the given block range
 // created from the last finalized L1 Info tree root
 func (a *aggchainProverFlow) getInjectedGERsProofs(

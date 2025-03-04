@@ -357,17 +357,32 @@ func TestExploratoryGenerateCert(t *testing.T) {
 	signature, err := crypto.Sign(common.HexToHash("0x1").Bytes(), key)
 	require.NoError(t, err)
 
-	r, s, v, err := extractSignatureData(signature)
-	require.NoError(t, err)
-
-	certificate := &agglayerTypes.SignedCertificate{
-		Certificate: &agglayerTypes.Certificate{
-			NetworkID:         1,
-			Height:            1,
-			PrevLocalExitRoot: common.HexToHash("0x1"),
-			NewLocalExitRoot:  common.HexToHash("0x2"),
-			BridgeExits: []*agglayerTypes.BridgeExit{
-				{
+	certificate := &agglayerTypes.Certificate{
+		NetworkID:         1,
+		Height:            1,
+		PrevLocalExitRoot: common.HexToHash("0x1"),
+		NewLocalExitRoot:  common.HexToHash("0x2"),
+		BridgeExits: []*agglayerTypes.BridgeExit{
+			{
+				LeafType: agglayerTypes.LeafTypeAsset,
+				TokenInfo: &agglayerTypes.TokenInfo{
+					OriginNetwork:      1,
+					OriginTokenAddress: common.HexToAddress("0x11"),
+				},
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0x22"),
+				Amount:             big.NewInt(100),
+				Metadata:           []byte("metadata"),
+			},
+		},
+		ImportedBridgeExits: []*agglayerTypes.ImportedBridgeExit{
+			{
+				GlobalIndex: &agglayerTypes.GlobalIndex{
+					MainnetFlag: false,
+					RollupIndex: 1,
+					LeafIndex:   11,
+				},
+				BridgeExit: &agglayerTypes.BridgeExit{
 					LeafType: agglayerTypes.LeafTypeAsset,
 					TokenInfo: &agglayerTypes.TokenInfo{
 						OriginNetwork:      1,
@@ -378,53 +393,29 @@ func TestExploratoryGenerateCert(t *testing.T) {
 					Amount:             big.NewInt(100),
 					Metadata:           []byte("metadata"),
 				},
-			},
-			ImportedBridgeExits: []*agglayerTypes.ImportedBridgeExit{
-				{
-					GlobalIndex: &agglayerTypes.GlobalIndex{
-						MainnetFlag: false,
-						RollupIndex: 1,
-						LeafIndex:   11,
+				ClaimData: &agglayerTypes.ClaimFromMainnnet{
+					ProofLeafMER: &agglayerTypes.MerkleProof{
+						Root:  common.HexToHash("0x1"),
+						Proof: [32]common.Hash{},
 					},
-					BridgeExit: &agglayerTypes.BridgeExit{
-						LeafType: agglayerTypes.LeafTypeAsset,
-						TokenInfo: &agglayerTypes.TokenInfo{
-							OriginNetwork:      1,
-							OriginTokenAddress: common.HexToAddress("0x11"),
-						},
-						DestinationNetwork: 2,
-						DestinationAddress: common.HexToAddress("0x22"),
-						Amount:             big.NewInt(100),
-						Metadata:           []byte("metadata"),
+					ProofGERToL1Root: &agglayerTypes.MerkleProof{
+						Root:  common.HexToHash("0x3"),
+						Proof: [32]common.Hash{},
 					},
-					ClaimData: &agglayerTypes.ClaimFromMainnnet{
-						ProofLeafMER: &agglayerTypes.MerkleProof{
-							Root:  common.HexToHash("0x1"),
-							Proof: [32]common.Hash{},
-						},
-						ProofGERToL1Root: &agglayerTypes.MerkleProof{
-							Root:  common.HexToHash("0x3"),
-							Proof: [32]common.Hash{},
-						},
-						L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
-							L1InfoTreeIndex: 1,
-							RollupExitRoot:  common.HexToHash("0x4"),
-							MainnetExitRoot: common.HexToHash("0x5"),
-							Inner: &agglayerTypes.L1InfoTreeLeafInner{
-								GlobalExitRoot: common.HexToHash("0x6"),
-								BlockHash:      common.HexToHash("0x7"),
-								Timestamp:      1231,
-							},
+					L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 1,
+						RollupExitRoot:  common.HexToHash("0x4"),
+						MainnetExitRoot: common.HexToHash("0x5"),
+						Inner: &agglayerTypes.L1InfoTreeLeafInner{
+							GlobalExitRoot: common.HexToHash("0x6"),
+							BlockHash:      common.HexToHash("0x7"),
+							Timestamp:      1231,
 						},
 					},
 				},
 			},
 		},
-		Signature: &agglayerTypes.Signature{
-			R:         r,
-			S:         s,
-			OddParity: v,
-		},
+		Signature: signature,
 	}
 
 	file, err := os.Create("test.json")
@@ -454,9 +445,8 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		l2Syncer:         mockL2Syncer,
 		aggLayerClient:   mockAggLayerClient,
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
-		signer:           signer,
 		cfg:              Config{},
-		flow:             newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer),
+		flow:             newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer, signer),
 		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
@@ -492,9 +482,8 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, signedCertificate)
 	require.NotNil(t, signedCertificate.Signature)
-	require.NotNil(t, signedCertificate.Certificate)
-	require.NotNil(t, signedCertificate.Certificate.ImportedBridgeExits)
-	require.Len(t, signedCertificate.Certificate.BridgeExits, 1)
+	require.NotNil(t, signedCertificate.ImportedBridgeExits)
+	require.Len(t, signedCertificate.BridgeExits, 1)
 
 	mockStorage.AssertExpectations(t)
 	mockL2Syncer.AssertExpectations(t)
@@ -845,13 +834,9 @@ func TestSendCertificate(t *testing.T) {
 			tt.mockFn(mockStorage, mockAggsenderFlow, mockL1InfoTreeSyncer, mockAgglayerClient)
 
 			logger := log.WithFields("aggsender-test", "sendCertificate")
-			privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
-			require.NoError(t, err)
-			signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
 
 			aggsender := &AggSender{
 				log:              logger,
-				signer:           signer,
 				storage:          mockStorage,
 				flow:             mockAggsenderFlow,
 				aggLayerClient:   mockAgglayerClient,
@@ -862,7 +847,7 @@ func TestSendCertificate(t *testing.T) {
 				},
 			}
 
-			_, err = aggsender.sendCertificate(context.Background())
+			_, err := aggsender.sendCertificate(context.Background())
 
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
@@ -1016,9 +1001,8 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 			MaxCertSize: 1024 * 1024,
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
-		signer:        signer,
 		epochNotifier: epochNotifierMock,
-		flow:          newPPFlow(logger, Config{}, storage, l1InfoTreeSyncerMock, l2syncerMock),
+		flow:          newPPFlow(logger, Config{}, storage, l1InfoTreeSyncerMock, l2syncerMock, signer),
 	}
 	testCerts := []aggsendertypes.CertificateInfo{
 		{

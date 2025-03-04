@@ -323,33 +323,26 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 	})
 
 	t.Run("SaveCertificate with raw data", func(t *testing.T) {
-		certfiicate := &agglayerTypes.SignedCertificate{
-			Certificate: &agglayerTypes.Certificate{
-				NetworkID:         1,
-				Height:            1,
-				PrevLocalExitRoot: common.HexToHash("0x1"),
-				NewLocalExitRoot:  common.HexToHash("0x2"),
-				Metadata:          common.HexToHash("0x3"),
-				BridgeExits: []*agglayerTypes.BridgeExit{
-					{
-						LeafType: agglayerTypes.LeafTypeAsset,
-						TokenInfo: &agglayerTypes.TokenInfo{
-							OriginNetwork:      1,
-							OriginTokenAddress: common.HexToAddress("0x1"),
-						},
-						DestinationNetwork: 2,
-						DestinationAddress: common.HexToAddress("0x2"),
-						Amount:             big.NewInt(100),
-						Metadata:           []byte("metadata"),
+		certfiicate := &agglayerTypes.Certificate{
+			NetworkID:         1,
+			Height:            1,
+			PrevLocalExitRoot: common.HexToHash("0x1"),
+			NewLocalExitRoot:  common.HexToHash("0x2"),
+			Metadata:          common.HexToHash("0x3"),
+			BridgeExits: []*agglayerTypes.BridgeExit{
+				{
+					LeafType: agglayerTypes.LeafTypeAsset,
+					TokenInfo: &agglayerTypes.TokenInfo{
+						OriginNetwork:      1,
+						OriginTokenAddress: common.HexToAddress("0x1"),
 					},
+					DestinationNetwork: 2,
+					DestinationAddress: common.HexToAddress("0x2"),
+					Amount:             big.NewInt(100),
+					Metadata:           []byte("metadata"),
 				},
-				ImportedBridgeExits: []*agglayerTypes.ImportedBridgeExit{},
 			},
-			Signature: &agglayerTypes.Signature{
-				R:         common.HexToHash("0x4"),
-				S:         common.HexToHash("0x5"),
-				OddParity: false,
-			},
+			ImportedBridgeExits: []*agglayerTypes.ImportedBridgeExit{},
 		}
 
 		raw, err := json.Marshal(certfiicate)

@@ -261,7 +261,7 @@ func (_c *AgglayerClientMock_GetLatestSettledCertificateHeader_Call) RunAndRetur
 }
 
 // SendCertificate provides a mock function with given fields: ctx, certificate
-func (_m *AgglayerClientMock) SendCertificate(ctx context.Context, certificate *types.SignedCertificate) (common.Hash, error) {
+func (_m *AgglayerClientMock) SendCertificate(ctx context.Context, certificate *types.Certificate) (common.Hash, error) {
 	ret := _m.Called(ctx, certificate)
 
 	if len(ret) == 0 {
@@ -270,10 +270,10 @@ func (_m *AgglayerClientMock) SendCertificate(ctx context.Context, certificate *
 
 	var r0 common.Hash
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *types.SignedCertificate) (common.Hash, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.Certificate) (common.Hash, error)); ok {
 		return rf(ctx, certificate)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *types.SignedCertificate) common.Hash); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *types.Certificate) common.Hash); ok {
 		r0 = rf(ctx, certificate)
 	} else {
 		if ret.Get(0) != nil {
@@ -281,7 +281,7 @@ func (_m *AgglayerClientMock) SendCertificate(ctx context.Context, certificate *
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *types.SignedCertificate) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *types.Certificate) error); ok {
 		r1 = rf(ctx, certificate)
 	} else {
 		r1 = ret.Error(1)
@@ -297,14 +297,14 @@ type AgglayerClientMock_SendCertificate_Call struct {
 
 // SendCertificate is a helper method to define mock.On call
 //   - ctx context.Context
-//   - certificate *types.SignedCertificate
+//   - certificate *types.Certificate
 func (_e *AgglayerClientMock_Expecter) SendCertificate(ctx interface{}, certificate interface{}) *AgglayerClientMock_SendCertificate_Call {
 	return &AgglayerClientMock_SendCertificate_Call{Call: _e.mock.On("SendCertificate", ctx, certificate)}
 }
 
-func (_c *AgglayerClientMock_SendCertificate_Call) Run(run func(ctx context.Context, certificate *types.SignedCertificate)) *AgglayerClientMock_SendCertificate_Call {
+func (_c *AgglayerClientMock_SendCertificate_Call) Run(run func(ctx context.Context, certificate *types.Certificate)) *AgglayerClientMock_SendCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*types.SignedCertificate))
+		run(args[0].(context.Context), args[1].(*types.Certificate))
 	})
 	return _c
 }
@@ -314,7 +314,7 @@ func (_c *AgglayerClientMock_SendCertificate_Call) Return(_a0 common.Hash, _a1 e
 	return _c
 }
 
-func (_c *AgglayerClientMock_SendCertificate_Call) RunAndReturn(run func(context.Context, *types.SignedCertificate) (common.Hash, error)) *AgglayerClientMock_SendCertificate_Call {
+func (_c *AgglayerClientMock_SendCertificate_Call) RunAndReturn(run func(context.Context, *types.Certificate) (common.Hash, error)) *AgglayerClientMock_SendCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

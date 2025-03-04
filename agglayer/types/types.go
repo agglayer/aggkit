@@ -133,6 +133,7 @@ type Certificate struct {
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
 	Metadata            common.Hash           `json:"metadata"`
 	AggchainProof       []byte                `json:"aggchain_proof,omitempty"`
+	Signature           []byte                `json:"signature,omitempty"`
 	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 }
 
@@ -193,50 +194,6 @@ func (c *Certificate) HashToSign() common.Hash {
 		c.NewLocalExitRoot.Bytes(),
 		crypto.Keccak256Hash(globalIndexHashes...).Bytes(),
 	)
-}
-
-// SignedCertificate is the struct that contains the certificate and the signature of the signer
-type SignedCertificate struct {
-	*Certificate
-	Signature *Signature `json:"signature"`
-}
-
-func (s *SignedCertificate) Brief() string {
-	return fmt.Sprintf("Certificate:%s,\nSignature: %s", s.Certificate.Brief(), s.Signature.String())
-}
-
-// CopyWithDefaulting returns a shallow copy of the signed certificate
-func (s *SignedCertificate) CopyWithDefaulting() *SignedCertificate {
-	certificateCopy := *s.Certificate
-
-	if certificateCopy.BridgeExits == nil {
-		certificateCopy.BridgeExits = make([]*BridgeExit, 0)
-	}
-
-	if certificateCopy.ImportedBridgeExits == nil {
-		certificateCopy.ImportedBridgeExits = make([]*ImportedBridgeExit, 0)
-	}
-
-	signature := s.Signature
-	if signature == nil {
-		signature = &Signature{}
-	}
-
-	return &SignedCertificate{
-		Certificate: &certificateCopy,
-		Signature:   signature,
-	}
-}
-
-// Signature is the data structure that will hold the signature of the given certificate
-type Signature struct {
-	R         common.Hash `json:"r"`
-	S         common.Hash `json:"s"`
-	OddParity bool        `json:"odd_y_parity"`
-}
-
-func (s *Signature) String() string {
-	return fmt.Sprintf("R: %s, S: %s, OddParity: %t", s.R.String(), s.S.String(), s.OddParity)
 }
 
 // TokenInfo encapsulates the information to uniquely identify a token on the origin network.

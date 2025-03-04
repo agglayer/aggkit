@@ -50,8 +50,6 @@ type AggSender struct {
 
 	cfg Config
 
-	signer signer.Signer
-
 	status      types.AggsenderStatus
 	rateLimiter RateLimiter
 	flow        types.AggsenderFlow
@@ -107,7 +105,7 @@ func New(
 			return nil, fmt.Errorf("error creating aggchain prover flow: %w", err)
 		}
 	} else {
-		flowManager = newPPFlow(logger, cfg, storage, l1InfoTreeSyncer, l2Syncer)
+		flowManager = newPPFlow(logger, cfg, storage, l1InfoTreeSyncer, l2Syncer, signer)
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
@@ -119,7 +117,6 @@ func New(
 		l2Syncer:         l2Syncer,
 		aggLayerClient:   aggLayerClient,
 		l1infoTreeSyncer: l1InfoTreeSyncer,
-		signer:           signer,
 		epochNotifier:    epochNotifier,
 		status:           types.AggsenderStatus{Status: types.StatusNone},
 		flow:             flowManager,
@@ -249,7 +246,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 }
 
 // sendCertificate sends certificate for a network
-func (a *AggSender) sendCertificate(ctx context.Context) (*agglayerTypes.SignedCertificate, error) {
+func (a *AggSender) sendCertificate(ctx context.Context) (*agglayerTypes.Certificate, error) {
 	a.log.Infof("trying to send a new certificate...")
 
 	start := time.Now()
@@ -268,11 +265,6 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayerTypes.SignedC
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
-	signedCertificate, err := a.signCertificate(certificate)
-	if err != nil {
-		return nil, fmt.Errorf("error signing certificate: %w", err)
-	}
-
 	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
 		a.log.Warnf("rate limit reached , next cert %s can be submitted after %s so sleeping. Rate:%s",
 			certificate.ID(),
@@ -283,24 +275,24 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayerTypes.SignedC
 		return nil, fmt.Errorf("forbidden to send certificate due epoch percentage")
 	}
 
-	a.log.Infof("certificate ready to be send to AggLayer: %s", signedCertificate.Brief())
+	a.log.Infof("certificate ready to be send to AggLayer: %s", certificate.Brief())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
-		return signedCertificate, nil
+		return certificate, nil
 	}
-	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, signedCertificate)
+	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
 		return nil, fmt.Errorf("error sending certificate: %w", err)
 	}
 
 	metrics.CertificateSent()
-	a.log.Debugf("certificate send: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
+	a.log.Debugf("certificate send: Height: %d cert: %s", certificate.Height, certificate.Brief())
 
-	raw, err := json.Marshal(signedCertificate)
+	raw, err := json.Marshal(certificate)
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling signed certificate. Cert:%s. Err: %w", signedCertificate.Brief(), err)
+		return nil, fmt.Errorf("error marshalling signed certificate. Cert:%s. Err: %w", certificate.Brief(), err)
 	}
 
 	prevLER := common.BytesToHash(certificate.PrevLocalExitRoot[:])
@@ -331,10 +323,11 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayerTypes.SignedC
 	}
 
 	a.log.Infof("certificate: %s sent successfully for range of l2 blocks (from block: %d, to block: %d) cert:%s",
-		certInfo.ID(), certificateParams.FromBlock, certificateParams.ToBlock, signedCertificate.Brief())
+		certInfo.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
-	return signedCertificate, nil
+	return certificate, nil
 }
+
 func (a *AggSender) isAllowedSendCertificateEpochPercent() bool {
 	if a.cfg.MaxEpochPercentageAllowedToSendCertificate == 0 ||
 		a.cfg.MaxEpochPercentageAllowedToSendCertificate >= maxPercent {
@@ -366,35 +359,6 @@ func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Cer
 		}
 	}
 	return nil
-}
-
-// signCertificate signs a certificate with the sequencer key
-func (a *AggSender) signCertificate(certificate *agglayerTypes.Certificate) (*agglayerTypes.SignedCertificate, error) {
-	hashToSign := certificate.HashToSign()
-	sig, err := a.signer.SignHash(context.Background(), hashToSign)
-	if err != nil {
-		return nil, err
-	}
-
-	a.log.Infof("Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
-		a.signer.PublicAddress().String(),
-		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
-		hashToSign.String(),
-	)
-
-	r, s, isOddParity, err := extractSignatureData(sig)
-	if err != nil {
-		return nil, err
-	}
-
-	return &agglayerTypes.SignedCertificate{
-		Certificate: certificate,
-		Signature: &agglayerTypes.Signature{
-			R:         r,
-			S:         s,
-			OddParity: isOddParity,
-		},
-	}, nil
 }
 
 type checkCertResult struct {

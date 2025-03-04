@@ -100,16 +100,6 @@ func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*type
 	return buildParams, nil
 }
 
-// BuildCertificate builds a certificate based on the buildParams
-// this function is the implementation of the FlowManager interface
-func (f *baseFlow) BuildCertificate(ctx context.Context,
-	buildParams *types.CertificateBuildParams) (*agglayerTypes.Certificate, error) {
-	f.log.Infof("building certificate for %s estimatedSize=%d",
-		buildParams.String(), buildParams.EstimatedSize())
-
-	return f.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
-}
-
 // limitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
 func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
@@ -145,6 +135,8 @@ func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types
 func (f *baseFlow) buildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
 	lastSentCertificateInfo *types.CertificateInfo) (*agglayerTypes.Certificate, error) {
+	f.log.Infof("building certificate for %s estimatedSize=%d", certParams.String(), certParams.EstimatedSize())
+
 	if certParams.IsEmpty() {
 		return nil, errNoBridgesAndClaims
 	}
@@ -181,8 +173,6 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		ImportedBridgeExits: importedBridgeExits,
 		Height:              height,
 		Metadata:            meta.ToHash(),
-		AggchainProof:       certParams.AggchainProof,
-		CustomChainData:     certParams.CustomChainData,
 	}, nil
 }
 
