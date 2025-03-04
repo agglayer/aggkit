@@ -40,8 +40,8 @@ type CompatibilityDataStorager[T any] interface {
 // RuntimeDataGetterFunc is a function that returns the runtime data
 type RuntimeDataGetterFunc[T comptypes.CompatibilityComparer[T]] func(ctx context.Context) (T, error)
 
-// CompatibilityCheck is the object that checks the compatibility between the runtime data and the data stored in the storage
-// it's the implementation of the CompatibilityChecker interface
+// CompatibilityCheck is the object that checks the compatibility between the runtime data and
+// the data stored in the storage. It's the implementation of the CompatibilityChecker interface
 type CompatibilityCheck[T comptypes.CompatibilityComparer[T]] struct {
 	RequireStorageContentCompatibility bool
 	RuntimeDataGetter                  RuntimeDataGetterFunc[T]
