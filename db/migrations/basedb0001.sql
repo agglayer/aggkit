@@ -1,7 +1,7 @@
 -- +migrate Down
-DROP TABLE IF EXISTS bound_data;
+DROP TABLE IF EXISTS key_value;
 -- +migrate Up
-CREATE TABLE IF NOT EXISTS bound_data (
+CREATE TABLE IF NOT EXISTS key_value (
    owner VARCHAR(254) NOT NULL,
     key VARCHAR(254) NOT NULL,
     value VARCHAR, 

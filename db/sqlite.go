@@ -16,7 +16,7 @@ const (
 
 var (
 	ErrNotFound = errors.New("not found")
-	tableKVName = "bound_data"
+	tableKVName = "key_value"
 	funcTimeNow = time.Now
 )
 
