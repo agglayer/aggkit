@@ -35,6 +35,11 @@ var (
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
 )
 
+const (
+	// debugTraceTx is the name of the debug method used to trace a transaction.
+	debugTraceTx = "debug_traceTransaction"
+)
+
 // EthClienter defines the methods required to interact with an Ethereum client.
 type EthClienter interface {
 	ethereum.LogFilterer
@@ -44,13 +49,13 @@ type EthClienter interface {
 	Client() *rpc.Client
 }
 
-func buildAppender(client EthClienter, bridge common.Address, syncFullClaims bool) (sync.LogAppenderMap, error) {
-	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridge, client)
+func buildAppender(client EthClienter, bridgeAddr common.Address, syncFullClaims bool) (sync.LogAppenderMap, error) {
+	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
 		return nil, err
 	}
 
-	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridge, client)
+	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, client)
 	if err != nil {
 		return nil, err
 	}
@@ -58,27 +63,34 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 	appender := make(sync.LogAppenderMap)
 
 	appender[bridgeEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		bridge, err := bridgeContractV2.ParseBridgeEvent(l)
+		bridgeEvent, err := bridgeContractV2.ParseBridgeEvent(l)
 		if err != nil {
 			return fmt.Errorf(
 				"error parsing log %+v using d.bridgeContractV2.ParseBridgeEvent: %w",
 				l, err,
 			)
 		}
+
+		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		if err != nil {
+			return fmt.Errorf("failed to extract the bridge event calldata (tx hash: %s): %w", l.TxHash, err)
+		}
+
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
-			LeafType:           bridge.LeafType,
-			OriginNetwork:      bridge.OriginNetwork,
-			OriginAddress:      bridge.OriginAddress,
-			DestinationNetwork: bridge.DestinationNetwork,
-			DestinationAddress: bridge.DestinationAddress,
-			Amount:             bridge.Amount,
-			Metadata:           bridge.Metadata,
-			DepositCount:       bridge.DepositCount,
+			LeafType:           bridgeEvent.LeafType,
+			OriginNetwork:      bridgeEvent.OriginNetwork,
+			OriginAddress:      bridgeEvent.OriginAddress,
+			DestinationNetwork: bridgeEvent.DestinationNetwork,
+			DestinationAddress: bridgeEvent.DestinationAddress,
+			Amount:             bridgeEvent.Amount,
+			Metadata:           bridgeEvent.Metadata,
+			DepositCount:       bridgeEvent.DepositCount,
 			BlockTimestamp:     b.Timestamp,
 			TxHash:             l.TxHash,
 			FromAddress:        l.Address,
+			Calldata:           calldata,
 		}})
 
 		return nil
@@ -105,7 +117,7 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 			FromAddress:        l.Address,
 		}
 		if syncFullClaims {
-			if err := setClaimCalldata(client, bridge, l.TxHash, claim); err != nil {
+			if err := setClaimCalldata(client, bridgeAddr, l.TxHash, claim); err != nil {
 				return err
 			}
 		}
@@ -131,7 +143,7 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 			Amount:             claimEvent.Amount,
 		}
 		if syncFullClaims {
-			if err := setClaimCalldata(client, bridge, l.TxHash, claim); err != nil {
+			if err := setClaimCalldata(client, bridgeAddr, l.TxHash, claim); err != nil {
 				return err
 			}
 		}
@@ -140,7 +152,7 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 	}
 
 	appender[tokenMappingEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		tokenMapping, err := bridgeContractV2.ParseNewWrappedToken(l)
+		tokenMappingEvent, err := bridgeContractV2.ParseNewWrappedToken(l)
 		if err != nil {
 			return fmt.Errorf(
 				"error parsing log %+v using d.bridgeContractV2.ParseNewWrappedToken: %w",
@@ -148,15 +160,21 @@ func buildAppender(client EthClienter, bridge common.Address, syncFullClaims boo
 			)
 		}
 
+		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		if err != nil {
+			return fmt.Errorf("failed to extract the token mapping event calldata (tx hash: %s): %w", l.TxHash, err)
+		}
+
 		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
 			BlockTimestamp:      b.Timestamp,
 			TxHash:              l.TxHash,
-			OriginNetwork:       tokenMapping.OriginNetwork,
-			OriginTokenAddress:  tokenMapping.OriginTokenAddress,
-			WrappedTokenAddress: tokenMapping.WrappedTokenAddress,
-			Metadata:            tokenMapping.Metadata,
+			OriginNetwork:       tokenMappingEvent.OriginNetwork,
+			OriginTokenAddress:  tokenMappingEvent.OriginTokenAddress,
+			WrappedTokenAddress: tokenMappingEvent.WrappedTokenAddress,
+			Metadata:            tokenMappingEvent.Metadata,
+			Calldata:            calldata,
 		}})
 		return nil
 	}
@@ -176,37 +194,52 @@ type tracerCfg struct {
 	Tracer string `json:"tracer"`
 }
 
-func setClaimCalldata(client EthClienter, bridge common.Address, txHash common.Hash, claim *Claim) error {
+// extractCalldata tries to extract the calldata for the transaction indentified by transaction hash.
+// It relies on debug_traceTransaction JSON RPC function.
+func extractCalldata(client EthClienter, contractAddr common.Address, txHash common.Hash) ([]byte, error) {
 	c := &call{}
-	err := client.Client().Call(c, "debug_traceTransaction", txHash, tracerCfg{Tracer: "callTracer"})
+	err := client.Client().Call(c, debugTraceTx, txHash, tracerCfg{Tracer: "callTracer"})
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	// find the claim linked to the event using DFS
 	callStack := stack.New()
 	callStack.Push(*c)
 	for callStack.Len() > 0 {
 		currentCallInterface := callStack.Pop()
 		currentCall, ok := currentCallInterface.(call)
 		if !ok {
-			return fmt.Errorf("unexpected type for 'currentCall'. Expected 'call', got '%T'", currentCallInterface)
+			return nil, fmt.Errorf("unexpected type for 'currentCall'. Expected 'call', got '%T'", currentCallInterface)
 		}
 
-		if currentCall.To == bridge {
-			found, err := claim.tryDecodeClaimCalldata(currentCall.Input)
-			if err != nil {
-				return err
-			}
-			if found {
-				return nil
-			}
+		if currentCall.To == contractAddr {
+			return currentCall.Input, nil
 		}
+
 		for _, c := range currentCall.Calls {
 			callStack.Push(c)
 		}
 	}
-	return db.ErrNotFound
+	return nil, db.ErrNotFound
+}
+
+// setClaimCalldata tries to find the claim transaction calldata and decodes it.
+func setClaimCalldata(client EthClienter, bridgeAddr common.Address, txHash common.Hash, claim *Claim) error {
+	callData, err := extractCalldata(client, bridgeAddr, txHash)
+	if err != nil {
+		return err
+	}
+
+	found, err := claim.tryDecodeClaimCalldata(callData)
+	if err != nil {
+		return err
+	}
+
+	if !found {
+		return db.ErrNotFound
+	}
+
+	return nil
 }
 
 // tryDecodeClaimCalldata attempts to find and decode the claim calldata from the provided input bytes.
@@ -228,6 +261,7 @@ func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+
 		data, err := method.Inputs.Unpack(input[4:])
 		if err != nil {
 			return false, err
@@ -237,11 +271,12 @@ func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+
 		if found {
 			c.IsMessage = bytes.Equal(methodID, claimMessageEtrogMethodID)
-			return true, nil
 		}
-		return false, nil
+
+		return found, nil
 
 	case bytes.Equal(methodID, claimAssetPreEtrogMethodID):
 		fallthrough
@@ -250,11 +285,13 @@ func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+
 		// Recover Method from signature and ABI
 		method, err := bridgeABI.MethodById(methodID)
 		if err != nil {
 			return false, err
 		}
+
 		data, err := method.Inputs.Unpack(input[4:])
 		if err != nil {
 			return false, err
@@ -264,11 +301,12 @@ func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
 		if err != nil {
 			return false, err
 		}
+
 		if found {
 			c.IsMessage = bytes.Equal(methodID, claimMessagePreEtrogMethodID)
-			return true, nil
 		}
-		return false, nil
+
+		return found, nil
 
 	default:
 		return false, nil

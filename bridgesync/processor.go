@@ -63,6 +63,7 @@ type Bridge struct {
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
 	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
+	Calldata           []byte         `meddler:"calldata" json:"calldata"`
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
@@ -105,9 +106,11 @@ func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
 	type Alias BridgeResponse // Prevent recursion
 	return json.Marshal(&struct {
 		Metadata string `json:"metadata"`
+		CallData string `json:"calldata"`
 		*Alias
 	}{
-		Metadata: "0x" + hex.EncodeToString(b.Metadata),
+		Metadata: fmt.Sprintf("0x%s", hex.EncodeToString(b.Metadata)),
+		CallData: fmt.Sprintf("0x%s", hex.EncodeToString(b.Calldata)),
 		Alias:    (*Alias)(b),
 	})
 }
@@ -296,9 +299,11 @@ func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 	type Alias TokenMapping // Prevent recursion
 	return json.Marshal(&struct {
 		Metadata string `json:"metadata"`
+		Calldata string `json:"calldata"`
 		*Alias
 	}{
-		Metadata: "0x" + hex.EncodeToString(t.Metadata),
+		Metadata: fmt.Sprintf("0x%s", hex.EncodeToString(t.Metadata)),
+		Calldata: fmt.Sprintf("0x%s", hex.EncodeToString(t.Calldata)),
 		Alias:    (*Alias)(t),
 	})
 }
