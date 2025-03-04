@@ -88,6 +88,35 @@ setup() {
     assert_success
 }
 
+@test "Find L1 info tree index" {
+    destination_addr=$sender_addr
+    run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
+    assert_success
+    readonly weth_token_addr=$output
+
+    local initial_receiver_balance=$(cast call --rpc-url "$l2_rpc_url" "$weth_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
+    echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
+
+    echo "=== Running LxLy deposit on L1 to network: $l2_rpc_network_id native_token: $native_token_addr" >&3
+    destination_net=$l2_rpc_network_id
+    run bridge_asset "$native_token_addr" "$l1_rpc_url"
+    assert_success
+    local bridge_tx_hash=$output
+
+    echo "------- l1InfoTreeIndexForBridge API testcase"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
+    assert_success
+    local bridge
+    bridge="$output"
+    local deposit_count
+    deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run l1InfoTreeIndexForBridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    local l1_info_tree_index
+    l1_info_tree_index="$output"
+    assert_equal "$l1_info_tree_index" 2
+    echo "------- l1InfoTreeIndexForBridge API testcase passed"
+}
+
 @test "Custom gas token deposit L1 -> L2" {
     echo "Custom gas token deposit (gas token addr: $gas_token_addr, L1 RPC: $l1_rpc_url, L2 RPC: $l2_rpc_url)" >&3
 

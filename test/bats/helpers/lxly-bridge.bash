@@ -89,6 +89,42 @@ function bridge_asset() {
     fi
 }
 
+function l1InfoTreeIndexForBridge() {
+    local network_id=$1
+    local expected_deposit_count=$2
+    local max_attempts=$3
+    local poll_frequency=$4
+
+    local attempt=0
+
+    while true; do
+        ((attempt++))
+        log "Attempt $attempt: fetching L1 info tree index from the RPC..."
+
+        index=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count")
+
+        log "------ index ------"
+        log "$index"
+        log "------ index ------"
+
+        if [[ "$index" == "0x0" ]]; then
+            log "Didn't find expected deposit count index"
+            # Fail test if max attempts are reached
+            if [[ "$attempt" -ge "$max_attempts" ]]; then
+                echo "Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
+                return 1
+            fi
+
+            # Sleep before the next attempt
+            sleep "$poll_frequency"
+            continue
+        fi
+
+        echo "$index"
+        return 0
+    done
+}
+
 # This function is used to claim a bridge using concrete tx hash
 # params:
 # - timeout - timeout in seconds
