@@ -61,8 +61,12 @@ func (kv *KeyValueStorage) InsertValue(tx Querier, owner, key, value string) err
 func (kv *KeyValueStorage) GetValue(tx Querier, owner, key string) (string, error) {
 	var data kvRow
 	if tx == nil {
+		if kv.DB == nil {
+			return "", errors.New("keyValueStorage: tx is nil and kv.DB is nil ")
+		}
 		tx = kv.DB
 	}
+
 	err := meddler.QueryRow(tx, &data, fmt.Sprintf("SELECT * FROM %s WHERE owner = $1 and key = $2 LIMIT 1;", tableKVName),
 		owner, key)
 	return data.Value, ReturnErrNotFound(err)
