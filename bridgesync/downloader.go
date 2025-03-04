@@ -28,8 +28,11 @@ var (
 	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
 	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
 	tokenMappingEventSignature  = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
-	methodIDClaimAsset          = common.Hex2Bytes("ccaa2d11")
-	methodIDClaimMessage        = common.Hex2Bytes("f5efcd79")
+
+	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
+	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
+	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
+	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
 )
 
 // EthClienter defines the methods required to interact with an Ethereum client.
@@ -191,7 +194,7 @@ func setClaimCalldata(client EthClienter, bridge common.Address, txHash common.H
 		}
 
 		if currentCall.To == bridge {
-			found, err := claim.setClaimIfFoundOnInput(currentCall.Input)
+			found, err := claim.tryDecodeClaimCalldata(currentCall.Input)
 			if err != nil {
 				return err
 			}
@@ -206,61 +209,68 @@ func setClaimCalldata(client EthClienter, bridge common.Address, txHash common.H
 	return db.ErrNotFound
 }
 
-func (c *Claim) setClaimIfFoundOnInput(input []byte) (bool, error) {
-	smcAbi, err := abi.JSON(strings.NewReader(polygonzkevmbridgev2.Polygonzkevmbridgev2ABI))
-	if err != nil {
-		return false, err
-	}
+// tryDecodeClaimCalldata attempts to find and decode the claim calldata from the provided input bytes.
+// It checks if the method ID corresponds to either the claim asset or claim message methods.
+// If a match is found, it decodes the calldata using the ABI of the bridge contract and updates the claim object.
+// Returns true if the calldata is successfully decoded and matches the expected format, otherwise returns false.
+func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
 	methodID := input[:4]
-	// Recover Method from signature and ABI
-	method, err := smcAbi.MethodById(methodID)
-	if err != nil {
-		return false, err
-	}
-	data, err := method.Inputs.Unpack(input[4:])
-	if err != nil {
-		return false, err
-	}
-	// Ignore other methods
-	if bytes.Equal(methodID, methodIDClaimAsset) || bytes.Equal(methodID, methodIDClaimMessage) {
-		found, err := c.decodeCalldata(data)
+	switch {
+	case bytes.Equal(methodID, claimAssetEtrogMethodID):
+		fallthrough
+	case bytes.Equal(methodID, claimMessageEtrogMethodID):
+		bridgeV2ABI, err := abi.JSON(strings.NewReader(polygonzkevmbridgev2.Polygonzkevmbridgev2ABI))
+		if err != nil {
+			return false, err
+		}
+		// Recover Method from signature and ABI
+		method, err := bridgeV2ABI.MethodById(methodID)
+		if err != nil {
+			return false, err
+		}
+		data, err := method.Inputs.Unpack(input[4:])
+		if err != nil {
+			return false, err
+		}
+
+		found, err := c.decodeEtrogCalldata(data)
 		if err != nil {
 			return false, err
 		}
 		if found {
-			c.IsMessage = bytes.Equal(methodID, methodIDClaimMessage)
+			c.IsMessage = bytes.Equal(methodID, claimMessageEtrogMethodID)
 			return true, nil
 		}
 		return false, nil
-	} else {
+
+	case bytes.Equal(methodID, claimAssetPreEtrogMethodID):
+		fallthrough
+	case bytes.Equal(methodID, claimMessagePreEtrogMethodID):
+		bridgeABI, err := abi.JSON(strings.NewReader(polygonzkevmbridge.PolygonzkevmbridgeABI))
+		if err != nil {
+			return false, err
+		}
+		// Recover Method from signature and ABI
+		method, err := bridgeABI.MethodById(methodID)
+		if err != nil {
+			return false, err
+		}
+		data, err := method.Inputs.Unpack(input[4:])
+		if err != nil {
+			return false, err
+		}
+
+		found, err := c.decodePreEtrogCalldata(data)
+		if err != nil {
+			return false, err
+		}
+		if found {
+			c.IsMessage = bytes.Equal(methodID, claimMessagePreEtrogMethodID)
+			return true, nil
+		}
+		return false, nil
+
+	default:
 		return false, nil
 	}
-	// TODO: support both claim asset & message, check if previous versions need special treatment
 }
-
-// Pre-Etrog bridge contract claim event
-// function claimAsset(
-// 	bytes32[_DEPOSIT_CONTRACT_TREE_DEPTH] calldata smtProof,
-// 	uint32 index,
-// 	bytes32 mainnetExitRoot,
-// 	bytes32 rollupExitRoot,
-// 	uint32 originNetwork,
-// 	address originTokenAddress,
-// 	uint32 destinationNetwork,
-// 	address destinationAddress,
-// 	uint256 amount,
-// 	bytes calldata metadata
-// )
-
-// function claimMessage(
-// 	bytes32[_DEPOSIT_CONTRACT_TREE_DEPTH] calldata smtProof,
-// 	uint32 index,
-// 	bytes32 mainnetExitRoot,
-// 	bytes32 rollupExitRoot,
-// 	uint32 originNetwork,
-// 	address originAddress,
-// 	uint32 destinationNetwork,
-// 	address destinationAddress,
-// 	uint256 amount,
-// 	bytes calldata metadata
-// )
