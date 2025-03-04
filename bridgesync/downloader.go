@@ -81,7 +81,7 @@ func buildAppender(client EthClienter, bridgeAddr common.Address, syncFullClaims
 			TxHash:             l.TxHash,
 			FromAddress:        l.Address,
 		}
-		calldata, err := getBridgeCalldata(client, bridgeAddr, l.TxHash, bridge)
+		calldata, err := getBridgeCalldata(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf(
 				"error getting calldata for bridge event %+v: %w",
@@ -190,7 +190,6 @@ func getBridgeCalldata(
 	client EthClienter,
 	bridgeAddr common.Address,
 	txHash common.Hash,
-	bridge *Bridge,
 ) ([]byte, error) {
 	c := &call{}
 	err := client.Client().Call(c, "debug_traceTransaction", txHash, tracerCfg{Tracer: "callTracer"})
@@ -214,107 +213,13 @@ func getBridgeCalldata(
 
 		// TODO: check for valid check
 		if currentCall.To == bridgeAddr {
-			calldata, err := getBridgeCalldataFromInput(
-				currentCall.Input,
-				bridge,
-			)
-			if err != nil {
-				return nil, err
-			}
-			return calldata, nil
+			return currentCall.Input, nil
 		}
 		for _, c := range currentCall.Calls {
 			callStack.Push(c)
 		}
 	}
 	return nil, db.ErrNotFound
-}
-
-func getBridgeCalldataFromInput(input []byte, bridge *Bridge) ([]byte, error) {
-	smcAbi, err := abi.JSON(strings.NewReader(polygonzkevmbridgev2.Polygonzkevmbridgev2ABI))
-	if err != nil {
-		return nil, err
-	}
-	methodID := input[:4]
-	// Recover Method from signature and ABI
-	method, err := smcAbi.MethodById(methodID)
-	if err != nil {
-		return nil, err
-	}
-	data, err := method.Inputs.Unpack(input[4:])
-	if err != nil {
-		return nil, err
-	}
-	// Ignore other methods
-	if bytes.Equal(methodID, methodIDBridgeAsset) {
-		calldata, err := decodeBridgeAssetCallData(data, bridge)
-		if err != nil {
-			return nil, err
-		}
-		return calldata, nil
-	} else if bytes.Equal(methodID, methodIDBridgeMessage) {
-		calldata, err := decodeBridgeMessageCallData(data, bridge)
-		if err != nil {
-			return nil, err
-		}
-		return calldata, nil
-	} else {
-		return nil, fmt.Errorf("unexpected method ID: %s", methodID)
-	}
-}
-
-func decodeBridgeAssetCallData(data []interface{}, bridge *Bridge) ([]byte, error) {
-	/* Unpack method inputs
-	bridgeAsset(
-		0: destinationNetwork,
-		1: destinationAddress,
-		2: amount,
-		3: token,
-		4: forceUpdateGlobalExitRoot,
-		5: permitData,
-	)
-	*/
-	destinationNetwork, ok := data[0].(uint32)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for 'destinationNetwork'. Expected 'uint32', got '%T'", data[0])
-	}
-	if destinationNetwork != bridge.DestinationNetwork {
-		return nil, fmt.Errorf("unexpected destination network. Expected '%d', got '%d'",
-			bridge.DestinationNetwork,
-			destinationNetwork,
-		)
-	}
-	calldata, ok := data[5].([]byte)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for 'bridge calldata'. Expected '[]byte', got '%T'", data[5])
-	}
-	return calldata, nil
-}
-
-func decodeBridgeMessageCallData(data []interface{}, bridge *Bridge) ([]byte, error) {
-	/* Unpack method inputs
-	bridgeAsset(
-		0: destinationNetwork,
-		1: destinationAddress,
-		2: forceUpdateGlobalExitRoot,
-		3: metadata,
-	)
-	*/
-	destinationNetwork, ok := data[0].(uint32)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for 'destinationNetwork'. Expected 'uint32', got '%T'", data[0])
-	}
-	if destinationNetwork != bridge.DestinationNetwork {
-		return nil, fmt.Errorf("unexpected destination network. Expected '%d', got '%d'",
-			bridge.DestinationNetwork,
-			destinationNetwork,
-		)
-	}
-	calldata, ok := data[3].([]byte)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type for 'bridge calldata'. Expected '[]byte', got '%T'", data[3])
-	}
-	return calldata, nil
 }
 
 func setClaimCalldata(client EthClienter, bridge common.Address, txHash common.Hash, claim *Claim) error {
