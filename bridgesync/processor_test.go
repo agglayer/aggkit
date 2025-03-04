@@ -1202,7 +1202,7 @@ func TestGetClaimsPaged(t *testing.T) {
 	}
 }
 
-func TestGetTokenMapping(t *testing.T) {
+func TestProcessor_GetTokenMappings(t *testing.T) {
 	t.Parallel()
 
 	const tokenMappingsCount = 50

@@ -161,7 +161,7 @@ func TestGetBridgesPublishedTopLevel(t *testing.T) {
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
-func TestGetTokenMappings(t *testing.T) {
+func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	const (
 		syncBlockChunkSize         = uint64(100)
 		initialBlock               = uint64(0)
