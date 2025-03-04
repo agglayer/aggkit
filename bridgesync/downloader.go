@@ -31,9 +31,6 @@ var (
 	tokenMappingEventSignature  = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
 	methodIDClaimAsset          = common.Hex2Bytes("ccaa2d11")
 	methodIDClaimMessage        = common.Hex2Bytes("f5efcd79")
-	// TODO: get the correct method IDs
-	methodIDBridgeAsset   = common.Hex2Bytes("ccaa2d11")
-	methodIDBridgeMessage = common.Hex2Bytes("ccaa2d11")
 )
 
 // EthClienter defines the methods required to interact with an Ethereum client.
