@@ -62,6 +62,7 @@ type Bridge struct {
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
 	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
+	Calldata           []byte         `meddler:"calldata" json:"calldata"`
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
