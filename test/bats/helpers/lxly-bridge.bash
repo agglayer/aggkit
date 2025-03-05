@@ -143,8 +143,7 @@ function find_injected_info_after_index() {
         log "$injected_info"
         log "------ injected_info ------"
 
-        local result=$(echo "$injected_info" | jq -r '.result // empty')
-        if [[ "$result" == "0x0" ]]; then
+        if [[ -z "$injected_info" || "$injected_info" == "0x0" ]]; then
             log "Didn't find injected L1InfoTree leaf after index on destination network"
             # Fail test if max attempts are reached
             if [[ "$attempt" -ge "$max_attempts" ]]; then
