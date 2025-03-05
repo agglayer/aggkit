@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -17,6 +18,9 @@ func TestBuildAppender(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	blockNum := uint64(1)
 	client := mocks.NewEthClienter(t)
+	client.EXPECT().
+		TransactionByHash(mock.Anything, mock.Anything).
+		Return(types.NewTx(&types.LegacyTx{}), false, nil)
 
 	bridgeV2Abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
 	require.NoError(t, err)

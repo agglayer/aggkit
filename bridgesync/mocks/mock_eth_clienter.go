@@ -13,8 +13,6 @@ import (
 
 	mock "github.com/stretchr/testify/mock"
 
-	rpc "github.com/ethereum/go-ethereum/rpc"
-
 	types "github.com/ethereum/go-ethereum/core/types"
 )
 
@@ -261,53 +259,6 @@ func (_c *EthClienter_CallContract_Call) Return(_a0 []byte, _a1 error) *EthClien
 }
 
 func (_c *EthClienter_CallContract_Call) RunAndReturn(run func(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error)) *EthClienter_CallContract_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// Client provides a mock function with no fields
-func (_m *EthClienter) Client() *rpc.Client {
-	ret := _m.Called()
-
-	if len(ret) == 0 {
-		panic("no return value specified for Client")
-	}
-
-	var r0 *rpc.Client
-	if rf, ok := ret.Get(0).(func() *rpc.Client); ok {
-		r0 = rf()
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*rpc.Client)
-		}
-	}
-
-	return r0
-}
-
-// EthClienter_Client_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Client'
-type EthClienter_Client_Call struct {
-	*mock.Call
-}
-
-// Client is a helper method to define mock.On call
-func (_e *EthClienter_Expecter) Client() *EthClienter_Client_Call {
-	return &EthClienter_Client_Call{Call: _e.mock.On("Client")}
-}
-
-func (_c *EthClienter_Client_Call) Run(run func()) *EthClienter_Client_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run()
-	})
-	return _c
-}
-
-func (_c *EthClienter_Client_Call) Return(_a0 *rpc.Client) *EthClienter_Client_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *EthClienter_Client_Call) RunAndReturn(run func() *rpc.Client) *EthClienter_Client_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -1004,6 +955,72 @@ func (_c *EthClienter_SuggestGasTipCap_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
+// TransactionByHash provides a mock function with given fields: ctx, txHash
+func (_m *EthClienter) TransactionByHash(ctx context.Context, txHash common.Hash) (*types.Transaction, bool, error) {
+	ret := _m.Called(ctx, txHash)
+
+	if len(ret) == 0 {
+		panic("no return value specified for TransactionByHash")
+	}
+
+	var r0 *types.Transaction
+	var r1 bool
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) (*types.Transaction, bool, error)); ok {
+		return rf(ctx, txHash)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) *types.Transaction); ok {
+		r0 = rf(ctx, txHash)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.Transaction)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, common.Hash) bool); ok {
+		r1 = rf(ctx, txHash)
+	} else {
+		r1 = ret.Get(1).(bool)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, common.Hash) error); ok {
+		r2 = rf(ctx, txHash)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// EthClienter_TransactionByHash_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TransactionByHash'
+type EthClienter_TransactionByHash_Call struct {
+	*mock.Call
+}
+
+// TransactionByHash is a helper method to define mock.On call
+//   - ctx context.Context
+//   - txHash common.Hash
+func (_e *EthClienter_Expecter) TransactionByHash(ctx interface{}, txHash interface{}) *EthClienter_TransactionByHash_Call {
+	return &EthClienter_TransactionByHash_Call{Call: _e.mock.On("TransactionByHash", ctx, txHash)}
+}
+
+func (_c *EthClienter_TransactionByHash_Call) Run(run func(ctx context.Context, txHash common.Hash)) *EthClienter_TransactionByHash_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *EthClienter_TransactionByHash_Call) Return(tx *types.Transaction, isPending bool, err error) *EthClienter_TransactionByHash_Call {
+	_c.Call.Return(tx, isPending, err)
+	return _c
+}
+
+func (_c *EthClienter_TransactionByHash_Call) RunAndReturn(run func(context.Context, common.Hash) (*types.Transaction, bool, error)) *EthClienter_TransactionByHash_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // TransactionCount provides a mock function with given fields: ctx, blockHash
 func (_m *EthClienter) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
 	ret := _m.Called(ctx, blockHash)
@@ -1117,6 +1134,65 @@ func (_c *EthClienter_TransactionInBlock_Call) Return(_a0 *types.Transaction, _a
 }
 
 func (_c *EthClienter_TransactionInBlock_Call) RunAndReturn(run func(context.Context, common.Hash, uint) (*types.Transaction, error)) *EthClienter_TransactionInBlock_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// TransactionReceipt provides a mock function with given fields: ctx, txHash
+func (_m *EthClienter) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+	ret := _m.Called(ctx, txHash)
+
+	if len(ret) == 0 {
+		panic("no return value specified for TransactionReceipt")
+	}
+
+	var r0 *types.Receipt
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) (*types.Receipt, error)); ok {
+		return rf(ctx, txHash)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) *types.Receipt); ok {
+		r0 = rf(ctx, txHash)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.Receipt)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, common.Hash) error); ok {
+		r1 = rf(ctx, txHash)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// EthClienter_TransactionReceipt_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'TransactionReceipt'
+type EthClienter_TransactionReceipt_Call struct {
+	*mock.Call
+}
+
+// TransactionReceipt is a helper method to define mock.On call
+//   - ctx context.Context
+//   - txHash common.Hash
+func (_e *EthClienter_Expecter) TransactionReceipt(ctx interface{}, txHash interface{}) *EthClienter_TransactionReceipt_Call {
+	return &EthClienter_TransactionReceipt_Call{Call: _e.mock.On("TransactionReceipt", ctx, txHash)}
+}
+
+func (_c *EthClienter_TransactionReceipt_Call) Run(run func(ctx context.Context, txHash common.Hash)) *EthClienter_TransactionReceipt_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *EthClienter_TransactionReceipt_Call) Return(_a0 *types.Receipt, _a1 error) *EthClienter_TransactionReceipt_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *EthClienter_TransactionReceipt_Call) RunAndReturn(run func(context.Context, common.Hash) (*types.Receipt, error)) *EthClienter_TransactionReceipt_Call {
 	_c.Call.Return(run)
 	return _c
 }

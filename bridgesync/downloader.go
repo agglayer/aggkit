@@ -2,13 +2,13 @@ package bridgesync
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"math/big"
 	"strings"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/polygonzkevmbridgev2"
-	rpcTypes "github.com/0xPolygon/cdk-rpc/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum"
@@ -17,8 +17,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/golang-collections/collections/stack"
 )
 
 var (
@@ -35,18 +33,13 @@ var (
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
 )
 
-const (
-	// debugTraceTx is the name of the debug method used to trace a transaction.
-	debugTraceTx = "debug_traceTransaction"
-)
-
 // EthClienter defines the methods required to interact with an Ethereum client.
 type EthClienter interface {
 	ethereum.LogFilterer
 	ethereum.BlockNumberReader
 	ethereum.ChainReader
+	ethereum.TransactionReader
 	bind.ContractBackend
-	Client() *rpc.Client
 }
 
 func buildAppender(client EthClienter, bridgeAddr common.Address, syncFullClaims bool) (sync.LogAppenderMap, error) {
@@ -71,7 +64,7 @@ func buildAppender(client EthClienter, bridgeAddr common.Address, syncFullClaims
 			)
 		}
 
-		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		calldata, err := extractCalldata(client, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract the bridge event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -117,7 +110,7 @@ func buildAppender(client EthClienter, bridgeAddr common.Address, syncFullClaims
 			FromAddress:        l.Address,
 		}
 		if syncFullClaims {
-			if err := setClaimCalldata(client, bridgeAddr, l.TxHash, claim); err != nil {
+			if err := claim.populateClaimCalldata(client, l.TxHash); err != nil {
 				return err
 			}
 		}
@@ -143,7 +136,7 @@ func buildAppender(client EthClienter, bridgeAddr common.Address, syncFullClaims
 			Amount:             claimEvent.Amount,
 		}
 		if syncFullClaims {
-			if err := setClaimCalldata(client, bridgeAddr, l.TxHash, claim); err != nil {
+			if err := claim.populateClaimCalldata(client, l.TxHash); err != nil {
 				return err
 			}
 		}
@@ -160,7 +153,7 @@ func buildAppender(client EthClienter, bridgeAddr common.Address, syncFullClaims
 			)
 		}
 
-		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		calldata, err := extractCalldata(client, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract the token mapping event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -182,55 +175,25 @@ func buildAppender(client EthClienter, bridgeAddr common.Address, syncFullClaims
 	return appender, nil
 }
 
-type call struct {
-	To    common.Address    `json:"to"`
-	Value *rpcTypes.ArgBig  `json:"value"`
-	Err   *string           `json:"error"`
-	Input rpcTypes.ArgBytes `json:"input"`
-	Calls []call            `json:"calls"`
-}
-
-type tracerCfg struct {
-	Tracer string `json:"tracer"`
-}
-
 // extractCalldata tries to extract the calldata for the transaction indentified by transaction hash.
-// It relies on debug_traceTransaction JSON RPC function.
-func extractCalldata(client EthClienter, contractAddr common.Address, txHash common.Hash) ([]byte, error) {
-	c := &call{}
-	err := client.Client().Call(c, debugTraceTx, txHash, tracerCfg{Tracer: "callTracer"})
+// It relies on eth_getTransactionByHash JSON RPC function.
+func extractCalldata(client EthClienter, txHash common.Hash) ([]byte, error) {
+	tx, _, err := client.TransactionByHash(context.Background(), txHash)
 	if err != nil {
 		return nil, err
 	}
 
-	callStack := stack.New()
-	callStack.Push(*c)
-	for callStack.Len() > 0 {
-		currentCallInterface := callStack.Pop()
-		currentCall, ok := currentCallInterface.(call)
-		if !ok {
-			return nil, fmt.Errorf("unexpected type for 'currentCall'. Expected 'call', got '%T'", currentCallInterface)
-		}
-
-		if currentCall.To == contractAddr {
-			return currentCall.Input, nil
-		}
-
-		for _, c := range currentCall.Calls {
-			callStack.Push(c)
-		}
-	}
-	return nil, db.ErrNotFound
+	return tx.Data(), nil
 }
 
-// setClaimCalldata tries to find the claim transaction calldata and decodes it.
-func setClaimCalldata(client EthClienter, bridgeAddr common.Address, txHash common.Hash, claim *Claim) error {
-	callData, err := extractCalldata(client, bridgeAddr, txHash)
+// populateClaimCalldata tries to find the claim transaction calldata and decodes it.
+func (c *Claim) populateClaimCalldata(client EthClienter, txHash common.Hash) error {
+	callData, err := extractCalldata(client, txHash)
 	if err != nil {
 		return err
 	}
 
-	found, err := claim.tryDecodeClaimCalldata(callData)
+	found, err := c.tryDecodeClaimCalldata(callData)
 	if err != nil {
 		return err
 	}

@@ -1934,7 +1934,7 @@ func TestClaimCalldata(t *testing.T) {
 				DestinationAddress: claimEvent.DestinationAddress,
 				Amount:             claimEvent.Amount,
 			}
-			err = setClaimCalldata(client, tc.bridgeAddr, tc.log.TxHash, &actualClaim)
+			err = actualClaim.populateClaimCalldata(client, tc.log.TxHash)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedClaim, actualClaim)
 		})
