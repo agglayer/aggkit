@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
@@ -31,6 +32,10 @@ func TestBridgeEventE2E(t *testing.T) {
 	reorgs := 0
 	expectedBridges := []bridgesync.Bridge{}
 	lastDepositCount := uint32(0)
+
+	bridgeV2ABI, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
+	require.NoError(t, err)
+
 	for i := 1; i > 0; i++ {
 		// Send bridge
 		bridge := bridgesync.Bridge{
@@ -40,6 +45,17 @@ func TestBridgeEventE2E(t *testing.T) {
 			DestinationAddress: common.HexToAddress("f00"),
 			Metadata:           []byte{},
 		}
+
+		bridgeAssetInput, err := bridgeV2ABI.Pack("bridgeAsset",
+			bridge.DestinationNetwork,
+			bridge.DestinationAddress,
+			bridge.Amount,
+			bridge.OriginAddress,
+			true,
+			[]byte{})
+		require.NoError(t, err)
+		bridge.Calldata = bridgeAssetInput
+
 		lastDepositCount++
 		tx, err := setup.L1Environment.BridgeContract.BridgeAsset(
 			setup.L1Environment.Auth,
