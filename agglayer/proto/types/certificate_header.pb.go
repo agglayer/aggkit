@@ -109,7 +109,7 @@ type CertificateHeader struct {
 	Metadata *FixedBytes32 `protobuf:"bytes,8,opt,name=metadata,proto3" json:"metadata,omitempty"`
 	// Certificate status.
 	Status CertificateStatus `protobuf:"varint,9,opt,name=status,proto3,enum=agglayer.protocol.types.v1.CertificateStatus" json:"status,omitempty"`
-	// Certificate status error details.
+	// Certificate status error details. Present iff `status` is `CERTIFICATE_STATUS_IN_ERROR`.
 	Error *CertificateStatusError `protobuf:"bytes,10,opt,name=error,proto3" json:"error,omitempty"`
 	// Settlement transaction hash.
 	SettlementTxHash *FixedBytes32 `protobuf:"bytes,11,opt,name=settlement_tx_hash,json=settlementTxHash,proto3" json:"settlement_tx_hash,omitempty"`

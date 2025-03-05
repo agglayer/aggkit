@@ -12,6 +12,17 @@ service ConfigurationService {
   rpc GetEpochConfiguration(GetEpochConfigurationRequest) returns (GetEpochConfigurationResponse);
 }
 
+// The kind of error that occurred and that are reported by the configuration
+// service.
+enum GetEpochConfigurationErrorKind {
+  // Unspecified error.
+  GET_EPOCH_CONFIGURATION_ERROR_KIND_UNSPECIFIED = 0;
+
+  // The AggLayer isn't configured with a BlockClock configuration, thus no
+  // EpochConfiguration is available.
+  GET_EPOCH_CONFIGURATION_ERROR_KIND_UNEXPECTED_CLOCK_CONFIGURATION = 1;
+}
+
 // Request to get the current epoch configuration.
 message GetEpochConfigurationRequest {}
 

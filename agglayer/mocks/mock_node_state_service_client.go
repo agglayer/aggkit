@@ -99,8 +99,8 @@ func (_c *NodeStateServiceClient_GetCertificateHeader_Call) RunAndReturn(run fun
 	return _c
 }
 
-// GetLatestKnownCertificateHeader provides a mock function with given fields: ctx, in, opts
-func (_m *NodeStateServiceClient) GetLatestKnownCertificateHeader(ctx context.Context, in *node.GetLatestKnownCertificateHeaderRequest, opts ...grpc.CallOption) (*node.GetLatestKnownCertificateHeaderResponse, error) {
+// GetLatestCertificateHeader provides a mock function with given fields: ctx, in, opts
+func (_m *NodeStateServiceClient) GetLatestCertificateHeader(ctx context.Context, in *node.GetLatestCertificateHeaderRequest, opts ...grpc.CallOption) (*node.GetLatestCertificateHeaderResponse, error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -111,23 +111,23 @@ func (_m *NodeStateServiceClient) GetLatestKnownCertificateHeader(ctx context.Co
 	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetLatestKnownCertificateHeader")
+		panic("no return value specified for GetLatestCertificateHeader")
 	}
 
-	var r0 *node.GetLatestKnownCertificateHeaderResponse
+	var r0 *node.GetLatestCertificateHeaderResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *node.GetLatestKnownCertificateHeaderRequest, ...grpc.CallOption) (*node.GetLatestKnownCertificateHeaderResponse, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *node.GetLatestCertificateHeaderRequest, ...grpc.CallOption) (*node.GetLatestCertificateHeaderResponse, error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *node.GetLatestKnownCertificateHeaderRequest, ...grpc.CallOption) *node.GetLatestKnownCertificateHeaderResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *node.GetLatestCertificateHeaderRequest, ...grpc.CallOption) *node.GetLatestCertificateHeaderResponse); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*node.GetLatestKnownCertificateHeaderResponse)
+			r0 = ret.Get(0).(*node.GetLatestCertificateHeaderResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, *node.GetLatestKnownCertificateHeaderRequest, ...grpc.CallOption) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, *node.GetLatestCertificateHeaderRequest, ...grpc.CallOption) error); ok {
 		r1 = rf(ctx, in, opts...)
 	} else {
 		r1 = ret.Error(1)
@@ -136,21 +136,21 @@ func (_m *NodeStateServiceClient) GetLatestKnownCertificateHeader(ctx context.Co
 	return r0, r1
 }
 
-// NodeStateServiceClient_GetLatestKnownCertificateHeader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestKnownCertificateHeader'
-type NodeStateServiceClient_GetLatestKnownCertificateHeader_Call struct {
+// NodeStateServiceClient_GetLatestCertificateHeader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestCertificateHeader'
+type NodeStateServiceClient_GetLatestCertificateHeader_Call struct {
 	*mock.Call
 }
 
-// GetLatestKnownCertificateHeader is a helper method to define mock.On call
+// GetLatestCertificateHeader is a helper method to define mock.On call
 //   - ctx context.Context
-//   - in *node.GetLatestKnownCertificateHeaderRequest
+//   - in *node.GetLatestCertificateHeaderRequest
 //   - opts ...grpc.CallOption
-func (_e *NodeStateServiceClient_Expecter) GetLatestKnownCertificateHeader(ctx interface{}, in interface{}, opts ...interface{}) *NodeStateServiceClient_GetLatestKnownCertificateHeader_Call {
-	return &NodeStateServiceClient_GetLatestKnownCertificateHeader_Call{Call: _e.mock.On("GetLatestKnownCertificateHeader",
+func (_e *NodeStateServiceClient_Expecter) GetLatestCertificateHeader(ctx interface{}, in interface{}, opts ...interface{}) *NodeStateServiceClient_GetLatestCertificateHeader_Call {
+	return &NodeStateServiceClient_GetLatestCertificateHeader_Call{Call: _e.mock.On("GetLatestCertificateHeader",
 		append([]interface{}{ctx, in}, opts...)...)}
 }
 
-func (_c *NodeStateServiceClient_GetLatestKnownCertificateHeader_Call) Run(run func(ctx context.Context, in *node.GetLatestKnownCertificateHeaderRequest, opts ...grpc.CallOption)) *NodeStateServiceClient_GetLatestKnownCertificateHeader_Call {
+func (_c *NodeStateServiceClient_GetLatestCertificateHeader_Call) Run(run func(ctx context.Context, in *node.GetLatestCertificateHeaderRequest, opts ...grpc.CallOption)) *NodeStateServiceClient_GetLatestCertificateHeader_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		variadicArgs := make([]grpc.CallOption, len(args)-2)
 		for i, a := range args[2:] {
@@ -158,165 +158,17 @@ func (_c *NodeStateServiceClient_GetLatestKnownCertificateHeader_Call) Run(run f
 				variadicArgs[i] = a.(grpc.CallOption)
 			}
 		}
-		run(args[0].(context.Context), args[1].(*node.GetLatestKnownCertificateHeaderRequest), variadicArgs...)
+		run(args[0].(context.Context), args[1].(*node.GetLatestCertificateHeaderRequest), variadicArgs...)
 	})
 	return _c
 }
 
-func (_c *NodeStateServiceClient_GetLatestKnownCertificateHeader_Call) Return(_a0 *node.GetLatestKnownCertificateHeaderResponse, _a1 error) *NodeStateServiceClient_GetLatestKnownCertificateHeader_Call {
+func (_c *NodeStateServiceClient_GetLatestCertificateHeader_Call) Return(_a0 *node.GetLatestCertificateHeaderResponse, _a1 error) *NodeStateServiceClient_GetLatestCertificateHeader_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *NodeStateServiceClient_GetLatestKnownCertificateHeader_Call) RunAndReturn(run func(context.Context, *node.GetLatestKnownCertificateHeaderRequest, ...grpc.CallOption) (*node.GetLatestKnownCertificateHeaderResponse, error)) *NodeStateServiceClient_GetLatestKnownCertificateHeader_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetLatestPendingCertificateHeader provides a mock function with given fields: ctx, in, opts
-func (_m *NodeStateServiceClient) GetLatestPendingCertificateHeader(ctx context.Context, in *node.GetLatestPendingCertificateHeaderRequest, opts ...grpc.CallOption) (*node.GetLatestPendingCertificateHeaderResponse, error) {
-	_va := make([]interface{}, len(opts))
-	for _i := range opts {
-		_va[_i] = opts[_i]
-	}
-	var _ca []interface{}
-	_ca = append(_ca, ctx, in)
-	_ca = append(_ca, _va...)
-	ret := _m.Called(_ca...)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetLatestPendingCertificateHeader")
-	}
-
-	var r0 *node.GetLatestPendingCertificateHeaderResponse
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *node.GetLatestPendingCertificateHeaderRequest, ...grpc.CallOption) (*node.GetLatestPendingCertificateHeaderResponse, error)); ok {
-		return rf(ctx, in, opts...)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, *node.GetLatestPendingCertificateHeaderRequest, ...grpc.CallOption) *node.GetLatestPendingCertificateHeaderResponse); ok {
-		r0 = rf(ctx, in, opts...)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*node.GetLatestPendingCertificateHeaderResponse)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, *node.GetLatestPendingCertificateHeaderRequest, ...grpc.CallOption) error); ok {
-		r1 = rf(ctx, in, opts...)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// NodeStateServiceClient_GetLatestPendingCertificateHeader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestPendingCertificateHeader'
-type NodeStateServiceClient_GetLatestPendingCertificateHeader_Call struct {
-	*mock.Call
-}
-
-// GetLatestPendingCertificateHeader is a helper method to define mock.On call
-//   - ctx context.Context
-//   - in *node.GetLatestPendingCertificateHeaderRequest
-//   - opts ...grpc.CallOption
-func (_e *NodeStateServiceClient_Expecter) GetLatestPendingCertificateHeader(ctx interface{}, in interface{}, opts ...interface{}) *NodeStateServiceClient_GetLatestPendingCertificateHeader_Call {
-	return &NodeStateServiceClient_GetLatestPendingCertificateHeader_Call{Call: _e.mock.On("GetLatestPendingCertificateHeader",
-		append([]interface{}{ctx, in}, opts...)...)}
-}
-
-func (_c *NodeStateServiceClient_GetLatestPendingCertificateHeader_Call) Run(run func(ctx context.Context, in *node.GetLatestPendingCertificateHeaderRequest, opts ...grpc.CallOption)) *NodeStateServiceClient_GetLatestPendingCertificateHeader_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := make([]grpc.CallOption, len(args)-2)
-		for i, a := range args[2:] {
-			if a != nil {
-				variadicArgs[i] = a.(grpc.CallOption)
-			}
-		}
-		run(args[0].(context.Context), args[1].(*node.GetLatestPendingCertificateHeaderRequest), variadicArgs...)
-	})
-	return _c
-}
-
-func (_c *NodeStateServiceClient_GetLatestPendingCertificateHeader_Call) Return(_a0 *node.GetLatestPendingCertificateHeaderResponse, _a1 error) *NodeStateServiceClient_GetLatestPendingCertificateHeader_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *NodeStateServiceClient_GetLatestPendingCertificateHeader_Call) RunAndReturn(run func(context.Context, *node.GetLatestPendingCertificateHeaderRequest, ...grpc.CallOption) (*node.GetLatestPendingCertificateHeaderResponse, error)) *NodeStateServiceClient_GetLatestPendingCertificateHeader_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetLatestSettledCertificateHeader provides a mock function with given fields: ctx, in, opts
-func (_m *NodeStateServiceClient) GetLatestSettledCertificateHeader(ctx context.Context, in *node.GetLatestSettledCertificateHeaderRequest, opts ...grpc.CallOption) (*node.GetLatestSettledCertificateHeaderResponse, error) {
-	_va := make([]interface{}, len(opts))
-	for _i := range opts {
-		_va[_i] = opts[_i]
-	}
-	var _ca []interface{}
-	_ca = append(_ca, ctx, in)
-	_ca = append(_ca, _va...)
-	ret := _m.Called(_ca...)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetLatestSettledCertificateHeader")
-	}
-
-	var r0 *node.GetLatestSettledCertificateHeaderResponse
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *node.GetLatestSettledCertificateHeaderRequest, ...grpc.CallOption) (*node.GetLatestSettledCertificateHeaderResponse, error)); ok {
-		return rf(ctx, in, opts...)
-	}
-	if rf, ok := ret.Get(0).(func(context.Context, *node.GetLatestSettledCertificateHeaderRequest, ...grpc.CallOption) *node.GetLatestSettledCertificateHeaderResponse); ok {
-		r0 = rf(ctx, in, opts...)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*node.GetLatestSettledCertificateHeaderResponse)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(context.Context, *node.GetLatestSettledCertificateHeaderRequest, ...grpc.CallOption) error); ok {
-		r1 = rf(ctx, in, opts...)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// NodeStateServiceClient_GetLatestSettledCertificateHeader_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestSettledCertificateHeader'
-type NodeStateServiceClient_GetLatestSettledCertificateHeader_Call struct {
-	*mock.Call
-}
-
-// GetLatestSettledCertificateHeader is a helper method to define mock.On call
-//   - ctx context.Context
-//   - in *node.GetLatestSettledCertificateHeaderRequest
-//   - opts ...grpc.CallOption
-func (_e *NodeStateServiceClient_Expecter) GetLatestSettledCertificateHeader(ctx interface{}, in interface{}, opts ...interface{}) *NodeStateServiceClient_GetLatestSettledCertificateHeader_Call {
-	return &NodeStateServiceClient_GetLatestSettledCertificateHeader_Call{Call: _e.mock.On("GetLatestSettledCertificateHeader",
-		append([]interface{}{ctx, in}, opts...)...)}
-}
-
-func (_c *NodeStateServiceClient_GetLatestSettledCertificateHeader_Call) Run(run func(ctx context.Context, in *node.GetLatestSettledCertificateHeaderRequest, opts ...grpc.CallOption)) *NodeStateServiceClient_GetLatestSettledCertificateHeader_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		variadicArgs := make([]grpc.CallOption, len(args)-2)
-		for i, a := range args[2:] {
-			if a != nil {
-				variadicArgs[i] = a.(grpc.CallOption)
-			}
-		}
-		run(args[0].(context.Context), args[1].(*node.GetLatestSettledCertificateHeaderRequest), variadicArgs...)
-	})
-	return _c
-}
-
-func (_c *NodeStateServiceClient_GetLatestSettledCertificateHeader_Call) Return(_a0 *node.GetLatestSettledCertificateHeaderResponse, _a1 error) *NodeStateServiceClient_GetLatestSettledCertificateHeader_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *NodeStateServiceClient_GetLatestSettledCertificateHeader_Call) RunAndReturn(run func(context.Context, *node.GetLatestSettledCertificateHeaderRequest, ...grpc.CallOption) (*node.GetLatestSettledCertificateHeaderResponse, error)) *NodeStateServiceClient_GetLatestSettledCertificateHeader_Call {
+func (_c *NodeStateServiceClient_GetLatestCertificateHeader_Call) RunAndReturn(run func(context.Context, *node.GetLatestCertificateHeaderRequest, ...grpc.CallOption) (*node.GetLatestCertificateHeaderResponse, error)) *NodeStateServiceClient_GetLatestCertificateHeader_Call {
 	_c.Call.Return(run)
 	return _c
 }

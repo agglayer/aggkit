@@ -60,18 +60,24 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		return common.Hash{}, errHasAggProofAndSig
 	}
 
-	var aggchainProof *protoTypes.AggchainProof
+	var aggchainData *protoTypes.AggchainData
 	if len(certificate.AggchainProof) > 0 {
-		aggchainProof = &protoTypes.AggchainProof{
-			Proof: &protoTypes.AggchainProof_Sp1Stark{
-				Sp1Stark: &protoTypes.FixedBytes32{
-					Value: certificate.AggchainProof,
+		aggchainData = &protoTypes.AggchainData{
+			Data: &protoTypes.AggchainData_Generic{
+				Generic: &protoTypes.AggchainProof{
+					Proof: &protoTypes.AggchainProof_Sp1Stark{
+						Sp1Stark: certificate.AggchainProof,
+					},
+					AggchainParams: &protoTypes.FixedBytes32{
+						Value: certificate.AggchainParams,
+					},
+					Context: map[string][]byte{}, // TODO
 				},
 			},
 		}
 	} else if len(certificate.Signature) > 0 {
-		aggchainProof = &protoTypes.AggchainProof{
-			Proof: &protoTypes.AggchainProof_Signature{
+		aggchainData = &protoTypes.AggchainData{
+			Data: &protoTypes.AggchainData_Signature{
 				Signature: &protoTypes.FixedBytes65{
 					Value: certificate.Signature,
 				},
@@ -94,7 +100,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 			Value: certificate.Metadata.Bytes(),
 		},
 		CustomChainData:     certificate.CustomChainData,
-		AggchainProof:       aggchainProof,
+		AggchainData:        aggchainData,
 		BridgeExits:         make([]*protoTypes.BridgeExit, 0, len(certificate.BridgeExits)),
 		ImportedBridgeExits: make([]*protoTypes.ImportedBridgeExit, 0, len(certificate.ImportedBridgeExits)),
 	}
@@ -126,8 +132,13 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 // GetLatestPendingCertificateHeader returns the latest pending certificate header from the AggLayer
 func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
-	response, err := a.networkStateService.GetLatestSettledCertificateHeader(ctx,
-		&node.GetLatestSettledCertificateHeaderRequest{NetworkId: networkID})
+	response, err := a.networkStateService.GetLatestCertificateHeader(
+		ctx,
+		&node.GetLatestCertificateHeaderRequest{
+			NetworkId: networkID,
+			Type:      node.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_SETTLED,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -138,8 +149,13 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 // GetLatestPendingCertificateHeader returns the latest pending certificate header from the AggLayer
 func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
-	response, err := a.networkStateService.GetLatestPendingCertificateHeader(ctx,
-		&node.GetLatestPendingCertificateHeaderRequest{NetworkId: networkID})
+	response, err := a.networkStateService.GetLatestCertificateHeader(
+		ctx,
+		&node.GetLatestCertificateHeaderRequest{
+			NetworkId: networkID,
+			Type:      node.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_PENDING,
+		},
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -247,7 +263,7 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*protoType
 					},
 					Siblings: convertToProtoSiblings(claimData.ProofGERToL1Root.Proof),
 				},
-				L1Leaf: &protoTypes.L1InfoTreeLeaf{
+				L1Leaf: &protoTypes.L1InfoTreeLeafWithContext{
 					L1InfoTreeIndex: claimData.L1Leaf.L1InfoTreeIndex,
 					Rer: &protoTypes.FixedBytes32{
 						Value: claimData.L1Leaf.RollupExitRoot.Bytes(),
@@ -255,7 +271,7 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*protoType
 					Mer: &protoTypes.FixedBytes32{
 						Value: claimData.L1Leaf.MainnetExitRoot.Bytes(),
 					},
-					Inner: &protoTypes.L1InfoTreeLeafInner{
+					Inner: &protoTypes.L1InfoTreeLeaf{
 						GlobalExitRoot: &protoTypes.FixedBytes32{
 							Value: claimData.L1Leaf.Inner.GlobalExitRoot.Bytes(),
 						},
@@ -288,7 +304,7 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*protoType
 					},
 					Siblings: convertToProtoSiblings(claimData.ProofGERToL1Root.Proof),
 				},
-				L1Leaf: &protoTypes.L1InfoTreeLeaf{
+				L1Leaf: &protoTypes.L1InfoTreeLeafWithContext{
 					L1InfoTreeIndex: claimData.L1Leaf.L1InfoTreeIndex,
 					Rer: &protoTypes.FixedBytes32{
 						Value: claimData.L1Leaf.RollupExitRoot.Bytes(),
@@ -296,7 +312,7 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*protoType
 					Mer: &protoTypes.FixedBytes32{
 						Value: claimData.L1Leaf.MainnetExitRoot.Bytes(),
 					},
-					Inner: &protoTypes.L1InfoTreeLeafInner{
+					Inner: &protoTypes.L1InfoTreeLeaf{
 						GlobalExitRoot: &protoTypes.FixedBytes32{
 							Value: claimData.L1Leaf.Inner.GlobalExitRoot.Bytes(),
 						},

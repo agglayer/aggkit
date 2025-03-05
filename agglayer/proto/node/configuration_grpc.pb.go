@@ -4,7 +4,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.4.0
 // - protoc             v5.29.3
-// source: node/agglayer_configuration_service.proto
+// source: node/configuration.proto
 
 package node
 
@@ -114,5 +114,5 @@ var ConfigurationService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "node/agglayer_configuration_service.proto",
+	Metadata: "node/configuration.proto",
 }

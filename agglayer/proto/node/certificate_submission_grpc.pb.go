@@ -4,7 +4,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.4.0
 // - protoc             v5.29.3
-// source: node/agglayer_certificate_submission_service.proto
+// source: node/certificate_submission.proto
 
 package node
 
@@ -115,5 +115,5 @@ var CertificateSubmissionService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "node/agglayer_certificate_submission_service.proto",
+	Metadata: "node/certificate_submission.proto",
 }

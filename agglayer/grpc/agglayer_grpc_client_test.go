@@ -74,7 +74,7 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 			networkStateService: networkStateServiceMock,
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestPendingCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetLatestPendingCertificateHeader(ctx, networkID)
 		require.ErrorContains(t, err, "test error")
@@ -91,7 +91,7 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 		epoch := uint64(10)
 		certificateIndex := uint64(1)
 
-		expectedResponse := &node.GetLatestPendingCertificateHeaderResponse{
+		expectedResponse := &node.GetLatestCertificateHeaderResponse{
 			CertificateHeader: &protoTypes.CertificateHeader{
 				NetworkId:        networkID,
 				Height:           100,
@@ -115,7 +115,7 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 			},
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestPendingCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetLatestPendingCertificateHeader(ctx, networkID)
 		require.NoError(t, err)
@@ -146,7 +146,7 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 			networkStateService: networkStateServiceMock,
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestSettledCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetLatestSettledCertificateHeader(ctx, networkID)
 		require.ErrorContains(t, err, "test error")
@@ -163,7 +163,7 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 		epoch := uint64(10)
 		certificateIndex := uint64(1)
 
-		expectedResponse := &node.GetLatestSettledCertificateHeaderResponse{
+		expectedResponse := &node.GetLatestCertificateHeaderResponse{
 			CertificateHeader: &protoTypes.CertificateHeader{
 				NetworkId:        networkID,
 				Height:           100,
@@ -187,7 +187,7 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 			},
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestSettledCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetLatestSettledCertificateHeader(ctx, networkID)
 		require.NoError(t, err)
@@ -275,6 +275,7 @@ func TestGetCertificateHeader(t *testing.T) {
 		require.Equal(t, expectedResponse.CertificateHeader.Metadata.Value, resp.Metadata.Bytes())
 	})
 }
+
 func TestSendCertificate(t *testing.T) {
 	t.Parallel()
 

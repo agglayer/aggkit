@@ -87,7 +87,7 @@ type BridgeExit struct {
 	DestNetwork uint32 `protobuf:"varint,3,opt,name=dest_network,json=destNetwork,proto3" json:"dest_network,omitempty"`
 	// Address which will own the received token
 	DestAddress *FixedBytes20 `protobuf:"bytes,4,opt,name=dest_address,json=destAddress,proto3" json:"dest_address,omitempty"`
-	// Token amount sent
+	// Token amount sent, stored big-endian
 	Amount *FixedBytes32 `protobuf:"bytes,5,opt,name=amount,proto3" json:"amount,omitempty"`
 	// Metadata for the bridge exit
 	Metadata *FixedBytes32 `protobuf:"bytes,6,opt,name=metadata,proto3" json:"metadata,omitempty"`

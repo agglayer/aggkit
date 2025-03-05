@@ -135,6 +135,7 @@ type Certificate struct {
 	AggchainProof       []byte                `json:"aggchain_proof,omitempty"`
 	Signature           []byte                `json:"signature,omitempty"`
 	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
+	AggchainParams      []byte                `json:"aggchain_params,omitempty"`
 }
 
 // ID returns a string with the ident of this cert (height/certID)
