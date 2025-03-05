@@ -316,7 +316,7 @@ func TestClaimCalldata(t *testing.T) {
 	time.Sleep(1 * time.Second)
 	r, err = client.TransactionReceipt(ctx, tx.Hash())
 	require.NoError(t, err)
-	log.Infof("%+v", r.Logs)
+	log.Infof("Logs: %+v", r.Logs)
 
 	reverted := [2]bool{false, false}
 
@@ -1934,7 +1934,7 @@ func TestClaimCalldata(t *testing.T) {
 				DestinationAddress: claimEvent.DestinationAddress,
 				Amount:             claimEvent.Amount,
 			}
-			err = actualClaim.populateClaimCalldata(client, tc.log.TxHash)
+			err = actualClaim.setClaimCalldata(client.Client(), bridgeAddr, tc.log.TxHash)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedClaim, actualClaim)
 		})

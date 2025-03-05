@@ -140,7 +140,7 @@ func L1Setup(t *testing.T) *L1Environment {
 	)
 
 	// Bridge sync
-	testClient := TestClient{ClientRenamed: l1Client.Client()}
+	testClient := NewTestClient(l1Client.Client(), nil)
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
@@ -197,7 +197,7 @@ func L2Setup(t *testing.T) *L2Environment {
 
 	// Bridge sync
 	dbPathL2BridgeSync := path.Join(t.TempDir(), "BridgeSyncL2.sqlite")
-	testClient := TestClient{ClientRenamed: l2Client.Client()}
+	testClient := NewTestClient(l2Client.Client(), nil)
 
 	const (
 		waitForNewBlocksPeriod = 10 * time.Millisecond

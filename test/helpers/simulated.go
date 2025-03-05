@@ -10,6 +10,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -27,14 +28,22 @@ const (
 	base10 = 10
 )
 
-type ClientRenamed simulated.Client
+var _ aggkittypes.EthClienter = (*TestClient)(nil)
 
 type TestClient struct {
-	ClientRenamed
+	simulated.Client
+	aggkittypes.RPCClienter
 }
 
-func (tc TestClient) Client() *rpc.Client {
-	return nil
+func NewTestClient(ethClient simulated.Client, rpcClient aggkittypes.RPCClienter) *TestClient {
+	return &TestClient{
+		Client:      ethClient,
+		RPCClienter: rpcClient,
+	}
+}
+
+func (tc TestClient) Call(result any, method string, params ...any) error {
+	return tc.RPCClienter.Call(result, method, params)
 }
 
 // SimulatedBackendSetup defines the setup for a simulated backend.

@@ -6,8 +6,8 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
-	"github.com/agglayer/aggkit/bridgesync/mocks"
 	"github.com/agglayer/aggkit/sync"
+	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
@@ -17,10 +17,6 @@ import (
 func TestBuildAppender(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	blockNum := uint64(1)
-	client := mocks.NewEthClienter(t)
-	client.EXPECT().
-		TransactionByHash(mock.Anything, mock.Anything).
-		Return(types.NewTx(&types.LegacyTx{}), false, nil)
 
 	bridgeV2Abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
 	require.NoError(t, err)
@@ -28,11 +24,13 @@ func TestBuildAppender(t *testing.T) {
 	tests := []struct {
 		name           string
 		eventSignature common.Hash
+		callFrame      call
 		logBuilder     func() (types.Log, error)
 	}{
 		{
 			name:           "bridgeEventSignature appender",
 			eventSignature: bridgeEventSignature,
+			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(bridgeEventSignature)
 				if err != nil {
@@ -65,6 +63,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "claimEventSignaturePreEtrog appender",
 			eventSignature: claimEventSignaturePreEtrog,
+			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				bridgeV1Abi, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
 				require.NoError(t, err)
@@ -96,6 +95,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "claimEventSignature appender",
 			eventSignature: claimEventSignature,
+			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(claimEventSignature)
 				if err != nil {
@@ -124,6 +124,7 @@ func TestBuildAppender(t *testing.T) {
 		{
 			name:           "tokenMappingEventSignature appender",
 			eventSignature: tokenMappingEventSignature,
+			callFrame:      call{To: bridgeAddr},
 			logBuilder: func() (types.Log, error) {
 				event, err := bridgeV2Abi.EventByID(tokenMappingEventSignature)
 				if err != nil {
@@ -155,7 +156,13 @@ func TestBuildAppender(t *testing.T) {
 			log, err := tt.logBuilder()
 			require.NoError(t, err)
 
-			appenderMap, err := buildAppender(client, bridgeAddr, false)
+			ethClient := mocks.NewEthClienter(t)
+			ethClient.EXPECT().
+				Call(&tt.callFrame, debugTraceTxEndpoint, mock.Anything, mock.Anything).
+				Return(nil).
+				Maybe()
+
+			appenderMap, err := buildAppender(ethClient, bridgeAddr, false)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 

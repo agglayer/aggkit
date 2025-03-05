@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/sync"
+	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -33,7 +34,7 @@ func TestNewLx(t *testing.T) {
 		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	)
 
-	mockEthClient := mocksbridgesync.NewEthClienter(t)
+	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Times(2)
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
@@ -84,7 +85,7 @@ func TestNewLx(t *testing.T) {
 	require.Equal(t, blockFinalityType, l2BridgdeSync.BlockFinality())
 
 	// Fails the sanity check of the contract address
-	mockEthClient = mocksbridgesync.NewEthClienter(t)
+	mockEthClient = mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
 	mockEthClient.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
 	l2BridgdeSyncErr, err := NewL2(
@@ -180,7 +181,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 	)
 
-	mockEthClient := mocksbridgesync.NewEthClienter(t)
+	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
