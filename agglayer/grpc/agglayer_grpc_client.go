@@ -52,6 +52,8 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 	}, nil
 }
 
+// SendCertificate sends a certificate to the AggLayer
+// It returns the certificate ID
 func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 	certificate *types.Certificate) (common.Hash, error) {
 	if len(certificate.AggchainProof) > 0 && len(certificate.Signature) > 0 {
@@ -138,6 +140,23 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
 	response, err := a.networkStateService.GetLatestPendingCertificateHeader(ctx,
 		&node.GetLatestPendingCertificateHeaderRequest{NetworkId: networkID})
+	if err != nil {
+		return nil, err
+	}
+
+	return convertProtoCertificateHeader(response.CertificateHeader), nil
+}
+
+// GetCertificateHeader returns the certificate header from the AggLayer for the given certificate ID
+func (a *AgglayerGRPCClient) GetCertificateHeader(ctx context.Context,
+	certificateID common.Hash) (*types.CertificateHeader, error) {
+	response, err := a.networkStateService.GetCertificateHeader(ctx,
+		&node.GetCertificateHeaderRequest{CertificateId: &protoTypes.CertificateId{
+			Value: &protoTypes.FixedBytes32{
+				Value: certificateID.Bytes(),
+			},
+		},
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -306,23 +325,6 @@ func convertToProtoSiblings(siblings treeTypes.Proof) []*protoTypes.FixedBytes32
 	}
 
 	return protoSiblings
-}
-
-// GetCertificateHeader returns the certificate header from the AggLayer for the given certificate ID
-func (a *AgglayerGRPCClient) GetCertificateHeader(ctx context.Context,
-	certificateID common.Hash) (*types.CertificateHeader, error) {
-	response, err := a.networkStateService.GetCertificateHeader(ctx,
-		&node.GetCertificateHeaderRequest{CertificateId: &protoTypes.CertificateId{
-			Value: &protoTypes.FixedBytes32{
-				Value: certificateID.Bytes(),
-			},
-		},
-		})
-	if err != nil {
-		return nil, err
-	}
-
-	return convertProtoCertificateHeader(response.CertificateHeader), nil
 }
 
 // nullableBytesToHash converts a nullable byte slice to a hash pointer

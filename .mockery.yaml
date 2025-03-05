@@ -6,6 +6,17 @@ outpkg: "mocks"
 filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
 mockname: "{{ .InterfaceName }}"
 packages:
+  github.com/agglayer/aggkit/agglayer/proto/node:
+    config:
+      dir: "{{ .InterfaceDir }}/../../mocks"
+      outpkg: "mocks"
+    interfaces:
+      NodeStateServiceClient:
+        config:
+      ConfigurationServiceClient:
+        config:
+      CertificateSubmissionServiceClient:
+        config:
   github.com/agglayer/aggkit/agglayer:
     config:
       inpackage: true
