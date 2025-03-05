@@ -18,6 +18,12 @@ test-e2e-fork12-multi-pessimistic: stop
 	export BATS_TEST_TIMEOUT=1800
 	bats bats/pp-multi
 
+.PHONY: test-e2e-aggoracle
+test-e2e-aggoracle: stop
+	./run-e2e.sh aggoracle
+	export BATS_TEST_TIMEOUT=1800
+	bats bats/op-pp/aggoracle-e2e.bats
+
 .PHONY: stop
 stop:
 	kurtosis clean --all
