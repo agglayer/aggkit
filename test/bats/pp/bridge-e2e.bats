@@ -88,7 +88,11 @@ setup() {
     assert_success
 }
 
-@test "Find L1 info tree index" {
+# This test is used to test 3 APIs:
+# 1. l1InfoTreeIndexForBridge
+# 2. injectedInfoAfterIndex
+# 3. getProof
+@test "Test Bridge APIs workflow" {
     destination_addr=$sender_addr
     run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
     assert_success
@@ -110,11 +114,18 @@ setup() {
     bridge="$output"
     local deposit_count
     deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run l1InfoTreeIndexForBridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
     local l1_info_tree_index
     l1_info_tree_index="$output"
     assert_equal "$l1_info_tree_index" 2
     echo "------- l1InfoTreeIndexForBridge API testcase passed"
+
+    echo "------- injectedInfoAfterIndex API testcase"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 3
+    assert_success
+    # local injected_claim_leaf="$output"
+
+    # TODO: Generate a claim Proof based on injected_claim_leaf GER and claim the transaction on L2
 }
 
 @test "Custom gas token deposit L1 -> L2" {
