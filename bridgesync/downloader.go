@@ -5,14 +5,12 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strings"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -215,7 +213,7 @@ func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
 	case bytes.Equal(methodID, claimAssetEtrogMethodID):
 		fallthrough
 	case bytes.Equal(methodID, claimMessageEtrogMethodID):
-		bridgeV2ABI, err := abi.JSON(strings.NewReader(polygonzkevmbridgev2.Polygonzkevmbridgev2ABI))
+		bridgeV2ABI, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
 		if err != nil {
 			return false, err
 		}
@@ -244,7 +242,7 @@ func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
 	case bytes.Equal(methodID, claimAssetPreEtrogMethodID):
 		fallthrough
 	case bytes.Equal(methodID, claimMessagePreEtrogMethodID):
-		bridgeABI, err := abi.JSON(strings.NewReader(polygonzkevmbridge.PolygonzkevmbridgeABI))
+		bridgeABI, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
 		if err != nil {
 			return false, err
 		}
