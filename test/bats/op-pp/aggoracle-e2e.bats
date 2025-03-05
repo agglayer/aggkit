@@ -47,7 +47,6 @@ setup() {
     echo "=== Running L1 to op-stack-L2 chain" >&3
     destination_addr=$sender_addr
 
-    local native_token_addr="0x0000000000000000000000000000000000000000"
     run bridge_asset "$native_token_addr" "$l1_rpc_url"
     assert_success
     local bridge_tx_hash=$output
