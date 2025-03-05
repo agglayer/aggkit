@@ -339,9 +339,9 @@ GetProof endpoint retrieves the Merkle proof necessary to claim a bridge transac
 
 Successful response (`ClaimProof`)
 
-- `ProofLocalExitRoot`: Proof for the local exit root.
-- `ProofRollupExitRoot`: Proof for the rollup exit root.
-- `L1InfoTreeLeaf`: L1 info tree leaf.
+- `proof_local_exit_root`: Proof for the local exit root.
+- `proof_rollup_exit_root`: Proof for the rollup exit root.
+- `l1_info_tree_leaf`: L1 info tree leaf.
   - `block_num`: Block number where the event was recorded.
   - `block_pos`: Position of the log within the block.
   - `position`: Position of the leaf in the L1 info tree.
