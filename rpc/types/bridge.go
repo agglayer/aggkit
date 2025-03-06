@@ -6,7 +6,7 @@ import (
 )
 
 type ClaimProof struct {
-	ProofLocalExitRoot  tree.Proof
-	ProofRollupExitRoot tree.Proof
-	L1InfoTreeLeaf      l1infotreesync.L1InfoTreeLeaf
+	ProofLocalExitRoot  tree.Proof                    `json:"proof_local_exit_root"`
+	ProofRollupExitRoot tree.Proof                    `json:"proof_rollup_exit_root"`
+	L1InfoTreeLeaf      l1infotreesync.L1InfoTreeLeaf `json:"l1_info_tree_leaf"`
 }
