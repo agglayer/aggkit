@@ -35,7 +35,7 @@ Driver is in charge of retrieving the blocks and also monitors for the reorgs (u
 
 ### Downloader
 
-Downloader is in charge of parsing the blocks and logs that are retrieved by the driver. 
+Downloader is in charge of parsing the blocks and logs that are retrieved by the driver. Downloader (indirectly, via the driver) passes the parsed data to the processor.
 
 ### Processor
 
@@ -327,10 +327,10 @@ The InjectedInfoAfterIndex endpoint returns the first Global Exit Root (GER) inj
 
 #### Parameters
 
-| **Name**       | **Type** | **Description**                                                      | **Required** | **Notes**                       |
-|----------------|----------|----------------------------------------------------------------------|--------------|---------------------------------|
-| `networkID`    | `uint32` | ID of the network to fetch L1 info tree index.                       | Yes          | 0 for L1(otherwise L2)        |
-| `l1InfoTreeIndex` | `uint32` | The starting index in the L1 info tree used to query for GER info. | Yes          |                                 |
+| **Name**          | **Type** | **Description**                                                      | **Required** |**Notes**                      |
+|-------------------|----------|----------------------------------------------------------------------|--------------|-------------------------------|
+| `networkID`       | `uint32` | ID of the network to fetch L1 info tree index.                       | Yes          | 0 for L1(otherwise L2)        |
+| `l1InfoTreeIndex` | `uint32` | The starting index in the L1 info tree used to query for GER info.   | Yes          |                               |
 
 ---
 
@@ -361,8 +361,8 @@ GetProof endpoint retrieves the Merkle proof necessary to claim a bridge transac
 
 | **Name**       | **Type** | **Description**                                                      | **Required** | **Notes**                       |
 |----------------|----------|----------------------------------------------------------------------|--------------|---------------------------------|
-| `networkID`    | `uint32` | ID of the origin network where bridge transaction was initiated.                       | Yes          | 0 for L1(otherwise L2)        |
-| `depositCount` | `uint32` | Deposit count of the bridge for which proof is being generated. | Yes          |                                 |
+| `networkID`    | `uint32` | ID of the origin network where bridge transaction was initiated.     | Yes          | 0 for L1(otherwise L2)          |
+| `depositCount` | `uint32` | Deposit count of the bridge for which proof is being generated.      | Yes          |                                 |
 | `l1InfoTreeIndex` | `uint32` | The index in the L1 info tree where the bridge has already been included or later. | Yes          |
 
 ---
