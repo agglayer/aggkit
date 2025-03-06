@@ -350,7 +350,7 @@ setup() {
     echo "==== 🔐 Claiming ERC20 token deposit on L1 ($l1_rpc_url)" >&3
     timeout="180"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
     assert_success
 
     run wait_for_expected_token "$aggkit_node_url" "$l2_erc20_addr" 15 2 "$l1_rpc_network_id"
@@ -386,7 +386,7 @@ setup() {
     echo "==== 🔐 Claiming deposit on L2 ($l2_rpc_url)" >&3
     timeout="180"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
     echo "==== 💰 Verifying balance on L2 ($l2_rpc_url)" >&3
@@ -416,7 +416,7 @@ setup() {
     echo "==== 🔐 Claiming ERC20 token deposit on L1 ($l1_rpc_url)" >&3
     timeout="180"
     claim_frequency="10"
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
     assert_success
 
     echo "==== 💰 Verifying balance on L1 ($l1_rpc_url)" >&3
