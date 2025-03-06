@@ -37,27 +37,34 @@ The diagram below describes the basic L1 -> L2 bridge workflow.
 sequenceDiagram
     participant User
     participant L1
-    participant Aggoracle
+    participant Aggkit
     participant L2
 
     User->>L1: Bridge assets to L2
     L1->>L1: Updates the mainnet exit root
-    L1->>L1: bridgeContract updates the GER in PolygonZKEVMGlobalExitRootV2.sol if forceUpdateGlobalExitRoot is true in the bridge transaction.
-    Aggoracle->>L1: fetches last finalized GER
-    Aggoracle->>L2: Injects the GER on L2 GlobalExitRootManagerL2SovereignChain.sol
+    L1->>L1: bridgeContract updates the GER in PolygonZKEVMGlobalExitRootV2.sol<br/>if forceUpdateGlobalExitRoot is true in the bridge transaction
+    Aggkit->>L1: Aggoracle fetches last finalized GER
+    Aggkit->>L2: Aggoracle injects the GER on L2 GlobalExitRootManagerL2SovereignChain.sol
 
-    User->>L1: Poll is bridge ready for claim
-    L1-->>User: L1InfoTree index X
-    User->>L2: Get first GER injected that happened at or after L1InfoTree index X
+    User->>Aggkit: Call bridge_l1InfoTreeIndexForBridge endpoint on the origin network
+    Aggkit-->>User: Returns L1InfoTree index X for which the bridge was included
+    User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network until a non-null response is retreived.
+    User-->>Aggkit: Get first GER injected that happened at or after L1InfoTree index X
     L2-->>User: GER Y
-    User->>L1: Build proof for bridge using GER Y
-    L1-->>User: Proof
+    User->>Aggkit: Call bridge_getProof on origin network to generate merkle proof for bridge using GER Y and networkID=0 (L1)
+    Aggkit-->>User: Proof
     User->>L2: Claim (proof)
-    L2->>L2: Send claim tx<br/>(bridge is settled on the L2)
+    L2->>L2: Send claimAsset/claimBridge tx on the destination network<br/>(bridge is settled on the L2)
     L2-->>User: Tx hash
 ```
 
-Note: In cdk-erigon the GER on L2 smart comtract(PolygonZKEVMGlobalExitRootL2.sol) is updated by the sequencer itself and in sovereign chain the GER is injected on L2(.sol) by the Aggoracle component.
+**Notes:**  
+
+1. In CDK-Erigon, the Global Exit Root (GER) on the L2 smart contract (`PolygonZKEVMGlobalExitRootL2.sol`) is automatically updated by the sequencer. In a sovereign chain, the GER is injected on L2 by the Aggoracle component.  
+
+2. A non-null response from `bridge_injectedInfoAfterIndex` indicates that the bridge is ready to be claimed on the destination network.  
+
+3. If `forceUpdateGlobalExitRoot` is set to false in a bridge transaction, the GER will not be updated with that transaction. The user must wait until the GER is updated by another bridge transaction before claiming. This is done to save gas costs while bridging.
 
 ### Bridge flow L2 -> L1
 
