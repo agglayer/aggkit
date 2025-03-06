@@ -50,9 +50,8 @@ sequenceDiagram
     User->>Aggkit: Call bridge_l1InfoTreeIndexForBridge endpoint on the origin network
     Aggkit-->>User: Returns L1InfoTree index X for which the bridge was included
     User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network until a non-null response is retreived.
-    User->>Aggkit: Get first GER injected that happened at or after L1InfoTree index X
-    Aggkit-->>User: return injected GER Y from destination L2 network
-    User->>Aggkit: Call bridge_getProof on origin network to generate merkle proof for bridge using GER Y and networkID=0 (L1)
+    Aggkit-->>User: returns a L1InfoTreeLeaf of injected GER Y from destination L2 network
+    User->>Aggkit: Call bridge_getProof on origin network to generate merkle proof for bridge using l1InfoTreeIndex of GER Y and networkID=0 (L1)
     Aggkit-->>User: Return claim proof
     User->>L2: Claim (proof)
     L2->>L2: Send claimAsset/claimBridge tx on the destination network<br/>(bridge is settled on the L2)
@@ -80,13 +79,20 @@ sequenceDiagram
     participant L1
 
     User->>L2: Bridge assets to L1
-    L2->>L2: Index bridge tx
-    L2->>AggLayer: Send certificate
-    AggLayer->>L1: Settle batch
-    L1->>L1: Rollupmanager updates the GER on L1 PolygonZKEVMGlobalExitRootV2.sol
-    AggLayer-->>L2: L1 tx hash
-    User->Aggkit: Call bridge_getProof to generate proof for bridge using GER Y and networkID=1 (L2)
-    Aggkit-->>User: Proof
+    L2->>L2: Index bridge tx & updates the local exit tree
+    Aggkit->>AggLayer: Build & send certificate (Aggsender)
+    AggLayer->>L1: Settle certificate
+    L1->>L1: Rollupmanager updates the GER & RER (PolygonZKEVMGlobalExitRootV2.sol)
+    AggLayer-->>L2: Return L1 tx hash
+    Aggkit->>L1: Fetch last finalized GER (Aggoracle)
+    Aggkit->>L2: Aggoracle injects GER on L2 (GlobalExitRootManagerL2SovereignChain.sol)
+
+    User->>Aggkit: Query bridge_l1InfoTreeIndexForBridge endpoint on the origin network(L2)
+    Aggkit-->>User: Returns L1InfoTree index X for which the bridge was included 
+    User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network(L1) until a non-null response.
+    User->>Aggkit: Returns the first L1InfoTreeLeaf(GER=Y) for the GER injected at or after L1InfoTree index X
+    User->Aggkit: Call bridge_getProof to generate proof for bridge using using l1InfoTreeIndex of GER Y and networkID(L2)
+    Aggkit-->>User: Return claim proof
     User->>L1: Claim (proof)
     L1->>L1: Send claimAsset/claimBridge tx on the destination network<br/>(bridge is settled on the L1)
     L1-->>User: Tx hash
