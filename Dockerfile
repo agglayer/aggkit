@@ -12,7 +12,7 @@ COPY . .
 RUN make build-aggkit build-tools
 
 # CONTAINER FOR RUNNING BINARY
-FROM debian:bookworm-slim
+FROM --platform=${BUILDPLATFORM} debian:bookworm-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ca-certificates \
