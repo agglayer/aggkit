@@ -4,7 +4,11 @@ The bridge service abstracts interaction with the unified LxLy bridge. It repres
 
 ## Bridge flow
 
-The diagram below describes the basic L2 -> L2 bridge workflow. Note that L2 networks consist of the `aggkit` node and execution client.
+Note that L2 networks consist of the `aggkit` node and execution client.
+
+### Bridge flow L2 -> L2
+
+The diagram below describes the basic L2 -> L2 bridge workflow.
 
 ```mermaid
 sequenceDiagram
@@ -24,6 +28,40 @@ User->>L2 (B): Claim (proof)
 L2 (B)->>L2 (B): Send claim tx<br/>(bridge is settled on the L2 (B))
 L2 (B)-->>User: Tx hash
 ```
+
+### Bridge flow L1 -> L2
+
+The diagram below describes the basic L1 -> L2 bridge workflow.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant L1
+    participant Aggoracle
+    participant L2
+
+    User->>L1: Bridge assets to L2
+    L1->>L1: Updates the mainnet exit root
+    L1->>L1: bridgeContract updates the GER in PolygonZKEVMGlobalExitRootV2.sol if forceUpdateGlobalExitRoot is true in the bridge transaction.
+    Aggoracle->>L1: fetches last finalized GER
+    Aggoracle->>L2: Injects the GER on L2 GlobalExitRootManagerL2SovereignChain.sol
+
+    User->>L1: Poll is bridge ready for claim
+    L1-->>User: L1InfoTree index X
+    User->>L2: Get first GER injected that happened at or after L1InfoTree index X
+    L2-->>User: GER Y
+    User->>L1: Build proof for bridge using GER Y
+    L1-->>User: Proof
+    User->>L2: Claim (proof)
+    L2->>L2: Send claim tx<br/>(bridge is settled on the L2)
+    L2-->>User: Tx hash
+```
+
+Note: In cdk-erigon the GER on L2 smart comtract(PolygonZKEVMGlobalExitRootL2.sol) is updated by the sequencer itself and in sovereign chain the GER is injected on L2(.sol) by the Aggoracle component.
+
+### Bridge flow L2 -> L1
+
+The diagram below describes the basic L2 -> L1 bridge workflow.
 
 ## Indexers
 
