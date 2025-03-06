@@ -182,6 +182,10 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(ctx context.Context,
 
 // convertProtoCertificateHeader converts a proto certificate header to a types certificate header
 func convertProtoCertificateHeader(response *protoTypes.CertificateHeader) *types.CertificateHeader {
+	if response == nil {
+		return nil
+	}
+
 	header := &types.CertificateHeader{
 		NetworkID:             response.NetworkId,
 		Height:                response.Height,
