@@ -27,7 +27,39 @@ L2 (B)-->>User: Tx hash
 
 ## Indexers
 
-The bridge service relies on specific data located on different chains (such as `bridge`, `claim`, and `token mapping` events, as well as the L1 info tree). This data is retrieved using indexer components. In this paragraph, we will list and briefly describe each of them.
+The bridge service relies on specific data located on different chains (such as `bridge`, `claim`, and `token mapping` events, as well as the L1 info tree). These data are retrieved using indexers. Indexers consists of three components: driver, downloader and processor. 
+
+### Driver
+
+Driver is in charge of retrieving the blocks and also monitors for the reorgs (using the reorg detector component). The idea is to have driver implementation per chain type (so far we have the EVM driver, but in future, each non-evm chain would require a new driver implementation).
+
+### Downloader
+
+Downloader is in charge of parsing the blocks and logs that are retrieved by the driver. 
+
+### Processor
+
+Processor represents the persistance layer, which writes retrieved indexer data in a format suitable for serving it via API. It utilizes SQL lite database.
+
+The diagram below depicts the interaction between components of each indexer.
+
+```mermaid
+sequenceDiagram
+    participant Driver
+    participant Downloader
+    participant Processor
+
+    Driver->>Driver: Fetch blocks in a loop
+    Driver->>Driver: Monitor reorgs & finalization
+    Driver-->>Downloader: Send finalized blocks & logs
+    Downloader->>Downloader: Parse blocks & event logs
+    Downloader-->>Processor: Send parsed data
+    Processor->>Processor: Persist data in SQLite DB
+```
+
+## Syncers
+
+In this paragraph, we will list and briefly describe syncers that are of interest for the bridge service.
 
 ### L1 Info Tree Sync
 
