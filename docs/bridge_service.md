@@ -208,9 +208,10 @@ sequenceDiagram
     Note right of DestBridge: `leafValue` consists of bridge data <br/> (e.g. globalIndex, originNetwork, originTokenAddress, <br/>destinationNetwork, destinationAddress etc.)
     DestBridge-->>DestBridge: Deploys wrapped token
     DestBridge-->>DestBridge: Performs token mapping
+    DestBridge-->>DestBridge: Mints wrapped token to the destination address
 
     %% Step 6: Final Transaction Hash to User
-    DestBridge-->>User: Transaction hash (wrapped token deployed)
+    DestBridge-->>User: Transaction hash (wrapped token deployed and tokens minted to the destination address)
     Note right of User: Bridge process completed successfully
 ```
 
