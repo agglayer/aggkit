@@ -42,17 +42,18 @@ sequenceDiagram
 
     User->>L1: Bridge assets to L2
     L1->>L1: Updates the mainnet exit root
-    L1->>L1: bridgeContract updates the GER in PolygonZKEVMGlobalExitRootV2.sol<br/>if forceUpdateGlobalExitRoot is true in the bridge transaction
+    L1->>L1: update GER
+    Note right of L1: bridgeContract updates the GER<br/>only if `forceUpdateGlobalExitRoot` is true in the bridge transaction.
     Aggkit->>L1: Aggoracle fetches last finalized GER
     Aggkit->>L2: Aggoracle injects the GER on L2 GlobalExitRootManagerL2SovereignChain.sol
 
     User->>Aggkit: Call bridge_l1InfoTreeIndexForBridge endpoint on the origin network
     Aggkit-->>User: Returns L1InfoTree index X for which the bridge was included
     User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network until a non-null response is retreived.
-    User-->>Aggkit: Get first GER injected that happened at or after L1InfoTree index X
-    L2-->>User: GER Y
+    User->>Aggkit: Get first GER injected that happened at or after L1InfoTree index X
+    Aggkit-->>User: return injected GER Y from destination L2 network
     User->>Aggkit: Call bridge_getProof on origin network to generate merkle proof for bridge using GER Y and networkID=0 (L1)
-    Aggkit-->>User: Proof
+    Aggkit-->>User: Return claim proof
     User->>L2: Claim (proof)
     L2->>L2: Send claimAsset/claimBridge tx on the destination network<br/>(bridge is settled on the L2)
     L2-->>User: Tx hash
