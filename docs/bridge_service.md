@@ -71,6 +71,27 @@ sequenceDiagram
 
 The diagram below describes the basic L2 -> L1 bridge workflow.
 
+```mermaid
+sequenceDiagram
+    participant User
+    participant L2
+    participant Aggkit
+    participant AggLayer
+    participant L1
+
+    User->>L2: Bridge assets to L1
+    L2->>L2: Index bridge tx
+    L2->>AggLayer: Send certificate
+    AggLayer->>L1: Settle batch
+    L1->>L1: Rollupmanager updates the GER on L1 PolygonZKEVMGlobalExitRootV2.sol
+    AggLayer-->>L2: L1 tx hash
+    User->Aggkit: Call bridge_getProof to generate proof for bridge using GER Y and networkID=1 (L2)
+    Aggkit-->>User: Proof
+    User->>L1: Claim (proof)
+    L1->>L1: Send claimAsset/claimBridge tx on the destination network<br/>(bridge is settled on the L1)
+    L1-->>User: Tx hash
+```
+
 ## Indexers
 
 The bridge service relies on specific data located on different chains (such as `bridge`, `claim`, and `token mapping` events, as well as the L1 info tree). These data are retrieved using indexers. Indexers consists of three components: driver, downloader and processor. 
