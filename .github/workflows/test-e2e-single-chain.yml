@@ -10,7 +10,7 @@ jobs:
   build-aggkit-image:
     uses: ./.github/workflows/build-aggkit-image.yml
     with:
-      go-version: 1.22.x
+      go-version: 1.24.x
       docker-image-name: aggkit
   
   test-e2e:
