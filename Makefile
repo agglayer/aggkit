@@ -62,7 +62,7 @@ build-tools: ## Builds the tools
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
-	docker build -t aggkit -f ./Dockerfile .
+	docker build -t aggkit:local -f ./Dockerfile .
 
 .PHONY: build-docker-nc
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
