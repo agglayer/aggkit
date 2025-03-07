@@ -35,15 +35,32 @@ type TestClient struct {
 	aggkittypes.RPCClienter
 }
 
-func NewTestClient(ethClient simulated.Client, rpcClient aggkittypes.RPCClienter) *TestClient {
-	return &TestClient{
-		Client:      ethClient,
-		RPCClienter: rpcClient,
+// TestClientOption defines a function signature for optional parameters.
+type TestClientOption func(*TestClient)
+
+// NewTestClient creates a new TestClient with optional configurations.
+func NewTestClient(ethClient simulated.Client, opts ...TestClientOption) *TestClient {
+	tc := &TestClient{
+		Client: ethClient,
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(tc)
+	}
+
+	return tc
+}
+
+// WithRPCClienter sets the optional RPCClienter.
+func WithRPCClienter(rpcClient aggkittypes.RPCClienter) TestClientOption {
+	return func(tc *TestClient) {
+		tc.RPCClienter = rpcClient
 	}
 }
 
-func (tc TestClient) Call(result any, method string, params ...any) error {
-	return tc.RPCClienter.Call(result, method, params)
+func (t *TestClient) Call(result any, method string, args ...any) error {
+	return t.RPCClienter.Call(result, method, args)
 }
 
 // SimulatedBackendSetup defines the setup for a simulated backend.

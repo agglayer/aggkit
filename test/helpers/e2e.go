@@ -19,6 +19,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -65,16 +66,28 @@ type L2Environment struct {
 	EthTxManagerMock *EthTxManagerMock
 }
 
+type EnvironmentConfig struct {
+	L1RPCClient aggkittypes.RPCClienter
+	L2RPCClient aggkittypes.RPCClienter
+}
+
+func DefaultEnvironmentConfig() *EnvironmentConfig {
+	return &EnvironmentConfig{
+		L1RPCClient: &aggkittypes.NoopRPCClient{},
+		L2RPCClient: &aggkittypes.NoopRPCClient{},
+	}
+}
+
 // NewE2EEnvWithEVML2 creates a new E2E environment with EVM L1 and L2 chains.
-func NewE2EEnvWithEVML2(t *testing.T) *AggoracleWithEVMChain {
+func NewE2EEnvWithEVML2(t *testing.T, cfg *EnvironmentConfig) *AggoracleWithEVMChain {
 	t.Helper()
 
 	ctx := context.Background()
 	// Setup L1
-	l1Setup := L1Setup(t)
+	l1Setup := L1Setup(t, cfg)
 
 	// Setup L2 EVM
-	l2Setup := L2Setup(t)
+	l2Setup := L2Setup(t, cfg)
 
 	oracle, err := aggoracle.New(
 		log.GetDefaultLogger(), l2Setup.AggoracleSender,
@@ -93,7 +106,7 @@ func NewE2EEnvWithEVML2(t *testing.T) *AggoracleWithEVMChain {
 }
 
 // L1Setup creates a new L1 environment.
-func L1Setup(t *testing.T) *L1Environment {
+func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	t.Helper()
 
 	ctx := context.Background()
@@ -140,7 +153,7 @@ func L1Setup(t *testing.T) *L1Environment {
 	)
 
 	// Bridge sync
-	testClient := NewTestClient(l1Client.Client(), nil)
+	testClient := NewTestClient(l1Client.Client(), WithRPCClienter(cfg.L1RPCClient))
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
@@ -167,7 +180,7 @@ func L1Setup(t *testing.T) *L1Environment {
 }
 
 // L2Setup creates a new L2 environment.
-func L2Setup(t *testing.T) *L2Environment {
+func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 	t.Helper()
 
 	l2Client, authL2, gerL2Addr, gerL2Contract,
@@ -197,7 +210,7 @@ func L2Setup(t *testing.T) *L2Environment {
 
 	// Bridge sync
 	dbPathL2BridgeSync := path.Join(t.TempDir(), "BridgeSyncL2.sqlite")
-	testClient := NewTestClient(l2Client.Client(), nil)
+	testClient := NewTestClient(l2Client.Client(), WithRPCClienter(cfg.L2RPCClient))
 
 	const (
 		waitForNewBlocksPeriod = 10 * time.Millisecond

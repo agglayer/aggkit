@@ -18,7 +18,7 @@ import (
 
 func TestE2E(t *testing.T) {
 	ctx := context.Background()
-	setup := helpers.NewE2EEnvWithEVML2(t)
+	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
 	dbPathSyncer := path.Join(t.TempDir(), "lastGERSyncTestE2E.sqlite")
 	const (
 		retryAfterErrorPeriod      = time.Millisecond * 30

@@ -31,3 +31,12 @@ type BaseEthereumClienter interface {
 type RPCClienter interface {
 	Call(result any, method string, args ...any) error
 }
+
+var _ RPCClienter = (*NoopRPCClient)(nil)
+
+// NoopRPCClient is no operation implementation for the RPCClienter interface
+type NoopRPCClient struct{}
+
+func (c *NoopRPCClient) Call(result any, method string, args ...any) error {
+	return nil
+}

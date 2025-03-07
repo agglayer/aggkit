@@ -6,19 +6,19 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/helpers"
+	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestBridgeEventE2E(t *testing.T) {
-	t.Skip("FIXME: @Stefan-Ethernal")
 	const (
 		blockTime             = time.Millisecond * 10
 		totalBridges          = 80
@@ -26,16 +26,17 @@ func TestBridgeEventE2E(t *testing.T) {
 		maxReorgDepth         = 2
 		reorgEveryXIterations = 4 // every X blocks go back [1,maxReorgDepth] blocks
 	)
-	setup := helpers.NewE2EEnvWithEVML2(t)
+
+	rpcClient := mocks.NewRPCClienter(t)
+	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	setup := helpers.NewE2EEnvWithEVML2(t, &helpers.EnvironmentConfig{L1RPCClient: rpcClient})
 	ctx := context.Background()
 	// Send bridge txs
 	bridgesSent := 0
 	reorgs := 0
 	expectedBridges := []bridgesync.Bridge{}
 	lastDepositCount := uint32(0)
-
-	bridgeV2ABI, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
-	require.NoError(t, err)
 
 	for i := 1; i > 0; i++ {
 		// Send bridge
@@ -46,17 +47,6 @@ func TestBridgeEventE2E(t *testing.T) {
 			DestinationAddress: common.HexToAddress("f00"),
 			Metadata:           []byte{},
 		}
-
-		bridgeAssetInput, err := bridgeV2ABI.Pack(
-			"bridgeAsset",
-			bridge.DestinationNetwork,
-			bridge.DestinationAddress,
-			bridge.Amount,
-			bridge.OriginAddress,
-			true,
-			[]byte{})
-		require.NoError(t, err)
-		bridge.Calldata = bridgeAssetInput
 
 		lastDepositCount++
 		tx, err := setup.L1Environment.BridgeContract.BridgeAsset(
@@ -69,6 +59,7 @@ func TestBridgeEventE2E(t *testing.T) {
 		)
 		require.NoError(t, err)
 		helpers.CommitBlocks(t, setup.L1Environment.SimBackend, 1, blockTime)
+
 		simulatedClient := setup.L1Environment.SimBackend.Client()
 		bn, err := simulatedClient.BlockNumber(ctx)
 		require.NoError(t, err)
@@ -150,7 +141,7 @@ func TestBridgeEventE2E(t *testing.T) {
 	}
 	require.Equal(t, common.Hash(expectedRoot).Hex(), root.Hash.Hex())
 	t.Log(t, len(actualBridges))
-	require.Equal(t, expectedBridges[0], actualBridges[0])
+	require.Equal(t, expectedBridges, actualBridges)
 }
 
 func getFinalizedBlockNumber(t *testing.T, ctx context.Context, client simulated.Client) uint64 {
