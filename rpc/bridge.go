@@ -330,7 +330,7 @@ func (b *BridgeEndpoints) GetClaims(networkID uint32, pageNumber, pageSize *uint
 // GetProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
 // while globalExitRoot should be already injected on the destination network.
 // This call needs to be done to a client of the same network were the bridge tx was sent
-func (b *BridgeEndpoints) GetProof(
+func (b *BridgeEndpoints) ClaimProof(
 	networkID uint32, depositCount uint32, l1InfoTreeIndex uint32,
 ) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)

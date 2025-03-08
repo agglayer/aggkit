@@ -171,6 +171,43 @@ function find_injected_info_after_index() {
     done
 }
 
+function find_claim_proof() {
+    local network_id="$1"
+    local deposit_count="$2"
+    local l1_info_tree_index="$3"
+    local max_attempts="$4"
+    local poll_frequency="$5"
+
+    local attempt=0
+
+    while true; do
+        ((attempt++))
+        log "Attempt $attempt: fetching proof from the RPC..."
+
+        proof=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_claimProof" "$network_id" "$deposit_count" "$l1_info_tree_index")
+
+        log "------ proof ------"
+        log "$proof"
+        log "------ proof ------"
+
+        if [[ "$proof" == "0x0" ]]; then
+            log "Didn't find expected claim proof"
+            # Fail test if max attempts are reached
+            if [[ "$attempt" -ge "$max_attempts" ]]; then
+                echo "Error: Reached max attempts ($max_attempts) without finding expected claim proof." >&2
+                return 1
+            fi
+
+            # Sleep before the next attempt
+            sleep "$poll_frequency"
+            continue
+        fi
+
+        echo "$proof"
+        return 0
+    done
+}
+
 # This function is used to claim a bridge using concrete tx hash
 # params:
 # - timeout - timeout in seconds

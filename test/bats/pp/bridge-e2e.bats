@@ -115,6 +115,7 @@ setup() {
     local deposit_count
     deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
     run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    assert_success
     local l1_info_tree_index
     l1_info_tree_index="$output"
     assert_equal "$l1_info_tree_index" 2
@@ -123,9 +124,14 @@ setup() {
     echo "------- injectedInfoAfterIndex API testcase"
     run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 3
     assert_success
-    # local injected_claim_leaf="$output"
+    echo "------- injectedInfoAfterIndex API testcase passed"
 
-    # TODO: Generate a claim Proof based on injected_claim_leaf GER and claim the transaction on L2
+    echo "------- claim_proof API testcase"
+    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof
+    proof="$output"
+    echo "------- claim_proof API testcase passed"
 }
 
 @test "Custom gas token deposit L1 -> L2" {
