@@ -4,7 +4,6 @@ The bridge service abstracts interaction with the unified LxLy bridge. It repres
 
 ## Bridge flow
 
-Note that L2 networks consist of the `aggkit` node and execution client.
 
 ### Bridge flow L2 -> L2
 
@@ -35,8 +34,10 @@ sequenceDiagram
 
     User->>Aggkit (A): Call bridge_l1InfoTreeIndexForBridge endpoint on the origin network(A)
     Aggkit (A)-->>User: Returns L1InfoTree index X for which the bridge was included
-    User->>Aggkit (B): Poll bridge_injectedInfoAfterIndex on destination network until a non-null response is retreived.
-    Aggkit (B)-->>User: returns a L1InfoTreeLeaf of injected GER Y from destination L2 network
+    loop Poll destination network, until `L1InfoTreeLeaf` is retrieved  
+      User->>Aggkit (B): Poll bridge_injectedInfoAfterIndex on destination network L2(B) until a non-null response.  
+      Aggkit (B)-->>User: Returns the first L1InfoTreeLeaf(GER=Y) for the GER injected on L2(B) at or after L1InfoTree index X
+    end 
     User->>Aggkit (A): Call bridge_getProof on origin network(A) to generate merkle proof for bridge using l1InfoTreeIndex of GER Y and networkID(A)
     
     Aggkit (A)-->>User: Return claim proof
@@ -58,15 +59,18 @@ sequenceDiagram
 
     User->>L1: Bridge assets to L2
     L1->>L1: Updates the mainnet exit tree
-    L1->>L1: update GER
+    L1->>L1: Update GER
     Note right of L1: bridgeContract updates the GER<br/>only if `forceUpdateGlobalExitRoot` is true in the bridge transaction.
     Aggkit->>L1: Aggoracle fetches last finalized GER
     Aggkit->>L2: Aggoracle injects the GER on L2 GlobalExitRootManagerL2SovereignChain.sol
 
     User->>Aggkit: Call bridge_l1InfoTreeIndexForBridge endpoint on the origin network
     Aggkit-->>User: Returns L1InfoTree index X for which the bridge was included
-    User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network until a non-null response is retreived.
-    Aggkit-->>User: returns a L1InfoTreeLeaf of injected GER Y from destination L2 network
+    loop Poll destination network, until `L1InfoTreeLeaf` is retrieved  
+      User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network (L2) until a non-null response.  
+      Aggkit-->>User: Returns the first L1InfoTreeLeaf(GER=Y) for the GER injected on L2 at or after L1InfoTree index X
+    end 
+
     User->>Aggkit: Call bridge_getProof on origin network to generate merkle proof for bridge using l1InfoTreeIndex of GER Y and networkID=0 (L1)
     Aggkit-->>User: Return claim proof
     User->>L2: Claim (proof)
@@ -106,9 +110,11 @@ sequenceDiagram
 
     User->>Aggkit: Query bridge_l1InfoTreeIndexForBridge endpoint on the origin network(L2)
     Aggkit-->>User: Returns L1InfoTree index X for which the bridge was included 
-    User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network(L1) until a non-null response.
-    User->>Aggkit: Returns the first L1InfoTreeLeaf(GER=Y) for the GER injected at or after L1InfoTree index X
-    User->Aggkit: Call bridge_getProof to generate proof for bridge using using l1InfoTreeIndex of GER Y and networkID(L2)
+    loop Poll destination network, until `L1InfoTreeLeaf` is retrieved
+      User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network (L1) until a non-null response.
+      Aggkit-->>User: Returns the first L1InfoTreeLeaf(GER=Y) for the GER injected at or after L1InfoTree index X
+    end
+
     Aggkit-->>User: Return claim proof
     User->>L1: Claim (proof)
     L1->>L1: Send claimAsset/claimBridge tx on the destination network<br/>(bridge is settled on the L1)
