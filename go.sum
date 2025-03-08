@@ -1,5 +1,11 @@
-github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef h1:DRBrbysjMTyeFRbyo+zoltOTET+vR20CnXc4wupj+qo=
-github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef/go.mod h1:mFlcEjsm2YBBsu8atHJ3zyVnwM+Z/fMXpVmIJge+WVU=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250225115735-738027c86193.1 h1:hwfPS5DdPefeathCIt0jORlUZCV0ghXxml/x0JeWo68=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250225115735-738027c86193.1/go.mod h1:LlC7zuJR8Wh5nvaG6f44/Q1TRICyKMhFtBbqKREh12Q=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250228150343-c7b7fef1692a.1 h1:+ZcEKqPU6gU02yEB37tAfSoSI/ZQjsfCAtiRY64IKOM=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250228150343-c7b7fef1692a.1/go.mod h1:LlC7zuJR8Wh5nvaG6f44/Q1TRICyKMhFtBbqKREh12Q=
+buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250225123212-0efa67e44aed.2 h1:skdv7ixBBICZNsvem6gufw+0iMcOJo82nSrJ2R0b4fs=
+buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250225123212-0efa67e44aed.2/go.mod h1:AzKur1kRizuDbzxsyp3W7AP5mhNQk+Una+deplt2zl8=
+buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.5-20250225123212-0efa67e44aed.1 h1:S+ovLGa00/aUuS9noD5QjxipYBumF/qL1S4528WS+VE=
+buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.5-20250225123212-0efa67e44aed.1/go.mod h1:iFwHn6XSIETvko7RsOFT25w0QHHPTTzQirUAvIJQLtw=
 github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20250212122525-ec44fb65e861 h1:G21RAhtWCgy/dv/t1ed3ROJ7+rBgdlovzyz6rTh4FLs=
 github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20250212122525-ec44fb65e861/go.mod h1:HGx8hRdvtcAZZaFHZylN9B8lOZkxM+NrVvOdzw4jQEY=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6 h1:FXL/rcO7/GtZ3kRFw+C7J6vmGnl8gcazg+Gh/NVmnas=
