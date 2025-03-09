@@ -1,12 +1,12 @@
 module github.com/agglayer/aggkit
 
-go 1.24.0
+go 1.23.7
 
 require (
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef
 	github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6
-	github.com/0xPolygon/zkevm-ethtx-manager v0.2.5-0.20250306182542-98ec350a40f5
-	github.com/ethereum/go-ethereum v1.15.4
+	github.com/0xPolygon/zkevm-ethtx-manager v0.2.5-0.20250309055842-83836cfc3059
+	github.com/ethereum/go-ethereum v1.15.5
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 	github.com/hermeznetwork/tracerr v0.3.2
 	github.com/iden3/go-iden3-crypto v0.0.17
@@ -37,7 +37,7 @@ require (
 )
 
 require (
-	github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.6 // indirect
+	github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.7 // indirect
 	github.com/DataDog/zstd v1.5.6 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/StackExchange/wmi v1.2.1 // indirect
