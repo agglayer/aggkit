@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/test/contracts/claimmockcaller"
 	"github.com/agglayer/aggkit/test/contracts/claimmocktest"
 	tree "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -32,11 +33,11 @@ func TestClaimCalldata(t *testing.T) {
 	// Setup Docker L1
 	log.Debug("starting docker")
 	ctx := context.Background()
-	msg, err := exec.Command("bash", "-l", "-c", "docker compose up -d").CombinedOutput()
+	msg, err := exec.Command("docker-compose", "up", "-d").CombinedOutput()
 	require.NoError(t, err, string(msg))
 	time.Sleep(time.Second * 1)
 	defer func() {
-		msg, err = exec.Command("bash", "-l", "-c", "docker compose down").CombinedOutput()
+		msg, err = exec.Command("docker-compose", "down").CombinedOutput()
 		require.NoError(t, err, string(msg))
 	}()
 	log.Debug("docker started")
@@ -55,11 +56,11 @@ func TestClaimCalldata(t *testing.T) {
 	_, _, claimTest, err := claimmocktest.DeployClaimmocktest(auth, client, bridgeAddr, claimCallerAddr)
 	require.NoError(t, err)
 
-	proofLocal := [32][32]byte{}
+	proofLocal := [tree.DefaultHeight][common.HashLength]byte{}
 	proofLocalH := tree.Proof{}
 	proofLocal[5] = common.HexToHash("beef")
 	proofLocalH[5] = common.HexToHash("beef")
-	proofRollup := [32][32]byte{}
+	proofRollup := [tree.DefaultHeight][common.HashLength]byte{}
 	proofRollupH := tree.Proof{}
 	proofRollup[4] = common.HexToHash("a1fa")
 	proofRollupH[4] = common.HexToHash("a1fa")
@@ -167,20 +168,7 @@ func TestClaimCalldata(t *testing.T) {
 	// indirect call claim asset bytes
 	expectedClaim.GlobalIndex = big.NewInt(423)
 	expectedClaim.IsMessage = false
-	expectedClaimBytes, err := abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err := encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.ClaimBytes(
 		auth,
@@ -258,20 +246,7 @@ func TestClaimCalldata(t *testing.T) {
 	// indirect call claim message bytes
 	expectedClaim.GlobalIndex = big.NewInt(426)
 	expectedClaim.IsMessage = true
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.ClaimBytes(
 		auth,
@@ -292,31 +267,15 @@ func TestClaimCalldata(t *testing.T) {
 	// indirect call claim message bytes
 	expectedClaim.GlobalIndex = big.NewInt(427)
 	expectedClaim.IsMessage = true
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	tx, err = claimCaller.ClaimBytes(
+	_, err = claimCaller.ClaimBytes(
 		auth,
 		expectedClaimBytes,
 		true,
 	)
 	require.NoError(t, err)
 	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
-	require.NoError(t, err)
-	log.Infof("Logs: %+v", r.Logs)
 
 	reverted := [2]bool{false, false}
 
@@ -325,35 +284,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(427)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(427)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err := abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err := encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -383,35 +316,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(428)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(429)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -443,35 +350,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(430)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(430)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -495,35 +376,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(431)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(432)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -549,35 +404,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(433)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(433)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -601,35 +430,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(434)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(435)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -655,35 +458,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(436)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(436)
-	expectedClaimBytes, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -713,35 +490,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(437)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(438)
-	expectedClaimBytes, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -773,35 +524,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(439)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(439)
-	expectedClaimBytes, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -825,35 +550,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(440)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(441)
-	expectedClaimBytes, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -879,35 +578,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(442)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(442)
-	expectedClaimBytes, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -931,35 +604,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(443)
 	expectedClaim2.IsMessage = false
 	expectedClaim2.GlobalIndex = big.NewInt(444)
-	expectedClaimBytes, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimAsset",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimAsset", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimCaller.Claim2Bytes(
 		auth,
@@ -981,20 +628,7 @@ func TestClaimCalldata(t *testing.T) {
 	// indirect + indirect call claim message bytes
 	expectedClaim.GlobalIndex = big.NewInt(426)
 	expectedClaim.IsMessage = true
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.ClaimTestInternal(
 		auth,
@@ -1019,35 +653,9 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim.GlobalIndex = big.NewInt(427)
 	expectedClaim2.IsMessage = true
 	expectedClaim2.GlobalIndex = big.NewInt(427)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim2TestInternal(
 		auth,
@@ -1081,50 +689,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err := abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err := encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1163,50 +732,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(428)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(429)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1247,50 +777,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(428)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(429)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1325,50 +816,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(428)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(429)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1403,50 +855,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(428)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(429)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1481,50 +894,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1559,50 +933,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1637,50 +972,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1715,50 +1011,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1787,50 +1044,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1859,50 +1077,11 @@ func TestClaimCalldata(t *testing.T) {
 	expectedClaim2.GlobalIndex = big.NewInt(427)
 	expectedClaim3.IsMessage = true
 	expectedClaim3.GlobalIndex = big.NewInt(427)
-	expectedClaimBytes, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim.GlobalIndex,
-		expectedClaim.MainnetExitRoot,
-		expectedClaim.RollupExitRoot,
-		expectedClaim.OriginNetwork,
-		expectedClaim.OriginAddress,
-		expectedClaim.DestinationNetwork,
-		expectedClaim.DestinationAddress,
-		expectedClaim.Amount,
-		expectedClaim.Metadata,
-	)
+	expectedClaimBytes, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes2, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim2.GlobalIndex,
-		expectedClaim2.MainnetExitRoot,
-		expectedClaim2.RollupExitRoot,
-		expectedClaim2.OriginNetwork,
-		expectedClaim2.OriginAddress,
-		expectedClaim2.DestinationNetwork,
-		expectedClaim2.DestinationAddress,
-		expectedClaim2.Amount,
-		expectedClaim2.Metadata,
-	)
+	expectedClaimBytes2, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim2, proofLocal, proofRollup)
 	require.NoError(t, err)
-	expectedClaimBytes3, err = abi.Pack(
-		"claimMessage",
-		proofLocal,
-		proofRollup,
-		expectedClaim3.GlobalIndex,
-		expectedClaim3.MainnetExitRoot,
-		expectedClaim3.RollupExitRoot,
-		expectedClaim3.OriginNetwork,
-		expectedClaim3.OriginAddress,
-		expectedClaim3.DestinationNetwork,
-		expectedClaim3.DestinationAddress,
-		expectedClaim3.Amount,
-		expectedClaim3.Metadata,
-	)
+	expectedClaimBytes3, err = encodeClaimCalldata(abi, "claimMessage", expectedClaim3, proofLocal, proofRollup)
 	require.NoError(t, err)
 	tx, err = claimTest.Claim3TestInternal(
 		auth,
@@ -1939,4 +1118,14 @@ func TestClaimCalldata(t *testing.T) {
 			require.Equal(t, tc.expectedClaim, actualClaim)
 		})
 	}
+}
+
+// encodeClaimCalldata encodes the calldata for either claimMessage or claimAsset functions
+func encodeClaimCalldata(claimMockABI *abi.ABI, funcName string,
+	claim Claim, proofLocal, proofRollup [tree.DefaultHeight][common.HashLength]byte) ([]byte, error) {
+	return claimMockABI.Pack(funcName, proofLocal, proofRollup,
+		claim.GlobalIndex, claim.MainnetExitRoot, claim.RollupExitRoot,
+		claim.OriginNetwork, claim.OriginAddress,
+		claim.DestinationNetwork, claim.DestinationAddress,
+		claim.Amount, claim.Metadata)
 }
