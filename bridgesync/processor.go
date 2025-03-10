@@ -221,12 +221,12 @@ func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
 	// 	8: uint256 amount,
 	// 	9: bytes metadata
 	// )
-	actualGlobalIndex, ok := data[1].(*big.Int)
+	actualGlobalIndex, ok := data[1].(uint32)
 	if !ok {
-		return false, fmt.Errorf("unexpected type for actualGlobalIndex, expected *big.Int got '%T'", data[1])
+		return false, fmt.Errorf("unexpected type for actualGlobalIndex, expected uint32 got '%T'", data[1])
 	}
 
-	if actualGlobalIndex.Cmp(c.GlobalIndex) != 0 {
+	if new(big.Int).SetUint64(uint64(actualGlobalIndex)).Cmp(c.GlobalIndex) != 0 {
 		// not the claim we're looking for
 		return false, nil
 	}

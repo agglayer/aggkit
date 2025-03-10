@@ -11,6 +11,7 @@ import (
 	"slices"
 	"testing"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridge"
 	migrationsBridge "github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -18,6 +19,7 @@ import (
 	"github.com/agglayer/aggkit/tree/testvectors"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
 	"github.com/stretchr/testify/require"
 )
@@ -1294,4 +1296,62 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestDecodePreEtrogCalldata(t *testing.T) {
+	bridgeV1ABI, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
+	require.NoError(t, err)
+
+	globalIndex := uint32(10)
+	originNetwork := uint32(5)
+	originAddress := common.HexToAddress("0x0a0a")
+	amount := big.NewInt(150)
+	destinationAddr := common.HexToAddress("0x0b0b")
+
+	proof := types.Proof{}
+	for i := range types.DefaultHeight {
+		for j := range common.HashLength {
+			proof[i] = common.HexToHash(fmt.Sprintf("%x", (j+1)%common.HashLength))
+		}
+	}
+
+	expectedClaim := &Claim{
+		GlobalIndex:        new(big.Int).SetUint64(uint64(globalIndex)),
+		MainnetExitRoot:    common.HexToHash("0xdead"),
+		RollupExitRoot:     common.HexToHash("0xbeef"),
+		DestinationNetwork: uint32(6),
+		Metadata:           common.Hex2Bytes("c001"),
+		ProofLocalExitRoot: proof,
+	}
+
+	expectedClaim.GlobalExitRoot = crypto.Keccak256Hash(expectedClaim.MainnetExitRoot.Bytes(), expectedClaim.RollupExitRoot.Bytes())
+
+	claimAssetInput, err := bridgeV1ABI.Pack("claimAsset",
+		expectedClaim.ProofLocalExitRoot,
+		globalIndex,
+		expectedClaim.MainnetExitRoot,
+		expectedClaim.RollupExitRoot,
+		originNetwork,
+		originAddress,
+		expectedClaim.DestinationNetwork,
+		destinationAddr,
+		amount,
+		expectedClaim.Metadata,
+	)
+	require.NoError(t, err)
+
+	actualClaim := &Claim{
+		GlobalIndex: new(big.Int).SetUint64(uint64(globalIndex)),
+	}
+	method, err := bridgeV1ABI.MethodById(claimAssetPreEtrogMethodID)
+	require.NoError(t, err)
+
+	claimAssetData, err := method.Inputs.Unpack(claimAssetInput[4:])
+	require.NoError(t, err)
+
+	isFound, err := actualClaim.decodePreEtrogCalldata(claimAssetData)
+	require.NoError(t, err)
+	require.True(t, isFound)
+
+	require.Equal(t, expectedClaim, actualClaim)
 }
