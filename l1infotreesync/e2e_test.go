@@ -229,7 +229,7 @@ func TestWithReorgs(t *testing.T) {
 	// Commit block 7, 8, 9 after the fork
 	helpers.CommitBlocks(t, client, 5, time.Millisecond*500)
 
-	// Assert rollup exit root after commiting new blocks on the fork
+	// Assert rollup exit root after committing new blocks on the fork
 	expectedRollupExitRoot, err = verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
 	actualRollupExitRoot, err = syncer.GetLastRollupExitRoot(ctx)
