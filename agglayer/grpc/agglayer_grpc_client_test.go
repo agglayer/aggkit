@@ -1,4 +1,4 @@
-//nolint:dupl
+// //nolint:dupl
 package grpc
 
 import (
@@ -7,9 +7,9 @@ import (
 	"math/big"
 	"testing"
 
+	node "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/v1"
+	v1Types "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/protocol/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
-	"github.com/agglayer/aggkit/agglayer/proto/node"
-	protoTypes "github.com/agglayer/aggkit/agglayer/proto/types"
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
@@ -45,7 +45,7 @@ func TestGetEpochConfiguration(t *testing.T) {
 		}
 
 		expectedResponse := &node.GetEpochConfigurationResponse{
-			EpochConfiguration: &protoTypes.EpochConfiguration{
+			EpochConfiguration: &v1Types.EpochConfiguration{
 				GenesisBlock:  1000,
 				EpochDuration: 10,
 			},
@@ -92,24 +92,24 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 		certificateIndex := uint64(1)
 
 		expectedResponse := &node.GetLatestCertificateHeaderResponse{
-			CertificateHeader: &protoTypes.CertificateHeader{
+			CertificateHeader: &v1Types.CertificateHeader{
 				NetworkId:        networkID,
 				Height:           100,
 				EpochNumber:      &epoch,
 				CertificateIndex: &certificateIndex,
-				CertificateId: &protoTypes.CertificateId{
-					Value: &protoTypes.FixedBytes32{
+				CertificateId: &v1Types.CertificateId{
+					Value: &v1Types.FixedBytes32{
 						Value: common.HexToHash("0x010203").Bytes(),
 					},
 				},
-				PrevLocalExitRoot: &protoTypes.FixedBytes32{
+				PrevLocalExitRoot: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x010201").Bytes(),
 				},
-				NewLocalExitRoot: &protoTypes.FixedBytes32{
+				NewLocalExitRoot: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x010202").Bytes(),
 				},
-				Status: protoTypes.CertificateStatus_CERTIFICATE_STATUS_PENDING,
-				Metadata: &protoTypes.FixedBytes32{
+				Status: v1Types.CertificateStatus_CERTIFICATE_STATUS_PENDING,
+				Metadata: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x011201").Bytes(),
 				},
 			},
@@ -164,24 +164,24 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 		certificateIndex := uint64(1)
 
 		expectedResponse := &node.GetLatestCertificateHeaderResponse{
-			CertificateHeader: &protoTypes.CertificateHeader{
+			CertificateHeader: &v1Types.CertificateHeader{
 				NetworkId:        networkID,
 				Height:           100,
 				EpochNumber:      &epoch,
 				CertificateIndex: &certificateIndex,
-				CertificateId: &protoTypes.CertificateId{
-					Value: &protoTypes.FixedBytes32{
+				CertificateId: &v1Types.CertificateId{
+					Value: &v1Types.FixedBytes32{
 						Value: common.HexToHash("0x010203").Bytes(),
 					},
 				},
-				PrevLocalExitRoot: &protoTypes.FixedBytes32{
+				PrevLocalExitRoot: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x010201").Bytes(),
 				},
-				NewLocalExitRoot: &protoTypes.FixedBytes32{
+				NewLocalExitRoot: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x010202").Bytes(),
 				},
-				Status: protoTypes.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
-				Metadata: &protoTypes.FixedBytes32{
+				Status: v1Types.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
+				Metadata: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x011201").Bytes(),
 				},
 			},
@@ -236,24 +236,24 @@ func TestGetCertificateHeader(t *testing.T) {
 		certificateIndex := uint64(1)
 
 		expectedResponse := &node.GetCertificateHeaderResponse{
-			CertificateHeader: &protoTypes.CertificateHeader{
+			CertificateHeader: &v1Types.CertificateHeader{
 				NetworkId:        1,
 				Height:           100,
 				EpochNumber:      &epoch,
 				CertificateIndex: &certificateIndex,
-				CertificateId: &protoTypes.CertificateId{
-					Value: &protoTypes.FixedBytes32{
+				CertificateId: &v1Types.CertificateId{
+					Value: &v1Types.FixedBytes32{
 						Value: certificateID.Bytes(),
 					},
 				},
-				PrevLocalExitRoot: &protoTypes.FixedBytes32{
+				PrevLocalExitRoot: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x010201").Bytes(),
 				},
-				NewLocalExitRoot: &protoTypes.FixedBytes32{
+				NewLocalExitRoot: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x010202").Bytes(),
 				},
-				Status: protoTypes.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
-				Metadata: &protoTypes.FixedBytes32{
+				Status: v1Types.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
+				Metadata: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x011201").Bytes(),
 				},
 			},
@@ -394,8 +394,8 @@ func TestSendCertificate(t *testing.T) {
 		}
 
 		expectedResponse := &node.SubmitCertificateResponse{
-			CertificateId: &protoTypes.CertificateId{
-				Value: &protoTypes.FixedBytes32{
+			CertificateId: &v1Types.CertificateId{
+				Value: &v1Types.FixedBytes32{
 					Value: common.HexToHash("0x010203").Bytes(),
 				},
 			},

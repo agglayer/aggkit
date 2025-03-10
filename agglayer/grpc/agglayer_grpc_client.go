@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 
-	"github.com/agglayer/aggkit/agglayer/proto/node"
-	protoTypes "github.com/agglayer/aggkit/agglayer/proto/types"
+	node "buf.build/gen/go/agglayer/agglayer/grpc/go/agglayer/node/v1/nodev1grpc"
+	v1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/v1"
+	v1Types "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/protocol/types/v1"
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitCommon "github.com/agglayer/aggkit/common"
@@ -41,7 +42,7 @@ func NewAgglayerGRPCClient(serverAddr string) (*AgglayerGRPCClient, error) {
 
 // GetEpochConfiguration returns the epoch configuration from the AggLayer
 func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error) {
-	response, err := a.cfgService.GetEpochConfiguration(ctx, &node.GetEpochConfigurationRequest{})
+	response, err := a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
 	if err != nil {
 		return nil, err
 	}
@@ -60,15 +61,15 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		return common.Hash{}, errHasAggProofAndSig
 	}
 
-	var aggchainData *protoTypes.AggchainData
+	var aggchainData *v1Types.AggchainData
 	if len(certificate.AggchainProof) > 0 {
-		aggchainData = &protoTypes.AggchainData{
-			Data: &protoTypes.AggchainData_Generic{
-				Generic: &protoTypes.AggchainProof{
-					Proof: &protoTypes.AggchainProof_Sp1Stark{
+		aggchainData = &v1Types.AggchainData{
+			Data: &v1Types.AggchainData_Generic{
+				Generic: &v1Types.AggchainProof{
+					Proof: &v1Types.AggchainProof_Sp1Stark{
 						Sp1Stark: certificate.AggchainProof,
 					},
-					AggchainParams: &protoTypes.FixedBytes32{
+					AggchainParams: &v1Types.FixedBytes32{
 						Value: certificate.AggchainParams,
 					},
 					Context: map[string][]byte{}, // TODO
@@ -76,9 +77,9 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 			},
 		}
 	} else if len(certificate.Signature) > 0 {
-		aggchainData = &protoTypes.AggchainData{
-			Data: &protoTypes.AggchainData_Signature{
-				Signature: &protoTypes.FixedBytes65{
+		aggchainData = &v1Types.AggchainData{
+			Data: &v1Types.AggchainData_Signature{
+				Signature: &v1Types.FixedBytes65{
 					Value: certificate.Signature,
 				},
 			},
@@ -87,22 +88,22 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		return common.Hash{}, errHasNoAggProofOrSig
 	}
 
-	protoCert := &protoTypes.Certificate{
+	protoCert := &v1Types.Certificate{
 		NetworkId: certificate.NetworkID,
 		Height:    certificate.Height,
-		PrevLocalExitRoot: &protoTypes.FixedBytes32{
+		PrevLocalExitRoot: &v1Types.FixedBytes32{
 			Value: certificate.PrevLocalExitRoot.Bytes(),
 		},
-		NewLocalExitRoot: &protoTypes.FixedBytes32{
+		NewLocalExitRoot: &v1Types.FixedBytes32{
 			Value: certificate.NewLocalExitRoot.Bytes(),
 		},
-		Metadata: &protoTypes.FixedBytes32{
+		Metadata: &v1Types.FixedBytes32{
 			Value: certificate.Metadata.Bytes(),
 		},
 		CustomChainData:     certificate.CustomChainData,
 		AggchainData:        aggchainData,
-		BridgeExits:         make([]*protoTypes.BridgeExit, 0, len(certificate.BridgeExits)),
-		ImportedBridgeExits: make([]*protoTypes.ImportedBridgeExit, 0, len(certificate.ImportedBridgeExits)),
+		BridgeExits:         make([]*v1Types.BridgeExit, 0, len(certificate.BridgeExits)),
+		ImportedBridgeExits: make([]*v1Types.ImportedBridgeExit, 0, len(certificate.ImportedBridgeExits)),
 	}
 
 	for _, be := range certificate.BridgeExits {
@@ -118,7 +119,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		protoCert.ImportedBridgeExits = append(protoCert.ImportedBridgeExits, protoImportedBridgeExit)
 	}
 
-	response, err := a.submissionService.SubmitCertificate(ctx, &node.SubmitCertificateRequest{
+	response, err := a.submissionService.SubmitCertificate(ctx, &v1.SubmitCertificateRequest{
 		Certificate: protoCert,
 	})
 
@@ -134,9 +135,9 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
 	response, err := a.networkStateService.GetLatestCertificateHeader(
 		ctx,
-		&node.GetLatestCertificateHeaderRequest{
+		&v1.GetLatestCertificateHeaderRequest{
 			NetworkId: networkID,
-			Type:      node.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_SETTLED,
+			Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_SETTLED,
 		},
 	)
 	if err != nil {
@@ -151,9 +152,9 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
 	response, err := a.networkStateService.GetLatestCertificateHeader(
 		ctx,
-		&node.GetLatestCertificateHeaderRequest{
+		&v1.GetLatestCertificateHeaderRequest{
 			NetworkId: networkID,
-			Type:      node.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_PENDING,
+			Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_PENDING,
 		},
 	)
 	if err != nil {
@@ -167,8 +168,8 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 func (a *AgglayerGRPCClient) GetCertificateHeader(ctx context.Context,
 	certificateID common.Hash) (*types.CertificateHeader, error) {
 	response, err := a.networkStateService.GetCertificateHeader(ctx,
-		&node.GetCertificateHeaderRequest{CertificateId: &protoTypes.CertificateId{
-			Value: &protoTypes.FixedBytes32{
+		&v1.GetCertificateHeaderRequest{CertificateId: &v1Types.CertificateId{
+			Value: &v1Types.FixedBytes32{
 				Value: certificateID.Bytes(),
 			},
 		},
@@ -181,7 +182,7 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(ctx context.Context,
 }
 
 // convertProtoCertificateHeader converts a proto certificate header to a types certificate header
-func convertProtoCertificateHeader(response *protoTypes.CertificateHeader) *types.CertificateHeader {
+func convertProtoCertificateHeader(response *v1Types.CertificateHeader) *types.CertificateHeader {
 	if response == nil {
 		return nil
 	}
@@ -205,30 +206,30 @@ func convertProtoCertificateHeader(response *protoTypes.CertificateHeader) *type
 	return header
 }
 
-func convertToProtoBridgeExit(be *types.BridgeExit) *protoTypes.BridgeExit {
+func convertToProtoBridgeExit(be *types.BridgeExit) *v1Types.BridgeExit {
 	if be == nil {
 		return nil
 	}
 
-	protoBridgeExit := &protoTypes.BridgeExit{
-		LeafType:    protoTypes.LeafType(be.LeafType),
+	protoBridgeExit := &v1Types.BridgeExit{
+		LeafType:    v1Types.LeafType(be.LeafType),
 		DestNetwork: be.DestinationNetwork,
-		DestAddress: &protoTypes.FixedBytes20{
+		DestAddress: &v1Types.FixedBytes20{
 			Value: be.DestinationAddress.Bytes(),
 		},
-		Amount: &protoTypes.FixedBytes32{
+		Amount: &v1Types.FixedBytes32{
 			Value: be.Amount.Bytes(),
 		},
-		TokenInfo: &protoTypes.TokenInfo{
+		TokenInfo: &v1Types.TokenInfo{
 			OriginNetwork: be.TokenInfo.OriginNetwork,
-			OriginTokenAddress: &protoTypes.FixedBytes20{
+			OriginTokenAddress: &v1Types.FixedBytes20{
 				Value: be.TokenInfo.OriginTokenAddress.Bytes(),
 			},
 		},
 	}
 
 	if len(be.Metadata) > 0 {
-		protoBridgeExit.Metadata = &protoTypes.FixedBytes32{
+		protoBridgeExit.Metadata = &v1Types.FixedBytes32{
 			Value: be.Metadata,
 		}
 	}
@@ -236,14 +237,14 @@ func convertToProtoBridgeExit(be *types.BridgeExit) *protoTypes.BridgeExit {
 	return protoBridgeExit
 }
 
-func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*protoTypes.ImportedBridgeExit, error) {
+func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*v1Types.ImportedBridgeExit, error) {
 	if ibe == nil {
 		return nil, nil
 	}
 
-	importedBridgeExit := &protoTypes.ImportedBridgeExit{
+	importedBridgeExit := &v1Types.ImportedBridgeExit{
 		BridgeExit: convertToProtoBridgeExit(ibe.BridgeExit),
-		GlobalIndex: &protoTypes.FixedBytes32{
+		GlobalIndex: &v1Types.FixedBytes32{
 			Value: bridgesync.GenerateGlobalIndex(
 				ibe.GlobalIndex.MainnetFlag,
 				ibe.GlobalIndex.RollupIndex,
@@ -253,33 +254,33 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*protoType
 
 	switch claimData := ibe.ClaimData.(type) {
 	case *types.ClaimFromMainnnet:
-		importedBridgeExit.Claim = &protoTypes.ImportedBridgeExit_Mainnet{
-			Mainnet: &protoTypes.ClaimFromMainnet{
-				ProofLeafMer: &protoTypes.MerkleProof{
-					Root: &protoTypes.FixedBytes32{
+		importedBridgeExit.Claim = &v1Types.ImportedBridgeExit_Mainnet{
+			Mainnet: &v1Types.ClaimFromMainnet{
+				ProofLeafMer: &v1Types.MerkleProof{
+					Root: &v1Types.FixedBytes32{
 						Value: claimData.ProofLeafMER.Root.Bytes(),
 					},
 					Siblings: convertToProtoSiblings(claimData.ProofLeafMER.Proof),
 				},
-				ProofGerL1Root: &protoTypes.MerkleProof{
-					Root: &protoTypes.FixedBytes32{
+				ProofGerL1Root: &v1Types.MerkleProof{
+					Root: &v1Types.FixedBytes32{
 						Value: claimData.ProofGERToL1Root.Root.Bytes(),
 					},
 					Siblings: convertToProtoSiblings(claimData.ProofGERToL1Root.Proof),
 				},
-				L1Leaf: &protoTypes.L1InfoTreeLeafWithContext{
+				L1Leaf: &v1Types.L1InfoTreeLeafWithContext{
 					L1InfoTreeIndex: claimData.L1Leaf.L1InfoTreeIndex,
-					Rer: &protoTypes.FixedBytes32{
+					Rer: &v1Types.FixedBytes32{
 						Value: claimData.L1Leaf.RollupExitRoot.Bytes(),
 					},
-					Mer: &protoTypes.FixedBytes32{
+					Mer: &v1Types.FixedBytes32{
 						Value: claimData.L1Leaf.MainnetExitRoot.Bytes(),
 					},
-					Inner: &protoTypes.L1InfoTreeLeaf{
-						GlobalExitRoot: &protoTypes.FixedBytes32{
+					Inner: &v1Types.L1InfoTreeLeaf{
+						GlobalExitRoot: &v1Types.FixedBytes32{
 							Value: claimData.L1Leaf.Inner.GlobalExitRoot.Bytes(),
 						},
-						BlockHash: &protoTypes.FixedBytes32{
+						BlockHash: &v1Types.FixedBytes32{
 							Value: claimData.L1Leaf.Inner.BlockHash.Bytes(),
 						},
 						Timestamp: claimData.L1Leaf.Inner.Timestamp,
@@ -288,39 +289,39 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*protoType
 			},
 		}
 	case *types.ClaimFromRollup:
-		importedBridgeExit.Claim = &protoTypes.ImportedBridgeExit_Rollup{
-			Rollup: &protoTypes.ClaimFromRollup{
-				ProofLeafLer: &protoTypes.MerkleProof{
-					Root: &protoTypes.FixedBytes32{
+		importedBridgeExit.Claim = &v1Types.ImportedBridgeExit_Rollup{
+			Rollup: &v1Types.ClaimFromRollup{
+				ProofLeafLer: &v1Types.MerkleProof{
+					Root: &v1Types.FixedBytes32{
 						Value: claimData.ProofLeafLER.Root.Bytes(),
 					},
 					Siblings: convertToProtoSiblings(claimData.ProofLeafLER.Proof),
 				},
-				ProofLerRer: &protoTypes.MerkleProof{
-					Root: &protoTypes.FixedBytes32{
+				ProofLerRer: &v1Types.MerkleProof{
+					Root: &v1Types.FixedBytes32{
 						Value: claimData.ProofLERToRER.Root.Bytes(),
 					},
 					Siblings: convertToProtoSiblings(claimData.ProofLERToRER.Proof),
 				},
-				ProofGerL1Root: &protoTypes.MerkleProof{
-					Root: &protoTypes.FixedBytes32{
+				ProofGerL1Root: &v1Types.MerkleProof{
+					Root: &v1Types.FixedBytes32{
 						Value: claimData.ProofGERToL1Root.Root.Bytes(),
 					},
 					Siblings: convertToProtoSiblings(claimData.ProofGERToL1Root.Proof),
 				},
-				L1Leaf: &protoTypes.L1InfoTreeLeafWithContext{
+				L1Leaf: &v1Types.L1InfoTreeLeafWithContext{
 					L1InfoTreeIndex: claimData.L1Leaf.L1InfoTreeIndex,
-					Rer: &protoTypes.FixedBytes32{
+					Rer: &v1Types.FixedBytes32{
 						Value: claimData.L1Leaf.RollupExitRoot.Bytes(),
 					},
-					Mer: &protoTypes.FixedBytes32{
+					Mer: &v1Types.FixedBytes32{
 						Value: claimData.L1Leaf.MainnetExitRoot.Bytes(),
 					},
-					Inner: &protoTypes.L1InfoTreeLeaf{
-						GlobalExitRoot: &protoTypes.FixedBytes32{
+					Inner: &v1Types.L1InfoTreeLeaf{
+						GlobalExitRoot: &v1Types.FixedBytes32{
 							Value: claimData.L1Leaf.Inner.GlobalExitRoot.Bytes(),
 						},
-						BlockHash: &protoTypes.FixedBytes32{
+						BlockHash: &v1Types.FixedBytes32{
 							Value: claimData.L1Leaf.Inner.BlockHash.Bytes(),
 						},
 						Timestamp: claimData.L1Leaf.Inner.Timestamp,
@@ -335,11 +336,11 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*protoType
 	return importedBridgeExit, nil
 }
 
-func convertToProtoSiblings(siblings treeTypes.Proof) []*protoTypes.FixedBytes32 {
-	protoSiblings := make([]*protoTypes.FixedBytes32, len(siblings))
+func convertToProtoSiblings(siblings treeTypes.Proof) []*v1Types.FixedBytes32 {
+	protoSiblings := make([]*v1Types.FixedBytes32, len(siblings))
 
 	for i, sibling := range siblings {
-		protoSiblings[i] = &protoTypes.FixedBytes32{
+		protoSiblings[i] = &v1Types.FixedBytes32{
 			Value: sibling.Bytes(),
 		}
 	}

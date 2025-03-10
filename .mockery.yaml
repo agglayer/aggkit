@@ -6,17 +6,6 @@ outpkg: "mocks"
 filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
 mockname: "{{ .InterfaceName }}"
 packages:
-  github.com/agglayer/aggkit/agglayer/proto/node:
-    config:
-      dir: "{{ .InterfaceDir }}/../../mocks"
-      outpkg: "mocks"
-    interfaces:
-      NodeStateServiceClient:
-        config:
-      ConfigurationServiceClient:
-        config:
-      CertificateSubmissionServiceClient:
-        config:
   github.com/agglayer/aggkit/agglayer:
     config:
       inpackage: true
@@ -52,6 +41,16 @@ packages:
     config:
       all: true
       dir: "../aggsender/mocks"
+  buf.build/gen/go/agglayer/agglayer/grpc/go/agglayer/node/v1/nodev1grpc:
+    config:
+      dir: "../agglayer/mocks"
+    interfaces:
+      NodeStateServiceClient:
+        config:
+      ConfigurationServiceClient:
+        config:
+      CertificateSubmissionServiceClient:
+        config:
   github.com/agglayer/aggkit/aggsender/rpc:
     config:
       all: true
