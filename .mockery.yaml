@@ -37,6 +37,10 @@ packages:
   github.com/agglayer/aggkit/aggsender/grpc:
     config:
       all: true
+  buf.build/gen/go/agglayer/provers/grpc/go/aggkit/prover/v1/proverv1grpc:
+    config:
+      all: true
+      dir: "../aggsender/mocks"
   github.com/agglayer/aggkit/aggsender/rpc:
     config:
       all: true

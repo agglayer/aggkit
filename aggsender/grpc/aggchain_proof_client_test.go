@@ -4,29 +4,25 @@ import (
 	"errors"
 	"testing"
 
+	agglayerProtobuf "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/protocol/types/v1"
+	aggkitProtobuf "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
 	agglayer "github.com/agglayer/aggkit/agglayer"
-	"github.com/agglayer/aggkit/aggsender/mocks"
-	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitProverMocks "github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-// MockAggchainProofServiceClient is a mock implementation of the AggchainProofServiceClient
-type MockAggchainProofServiceClient struct {
-	mock.Mock
-}
-
 func TestGenerateAggchainProof_Success(t *testing.T) {
-	mockClient := mocks.NewAggchainProofServiceClient(t)
+	mockClient := aggkitProverMocks.NewAggchainProofServiceClient(t)
 	client := &AggchainProofClient{client: mockClient}
 
-	expectedResponse := &types.GenerateAggchainProofResponse{
+	expectedResponse := &aggkitProtobuf.GenerateAggchainProofResponse{
 		AggchainProof:     []byte("dummy-proof"),
 		StartBlock:        100,
 		EndBlock:          200,
-		LocalExitRootHash: &types.FixedBytes32{Value: common.Hash{}.Bytes()},
+		LocalExitRootHash: &agglayerProtobuf.FixedBytes32{Value: common.Hash{}.Bytes()},
 		CustomChainData:   []byte{},
 	}
 
@@ -52,12 +48,12 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 }
 
 func TestGenerateAggchainProof_Error(t *testing.T) {
-	mockClient := mocks.NewAggchainProofServiceClient(t)
+	mockClient := aggkitProverMocks.NewAggchainProofServiceClient(t)
 	client := &AggchainProofClient{client: mockClient}
 
 	expectedError := errors.New("Generate error")
 
-	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return((*types.GenerateAggchainProofResponse)(nil), expectedError)
+	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return((*aggkitProtobuf.GenerateAggchainProofResponse)(nil), expectedError)
 
 	result, err := client.GenerateAggchainProof(
 		300,
