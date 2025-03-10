@@ -3,7 +3,6 @@ package bridgesync
 import (
 	"context"
 	"math/big"
-	"os/exec"
 	"testing"
 	"time"
 
@@ -13,11 +12,9 @@ import (
 	"github.com/agglayer/aggkit/test/contracts/claimmocktest"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 )
 
@@ -30,23 +27,10 @@ type testCase struct {
 
 func TestClaimCalldata(t *testing.T) {
 	testCases := []testCase{}
+
+	ctx, cancelFn := context.WithCancel(context.Background())
 	// Setup Docker L1
-	log.Debug("starting docker")
-	ctx := context.Background()
-	msg, err := exec.Command("docker-compose", "up", "-d").CombinedOutput()
-	require.NoError(t, err, string(msg))
-	time.Sleep(time.Second * 1)
-	defer func() {
-		msg, err = exec.Command("docker-compose", "down").CombinedOutput()
-		require.NoError(t, err, string(msg))
-	}()
-	log.Debug("docker started")
-	client, err := ethclient.Dial("http://localhost:8545")
-	require.NoError(t, err)
-	privateKey, err := crypto.HexToECDSA("ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80")
-	require.NoError(t, err)
-	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(0).SetUint64(1337))
-	require.NoError(t, err)
+	client, auth := startGeth(t, ctx, cancelFn)
 
 	// Deploy contracts
 	bridgeAddr, _, bridgeContract, err := claimmock.DeployClaimmock(auth, client)
