@@ -103,18 +103,18 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
 
-    echo "------- l1InfoTreeIndexForBridge API testcase"
+    echo "------- find_l1_info_tree_index_for_bridge API testcase"
     run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
     local bridge
     bridge="$output"
     local deposit_count
     deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run l1InfoTreeIndexForBridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
     local l1_info_tree_index
     l1_info_tree_index="$output"
     assert_equal "$l1_info_tree_index" 2
-    echo "------- l1InfoTreeIndexForBridge API testcase passed"
+    echo "------- find_l1_info_tree_index_for_bridge API testcase passed"
 }
 
 @test "Custom gas token deposit L1 -> L2" {
