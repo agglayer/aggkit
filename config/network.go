@@ -13,11 +13,9 @@ type NetworkConfig struct {
 	Genesis state.Genesis
 }
 
-type network string
 type leafType uint8
 
 const (
-	custom network = "custom"
 	// LeafTypeBalance specifies that leaf stores Balance
 	LeafTypeBalance leafType = 0
 	// LeafTypeNonce specifies that leaf stores Nonce

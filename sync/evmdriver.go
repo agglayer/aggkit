@@ -18,11 +18,6 @@ type Block struct {
 	Hash   common.Hash
 }
 
-type evmDownloaderFull interface {
-	EVMDownloaderInterface
-	downloader
-}
-
 type downloader interface {
 	Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock)
 }
