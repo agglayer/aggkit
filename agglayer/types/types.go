@@ -123,6 +123,101 @@ const (
 	LeafTypeMessage
 )
 
+type AggchainData interface {
+	MarshalJSON() ([]byte, error)
+	UnmarshalJSON(data []byte) error
+	IsAggchainData() bool
+}
+
+// AggchainDataSignature is the data structure that will hold the signature
+// of the aggsender key that signed the certificate
+// This is used in the regular PP path
+type AggchainDataSignature struct {
+	Signature []byte `json:"signature"`
+}
+
+// IsAggchainData is the implementation of the AggchainData interface
+func (a *AggchainDataSignature) IsAggchainData() bool {
+	return true
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataSignature) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Signature string `json:"signature"`
+	}{
+		Signature: common.Bytes2Hex(a.Signature),
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataSignature) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Signature string `json:"signature"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	a.Signature = common.Hex2Bytes(aux.Signature)
+
+	return nil
+}
+
+// AggchainDataProof is the data structure that will hold the proof of the certificate
+// This is used in the aggchain prover path
+type AggchainDataProof struct {
+	Proof          []byte            `json:"proof"`
+	AggchainParams common.Hash       `json:"aggchain_params"`
+	Context        map[string][]byte `json:"context"`
+}
+
+// IsAggchainData is the implementation of the AggchainData interface
+func (a *AggchainDataProof) IsAggchainData() bool {
+	return true
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataProof) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Generic struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+		} `json:"generic"`
+	}{
+		Generic: struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+		}{
+			Proof:          common.Bytes2Hex(a.Proof),
+			AggchainParams: a.AggchainParams.String(),
+			Context:        a.Context,
+		},
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Generic struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+		} `json:"generic"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	a.Proof = common.Hex2Bytes(aux.Generic.Proof)
+	a.AggchainParams = common.HexToHash(aux.Generic.AggchainParams)
+	a.Context = aux.Generic.Context
+
+	return nil
+}
+
 // Certificate is the data structure that will be sent to the agglayer
 type Certificate struct {
 	NetworkID           uint32                `json:"network_id"`
@@ -132,10 +227,8 @@ type Certificate struct {
 	BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
 	Metadata            common.Hash           `json:"metadata"`
-	AggchainProof       []byte                `json:"aggchain_proof,omitempty"`
-	Signature           []byte                `json:"signature,omitempty"`
 	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
-	AggchainParams      []byte                `json:"aggchain_params,omitempty"`
+	AggchainData        AggchainData          `json:"data,omitempty"`
 }
 
 // ID returns a string with the ident of this cert (height/certID)
@@ -151,9 +244,9 @@ func (c *Certificate) Brief() string {
 	if c == nil {
 		return nilStr
 	}
-	res := fmt.Sprintf("agglayer.Cert {height: %d prevLER: %s, newLER: %s, aggchainProof: %s, "+
+	res := fmt.Sprintf("agglayer.Cert {height: %d prevLER: %s, newLER: %s, "+
 		"exits: %d imported_exits: %d}",
-		c.Height, c.PrevLocalExitRoot.String(), c.NewLocalExitRoot.String(), c.AggchainProof,
+		c.Height, c.PrevLocalExitRoot.String(), c.NewLocalExitRoot.String(),
 		len(c.BridgeExits), len(c.ImportedBridgeExits))
 	return res
 }
@@ -195,6 +288,51 @@ func (c *Certificate) HashToSign() common.Hash {
 		c.NewLocalExitRoot.Bytes(),
 		crypto.Keccak256Hash(globalIndexHashes...).Bytes(),
 	)
+}
+
+// SignedCertificate is the struct that contains the certificate and the signature of the signer
+// NOTE: this is an old and deprecated struct, only to be used for backward compatibility
+type SignedCertificate struct {
+	*Certificate
+	Signature *Signature `json:"signature"`
+}
+
+func (s *SignedCertificate) Brief() string {
+	return fmt.Sprintf("Certificate:%s,\nSignature: %s", s.Certificate.Brief(), s.Signature.String())
+}
+
+// CopyWithDefaulting returns a shallow copy of the signed certificate
+func (s *SignedCertificate) CopyWithDefaulting() *SignedCertificate {
+	certificateCopy := *s.Certificate
+
+	if certificateCopy.BridgeExits == nil {
+		certificateCopy.BridgeExits = make([]*BridgeExit, 0)
+	}
+
+	if certificateCopy.ImportedBridgeExits == nil {
+		certificateCopy.ImportedBridgeExits = make([]*ImportedBridgeExit, 0)
+	}
+
+	signature := s.Signature
+	if signature == nil {
+		signature = &Signature{}
+	}
+
+	return &SignedCertificate{
+		Certificate: &certificateCopy,
+		Signature:   signature,
+	}
+}
+
+// Signature is the data structure that will hold the signature of the given certificate
+type Signature struct {
+	R         common.Hash `json:"r"`
+	S         common.Hash `json:"s"`
+	OddParity bool        `json:"odd_y_parity"`
+}
+
+func (s *Signature) String() string {
+	return fmt.Sprintf("R: %s, S: %s, OddParity: %t", s.R.String(), s.S.String(), s.OddParity)
 }
 
 // TokenInfo encapsulates the information to uniquely identify a token on the origin network.

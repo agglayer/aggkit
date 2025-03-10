@@ -51,8 +51,7 @@ func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayerT
 	if cert == nil {
 		return false, nil
 	}
-	var certSigned agglayerTypes.Certificate
-	err := json.Unmarshal([]byte(cert.SignedCertificate), &certSigned)
+	certSigned, err := tryUnmarshalCertificate(cert)
 	if err != nil {
 		log.Debugf("cert: %v", cert.SignedCertificate)
 		return false, fmt.Errorf("error Unmarshal cert. Err: %w", err)
@@ -63,6 +62,25 @@ func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayerT
 		}
 	}
 	return false, nil
+}
+
+func tryUnmarshalCertificate(cert *types.CertificateInfo) (*agglayerTypes.Certificate, error) {
+	var certSigned agglayerTypes.Certificate
+	err := json.Unmarshal([]byte(cert.SignedCertificate), &certSigned)
+	if err == nil {
+		return &certSigned, nil
+	}
+
+	log.Warnf("Error unmarshal new certificate format: %v. It will fallback to the old one", err)
+
+	var certSignedOld agglayerTypes.SignedCertificate
+	err = json.Unmarshal([]byte(cert.SignedCertificate), &certSignedOld)
+	if err != nil {
+		log.Errorf("Could not unmarshal certificate with old format: %v", err)
+		return nil, fmt.Errorf("error Unmarshal cert. Err: %w", err)
+	}
+
+	return certSignedOld.Certificate, nil
 }
 
 func main() {

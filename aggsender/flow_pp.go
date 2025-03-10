@@ -107,7 +107,9 @@ func (p *ppFlow) signCertificate(ctx context.Context,
 		hashToSign.String(),
 	)
 
-	certificate.Signature = sig
+	certificate.AggchainData = &agglayerTypes.AggchainDataSignature{
+		Signature: sig,
+	}
 
 	return certificate, nil
 }

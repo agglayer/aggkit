@@ -415,7 +415,9 @@ func TestExploratoryGenerateCert(t *testing.T) {
 				},
 			},
 		},
-		Signature: signature,
+		AggchainData: &agglayerTypes.AggchainDataSignature{
+			Signature: signature,
+		},
 	}
 
 	file, err := os.Create("test.json")
@@ -481,7 +483,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	signedCertificate, err := aggSender.sendCertificate(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, signedCertificate)
-	require.NotNil(t, signedCertificate.Signature)
+	require.NotNil(t, signedCertificate.AggchainData)
 	require.NotNil(t, signedCertificate.ImportedBridgeExits)
 	require.Len(t, signedCertificate.BridgeExits, 1)
 

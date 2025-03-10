@@ -281,21 +281,7 @@ func TestSendCertificate(t *testing.T) {
 
 	ctx := context.Background()
 
-	t.Run("returns error when both AggchainProof and Signature are present", func(t *testing.T) {
-		t.Parallel()
-
-		client := &AgglayerGRPCClient{}
-
-		certificate := &types.Certificate{
-			AggchainProof: []byte{0x01},
-			Signature:     []byte{0x02},
-		}
-
-		_, err := client.SendCertificate(ctx, certificate)
-		require.ErrorIs(t, err, errHasAggProofAndSig)
-	})
-
-	t.Run("returns error when neither AggchainProof nor Signature are present", func(t *testing.T) {
+	t.Run("returns error when AggchainData not defined", func(t *testing.T) {
 		t.Parallel()
 
 		client := &AgglayerGRPCClient{}
@@ -303,7 +289,7 @@ func TestSendCertificate(t *testing.T) {
 		certificate := &types.Certificate{}
 
 		_, err := client.SendCertificate(ctx, certificate)
-		require.ErrorIs(t, err, errHasNoAggProofOrSig)
+		require.ErrorIs(t, err, errUndefinedAggchainData)
 	})
 
 	t.Run("returns error from submission service", func(t *testing.T) {
@@ -315,7 +301,9 @@ func TestSendCertificate(t *testing.T) {
 		}
 
 		certificate := &types.Certificate{
-			AggchainProof: []byte{0x01},
+			AggchainData: &types.AggchainDataSignature{
+				Signature: []byte{0x01},
+			},
 		}
 
 		submissionServiceMock.EXPECT().SubmitCertificate(ctx, mock.Anything).Return(nil, errors.New("test error"))
@@ -333,7 +321,10 @@ func TestSendCertificate(t *testing.T) {
 		}
 
 		certificate := &types.Certificate{
-			AggchainProof:     []byte{0x01},
+			AggchainData: &types.AggchainDataProof{
+				Proof:          []byte{0x01},
+				AggchainParams: common.HexToHash("0x010203"),
+			},
 			NetworkID:         1,
 			Height:            100,
 			PrevLocalExitRoot: common.HexToHash("0x010201"),

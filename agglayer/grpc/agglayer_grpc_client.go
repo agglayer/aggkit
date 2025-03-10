@@ -15,9 +15,8 @@ import (
 )
 
 var (
-	errHasAggProofAndSig = errors.New("certificate can either have an aggchain proof or a signature, " +
-		"it can not have both")
-	errHasNoAggProofOrSig = errors.New("certificate must have an aggchain proof or a signature")
+	errUndefinedAggchainData = errors.New("undefined aggchain data parameter")
+	errUnknownAggchainData   = errors.New("unknown aggchain data type")
 )
 
 type AgglayerGRPCClient struct {
@@ -57,35 +56,37 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 // It returns the certificate ID
 func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 	certificate *types.Certificate) (common.Hash, error) {
-	if len(certificate.AggchainProof) > 0 && len(certificate.Signature) > 0 {
-		return common.Hash{}, errHasAggProofAndSig
+	if certificate.AggchainData == nil {
+		return common.Hash{}, errUndefinedAggchainData
 	}
 
-	var aggchainData *v1Types.AggchainData
-	if len(certificate.AggchainProof) > 0 {
-		aggchainData = &v1Types.AggchainData{
+	var aggchainDataProto *v1Types.AggchainData
+
+	switch ad := certificate.AggchainData.(type) {
+	case *types.AggchainDataProof:
+		aggchainDataProto = &v1Types.AggchainData{
 			Data: &v1Types.AggchainData_Generic{
 				Generic: &v1Types.AggchainProof{
 					Proof: &v1Types.AggchainProof_Sp1Stark{
-						Sp1Stark: certificate.AggchainProof,
+						Sp1Stark: ad.Proof,
 					},
 					AggchainParams: &v1Types.FixedBytes32{
-						Value: certificate.AggchainParams,
+						Value: ad.AggchainParams.Bytes(),
 					},
-					Context: map[string][]byte{}, // TODO
+					Context: ad.Context,
 				},
 			},
 		}
-	} else if len(certificate.Signature) > 0 {
-		aggchainData = &v1Types.AggchainData{
+	case *types.AggchainDataSignature:
+		aggchainDataProto = &v1Types.AggchainData{
 			Data: &v1Types.AggchainData_Signature{
 				Signature: &v1Types.FixedBytes65{
-					Value: certificate.Signature,
+					Value: ad.Signature,
 				},
 			},
 		}
-	} else {
-		return common.Hash{}, errHasNoAggProofOrSig
+	default:
+		return common.Hash{}, errUnknownAggchainData
 	}
 
 	protoCert := &v1Types.Certificate{
@@ -101,7 +102,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 			Value: certificate.Metadata.Bytes(),
 		},
 		CustomChainData:     certificate.CustomChainData,
-		AggchainData:        aggchainData,
+		AggchainData:        aggchainDataProto,
 		BridgeExits:         make([]*v1Types.BridgeExit, 0, len(certificate.BridgeExits)),
 		ImportedBridgeExits: make([]*v1Types.ImportedBridgeExit, 0, len(certificate.ImportedBridgeExits)),
 	}
@@ -193,11 +194,11 @@ func convertProtoCertificateHeader(response *v1Types.CertificateHeader) *types.C
 		EpochNumber:           response.EpochNumber,
 		CertificateIndex:      response.CertificateIndex,
 		CertificateID:         common.BytesToHash(response.CertificateId.Value.Value),
-		PreviousLocalExitRoot: nullableBytesToHash(response.PrevLocalExitRoot.Value),
+		PreviousLocalExitRoot: nullableBytesToHash(response.PrevLocalExitRoot),
 		NewLocalExitRoot:      common.BytesToHash(response.NewLocalExitRoot.Value),
 		Status:                types.CertificateStatus(response.Status),
 		Metadata:              common.BytesToHash(response.Metadata.Value),
-		SettlementTxHash:      nullableBytesToHash(response.SettlementTxHash.Value),
+		SettlementTxHash:      nullableBytesToHash(response.SettlementTxHash),
 	}
 
 	if response.Error != nil && response.Error.Message != nil {
@@ -350,11 +351,11 @@ func convertToProtoSiblings(siblings treeTypes.Proof) []*v1Types.FixedBytes32 {
 }
 
 // nullableBytesToHash converts a nullable byte slice to a hash pointer
-func nullableBytesToHash(b []byte) *common.Hash {
-	if len(b) == 0 {
+func nullableBytesToHash(b *v1Types.FixedBytes32) *common.Hash {
+	if b == nil || len(b.Value) == 0 {
 		return nil
 	}
 
-	hash := common.BytesToHash(b)
+	hash := common.BytesToHash(b.Value)
 	return &hash
 }

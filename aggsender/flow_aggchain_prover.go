@@ -207,9 +207,13 @@ func (a *aggchainProverFlow) BuildCertificate(ctx context.Context,
 		return nil, err
 	}
 
-	cert.AggchainProof = buildParams.AggchainProof
+	cert.AggchainData = &agglayerTypes.AggchainDataProof{
+		Proof:          buildParams.AggchainProof,
+		AggchainParams: common.Hash{},           // TODO - after prover proto is updated, we need to update this
+		Context:        make(map[string][]byte), // TODO - after prover proto is updated, we need to update this
+	}
+
 	cert.CustomChainData = buildParams.CustomChainData
-	// cert.AggchainParams = buildParams.AggchainParams TODO - uncomment this once this field is added to the proto
 
 	return cert, nil
 }
