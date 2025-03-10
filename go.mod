@@ -3,6 +3,7 @@ module github.com/agglayer/aggkit
 go 1.22.4
 
 require (
+	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250228150343-c7b7fef1692a.1
 	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250225123212-0efa67e44aed.2
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.5-20250225123212-0efa67e44aed.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20250212122525-ec44fb65e861
@@ -40,7 +41,6 @@ require (
 )
 
 require (
-	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250228150343-c7b7fef1692a.1 // indirect
 	github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.6 // indirect
 	github.com/DataDog/zstd v1.5.6 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
