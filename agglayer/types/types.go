@@ -727,7 +727,7 @@ type CertificateHeader struct {
 	Status                CertificateStatus `json:"status"`
 	Metadata              common.Hash       `json:"metadata"`
 	Error                 error             `json:"-"`
-	AggchainProof         string            `json:"aggchain_proof,omitempty"`
+	SettlementTxHash      *common.Hash      `json:"settlement_tx_hash,omitempty"`
 }
 
 // ID returns a string with the ident of this cert (height/certID)
@@ -758,10 +758,14 @@ func (c *CertificateHeader) String() string {
 	if c.PreviousLocalExitRoot != nil {
 		previousLocalExitRoot = c.PreviousLocalExitRoot.String()
 	}
+	settlementTxHash := nilStr
+	if c.SettlementTxHash != nil {
+		settlementTxHash = c.SettlementTxHash.String()
+	}
 	return fmt.Sprintf("Height: %d, CertificateID: %s, PreviousLocalExitRoot: %s, NewLocalExitRoot: %s. Status: %s."+
-		" AggchainProof: %s, Errors: [%s]",
+		" SettlementTxnHash: %s, Errors: [%s]",
 		c.Height, c.CertificateID.String(), previousLocalExitRoot, c.NewLocalExitRoot.String(), c.Status.String(),
-		c.AggchainProof, errors)
+		settlementTxHash, errors)
 }
 
 func (c *CertificateHeader) UnmarshalJSON(data []byte) error {

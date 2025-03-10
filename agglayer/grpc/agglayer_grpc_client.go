@@ -197,6 +197,7 @@ func convertProtoCertificateHeader(response *v1Types.CertificateHeader) *types.C
 		NewLocalExitRoot:      common.BytesToHash(response.NewLocalExitRoot.Value),
 		Status:                types.CertificateStatus(response.Status),
 		Metadata:              common.BytesToHash(response.Metadata.Value),
+		SettlementTxHash:      nullableBytesToHash(response.SettlementTxHash.Value),
 	}
 
 	if response.Error != nil && response.Error.Message != nil {
