@@ -127,7 +127,7 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 		require.Equal(t, expectedResponse.CertificateHeader.CertificateId.Value.Value, resp.CertificateID.Bytes())
 		require.Equal(t, expectedResponse.CertificateHeader.PrevLocalExitRoot.Value, resp.PreviousLocalExitRoot.Bytes())
 		require.Equal(t, expectedResponse.CertificateHeader.NewLocalExitRoot.Value, resp.NewLocalExitRoot.Bytes())
-		require.Equal(t, int(expectedResponse.CertificateHeader.Status), int(resp.Status))
+		require.Equal(t, certificateStatusFromProto(expectedResponse.CertificateHeader.Status), resp.Status)
 		require.Equal(t, expectedResponse.CertificateHeader.Metadata.Value, resp.Metadata.Bytes())
 	})
 }
@@ -199,7 +199,7 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 		require.Equal(t, expectedResponse.CertificateHeader.CertificateId.Value.Value, resp.CertificateID.Bytes())
 		require.Equal(t, expectedResponse.CertificateHeader.PrevLocalExitRoot.Value, resp.PreviousLocalExitRoot.Bytes())
 		require.Equal(t, expectedResponse.CertificateHeader.NewLocalExitRoot.Value, resp.NewLocalExitRoot.Bytes())
-		require.Equal(t, int(expectedResponse.CertificateHeader.Status), int(resp.Status))
+		require.Equal(t, certificateStatusFromProto(expectedResponse.CertificateHeader.Status), resp.Status)
 		require.Equal(t, expectedResponse.CertificateHeader.Metadata.Value, resp.Metadata.Bytes())
 	})
 }
@@ -271,7 +271,7 @@ func TestGetCertificateHeader(t *testing.T) {
 		require.Equal(t, expectedResponse.CertificateHeader.CertificateId.Value.Value, resp.CertificateID.Bytes())
 		require.Equal(t, expectedResponse.CertificateHeader.PrevLocalExitRoot.Value, resp.PreviousLocalExitRoot.Bytes())
 		require.Equal(t, expectedResponse.CertificateHeader.NewLocalExitRoot.Value, resp.NewLocalExitRoot.Bytes())
-		require.Equal(t, int(expectedResponse.CertificateHeader.Status), int(resp.Status))
+		require.Equal(t, certificateStatusFromProto(expectedResponse.CertificateHeader.Status), resp.Status)
 		require.Equal(t, expectedResponse.CertificateHeader.Metadata.Value, resp.Metadata.Bytes())
 	})
 }

@@ -196,7 +196,7 @@ func convertProtoCertificateHeader(response *v1Types.CertificateHeader) *types.C
 		CertificateID:         common.BytesToHash(response.CertificateId.Value.Value),
 		PreviousLocalExitRoot: nullableBytesToHash(response.PrevLocalExitRoot),
 		NewLocalExitRoot:      common.BytesToHash(response.NewLocalExitRoot.Value),
-		Status:                types.CertificateStatus(response.Status),
+		Status:                certificateStatusFromProto(response.Status),
 		Metadata:              common.BytesToHash(response.Metadata.Value),
 		SettlementTxHash:      nullableBytesToHash(response.SettlementTxHash),
 	}
@@ -208,19 +208,20 @@ func convertProtoCertificateHeader(response *v1Types.CertificateHeader) *types.C
 	return header
 }
 
+// convertToProtoBridgeExit converts a bridge exit to a proto bridge exit
 func convertToProtoBridgeExit(be *types.BridgeExit) *v1Types.BridgeExit {
 	if be == nil {
 		return nil
 	}
 
 	protoBridgeExit := &v1Types.BridgeExit{
-		LeafType:    v1Types.LeafType(be.LeafType),
+		LeafType:    leafTypeToProto(be.LeafType),
 		DestNetwork: be.DestinationNetwork,
 		DestAddress: &v1Types.FixedBytes20{
 			Value: be.DestinationAddress.Bytes(),
 		},
 		Amount: &v1Types.FixedBytes32{
-			Value: be.Amount.Bytes(),
+			Value: common.BigToHash(be.Amount).Bytes(),
 		},
 		TokenInfo: &v1Types.TokenInfo{
 			OriginNetwork: be.TokenInfo.OriginNetwork,
@@ -232,7 +233,7 @@ func convertToProtoBridgeExit(be *types.BridgeExit) *v1Types.BridgeExit {
 
 	if len(be.Metadata) > 0 {
 		protoBridgeExit.Metadata = &v1Types.FixedBytes32{
-			Value: be.Metadata,
+			Value: common.BytesToHash(be.Metadata).Bytes(),
 		}
 	}
 
@@ -247,10 +248,10 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*v1Types.I
 	importedBridgeExit := &v1Types.ImportedBridgeExit{
 		BridgeExit: convertToProtoBridgeExit(ibe.BridgeExit),
 		GlobalIndex: &v1Types.FixedBytes32{
-			Value: bridgesync.GenerateGlobalIndex(
+			Value: common.BigToHash(bridgesync.GenerateGlobalIndex(
 				ibe.GlobalIndex.MainnetFlag,
 				ibe.GlobalIndex.RollupIndex,
-				ibe.GlobalIndex.LeafIndex).Bytes(),
+				ibe.GlobalIndex.LeafIndex)).Bytes(),
 		},
 	}
 
@@ -338,6 +339,7 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*v1Types.I
 	return importedBridgeExit, nil
 }
 
+// convertToProtoSiblings converts a slice of hashes to a slice of proto fixed bytes 32
 func convertToProtoSiblings(siblings treeTypes.Proof) []*v1Types.FixedBytes32 {
 	protoSiblings := make([]*v1Types.FixedBytes32, len(siblings))
 
@@ -358,4 +360,34 @@ func nullableBytesToHash(b *v1Types.FixedBytes32) *common.Hash {
 
 	hash := common.BytesToHash(b.Value)
 	return &hash
+}
+
+// leafTypeToProto converts a leaf type to a proto leaf type
+func leafTypeToProto(leafType types.LeafType) v1Types.LeafType {
+	switch leafType {
+	case types.LeafTypeAsset:
+		return v1Types.LeafType_LEAF_TYPE_TRANSFER
+	case types.LeafTypeMessage:
+		return v1Types.LeafType_LEAF_TYPE_MESSAGE
+	default:
+		return v1Types.LeafType_LEAF_TYPE_UNSPECIFIED
+	}
+}
+
+// certificateStatusFromProto converts a proto certificate status to a certificate status
+func certificateStatusFromProto(status v1Types.CertificateStatus) types.CertificateStatus {
+	switch status {
+	case v1Types.CertificateStatus_CERTIFICATE_STATUS_PENDING:
+		return types.Pending
+	case v1Types.CertificateStatus_CERTIFICATE_STATUS_PROVEN:
+		return types.Proven
+	case v1Types.CertificateStatus_CERTIFICATE_STATUS_CANDIDATE:
+		return types.Candidate
+	case v1Types.CertificateStatus_CERTIFICATE_STATUS_IN_ERROR:
+		return types.InError
+	case v1Types.CertificateStatus_CERTIFICATE_STATUS_SETTLED:
+		return types.Settled
+	default:
+		return types.Pending
+	}
 }
