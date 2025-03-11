@@ -399,3 +399,88 @@ func TestSendCertificate(t *testing.T) {
 		require.Equal(t, expectedResponse.CertificateId.Value.Value, resp.Bytes())
 	})
 }
+
+func TestLeafTypeToProto(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    types.LeafType
+		expected v1Types.LeafType
+	}{
+		{
+			name:     "LeafTypeAsset",
+			input:    types.LeafTypeAsset,
+			expected: v1Types.LeafType_LEAF_TYPE_TRANSFER,
+		},
+		{
+			name:     "LeafTypeMessage",
+			input:    types.LeafTypeMessage,
+			expected: v1Types.LeafType_LEAF_TYPE_MESSAGE,
+		},
+		{
+			name:     "Default case",
+			input:    types.LeafType(99), // some undefined leaf type
+			expected: v1Types.LeafType_LEAF_TYPE_UNSPECIFIED,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := leafTypeToProto(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestCertificateStatusFromProto(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    v1Types.CertificateStatus
+		expected types.CertificateStatus
+	}{
+		{
+			name:     "Pending status",
+			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_PENDING,
+			expected: types.Pending,
+		},
+		{
+			name:     "Proven status",
+			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_PROVEN,
+			expected: types.Proven,
+		},
+		{
+			name:     "Candidate status",
+			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_CANDIDATE,
+			expected: types.Candidate,
+		},
+		{
+			name:     "InError status",
+			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_IN_ERROR,
+			expected: types.InError,
+		},
+		{
+			name:     "Settled status",
+			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
+			expected: types.Settled,
+		},
+		{
+			name:     "Default status",
+			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_UNSPECIFIED,
+			expected: types.Pending,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			result := certificateStatusFromProto(tt.input)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}

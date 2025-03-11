@@ -1109,3 +1109,64 @@ func TestCertificate_ID(t *testing.T) {
 	}
 	require.Equal(t, "cert{height:2, networkID:1}", cert.ID())
 }
+
+func TestAggchainDataSignature_MarshalJUnmarshalJSON(t *testing.T) {
+	signature := &AggchainDataSignature{
+		Signature: common.FromHex("0x1234567890abcdef"),
+	}
+
+	expectedJSON := `{"signature":"1234567890abcdef"}`
+
+	jsonData, err := signature.MarshalJSON()
+	require.NoError(t, err)
+	require.JSONEq(t, expectedJSON, string(jsonData))
+
+	var unmarshalled AggchainDataSignature
+	require.NoError(t, unmarshalled.UnmarshalJSON(jsonData))
+	require.Equal(t, *signature, unmarshalled)
+}
+
+func TestAggchainDataProof_MarshalUnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    *AggchainDataProof
+		expected string
+	}{
+		{
+			name: "Valid AggchainDataProof",
+			input: &AggchainDataProof{
+				Proof:          common.FromHex("0x123456"),
+				AggchainParams: common.HexToHash("0xabcdef"),
+				Context:        map[string][]byte{},
+			},
+			expected: `{"generic":{"proof":"123456","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000abcdef","context":{}}}`,
+		},
+		{
+			name: "Empty AggchainDataProof",
+			input: &AggchainDataProof{
+				Proof:          []byte{},
+				AggchainParams: common.Hash{},
+				Context:        map[string][]byte{},
+			},
+			expected: `{"generic":{"proof":"","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000000000","context":{}}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := tt.input.MarshalJSON()
+			require.NoError(t, err)
+			require.JSONEq(t, tt.expected, string(result))
+
+			var unmarshalled AggchainDataProof
+			require.NoError(t, unmarshalled.UnmarshalJSON(result))
+			require.Equal(t, *tt.input, unmarshalled)
+		})
+	}
+}
