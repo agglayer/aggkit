@@ -193,7 +193,7 @@ Failed response (`rpc.Error`)
 
 ### Get claims
 
-Retrieves the claim(s) for a specified network with support for pagination returning results in descending order of `GlobalIndex`. The claims represent the `ClaimEvent` events emitted by the bridge contract.
+Retrieves the claim(s) for a specified network with support for pagination returning results in descending order of `block_num`. The claims represent the `ClaimEvent` events emitted by the bridge contract.
 
 #### Parameters
 

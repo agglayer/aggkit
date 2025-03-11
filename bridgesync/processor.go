@@ -350,7 +350,7 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, db.ErrNotFound
 	}
 
-	orderBy := "LENGTH(global_index) DESC, global_index"
+	orderBy := "block_num"
 	order := "DESC"
 	whereClause := ""
 	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderBy, order, whereClause)
