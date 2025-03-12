@@ -31,7 +31,10 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/rpc"
+	"github.com/ethereum/go-ethereum"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
+	ethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
 )
@@ -54,10 +57,9 @@ func start(cliCtx *cli.Context) error {
 	if cfg.Prometheus.Enabled {
 		prometheus.Init()
 	}
-
 	components := cliCtx.StringSlice(config.FlagComponents)
 	l1Client := runL1ClientIfNeeded(components, cfg.Etherman.URL)
-	l2Client := runL2ClientIfNeeded(components, getL2RPCUrl(cfg))
+	l2Client := runL2ClientIfNeeded(components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
 	go func() {
 		if err := <-errChanL1; err != nil {
@@ -173,7 +175,7 @@ func createAggSender(
 func createAggoracle(
 	cfg config.Config,
 	l1Client,
-	l2Client *ethclient.Client,
+	l2Client EthClienter,
 	syncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
@@ -270,7 +272,7 @@ func waitSignal(cancelFuncs []context.CancelFunc) {
 
 func newReorgDetector(
 	cfg *reorgdetector.Config,
-	client *ethclient.Client,
+	client EthClienter,
 	network reorgdetector.Network,
 ) *reorgdetector.ReorgDetector {
 	rd, err := reorgdetector.New(client, *cfg, network)
@@ -361,17 +363,22 @@ func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Con
 	return rollupID
 }
 
-func runL2ClientIfNeeded(components []string, urlRPCL2 string) *ethclient.Client {
+type EthClienter interface {
+	ethereum.LogFilterer
+	ethereum.BlockNumberReader
+	ethereum.ChainReader
+	bind.ContractBackend
+	Client() *ethrpc.Client
+}
+
+func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) EthClienter {
 	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
 		return nil
 	}
-
-	log.Infof("dialing L2 client at: %s", urlRPCL2)
-	l2CLient, err := ethclient.Dial(urlRPCL2)
+	l2CLient, err := etherman.NewRPCClient(urlRPCL2)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("failed to create client for L2 using URL: %s. Err:%v", urlRPCL2, err)
 	}
-
 	return l2CLient
 }
 
@@ -403,7 +410,7 @@ func runReorgDetectorL1IfNeeded(
 func runReorgDetectorL2IfNeeded(
 	ctx context.Context,
 	components []string,
-	l2Client *ethclient.Client,
+	l2Client EthClienter,
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
@@ -425,7 +432,7 @@ func runReorgDetectorL2IfNeeded(
 func runClaimSponsorIfNeeded(
 	ctx context.Context,
 	components []string,
-	l2Client *ethclient.Client,
+	l2Client EthClienter,
 	cfg claimsponsor.EVMClaimSponsorConfig,
 ) *claimsponsor.ClaimSponsor {
 	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) || !cfg.Enabled {
@@ -467,7 +474,7 @@ func runLastGERSyncIfNeeded(
 	components []string,
 	cfg lastgersync.Config,
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
-	l2Client *ethclient.Client,
+	l2Client EthClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 ) *lastgersync.LastGERSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) {
@@ -534,7 +541,7 @@ func runBridgeSyncL2IfNeeded(
 	components []string,
 	cfg bridgesync.Config,
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
-	l2Client *ethclient.Client,
+	l2Client EthClienter,
 	rollupID uint32,
 ) *bridgesync.BridgeSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
@@ -600,14 +607,6 @@ func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
 	return jRPC.NewServer(cfg, services,
 		jRPC.WithLogger(logger.GetSugaredLogger()),
 		jRPC.WithHealthHandler(healthHandler))
-}
-
-func getL2RPCUrl(c *config.Config) string {
-	if c.AggSender.URLRPCL2 != "" {
-		return c.AggSender.URLRPCL2
-	}
-
-	return c.AggOracle.EVMSender.URLRPCL2
 }
 
 func startPrometheusHTTPServer(c prometheus.Config) {
