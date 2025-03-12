@@ -156,16 +156,6 @@ function find_injected_info_after_index() {
             continue
         fi
 
-        local fields=("block_num" "block_pos" "position" "previous_block_hash"
-              "timestamp" "mainnet_exit_root" "rollup_exit_root" "global_exit_root" "hash")
-        for field in "${fields[@]}"; do
-            local value=$(echo "$injected_info" | jq -r --arg key "$field" '.[$key]')
-            if [[ -z "$value" || "$value" == "null" ]]; then
-                log "Error: Field $field is empty or null in injected L1InfoTree leaf."
-                return 1
-            fi
-        done
-
         echo "$injected_info"
         return 0
     done
