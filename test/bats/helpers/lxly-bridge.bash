@@ -351,6 +351,18 @@ function request_claim() {
     local in_dest_addr=$(jq -r '.dest_addr' $deposit_file)
     local in_amount=$(jq -r '.amount' $deposit_file)
     local in_metadata=$(jq -r '.metadata' $deposit_file)
+    log "in_merkle_proof: $in_merkle_proof"
+    log "in_rollup_merkle_proof: $in_rollup_merkle_proof"
+    log "in_global_index: $in_global_index"
+    log "in_main_exit_root: $in_main_exit_root"
+    log "in_rollup_exit_root: $in_rollup_exit_root"
+    log "in_orig_net: $in_orig_net"
+    log "in_orig_addr: $in_orig_addr"
+    log "in_dest_net: $in_dest_net"
+    log "in_dest_addr: $in_dest_addr"
+    log "in_amount: $in_amount"
+    log "in_metadata: $in_metadata"
+
     if [[ $dry_run == "true" ]]; then
         log "📝 Dry run claim (showing calldata only)"
         cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
@@ -535,4 +547,41 @@ function get_claim() {
         # Sleep before the next attempt
         sleep "$poll_frequency"
     done
+}
+
+function claim_bridge() {
+    local bridge_info="$1"
+    local proof="$2"
+    local destination_rpc_url="$3"
+
+    local claim_sig="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
+    local leaf_type=$(jq -r '.leaf_type' $bridge_info)
+    if [[ $leaf_type != "0" ]]; then
+        claim_sig="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
+    fi
+
+    local in_merkle_proof="$(jq -r -c '.proof_local_exit_root' $proof | tr -d '"')"
+    local in_rollup_merkle_proof="$(jq -r -c '.proof_rollup_exit_root' $proof | tr -d '"')"
+    local in_global_index=$(jq -r '.global_index' $bridge_info)
+    local in_main_exit_root=$(jq -r '.l1_info_tree_leaf.main_exit_root' $proof)
+    local in_rollup_exit_root=$(jq -r '.l1_info_tree_leaf.rollup_exit_root' $proof)
+    local in_orig_net=$(jq -r '.orig_net' $bridge_info)
+    local in_orig_addr=$(jq -r '.orig_addr' $bridge_info)
+    local in_dest_net=$(jq -r '.dest_net' $bridge_info)
+    local in_dest_addr=$(jq -r '.dest_addr' $bridge_info)
+    local in_amount=$(jq -r '.amount' $bridge_info)
+    local in_metadata=$(jq -r '.metadata' $bridge_info)
+    log "in_merkle_proof: $in_merkle_proof"
+    log "in_rollup_merkle_proof: $in_rollup_merkle_proof"
+    log "in_global_index: $in_global_index"
+    log "in_main_exit_root: $in_main_exit_root"
+    log "in_rollup_exit_root: $in_rollup_exit_root"
+    log "in_orig_net: $in_orig_net"
+    log "in_orig_addr: $in_orig_addr"
+    log "in_dest_net: $in_dest_net"
+    log "in_dest_addr: $in_dest_addr"
+    log "in_amount: $in_amount"
+    log "in_metadata: $in_metadata"
+    log "📝 Dry run claim (showing calldata only)"
+    cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
 }
