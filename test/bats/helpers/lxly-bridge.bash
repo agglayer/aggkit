@@ -352,14 +352,6 @@ function request_claim() {
     log "in_merkle_proof: $in_merkle_proof"
     log "in_rollup_merkle_proof: $in_rollup_merkle_proof"
     log "in_global_index: $in_global_index"
-    log "in_main_exit_root: $in_main_exit_root"
-    log "in_rollup_exit_root: $in_rollup_exit_root"
-    log "in_orig_net: $in_orig_net"
-    log "in_orig_addr: $in_orig_addr"
-    log "in_dest_net: $in_dest_net"
-    log "in_dest_addr: $in_dest_addr"
-    log "in_amount: $in_amount"
-    log "in_metadata: $in_metadata"
 
     if [[ $dry_run == "true" ]]; then
         log "📝 Dry run claim (showing calldata only)"
@@ -563,9 +555,10 @@ function claim_bridge() {
         claim_sig="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
     fi
 
-    local in_merkle_proof=$(echo "$proof" | jq -r '.proof_local_exit_root')
-    local in_rollup_merkle_proof=$(echo "$proof" | jq -r '.proof_rollup_exit_root')
-    local in_global_index=$(echo "$bridge_info" | jq -r '.global_index')
+    local in_merkle_proof=$(echo "$proof" | jq -r -c '.proof_local_exit_root')
+    local in_rollup_merkle_proof=$(echo "$proof" | jq -r -c '.proof_rollup_exit_root')
+    run generate_global_index "$bridge_info"
+    in_global_index=$output
     local in_main_exit_root=$(echo "$proof" | jq -r '.l1_info_tree_leaf.mainnet_exit_root')
     local in_rollup_exit_root=$(echo "$proof" | jq -r '.l1_info_tree_leaf.rollup_exit_root')
     local in_orig_net=$(echo "$bridge_info" | jq -r '.origin_network')
@@ -577,14 +570,53 @@ function claim_bridge() {
     log "in_merkle_proof: $in_merkle_proof"
     log "in_rollup_merkle_proof: $in_rollup_merkle_proof"
     log "in_global_index: $in_global_index"
-    log "in_main_exit_root: $in_main_exit_root"
-    log "in_rollup_exit_root: $in_rollup_exit_root"
-    log "in_orig_net: $in_orig_net"
-    log "in_orig_addr: $in_orig_addr"
-    log "in_dest_net: $in_dest_net"
-    log "in_dest_addr: $in_dest_addr"
-    log "in_amount: $in_amount"
-    log "in_metadata: $in_metadata"
-    log "📝 Dry run claim (showing calldata only)"
-    cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
+
+    if [[ $dry_run == "true" ]]; then
+        log "📝 Dry run claim (showing calldata only)"
+        cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
+    else
+        local comp_gas_price=$(bc -l <<<"$gas_price * 1.5" | sed 's/\..*//')
+        if [[ $? -ne 0 ]]; then
+            log "❌ Failed to calculate gas price" >&3
+            return 1
+        fi
+        log "⏳ Claiming deposit: global_index: $in_global_index orig_net: $in_orig_net dest_net: $in_dest_net amount:$in_amount"
+        log "🔍 Exit roots: MainnetExitRoot=$in_main_exit_root RollupExitRoot=$in_rollup_exit_root"
+        echo "cast send --legacy --gas-price $comp_gas_price --rpc-url $destination_rpc_url --private-key $sender_private_key $bridge_addr \"$claim_sig\" \"$in_merkle_proof\" \"$in_rollup_merkle_proof\" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata"
+        local tmp_response=$(mktemp)
+        cast send --legacy --gas-price $comp_gas_price \
+            --rpc-url $destination_rpc_url \
+            --private-key $sender_private_key \
+            $bridge_addr "$claim_sig" "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata 2>$tmp_response || check_claim_revert_code $tmp_response
+    fi
+}
+
+function generate_global_index() {
+    local bridge_info="$1"
+    # Extract values from JSON
+    mainnet=$(echo "$bridge_info" | jq -r '.origin_network')
+    in_dest_net=$(echo "$bridge_info" | jq -r '.destination_network')
+    deposit_count=$(echo "$bridge_info" | jq -r '.deposit_count')
+
+    # Initialize the 256-bit number as 0
+    num=0
+
+    # Set the 192nd bit based on mainnet value
+    if [[ "$mainnet" == "0" ]]; then
+        num=$((num | (1 << 63)))
+    fi
+
+    # Set the next 32 bits based on in_dest_net value
+    if [[ "$mainnet" == "0" ]]; then
+        dest_net_val=0
+    else
+        dest_net_val=$((in_dest_net - 1))
+    fi
+    num=$(( (num << 32) | dest_net_val ))
+
+    # Set the last 32 bits as deposit_count
+    num=$(( (num << 32) | deposit_count ))
+
+    # Print the final 256-bit number in base 10
+    echo "$num"
 }
