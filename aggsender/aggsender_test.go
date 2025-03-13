@@ -448,7 +448,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		aggLayerClient:   mockAggLayerClient,
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
 		cfg:              Config{},
-		flow:             newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer, signer),
+		flow:             newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer, nil, signer),
 		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
@@ -973,6 +973,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	agglayerClientMock := agglayer.NewAgglayerClientMock(t)
 	l1InfoTreeSyncerMock := mocks.NewL1InfoTreeSyncer(t)
 	epochNotifierMock := mocks.NewEpochNotifier(t)
+	l1ClientMock := mocks.NewEthClient(t)
 	logger := log.WithFields("aggsender-test", "checkLastCertificateFromAgglayer")
 	var storageMock *mocks.AggSenderStorage
 	var storage db.AggSenderStorage
@@ -1004,7 +1005,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
-		flow:          newPPFlow(logger, Config{}, storage, l1InfoTreeSyncerMock, l2syncerMock, signer),
+		flow:          newPPFlow(logger, Config{}, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
 	}
 	testCerts := []aggsendertypes.CertificateInfo{
 		{

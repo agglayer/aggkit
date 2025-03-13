@@ -105,7 +105,7 @@ func New(
 			return nil, fmt.Errorf("error creating aggchain prover flow: %w", err)
 		}
 	} else {
-		flowManager = newPPFlow(logger, cfg, storage, l1InfoTreeSyncer, l2Syncer, signer)
+		flowManager = newPPFlow(logger, cfg, storage, l1InfoTreeSyncer, l2Syncer, l1Client, signer)
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())

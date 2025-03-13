@@ -23,7 +23,6 @@ var finalizedBlockBigInt = big.NewInt(int64(etherman.Finalized))
 type aggchainProverFlow struct {
 	*baseFlow
 
-	l1Client            types.EthClient
 	aggchainProofClient grpc.AggchainProofClientInterface
 	gerReader           types.ChainGERReader
 }
@@ -43,7 +42,6 @@ func newAggchainProverFlow(log types.Logger,
 	}
 
 	return &aggchainProverFlow{
-		l1Client:            l1Client,
 		gerReader:           l2Etherman,
 		aggchainProofClient: aggkitProverClient,
 		baseFlow: &baseFlow{
@@ -51,6 +49,7 @@ func newAggchainProverFlow(log types.Logger,
 			cfg:              cfg,
 			l2Syncer:         l2Syncer,
 			storage:          storage,
+			l1Client:         l1Client,
 			l1InfoTreeSyncer: l1InfoTreeSyncer,
 		},
 	}, nil
@@ -282,17 +281,10 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 // - the root of the l1 info tree on that block
 func (a *aggchainProverFlow) getFinalizedL1InfoTreeData(ctx context.Context,
 ) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error) {
-	lastFinalizedProcessedBlock, err := a.getLatestProcessedFinalizedBlock(ctx)
+	root, err := a.getLatestFinalizedL1InfoRoot(ctx)
 	if err != nil {
 		return treetypes.Proof{}, nil, nil,
-			fmt.Errorf("aggchainProverFlow - error getting latest processed finalized block: %w", err)
-	}
-
-	root, err := a.l1InfoTreeSyncer.GetLastL1InfoTreeRootByBlockNum(ctx, lastFinalizedProcessedBlock)
-	if err != nil {
-		return treetypes.Proof{}, nil, nil,
-			fmt.Errorf("aggchainProverFlow - error getting last L1 Info tree root by block num %d: %w",
-				lastFinalizedProcessedBlock, err)
+			fmt.Errorf("aggchainProverFlow - error getting latest finalized L1 Info tree root: %w", err)
 	}
 
 	leaf, err := a.l1InfoTreeSyncer.GetInfoByIndex(ctx, root.Index)
@@ -309,44 +301,6 @@ func (a *aggchainProverFlow) getFinalizedL1InfoTreeData(ctx context.Context,
 	}
 
 	return proof, leaf, root, nil
-}
-
-// getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer
-func (a *aggchainProverFlow) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64, error) {
-	lastFinalizedL1Block, err := a.l1Client.HeaderByNumber(ctx, finalizedBlockBigInt)
-	if err != nil {
-		return 0, fmt.Errorf("aggchainProverFlow - error getting latest finalized L1 block: %w", err)
-	}
-
-	lastProcessedBlockNum, lastProcessedBlockHash, err := a.l1InfoTreeSyncer.GetProcessedBlockUntil(ctx,
-		lastFinalizedL1Block.Number.Uint64())
-	if err != nil {
-		return 0, fmt.Errorf("aggchainProverFlow - error getting latest processed block from l1infotreesyncer: %w", err)
-	}
-
-	if lastProcessedBlockNum == 0 {
-		return 0, fmt.Errorf("aggchainProverFlow - l1infotreesyncer did not process any block yet")
-	}
-
-	if lastFinalizedL1Block.Number.Uint64() > lastProcessedBlockNum {
-		// syncer has a lower block than the finalized block, so we need to get that block from the l1 node
-		lastFinalizedL1Block, err = a.l1Client.HeaderByNumber(ctx, new(big.Int).SetUint64(lastProcessedBlockNum))
-		if err != nil {
-			return 0, fmt.Errorf("aggchainProverFlow - error getting latest processed finalized block: %d: %w",
-				lastProcessedBlockNum, err)
-		}
-	}
-
-	if (lastProcessedBlockHash == common.Hash{}) || (lastProcessedBlockHash == lastFinalizedL1Block.Hash()) {
-		// if the hash is empty it means that this is an old block that was processed before this
-		// feature was added, so we will consider it finalized
-		return lastFinalizedL1Block.Number.Uint64(), nil
-	}
-
-	return 0, fmt.Errorf("aggchainProverFlow - l1infotreesyncer returned a different hash for "+
-		"the latest finalized block: %d. Might be that syncer did not process a reorg yet. "+
-		"Expected hash: %s, got: %s", lastProcessedBlockNum,
-		lastFinalizedL1Block.Hash().String(), lastProcessedBlockHash.String())
 }
 
 // getImportedBridgeExitsForProver converts the claims to imported bridge exits

@@ -346,11 +346,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockChainGERReader := mocks.NewChainGERReader(t)
 			mockL1Client := mocks.NewEthClient(t)
 			aggchainFlow := &aggchainProverFlow{
-				l1Client:            mockL1Client,
 				gerReader:           mockChainGERReader,
 				aggchainProofClient: mockAggchainProofClient,
 				baseFlow: &baseFlow{
 					l1InfoTreeSyncer: mockL1InfoTreeSyncer,
+					l1Client:         mockL1Client,
 					l2Syncer:         mockL2Syncer,
 					storage:          mockStorage,
 					log:              log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
@@ -454,8 +454,8 @@ func Test_AggchainProverFlow_GetFinalizedL1InfoTreeData(t *testing.T) {
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockL1Client := mocks.NewEthClient(t)
 			aggchainFlow := &aggchainProverFlow{
-				l1Client: mockL1Client,
 				baseFlow: &baseFlow{
+					l1Client:         mockL1Client,
 					l1InfoTreeSyncer: mockL1InfoTreeSyncer,
 					log:              log.WithFields("flowManager", "Test_AggchainProverFlow_GetFinalizedL1InfoTreeData"),
 					cfg:              Config{},
@@ -557,8 +557,8 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockL1Client := mocks.NewEthClient(t)
 			aggchainFlow := &aggchainProverFlow{
-				l1Client: mockL1Client,
 				baseFlow: &baseFlow{
+					l1Client:         mockL1Client,
 					l1InfoTreeSyncer: mockL1InfoTreeSyncer,
 					log:              log.WithFields("flowManager", "Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock"),
 					cfg:              Config{},

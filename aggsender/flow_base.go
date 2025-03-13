@@ -3,6 +3,7 @@ package aggsender
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -17,6 +18,7 @@ import (
 
 // baseFlow is a struct that holds the common logic for the different prover types
 type baseFlow struct {
+	l1Client         types.EthClient
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
 	l2Syncer         types.L2BridgeSyncer
 	storage          db.AggSenderStorage
@@ -386,6 +388,63 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 	}
 	return 0, zeroLER, fmt.Errorf("last certificate %s has an unknown status: %s",
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
+}
+
+// getLatestProcessedFinalizedBlock returns the latest processed l1 info tree root
+// based on the latest finalized l1 block
+func (f *baseFlow) getLatestFinalizedL1InfoRoot(ctx context.Context) (*treeTypes.Root, error) {
+	lastFinalizedProcessedBlock, err := f.getLatestProcessedFinalizedBlock(ctx)
+	if err != nil {
+		return nil,
+			fmt.Errorf("error getting latest processed finalized block: %w", err)
+	}
+
+	root, err := f.l1InfoTreeSyncer.GetLastL1InfoTreeRootByBlockNum(ctx, lastFinalizedProcessedBlock)
+	if err != nil {
+		return nil,
+			fmt.Errorf("error getting last L1 Info tree root by block num %d: %w",
+				lastFinalizedProcessedBlock, err)
+	}
+
+	return root, nil
+}
+
+// getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer
+func (f *baseFlow) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64, error) {
+	lastFinalizedL1Block, err := f.l1Client.HeaderByNumber(ctx, finalizedBlockBigInt)
+	if err != nil {
+		return 0, fmt.Errorf("error getting latest finalized L1 block: %w", err)
+	}
+
+	lastProcessedBlockNum, lastProcessedBlockHash, err := f.l1InfoTreeSyncer.GetProcessedBlockUntil(ctx,
+		lastFinalizedL1Block.Number.Uint64())
+	if err != nil {
+		return 0, fmt.Errorf("error getting latest processed block from l1infotreesyncer: %w", err)
+	}
+
+	if lastProcessedBlockNum == 0 {
+		return 0, fmt.Errorf("l1infotreesyncer did not process any block yet")
+	}
+
+	if lastFinalizedL1Block.Number.Uint64() > lastProcessedBlockNum {
+		// syncer has a lower block than the finalized block, so we need to get that block from the l1 node
+		lastFinalizedL1Block, err = f.l1Client.HeaderByNumber(ctx, new(big.Int).SetUint64(lastProcessedBlockNum))
+		if err != nil {
+			return 0, fmt.Errorf("error getting latest processed finalized block: %d: %w",
+				lastProcessedBlockNum, err)
+		}
+	}
+
+	if (lastProcessedBlockHash == common.Hash{}) || (lastProcessedBlockHash == lastFinalizedL1Block.Hash()) {
+		// if the hash is empty it means that this is an old block that was processed before this
+		// feature was added, so we will consider it finalized
+		return lastFinalizedL1Block.Number.Uint64(), nil
+	}
+
+	return 0, fmt.Errorf("l1infotreesyncer returned a different hash for "+
+		"the latest finalized block: %d. Might be that syncer did not process a reorg yet. "+
+		"Expected hash: %s, got: %s", lastProcessedBlockNum,
+		lastFinalizedL1Block.Hash().String(), lastProcessedBlockHash.String())
 }
 
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
