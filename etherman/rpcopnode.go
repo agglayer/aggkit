@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	ExtraParamFieldName = "opnode_url"
+	ExtraParamFieldName = "OpNodeURL"
 )
 
 // EthDecorator is a decorator for the ethclient.Client that intercepts calls to the HeaderByNumber method
@@ -29,9 +29,9 @@ type RPCOpNodeDecorator struct {
 func NewRPCClientModeOp(cfg ethermanconfig.RPCClientConfig) (EthClienter, error) {
 	opNodeURL, err := cfg.GetString(ExtraParamFieldName)
 	if err != nil {
-		return nil, fmt.Errorf("opnode_url not found in extra params. Err: %w", err)
+		return nil, fmt.Errorf("field %s not found in extra params. Err: %w", ExtraParamFieldName, err)
 	}
-	log.Debugf("Creating OPNode RPC client with URL %s OpNodeURL:%s", cfg.URL)
+	log.Debugf("Creating OPNode RPC client with URL %s %s:%s", cfg.URL, ExtraParamFieldName, opNodeURL)
 	basicClient, err := ethclient.Dial(cfg.URL)
 	if err != nil {
 		return nil, fmt.Errorf("fails to create RPC client. Err: %w", err)
