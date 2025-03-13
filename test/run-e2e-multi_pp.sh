@@ -17,15 +17,15 @@ function ok_or_fatal(){
 }
 
 function build_docker_if_required(){
-    docker images -q aggkit:latest > /dev/null
+    docker images -q aggkit:local > /dev/null
     if [ $? -ne 0 ] ; then
-        echo "Building aggkit:latest docker image"
+        echo "Building aggkit:local docker image"
         pushd $BASE_FOLDER/..
         make build-docker
         ok_or_fatal "Failed to build docker image"
         popd
     else
-        echo "docker image aggkit:latest already exists"
+        echo "docker image aggkit:local already exists"
     fi
 }
 
