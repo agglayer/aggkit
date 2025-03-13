@@ -39,7 +39,7 @@ jobs:
       with:
         repository: 0xPolygon/kurtosis-cdk
         path: kurtosis-cdk
-        ref: feat/enable-bridge-service-for-aggkit
+        ref: arpit/temp-fix-ci
     
     - name: Install Kurtosis CDK tools
       uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
