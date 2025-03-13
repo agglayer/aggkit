@@ -39,3 +39,15 @@ func TestFinalizedL2Block(t *testing.T) {
 	require.Equal(t, "0x1656b9a20dbdad0887bdbdf693645a33a90d0628384879b74f654f06475f2dc8", blockInfo.ParentHash.String())
 	require.Equal(t, uint64(1741258057), blockInfo.Timestamp)
 }
+
+func TestFinalizedL2BlockError(t *testing.T) {
+	client := OpNodeClient{}
+	response := rpc.Response{
+		Result: []byte("null"),
+	}
+	jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+		return response, nil
+	}
+	_, err := client.FinalizedL2Block()
+	require.Error(t, err)
+}
