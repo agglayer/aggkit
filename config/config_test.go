@@ -33,7 +33,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, etherman.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
-	require.Equal(t, ethermanconfig.RPCClientConfig{Mode: "regular", URL: "http://localhost:8123"}, cfg.Common.L2RPC)
+	require.Equal(t, ethermanconfig.RPCClientConfig{Mode: ethermanconfig.RPCModeBasic, URL: "http://localhost:8123"}, cfg.Common.L2RPC)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {

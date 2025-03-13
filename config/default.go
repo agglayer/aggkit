@@ -46,7 +46,7 @@ genesisBlockNumber = 0
 const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 L1URLSyncChunkSize = 100
-L2RPC = "{ Mode= \"regular\", URL= \"{{L2URL}}\" }"
+L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
 `
 
 // DefaultValues is the default configuration
