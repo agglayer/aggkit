@@ -563,17 +563,17 @@ function claim_bridge() {
         claim_sig="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
     fi
 
-    local in_merkle_proof="$(jq -r -c '.proof_local_exit_root' $proof | tr -d '"')"
-    local in_rollup_merkle_proof="$(jq -r -c '.proof_rollup_exit_root' $proof | tr -d '"')"
-    local in_global_index=$(jq -r '.global_index' $bridge_info)
-    local in_main_exit_root=$(jq -r '.l1_info_tree_leaf.main_exit_root' $proof)
-    local in_rollup_exit_root=$(jq -r '.l1_info_tree_leaf.rollup_exit_root' $proof)
-    local in_orig_net=$(jq -r '.orig_net' $bridge_info)
-    local in_orig_addr=$(jq -r '.orig_addr' $bridge_info)
-    local in_dest_net=$(jq -r '.dest_net' $bridge_info)
-    local in_dest_addr=$(jq -r '.dest_addr' $bridge_info)
-    local in_amount=$(jq -r '.amount' $bridge_info)
-    local in_metadata=$(jq -r '.metadata' $bridge_info)
+    local in_merkle_proof=$(echo "$proof" | jq -r '.proof_local_exit_root')
+    local in_rollup_merkle_proof=$(echo "$proof" | jq -r '.proof_rollup_exit_root')
+    local in_global_index=$(echo "$bridge_info" | jq -r '.global_index')
+    local in_main_exit_root=$(echo "$proof" | jq -r '.l1_info_tree_leaf.mainnet_exit_root')
+    local in_rollup_exit_root=$(echo "$proof" | jq -r '.l1_info_tree_leaf.rollup_exit_root')
+    local in_orig_net=$(echo "$bridge_info" | jq -r '.origin_network')
+    local in_orig_addr=$(echo "$bridge_info" | jq -r '.origin_address')
+    local in_dest_net=$(echo "$bridge_info" | jq -r '.destination_network')
+    local in_dest_addr=$(echo "$bridge_info" | jq -r '.destination_address')
+    local in_amount=$(echo "$bridge_info" | jq -r '.amount')
+    local in_metadata=$(echo "$bridge_info" | jq -r '.metadata')
     log "in_merkle_proof: $in_merkle_proof"
     log "in_rollup_merkle_proof: $in_rollup_merkle_proof"
     log "in_global_index: $in_global_index"

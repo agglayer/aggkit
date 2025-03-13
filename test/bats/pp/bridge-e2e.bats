@@ -86,23 +86,17 @@ setup() {
     l1_info_tree_index="$output"
     assert_equal "$l1_info_tree_index" 1
     echo "------- l1InfoTreeIndexForBridge API testcase passed"
-
     echo "------- injectedInfoAfterIndex API testcase"
     run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30
     assert_success
     echo "------- injectedInfoAfterIndex API testcase passed"
-
     echo "------- claimProof API testcase"
     run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
     assert_success
     local proof
     proof="$output"
     echo "------- claimProof API testcase passed"
-
     echo "---------- new claim ----------" >&3
-    echo "$bridge" >&3
-    echo "$proof" >&3
-    echo "$l2_rpc_url" >&3
     run claim_bridge "$bridge" "$proof" "$l2_rpc_url"
     echo "---------- new claim ended ----------" >&3
 
