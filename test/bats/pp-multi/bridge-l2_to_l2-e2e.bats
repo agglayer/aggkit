@@ -46,11 +46,35 @@ setup() {
     local bridge_tx_hash_pp2=$output
 
     echo "=== Running LxLy claim L1 to L2(PP1) for $bridge_tx_hash_pp1" >&3
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash_pp1" "$destination_addr" "$l2_pp1_url" "$l2_pp1b_url"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash_pp1" 10 3
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l2_pp1b_network_id" "$l1_info_tree_index" 10 30
+    assert_success
+    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3
     assert_success
 
     echo "=== Running LxLy claim L1 to L2(PP2) for $bridge_tx_hash_pp2" >&3
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash_pp2" "$destination_addr" "$l2_pp2_url" "$l2_pp2b_url"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash_pp2" 10 3
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l2_pp2b_network_id" "$l1_info_tree_index" 10 30
+    assert_success
+    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l2_pp2_url" 10 3
     assert_success
 
     # reduce eth amount
@@ -63,7 +87,19 @@ setup() {
     local bridge_tx_hash=$output
 
     echo "=== Running LxLy claim L2(PP2) to L2(PP1) for: $bridge_tx_hash" >&3
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_pp1_url" "$l2_pp2b_url"
+    run get_bridge "$l2_pp2b_network_id" "$bridge_tx_hash" 10 3
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l2_pp2b_network_id" "$deposit_count" 10 3
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l2_pp1b_network_id" "$l1_info_tree_index" 10 30
+    assert_success
+    run find_claim_proof "$l2_pp2b_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3
     assert_success
     local global_index_pp2_to_pp1="$output"
 
@@ -78,7 +114,19 @@ setup() {
     bridge_tx_hash=$output
 
     echo "=== Running LxLy claim L2(PP1) to L1 for $bridge_tx_hash" >&3
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$l2_pp1b_url"
+    run get_bridge "$l2_pp1b_network_id" "$bridge_tx_hash" 10 3
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l2_pp1b_network_id" "$deposit_count" 10 3
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l1_rpc_network_id" "$l1_info_tree_index" 10 30
+    assert_success
+    run find_claim_proof "$l2_pp1b_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 3
     assert_success
 
     echo "=== Waiting to settled certificate with imported bridge for global_index: $global_index_pp2_to_pp1"

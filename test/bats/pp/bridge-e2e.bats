@@ -65,46 +65,28 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
 
-    echo "=== Running LxLy claim on L2" >&3
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
-    assert_success
-
-    echo "------- getBridges API testcase"
     run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
-    local bridge
-    bridge="$output"
-    local deposit_count
-    deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    echo "------- getBridges API testcase passed"
-    echo "------- l1InfoTreeIndexForBridge API testcase"
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
     run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
     assert_success
-    local l1_info_tree_index
-    l1_info_tree_index="$output"
+    local l1_info_tree_index="$output"
     assert_equal "$l1_info_tree_index" 1
-    echo "------- l1InfoTreeIndexForBridge API testcase passed"
-    echo "------- injectedInfoAfterIndex API testcase"
     run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30
     assert_success
-    echo "------- injectedInfoAfterIndex API testcase passed"
-    echo "------- claimProof API testcase"
     run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
     assert_success
-    local proof
-    proof="$output"
-    echo "------- claimProof API testcase passed"
-    echo "---------- new claim ----------" >&3
-    run claim_bridge "$bridge" "$proof" "$l2_rpc_url"
-    echo "---------- new claim ended ----------" >&3
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 3
+    assert_success
 
     echo "=== Running LxLy WETH ($weth_token_addr) deposit on L2 to L1 network" >&3
     destination_addr=$sender_addr
     destination_net=0
     run bridge_asset "$weth_token_addr" "$l2_rpc_url"
     assert_success
+    local bridge_tx_hash=$output
 }
 
 @test "Custom gas token deposit L1 -> L2" {
@@ -161,9 +143,19 @@ setup() {
     local bridge_tx_hash=$output
 
     # Claim deposits (settle them on the L2)
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30
+    assert_success
+    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 3
     assert_success
     local claim_global_index="$output"
 
@@ -196,10 +188,19 @@ setup() {
     local bridge_tx_hash=$output
 
     # Claim withdrawals (settle them on the L1)
-    timeout="180"
-    claim_frequency="10"
-    destination_net=$l1_rpc_network_id
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
+    run get_bridge "$l2_rpc_network_id" "$bridge_tx_hash" 10 3
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l2_rpc_network_id" "$deposit_count" 10 3
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l1_rpc_network_id" "$l1_info_tree_index" 10 30
+    assert_success
+    run find_claim_proof "$l2_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 3
     assert_success
 
     # Validate that the token of receiver on L1 has increased by the bridge tokens amount
@@ -258,9 +259,19 @@ setup() {
     local bridge_tx_hash=$output
 
     # Claim deposits (settle them on the L2)
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30
+    assert_success
+    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 3
     assert_success
 
     run wait_for_expected_token "$l1_erc20_addr" 10 2
