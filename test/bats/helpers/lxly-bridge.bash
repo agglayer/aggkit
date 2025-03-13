@@ -99,19 +99,17 @@ function find_l1_info_tree_index_for_bridge() {
 
     while true; do
         ((attempt++))
-        log "Attempt $attempt: fetching L1 info tree index from the RPC..."
+        log "Attempt $attempt: fetching L1 info tree index for bridge "$expected_deposit_count" from the RPC ("$aggkit_node_url")..."
 
         index=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count")
 
-        log "------ index ------"
-        log "$index"
-        log "------ index ------"
-
         if [[ "$index" == "0x0" ]]; then
-            log "Didn't find expected deposit count index"
+            log "⏳ Didn't find expected deposit count index ("$expected_deposit_count")"
             # Fail test if max attempts are reached
             if [[ "$attempt" -ge "$max_attempts" ]]; then
-                echo "Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
+                log "🔍 L1InfoTreeIndexForBridge response"
+                log "$index"
+                echo "❌ Reached max attempts ($max_attempts) without finding expected bridge with deposit count "$expected_deposit_count"." >&2
                 return 1
             fi
 
@@ -553,6 +551,11 @@ function claim_bridge() {
     local bridge_info="$1"
     local proof="$2"
     local destination_rpc_url="$3"
+
+    log "🔍 Claiming bridge -------------- "
+    log "🔍 Bridge info: $bridge_info"
+    log "🔍 Proof: $proof"
+    log "🔍 Destination RPC URL: $destination_rpc_url"
 
     local claim_sig="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
     local leaf_type=$(jq -r '.leaf_type' $bridge_info)

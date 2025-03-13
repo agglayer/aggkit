@@ -65,23 +65,6 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
 
-    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
-    assert_success
-    local bridge
-    bridge="$output"
-    local deposit_count
-    deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
-    assert_success
-    local l1_info_tree_index
-    l1_info_tree_index="$output"
-    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30
-    assert_success
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
-    assert_success
-    local proof
-    proof="$output"
-
     echo "=== Running LxLy claim on L2" >&3
     timeout="180"
     claim_frequency="10"
@@ -89,6 +72,9 @@ setup() {
     assert_success
 
     echo "---------- new claim ----------" >&3
+    echo "$bridge" >&3
+    echo "$proof" >&3
+    echo "$l2_rpc_url" >&3
     run claim_bridge "$bridge" "$proof" "$l2_rpc_url"
     echo "---------- new claim ended ----------" >&3
 
@@ -97,6 +83,50 @@ setup() {
     destination_net=0
     run bridge_asset "$weth_token_addr" "$l2_rpc_url"
     assert_success
+}
+
+@test "Test Bridge APIs workflow" {
+    destination_addr=$sender_addr
+    run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
+    assert_success
+    readonly weth_token_addr=$output
+
+    local initial_receiver_balance=$(cast call --rpc-url "$l2_rpc_url" "$weth_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
+    echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
+
+    echo "=== Running LxLy deposit on L1 to network: $l2_rpc_network_id native_token: $native_token_addr" >&3
+    destination_net=$l2_rpc_network_id
+    run bridge_asset "$native_token_addr" "$l1_rpc_url"
+    assert_success
+    local bridge_tx_hash=$output
+
+    echo "------- getBridges API testcase"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
+    assert_success
+    local bridge
+    bridge="$output"
+    local deposit_count
+    deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    echo "------- getBridges API testcase passed"
+    echo "------- l1InfoTreeIndexForBridge API testcase"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    assert_success
+    local l1_info_tree_index
+    l1_info_tree_index="$output"
+    assert_equal "$l1_info_tree_index" 2
+    echo "------- l1InfoTreeIndexForBridge API testcase passed"
+
+    echo "------- injectedInfoAfterIndex API testcase"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30
+    assert_success
+    echo "------- injectedInfoAfterIndex API testcase passed"
+
+    echo "------- claimProof API testcase"
+    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof
+    proof="$output"
+    echo "------- claimProof API testcase passed"
 }
 
 @test "Custom gas token deposit L1 -> L2" {

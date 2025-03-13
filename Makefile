@@ -62,7 +62,7 @@ build-tools: ## Builds the tools
 
 .PHONY: build-docker
 build-docker: ## Builds a docker image with the aggkit binary
-	docker build -t aggkit -f ./Dockerfile .
+	docker build -t aggkit:local -f ./Dockerfile .
 
 .PHONY: build-docker-nc
 build-docker-nc: ## Builds a docker image with the aggkit binary - but without build cache
@@ -75,11 +75,6 @@ test-unit:
 .PHONY: lint
 lint: ## Runs the linter
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m
-
-.PHONY: generate-code-from-proto
-generate-code-from-proto: ## Generates code from proto files
-	cd proto/src/proto/datastream/v1 && protoc --proto_path=. --proto_path=../../../../include --go_out=../../../../../state/datastream --go-grpc_out=../../../../../state/datastream --go-grpc_opt=paths=source_relative --go_opt=paths=source_relative datastream.proto
-
 
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted

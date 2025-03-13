@@ -8,10 +8,6 @@ import (
 	"github.com/agglayer/aggkit/log"
 )
 
-const (
-	base10 = 10
-)
-
 type AggsenderStorer interface {
 	GetCertificateByHeight(height uint64) (*types.CertificateInfo, error)
 	GetLastSentCertificate() (*types.CertificateInfo, error)
@@ -41,7 +37,7 @@ func NewAggsenderRPC(
 }
 
 // Status returns the status of the aggsender
-// curl -X POST http://localhost:5576/ -H "Con -application/json" \
+// curl -X POST http://localhost:5576/ "Content-Type: application/json" \
 // -d '{"method":"aggsender_status", "params":[], "id":1}'
 func (b *AggsenderRPC) Status() (interface{}, rpc.Error) {
 	info := b.aggsender.Info()
@@ -52,12 +48,12 @@ func (b *AggsenderRPC) Status() (interface{}, rpc.Error) {
 // if param is `nil` it returns the last sent certificate
 // latest:
 //
-//	curl -X POST http://localhost:5576/ -H "Con -application/json" \
+//	curl -X POST http://localhost:5576/ -H "Content-Type: application/json" \
 //	 -d '{"method":"aggsender_getCertificateHeaderPerHeight", "params":[], "id":1}'
 //
 // specific height:
 //
-// curl -X POST http://localhost:5576/ -H "Con -application/json" \
+// curl -X POST http://localhost:5576/ -H "Content-Type: application/json" \
 // -d '{"method":"aggsender_getCertificateHeaderPerHeight", "params":[$height], "id":1}'
 func (b *AggsenderRPC) GetCertificateHeaderPerHeight(height *uint64) (interface{}, rpc.Error) {
 	var (

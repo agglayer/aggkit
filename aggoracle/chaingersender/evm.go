@@ -20,6 +20,7 @@ import (
 
 const insertGERFuncName = "insertGlobalExitRoot"
 
+// TODO: @Stefan-Ethernal use the aggkittypes.EthereumClient instead
 type EthClienter interface {
 	ethereum.LogFilterer
 	ethereum.BlockNumberReader

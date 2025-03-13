@@ -3,11 +3,10 @@
 package mocks
 
 import (
+	context "context"
 	big "math/big"
 
 	common "github.com/ethereum/go-ethereum/common"
-
-	context "context"
 
 	ethereum "github.com/ethereum/go-ethereum"
 
@@ -199,6 +198,64 @@ func (_c *EthClienter_BlockNumber_Call) Return(_a0 uint64, _a1 error) *EthClient
 }
 
 func (_c *EthClienter_BlockNumber_Call) RunAndReturn(run func(context.Context) (uint64, error)) *EthClienter_BlockNumber_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// Call provides a mock function with given fields: result, method, args
+func (_m *EthClienter) Call(result any, method string, args ...any) error {
+	var _ca []interface{}
+	_ca = append(_ca, result, method)
+	_ca = append(_ca, args...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Call")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(any, string, ...any) error); ok {
+		r0 = rf(result, method, args...)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// EthClienter_Call_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Call'
+type EthClienter_Call_Call struct {
+	*mock.Call
+}
+
+// Call is a helper method to define mock.On call
+//   - result any
+//   - method string
+//   - args ...any
+func (_e *EthClienter_Expecter) Call(result interface{}, method interface{}, args ...interface{}) *EthClienter_Call_Call {
+	return &EthClienter_Call_Call{Call: _e.mock.On("Call",
+		append([]interface{}{result, method}, args...)...)}
+}
+
+func (_c *EthClienter_Call_Call) Run(run func(result any, method string, args ...any)) *EthClienter_Call_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]any, len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(any)
+			}
+		}
+		run(args[0].(any), args[1].(string), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *EthClienter_Call_Call) Return(_a0 error) *EthClienter_Call_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *EthClienter_Call_Call) RunAndReturn(run func(any, string, ...any) error) *EthClienter_Call_Call {
 	_c.Call.Return(run)
 	return _c
 }

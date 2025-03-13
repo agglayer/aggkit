@@ -440,6 +440,7 @@ func TestGetTokenMappings(t *testing.T) {
 				OriginTokenAddress:  common.HexToAddress("0x1"),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            common.Hex2Bytes("abcd"),
+				Calldata:            common.Hex2Bytes("efabcd"),
 			},
 		}
 
@@ -552,6 +553,7 @@ func TestGetBridges(t *testing.T) {
 					Amount:             common.Big0,
 					DepositCount:       0,
 					Metadata:           common.Hex2Bytes("deadbeef"),
+					Calldata:           common.Hex2Bytes("abcd"),
 				},
 				BridgeHash: common.HexToHash("0x1"),
 			},
