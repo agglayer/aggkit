@@ -71,35 +71,6 @@ setup() {
     run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
     assert_success
 
-    echo "---------- new claim ----------" >&3
-    echo "$bridge" >&3
-    echo "$proof" >&3
-    echo "$l2_rpc_url" >&3
-    run claim_bridge "$bridge" "$proof" "$l2_rpc_url"
-    echo "---------- new claim ended ----------" >&3
-
-    echo "=== Running LxLy WETH ($weth_token_addr) deposit on L2 to L1 network" >&3
-    destination_addr=$sender_addr
-    destination_net=0
-    run bridge_asset "$weth_token_addr" "$l2_rpc_url"
-    assert_success
-}
-
-@test "Test Bridge APIs workflow" {
-    destination_addr=$sender_addr
-    run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
-    assert_success
-    readonly weth_token_addr=$output
-
-    local initial_receiver_balance=$(cast call --rpc-url "$l2_rpc_url" "$weth_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
-    echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
-
-    echo "=== Running LxLy deposit on L1 to network: $l2_rpc_network_id native_token: $native_token_addr" >&3
-    destination_net=$l2_rpc_network_id
-    run bridge_asset "$native_token_addr" "$l1_rpc_url"
-    assert_success
-    local bridge_tx_hash=$output
-
     echo "------- getBridges API testcase"
     run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
@@ -127,6 +98,19 @@ setup() {
     local proof
     proof="$output"
     echo "------- claimProof API testcase passed"
+
+    echo "---------- new claim ----------" >&3
+    echo "$bridge" >&3
+    echo "$proof" >&3
+    echo "$l2_rpc_url" >&3
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url"
+    echo "---------- new claim ended ----------" >&3
+
+    echo "=== Running LxLy WETH ($weth_token_addr) deposit on L2 to L1 network" >&3
+    destination_addr=$sender_addr
+    destination_net=0
+    run bridge_asset "$weth_token_addr" "$l2_rpc_url"
+    assert_success
 }
 
 @test "Custom gas token deposit L1 -> L2" {
