@@ -4,25 +4,121 @@ The bridge service abstracts interaction with the unified LxLy bridge. It repres
 
 ## Bridge flow
 
-The diagram below describes the basic L2 -> L2 bridge workflow. Note that L2 networks consist of the `aggkit` node and execution client.
+
+### Bridge flow L2 -> L2
+
+The diagram below describes the basic L2 -> L2 bridge workflow.
 
 ```mermaid
 sequenceDiagram
-User->>L2 (A): Bridge assets to L2 (B)
-L2 (A)->>L2 (A): Index bridge tx
-L2 (A)->>AggLayer: Send certificate
-AggLayer->>L1: Settle batch
-AggLayer-->>L2 (A): L1 tx hash
-L2 (A)->>L2 (A): Add relation bridge : included in L1InfoTree index X
-User->>L2 (A): Poll is bridge ready for claim
-L2 (A)-->>User: L1InfoTree index X
-User->>L2 (B): Get first GER injected that happened at or after L1InfoTree index X
-L2 (B)-->>User: GER Y
-User->>L2 (A): Build proof for bridge using GER Y
-L2 (A)-->>User: Proof
-User->>L2 (B): Claim (proof)
-L2 (B)->>L2 (B): Send claim tx<br/>(bridge is settled on the L2 (B))
-L2 (B)-->>User: Tx hash
+    participant User
+    participant L2 (A)
+    participant Aggkit (A)
+    participant AggLayer
+    participant L2 (B)
+    participant Aggkit (B)
+    participant L1
+
+    User->>L2 (A): Bridge assets to L2 (B)
+    L2 (A)->>L2 (A): Index bridge tx & updates the local exit tree
+    Aggkit (A)->>AggLayer: Build & send certificate (Aggsender)
+    AggLayer->>L1: Settle batch
+    L1->>L1: update GER
+    Note right of L1: rollupmanager updates the GER & RER (PolygonZKEVMGlobalExitRootV2.sol)
+    AggLayer-->>L2 (A): L1 tx hash
+
+    Aggkit (A)->>L1: Aggoracle fetches last finalized GER from L1
+    Aggkit (A)->>L2 (A): Aggoracle injects the GER on L2 (A) GlobalExitRootManagerL2SovereignChain.sol
+    Aggkit (B)->>L1: Aggoracle fetches last finalized GER from L1
+    Aggkit (B)->>L2 (B): Aggoracle injects the GER on L2 (B) GlobalExitRootManagerL2SovereignChain.sol
+
+    User->>Aggkit (A): Call bridge_l1InfoTreeIndexForBridge endpoint on the origin network(A)
+    Aggkit (A)-->>User: Returns L1InfoTree index X for which the bridge was included
+    loop Poll destination network, until `L1InfoTreeLeaf` is retrieved  
+      User->>Aggkit (B): Poll bridge_injectedInfoAfterIndex on destination network L2(B) until a non-null response.  
+      Aggkit (B)-->>User: Returns the first L1InfoTreeLeaf(GER=Y) for the GER injected on L2(B) at or after L1InfoTree index X
+    end 
+    User->>Aggkit (A): Call bridge_getProof on origin network(A) to generate merkle proof for bridge using l1InfoTreeIndex of GER Y and networkID(A)
+    
+    Aggkit (A)-->>User: Return claim proof
+    User->>L2 (B): Claim (proof)
+    L2 (B)->>L2 (B): Send claim tx<br/>(bridge is settled on the L2 (B))
+    L2 (B)-->>User: Tx hash
+```
+
+### Bridge flow L1 -> L2
+
+The diagram below describes the basic L1 -> L2 bridge workflow.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant L1
+    participant Aggkit
+    participant L2
+
+    User->>L1: Bridge assets to L2
+    L1->>L1: Updates the mainnet exit tree
+    L1->>L1: Update GER
+    Note right of L1: bridgeContract updates the GER<br/>only if `forceUpdateGlobalExitRoot` is true in the bridge transaction.
+    Aggkit->>L1: Aggoracle fetches last finalized GER
+    Aggkit->>L2: Aggoracle injects the GER on L2 GlobalExitRootManagerL2SovereignChain.sol
+
+    User->>Aggkit: Call bridge_l1InfoTreeIndexForBridge endpoint on the origin network
+    Aggkit-->>User: Returns L1InfoTree index X for which the bridge was included
+    loop Poll destination network, until `L1InfoTreeLeaf` is retrieved  
+      User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network (L2) until a non-null response.  
+      Aggkit-->>User: Returns the first L1InfoTreeLeaf(GER=Y) for the GER injected on L2 at or after L1InfoTree index X
+    end 
+
+    User->>Aggkit: Call bridge_getProof on origin network to generate merkle proof for bridge using l1InfoTreeIndex of GER Y and networkID=0 (L1)
+    Aggkit-->>User: Return claim proof
+    User->>L2: Claim (proof)
+    L2->>L2: Send claimAsset/claimBridge tx on the destination network<br/>(bridge is settled on the L2)
+    L2-->>User: Tx hash
+```
+
+**Notes:**  
+
+1. In CDK-Erigon, the Global Exit Root (GER) on the L2 smart contract (`PolygonZKEVMGlobalExitRootL2.sol`) is automatically updated by the sequencer. In a sovereign chain, the GER is injected on L2 (`GlobalExitRootManagerL2SovereignChain.sol`) by the Aggoracle component.  
+
+2. A non-null response from `bridge_injectedInfoAfterIndex` indicates that the bridge is ready to be claimed on the destination network.  
+
+3. If `forceUpdateGlobalExitRoot` is set to false in a bridge transaction, the GER will not be updated with that transaction. The user must wait until the GER is updated by another bridge transaction before claiming. This is done to save gas costs while bridging.
+
+### Bridge flow L2 -> L1
+
+The diagram below describes the basic L2 -> L1 bridge workflow.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant L2
+    participant Aggkit
+    participant AggLayer
+    participant L1
+
+    User->>L2: Bridge assets to L1
+    L2->>L2: Index bridge tx & updates the local exit tree
+    Aggkit->>AggLayer: Build & send certificate (Aggsender)
+    AggLayer->>L1: Settle batch
+    L1->>L1: update GER
+    Note right of L1: rollupmanager updates the GER & RER (PolygonZKEVMGlobalExitRootV2.sol)
+    AggLayer-->>L2: Return L1 tx hash
+    Aggkit->>L1: Fetch last finalized GER (Aggoracle)
+    Aggkit->>L2: Aggoracle injects GER on L2 (GlobalExitRootManagerL2SovereignChain.sol)
+
+    User->>Aggkit: Query bridge_l1InfoTreeIndexForBridge endpoint on the origin network(L2)
+    Aggkit-->>User: Returns L1InfoTree index X for which the bridge was included 
+    loop Poll destination network, until `L1InfoTreeLeaf` is retrieved
+      User->>Aggkit: Poll bridge_injectedInfoAfterIndex on destination network (L1) until a non-null response.
+      Aggkit-->>User: Returns the first L1InfoTreeLeaf(GER=Y) for the GER injected at or after L1InfoTree index X
+    end
+
+    Aggkit-->>User: Return claim proof
+    User->>L1: Claim (proof)
+    L1->>L1: Send claimAsset/claimBridge tx on the destination network<br/>(bridge is settled on the L1)
+    L1-->>User: Tx hash
 ```
 
 ## Indexers
@@ -118,9 +214,10 @@ sequenceDiagram
     Note right of DestBridge: `leafValue` consists of bridge data <br/> (e.g. globalIndex, originNetwork, originTokenAddress, <br/>destinationNetwork, destinationAddress etc.)
     DestBridge-->>DestBridge: Deploys wrapped token
     DestBridge-->>DestBridge: Performs token mapping
+    DestBridge-->>DestBridge: Mints wrapped token to the destination address
 
     %% Step 6: Final Transaction Hash to User
-    DestBridge-->>User: Transaction hash (wrapped token deployed)
+    DestBridge-->>User: Transaction hash (wrapped token deployed and tokens minted to the destination address)
     Note right of User: Bridge process completed successfully
 ```
 
@@ -193,7 +290,7 @@ Failed response (`rpc.Error`)
 
 ### Get claims
 
-Retrieves the claim(s) for a specified network with support for pagination returning results in descending order of `GlobalIndex`. The claims represent the `ClaimEvent` events emitted by the bridge contract.
+Retrieves the claim(s) for a specified network with support for pagination returning results in descending order of `block_num`. The claims represent the `ClaimEvent` events emitted by the bridge contract.
 
 #### Parameters
 
