@@ -26,8 +26,7 @@ args:
   zkevm_l2_proofsigner_address: "0xf1a661D7b601Ec46a040f57193cC99aB8c4132FA"
   zkevm_l2_proofsigner_private_key: "0xc7fe3a006d75ba9326d9792523385abb49057c66aee0b8b4248821a89713f975"
 
-
-  cdk_node_image: aggkit:latest
+  cdk_node_image: aggkit:local
   cdk_erigon_node_image: hermeznetwork/cdk-erigon:v2.61.16-hotfix2
   zkevm_contracts_image: leovct/zkevm-contracts:v9.0.0-rc.6-pp-fork.12
   additional_services: []
