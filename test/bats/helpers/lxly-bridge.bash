@@ -89,11 +89,11 @@ function bridge_asset() {
     fi
 }
 
-function l1InfoTreeIndexForBridge() {
-    local network_id=$1
-    local expected_deposit_count=$2
-    local max_attempts=$3
-    local poll_frequency=$4
+function find_l1_info_tree_index_for_bridge() {
+    local network_id="$1"
+    local expected_deposit_count="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
 
     local attempt=0
 
@@ -121,6 +121,79 @@ function l1InfoTreeIndexForBridge() {
         fi
 
         echo "$index"
+        return 0
+    done
+}
+
+function find_injected_info_after_index() {
+    local network_id="$1"
+    local index="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
+
+    local attempt=0
+
+    while true; do
+        ((attempt++))
+        log "Attempt $attempt: fetching injected info after index from the RPC..."
+
+        injected_info=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_injectedInfoAfterIndex" "$network_id" "$index")
+
+        log "------ injected_info ------"
+        log "$injected_info"
+        log "------ injected_info ------"
+
+        if [[ -z "$injected_info" || "$injected_info" == "0x0" ]]; then
+            log "Didn't find injected L1InfoTree leaf after index on destination network"
+            # Fail test if max attempts are reached
+            if [[ "$attempt" -ge "$max_attempts" ]]; then
+                echo "Error: Reached max attempts ($max_attempts) without finding expected L1InfoTree leaf on destination network." >&2
+                return 1
+            fi
+
+            # Sleep before the next attempt
+            sleep "$poll_frequency"
+            continue
+        fi
+
+        echo "$injected_info"
+        return 0
+    done
+}
+
+function find_claim_proof() {
+    local network_id="$1"
+    local deposit_count="$2"
+    local l1_info_tree_index="$3"
+    local max_attempts="$4"
+    local poll_frequency="$5"
+
+    local attempt=0
+
+    while true; do
+        ((attempt++))
+        log "Attempt $attempt: fetching proof from the RPC..."
+
+        proof=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_claimProof" "$network_id" "$deposit_count" "$l1_info_tree_index")
+
+        log "------ proof ------"
+        log "$proof"
+        log "------ proof ------"
+
+        if [[ "$proof" == "0x0" ]]; then
+            log "Didn't find expected claim proof"
+            # Fail test if max attempts are reached
+            if [[ "$attempt" -ge "$max_attempts" ]]; then
+                echo "Error: Reached max attempts ($max_attempts) without finding expected claim proof." >&2
+                return 1
+            fi
+
+            # Sleep before the next attempt
+            sleep "$poll_frequency"
+            continue
+        fi
+
+        echo "$proof"
         return 0
     done
 }

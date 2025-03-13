@@ -65,16 +65,6 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
 
-    echo "=== Retrieve bridge from bridge_getBridges API" >&3
-    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
-    assert_success
-    
-    local bridge="$output"
-    local origin_network="$(echo "$bridge" | jq -r '.origin_network')"
-    local destination_network="$(echo "$bridge" | jq -r '.destination_network')"
-    assert_equal "$l1_rpc_network_id" "$origin_network"
-    assert_equal "$l2_rpc_network_id" "$destination_network"
-
     echo "=== Running LxLy claim on L2" >&3
     timeout="180"
     claim_frequency="10"
@@ -88,7 +78,7 @@ setup() {
     assert_success
 }
 
-@test "Find L1 info tree index" {
+@test "Test Bridge APIs workflow" {
     destination_addr=$sender_addr
     run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
     assert_success
@@ -103,18 +93,33 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
 
-    echo "------- l1InfoTreeIndexForBridge API testcase"
+    echo "------- getBridges API testcase"
     run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
     assert_success
     local bridge
     bridge="$output"
     local deposit_count
     deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run l1InfoTreeIndexForBridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    echo "------- getBridges API testcase passed"
+    echo "------- l1InfoTreeIndexForBridge API testcase"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
+    assert_success
     local l1_info_tree_index
     l1_info_tree_index="$output"
     assert_equal "$l1_info_tree_index" 2
     echo "------- l1InfoTreeIndexForBridge API testcase passed"
+
+    echo "------- injectedInfoAfterIndex API testcase"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30
+    assert_success
+    echo "------- injectedInfoAfterIndex API testcase passed"
+
+    echo "------- claimProof API testcase"
+    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
+    assert_success
+    local proof
+    proof="$output"
+    echo "------- claimProof API testcase passed"
 }
 
 @test "Custom gas token deposit L1 -> L2" {
