@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -23,31 +24,67 @@ func TestExploratory(t *testing.T) {
 	fmt.Printf("BlockInfo: %+v\n", blockInfo)
 }
 
-func TestFinalizedL2Block(t *testing.T) {
-	client := OpNodeClient{}
-	response := rpc.Response{
-		Result: []byte(responseOptimismSyncStatus),
-	}
-	jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
-		return response, nil
-	}
-	blockInfo, err := client.FinalizedL2Block()
-	require.NoError(t, err)
-	require.NotNil(t, blockInfo)
-	require.Equal(t, uint64(2036), blockInfo.Number)
-	require.Equal(t, "0x017b1679006ccc9bca588063054bd455957da9254b745d7cacbe2d211f548f7d", blockInfo.Hash.String())
-	require.Equal(t, "0x1656b9a20dbdad0887bdbdf693645a33a90d0628384879b74f654f06475f2dc8", blockInfo.ParentHash.String())
-	require.Equal(t, uint64(1741258057), blockInfo.Timestamp)
-}
+func TestFinalizedMulti(t *testing.T) {
+	cases := []struct {
+		name                 string
+		jSONRPCCallError     error
+		responseData         string
+		responseError        *rpc.ErrorObject
+		expectedBlockInfo    *BlockInfo
+		expectedErrorContain string
+	}{
+		{
+			name:          "happy path",
+			responseData:  responseOptimismSyncStatus,
+			responseError: nil,
+			expectedBlockInfo: &BlockInfo{
+				Number:     2036,
+				Hash:       common.HexToHash("0x017b1679006ccc9bca588063054bd455957da9254b745d7cacbe2d211f548f7d"),
+				ParentHash: common.HexToHash("0x1656b9a20dbdad0887bdbdf693645a33a90d0628384879b74f654f06475f2dc8"),
+				Timestamp:  1741258057,
+			},
+			expectedErrorContain: "",
+		},
+		{
+			name:                 "response null",
+			responseData:         "null",
+			expectedErrorContain: "not found",
+		},
+		{
+			name:                 "jSONRPCCall fails",
+			jSONRPCCallError:     fmt.Errorf("error"),
+			expectedErrorContain: "jSONRPCCall",
+		},
+		{
+			name:                 "jSONRPCCall ok, return error",
+			responseError:        &rpc.ErrorObject{Code: 1, Message: "error"},
+			expectedErrorContain: "server returns",
+		},
 
-func TestFinalizedL2BlockError(t *testing.T) {
-	client := OpNodeClient{}
-	response := rpc.Response{
-		Result: []byte("null"),
+		{
+			name:                 "server returns wrong json",
+			responseData:         "{",
+			expectedErrorContain: "Unmarshal",
+		},
 	}
-	jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
-		return response, nil
+
+	for _, tc := range cases {
+		client := OpNodeClient{}
+		response := rpc.Response{
+			Result: []byte(tc.responseData),
+			Error:  tc.responseError,
+		}
+		jSONRPCCall = func(_, _ string, _ ...interface{}) (rpc.Response, error) {
+			return response, tc.jSONRPCCallError
+		}
+		blockInfo, err := client.FinalizedL2Block()
+		if tc.expectedErrorContain != "" {
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.expectedErrorContain)
+		} else {
+			require.NoError(t, err)
+			require.NotNil(t, blockInfo)
+			require.Equal(t, tc.expectedBlockInfo, blockInfo)
+		}
 	}
-	_, err := client.FinalizedL2Block()
-	require.Error(t, err)
 }
