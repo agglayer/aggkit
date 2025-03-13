@@ -294,7 +294,7 @@ type TokenMapping struct {
 	Calldata            []byte         `meddler:"calldata" json:"calldata"`
 }
 
-// MarshalJSON for hex-encoding Metadata field
+// MarshalJSON for hex-encoding Metadata and Calldata fields
 func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 	type Alias TokenMapping // Prevent recursion
 	return json.Marshal(&struct {
