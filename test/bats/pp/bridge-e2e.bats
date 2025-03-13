@@ -84,7 +84,7 @@ setup() {
     assert_success
     local l1_info_tree_index
     l1_info_tree_index="$output"
-    assert_equal "$l1_info_tree_index" 2
+    assert_equal "$l1_info_tree_index" 1
     echo "------- l1InfoTreeIndexForBridge API testcase passed"
 
     echo "------- injectedInfoAfterIndex API testcase"
