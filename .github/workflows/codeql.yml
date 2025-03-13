@@ -32,7 +32,7 @@ jobs:
         if: ${{ matrix.language == 'go' }}
         uses: actions/setup-go@v5
         with:
-          go-version: 1.22.x
+          go-version: 1.23.x
 
       - name: Verify Go version
         if: ${{ matrix.language == 'go' }}

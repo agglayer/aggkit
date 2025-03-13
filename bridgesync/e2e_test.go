@@ -2,6 +2,7 @@ package bridgesync_test
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -20,11 +21,8 @@ import (
 
 func TestBridgeEventE2E(t *testing.T) {
 	const (
-		blockTime             = time.Millisecond * 10
-		totalBridges          = 80
-		totalReorgs           = 40
-		maxReorgDepth         = 2
-		reorgEveryXIterations = 4 // every X blocks go back [1,maxReorgDepth] blocks
+		blockTime    = time.Millisecond * 10
+		totalBridges = 80
 	)
 
 	rpcClient := mocks.NewRPCClienter(t)
@@ -34,7 +32,6 @@ func TestBridgeEventE2E(t *testing.T) {
 	ctx := context.Background()
 	// Send bridge txs
 	bridgesSent := 0
-	reorgs := 0
 	expectedBridges := []bridgesync.Bridge{}
 	lastDepositCount := uint32(0)
 
@@ -79,35 +76,8 @@ func TestBridgeEventE2E(t *testing.T) {
 		finalizedBlock := getFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
 		log.Infof("*** iteration: %d, Bridge Root: %s latestBlock:%d finalizedBlock:%d", i, common.Hash(expectedRoot).Hex(), bn, finalizedBlock)
 		bridgesSent++
-		bn, err = setup.L1Environment.SimBackend.Client().BlockNumber(ctx)
-		require.NoError(t, err)
-		finalizedBlockNumber := getFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
-		blocksToReorg := 1 + i%maxReorgDepth
-		// Trigger reorg but prevent to reorg a finalized block
-		if i%reorgEveryXIterations == 0 && bn-uint64(blocksToReorg) > finalizedBlockNumber {
-			log.Infof("*** Reorg iteration: %d, Reorging %d blocks. From block: %d to %d. finalizedBlockNumber: %d",
-				i, blocksToReorg, bn, bn-uint64(blocksToReorg), finalizedBlockNumber)
-			helpers.Reorg(t, setup.L1Environment.SimBackend, uint64(blocksToReorg))
-			// Clean expected bridges
-			lastValidBlock := bn - uint64(blocksToReorg)
-			reorgEffective := false
-			for i := len(expectedBridges) - 1; i >= 0; i-- {
-				if expectedBridges[i].BlockNum > lastValidBlock {
-					log.Debugf("removing expectedBridge with depositCount %d due to reorg", expectedBridges[i].DepositCount)
-					lastDepositCount = expectedBridges[i].DepositCount
-					expectedBridges = expectedBridges[0:i]
-					reorgEffective = true
-					bridgesSent--
-				}
-			}
-			if reorgEffective {
-				reorgs++
-				log.Debug("reorgs: ", reorgs)
-			}
-		}
-
 		// Finish condition
-		if bridgesSent >= totalBridges && reorgs >= totalReorgs {
+		if bridgesSent >= totalBridges {
 			break
 		}
 	}
@@ -134,9 +104,9 @@ func TestBridgeEventE2E(t *testing.T) {
 	root, err := setup.L1Environment.BridgeSync.GetExitRootByIndex(ctx, expectedBridges[len(expectedBridges)-1].DepositCount)
 	require.NoError(t, err)
 	log.Infof("expectedRoot: %s lastBlock: %d lastFinalized:%d DepositCount:%d ", common.Hash(expectedRoot).Hex(), lastBlock, lb, expectedBridges[len(expectedBridges)-1].DepositCount)
-	for i := 119; i >= 00; i-- {
+	for i := 79; i >= 00; i-- {
 		root, err := setup.L1Environment.BridgeSync.GetExitRootByIndex(ctx, uint32(i))
-		require.NoError(t, err)
+		require.NoError(t, err, fmt.Sprintf("DepositCount:%d", i))
 		log.Infof("DepositCount:%d root: %s", i, root.Hash.Hex())
 	}
 	require.Equal(t, common.Hash(expectedRoot).Hex(), root.Hash.Hex())

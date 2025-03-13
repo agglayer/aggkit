@@ -36,6 +36,7 @@ linters:
     - mnd # mnd is a linter for magic numbers
     # - revive
     - unparam # Unused function parameters
+    - unused
 
 linters-settings:
   gofmt:

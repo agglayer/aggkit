@@ -1,5 +1,5 @@
 # CONTAINER FOR BUILDING BINARY
-FROM --platform=${BUILDPLATFORM} golang:1.22.4 AS build
+FROM --platform=${BUILDPLATFORM} golang:1.23.7 AS build
 
 WORKDIR /app
 
@@ -12,7 +12,7 @@ COPY . .
 RUN make build-aggkit build-tools
 
 # CONTAINER FOR RUNNING BINARY
-FROM debian:bookworm-slim
+FROM --platform=${BUILDPLATFORM} debian:bookworm-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     ca-certificates \

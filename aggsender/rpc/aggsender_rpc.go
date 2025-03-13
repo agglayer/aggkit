@@ -8,10 +8,6 @@ import (
 	"github.com/agglayer/aggkit/log"
 )
 
-const (
-	base10 = 10
-)
-
 type AggsenderStorer interface {
 	GetCertificateByHeight(height uint64) (*types.CertificateInfo, error)
 	GetLastSentCertificate() (*types.CertificateInfo, error)
