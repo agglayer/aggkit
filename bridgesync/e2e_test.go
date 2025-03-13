@@ -10,9 +10,11 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/helpers"
+	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -24,13 +26,18 @@ func TestBridgeEventE2E(t *testing.T) {
 		maxReorgDepth         = 2
 		reorgEveryXIterations = 4 // every X blocks go back [1,maxReorgDepth] blocks
 	)
-	setup := helpers.NewE2EEnvWithEVML2(t)
+
+	rpcClient := mocks.NewRPCClienter(t)
+	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	setup := helpers.NewE2EEnvWithEVML2(t, &helpers.EnvironmentConfig{L1RPCClient: rpcClient})
 	ctx := context.Background()
 	// Send bridge txs
 	bridgesSent := 0
 	reorgs := 0
 	expectedBridges := []bridgesync.Bridge{}
 	lastDepositCount := uint32(0)
+
 	for i := 1; i > 0; i++ {
 		// Send bridge
 		bridge := bridgesync.Bridge{
@@ -40,6 +47,7 @@ func TestBridgeEventE2E(t *testing.T) {
 			DestinationAddress: common.HexToAddress("f00"),
 			Metadata:           []byte{},
 		}
+
 		lastDepositCount++
 		tx, err := setup.L1Environment.BridgeContract.BridgeAsset(
 			setup.L1Environment.Auth,
@@ -51,6 +59,7 @@ func TestBridgeEventE2E(t *testing.T) {
 		)
 		require.NoError(t, err)
 		helpers.CommitBlocks(t, setup.L1Environment.SimBackend, 1, blockTime)
+
 		simulatedClient := setup.L1Environment.SimBackend.Client()
 		bn, err := simulatedClient.BlockNumber(ctx)
 		require.NoError(t, err)
@@ -131,6 +140,7 @@ func TestBridgeEventE2E(t *testing.T) {
 		log.Infof("DepositCount:%d root: %s", i, root.Hash.Hex())
 	}
 	require.Equal(t, common.Hash(expectedRoot).Hex(), root.Hash.Hex())
+	t.Log(t, len(actualBridges))
 	require.Equal(t, expectedBridges, actualBridges)
 }
 

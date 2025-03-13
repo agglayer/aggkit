@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -51,7 +52,7 @@ func NewL1(
 	syncBlockChunkSize uint64,
 	blockFinalityType etherman.BlockNumberFinality,
 	rd ReorgDetector,
-	ethClient EthClienter,
+	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
 	waitForNewBlocksPeriod time.Duration,
 	retryAfterErrorPeriod time.Duration,
@@ -85,7 +86,7 @@ func NewL2(
 	syncBlockChunkSize uint64,
 	blockFinalityType etherman.BlockNumberFinality,
 	rd ReorgDetector,
-	ethClient EthClienter,
+	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
 	waitForNewBlocksPeriod time.Duration,
 	retryAfterErrorPeriod time.Duration,
@@ -118,7 +119,7 @@ func newBridgeSync(
 	syncBlockChunkSize uint64,
 	blockFinalityType etherman.BlockNumberFinality,
 	rd ReorgDetector,
-	ethClient EthClienter,
+	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
 	syncerID string,
 	waitForNewBlocksPeriod time.Duration,
@@ -339,7 +340,8 @@ func (s *BridgeSync) BlockFinality() etherman.BlockNumberFinality {
 	return s.blockFinality
 }
 
-func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address, ethClient EthClienter) error {
+func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
+	ethClient aggkittypes.BaseEthereumClienter) error {
 	contract, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
 	if err != nil {
 		return fmt.Errorf("sanityCheckContract(bridge:%s) fails creating contract. Err: %w", bridgeAddr.String(), err)

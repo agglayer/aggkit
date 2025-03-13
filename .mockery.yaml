@@ -34,6 +34,10 @@ packages:
   github.com/agglayer/aggkit/aggsender/db:
     config:
       all: true
+  github.com/agglayer/aggkit/types:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true
   github.com/agglayer/aggkit/aggsender/rpc:
     config:
       all: true
@@ -45,7 +49,6 @@ packages:
       dir: "{{ .InterfaceDir }}/mocks"
     interfaces:
       ReorgDetector:
-      EthClienter:
   github.com/agglayer/aggkit/l1infotreesync:
     config:
       dir: "{{ .InterfaceDir }}/mocks"

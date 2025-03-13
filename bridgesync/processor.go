@@ -20,6 +20,7 @@ import (
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/keccak256"
 	"github.com/russross/meddler"
 	_ "modernc.org/sqlite"
@@ -62,6 +63,7 @@ type Bridge struct {
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
 	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
+	Calldata           []byte         `meddler:"calldata" json:"calldata"`
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
@@ -104,9 +106,11 @@ func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
 	type Alias BridgeResponse // Prevent recursion
 	return json.Marshal(&struct {
 		Metadata string `json:"metadata"`
+		CallData string `json:"calldata"`
 		*Alias
 	}{
-		Metadata: "0x" + hex.EncodeToString(b.Metadata),
+		Metadata: fmt.Sprintf("0x%s", hex.EncodeToString(b.Metadata)),
+		CallData: fmt.Sprintf("0x%s", hex.EncodeToString(b.Calldata)),
 		Alias:    (*Alias)(b),
 	})
 }
@@ -133,6 +137,136 @@ type Claim struct {
 	FromAddress         common.Address `meddler:"from_address,address"`
 }
 
+// decodeEtrogCalldata decodes claim calldata for Etrog fork
+func (c *Claim) decodeEtrogCalldata(data []any) (bool, error) {
+	// Unpack method inputs. Note that both claimAsset and claimMessage have the same interface
+	// for the relevant parts
+	// claimAsset/claimMessage(
+	// 	0: smtProofLocalExitRoot,
+	// 	1: smtProofRollupExitRoot,
+	// 	2: globalIndex,
+	// 	3: mainnetExitRoot,
+	// 	4: rollupExitRoot,
+	// 	5: originNetwork,
+	// 	6: originTokenAddress/originAddress,
+	// 	7: destinationNetwork,
+	// 	8: destinationAddress,
+	// 	9: amount,
+	// 	10: metadata,
+	// )
+
+	actualGlobalIndex, ok := data[2].(*big.Int)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for actualGlobalIndex, expected *big.Int got '%T'", data[2])
+	}
+	if actualGlobalIndex.Cmp(c.GlobalIndex) != 0 {
+		// not the claim we're looking for
+		return false, nil
+	}
+	proofLER := [types.DefaultHeight]common.Hash{}
+	proofLERBytes, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
+	}
+
+	proofRER := [types.DefaultHeight]common.Hash{}
+	proofRERBytes, ok := data[1].([types.DefaultHeight][common.HashLength]byte)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for proofRERBytes, expected [32][32]byte got '%T'", data[1])
+	}
+
+	for i := range int(types.DefaultHeight) {
+		proofLER[i] = proofLERBytes[i]
+		proofRER[i] = proofRERBytes[i]
+	}
+	c.ProofLocalExitRoot = proofLER
+	c.ProofRollupExitRoot = proofRER
+
+	c.MainnetExitRoot, ok = data[3].([common.HashLength]byte)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for 'MainnetExitRoot'. Expected '[32]byte', got '%T'", data[3])
+	}
+
+	c.RollupExitRoot, ok = data[4].([common.HashLength]byte)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for 'RollupExitRoot'. Expected '[32]byte', got '%T'", data[4])
+	}
+
+	c.DestinationNetwork, ok = data[7].(uint32)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for 'DestinationNetwork'. Expected 'uint32', got '%T'", data[7])
+	}
+
+	c.Metadata, ok = data[10].([]byte)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for 'claim Metadata'. Expected '[]byte', got '%T'", data[10])
+	}
+
+	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
+
+	return true, nil
+}
+
+// decodePreEtrogCalldata decodes the claim calldata for pre-Etrog forks
+func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
+	// claimMessage/claimAsset(
+	// 	0: bytes32[32] smtProof,
+	// 	1: uint32 index,
+	// 	2: bytes32 mainnetExitRoot,
+	// 	3: bytes32 rollupExitRoot,
+	// 	4: uint32 originNetwork,
+	// 	5: address originTokenAddress,
+	// 	6: uint32 destinationNetwork,
+	// 	7: address destinationAddress,
+	// 	8: uint256 amount,
+	// 	9: bytes metadata
+	// )
+	actualGlobalIndex, ok := data[1].(uint32)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for actualGlobalIndex, expected uint32 got '%T'", data[1])
+	}
+
+	if new(big.Int).SetUint64(uint64(actualGlobalIndex)).Cmp(c.GlobalIndex) != 0 {
+		// not the claim we're looking for
+		return false, nil
+	}
+
+	proof := [types.DefaultHeight]common.Hash{}
+	proofBytes, ok := data[0].([types.DefaultHeight][common.HashLength]byte)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for proofLERBytes, expected [32][32]byte got '%T'", data[0])
+	}
+
+	for i := range int(types.DefaultHeight) {
+		proof[i] = proofBytes[i]
+	}
+	c.ProofLocalExitRoot = proof
+
+	c.MainnetExitRoot, ok = data[2].([common.HashLength]byte)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for 'MainnetExitRoot'. Expected '[32]byte', got '%T'", data[2])
+	}
+
+	c.RollupExitRoot, ok = data[3].([common.HashLength]byte)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for 'RollupExitRoot'. Expected '[32]byte', got '%T'", data[3])
+	}
+
+	c.DestinationNetwork, ok = data[6].(uint32)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for 'DestinationNetwork'. Expected 'uint32', got '%T'", data[6])
+	}
+
+	c.Metadata, ok = data[9].([]byte)
+	if !ok {
+		return false, fmt.Errorf("unexpected type for 'Metadata'. Expected '[]byte', got '%T'", data[9])
+	}
+
+	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
+
+	return true, nil
+}
+
 // ClaimResponse is the representation of a claim event with trimmed fields
 type ClaimResponse struct {
 	BlockNum           uint64         `json:"block_num"`
@@ -157,16 +291,19 @@ type TokenMapping struct {
 	OriginTokenAddress  common.Address `meddler:"origin_token_address,address" json:"origin_token_address"`
 	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
 	Metadata            []byte         `meddler:"metadata" json:"metadata"`
+	Calldata            []byte         `meddler:"calldata" json:"calldata"`
 }
 
-// MarshalJSON for hex-encoding Metadata field
+// MarshalJSON for hex-encoding Metadata and Calldata fields
 func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 	type Alias TokenMapping // Prevent recursion
 	return json.Marshal(&struct {
 		Metadata string `json:"metadata"`
+		Calldata string `json:"calldata"`
 		*Alias
 	}{
-		Metadata: "0x" + hex.EncodeToString(t.Metadata),
+		Metadata: fmt.Sprintf("0x%s", hex.EncodeToString(t.Metadata)),
+		Calldata: fmt.Sprintf("0x%s", hex.EncodeToString(t.Calldata)),
 		Alias:    (*Alias)(t),
 	})
 }
