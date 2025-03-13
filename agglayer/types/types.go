@@ -124,8 +124,6 @@ const (
 )
 
 type AggchainData interface {
-	MarshalJSON() ([]byte, error)
-	UnmarshalJSON(data []byte) error
 	IsAggchainData() bool
 }
 
@@ -141,29 +139,6 @@ func (a *AggchainDataSignature) IsAggchainData() bool {
 	return true
 }
 
-// MarshalJSON is the implementation of the json.Marshaler interface
-func (a *AggchainDataSignature) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Signature string `json:"signature"`
-	}{
-		Signature: common.Bytes2Hex(a.Signature),
-	})
-}
-
-// UnmarshalJSON is the implementation of the json.Unmarshaler interface
-func (a *AggchainDataSignature) UnmarshalJSON(data []byte) error {
-	aux := &struct {
-		Signature string `json:"signature"`
-	}{}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	a.Signature = common.Hex2Bytes(aux.Signature)
-
-	return nil
-}
-
 // AggchainDataProof is the data structure that will hold the proof of the certificate
 // This is used in the aggchain prover path
 type AggchainDataProof struct {
@@ -175,47 +150,6 @@ type AggchainDataProof struct {
 // IsAggchainData is the implementation of the AggchainData interface
 func (a *AggchainDataProof) IsAggchainData() bool {
 	return true
-}
-
-// MarshalJSON is the implementation of the json.Marshaler interface
-func (a *AggchainDataProof) MarshalJSON() ([]byte, error) {
-	return json.Marshal(&struct {
-		Generic struct {
-			Proof          string            `json:"proof"`
-			AggchainParams string            `json:"aggchain_params"`
-			Context        map[string][]byte `json:"context"`
-		} `json:"generic"`
-	}{
-		Generic: struct {
-			Proof          string            `json:"proof"`
-			AggchainParams string            `json:"aggchain_params"`
-			Context        map[string][]byte `json:"context"`
-		}{
-			Proof:          common.Bytes2Hex(a.Proof),
-			AggchainParams: a.AggchainParams.String(),
-			Context:        a.Context,
-		},
-	})
-}
-
-// UnmarshalJSON is the implementation of the json.Unmarshaler interface
-func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
-	aux := &struct {
-		Generic struct {
-			Proof          string            `json:"proof"`
-			AggchainParams string            `json:"aggchain_params"`
-			Context        map[string][]byte `json:"context"`
-		} `json:"generic"`
-	}{}
-	if err := json.Unmarshal(data, &aux); err != nil {
-		return err
-	}
-
-	a.Proof = common.Hex2Bytes(aux.Generic.Proof)
-	a.AggchainParams = common.HexToHash(aux.Generic.AggchainParams)
-	a.Context = aux.Generic.Context
-
-	return nil
 }
 
 // Certificate is the data structure that will be sent to the agglayer
