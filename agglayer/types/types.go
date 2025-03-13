@@ -124,7 +124,39 @@ const (
 )
 
 type AggchainData interface {
+	MarshalJSON() ([]byte, error)
+	UnmarshalJSON(data []byte) error
 	IsAggchainData() bool
+}
+
+// AggchainDataSelector is a helper struct that allow to decice which type of aggchain data to unmarshal
+type AggchainDataSelector struct {
+	obj AggchainData
+}
+
+func (a *AggchainDataSelector) GetObject() AggchainData {
+	return a.obj
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataSelector) UnmarshalJSON(data []byte) error {
+	var obj map[string]interface{}
+	if string(data) == nullStr {
+		return nil
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	var ok bool
+	if _, ok = obj["signature"]; ok {
+		a.obj = &AggchainDataSignature{}
+	} else if _, ok = obj["proof"]; ok {
+		a.obj = &AggchainDataProof{}
+	} else {
+		return errors.New("invalid aggchain_data type")
+	}
+
+	return json.Unmarshal(data, &a.obj)
 }
 
 // AggchainDataSignature is the data structure that will hold the signature
@@ -132,6 +164,27 @@ type AggchainData interface {
 // This is used in the regular PP path
 type AggchainDataSignature struct {
 	Signature []byte `json:"signature"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataSignature) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Signature string `json:"signature"`
+	}{
+		Signature: common.Bytes2Hex(a.Signature),
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataSignature) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Signature string `json:"signature"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	a.Signature = common.Hex2Bytes(aux.Signature)
+	return nil
 }
 
 // IsAggchainData is the implementation of the AggchainData interface
@@ -145,6 +198,37 @@ type AggchainDataProof struct {
 	Proof          []byte            `json:"proof"`
 	AggchainParams common.Hash       `json:"aggchain_params"`
 	Context        map[string][]byte `json:"context"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataProof) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Proof          string            `json:"proof"`
+		AggchainParams string            `json:"aggchain_params"`
+		Context        map[string][]byte `json:"context"`
+	}{
+		Proof:          common.Bytes2Hex(a.Proof),
+		AggchainParams: a.AggchainParams.String(),
+		Context:        a.Context,
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Proof          string            `json:"proof"`
+		AggchainParams string            `json:"aggchain_params"`
+		Context        map[string][]byte `json:"context"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	a.Proof = common.Hex2Bytes(aux.Proof)
+	a.AggchainParams = common.HexToHash(aux.AggchainParams)
+	a.Context = aux.Context
+
+	return nil
 }
 
 // IsAggchainData is the implementation of the AggchainData interface
@@ -163,6 +247,34 @@ type Certificate struct {
 	Metadata            common.Hash           `json:"metadata"`
 	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 	AggchainData        AggchainData          `json:"data,omitempty"`
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (c *Certificate) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		NetworkID           uint32                `json:"network_id"`
+		Height              uint64                `json:"height"`
+		PrevLocalExitRoot   common.Hash           `json:"prev_local_exit_root"`
+		NewLocalExitRoot    common.Hash           `json:"new_local_exit_root"`
+		BridgeExits         []*BridgeExit         `json:"bridge_exits"`
+		ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
+		Metadata            common.Hash           `json:"metadata"`
+		CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
+		AggchainData        AggchainDataSelector  `json:"data,omitempty"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	c.NetworkID = aux.NetworkID
+	c.Height = aux.Height
+	c.PrevLocalExitRoot = aux.PrevLocalExitRoot
+	c.NewLocalExitRoot = aux.NewLocalExitRoot
+	c.BridgeExits = aux.BridgeExits
+	c.ImportedBridgeExits = aux.ImportedBridgeExits
+	c.Metadata = aux.Metadata
+	c.CustomChainData = aux.CustomChainData
+	c.AggchainData = aux.AggchainData.GetObject()
+	return nil
 }
 
 // ID returns a string with the ident of this cert (height/certID)
