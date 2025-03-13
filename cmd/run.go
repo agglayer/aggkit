@@ -146,6 +146,8 @@ func createAggSender(
 	l2Syncer *bridgesync.BridgeSync,
 	l2Client *ethclient.Client) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
+
+	// trim the http:// prefix if it exists in the URL because the go-grpc client expects it without it
 	aggLayerURL := strings.TrimPrefix(cfg.AggLayerURL, "http://")
 	agglayerClient, err := agglayer.NewAgglayerGRPCClient(aggLayerURL)
 	if err != nil {
