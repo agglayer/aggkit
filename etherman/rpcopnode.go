@@ -17,13 +17,17 @@ const (
 	ExtraParamFieldName = "OpNodeURL"
 )
 
+type OpNodeClienter interface {
+	FinalizedL2Block() (*opnode.BlockInfo, error)
+}
+
 // EthDecorator is a decorator for the ethclient.Client that intercepts calls to the HeaderByNumber method
 // and if the block number is the FinalizedBlockNumber, it will ask the OpNodeClient for the finalized block
 // instead of asking the ethclient.Client
-type ethRealClient = ethclient.Client
+type ethRealClient = EthClienter
 type RPCOpNodeDecorator struct {
-	*ethRealClient
-	OpNodeClient *opnode.OpNodeClient
+	ethRealClient
+	OpNodeClient OpNodeClienter
 }
 
 func NewRPCClientModeOp(cfg ethermanconfig.RPCClientConfig) (EthClienter, error) {
@@ -40,7 +44,7 @@ func NewRPCClientModeOp(cfg ethermanconfig.RPCClientConfig) (EthClienter, error)
 	return NewRPCOpNodeDecorator(basicClient, opNodeClient), nil
 }
 
-func NewRPCOpNodeDecorator(client *ethclient.Client, opNodeClient *opnode.OpNodeClient) *RPCOpNodeDecorator {
+func NewRPCOpNodeDecorator(client EthClienter, opNodeClient OpNodeClienter) *RPCOpNodeDecorator {
 	return &RPCOpNodeDecorator{
 		ethRealClient: client,
 		OpNodeClient:  opNodeClient,
@@ -48,7 +52,7 @@ func NewRPCOpNodeDecorator(client *ethclient.Client, opNodeClient *opnode.OpNode
 }
 
 func (f *RPCOpNodeDecorator) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
-	if number != nil && rpc.BlockNumber(number.Uint64()) == rpc.FinalizedBlockNumber {
+	if number != nil && rpc.BlockNumber(number.Int64()) == rpc.FinalizedBlockNumber {
 		// Is asking for finalized block, so we intercept the call and ask to op-node
 		blockInfo, err := f.OpNodeClient.FinalizedL2Block()
 		if err != nil {
