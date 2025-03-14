@@ -4,7 +4,6 @@ import (
 	"context"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/claimmock"
@@ -110,8 +109,8 @@ func TestClaimCalldata(t *testing.T) {
 		nil,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err := client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err := waitForReceipt(ctx, client, tx.Hash(), 10)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "direct call to claim asset",
@@ -139,8 +138,8 @@ func TestClaimCalldata(t *testing.T) {
 		false,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "indirect call to claim asset",
@@ -160,8 +159,8 @@ func TestClaimCalldata(t *testing.T) {
 		false,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "indirect call to claim asset bytes",
@@ -188,8 +187,8 @@ func TestClaimCalldata(t *testing.T) {
 		nil,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "direct call to claim message",
@@ -217,8 +216,8 @@ func TestClaimCalldata(t *testing.T) {
 		false,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "indirect call to claim message",
@@ -238,8 +237,8 @@ func TestClaimCalldata(t *testing.T) {
 		false,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "indirect call to claim message bytes",
@@ -259,7 +258,6 @@ func TestClaimCalldata(t *testing.T) {
 		true,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
 
 	reverted := [2]bool{false, false}
 
@@ -279,8 +277,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim message 1 (same globalIndex)",
@@ -311,8 +309,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim message 1 (diff globalIndex)",
@@ -345,8 +343,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim message (same globalIndex) (1 ok, 1 reverted)",
@@ -371,8 +369,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim message (diff globalIndex) (1 ok, 1 reverted)",
@@ -399,8 +397,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim message (same globalIndex) (reverted,ok)",
@@ -425,8 +423,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim message (diff globalIndex) (reverted,ok)",
@@ -453,8 +451,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim asset 1 (same globalIndex)",
@@ -485,8 +483,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim asset 1 (diff globalIndex)",
@@ -519,8 +517,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim asset (same globalIndex) (1 ok, 1 reverted)",
@@ -545,8 +543,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim asset (diff globalIndex) (1 ok, 1 reverted)",
@@ -573,8 +571,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim asset (same globalIndex) (reverted,ok)",
@@ -599,8 +597,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect call claim asset (diff globalIndex) (reverted,ok)",
@@ -620,8 +618,8 @@ func TestClaimCalldata(t *testing.T) {
 		false,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "indirect + indirect call to claim message bytes",
@@ -648,8 +646,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 indirect + indirect call claim message 1 (same globalIndex)",
@@ -687,8 +685,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "3 ok (indirectx2, indirect, indirectx2) call claim message 1 (same globalIndex)",
@@ -730,8 +728,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "3 ok (indirectx2, indirect, indirectx2) call claim message 1 (diff globalIndex)",
@@ -775,8 +773,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "1 ko 2 ok (indirectx2, indirect, indirectx2) call claim message 1 (diff globalIndex)",
@@ -814,8 +812,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "1 ko 2 ok (indirectx2, indirect, indirectx2) call claim message 1 (diff globalIndex)",
@@ -853,8 +851,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "1 ok 1 ok 1 ko (indirectx2, indirect, indirectx2) call claim message 1 (diff globalIndex)",
@@ -892,8 +890,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "1 ko 2 ok (indirectx2, indirect, indirectx2) call claim message 1 (same globalIndex)",
@@ -931,8 +929,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "1 ko 2 ok (indirectx2, indirect, indirectx2) call claim message 1 (same globalIndex)",
@@ -970,8 +968,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "1 ok 1 ok 1 ko (indirectx2, indirect, indirectx2) call claim message 1 (same globalIndex)",
@@ -1009,8 +1007,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "2 ko 1 ok (indirectx2, indirect, indirectx2) call claim message 1 (same globalIndex)",
@@ -1042,8 +1040,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "1 ok 2 ko (indirectx2, indirect, indirectx2) call claim message 1 (same globalIndex)",
@@ -1075,8 +1073,8 @@ func TestClaimCalldata(t *testing.T) {
 		reverted3,
 	)
 	require.NoError(t, err)
-	time.Sleep(1 * time.Second)
-	r, err = client.TransactionReceipt(ctx, tx.Hash())
+
+	r, err = waitForReceipt(ctx, client, tx.Hash(), 20)
 	require.NoError(t, err)
 	testCases = append(testCases, testCase{
 		description:   "1 ko 1 ok 1 ko (indirectx2, indirect, indirectx2) call claim message 1 (same globalIndex)",
