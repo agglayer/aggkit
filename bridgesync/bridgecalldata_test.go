@@ -55,7 +55,7 @@ func TestBridgeCallData(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	_, err = waitForReceipt(ctx, client, deployProxyTx.Hash(), 10)
+	_, err = waitForReceipt(ctx, client, deployProxyTx.Hash(), 20)
 	require.NoError(t, err)
 
 	bridgeContract, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeProxyAddr, client)
@@ -99,7 +99,7 @@ func TestBridgeCallData(t *testing.T) {
 	err = client.SendTransaction(ctx, signedFundTx)
 	require.NoError(t, err)
 
-	_, err = waitForReceipt(ctx, client, signedFundTx.Hash(), 10)
+	_, err = waitForReceipt(ctx, client, signedFundTx.Hash(), 20)
 	require.NoError(t, err)
 
 	userBalance, err := client.BalanceAt(ctx, userAuth.From, big.NewInt(int64(etherman.Latest)))
@@ -135,7 +135,13 @@ func TestBridgeCallData(t *testing.T) {
 		amount             = big.NewInt(1000)
 	)
 
-	bridgeAssetInput, err := bridgeABI.Pack("bridgeAsset", destinationNetwork, destinationAddr, amount, zeroAddr, false, []byte{})
+	bridgeAssetInput, err := bridgeABI.Pack("bridgeAsset",
+		destinationNetwork, // destination network id
+		destinationAddr,    // destination address
+		amount,             // amount of tokens being bridged
+		zeroAddr,           // token address
+		false,              // update global exit root
+		[]byte{})           // permit data
 	require.NoError(t, err)
 
 	nonce, err = client.PendingNonceAt(ctx, userAuth.From)
@@ -170,6 +176,7 @@ func TestBridgeCallData(t *testing.T) {
 	maxAttempts := 100
 	attempt := 0
 
+	// wait for bridge event to get indexed
 	for attempt < maxAttempts {
 		bridgeResponse, totalCount, err := bridgeSync.GetBridgesPaged(ctx, page, pageSize, nil)
 		require.NoError(t, err)

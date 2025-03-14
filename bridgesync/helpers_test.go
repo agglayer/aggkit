@@ -22,7 +22,7 @@ import (
 func startGeth(t *testing.T, ctx context.Context, cancelFn context.CancelFunc) (*ethclient.Client, *bind.TransactOpts) {
 	t.Helper()
 
-	log.Debug("starting docker")
+	log.Debug("starting Geth docker container")
 	msg, err := exec.Command("bash", "-l", "-c", "docker compose up -d").CombinedOutput()
 	require.NoError(t, err, string(msg))
 
@@ -31,9 +31,9 @@ func startGeth(t *testing.T, ctx context.Context, cancelFn context.CancelFunc) (
 		cancelFn()
 		msg, err = exec.Command("bash", "-l", "-c", "docker compose down").CombinedOutput()
 		require.NoError(t, err, string(msg))
-		log.Debug("docker is shutted down")
+		log.Debug("Geth docker container is shutted down")
 	})
-	log.Debug("docker started")
+	log.Debug("Geth docker container is started")
 
 	client, err := dialGeth("http://127.0.0.1:8545", 10, time.Second)
 	require.NoError(t, err)
@@ -88,7 +88,7 @@ func waitForReceipt(ctx context.Context, client *ethclient.Client, txHash common
 		}
 		receipt, err = client.TransactionReceipt(ctx, txHash)
 		if errors.Is(err, ethereum.NotFound) {
-			time.Sleep(time.Second)
+			time.Sleep(500 * time.Millisecond)
 			attempts++
 			continue
 		} else if err != nil {
