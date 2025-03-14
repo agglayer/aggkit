@@ -31,10 +31,7 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/rpc"
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
-	ethrpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
 )
@@ -175,7 +172,7 @@ func createAggSender(
 func createAggoracle(
 	cfg config.Config,
 	l1Client,
-	l2Client EthClienter,
+	l2Client etherman.EthClienter,
 	syncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
@@ -272,7 +269,7 @@ func waitSignal(cancelFuncs []context.CancelFunc) {
 
 func newReorgDetector(
 	cfg *reorgdetector.Config,
-	client EthClienter,
+	client etherman.EthClienter,
 	network reorgdetector.Network,
 ) *reorgdetector.ReorgDetector {
 	rd, err := reorgdetector.New(client, *cfg, network)
@@ -363,15 +360,7 @@ func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Con
 	return rollupID
 }
 
-type EthClienter interface {
-	ethereum.LogFilterer
-	ethereum.BlockNumberReader
-	ethereum.ChainReader
-	bind.ContractBackend
-	Client() *ethrpc.Client
-}
-
-func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) EthClienter {
+func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) etherman.EthClienter {
 	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
 		return nil
 	}
@@ -410,7 +399,7 @@ func runReorgDetectorL1IfNeeded(
 func runReorgDetectorL2IfNeeded(
 	ctx context.Context,
 	components []string,
-	l2Client EthClienter,
+	l2Client etherman.EthClienter,
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
@@ -432,7 +421,7 @@ func runReorgDetectorL2IfNeeded(
 func runClaimSponsorIfNeeded(
 	ctx context.Context,
 	components []string,
-	l2Client EthClienter,
+	l2Client etherman.EthClienter,
 	cfg claimsponsor.EVMClaimSponsorConfig,
 ) *claimsponsor.ClaimSponsor {
 	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) || !cfg.Enabled {
@@ -474,7 +463,7 @@ func runLastGERSyncIfNeeded(
 	components []string,
 	cfg lastgersync.Config,
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
-	l2Client EthClienter,
+	l2Client etherman.EthClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 ) *lastgersync.LastGERSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) {
@@ -541,7 +530,7 @@ func runBridgeSyncL2IfNeeded(
 	components []string,
 	cfg bridgesync.Config,
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
-	l2Client EthClienter,
+	l2Client etherman.EthClienter,
 	rollupID uint32,
 ) *bridgesync.BridgeSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
