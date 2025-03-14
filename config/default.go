@@ -5,6 +5,8 @@ package config
 const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
+
+
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 
 
@@ -45,6 +47,7 @@ const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 L1URLSyncChunkSize = 100
 RequireStorageContentCompatibility = true
+L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
 `
 
 // DefaultValues is the default configuration
@@ -74,6 +77,8 @@ Outputs = ["stderr"]
 NetworkID = 1
 IsValidiumMode = {{IsValidiumMode}}
 ContractVersions = "{{ContractVersions}}"
+L2RPC = {{L2RPC}}
+
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
@@ -103,7 +108,6 @@ BlockFinality="FinalizedBlock"
 WaitPeriodNextGER="100ms"
 	[AggOracle.EVMSender]
 		GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
-		URLRPCL2="{{L2URL}}"
 		GasOffset=0
 		WaitPeriodMonitorTx="100ms"
 		[AggOracle.EVMSender.EthTxManager]
@@ -213,7 +217,6 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 AggLayerURL = "{{AggLayerURL}}"
 AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
-URLRPCL2="{{L2URL}}"
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 SaveCertificatesToFilesPath = ""

@@ -44,7 +44,6 @@ func TestConfigString(t *testing.T) {
 		StoragePath:                 "/path/to/storage",
 		AggLayerURL:                 "http://agglayer.url",
 		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
-		URLRPCL2:                    "http://l2.rpc.url",
 		BlockFinality:               "latestBlock",
 		EpochNotificationPercentage: 50,
 		SaveCertificatesToFilesPath: "/path/to/certificates",
@@ -53,7 +52,6 @@ func TestConfigString(t *testing.T) {
 	expected := "StoragePath: /path/to/storage\n" +
 		"AggLayerURL: http://agglayer.url\n" +
 		"AggsenderPrivateKey: local\n" +
-		"URLRPCL2: http://l2.rpc.url\n" +
 		"BlockFinality: latestBlock\n" +
 		"EpochNotificationPercentage: 50\n" +
 		"SaveCertificatesToFilesPath: /path/to/certificates\n" +

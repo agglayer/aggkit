@@ -7,10 +7,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	s = []string{"A= {{B}}\n", "B= {{C}}\nC={{A}}\n"}
-)
-
 type testCaseData struct {
 	name                 string
 	contents             []string

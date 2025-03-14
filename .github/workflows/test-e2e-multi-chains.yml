@@ -9,7 +9,7 @@ jobs:
   build-aggkit-image:
     uses: ./.github/workflows/build-aggkit-image.yml
     with:
-      go-version: 1.22.x
+      go-version: 1.23.x
       docker-image-name: aggkit
 
   test-e2e:
@@ -29,7 +29,7 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v5
       with:
-        go-version: 1.22.x
+        go-version: 1.23.x
 
     - name: Build Tools
       run: make build-tools
@@ -39,7 +39,7 @@ jobs:
       with:
         repository: 0xPolygon/kurtosis-cdk
         path: kurtosis-cdk
-        ref: feat/enable-bridge-service-for-aggkit
+        ref: cb8e973dd11d030e06920822fec9c337be8c24f9
     
     - name: Install Kurtosis CDK tools
       uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk

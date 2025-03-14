@@ -38,7 +38,6 @@ type L2BridgeSyncer interface {
 
 // EthClient is an interface defining functions that an EthClient should implement
 type EthClient interface {
-	BlockNumber(ctx context.Context) (uint64, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 }
 
