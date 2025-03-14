@@ -6,7 +6,6 @@ ALTER TABLE bridge DROP COLUMN block_timestamp;
 ALTER TABLE claim DROP COLUMN block_timestamp;
 ALTER TABLE bridge DROP COLUMN from_address;
 ALTER TABLE claim DROP COLUMN from_address;
-ALTER TABLE bridge DROP COLUMN calldata;
 
 -- +migrate Up
 CREATE TABLE
@@ -19,7 +18,6 @@ CREATE TABLE
 		origin_token_address VARCHAR NOT NULL,
 		wrapped_token_address VARCHAR NOT NULL,
 		metadata BLOB,
-		calldata BLOB,
 		PRIMARY KEY (block_num, block_pos)
 	);
 ALTER TABLE bridge ADD COLUMN tx_hash VARCHAR;
@@ -28,4 +26,3 @@ ALTER TABLE bridge ADD COLUMN block_timestamp INTEGER;
 ALTER TABLE claim ADD COLUMN block_timestamp INTEGER;
 ALTER TABLE bridge ADD COLUMN from_address VARCHAR;
 ALTER TABLE claim ADD COLUMN from_address VARCHAR;
-ALTER TABLE bridge ADD COLUMN calldata BLOB;
