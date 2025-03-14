@@ -1,6 +1,7 @@
 module github.com/agglayer/aggkit
 
 go 1.22.4
+toolchain go1.24.1
 
 require (
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef
@@ -27,8 +28,8 @@ require (
 	go.opentelemetry.io/otel v1.34.0
 	go.opentelemetry.io/otel/metric v1.34.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.33.0
-	golang.org/x/net v0.34.0
+	golang.org/x/crypto v0.35.0
+	golang.org/x/net v0.36.0
 	golang.org/x/sync v0.11.0
 	google.golang.org/protobuf v1.36.5
 	modernc.org/sqlite v1.34.5
