@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -20,10 +19,8 @@ const (
 )
 
 type EthClienter interface {
-	ethereum.LogFilterer
-	ethereum.BlockNumberReader
-	ethereum.ChainReader
-	bind.ContractBackend
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
 }
 
 type EVMDownloaderInterface interface {
