@@ -15,6 +15,7 @@ type EthClienter interface {
 	ethereum.LogFilterer
 	ethereum.BlockNumberReader
 	ethereum.ChainReader
+	ethereum.ChainIDReader
 	bind.ContractBackend
 	Client() *ethrpc.Client
 }

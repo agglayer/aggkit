@@ -21,6 +21,7 @@ const (
 type EthClienter interface {
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+	ChainID(ctx context.Context) (*big.Int, error)
 }
 
 type EVMDownloaderInterface interface {

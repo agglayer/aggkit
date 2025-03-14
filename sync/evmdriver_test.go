@@ -239,41 +239,6 @@ func TestHandleReorg(t *testing.T) {
 	require.True(t, done)
 }
 
-type loggerPanicMock struct {
-}
-
-func (l *loggerPanicMock) Fatal(args ...any) {
-	panic("should not call log.Fatal")
-}
-
-func (l *loggerPanicMock) Fatalf(format string, args ...any) {
-	panic("should not call log.Fatalf")
-}
-func (l *loggerPanicMock) Info(args ...any) {
-	log.Info(args...)
-}
-func (l *loggerPanicMock) Infof(format string, args ...any) {
-	log.Infof(format, args...)
-}
-func (l *loggerPanicMock) Error(args ...any) {
-	log.Error(args...)
-}
-func (l *loggerPanicMock) Errorf(format string, args ...any) {
-	log.Errorf(format, args...)
-}
-func (l *loggerPanicMock) Warn(args ...any) {
-	log.Warn(args...)
-}
-func (l *loggerPanicMock) Warnf(format string, args ...any) {
-	log.Warnf(format, args...)
-}
-func (l *loggerPanicMock) Debug(args ...any) {
-	log.Debug(args...)
-}
-func (l *loggerPanicMock) Debugf(format string, args ...any) {
-	log.Debugf(format, args...)
-}
-
 func TestCheckCompatibility(t *testing.T) {
 	reorgDetectorMock := NewReorgDetectorMock(t)
 	processorMock := NewProcessorMock(t)
