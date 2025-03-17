@@ -30,7 +30,7 @@ type EVMDownloaderInterface interface {
 	GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log
 	GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool)
 	GetLastFinalizedBlock(ctx context.Context) (*types.Header, error)
-	GetChainID(ctx context.Context) (uint64, error)
+	ChainID(ctx context.Context) (uint64, error)
 }
 
 type LogAppenderMap map[common.Hash]func(b *EVMBlock, l types.Log) error
@@ -110,7 +110,7 @@ func (d *EVMDownloader) setStopDownloaderOnIterationN(iteration int) {
 
 // RuntimeData returns the runtime data: chainID + addresses to query
 func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
-	chainID, err := d.GetChainID(ctx)
+	chainID, err := d.ChainID(ctx)
 	if err != nil {
 		return RuntimeData{}, err
 	}
@@ -260,10 +260,10 @@ func NewEVMDownloaderImplementation(
 	}
 }
 
-func (d *EVMDownloaderImplementation) GetChainID(ctx context.Context) (uint64, error) {
+func (d *EVMDownloaderImplementation) ChainID(ctx context.Context) (uint64, error) {
 	chainID, err := d.ethClient.ChainID(ctx)
-	if err != nil {
-		return 0, err
+	if err != nil || chainID == nil {
+		return 0, fmt.Errorf("fail to get chainID from ethClient. Err: %w", err)
 	}
 	return chainID.Uint64(), nil
 }

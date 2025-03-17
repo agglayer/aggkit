@@ -114,8 +114,8 @@ func (_c *EVMDownloaderMock_GetBlockHeader_Call) RunAndReturn(run func(context.C
 	return _c
 }
 
-// GetChainID provides a mock function with given fields: ctx
-func (_m *EVMDownloaderMock) GetChainID(ctx context.Context) (uint64, error) {
+// ChainID provides a mock function with given fields: ctx
+func (_m *EVMDownloaderMock) ChainID(ctx context.Context) (uint64, error) {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
