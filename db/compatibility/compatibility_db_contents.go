@@ -63,8 +63,7 @@ func NewCompatibilityCheck[T comptypes.CompatibilityComparer[T]](
 
 // Check checks the compatibility between the runtime data and the data stored in the storage
 func (s *CompatibilityCheck[T]) Check(ctx context.Context, tx db.Querier) error {
-	err := s.initialize()
-	if err != nil {
+	if err := s.initialize(); err != nil {
 		return fmt.Errorf("compatibilityCheck: fails to initialize. Err: %w", err)
 	}
 	runtimeData, err := s.RuntimeDataGetter(ctx)
@@ -83,8 +82,7 @@ func (s *CompatibilityCheck[T]) Check(ctx context.Context, tx db.Querier) error 
 		return fmt.Errorf("compatibilityCheck: error reading value from storage. Err: %w", err)
 	}
 	// Compare data
-	err = runtimeData.IsCompatible(storageData)
-	if err != nil {
+	if err = runtimeData.IsCompatible(storageData); err != nil {
 		if s.RequireStorageContentCompatibility {
 			return fmt.Errorf("compatibilityCheck: data on DB is [%s] != runtime [%s]. Err: %w",
 				storageData.String(), runtimeData.String(), err)

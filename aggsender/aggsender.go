@@ -151,8 +151,7 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 		a.log.Warnf("compatibilityStoragedChecker is nil, so we are not going to check the compatibility")
 		return
 	}
-	err := a.compatibilityStoragedChecker.Check(ctx, nil)
-	if err != nil {
+	if err := a.compatibilityStoragedChecker.Check(ctx, nil); err != nil {
 		a.log.Fatalf("error checking compatibility data in DB, you can bypass this check using config file")
 	}
 }

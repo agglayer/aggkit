@@ -125,8 +125,7 @@ reset:
 		err                error
 	)
 	for {
-		err = d.compatibilityChecker.Check(ctx, nil)
-		if err != nil {
+		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
 			attempts++
 			d.log.Error("error checking compatibility data between downloader(runtime) and processor (db): ", err)
 			d.rh.Handle("Sync", attempts)

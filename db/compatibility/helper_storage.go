@@ -11,7 +11,7 @@ import (
 
 /*
 This file contains the compatibility storage helper functions:
-- You can implement a  CompatibilityDataStorager[T] from a storage:
+- You can implement a CompatibilityDataStorager[T] from a storage:
 
 If you have a sql.DB object:
 - First you must create a keyValueStorager implementation using the db.NewKeyValueStorage function
@@ -35,16 +35,22 @@ const (
 	compatibilityContentKey = "compatibility_content"
 )
 
+// KeyValueStorager is the interface that defines the methods to interact with the storage as a key/value
 type KeyValueStorager interface {
+	// InsertValue inserts the value of the key in the storage
 	InsertValue(tx db.Querier, owner, key, value string) error
+	// GetValue returns the value of the key from the storage
 	GetValue(tx db.Querier, owner, key string) (string, error)
 }
 
+// KeyValueToCompatibilityStorage is the object that implements the CompatibilityDataStorager interface
+// using a KeyValueStorager object
 type KeyValueToCompatibilityStorage[T any] struct {
 	KVStorage KeyValueStorager
 	OwnerName string
 }
 
+// NewKeyValueToCompatibilityStorage creates a new KeyValueToCompatibilityStorage object
 func NewKeyValueToCompatibilityStorage[T any](kvStorage KeyValueStorager,
 	ownerName string) *KeyValueToCompatibilityStorage[T] {
 	return &KeyValueToCompatibilityStorage[T]{
@@ -52,6 +58,10 @@ func NewKeyValueToCompatibilityStorage[T any](kvStorage KeyValueStorager,
 		OwnerName: ownerName}
 }
 
+// GetCompatibilityData returns the compatibility data from the storage:
+// true -> if data is stored / false -> if data is not stored yet
+// T -> the data stored
+// error -> if there is an error
 func (s *KeyValueToCompatibilityStorage[T]) GetCompatibilityData(ctx context.Context,
 	tx db.Querier) (bool, T, error) {
 	var runtimeDataUnmarshaled T
@@ -72,6 +82,8 @@ func (s *KeyValueToCompatibilityStorage[T]) GetCompatibilityData(ctx context.Con
 	return true, runtimeDataUnmarshaled, nil
 }
 
+// SetCompatibilityData stores the compatibility data in the storage
+// error -> if there is an error
 func (s *KeyValueToCompatibilityStorage[T]) SetCompatibilityData(ctx context.Context, tx db.Querier, data T) error {
 	dataStr, err := json.Marshal(data)
 	if err != nil {
