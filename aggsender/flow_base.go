@@ -14,6 +14,7 @@ import (
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"golang.org/x/crypto/sha3"
 )
 
 // baseFlow is a struct that holds the common logic for the different prover types
@@ -100,6 +101,12 @@ func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*type
 	}
 
 	return buildParams, nil
+}
+
+// verifyBuildParams verifies the build parameters
+func (f *baseFlow) verifyBuildParams(fullCert *types.CertificateBuildParams) error {
+	// this will be a good place to add more verification checks in the future
+	return f.verifyClaimGERs(fullCert.Claims)
 }
 
 // limitCertSize limits certificate size based on the max size configuration parameter
@@ -447,6 +454,19 @@ func (f *baseFlow) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64
 		lastFinalizedL1Block.Hash().String(), lastProcessedBlockHash.String())
 }
 
+// verifyClaimGERs verifies the correctnes GERs of the claims
+func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
+	for _, claim := range claims {
+		ger := calculateGER(claim.MainnetExitRoot, claim.RollupExitRoot)
+		if ger != claim.GlobalExitRoot {
+			return fmt.Errorf("claim[GlobalIndex: %s, BlockNum: %d]: GER mismatch. Expected: %s, got: %s",
+				claim.GlobalIndex.String(), claim.BlockNum, claim.GlobalExitRoot.String(), ger.String())
+		}
+	}
+
+	return nil
+}
+
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
 // if there is no previosly sent certificate, it returns 0 and 0
 func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
@@ -468,4 +488,15 @@ func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInf
 	}
 
 	return lastSentBlock, retryCount
+}
+
+// calculateGER calculates the GER hash based on the mainnet exit root and the rollup exit root
+func calculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
+	var gerBytes [treeTypes.DefaultHeight]byte
+	hasher := sha3.NewLegacyKeccak256()
+	hasher.Write(mainnetExitRoot.Bytes())
+	hasher.Write(rollupExitRoot.Bytes())
+	copy(gerBytes[:], hasher.Sum(nil))
+
+	return gerBytes
 }

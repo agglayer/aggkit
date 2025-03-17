@@ -52,6 +52,10 @@ func (p *ppFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, nil
 	}
 
+	if err := p.verifyBuildParams(buildParams); err != nil {
+		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
+	}
+
 	if len(buildParams.Claims) > 0 {
 		root, err := p.getLatestFinalizedL1InfoRoot(ctx)
 		if err != nil {

@@ -1008,7 +1008,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			expectedError: "some error",
 		},
 		{
-			name: "error getLatestProcessedFinalizedBlock",
+			name: "error claim GER invalid",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
@@ -1017,6 +1017,27 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
+			},
+			expectedError: "GER mismatch",
+		},
+		{
+			name: "error getLatestProcessedFinalizedBlock",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
+				mockL1Client *mocks.EthClient) {
+				rer := common.HexToHash("0x1")
+				mer := common.HexToHash("0x2")
+				ger := calculateGER(mer, rer)
+				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
+				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
+				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
+					{
+						GlobalExitRoot:  ger,
+						RollupExitRoot:  rer,
+						MainnetExitRoot: mer,
+					}}, nil)
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(&ethTypes.Header{
 					Number: big.NewInt(10),
 				}, nil)
@@ -1030,13 +1051,21 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockL1Client *mocks.EthClient) {
+				rer := common.HexToHash("0x1")
+				mer := common.HexToHash("0x2")
+				ger := calculateGER(mer, rer)
 				lastFinalizedL1Block := &ethTypes.Header{
 					Number: big.NewInt(10),
 				}
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
+				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
+					{
+						GlobalExitRoot:  ger,
+						RollupExitRoot:  rer,
+						MainnetExitRoot: mer,
+					}}, nil)
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(lastFinalizedL1Block, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, lastFinalizedL1Block.Number.Uint64()).Return(
 					lastFinalizedL1Block.Number.Uint64(), lastFinalizedL1Block.Hash(), nil)
@@ -1051,13 +1080,21 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockL1Client *mocks.EthClient) {
+				rer := common.HexToHash("0x1")
+				mer := common.HexToHash("0x2")
+				ger := calculateGER(mer, rer)
 				lastFinalizedL1Block := &ethTypes.Header{
 					Number: big.NewInt(10),
 				}
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
+				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
+					{
+						GlobalExitRoot:  ger,
+						RollupExitRoot:  rer,
+						MainnetExitRoot: mer,
+					}}, nil)
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(lastFinalizedL1Block, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, lastFinalizedL1Block.Number.Uint64()).Return(
 					lastFinalizedL1Block.Number.Uint64(), lastFinalizedL1Block.Hash(), nil)
@@ -1065,12 +1102,17 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
-				FromBlock:                      6,
-				ToBlock:                        10,
-				RetryCount:                     0,
-				LastSentCertificate:            &types.CertificateInfo{ToBlock: 5},
-				Bridges:                        []bridgesync.Bridge{{}},
-				Claims:                         []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}},
+				FromBlock:           6,
+				ToBlock:             10,
+				RetryCount:          0,
+				LastSentCertificate: &types.CertificateInfo{ToBlock: 5},
+				Bridges:             []bridgesync.Bridge{{}},
+				Claims: []bridgesync.Claim{
+					{
+						RollupExitRoot:  common.HexToHash("0x1"),
+						MainnetExitRoot: common.HexToHash("0x2"),
+						GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+					}},
 				CreatedAt:                      uint32(time.Now().UTC().Unix()),
 				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10},
 			},

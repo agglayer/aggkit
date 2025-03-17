@@ -112,6 +112,10 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, nil
 	}
 
+	if err := a.verifyBuildParams(buildParams); err != nil {
+		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
+	}
+
 	proof, leaf, root, err := a.getFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
