@@ -99,14 +99,14 @@ function find_l1_info_tree_index_for_bridge() {
 
     while true; do
         ((attempt++))
-        log "Attempt $attempt: fetching L1 info tree index for bridge "$expected_deposit_count" from the RPC ("$aggkit_node_url")..."
+        log "Attempt $attempt: fetching L1 info tree index for bridge, params: network_id = $network_id, expected_deposit_count = $expected_deposit_count"
 
         index=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count")
         log "------ index ------"
         log "$index"
         log "------ index ------"
 
-        if [[ "$index" == "0x0" ]] || [[ "$index" == "" ]]; then
+        if [[ -z "$index" || "$index" == "0x0" ]]; then
             log "⏳ Didn't find expected deposit count index ("$expected_deposit_count")"
             # Fail test if max attempts are reached
             if [[ "$attempt" -ge "$max_attempts" ]]; then
@@ -136,7 +136,7 @@ function find_injected_info_after_index() {
 
     while true; do
         ((attempt++))
-        log "Attempt $attempt: fetching injected info after index from the RPC..."
+        log "Attempt $attempt: fetching injected info after index, params: network_id = $network_id, index = $index"
 
         injected_info=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_injectedInfoAfterIndex" "$network_id" "$index")
 
@@ -349,6 +349,10 @@ function get_claim() {
         ((attempt++))
         log "🔍 Attempt $attempt"
         claims_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getClaims" "$network_id")
+
+        log "------ claims_result ------"
+        log "$claims_result"
+        log "------ claims_result ------"
 
         for row in $(echo "$claims_result" | jq -c '.claims[]'); do
             global_index=$(jq -r '.global_index' <<<"$row")

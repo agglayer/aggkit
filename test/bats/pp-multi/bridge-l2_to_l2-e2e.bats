@@ -30,6 +30,8 @@ setup() {
     claim_frequency="30"
 
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
+
+    readonly aggkit_node_url=${AGGKIT_NODE_URL:-"$(kurtosis port print $enclave cdk-node-001 rpc)"}
 }
 
 @test "Test L2 to L2 bridge" {
