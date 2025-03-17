@@ -94,6 +94,7 @@ function find_l1_info_tree_index_for_bridge() {
     local expected_deposit_count="$2"
     local max_attempts="$3"
     local poll_frequency="$4"
+    local aggkit_url="$5"
 
     local attempt=0
 
@@ -101,12 +102,12 @@ function find_l1_info_tree_index_for_bridge() {
         ((attempt++))
         log "Attempt $attempt: fetching L1 info tree index for bridge, params: network_id = $network_id, expected_deposit_count = $expected_deposit_count"
 
-        index=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count")
+        local index=$(cast rpc --rpc-url "$aggkit_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count")
         log "------ index ------"
         log "$index"
         log "------ index ------"
 
-        if [[ -z "$index" || "$index" == "0x0" ]]; then
+        if [[ $index == "" ]]; then
             log "⏳ Didn't find expected deposit count index ("$expected_deposit_count")"
             # Fail test if max attempts are reached
             if [[ "$attempt" -ge "$max_attempts" ]]; then
@@ -131,6 +132,7 @@ function find_injected_info_after_index() {
     local index="$2"
     local max_attempts="$3"
     local poll_frequency="$4"
+    local aggkit_url="$5"
 
     local attempt=0
 
@@ -138,13 +140,13 @@ function find_injected_info_after_index() {
         ((attempt++))
         log "Attempt $attempt: fetching injected info after index, params: network_id = $network_id, index = $index"
 
-        injected_info=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_injectedInfoAfterIndex" "$network_id" "$index")
+        local injected_info=$(cast rpc --rpc-url "$aggkit_url" "bridge_injectedInfoAfterIndex" "$network_id" "$index")
 
         log "------ injected_info ------"
         log "$injected_info"
         log "------ injected_info ------"
 
-        if [[ -z "$injected_info" || "$injected_info" == "0x0" ]]; then
+        if [[ $injected_info == "" ]]; then
             log "Didn't find injected L1InfoTree leaf after index on destination network"
             # Fail test if max attempts are reached
             if [[ "$attempt" -ge "$max_attempts" ]]; then
@@ -168,16 +170,21 @@ function find_claim_proof() {
     local l1_info_tree_index="$3"
     local max_attempts="$4"
     local poll_frequency="$5"
+    local aggkit_url="$6"
 
     local attempt=0
 
     while true; do
         ((attempt++))
-        log "Attempt $attempt: fetching proof from the RPC..."
+        log "Attempt $attempt: fetching proof, params: network_id = $network_id, deposit_count = $deposit_count, l1_info_tree_index = $l1_info_tree_index"
 
-        proof=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_claimProof" "$network_id" "$deposit_count" "$l1_info_tree_index")
+        local proof=$(cast rpc --rpc-url "$aggkit_url" "bridge_claimProof" "$network_id" "$deposit_count" "$l1_info_tree_index")
 
-        if [[ "$proof" == "0x0" ]]; then
+        log "------ proof ------"
+        log "$proof"
+        log "------ proof ------"
+
+        if [[ "$proof" == "" ]]; then
             log "Didn't find expected claim proof"
             # Fail test if max attempts are reached
             if [[ "$attempt" -ge "$max_attempts" ]]; then
@@ -256,6 +263,7 @@ function wait_for_expected_token() {
     local expected_origin_token="$1"
     local max_attempts="$2"
     local poll_frequency="$3"
+    local aggkit_url="$4"
 
     local attempt=0
     local token_mappings_result
@@ -265,7 +273,7 @@ function wait_for_expected_token() {
         ((attempt++))
 
         # Fetch token mappings from the RPC
-        token_mappings_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getTokenMappings" "$l2_rpc_network_id")
+        token_mappings_result=$(cast rpc --rpc-url "$aggkit_url" "bridge_getTokenMappings" "$l2_rpc_network_id")
 
         # Extract the first origin_token_address (if available)
         origin_token_address=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].origin_token_address')
@@ -295,17 +303,18 @@ function get_bridge() {
     local expected_tx_hash="$2"
     local max_attempts="$3"
     local poll_frequency="$4"
+    local aggkit_url="$5"
 
     local attempt=0
 
-    log "🔍 Searching for bridge with tx_hash: "$expected_tx_hash" (bridge indexer RPC: "$aggkit_node_url")..."
+    log "🔍 Searching for bridge with tx_hash: "$expected_tx_hash" (bridge indexer RPC: "$aggkit_url")..."
 
     while true; do
         ((attempt++))
         log "🔍 Attempt $attempt"
 
         # Fetch bridges from the RPC
-        bridges_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getBridges" "$network_id")
+        bridges_result=$(cast rpc --rpc-url "$aggkit_url" "bridge_getBridges" "$network_id")
 
         log "------ bridges_result ------"
         log "$bridges_result"
@@ -341,14 +350,15 @@ function get_claim() {
     local expected_global_index="$2"
     local max_attempts="$3"
     local poll_frequency="$4"
+    local aggkit_url="$5"
     local attempt=0
 
-    log "🔍 Searching for claim with global_index: "$expected_global_index" (bridge indexer RPC: "$aggkit_node_url")..."
+    log "🔍 Searching for claim with global_index: "$expected_global_index" (bridge indexer RPC: "$aggkit_url")..."
 
     while true; do
         ((attempt++))
         log "🔍 Attempt $attempt"
-        claims_result=$(cast rpc --rpc-url "$aggkit_node_url" "bridge_getClaims" "$network_id")
+        claims_result=$(cast rpc --rpc-url "$aggkit_url" "bridge_getClaims" "$network_id")
 
         log "------ claims_result ------"
         log "$claims_result"
