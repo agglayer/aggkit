@@ -9,7 +9,7 @@ setup() {
         echo "BRIDGE_ADDRESS env variable is not provided, resolving the bridge address from the Kurtosis CDK '$combined_json_file'" >&3
 
         # Fetching the combined JSON output and filtering to get polygonZkEVMBridgeAddress
-        combined_json_output=$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)
+        combined_json_output=$($contracts_service_wrapper "cat $combined_json_file")
         bridge_default_address=$(echo "$combined_json_output" | jq -r .polygonZkEVMBridgeAddress)
         BRIDGE_ADDRESS=$bridge_default_address
     fi
@@ -28,7 +28,7 @@ setup() {
     else
         echo "GAS_TOKEN_ADDR not provided, retrieving from rollup parameters file." >&3
         readonly rollup_params_file=/opt/zkevm/create_rollup_parameters.json
-        run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | tail -n +2 | jq -r '.gasTokenAddress'"
+        run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | jq -r '.gasTokenAddress'"
         assert_success
         assert_output --regexp "0x[a-fA-F0-9]{40}"
         gas_token_addr=$output

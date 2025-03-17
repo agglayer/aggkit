@@ -8,7 +8,7 @@ setup() {
         echo "BRIDGE_ADDRESS env variable is not provided, resolving the bridge address from the Kurtosis CDK '$combined_json_file'" >&3
 
         # Fetching the combined JSON output and filtering to get polygonZkEVMBridgeAddress
-        combined_json_output=$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)
+        combined_json_output=$($contracts_service_wrapper "cat $combined_json_file")
         bridge_default_address=$(echo "$combined_json_output" | jq -r .polygonZkEVMBridgeAddress)
         BRIDGE_ADDRESS=$bridge_default_address
     fi
