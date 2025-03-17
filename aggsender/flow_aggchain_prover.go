@@ -113,7 +113,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	if err := a.verifyBuildParams(buildParams); err != nil {
-		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
+		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 
 	proof, leaf, root, err := a.getFinalizedL1InfoTreeData(ctx)

@@ -397,9 +397,9 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 }
 
-// getLatestProcessedFinalizedBlock returns the latest processed l1 info tree root
+// getLatestFinalizedL1InfoRoot returns the latest processed l1 info tree root
 // based on the latest finalized l1 block
-func (f *baseFlow) getLatestFinalizedL1InfoRoot(ctx context.Context) (*treeTypes.Root, error) {
+func (f *baseFlow) getLatestFinalizedL1InfoRoot(ctx context.Context) (*treetypes.Root, error) {
 	lastFinalizedProcessedBlock, err := f.getLatestProcessedFinalizedBlock(ctx)
 	if err != nil {
 		return nil,
@@ -492,7 +492,7 @@ func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInf
 
 // calculateGER calculates the GER hash based on the mainnet exit root and the rollup exit root
 func calculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
-	var gerBytes [treeTypes.DefaultHeight]byte
+	var gerBytes [common.HashLength]byte
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write(mainnetExitRoot.Bytes())
 	hasher.Write(rollupExitRoot.Bytes())
