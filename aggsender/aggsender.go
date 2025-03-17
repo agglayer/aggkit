@@ -142,6 +142,7 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.log.Info("AggSender started")
 	metrics.Register()
 	a.status.Start(time.Now().UTC())
+
 	a.checkDBCompatibility(ctx)
 	a.checkInitialStatus(ctx)
 	a.sendCertificates(ctx, 0)
@@ -152,7 +153,7 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 		return
 	}
 	if err := a.compatibilityStoragedChecker.Check(ctx, nil); err != nil {
-		a.log.Fatalf("error checking compatibility data in DB, you can bypass this check using config file")
+		a.log.Fatalf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
 	}
 }
 
