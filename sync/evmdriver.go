@@ -23,9 +23,9 @@ type Block struct {
 
 type downloader interface {
 	Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock)
-	// GetRuntimeData returns the runtime data from this downloader
+	// RuntimeData returns the runtime data from this downloader
 	// this is used to check that DB is compatible with the runtime data
-	GetRuntimeData(ctx context.Context) (RuntimeData, error)
+	RuntimeData(ctx context.Context) (RuntimeData, error)
 }
 
 type EVMDriver struct {
@@ -101,7 +101,7 @@ func NewEVMDriver(
 	}
 	compatibilityChecker := compatibility.NewCompatibilityCheck[RuntimeData](
 		requireStorageContentCompatibility,
-		downloader.GetRuntimeData,
+		downloader.RuntimeData,
 		processor)
 
 	return &EVMDriver{

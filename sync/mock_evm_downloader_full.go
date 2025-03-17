@@ -328,12 +328,12 @@ func (_c *EVMDownloaderMock_GetLogs_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
-// GetRuntimeData provides a mock function with given fields: ctx
-func (_m *EVMDownloaderMock) GetRuntimeData(ctx context.Context) (RuntimeData, error) {
+// RuntimeData provides a mock function with given fields: ctx
+func (_m *EVMDownloaderMock) RuntimeData(ctx context.Context) (RuntimeData, error) {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetRuntimeData")
+		panic("no return value specified for RuntimeData")
 	}
 
 	var r0 RuntimeData

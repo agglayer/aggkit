@@ -108,8 +108,8 @@ func (d *EVMDownloader) setStopDownloaderOnIterationN(iteration int) {
 	d.stopDownloaderOnIterationN = iteration
 }
 
-// GetRuntimeData returns the runtime data: chainID + addresses to query
-func (d *EVMDownloader) GetRuntimeData(ctx context.Context) (RuntimeData, error) {
+// RuntimeData returns the runtime data: chainID + addresses to query
+func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
 	chainID, err := d.GetChainID(ctx)
 	if err != nil {
 		return RuntimeData{}, err

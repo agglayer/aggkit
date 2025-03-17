@@ -62,8 +62,8 @@ func newDownloader(
 	}, nil
 }
 
-// GetRuntimeData returns the runtime data: chainID + addresses to query
-func (d *downloader) GetRuntimeData(ctx context.Context) (sync.RuntimeData, error) {
+// RuntimeData returns the runtime data: chainID + addresses to query
+func (d *downloader) RuntimeData(ctx context.Context) (sync.RuntimeData, error) {
 	chainID, err := d.GetChainID(ctx)
 	if err != nil {
 		return sync.RuntimeData{}, err
