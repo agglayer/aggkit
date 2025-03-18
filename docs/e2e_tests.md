@@ -7,7 +7,7 @@ Reusable, helper functions are placed in the `test/bats/helpers` folder and they
 
 ## Single L2 network
 
-It involves single L2 networks (and single L1 network), that are attached to the same agglayer.
+It involves single L2 network (and single L1 network), that are attached to the same agglayer.
 
 ### Transfer message
 
