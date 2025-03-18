@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"os"
 
-	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/rpcclient"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -24,8 +24,8 @@ const (
 	minimumNumArgs = 3
 )
 
-func unmarshalGlobalIndex(globalIndex string) (*agglayerTypes.GlobalIndex, error) {
-	var globalIndexParsed agglayerTypes.GlobalIndex
+func unmarshalGlobalIndex(globalIndex string) (*agglayertypes.GlobalIndex, error) {
+	var globalIndexParsed agglayertypes.GlobalIndex
 	// First try if it's already decomposed
 	err := json.Unmarshal([]byte(globalIndex), &globalIndexParsed)
 	if err != nil {
@@ -47,7 +47,7 @@ func unmarshalGlobalIndex(globalIndex string) (*agglayerTypes.GlobalIndex, error
 
 // This function find out the certificate for a deposit
 // It use the aggsender RPC
-func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayerTypes.GlobalIndex) (bool, error) {
+func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayertypes.GlobalIndex) (bool, error) {
 	if cert == nil {
 		return false, nil
 	}
@@ -64,8 +64,8 @@ func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayerT
 	return false, nil
 }
 
-func tryUnmarshalCertificate(cert *types.CertificateInfo) (*agglayerTypes.Certificate, error) {
-	var certSigned agglayerTypes.Certificate
+func tryUnmarshalCertificate(cert *types.CertificateInfo) (*agglayertypes.Certificate, error) {
+	var certSigned agglayertypes.Certificate
 	err := json.Unmarshal([]byte(cert.SignedCertificate), &certSigned)
 	if err == nil {
 		return &certSigned, nil
@@ -73,7 +73,7 @@ func tryUnmarshalCertificate(cert *types.CertificateInfo) (*agglayerTypes.Certif
 
 	log.Warnf("Error unmarshal new certificate format: %v. It will fallback to the old one", err)
 
-	var certSignedOld agglayerTypes.SignedCertificate
+	var certSignedOld agglayertypes.SignedCertificate
 	err = json.Unmarshal([]byte(cert.SignedCertificate), &certSignedOld)
 	if err != nil {
 		log.Errorf("Could not unmarshal certificate with old format: %v", err)

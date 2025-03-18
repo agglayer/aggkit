@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/signer"
@@ -78,10 +78,10 @@ func (p *ppFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
 func (p *ppFlow) BuildCertificate(ctx context.Context,
-	buildParams *types.CertificateBuildParams) (*agglayerTypes.Certificate, error) {
+	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
 	certificate, err := p.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("ppFlow - error building certificate: %w", err)
 	}
 
 	signedCert, err := p.signCertificate(ctx, certificate)
@@ -94,20 +94,20 @@ func (p *ppFlow) BuildCertificate(ctx context.Context,
 
 // signCertificate signs a certificate with the aggsender key
 func (p *ppFlow) signCertificate(ctx context.Context,
-	certificate *agglayerTypes.Certificate) (*agglayerTypes.Certificate, error) {
+	certificate *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
 	hashToSign := certificate.HashToSign()
 	sig, err := p.signer.SignHash(ctx, hashToSign)
 	if err != nil {
 		return nil, err
 	}
 
-	p.log.Infof("ppFlopw - Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
+	p.log.Infof("ppFlow - Signed certificate. Sequencer address: %s. New local exit root: %s Hash signed: %s",
 		p.signer.PublicAddress().String(),
 		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
 		hashToSign.String(),
 	)
 
-	certificate.AggchainData = &agglayerTypes.AggchainDataSignature{
+	certificate.AggchainData = &agglayertypes.AggchainDataSignature{
 		Signature: sig,
 	}
 

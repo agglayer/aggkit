@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
-	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
@@ -13,7 +13,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -71,7 +71,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		buildParams *types.CertificateBuildParams
 	)
 
-	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayerTypes.InError {
+	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayertypes.InError {
 		// if the last certificate was in error, we need to resend it
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
 
@@ -142,7 +142,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		buildParams.ToBlock,
 		root.Hash,
 		*leaf,
-		agglayerTypes.MerkleProof{
+		agglayertypes.MerkleProof{
 			Root:  root.Hash,
 			Proof: proof,
 		},
@@ -179,7 +179,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 // checkIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
 func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(
-	finalizedL1InfoTreeRoot *treeTypes.Root,
+	finalizedL1InfoTreeRoot *treetypes.Root,
 	claims []bridgesync.Claim) error {
 	for _, claim := range claims {
 		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
@@ -201,13 +201,13 @@ func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
 func (a *aggchainProverFlow) BuildCertificate(ctx context.Context,
-	buildParams *types.CertificateBuildParams) (*agglayerTypes.Certificate, error) {
+	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
 	cert, err := a.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("aggchainProverFlow - error building certificate: %w", err)
 	}
 
-	cert.AggchainData = &agglayerTypes.AggchainDataProof{
+	cert.AggchainData = &agglayertypes.AggchainDataProof{
 		Proof:          buildParams.AggchainProof,
 		AggchainParams: common.Hash{},           // TODO - after prover proto is updated, we need to update this
 		Context:        make(map[string][]byte), // TODO - after prover proto is updated, we need to update this
@@ -222,15 +222,15 @@ func (a *aggchainProverFlow) BuildCertificate(ctx context.Context,
 // created from the last finalized L1 Info tree root
 func (a *aggchainProverFlow) getInjectedGERsProofs(
 	ctx context.Context,
-	finalizedL1InfoTreeRoot *treeTypes.Root,
-	fromBlock, toBlock uint64) (map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber, error) {
+	finalizedL1InfoTreeRoot *treetypes.Root,
+	fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error) {
 	injectedGERs, err := a.gerReader.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs for range %d : %d: %w",
 			fromBlock, toBlock, err)
 	}
 
-	proofs := make(map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
+	proofs := make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
 
 	for _, gerHash := range injectedGERs {
 		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(gerHash)
@@ -254,15 +254,15 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 				info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash.String(), err)
 		}
 
-		proofs[gerHash] = &agglayerTypes.ProvenInsertedGERWithBlockNumber{
+		proofs[gerHash] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
 			BlockNumber: info.BlockNumber,
-			ProvenInsertedGERLeaf: agglayerTypes.ProvenInsertedGER{
-				ProofGERToL1Root: &agglayerTypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
-				L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
+			ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
+				ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
+				L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 					L1InfoTreeIndex: info.L1InfoTreeIndex,
 					RollupExitRoot:  info.RollupExitRoot,
 					MainnetExitRoot: info.MainnetExitRoot,
-					Inner: &agglayerTypes.L1InfoTreeLeafInner{
+					Inner: &agglayertypes.L1InfoTreeLeafInner{
 						GlobalExitRoot: info.GlobalExitRoot,
 						BlockHash:      info.PreviousBlockHash,
 						Timestamp:      info.Timestamp,
@@ -281,29 +281,29 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 // - merkle proof of given l1 info tree leaf
 // - the root of the l1 info tree on that block
 func (a *aggchainProverFlow) getFinalizedL1InfoTreeData(ctx context.Context,
-) (treeTypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treeTypes.Root, error) {
+) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error) {
 	lastFinalizedProcessedBlock, err := a.getLatestProcessedFinalizedBlock(ctx)
 	if err != nil {
-		return treeTypes.Proof{}, nil, nil,
+		return treetypes.Proof{}, nil, nil,
 			fmt.Errorf("aggchainProverFlow - error getting latest processed finalized block: %w", err)
 	}
 
 	root, err := a.l1InfoTreeSyncer.GetLastL1InfoTreeRootByBlockNum(ctx, lastFinalizedProcessedBlock)
 	if err != nil {
-		return treeTypes.Proof{}, nil, nil,
+		return treetypes.Proof{}, nil, nil,
 			fmt.Errorf("aggchainProverFlow - error getting last L1 Info tree root by block num %d: %w",
 				lastFinalizedProcessedBlock, err)
 	}
 
 	leaf, err := a.l1InfoTreeSyncer.GetInfoByIndex(ctx, root.Index)
 	if err != nil {
-		return treeTypes.Proof{}, nil, nil,
+		return treetypes.Proof{}, nil, nil,
 			fmt.Errorf("aggchainProverFlow - error getting L1 Info tree leaf by index %d: %w", root.Index, err)
 	}
 
 	proof, err := a.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx, root.Index, root.Hash)
 	if err != nil {
-		return treeTypes.Proof{}, nil, nil,
+		return treetypes.Proof{}, nil, nil,
 			fmt.Errorf("aggchainProverFlow - error getting L1 Info tree merkle proof from index %d to root %s: %w",
 				root.Index, root.Hash.String(), err)
 	}
@@ -352,8 +352,8 @@ func (a *aggchainProverFlow) getLatestProcessedFinalizedBlock(ctx context.Contex
 // getImportedBridgeExitsForProver converts the claims to imported bridge exits
 // so that the aggchain prover can use them to generate the aggchain proof
 func (a *aggchainProverFlow) getImportedBridgeExitsForProver(
-	claims []bridgesync.Claim) ([]*agglayerTypes.ImportedBridgeExitWithBlockNumber, error) {
-	importedBridgeExits := make([]*agglayerTypes.ImportedBridgeExitWithBlockNumber, 0, len(claims))
+	claims []bridgesync.Claim) ([]*agglayertypes.ImportedBridgeExitWithBlockNumber, error) {
+	importedBridgeExits := make([]*agglayertypes.ImportedBridgeExitWithBlockNumber, 0, len(claims))
 	for _, claim := range claims {
 		// we do not need claim data and proofs here, only imported bridge exit data like:
 		// - bridge exit
@@ -363,7 +363,7 @@ func (a *aggchainProverFlow) getImportedBridgeExitsForProver(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error converting claim to imported bridge exit: %w", err)
 		}
-		importedBridgeExits = append(importedBridgeExits, &agglayerTypes.ImportedBridgeExitWithBlockNumber{
+		importedBridgeExits = append(importedBridgeExits, &agglayertypes.ImportedBridgeExitWithBlockNumber{
 			ImportedBridgeExit: ibe,
 			BlockNumber:        claim.BlockNum,
 		})

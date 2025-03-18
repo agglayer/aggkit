@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -38,7 +38,7 @@ func Test_Storage(t *testing.T) {
 			NewLocalExitRoot: common.HexToHash("0x2"),
 			FromBlock:        1,
 			ToBlock:          2,
-			Status:           agglayerTypes.Settled,
+			Status:           agglayertypes.Settled,
 			CreatedAt:        updateTime,
 			UpdatedAt:        updateTime,
 		}
@@ -58,7 +58,7 @@ func Test_Storage(t *testing.T) {
 			NewLocalExitRoot: common.HexToHash("0x4"),
 			FromBlock:        3,
 			ToBlock:          4,
-			Status:           agglayerTypes.Settled,
+			Status:           agglayertypes.Settled,
 			CreatedAt:        updateTime,
 			UpdatedAt:        updateTime,
 		}
@@ -85,7 +85,7 @@ func Test_Storage(t *testing.T) {
 			NewLocalExitRoot: common.HexToHash("0x6"),
 			FromBlock:        5,
 			ToBlock:          6,
-			Status:           agglayerTypes.Pending,
+			Status:           agglayertypes.Pending,
 			CreatedAt:        updateTime,
 			UpdatedAt:        updateTime,
 		}
@@ -116,7 +116,7 @@ func Test_Storage(t *testing.T) {
 			NewLocalExitRoot: common.HexToHash("0x18"),
 			FromBlock:        17,
 			ToBlock:          18,
-			Status:           agglayerTypes.Pending,
+			Status:           agglayertypes.Pending,
 			CreatedAt:        updateTime,
 			UpdatedAt:        updateTime,
 		}
@@ -138,7 +138,7 @@ func Test_Storage(t *testing.T) {
 				NewLocalExitRoot: common.HexToHash("0x8"),
 				FromBlock:        7,
 				ToBlock:          8,
-				Status:           agglayerTypes.Settled,
+				Status:           agglayertypes.Settled,
 				CreatedAt:        updateTime,
 				UpdatedAt:        updateTime,
 			},
@@ -148,7 +148,7 @@ func Test_Storage(t *testing.T) {
 				NewLocalExitRoot: common.HexToHash("0xA"),
 				FromBlock:        9,
 				ToBlock:          10,
-				Status:           agglayerTypes.Pending,
+				Status:           agglayertypes.Pending,
 				CreatedAt:        updateTime,
 				UpdatedAt:        updateTime,
 			},
@@ -158,7 +158,7 @@ func Test_Storage(t *testing.T) {
 				NewLocalExitRoot: common.HexToHash("0xC"),
 				FromBlock:        11,
 				ToBlock:          12,
-				Status:           agglayerTypes.InError,
+				Status:           agglayertypes.InError,
 				CreatedAt:        updateTime,
 				UpdatedAt:        updateTime,
 			},
@@ -169,28 +169,28 @@ func Test_Storage(t *testing.T) {
 		}
 
 		// Test fetching certificates with status Settled
-		statuses := []agglayerTypes.CertificateStatus{agglayerTypes.Settled}
+		statuses := []agglayertypes.CertificateStatus{agglayertypes.Settled}
 		certificatesFromDB, err := storage.GetCertificatesByStatus(statuses)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 1)
 		require.ElementsMatch(t, []*types.CertificateInfo{certificates[0]}, certificatesFromDB)
 
 		// Test fetching certificates with status Pending
-		statuses = []agglayerTypes.CertificateStatus{agglayerTypes.Pending}
+		statuses = []agglayertypes.CertificateStatus{agglayertypes.Pending}
 		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 1)
 		require.ElementsMatch(t, []*types.CertificateInfo{certificates[1]}, certificatesFromDB)
 
 		// Test fetching certificates with status InError
-		statuses = []agglayerTypes.CertificateStatus{agglayerTypes.InError}
+		statuses = []agglayertypes.CertificateStatus{agglayertypes.InError}
 		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 1)
 		require.ElementsMatch(t, []*types.CertificateInfo{certificates[2]}, certificatesFromDB)
 
 		// Test fetching certificates with status InError and Pending
-		statuses = []agglayerTypes.CertificateStatus{agglayerTypes.InError, agglayerTypes.Pending}
+		statuses = []agglayertypes.CertificateStatus{agglayertypes.InError, agglayertypes.Pending}
 		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 2)
@@ -208,14 +208,14 @@ func Test_Storage(t *testing.T) {
 			NewLocalExitRoot: common.HexToHash("0xE"),
 			FromBlock:        13,
 			ToBlock:          14,
-			Status:           agglayerTypes.Pending,
+			Status:           agglayertypes.Pending,
 			CreatedAt:        updateTime,
 			UpdatedAt:        updateTime,
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
 		// Update the status of the certificate
-		certificate.Status = agglayerTypes.Settled
+		certificate.Status = agglayertypes.Settled
 		certificate.UpdatedAt = updateTime + 1
 		require.NoError(t, storage.UpdateCertificate(ctx, certificate))
 
@@ -251,7 +251,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 			NewLocalExitRoot: common.HexToHash("0x2"),
 			FromBlock:        1,
 			ToBlock:          2,
-			Status:           agglayerTypes.Settled,
+			Status:           agglayertypes.Settled,
 			CreatedAt:        updateTime,
 			UpdatedAt:        updateTime,
 		}
@@ -270,7 +270,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 			NewLocalExitRoot: common.HexToHash("0x4"),
 			FromBlock:        3,
 			ToBlock:          4,
-			Status:           agglayerTypes.InError,
+			Status:           agglayertypes.InError,
 			CreatedAt:        updateTime,
 			UpdatedAt:        updateTime,
 		}
@@ -283,7 +283,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 			NewLocalExitRoot: common.HexToHash("0x6"),
 			FromBlock:        3,
 			ToBlock:          6,
-			Status:           agglayerTypes.Pending,
+			Status:           agglayertypes.Pending,
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, updatedCertificate))
 
@@ -301,7 +301,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 			NewLocalExitRoot: common.HexToHash("0x8"),
 			FromBlock:        7,
 			ToBlock:          8,
-			Status:           agglayerTypes.Settled,
+			Status:           agglayertypes.Settled,
 			CreatedAt:        updateTime,
 			UpdatedAt:        updateTime,
 		}
@@ -323,16 +323,16 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 	})
 
 	t.Run("SaveCertificate with raw data", func(t *testing.T) {
-		certfiicate := &agglayerTypes.Certificate{
+		certfiicate := &agglayertypes.Certificate{
 			NetworkID:         1,
 			Height:            1,
 			PrevLocalExitRoot: common.HexToHash("0x1"),
 			NewLocalExitRoot:  common.HexToHash("0x2"),
 			Metadata:          common.HexToHash("0x3"),
-			BridgeExits: []*agglayerTypes.BridgeExit{
+			BridgeExits: []*agglayertypes.BridgeExit{
 				{
-					LeafType: agglayerTypes.LeafTypeAsset,
-					TokenInfo: &agglayerTypes.TokenInfo{
+					LeafType: agglayertypes.LeafTypeAsset,
+					TokenInfo: &agglayertypes.TokenInfo{
 						OriginNetwork:      1,
 						OriginTokenAddress: common.HexToAddress("0x1"),
 					},
@@ -342,7 +342,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 					Metadata:           []byte("metadata"),
 				},
 			},
-			ImportedBridgeExits: []*agglayerTypes.ImportedBridgeExit{},
+			ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
 		}
 
 		raw, err := json.Marshal(certfiicate)
@@ -354,7 +354,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 			NewLocalExitRoot:  common.HexToHash("0x2"),
 			FromBlock:         1,
 			ToBlock:           10,
-			Status:            agglayerTypes.Pending,
+			Status:            agglayertypes.Pending,
 			CreatedAt:         updateTime,
 			UpdatedAt:         updateTime,
 			SignedCertificate: string(raw),
@@ -392,7 +392,7 @@ func Test_StoragePreviousLER(t *testing.T) {
 	certNoLER := types.CertificateInfo{
 		Height:           0,
 		CertificateID:    common.HexToHash("0x1"),
-		Status:           agglayerTypes.InError,
+		Status:           agglayertypes.InError,
 		NewLocalExitRoot: common.HexToHash("0x2"),
 	}
 	err = storage.SaveLastSentCertificate(ctx, certNoLER)
@@ -406,7 +406,7 @@ func Test_StoragePreviousLER(t *testing.T) {
 	certLER := types.CertificateInfo{
 		Height:                1,
 		CertificateID:         common.HexToHash("0x2"),
-		Status:                agglayerTypes.InError,
+		Status:                agglayertypes.InError,
 		NewLocalExitRoot:      common.HexToHash("0x2"),
 		PreviousLocalExitRoot: &common.Hash{},
 	}
@@ -433,7 +433,7 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 	certNoL1Root := types.CertificateInfo{
 		Height:           0,
 		CertificateID:    common.HexToHash("0x11"),
-		Status:           agglayerTypes.Settled,
+		Status:           agglayertypes.Settled,
 		NewLocalExitRoot: common.HexToHash("0x22"),
 	}
 	require.NoError(t, storage.SaveLastSentCertificate(ctx, certNoL1Root))
@@ -446,7 +446,7 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 	certWithL1Root := types.CertificateInfo{
 		Height:                  1,
 		CertificateID:           common.HexToHash("0x22"),
-		Status:                  agglayerTypes.Settled,
+		Status:                  agglayertypes.Settled,
 		NewLocalExitRoot:        common.HexToHash("0x23"),
 		FinalizedL1InfoTreeRoot: &common.Hash{},
 	}

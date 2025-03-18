@@ -124,9 +124,8 @@ const (
 )
 
 type AggchainData interface {
-	MarshalJSON() ([]byte, error)
-	UnmarshalJSON(data []byte) error
-	IsAggchainData() bool
+	json.Marshaler
+	json.Unmarshaler
 }
 
 // AggchainDataSelector is a helper struct that allow to decice which type of aggchain data to unmarshal
@@ -187,11 +186,6 @@ func (a *AggchainDataSignature) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// IsAggchainData is the implementation of the AggchainData interface
-func (a *AggchainDataSignature) IsAggchainData() bool {
-	return true
-}
-
 // AggchainDataProof is the data structure that will hold the proof of the certificate
 // This is used in the aggchain prover path
 type AggchainDataProof struct {
@@ -229,11 +223,6 @@ func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 	a.Context = aux.Context
 
 	return nil
-}
-
-// IsAggchainData is the implementation of the AggchainData interface
-func (a *AggchainDataProof) IsAggchainData() bool {
-	return true
 }
 
 // Certificate is the data structure that will be sent to the agglayer

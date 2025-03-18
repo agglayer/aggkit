@@ -10,7 +10,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitCommon "github.com/agglayer/aggkit/common"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -340,7 +340,7 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*v1Types.I
 }
 
 // convertToProtoSiblings converts a slice of hashes to a slice of proto fixed bytes 32
-func convertToProtoSiblings(siblings treeTypes.Proof) []*v1Types.FixedBytes32 {
+func convertToProtoSiblings(siblings treetypes.Proof) []*v1Types.FixedBytes32 {
 	protoSiblings := make([]*v1Types.FixedBytes32, len(siblings))
 
 	for i, sibling := range siblings {

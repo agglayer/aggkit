@@ -6,7 +6,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/agglayer"
-	agglayerTypes "github.com/agglayer/aggkit/agglayer/types"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 )
@@ -22,8 +22,8 @@ const (
 var ErrAgglayerInconsistence = errors.New("recovery: agglayer inconsistence")
 
 type InitialStatus struct {
-	SettledCert *agglayerTypes.CertificateHeader
-	PendingCert *agglayerTypes.CertificateHeader
+	SettledCert *agglayertypes.CertificateHeader
+	PendingCert *agglayertypes.CertificateHeader
 	LocalCert   *types.CertificateInfo
 	log         types.Logger
 }
@@ -38,7 +38,7 @@ func (i InitialStatusAction) String() string {
 type InitialStatusResult struct {
 	Action  InitialStatusAction
 	Message string
-	Cert    *agglayerTypes.CertificateHeader
+	Cert    *agglayertypes.CertificateHeader
 }
 
 func (i *InitialStatusResult) String() string {
@@ -199,7 +199,7 @@ func (i *InitialStatus) checkAgglayerConsistenceCerts() error {
 	return nil
 }
 
-func (i *InitialStatus) getLatestAggLayerCert() *agglayerTypes.CertificateHeader {
+func (i *InitialStatus) getLatestAggLayerCert() *agglayertypes.CertificateHeader {
 	if i.PendingCert == nil {
 		return i.SettledCert
 	}

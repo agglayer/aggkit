@@ -16,7 +16,7 @@ import (
 
 const errCodeAgglayerRateLimitExceeded int = -10007
 
-var ErrAgglayerRateLimitExceeded = fmt.Errorf("agglayer rate limit exceeded")
+var ErrAgglayerRateLimitExceeded = errors.New("agglayer rate limit exceeded")
 
 type AggLayerClientGetEpochConfiguration interface {
 	GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error)
