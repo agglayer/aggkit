@@ -1,9 +1,9 @@
-buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250228150343-c7b7fef1692a.1 h1:+ZcEKqPU6gU02yEB37tAfSoSI/ZQjsfCAtiRY64IKOM=
-buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250228150343-c7b7fef1692a.1/go.mod h1:LlC7zuJR8Wh5nvaG6f44/Q1TRICyKMhFtBbqKREh12Q=
-buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250225123212-0efa67e44aed.2 h1:skdv7ixBBICZNsvem6gufw+0iMcOJo82nSrJ2R0b4fs=
-buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250225123212-0efa67e44aed.2/go.mod h1:AzKur1kRizuDbzxsyp3W7AP5mhNQk+Una+deplt2zl8=
-buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.5-20250225123212-0efa67e44aed.1 h1:S+ovLGa00/aUuS9noD5QjxipYBumF/qL1S4528WS+VE=
-buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.5-20250225123212-0efa67e44aed.1/go.mod h1:iFwHn6XSIETvko7RsOFT25w0QHHPTTzQirUAvIJQLtw=
+buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.5-20250317150713-743b25629858.1 h1:bTpkCKMtL1lU8ROthasIf763ozCoy0li0NoNFDLU0yw=
+buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.5-20250317150713-743b25629858.1/go.mod h1:eWCx2HrNz9FEo3sLgsOnf3qIpMFiF8B2xT9G7PJcoyg=
+buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250317202126-66664af16d41.2 h1:fxSnrl1FVP2p00zqX0cshhbgduT9po4uWvFsi3z+I2I=
+buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250317202126-66664af16d41.2/go.mod h1:0OK89uNX1DutCaiHfr+Jv88719M9eO1SNfmdmp2WEjk=
+buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.5-20250317202126-66664af16d41.1 h1:dg7d9oY21e1xYIWPrmjgYjSQhSPTiIFSBkHDqjwRspc=
+buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.5-20250317202126-66664af16d41.1/go.mod h1:RY7lwMDFzGmUWeCy9OnXWooLfVD1OxYUCYyAvsPTJoI=
 github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20250212122525-ec44fb65e861 h1:G21RAhtWCgy/dv/t1ed3ROJ7+rBgdlovzyz6rTh4FLs=
 github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20250212122525-ec44fb65e861/go.mod h1:HGx8hRdvtcAZZaFHZylN9B8lOZkxM+NrVvOdzw4jQEY=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6 h1:FXL/rcO7/GtZ3kRFw+C7J6vmGnl8gcazg+Gh/NVmnas=
