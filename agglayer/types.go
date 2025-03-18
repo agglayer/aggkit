@@ -515,12 +515,12 @@ func (l *L1InfoTreeLeaf) String() string {
 	)
 }
 
-type InsertedGERWithBlockNumber struct {
-	BlockNumber     uint64      `json:"block_number"`
-	InsertedGerLeaf InsertedGer `json:"inserted_ger_leaf"`
+type ProvenInsertedGERWithBlockNumber struct {
+	BlockNumber           uint64            `json:"block_number"`
+	ProvenInsertedGERLeaf ProvenInsertedGER `json:"inserted_ger_leaf"`
 }
 
-type InsertedGer struct {
+type ProvenInsertedGER struct {
 	ProofGERToL1Root *MerkleProof    `json:"proof_ger_l1root"`
 	L1Leaf           *L1InfoTreeLeaf `json:"l1_leaf"`
 }

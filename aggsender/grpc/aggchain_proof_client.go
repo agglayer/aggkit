@@ -25,7 +25,7 @@ type AggchainProofClientInterface interface {
 		l1InfoTreeRootHash common.Hash,
 		l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 		l1InfoTreeMerkleProof agglayer.MerkleProof,
-		gerLeavesWithBlockNumber map[common.Hash]*agglayer.InsertedGERWithBlockNumber,
+		gerLeavesWithBlockNumber map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber,
 		importedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber,
 	) (*types.AggchainProof, error)
 }
@@ -52,7 +52,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	l1InfoTreeRootHash common.Hash,
 	l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 	l1InfoTreeMerkleProof agglayer.MerkleProof,
-	gerLeavesWithBlockNumber map[common.Hash]*agglayer.InsertedGERWithBlockNumber,
+	gerLeavesWithBlockNumber map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber,
 	importedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber,
 ) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
@@ -78,33 +78,33 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		Siblings: convertedMerkleProofSiblings,
 	}
 
-	convertedGerLeaves := make(map[string]*aggkitProverV1Proto.InsertedGERWithBlockNumber, 0)
+	convertedGerLeaves := make(map[string]*aggkitProverV1Proto.ProvenInsertedGERWithBlockNumber, 0)
 	for k, v := range gerLeavesWithBlockNumber {
 		convertedProofGerL1RootSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, treeTypes.DefaultHeight)
 		for i := 0; i < int(treeTypes.DefaultHeight); i++ {
 			convertedProofGerL1RootSiblings[i] = &agglayerInteropTypesV1Proto.FixedBytes32{
-				Value: v.InsertedGerLeaf.ProofGERToL1Root.Proof[i][:],
+				Value: v.ProvenInsertedGERLeaf.ProofGERToL1Root.Proof[i][:],
 			}
 		}
-		convertedGerLeaves[k.String()] = &aggkitProverV1Proto.InsertedGERWithBlockNumber{
+		convertedGerLeaves[k.String()] = &aggkitProverV1Proto.ProvenInsertedGERWithBlockNumber{
 			BlockNumber: v.BlockNumber,
-			InsertedGerLeaf: &aggkitProverV1Proto.InsertedGER{
+			ProvenInsertedGer: &aggkitProverV1Proto.ProvenInsertedGER{
 				ProofGerL1Root: &agglayerInteropTypesV1Proto.MerkleProof{
-					Root:     &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.InsertedGerLeaf.ProofGERToL1Root.Root[:]},
+					Root:     &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.ProvenInsertedGERLeaf.ProofGERToL1Root.Root[:]},
 					Siblings: convertedProofGerL1RootSiblings,
 				},
 				L1Leaf: &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
-					L1InfoTreeIndex: v.InsertedGerLeaf.L1Leaf.L1InfoTreeIndex,
-					Rer:             &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.InsertedGerLeaf.L1Leaf.RollupExitRoot[:]},
-					Mer:             &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.InsertedGerLeaf.L1Leaf.MainnetExitRoot[:]},
+					L1InfoTreeIndex: v.ProvenInsertedGERLeaf.L1Leaf.L1InfoTreeIndex,
+					Rer:             &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.ProvenInsertedGERLeaf.L1Leaf.RollupExitRoot[:]},
+					Mer:             &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.ProvenInsertedGERLeaf.L1Leaf.MainnetExitRoot[:]},
 					Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
 						GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{
-							Value: v.InsertedGerLeaf.L1Leaf.Inner.GlobalExitRoot[:],
+							Value: v.ProvenInsertedGERLeaf.L1Leaf.Inner.GlobalExitRoot[:],
 						},
 						BlockHash: &agglayerInteropTypesV1Proto.FixedBytes32{
-							Value: v.InsertedGerLeaf.L1Leaf.Inner.BlockHash[:],
+							Value: v.ProvenInsertedGERLeaf.L1Leaf.Inner.BlockHash[:],
 						},
-						Timestamp: v.InsertedGerLeaf.L1Leaf.Inner.Timestamp,
+						Timestamp: v.ProvenInsertedGERLeaf.L1Leaf.Inner.Timestamp,
 					},
 				},
 			},

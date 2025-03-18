@@ -67,10 +67,10 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 			Root:  common.HexToHash("0x3"),
 			Proof: [32]common.Hash{common.HexToHash("0x4")},
 		},
-		map[common.Hash]*agglayer.InsertedGERWithBlockNumber{
+		map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber{
 			common.HexToHash("0x5"): {
 				BlockNumber: 1,
-				InsertedGerLeaf: agglayer.InsertedGer{
+				ProvenInsertedGERLeaf: agglayer.ProvenInsertedGER{
 					ProofGERToL1Root: &agglayer.MerkleProof{
 						Root:  common.HexToHash("0x8"),
 						Proof: [32]common.Hash{common.HexToHash("0x9")},

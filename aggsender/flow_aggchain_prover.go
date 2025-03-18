@@ -203,14 +203,14 @@ func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(
 func (a *aggchainProverFlow) getInjectedGERsProofs(
 	ctx context.Context,
 	finalizedL1InfoTreeRoot *treeTypes.Root,
-	fromBlock, toBlock uint64) (map[common.Hash]*agglayer.InsertedGERWithBlockNumber, error) {
+	fromBlock, toBlock uint64) (map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, error) {
 	injectedGERs, err := a.gerReader.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs for range %d : %d: %w",
 			fromBlock, toBlock, err)
 	}
 
-	proofs := make(map[common.Hash]*agglayer.InsertedGERWithBlockNumber, len(injectedGERs))
+	proofs := make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
 
 	for _, gerHash := range injectedGERs {
 		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(gerHash)
@@ -234,9 +234,9 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 				info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash.String(), err)
 		}
 
-		proofs[gerHash] = &agglayer.InsertedGERWithBlockNumber{
+		proofs[gerHash] = &agglayer.ProvenInsertedGERWithBlockNumber{
 			BlockNumber: info.BlockNumber,
-			InsertedGerLeaf: agglayer.InsertedGer{
+			ProvenInsertedGERLeaf: agglayer.ProvenInsertedGER{
 				ProofGERToL1Root: &agglayer.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
 				L1Leaf: &agglayer.L1InfoTreeLeaf{
 					L1InfoTreeIndex: info.L1InfoTreeIndex,
