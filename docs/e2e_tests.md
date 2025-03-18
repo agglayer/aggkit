@@ -3,7 +3,7 @@
 This document enumerates and summarizes the e2e tests. The tests are implemented using [Bats framework](https://bats-core.readthedocs.io/en/stable/) and are assuming there is a running cluster to run them against. They are placed in the `test/bats` folder and divided into two major categories:
 - the ones that involve single L2 (pessimistic proof) and L1 network. They are found in the `test/bats/pp` folder.
 - the ones that involve two L2 (pessimistic proof) and single L1 network. They are found in the `test/bats/pp-multi` folder.
-Reusable, helper functions are placed in the `test/bats/helpers` folder and they consist of sending and claiming bridge transactions, fetching proofs, sending transactions, querying contracts etc. Most of the functions rely on the cast command from [Foundry](https://book.getfoundry.sh/cast/).
+Reusable helper functions are placed in the `test/bats/helpers` folder and they consist of sending and claiming bridge transactions, fetching proofs, sending transactions, querying contracts etc. Most of the functions rely on the cast command from [Foundry](https://book.getfoundry.sh/cast/).
 
 ## Single L2 network
 
