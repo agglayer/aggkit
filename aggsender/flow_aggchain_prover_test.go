@@ -120,8 +120,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
+					}, make(map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayerTypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -175,8 +175,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{
+					}, make(map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayerTypes.ImportedBridgeExitWithBlockNumber{
 						{ImportedBridgeExit: ibe1, BlockNumber: 6},
 						{ImportedBridgeExit: ibe2, BlockNumber: 9},
 					}).Return(&types.AggchainProof{
@@ -228,8 +228,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(nil, errors.New("some error"))
+					}, make(map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayerTypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
 		},
@@ -264,8 +264,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
+					}, make(map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayerTypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -313,8 +313,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayerTypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{
+					}, make(map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayerTypes.ImportedBridgeExitWithBlockNumber{
 						{ImportedBridgeExit: ibe1, BlockNumber: 8},
 						{ImportedBridgeExit: ibe2, BlockNumber: 9},
 					}).Return(&types.AggchainProof{
@@ -589,7 +589,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 	testCases := []struct {
 		name           string
 		mockFn         func(*mocks.ChainGERReader, *mocks.L1InfoTreeSyncer)
-		expectedProofs map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber
+		expectedProofs map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber
 		expectedError  string
 	}{
 		{
@@ -642,19 +642,19 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 				)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(1), common.HexToHash("0x2")).Return(treeTypes.Proof{}, nil)
 			},
-			expectedProofs: map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber{
+			expectedProofs: map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber{
 				common.HexToHash("0x1"): {
 					BlockNumber: 111,
-					ProvenInsertedGERLeaf: agglayer.ProvenInsertedGER{
-						ProofGERToL1Root: &agglayer.MerkleProof{
+					ProvenInsertedGERLeaf: agglayerTypes.ProvenInsertedGER{
+						ProofGERToL1Root: &agglayerTypes.MerkleProof{
 							Proof: treeTypes.Proof{},
 							Root:  common.HexToHash("0x2"),
 						},
-						L1Leaf: &agglayer.L1InfoTreeLeaf{
+						L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
 							L1InfoTreeIndex: 1,
 							RollupExitRoot:  common.HexToHash("0x33"),
 							MainnetExitRoot: common.HexToHash("0x11"),
-							Inner: &agglayer.L1InfoTreeLeafInner{
+							Inner: &agglayerTypes.L1InfoTreeLeafInner{
 								GlobalExitRoot: common.HexToHash("0x1"),
 								BlockHash:      common.HexToHash("0x22"),
 								Timestamp:      112,
@@ -704,7 +704,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 	testCases := []struct {
 		name          string
 		claims        []bridgesync.Claim
-		expectedExits []*agglayer.ImportedBridgeExitWithBlockNumber
+		expectedExits []*agglayerTypes.ImportedBridgeExitWithBlockNumber
 		expectedError string
 	}{
 		{
@@ -749,12 +749,12 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 					BlockNum:           2,
 				},
 			},
-			expectedExits: []*agglayer.ImportedBridgeExitWithBlockNumber{
+			expectedExits: []*agglayerTypes.ImportedBridgeExitWithBlockNumber{
 				{
-					ImportedBridgeExit: &agglayer.ImportedBridgeExit{
-						BridgeExit: &agglayer.BridgeExit{
-							LeafType: agglayer.LeafTypeAsset,
-							TokenInfo: &agglayer.TokenInfo{
+					ImportedBridgeExit: &agglayerTypes.ImportedBridgeExit{
+						BridgeExit: &agglayerTypes.BridgeExit{
+							LeafType: agglayerTypes.LeafTypeAsset,
+							TokenInfo: &agglayerTypes.TokenInfo{
 								OriginNetwork:      1,
 								OriginTokenAddress: common.HexToAddress("0x123"),
 							},
@@ -763,7 +763,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 							Amount:             big.NewInt(100),
 							Metadata:           []byte("metadata"),
 						},
-						GlobalIndex: &agglayer.GlobalIndex{
+						GlobalIndex: &agglayerTypes.GlobalIndex{
 							MainnetFlag: false,
 							RollupIndex: 0,
 							LeafIndex:   1,
@@ -772,10 +772,10 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 					BlockNumber: 1,
 				},
 				{
-					ImportedBridgeExit: &agglayer.ImportedBridgeExit{
-						BridgeExit: &agglayer.BridgeExit{
-							LeafType: agglayer.LeafTypeMessage,
-							TokenInfo: &agglayer.TokenInfo{
+					ImportedBridgeExit: &agglayerTypes.ImportedBridgeExit{
+						BridgeExit: &agglayerTypes.BridgeExit{
+							LeafType: agglayerTypes.LeafTypeMessage,
+							TokenInfo: &agglayerTypes.TokenInfo{
 								OriginNetwork:      1,
 								OriginTokenAddress: common.HexToAddress("0x123"),
 							},
@@ -784,7 +784,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 							Amount:             big.NewInt(100),
 							Metadata:           []byte("metadata"),
 						},
-						GlobalIndex: &agglayer.GlobalIndex{
+						GlobalIndex: &agglayerTypes.GlobalIndex{
 							MainnetFlag: false,
 							RollupIndex: 0,
 							LeafIndex:   2,

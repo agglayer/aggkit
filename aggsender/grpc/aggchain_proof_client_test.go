@@ -33,7 +33,7 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		200,
 		common.Hash{},
 		l1infotreesync.L1InfoTreeLeaf{},
-		agglayerTypes.MerkleProof{Root: common.Hash{}, Proof: [32]common.Hash{}},
+		agglayer.MerkleProof{Root: common.Hash{}, Proof: [32]common.Hash{}},
 		nil,
 		nil,
 	)
@@ -63,7 +63,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 			BlockNumber: 1,
 			Hash:        common.HexToHash("0x2"),
 		},
-		agglayerTypes.MerkleProof{
+		agglayer.MerkleProof{
 			Root:  common.HexToHash("0x3"),
 			Proof: [32]common.Hash{common.HexToHash("0x4")},
 		},

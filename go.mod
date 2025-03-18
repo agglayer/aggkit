@@ -3,6 +3,8 @@ module github.com/agglayer/aggkit
 go 1.23.7
 
 require (
+	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250228150343-c7b7fef1692a.2
+	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250228150343-c7b7fef1692a.1
 	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.5-20250317150713-743b25629858.1
 	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250318160733-103c8b2aec21.2
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.5-20250318160733-103c8b2aec21.1

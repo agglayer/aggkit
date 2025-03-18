@@ -223,14 +223,14 @@ func (a *aggchainProverFlow) BuildCertificate(ctx context.Context,
 func (a *aggchainProverFlow) getInjectedGERsProofs(
 	ctx context.Context,
 	finalizedL1InfoTreeRoot *treeTypes.Root,
-	fromBlock, toBlock uint64) (map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, error) {
+	fromBlock, toBlock uint64) (map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber, error) {
 	injectedGERs, err := a.gerReader.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs for range %d : %d: %w",
 			fromBlock, toBlock, err)
 	}
 
-	proofs := make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
+	proofs := make(map[common.Hash]*agglayerTypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
 
 	for _, gerHash := range injectedGERs {
 		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(gerHash)
@@ -254,15 +254,15 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 				info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash.String(), err)
 		}
 
-		proofs[gerHash] = &agglayer.ProvenInsertedGERWithBlockNumber{
+		proofs[gerHash] = &agglayerTypes.ProvenInsertedGERWithBlockNumber{
 			BlockNumber: info.BlockNumber,
-			ProvenInsertedGERLeaf: agglayer.ProvenInsertedGER{
-				ProofGERToL1Root: &agglayer.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
-				L1Leaf: &agglayer.L1InfoTreeLeaf{
+			ProvenInsertedGERLeaf: agglayerTypes.ProvenInsertedGER{
+				ProofGERToL1Root: &agglayerTypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
+				L1Leaf: &agglayerTypes.L1InfoTreeLeaf{
 					L1InfoTreeIndex: info.L1InfoTreeIndex,
 					RollupExitRoot:  info.RollupExitRoot,
 					MainnetExitRoot: info.MainnetExitRoot,
-					Inner: &agglayer.L1InfoTreeLeafInner{
+					Inner: &agglayerTypes.L1InfoTreeLeafInner{
 						GlobalExitRoot: info.GlobalExitRoot,
 						BlockHash:      info.PreviousBlockHash,
 						Timestamp:      info.Timestamp,
@@ -352,8 +352,8 @@ func (a *aggchainProverFlow) getLatestProcessedFinalizedBlock(ctx context.Contex
 // getImportedBridgeExitsForProver converts the claims to imported bridge exits
 // so that the aggchain prover can use them to generate the aggchain proof
 func (a *aggchainProverFlow) getImportedBridgeExitsForProver(
-	claims []bridgesync.Claim) ([]*agglayer.ImportedBridgeExitWithBlockNumber, error) {
-	importedBridgeExits := make([]*agglayer.ImportedBridgeExitWithBlockNumber, 0, len(claims))
+	claims []bridgesync.Claim) ([]*agglayerTypes.ImportedBridgeExitWithBlockNumber, error) {
+	importedBridgeExits := make([]*agglayerTypes.ImportedBridgeExitWithBlockNumber, 0, len(claims))
 	for _, claim := range claims {
 		// we do not need claim data and proofs here, only imported bridge exit data like:
 		// - bridge exit
@@ -363,7 +363,7 @@ func (a *aggchainProverFlow) getImportedBridgeExitsForProver(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error converting claim to imported bridge exit: %w", err)
 		}
-		importedBridgeExits = append(importedBridgeExits, &agglayer.ImportedBridgeExitWithBlockNumber{
+		importedBridgeExits = append(importedBridgeExits, &agglayerTypes.ImportedBridgeExitWithBlockNumber{
 			ImportedBridgeExit: ibe,
 			BlockNumber:        claim.BlockNum,
 		})
