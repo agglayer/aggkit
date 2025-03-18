@@ -19,7 +19,7 @@ Bridges and claims native token from L1 to L2, that is mapped to the WETH token 
 
 ### Test Bridge APIs workflow
 
-Bridges the native token from L1 to L2 and then invokes the aggkit bridge service enpoints to verify they are working as expected: `bridge_getBridges`, `bridge_l1InfoTreeIndexForBridge`, `bridge_injectedInfoAfterIndex` and `bridge_claimProof`.
+Bridges the native token from L1 to L2 and then invokes the aggkit bridge service endpoints to verify they are working as expected: `bridge_getBridges`, `bridge_l1InfoTreeIndexForBridge`, `bridge_injectedInfoAfterIndex` and `bridge_claimProof`.
 
 ### Custom gas token deposit L1 -> L2
 
