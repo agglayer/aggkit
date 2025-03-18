@@ -95,8 +95,12 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 				},
 				L1Leaf: &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
 					L1InfoTreeIndex: v.ProvenInsertedGERLeaf.L1Leaf.L1InfoTreeIndex,
-					Rer:             &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.ProvenInsertedGERLeaf.L1Leaf.RollupExitRoot[:]},
-					Mer:             &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.ProvenInsertedGERLeaf.L1Leaf.MainnetExitRoot[:]},
+					Rer: &agglayerInteropTypesV1Proto.FixedBytes32{
+						Value: v.ProvenInsertedGERLeaf.L1Leaf.RollupExitRoot[:],
+					},
+					Mer: &agglayerInteropTypesV1Proto.FixedBytes32{
+						Value: v.ProvenInsertedGERLeaf.L1Leaf.MainnetExitRoot[:],
+					},
 					Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
 						GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{
 							Value: v.ProvenInsertedGERLeaf.L1Leaf.Inner.GlobalExitRoot[:],
