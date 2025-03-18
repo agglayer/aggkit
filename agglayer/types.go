@@ -515,6 +515,21 @@ func (l *L1InfoTreeLeaf) String() string {
 	)
 }
 
+type InsertedGERWithBlockNumber struct {
+	BlockNumber     uint64      `json:"block_number"`
+	InsertedGerLeaf InsertedGer `json:"inserted_ger_leaf"`
+}
+
+type InsertedGer struct {
+	ProofGERToL1Root *MerkleProof    `json:"proof_ger_l1root"`
+	L1Leaf           *L1InfoTreeLeaf `json:"l1_leaf"`
+}
+
+type ImportedBridgeExitWithBlockNumber struct {
+	BlockNumber        uint64              `json:"block_number"`
+	ImportedBridgeExit *ImportedBridgeExit `json:"imported_bridge_exit"`
+}
+
 // Claim is the interface that will be implemented by the different types of claims
 type Claim interface {
 	Type() string

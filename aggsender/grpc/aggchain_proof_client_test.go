@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	agglayerProtobuf "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/protocol/types/v1"
-	aggkitProtobuf "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
+	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
+	aggkitProverV1Proto "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
 	agglayer "github.com/agglayer/aggkit/agglayer"
 	aggkitProverMocks "github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -18,11 +18,11 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 	mockClient := aggkitProverMocks.NewAggchainProofServiceClient(t)
 	client := &AggchainProofClient{client: mockClient}
 
-	expectedResponse := &aggkitProtobuf.GenerateAggchainProofResponse{
+	expectedResponse := &aggkitProverV1Proto.GenerateAggchainProofResponse{
 		AggchainProof:     []byte("dummy-proof"),
 		StartBlock:        100,
 		EndBlock:          200,
-		LocalExitRootHash: &agglayerProtobuf.FixedBytes32{Value: common.Hash{}.Bytes()},
+		LocalExitRootHash: &agglayerInteropTypesV1Proto.FixedBytes32{Value: common.Hash{}.Bytes()},
 		CustomChainData:   []byte{},
 	}
 
@@ -53,7 +53,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 
 	expectedError := errors.New("Generate error")
 
-	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return((*aggkitProtobuf.GenerateAggchainProofResponse)(nil), expectedError)
+	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return((*aggkitProverV1Proto.GenerateAggchainProofResponse)(nil), expectedError)
 
 	result, err := client.GenerateAggchainProof(
 		300,
@@ -67,46 +67,48 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 			Root:  common.HexToHash("0x3"),
 			Proof: [32]common.Hash{common.HexToHash("0x4")},
 		},
-		map[common.Hash]*agglayer.ClaimFromMainnnet{
+		map[common.Hash]*agglayer.InsertedGERWithBlockNumber{
 			common.HexToHash("0x5"): {
-				ProofLeafMER: &agglayer.MerkleProof{
-					Root:  common.HexToHash("0x6"),
-					Proof: [32]common.Hash{common.HexToHash("0x7")},
-				},
-				ProofGERToL1Root: &agglayer.MerkleProof{
-					Root:  common.HexToHash("0x8"),
-					Proof: [32]common.Hash{common.HexToHash("0x9")},
-				},
-				L1Leaf: &agglayer.L1InfoTreeLeaf{
-					Inner: &agglayer.L1InfoTreeLeafInner{
-						GlobalExitRoot: common.HexToHash("0xa"),
-						BlockHash:      common.HexToHash("0xb"),
-						Timestamp:      1,
+				BlockNumber: 1,
+				InsertedGerLeaf: agglayer.InsertedGer{
+					ProofGERToL1Root: &agglayer.MerkleProof{
+						Root:  common.HexToHash("0x8"),
+						Proof: [32]common.Hash{common.HexToHash("0x9")},
 					},
-					L1InfoTreeIndex: 4,
-					MainnetExitRoot: common.HexToHash("0xb"),
-					RollupExitRoot:  common.HexToHash("0xc"),
+					L1Leaf: &agglayer.L1InfoTreeLeaf{
+						Inner: &agglayer.L1InfoTreeLeafInner{
+							GlobalExitRoot: common.HexToHash("0xa"),
+							BlockHash:      common.HexToHash("0xb"),
+							Timestamp:      1,
+						},
+						L1InfoTreeIndex: 4,
+						MainnetExitRoot: common.HexToHash("0xb"),
+						RollupExitRoot:  common.HexToHash("0xc"),
+					},
 				},
 			},
 		},
-		[]*agglayer.ImportedBridgeExit{
+		[]*agglayer.ImportedBridgeExitWithBlockNumber{
 			{
-				BridgeExit: &agglayer.BridgeExit{
-					LeafType:           1,
-					DestinationNetwork: 1,
-					DestinationAddress: common.HexToAddress("0x1"),
-					Amount:             common.Big1,
-					Metadata:           []byte("metadata"),
-					IsMetadataHashed:   false,
-					TokenInfo: &agglayer.TokenInfo{
-						OriginNetwork:      1,
-						OriginTokenAddress: common.HexToAddress("0x2"),
+				BlockNumber: 1,
+				ImportedBridgeExit: &agglayer.ImportedBridgeExit{
+					BridgeExit: &agglayer.BridgeExit{
+						LeafType:           1,
+						DestinationNetwork: 1,
+						DestinationAddress: common.HexToAddress("0x1"),
+						Amount:             common.Big1,
+						Metadata:           []byte("metadata"),
+						IsMetadataHashed:   false,
+						TokenInfo: &agglayer.TokenInfo{
+							OriginNetwork:      1,
+							OriginTokenAddress: common.HexToAddress("0x2"),
+						},
 					},
-				},
-				GlobalIndex: &agglayer.GlobalIndex{
-					MainnetFlag: true,
-					RollupIndex: 1,
-					LeafIndex:   1,
+					GlobalIndex: &agglayer.GlobalIndex{
+						MainnetFlag: true,
+						RollupIndex: 1,
+						LeafIndex:   1,
+					},
 				},
 			},
 		},
