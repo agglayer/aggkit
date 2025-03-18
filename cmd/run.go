@@ -55,10 +55,9 @@ func start(cliCtx *cli.Context) error {
 	if cfg.Prometheus.Enabled {
 		prometheus.Init()
 	}
-
 	components := cliCtx.StringSlice(config.FlagComponents)
 	l1Client := runL1ClientIfNeeded(components, cfg.Etherman.URL)
-	l2Client := runL2ClientIfNeeded(components, getL2RPCUrl(cfg))
+	l2Client := runL2ClientIfNeeded(components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
 	go func() {
 		if err := <-errChanL1; err != nil {
@@ -364,15 +363,13 @@ func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Con
 	return rollupID
 }
 
-func runL2ClientIfNeeded(components []string, urlRPCL2 string) aggkittypes.EthClienter {
+func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
 	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
 		return nil
 	}
-
-	log.Infof("dialing L2 client at: %s", urlRPCL2)
-	l2CLient, err := ethclient.Dial(urlRPCL2)
+	l2CLient, err := etherman.NewRPCClient(urlRPCL2)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatalf("failed to create client for L2 using URL: %s. Err:%v", urlRPCL2, err)
 	}
 
 	return &aggkittypes.DefaultEthClient{
@@ -606,14 +603,6 @@ func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
 	return jRPC.NewServer(cfg, services,
 		jRPC.WithLogger(logger.GetSugaredLogger()),
 		jRPC.WithHealthHandler(healthHandler))
-}
-
-func getL2RPCUrl(c *config.Config) string {
-	if c.AggSender.URLRPCL2 != "" {
-		return c.AggSender.URLRPCL2
-	}
-
-	return c.AggOracle.EVMSender.URLRPCL2
 }
 
 func startPrometheusHTTPServer(c prometheus.Config) {

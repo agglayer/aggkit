@@ -98,7 +98,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | StoragePath                   | string             | Path where to store Aggsender DB                                                                                |
 | AggLayerURL                   | string             | URL to Agglayer                                                                                                |
 | AggsenderPrivateKey           | KeystoreFileConfig | Private key used to sign the certificate on the Aggsender before sending it to the Agglayer. Must be configured the same as on Agglayer. |
-| URLRPCL2                      | string             | L2 RPC                                                                                                         |
 | BlockFinality                 | string             | Block type to calculate epochs on L1.                                                                          |
 | EpochNotificationPercentage   | uint               | `0` -> at beginning of epoch <br> `100` -> at end of the epoch <br> *(default: 50)*                             |
 | SaveCertificatesToFilesPath   | string             | Default option to store the certificate as a file. <br> Files: `certificate_<height>-<tstamp>.json`            |
