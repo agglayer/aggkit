@@ -26,27 +26,22 @@ func (rd *ReorgDetector) getTrackedBlocks() (map[string]*headersList, error) {
 	}
 	currentID := headersWithID[0].SubscriberID
 	currentHeaders := []header{}
-	for i := 0; i < len(headersWithID); i++ {
-		if i == len(headersWithID)-1 {
-			currentHeaders = append(currentHeaders, header{
-				Num:  headersWithID[i].Num,
-				Hash: headersWithID[i].Hash,
-			})
+	for _, row := range headersWithID {
+		// If the subscriber ID changes, save the current group
+		if row.SubscriberID != currentID {
 			trackedBlocks[currentID] = newHeadersList(currentHeaders...)
-		} else if headersWithID[i].SubscriberID != currentID {
-			trackedBlocks[currentID] = newHeadersList(currentHeaders...)
-			currentHeaders = []header{{
-				Num:  headersWithID[i].Num,
-				Hash: headersWithID[i].Hash,
-			}}
-			currentID = headersWithID[i].SubscriberID
-		} else {
-			currentHeaders = append(currentHeaders, header{
-				Num:  headersWithID[i].Num,
-				Hash: headersWithID[i].Hash,
-			})
+			currentID = row.SubscriberID
+			currentHeaders = nil
 		}
+
+		currentHeaders = append(currentHeaders, header{
+			Num:  row.Num,
+			Hash: row.Hash,
+		})
 	}
+
+	// Add the final group of headers after the loop
+	trackedBlocks[currentID] = newHeadersList(currentHeaders...)
 
 	return trackedBlocks, nil
 }
