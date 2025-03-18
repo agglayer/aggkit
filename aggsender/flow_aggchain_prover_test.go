@@ -120,8 +120,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayer.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
-					[]*agglayer.ImportedBridgeExit{ibe1}).Return(&types.AggchainProof{
+					}, make(map[common.Hash]*agglayer.InsertedGERWithBlockNumber, 0),
+					[]*agglayer.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -175,8 +175,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayer.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
-					[]*agglayer.ImportedBridgeExit{ibe1, ibe2}).Return(&types.AggchainProof{
+					}, make(map[common.Hash]*agglayer.InsertedGERWithBlockNumber, 0),
+					[]*agglayer.ImportedBridgeExitWithBlockNumber{
+						{ImportedBridgeExit: ibe1, BlockNumber: 6},
+						{ImportedBridgeExit: ibe2, BlockNumber: 9},
+					}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -225,8 +228,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayer.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
-					[]*agglayer.ImportedBridgeExit{ibe1}).Return(nil, errors.New("some error"))
+					}, make(map[common.Hash]*agglayer.InsertedGERWithBlockNumber, 0),
+					[]*agglayer.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
 		},
@@ -261,8 +264,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayer.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
-					[]*agglayer.ImportedBridgeExit{ibe1}).Return(&types.AggchainProof{
+					}, make(map[common.Hash]*agglayer.InsertedGERWithBlockNumber, 0),
+					[]*agglayer.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -310,8 +313,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					agglayer.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ClaimFromMainnnet, 0),
-					[]*agglayer.ImportedBridgeExit{ibe1, ibe2}).Return(&types.AggchainProof{
+					}, make(map[common.Hash]*agglayer.InsertedGERWithBlockNumber, 0),
+					[]*agglayer.ImportedBridgeExitWithBlockNumber{
+						{ImportedBridgeExit: ibe1, BlockNumber: 8},
+						{ImportedBridgeExit: ibe2, BlockNumber: 9},
+					}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -583,7 +589,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 	testCases := []struct {
 		name           string
 		mockFn         func(*mocks.ChainGERReader, *mocks.L1InfoTreeSyncer)
-		expectedProofs map[common.Hash]*agglayer.ClaimFromMainnnet
+		expectedProofs map[common.Hash]*agglayer.InsertedGERWithBlockNumber
 		expectedError  string
 	}{
 		{
@@ -636,20 +642,23 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 				)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(1), common.HexToHash("0x2")).Return(treeTypes.Proof{}, nil)
 			},
-			expectedProofs: map[common.Hash]*agglayer.ClaimFromMainnnet{
+			expectedProofs: map[common.Hash]*agglayer.InsertedGERWithBlockNumber{
 				common.HexToHash("0x1"): {
-					ProofGERToL1Root: &agglayer.MerkleProof{
-						Proof: treeTypes.Proof{},
-						Root:  common.HexToHash("0x2"),
-					},
-					L1Leaf: &agglayer.L1InfoTreeLeaf{
-						L1InfoTreeIndex: 1,
-						RollupExitRoot:  common.HexToHash("0x33"),
-						MainnetExitRoot: common.HexToHash("0x11"),
-						Inner: &agglayer.L1InfoTreeLeafInner{
-							GlobalExitRoot: common.HexToHash("0x1"),
-							BlockHash:      common.HexToHash("0x22"),
-							Timestamp:      112,
+					BlockNumber: 111,
+					InsertedGerLeaf: agglayer.InsertedGer{
+						ProofGERToL1Root: &agglayer.MerkleProof{
+							Proof: treeTypes.Proof{},
+							Root:  common.HexToHash("0x2"),
+						},
+						L1Leaf: &agglayer.L1InfoTreeLeaf{
+							L1InfoTreeIndex: 1,
+							RollupExitRoot:  common.HexToHash("0x33"),
+							MainnetExitRoot: common.HexToHash("0x11"),
+							Inner: &agglayer.L1InfoTreeLeafInner{
+								GlobalExitRoot: common.HexToHash("0x1"),
+								BlockHash:      common.HexToHash("0x22"),
+								Timestamp:      112,
+							},
 						},
 					},
 				},
@@ -695,7 +704,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 	testCases := []struct {
 		name          string
 		claims        []bridgesync.Claim
-		expectedExits []*agglayer.ImportedBridgeExit
+		expectedExits []*agglayer.ImportedBridgeExitWithBlockNumber
 		expectedError string
 	}{
 		{
@@ -726,6 +735,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 					Amount:             big.NewInt(100),
 					Metadata:           []byte("metadata"),
 					GlobalIndex:        big.NewInt(1),
+					BlockNum:           1,
 				},
 				{
 					IsMessage:          true,
@@ -736,44 +746,51 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 					Amount:             big.NewInt(100),
 					Metadata:           []byte("metadata"),
 					GlobalIndex:        big.NewInt(2),
+					BlockNum:           2,
 				},
 			},
-			expectedExits: []*agglayer.ImportedBridgeExit{
+			expectedExits: []*agglayer.ImportedBridgeExitWithBlockNumber{
 				{
-					BridgeExit: &agglayer.BridgeExit{
-						LeafType: agglayer.LeafTypeAsset,
-						TokenInfo: &agglayer.TokenInfo{
-							OriginNetwork:      1,
-							OriginTokenAddress: common.HexToAddress("0x123"),
+					ImportedBridgeExit: &agglayer.ImportedBridgeExit{
+						BridgeExit: &agglayer.BridgeExit{
+							LeafType: agglayer.LeafTypeAsset,
+							TokenInfo: &agglayer.TokenInfo{
+								OriginNetwork:      1,
+								OriginTokenAddress: common.HexToAddress("0x123"),
+							},
+							DestinationNetwork: 2,
+							DestinationAddress: common.HexToAddress("0x456"),
+							Amount:             big.NewInt(100),
+							Metadata:           []byte("metadata"),
 						},
-						DestinationNetwork: 2,
-						DestinationAddress: common.HexToAddress("0x456"),
-						Amount:             big.NewInt(100),
-						Metadata:           []byte("metadata"),
+						GlobalIndex: &agglayer.GlobalIndex{
+							MainnetFlag: false,
+							RollupIndex: 0,
+							LeafIndex:   1,
+						},
 					},
-					GlobalIndex: &agglayer.GlobalIndex{
-						MainnetFlag: false,
-						RollupIndex: 0,
-						LeafIndex:   1,
-					},
+					BlockNumber: 1,
 				},
 				{
-					BridgeExit: &agglayer.BridgeExit{
-						LeafType: agglayer.LeafTypeMessage,
-						TokenInfo: &agglayer.TokenInfo{
-							OriginNetwork:      1,
-							OriginTokenAddress: common.HexToAddress("0x123"),
+					ImportedBridgeExit: &agglayer.ImportedBridgeExit{
+						BridgeExit: &agglayer.BridgeExit{
+							LeafType: agglayer.LeafTypeMessage,
+							TokenInfo: &agglayer.TokenInfo{
+								OriginNetwork:      1,
+								OriginTokenAddress: common.HexToAddress("0x123"),
+							},
+							DestinationNetwork: 2,
+							DestinationAddress: common.HexToAddress("0x456"),
+							Amount:             big.NewInt(100),
+							Metadata:           []byte("metadata"),
 						},
-						DestinationNetwork: 2,
-						DestinationAddress: common.HexToAddress("0x456"),
-						Amount:             big.NewInt(100),
-						Metadata:           []byte("metadata"),
+						GlobalIndex: &agglayer.GlobalIndex{
+							MainnetFlag: false,
+							RollupIndex: 0,
+							LeafIndex:   2,
+						},
 					},
-					GlobalIndex: &agglayer.GlobalIndex{
-						MainnetFlag: false,
-						RollupIndex: 0,
-						LeafIndex:   2,
-					},
+					BlockNumber: 2,
 				},
 			},
 		},
