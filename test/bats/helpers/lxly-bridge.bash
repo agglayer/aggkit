@@ -103,13 +103,14 @@ function find_l1_info_tree_index_for_bridge() {
         ((attempt++))
         log "🔎 Attempt $attempt/$max_attempts: Fetching L1 info tree index for bridge with deposit count $expected_deposit_count from RPC ($aggkit_url)..."
 
-        # Capture stdout (index) and stderr (error message) together
+        # Capture both stdout (index) and stderr (error message)
         index=$(cast rpc --rpc-url "$aggkit_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count" 2>&1)
 
-        # Check if the output contains an error message
+        # Check if the response contains an error
         if [[ "$index" == *"error"* || "$index" == *"Error"* ]]; then
             log "⚠️ RPC Error: $index"
-        elif [[ "$index" =~ ^0x[0-9a-fA-F]+$ ]]; then
+        elif [[ "$index" =~ ^[0-9]+$ ]]; then
+            # Ensure the output is a valid decimal number
             log "✅ Found L1 info tree index: $index"
             echo "$index"
             return 0
