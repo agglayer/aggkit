@@ -2,6 +2,7 @@ package reorgdetector
 
 import (
 	context "context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -108,13 +109,11 @@ func (rd *ReorgDetector) GetLastReorgEvent(ctx context.Context) (ReorgEvent, err
 	}
 	defer rows.Close()
 
-	// If no rows are returned, return a zero-value event
-	if !rows.Next() {
-		return ReorgEvent{}, nil
-	}
-
 	var rEvent ReorgEvent
 	if err := meddler.Scan(rows, &rEvent); err != nil {
+		if err == sql.ErrNoRows {
+			return ReorgEvent{}, nil
+		}
 		return ReorgEvent{}, err
 	}
 
