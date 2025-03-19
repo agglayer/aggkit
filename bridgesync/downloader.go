@@ -6,6 +6,7 @@ import (
 	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/bridgel2sovereignchain"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/polygonzkevmbridgev2"
 	rpcTypes "github.com/0xPolygon/cdk-rpc/types"
 	"github.com/agglayer/aggkit/db"
@@ -21,9 +22,10 @@ var (
 	bridgeEventSignature = crypto.Keccak256Hash([]byte(
 		"BridgeEvent(uint8,uint32,address,uint32,address,uint256,bytes,uint32)",
 	))
-	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
-	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
-	tokenMappingEventSignature  = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
+	claimEventSignature             = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
+	claimEventSignaturePreEtrog     = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
+	tokenMappingEventSignature      = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
+	setSovereignTokenEventSignature = crypto.Keccak256Hash([]byte("SetSovereignTokenAddress(uint32,address,address,bool)"))
 
 	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
@@ -39,14 +41,19 @@ const (
 	callTracerType = "callTracer"
 )
 
-func buildAppender(client aggkittypes.EthClienter,
-	bridgeAddr common.Address, syncFullClaims bool) (sync.LogAppenderMap, error) {
+func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
+	syncFullClaims bool) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
 		return nil, err
 	}
 
 	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, client)
+	if err != nil {
+		return nil, err
+	}
+
+	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, client)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +160,7 @@ func buildAppender(client aggkittypes.EthClienter,
 
 		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
 		if err != nil {
-			return fmt.Errorf("failed to extract the token mapping event calldata (tx hash: %s): %w", l.TxHash, err)
+			return fmt.Errorf("failed to extract the NewWrappedToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
 
 		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
@@ -166,7 +173,38 @@ func buildAppender(client aggkittypes.EthClienter,
 			WrappedTokenAddress: tokenMappingEvent.WrappedTokenAddress,
 			Metadata:            tokenMappingEvent.Metadata,
 			Calldata:            calldata,
+			Type:                WrappedToken,
 		}})
+		return nil
+	}
+
+	appender[setSovereignTokenEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
+		setSovereignTokenEvent, err := bridgeSovereignChain.ParseSetSovereignTokenAddress(l)
+		if err != nil {
+			return fmt.Errorf(
+				"error parsing log %+v using d.bridgeSovereignChain.ParseSetSovereignTokenAddress: %w",
+				l, err,
+			)
+		}
+
+		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		if err != nil {
+			return fmt.Errorf("failed to extract the SetSovereignTokenAddress event calldata (tx hash: %s): %w", l.TxHash, err)
+		}
+
+		b.Events = append(b.Events, Event{TokenMapping: &TokenMapping{
+			BlockNum:            b.Num,
+			BlockPos:            uint64(l.Index),
+			BlockTimestamp:      b.Timestamp,
+			TxHash:              l.TxHash,
+			OriginNetwork:       setSovereignTokenEvent.OriginNetwork,
+			OriginTokenAddress:  setSovereignTokenEvent.OriginTokenAddress,
+			WrappedTokenAddress: setSovereignTokenEvent.SovereignTokenAddress,
+			IsNotMintable:       setSovereignTokenEvent.IsNotMintable,
+			Calldata:            calldata,
+			Type:                SovereignToken,
+		}})
+
 		return nil
 	}
 

@@ -282,17 +282,30 @@ type ClaimResponse struct {
 	FromAddress        common.Address `json:"from_address"`
 }
 
+type TokenMappingType uint8
+
+const (
+	WrappedToken = iota
+	SovereignToken
+)
+
+func (l TokenMappingType) String() string {
+	return [...]string{"WrappedToken", "SovereignToken"}[l]
+}
+
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
-	BlockNum            uint64         `meddler:"block_num" json:"block_num"`
-	BlockPos            uint64         `meddler:"block_pos" json:"block_pos"`
-	BlockTimestamp      uint64         `meddler:"block_timestamp" json:"block_timestamp"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
-	OriginNetwork       uint32         `meddler:"origin_network" json:"origin_network"`
-	OriginTokenAddress  common.Address `meddler:"origin_token_address,address" json:"origin_token_address"`
-	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
-	Metadata            []byte         `meddler:"metadata" json:"metadata"`
-	Calldata            []byte         `meddler:"calldata" json:"calldata"`
+	BlockNum            uint64           `meddler:"block_num" json:"block_num"`
+	BlockPos            uint64           `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp      uint64           `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash              common.Hash      `meddler:"tx_hash,hash" json:"tx_hash"`
+	OriginNetwork       uint32           `meddler:"origin_network" json:"origin_network"`
+	OriginTokenAddress  common.Address   `meddler:"origin_token_address,address" json:"origin_token_address"`
+	WrappedTokenAddress common.Address   `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
+	Metadata            []byte           `meddler:"metadata" json:"metadata"`
+	IsNotMintable       bool             `meddler:"is_not_mintable" json:"is_not_mintable"`
+	Calldata            []byte           `meddler:"calldata" json:"calldata"`
+	Type                TokenMappingType `meddler:"type" json:"type"`
 }
 
 // MarshalJSON for hex-encoding Metadata and Calldata fields
