@@ -97,34 +97,27 @@ function find_l1_info_tree_index_for_bridge() {
     local aggkit_url="$5"
 
     local attempt=0
+    local index=""
 
-    while true; do
+    while ((attempt < max_attempts)); do
         ((attempt++))
-        log "Attempt $attempt: fetching L1 info tree index for bridge, params: network_id = $network_id, expected_deposit_count = $expected_deposit_count"
+        log "🔎 Attempt $attempt/$max_attempts: Fetching L1 info tree index for bridge with deposit count $expected_deposit_count from RPC ($aggkit_node_url)..."
 
-        local index=$(cast rpc --rpc-url "$aggkit_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count")
-        log "------ index ------"
-        log "$index"
-        log "------ index ------"
+        index=$(cast rpc --rpc-url "$aggkit_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count")
 
-        if [[ $index == "" ]]; then
-            log "⏳ Didn't find expected deposit count index ("$expected_deposit_count")"
-            # Fail test if max attempts are reached
-            if [[ "$attempt" -ge "$max_attempts" ]]; then
-                log "🔍 L1InfoTreeIndexForBridge response"
-                log "$index"
-                echo "❌ Reached max attempts ($max_attempts) without finding expected bridge with deposit count "$expected_deposit_count"." >&2
-                return 1
-            fi
-
-            # Sleep before the next attempt
-            sleep "$poll_frequency"
-            continue
+        if [[ "$index" != "" ]]; then
+            log "✅ Found L1 info tree index: $index"
+            echo "$index"
+            return 0
         fi
 
-        echo "$index"
-        return 0
+        log "⏳ Attempt $attempt: Index not found yet. Retrying in $poll_frequency seconds..."
+        sleep "$poll_frequency"
     done
+
+    # If we reached here, it means max attempts were exhausted
+    log "❌ Failed to find L1 info tree index after $max_attempts attempts. Expected deposit count: $expected_deposit_count."
+    return 1
 }
 
 function find_injected_info_after_index() {
@@ -465,8 +458,8 @@ function generate_global_index() {
     deposit_count=$(echo "$bridge_info" | jq -r '.deposit_count')
 
     # Ensure dest_net and deposit_count are within valid bit ranges
-    dest_net=$((dest_net & 0xFFFFFFFF))  # Mask to 32 bits
-    deposit_count=$((deposit_count & 0xFFFFFFFF))  # Mask to 32 bits
+    dest_net=$((dest_net & 0xFFFFFFFF))           # Mask to 32 bits
+    deposit_count=$((deposit_count & 0xFFFFFFFF)) # Mask to 32 bits
 
     # Construct the final value using bitwise operations
     final_value=0
