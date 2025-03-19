@@ -121,6 +121,62 @@ func (_c *ReorgDetectorMock_GetFinalizedBlockType_Call) RunAndReturn(run func() 
 	return _c
 }
 
+// GetLastReorgEvent provides a mock function with given fields: ctx
+func (_m *ReorgDetectorMock) GetLastReorgEvent(ctx context.Context) (reorgdetector.ReorgEvent, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLastReorgEvent")
+	}
+
+	var r0 reorgdetector.ReorgEvent
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (reorgdetector.ReorgEvent, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) reorgdetector.ReorgEvent); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(reorgdetector.ReorgEvent)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// ReorgDetectorMock_GetLastReorgEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastReorgEvent'
+type ReorgDetectorMock_GetLastReorgEvent_Call struct {
+	*mock.Call
+}
+
+// GetLastReorgEvent is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *ReorgDetectorMock_Expecter) GetLastReorgEvent(ctx interface{}) *ReorgDetectorMock_GetLastReorgEvent_Call {
+	return &ReorgDetectorMock_GetLastReorgEvent_Call{Call: _e.mock.On("GetLastReorgEvent", ctx)}
+}
+
+func (_c *ReorgDetectorMock_GetLastReorgEvent_Call) Run(run func(ctx context.Context)) *ReorgDetectorMock_GetLastReorgEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *ReorgDetectorMock_GetLastReorgEvent_Call) Return(_a0 reorgdetector.ReorgEvent, _a1 error) *ReorgDetectorMock_GetLastReorgEvent_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *ReorgDetectorMock_GetLastReorgEvent_Call) RunAndReturn(run func(context.Context) (reorgdetector.ReorgEvent, error)) *ReorgDetectorMock_GetLastReorgEvent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // String provides a mock function with no fields
 func (_m *ReorgDetectorMock) String() string {
 	ret := _m.Called()

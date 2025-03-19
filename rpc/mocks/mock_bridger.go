@@ -161,6 +161,64 @@ func (_c *Bridger_GetClaimsPaged_Call) RunAndReturn(run func(context.Context, ui
 	return _c
 }
 
+// GetLastReorgEvent provides a mock function with given fields: ctx
+func (_m *Bridger) GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLastReorgEvent")
+	}
+
+	var r0 *bridgesync.LastReorg
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (*bridgesync.LastReorg, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) *bridgesync.LastReorg); ok {
+		r0 = rf(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*bridgesync.LastReorg)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Bridger_GetLastReorgEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastReorgEvent'
+type Bridger_GetLastReorgEvent_Call struct {
+	*mock.Call
+}
+
+// GetLastReorgEvent is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *Bridger_Expecter) GetLastReorgEvent(ctx interface{}) *Bridger_GetLastReorgEvent_Call {
+	return &Bridger_GetLastReorgEvent_Call{Call: _e.mock.On("GetLastReorgEvent", ctx)}
+}
+
+func (_c *Bridger_GetLastReorgEvent_Call) Run(run func(ctx context.Context)) *Bridger_GetLastReorgEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *Bridger_GetLastReorgEvent_Call) Return(_a0 *bridgesync.LastReorg, _a1 error) *Bridger_GetLastReorgEvent_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Bridger_GetLastReorgEvent_Call) RunAndReturn(run func(context.Context) (*bridgesync.LastReorg, error)) *Bridger_GetLastReorgEvent_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetProof provides a mock function with given fields: ctx, depositCount, localExitRoot
 func (_m *Bridger) GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (types.Proof, error) {
 	ret := _m.Called(ctx, depositCount, localExitRoot)

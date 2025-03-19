@@ -340,6 +340,25 @@ func (s *BridgeSync) BlockFinality() etherman.BlockNumberFinality {
 	return s.blockFinality
 }
 
+type LastReorg struct {
+	DetectedAt int64  `json:"detected_at"`
+	FromBlock  uint64 `json:"from_block"`
+	ToBlock    uint64 `json:"to_block"`
+}
+
+func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) {
+	rEvent, err := s.reorgDetector.GetLastReorgEvent(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LastReorg{
+		DetectedAt: rEvent.DetectedAt,
+		FromBlock:  rEvent.FromBlock,
+		ToBlock:    rEvent.ToBlock,
+	}, nil
+}
+
 func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
 	ethClient aggkittypes.BaseEthereumClienter) error {
 	contract, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)

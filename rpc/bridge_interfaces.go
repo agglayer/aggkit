@@ -22,6 +22,7 @@ type Bridger interface {
 	) ([]*bridgesync.BridgeResponse, int, error)
 	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*bridgesync.TokenMapping, int, error)
 	GetClaimsPaged(ctx context.Context, page, pageSize uint32) ([]*bridgesync.ClaimResponse, int, error)
+	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 }
 
 type LastGERer interface {
