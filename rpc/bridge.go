@@ -543,7 +543,6 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 }
 
 func (b *BridgeEndpoints) GetLastReorgEvent(networkID uint32) (interface{}, rpc.Error) {
-
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 

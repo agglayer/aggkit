@@ -108,7 +108,7 @@ func (rd *ReorgDetector) GetLastReorgEvent(ctx context.Context) (ReorgEvent, err
 	}
 	defer rows.Close()
 
-	// If no rows are returned, return a zero-value event.
+	// If no rows are returned, return a zero-value event
 	if !rows.Next() {
 		return ReorgEvent{}, nil
 	}
