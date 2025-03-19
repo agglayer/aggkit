@@ -19,13 +19,21 @@ import (
 )
 
 var (
+	// non-sovereign chain contract events
 	bridgeEventSignature = crypto.Keccak256Hash([]byte(
 		"BridgeEvent(uint8,uint32,address,uint32,address,uint256,bytes,uint32)",
 	))
-	claimEventSignature             = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
-	claimEventSignaturePreEtrog     = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
-	tokenMappingEventSignature      = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
-	setSovereignTokenEventSignature = crypto.Keccak256Hash([]byte("SetSovereignTokenAddress(uint32,address,address,bool)"))
+	claimEventSignature         = crypto.Keccak256Hash([]byte("ClaimEvent(uint256,uint32,address,address,uint256)"))
+	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
+	tokenMappingEventSignature  = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
+
+	// sovereign chain contract events
+	setSovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
+		"SetSovereignTokenAddress(uint32,address,address,bool)",
+	))
+	migrateLegacyTokenEventSignature = crypto.Keccak256Hash([]byte(
+		"MigrateLegacyToken(address,address,address,uint256)",
+	))
 
 	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
@@ -203,6 +211,29 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			IsNotMintable:       setSovereignTokenEvent.IsNotMintable,
 			Calldata:            calldata,
 			Type:                SovereignToken,
+		}})
+
+		return nil
+	}
+
+	appender[migrateLegacyTokenEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
+		migrateLegacyTokenEvent, err := bridgeSovereignChain.ParseMigrateLegacyToken(l)
+		if err != nil {
+			return fmt.Errorf(
+				"error parsing log %+v using d.bridgeSovereignChain.ParseMigrateLegacyToken: %w",
+				l, err,
+			)
+		}
+
+		b.Events = append(b.Events, Event{LegacyTokenMigration: &LegacyTokenMigration{
+			BlockNum:            b.Num,
+			BlockPos:            uint64(l.Index),
+			BlockTimestamp:      b.Timestamp,
+			TxHash:              l.TxHash,
+			Sender:              migrateLegacyTokenEvent.Sender,
+			LegacyTokenAddress:  migrateLegacyTokenEvent.LegacyTokenAddress,
+			UpdatedTokenAddress: migrateLegacyTokenEvent.UpdatedTokenAddress,
+			Amount:              migrateLegacyTokenEvent.Amount,
 		}})
 
 		return nil

@@ -39,6 +39,9 @@ const (
 
 	// tokenMappingTableName is the name of the table that stores token mapping events
 	tokenMappingTableName = "token_mapping"
+
+	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
+	legacyTokenMigrationTableName = "legacy_token_migration"
 )
 
 var (
@@ -322,12 +325,26 @@ func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// Event combination of bridge, claim and token mapping events
+// LegacyTokenMigration representation of a MigrateLegacyToken event,
+// that is emitted by the sovereign chain bridge contract.
+type LegacyTokenMigration struct {
+	BlockNum            uint64         `meddler:"block_num" json:"block_num"`
+	BlockPos            uint64         `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	Sender              common.Address `meddler:"sender,address" json:"sender"`
+	LegacyTokenAddress  common.Address `meddler:"legacy_token_address,address" json:"legacy_token_address"`
+	UpdatedTokenAddress common.Address `meddler:"updated_token_address,address" json:"updated_token_address"`
+	Amount              *big.Int       `meddler:"amount,bigint" json:"amount"`
+}
+
+// Event combination of bridge, claim, token mapping and LegacyTokenMigration events
 type Event struct {
-	Pos          uint64
-	Bridge       *Bridge
-	Claim        *Claim
-	TokenMapping *TokenMapping
+	Pos                  uint64
+	Bridge               *Bridge
+	Claim                *Claim
+	TokenMapping         *TokenMapping
+	LegacyTokenMigration *LegacyTokenMigration
 }
 
 type processor struct {
@@ -696,6 +713,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 
 		if event.TokenMapping != nil {
 			if err = meddler.Insert(tx, tokenMappingTableName, event.TokenMapping); err != nil {
+				return err
+			}
+		}
+
+		if event.LegacyTokenMigration != nil {
+			if err = meddler.Insert(tx, legacyTokenMigrationTableName, event.LegacyTokenMigration); err != nil {
 				return err
 			}
 		}
