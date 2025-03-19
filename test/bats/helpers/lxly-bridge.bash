@@ -101,11 +101,15 @@ function find_l1_info_tree_index_for_bridge() {
 
     while ((attempt < max_attempts)); do
         ((attempt++))
-        log "🔎 Attempt $attempt/$max_attempts: Fetching L1 info tree index for bridge with deposit count $expected_deposit_count from RPC ($aggkit_node_url)..."
+        log "🔎 Attempt $attempt/$max_attempts: Fetching L1 info tree index for bridge with deposit count $expected_deposit_count from RPC ($aggkit_url)..."
 
-        index=$(cast rpc --rpc-url "$aggkit_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count")
+        # Capture stdout (index) and stderr (error message) together
+        index=$(cast rpc --rpc-url "$aggkit_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count" 2>&1)
 
-        if [[ "$index" != "" ]]; then
+        # Check if the output contains an error message
+        if [[ "$index" == *"error"* || "$index" == *"Error"* ]]; then
+            log "⚠️ RPC Error: $index"
+        elif [[ "$index" =~ ^0x[0-9a-fA-F]+$ ]]; then
             log "✅ Found L1 info tree index: $index"
             echo "$index"
             return 0
@@ -115,7 +119,6 @@ function find_l1_info_tree_index_for_bridge() {
         sleep "$poll_frequency"
     done
 
-    # If we reached here, it means max attempts were exhausted
     log "❌ Failed to find L1 info tree index after $max_attempts attempts. Expected deposit count: $expected_deposit_count."
     return 1
 }
