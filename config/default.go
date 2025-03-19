@@ -46,6 +46,7 @@ genesisBlockNumber = 0
 const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 L1URLSyncChunkSize = 100
+RequireStorageContentCompatibility = true
 L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
 `
 
@@ -98,6 +99,7 @@ WaitForNewBlocksPeriod="100ms"
 InitialBlock={{genesisBlockNumber}}
 RetryAfterErrorPeriod="1s"
 MaxRetryAttemptsAfterError=-1
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggOracle]
 TargetChainType="EVM"
@@ -179,6 +181,7 @@ SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -189,6 +192,7 @@ SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [LastGERSync]
 DBPath = "{{PathRWData}}/lastgersync.sqlite"
@@ -199,6 +203,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [NetworkConfig.L1]
 L1ChainID = {{L1Config.chainId}}
@@ -227,6 +232,7 @@ CheckStatusCertificateInterval = "5m"
 RetryCertInmediatlyAfterInError = true
 # Don't send certificate over 80% of the epoch
 MaxEpochPercentageAllowedToSendCertificate=80
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"

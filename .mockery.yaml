@@ -94,6 +94,10 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+  github.com/agglayer/aggkit/db/compatibility:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true
   github.com/agglayer/aggkit/etherman:
     config:
       dir: "{{ .InterfaceDir }}/mocks"

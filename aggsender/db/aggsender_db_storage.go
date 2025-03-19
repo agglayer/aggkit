@@ -11,12 +11,28 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db/migrations"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
 
 const errWhileRollbackFormat = "error while rolling back tx: %w"
+
+type RuntimeData struct {
+	NetworkID uint32
+}
+
+func (r RuntimeData) String() string {
+	return fmt.Sprintf("NetworkID: %d", r.NetworkID)
+}
+
+func (r RuntimeData) IsCompatible(storage RuntimeData) error {
+	if r.NetworkID != storage.NetworkID {
+		return fmt.Errorf("network ID mismatch: %d != %d", r.NetworkID, storage.NetworkID)
+	}
+	return nil
+}
 
 // AggSenderStorage is the interface that defines the methods to interact with the storage
 type AggSenderStorage interface {
@@ -44,6 +60,7 @@ type AggSenderSQLStorageConfig struct {
 
 // AggSenderSQLStorage is the struct that implements the AggSenderStorage interface
 type AggSenderSQLStorage struct {
+	compatibility.KeyValueStorager
 	logger *log.Logger
 	db     *sql.DB
 	cfg    AggSenderSQLStorageConfig
@@ -51,18 +68,19 @@ type AggSenderSQLStorage struct {
 
 // NewAggSenderSQLStorage creates a new AggSenderSQLStorage
 func NewAggSenderSQLStorage(logger *log.Logger, cfg AggSenderSQLStorageConfig) (*AggSenderSQLStorage, error) {
-	db, err := db.NewSQLiteDB(cfg.DBPath)
+	database, err := db.NewSQLiteDB(cfg.DBPath)
 	if err != nil {
 		return nil, err
 	}
-	if err := migrations.RunMigrations(logger, db); err != nil {
+	if err := migrations.RunMigrations(logger, database); err != nil {
 		return nil, err
 	}
 
 	return &AggSenderSQLStorage{
-		db:     db,
-		logger: logger,
-		cfg:    cfg,
+		db:               database,
+		logger:           logger,
+		cfg:              cfg,
+		KeyValueStorager: db.NewKeyValueStorage(database),
 	}, nil
 }
 

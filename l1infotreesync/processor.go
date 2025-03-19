@@ -8,7 +8,9 @@ import (
 	"fmt"
 	mutex "sync"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync/migrations"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -33,6 +35,7 @@ type processor struct {
 	halted         bool
 	haltedReason   string
 	log            *log.Logger
+	compatibility.CompatibilityDataStorager[sync.RuntimeData]
 }
 
 // UpdateL1InfoTree representation of the UpdateL1InfoTree event
@@ -144,15 +147,19 @@ func newProcessor(dbPath string) (*processor, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := db.NewSQLiteDB(dbPath)
+	database, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
 		return nil, err
 	}
 	return &processor{
-		db:             db,
-		l1InfoTree:     tree.NewAppendOnlyTree(db, migrations.L1InfoTreePrefix),
-		rollupExitTree: tree.NewUpdatableTree(db, migrations.RollupExitTreePrefix),
+		db:             database,
+		l1InfoTree:     tree.NewAppendOnlyTree(database, migrations.L1InfoTreePrefix),
+		rollupExitTree: tree.NewUpdatableTree(database, migrations.RollupExitTreePrefix),
 		log:            log.WithFields("processor", "l1infotreesync"),
+		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+			db.NewKeyValueStorage(database),
+			aggkitcommon.L1INFOTREESYNC,
+		),
 	}, nil
 }
 

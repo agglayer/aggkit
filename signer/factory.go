@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
 type SignMethod string
@@ -22,7 +22,7 @@ var (
 	ErrUnknownSignerMethod = fmt.Errorf("unknown signer method")
 )
 
-func NewSigner(name string, logger types.Logger, ctx context.Context, cfg SignerConfig) (Signer, error) {
+func NewSigner(name string, logger aggkitcommon.Logger, ctx context.Context, cfg SignerConfig) (Signer, error) {
 	var res Signer
 	if cfg.Method == "" {
 		logger.Warnf("No signer method specified, defaulting to local (keystore file)")

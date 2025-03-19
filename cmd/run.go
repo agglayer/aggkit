@@ -319,6 +319,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.MaxRetryAttemptsAfterError,
 		l1infotreesync.FlagNone,
 		etherman.FinalizedBlock,
+		cfg.L1InfoTreeSync.RequireStorageContentCompatibility,
 	)
 	if err != nil {
 		log.Fatal(err)
@@ -481,6 +482,7 @@ func runLastGERSyncIfNeeded(
 		etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
+		cfg.RequireStorageContentCompatibility,
 	)
 	if err != nil {
 		log.Fatalf("error creating lastGERSync: %s", err)
@@ -516,6 +518,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		false,
+		cfg.RequireStorageContentCompatibility,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -551,6 +554,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		true,
+		cfg.RequireStorageContentCompatibility,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)

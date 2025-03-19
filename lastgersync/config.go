@@ -25,4 +25,7 @@ type Config struct {
 	// DownloadBufferSize buffer of events to be porcessed. When the buffer limit is reached,
 	// downloading will stop until the processing catches up.
 	DownloadBufferSize int `mapstructure:"DownloadBufferSize"`
+	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
+	// is compatible with the running environment
+	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
 }
