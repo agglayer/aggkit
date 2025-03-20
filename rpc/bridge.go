@@ -552,8 +552,10 @@ func (b *BridgeEndpoints) GetLastReorgEvent(networkID uint32) (interface{}, rpc.
 	}
 	c.Add(ctx, 1)
 
-	var reorgEvent *bridgesync.LastReorg
-	var err error
+	var (
+		reorgEvent *bridgesync.LastReorg
+		err        error
+	)
 	switch {
 	case networkID == 0:
 		reorgEvent, err = b.bridgeL1.GetLastReorgEvent(ctx)

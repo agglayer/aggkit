@@ -9,6 +9,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -31,6 +32,7 @@ var (
 
 type ReorgDetector interface {
 	sync.ReorgDetector
+	GetLastReorgEvent(ctx context.Context) (reorgdetector.ReorgEvent, error)
 }
 
 // BridgeSync manages the state of the exit tree for the bridge contract by processing Ethereum blockchain events.

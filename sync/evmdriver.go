@@ -43,7 +43,6 @@ type ReorgDetector interface {
 	Subscribe(id string) (*reorgdetector.Subscription, error)
 	AddBlockToTrack(ctx context.Context, id string, blockNum uint64, blockHash common.Hash) error
 	GetFinalizedBlockType() etherman.BlockNumberFinality
-	GetLastReorgEvent(ctx context.Context) (reorgdetector.ReorgEvent, error)
 	String() string
 }
 
