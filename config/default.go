@@ -11,6 +11,7 @@ AggLayerURL = "https://agglayer-dev.polygon.technology"
 ForkId = 9
 ContractVersions = "elderberry"
 IsValidiumMode = false
+NetworkID = 1
 
 L2Coinbase = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 SequencerPrivateKeyPath = "/app/sequencer.keystore"
@@ -71,7 +72,7 @@ Outputs = ["stderr"]
 			Url="https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
 
 [Common]
-NetworkID = {{Common.NetworkID}}
+NetworkID = {{NetworkID}}
 IsValidiumMode = {{IsValidiumMode}}
 ContractVersions = "{{ContractVersions}}"
 
