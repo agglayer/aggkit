@@ -111,7 +111,7 @@ func (rd *ReorgDetector) GetLastReorgEvent(ctx context.Context) (ReorgEvent, err
 
 	var rEvent ReorgEvent
 	if err := meddler.Scan(rows, &rEvent); err != nil {
-		if err == sql.ErrNoRows {
+		if errors.Is(err, sql.ErrNoRows) {
 			return ReorgEvent{}, nil
 		}
 		return ReorgEvent{}, err
