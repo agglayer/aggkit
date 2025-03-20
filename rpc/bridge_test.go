@@ -702,3 +702,57 @@ func TestGetClaims(t *testing.T) {
 		require.Nil(t, result)
 	})
 }
+
+func TestGetLastReorgEvent(t *testing.T) {
+	networkID := uint32(10)
+	bridgeMocks := newBridgeWithMocks(t, networkID)
+
+	t.Run("GetLastReorgEvent for L1 network", func(t *testing.T) {
+		reorgEvent := &bridgesync.LastReorg{
+			DetectedAt: 1710000000,
+			FromBlock:  100,
+			ToBlock:    200,
+		}
+
+		bridgeMocks.bridgeL1.On("GetLastReorgEvent", mock.Anything).Return(reorgEvent, nil)
+
+		result, err := bridgeMocks.bridge.GetLastReorgEvent(0)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		actualReorgEvent, ok := result.(*bridgesync.LastReorg)
+		require.True(t, ok)
+		require.Equal(t, reorgEvent, actualReorgEvent)
+
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetLastReorgEvent for L2 network", func(t *testing.T) {
+		reorgEvent := &bridgesync.LastReorg{
+			DetectedAt: 1710000001,
+			FromBlock:  200,
+			ToBlock:    300,
+		}
+		bridgeMocks.bridge.networkID = 10
+
+		bridgeMocks.bridgeL2.On("GetLastReorgEvent", mock.Anything).Return(reorgEvent, nil)
+
+		result, err := bridgeMocks.bridge.GetLastReorgEvent(10)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		actualReorgEvent, ok := result.(*bridgesync.LastReorg)
+		require.True(t, ok)
+		require.Equal(t, reorgEvent, actualReorgEvent)
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
+	})
+
+	t.Run("GetLastReorgEvent with unsupported network", func(t *testing.T) {
+		unsupportedNetworkID := uint32(999)
+
+		result, err := bridgeMocks.bridge.GetLastReorgEvent(unsupportedNetworkID)
+		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
+		require.Nil(t, result)
+	})
+}
