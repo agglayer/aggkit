@@ -1227,6 +1227,14 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 			Metadata:            common.Hex2Bytes(fmt.Sprintf("%x", i+1)),
 		}
 
+		if i%2 == 0 {
+			tokenMappingEvt.Type = WrappedToken
+			tokenMappingEvt.IsNotMintable = false
+		} else {
+			tokenMappingEvt.Type = SovereignToken
+			tokenMappingEvt.IsNotMintable = true
+		}
+
 		block := sync.Block{
 			Num:    uint64(i + 1),
 			Events: []interface{}{Event{TokenMapping: tokenMappingEvt}},

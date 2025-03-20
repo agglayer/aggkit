@@ -230,11 +230,11 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 	fooErr := errors.New("foo")
 	firstVerified := &l1infotreesync.VerifyBatches{
 		BlockNumber: 10,
-		ExitRoot:    common.HexToHash("alfa"),
+		ExitRoot:    common.HexToHash("a1fa"),
 	}
 	lastVerified := &l1infotreesync.VerifyBatches{
 		BlockNumber: 1000,
-		ExitRoot:    common.HexToHash("alfa"),
+		ExitRoot:    common.HexToHash("a1fa"),
 	}
 	mockHappyPath := func() {
 		// to make this work, assume that block number == l1 info tree index == deposit count
@@ -260,7 +260,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 				ler, ok := args.Get(1).(common.Hash)
 				require.True(t, ok)
 				index := aggkitcommon.BytesToUint32(ler.Bytes()[28:]) // hash is 32 bytes, uint32 is just 4
-				if ler == common.HexToHash("alfa") {
+				if ler == common.HexToHash("a1fa") {
 					index = uint32(lastVerified.BlockNumber)
 				}
 				rootByLER.Index = index
@@ -480,6 +480,8 @@ func TestGetTokenMappings(t *testing.T) {
 				OriginNetwork:       1,
 				OriginTokenAddress:  common.HexToAddress("0x1"),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Type:                bridgesync.SovereignToken,
+				IsNotMintable:       true,
 				Metadata:            []byte("metadata"),
 			},
 		}

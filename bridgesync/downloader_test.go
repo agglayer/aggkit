@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/bridgel2sovereignchain"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -19,6 +20,9 @@ func TestBuildAppender(t *testing.T) {
 	blockNum := uint64(1)
 
 	bridgeV2Abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
+	require.NoError(t, err)
+
+	bridgeSovereignChainABI, err := bridgel2sovereignchain.Bridgel2sovereignchainMetaData.GetAbi()
 	require.NoError(t, err)
 
 	tests := []struct {
@@ -144,6 +148,62 @@ func TestBuildAppender(t *testing.T) {
 
 				l := types.Log{
 					Topics: []common.Hash{tokenMappingEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
+		{
+			name:           "setSovereignTokenAddress appender",
+			eventSignature: setSovereignTokenEventSignature,
+			callFrame:      call{To: bridgeAddr},
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeSovereignChainABI.EventByID(setSovereignTokenEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				originNetwork := uint32(15)
+				originTokenAddress := common.HexToAddress("0x25")
+				sovereignTokenAddress := common.HexToAddress("0x35")
+				isNotMintable := true
+				data, err := event.Inputs.Pack(
+					originNetwork, originTokenAddress,
+					sovereignTokenAddress, isNotMintable)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{setSovereignTokenEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
+		{
+			name:           "legacyTokenMigration appender",
+			eventSignature: migrateLegacyTokenEventSignature,
+			callFrame:      call{To: bridgeAddr},
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeSovereignChainABI.EventByID(migrateLegacyTokenEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				senderAddr := common.HexToAddress("0x5")
+				legacyTokenAddr := common.HexToAddress("0x10")
+				updatedTokenAddr := common.HexToAddress("0x20")
+				amount := big.NewInt(150)
+				data, err := event.Inputs.Pack(
+					senderAddr, legacyTokenAddr,
+					updatedTokenAddr, amount)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{migrateLegacyTokenEventSignature},
 					Data:   data,
 				}
 				return l, nil

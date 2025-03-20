@@ -225,6 +225,11 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			)
 		}
 
+		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		if err != nil {
+			return fmt.Errorf("failed to extract the MigrateLegacyToken event calldata (tx hash: %s): %w", l.TxHash, err)
+		}
+
 		b.Events = append(b.Events, Event{LegacyTokenMigration: &LegacyTokenMigration{
 			BlockNum:            b.Num,
 			BlockPos:            uint64(l.Index),
@@ -234,6 +239,7 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			LegacyTokenAddress:  migrateLegacyTokenEvent.LegacyTokenAddress,
 			UpdatedTokenAddress: migrateLegacyTokenEvent.UpdatedTokenAddress,
 			Amount:              migrateLegacyTokenEvent.Amount,
+			Calldata:            calldata,
 		}})
 
 		return nil

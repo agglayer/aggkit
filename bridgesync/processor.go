@@ -336,6 +336,7 @@ type LegacyTokenMigration struct {
 	LegacyTokenAddress  common.Address `meddler:"legacy_token_address,address" json:"legacy_token_address"`
 	UpdatedTokenAddress common.Address `meddler:"updated_token_address,address" json:"updated_token_address"`
 	Amount              *big.Int       `meddler:"amount,bigint" json:"amount"`
+	Calldata            []byte         `meddler:"calldata" json:"calldata"`
 }
 
 // Event combination of bridge, claim, token mapping and LegacyTokenMigration events
