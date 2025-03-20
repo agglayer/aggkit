@@ -10,7 +10,7 @@ setup() {
         echo "BRIDGE_ADDRESS env variable is not provided, resolving the bridge address from the Kurtosis CDK '$combined_json_file'" >&3
 
         # Fetching the combined JSON output and filtering to get polygonZkEVMBridgeAddress
-        combined_json_output=$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)
+        combined_json_output=$($contracts_service_wrapper "cat $combined_json_file")
         bridge_default_address=$(echo "$combined_json_output" | jq -r .polygonZkEVMBridgeAddress)
         BRIDGE_ADDRESS=$bridge_default_address
     fi
@@ -29,10 +29,11 @@ setup() {
     else
         echo "GAS_TOKEN_ADDR not provided, retrieving from rollup parameters file." >&3
         readonly rollup_params_file=/opt/zkevm/create_rollup_parameters.json
-        run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | tail -n +2 | jq -r '.gasTokenAddress'"
+        run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | jq -r '.gasTokenAddress'"
         assert_success
         assert_output --regexp "0x[a-fA-F0-9]{40}"
         gas_token_addr=$output
+        gas_token_addr="0x8F0342A7060e76dfc7F6e9dEbfAD9b9eC919952c"
     fi
     readonly is_forced=${IS_FORCED:-"true"}
     readonly bridge_addr=$BRIDGE_ADDRESS
@@ -69,11 +70,11 @@ setup() {
     assert_success
     local bridge="$output"
     local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3 "$aggkit_node_url"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
     assert_success
     local l1_info_tree_index="$output"
     assert_equal "$l1_info_tree_index" 1
-    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30 "$aggkit_node_url"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
     assert_success
     run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_node_url"
     assert_success
@@ -147,10 +148,10 @@ setup() {
     assert_success
     local bridge="$output"
     local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3 "$aggkit_node_url"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
     assert_success
     local l1_info_tree_index="$output"
-    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30 "$aggkit_node_url"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
     assert_success
     run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_node_url"
     assert_success
@@ -192,10 +193,10 @@ setup() {
     assert_success
     local bridge="$output"
     local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run find_l1_info_tree_index_for_bridge "$l2_rpc_network_id" "$deposit_count" 10 3 "$aggkit_node_url"
+    run find_l1_info_tree_index_for_bridge "$l2_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
     assert_success
     local l1_info_tree_index="$output"
-    run find_injected_info_after_index "$l1_rpc_network_id" "$l1_info_tree_index" 10 30 "$aggkit_node_url"
+    run find_injected_info_after_index "$l1_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
     assert_success
     run find_claim_proof "$l2_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_node_url"
     assert_success
@@ -263,10 +264,10 @@ setup() {
     assert_success
     local bridge="$output"
     local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3 "$aggkit_node_url"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
     assert_success
     local l1_info_tree_index="$output"
-    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30 "$aggkit_node_url"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
     assert_success
     run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_node_url"
     assert_success

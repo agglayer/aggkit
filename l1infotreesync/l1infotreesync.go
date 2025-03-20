@@ -173,7 +173,7 @@ func (s *L1InfoTreeSync) GetLastRollupExitRoot(ctx context.Context) (types.Root,
 	if s.processor.isHalted() {
 		return types.Root{}, sync.ErrInconsistentState
 	}
-	return s.processor.rollupExitTree.GetLastRoot(nil)
+	return s.processor.rollupExitTree.GetLastRoot(s.processor.db)
 }
 
 // GetLastL1InfoTreeRoot return the last root and index processed from the L1 Info tree
@@ -181,7 +181,7 @@ func (s *L1InfoTreeSync) GetLastL1InfoTreeRoot(ctx context.Context) (types.Root,
 	if s.processor.isHalted() {
 		return types.Root{}, sync.ErrInconsistentState
 	}
-	return s.processor.l1InfoTree.GetLastRoot(nil)
+	return s.processor.l1InfoTree.GetLastRoot(s.processor.db)
 }
 
 // GetLastProcessedBlock return the last processed block
@@ -202,7 +202,7 @@ func (s *L1InfoTreeSync) GetLocalExitRoot(
 		return common.Hash{}, errors.New("network 0 is not a rollup, and it's not part of the rollup exit tree")
 	}
 
-	return s.processor.rollupExitTree.GetLeaf(nil, networkID, rollupExitRoot)
+	return s.processor.rollupExitTree.GetLeaf(s.processor.db, networkID, rollupExitRoot)
 }
 
 func (s *L1InfoTreeSync) GetLastVerifiedBatches(rollupID uint32) (*VerifyBatches, error) {
