@@ -101,26 +101,26 @@ function find_l1_info_tree_index_for_bridge() {
 
     while ((attempt < max_attempts)); do
         ((attempt++))
-        log "🔎 Attempt $attempt/$max_attempts: Fetching L1 info tree index for bridge with deposit count $expected_deposit_count from RPC ($aggkit_url)..."
+        log "🔎 Attempt $attempt/$max_attempts: Fetching L1 info tree index for bridge with deposit count $expected_deposit_count"
 
         # Capture both stdout (index) and stderr (error message)
         index=$(cast rpc --rpc-url "$aggkit_url" "bridge_l1InfoTreeIndexForBridge" "$network_id" "$expected_deposit_count" 2>&1)
+        log "------ index ------"
+        log "$index"
+        log "------ index ------"
 
         # Check if the response contains an error
-        if [[ "$index" == *"error"* || "$index" == *"Error"* ]]; then
+        if [[ "$index" == *"error"* || "$index" == *"Error"* || "$index" == "" ]]; then
             log "⚠️ RPC Error: $index"
-        elif [[ "$index" =~ ^[0-9]+$ ]]; then
-            # Ensure the output is a valid decimal number
-            log "✅ Found L1 info tree index: $index"
-            echo "$index"
-            return 0
+            sleep "$poll_frequency"
+            continue
         fi
 
-        log "⏳ Attempt $attempt: Index not found yet. Retrying in $poll_frequency seconds..."
-        sleep "$poll_frequency"
+        echo "$index"
+        return 0
     done
 
-    log "❌ Failed to find L1 info tree index after $max_attempts attempts. Expected deposit count: $expected_deposit_count."
+    log "❌ Failed to find L1 info tree index after $max_attempts attempts"
     return 1
 }
 
@@ -132,26 +132,21 @@ function find_injected_info_after_index() {
     local aggkit_url="$5"
 
     local attempt=0
+    local injected_info=""
 
-    while true; do
+    while ((attempt < max_attempts)); do
         ((attempt++))
-        log "Attempt $attempt: fetching injected info after index, params: network_id = $network_id, index = $index"
+        log "🔎 Attempt $attempt/$max_attempts: fetching injected info after index, params: network_id = $network_id, index = $index"
 
-        local injected_info=$(cast rpc --rpc-url "$aggkit_url" "bridge_injectedInfoAfterIndex" "$network_id" "$index")
-
+        # Capture both stdout (injected_info) and stderr (error message)
+        injected_info=$(cast rpc --rpc-url "$aggkit_url" "bridge_injectedInfoAfterIndex" "$network_id" "$index" 2>&1)
         log "------ injected_info ------"
         log "$injected_info"
         log "------ injected_info ------"
 
-        if [[ $injected_info == "" ]]; then
-            log "Didn't find injected L1InfoTree leaf after index on destination network"
-            # Fail test if max attempts are reached
-            if [[ "$attempt" -ge "$max_attempts" ]]; then
-                echo "Error: Reached max attempts ($max_attempts) without finding expected L1InfoTree leaf on destination network." >&2
-                return 1
-            fi
-
-            # Sleep before the next attempt
+        # Check if the response contains an error
+        if [[ "$injected_info" == *"error"* || "$injected_info" == *"Error"* || "$injected_info" == "" ]]; then
+            log "⚠️ RPC Error: $injected_info"
             sleep "$poll_frequency"
             continue
         fi
@@ -159,6 +154,9 @@ function find_injected_info_after_index() {
         echo "$injected_info"
         return 0
     done
+
+    log "❌ Failed to find injected info after index after $max_attempts attempts."
+    return 1
 }
 
 function find_claim_proof() {
@@ -170,26 +168,21 @@ function find_claim_proof() {
     local aggkit_url="$6"
 
     local attempt=0
+    local proof=""
 
-    while true; do
+    while ((attempt < max_attempts)); do
         ((attempt++))
-        log "Attempt $attempt: fetching proof, params: network_id = $network_id, deposit_count = $deposit_count, l1_info_tree_index = $l1_info_tree_index"
+        log "🔎 Attempt $attempt/$max_attempts: fetching proof, params: network_id = $network_id, deposit_count = $deposit_count, l1_info_tree_index = $l1_info_tree_index"
 
-        local proof=$(cast rpc --rpc-url "$aggkit_url" "bridge_claimProof" "$network_id" "$deposit_count" "$l1_info_tree_index")
-
+        # Capture both stdout (proof) and stderr (error message)
+        proof=$(cast rpc --rpc-url "$aggkit_url" "bridge_claimProof" "$network_id" "$deposit_count" "$l1_info_tree_index" 2>&1)
         log "------ proof ------"
         log "$proof"
         log "------ proof ------"
 
-        if [[ "$proof" == "" ]]; then
-            log "Didn't find expected claim proof"
-            # Fail test if max attempts are reached
-            if [[ "$attempt" -ge "$max_attempts" ]]; then
-                echo "Error: Reached max attempts ($max_attempts) without finding expected claim proof." >&2
-                return 1
-            fi
-
-            # Sleep before the next attempt
+        # Check if the response contains an error
+        if [[ "$proof" == *"error"* || "$proof" == *"Error"* || "$proof" == "" ]]; then
+            log "⚠️ RPC Error: $proof"
             sleep "$poll_frequency"
             continue
         fi
@@ -197,6 +190,9 @@ function find_claim_proof() {
         echo "$proof"
         return 0
     done
+
+    log "❌ Failed to find injected info after index after $max_attempts attempts."
+    return 1
 }
 
 function claim_bridge() {
@@ -205,6 +201,8 @@ function claim_bridge() {
     local destination_rpc_url="$3"
     local max_attempts="$4"
     local poll_frequency="$5"
+
+    local attempt=0
 
     while true; do
         ((attempt++))
@@ -303,19 +301,24 @@ function get_bridge() {
     local aggkit_url="$5"
 
     local attempt=0
+    local bridges_result=""
 
-    log "🔍 Searching for bridge with tx_hash: "$expected_tx_hash" (bridge indexer RPC: "$aggkit_url")..."
-
-    while true; do
+    while ((attempt < max_attempts)); do
         ((attempt++))
-        log "🔍 Attempt $attempt"
+        log "🔎 Attempt $attempt/$max_attempts: fetching bridge, params: network_id = $network_id, tx_hash = $expected_tx_hash"
 
-        # Fetch bridges from the RPC
-        bridges_result=$(cast rpc --rpc-url "$aggkit_url" "bridge_getBridges" "$network_id")
-
+        # Capture both stdout (bridge result) and stderr (error message)
+        bridges_result=$(cast rpc --rpc-url "$aggkit_url" "bridge_getBridges" "$network_id" 2>&1)
         log "------ bridges_result ------"
         log "$bridges_result"
         log "------ bridges_result ------"
+
+        # Check if the response contains an error
+        if [[ "$bridges_result" == *"error"* || "$bridges_result" == *"Error"* || "$bridges_result" == "" ]]; then
+            log "⚠️ RPC Error: $bridges_result"
+            sleep "$poll_frequency"
+            continue
+        fi
 
         # Extract the elements of the 'bridges' array one by one
         for row in $(echo "$bridges_result" | jq -c '.bridges[]'); do
@@ -329,17 +332,11 @@ function get_bridge() {
             fi
         done
 
-        # Fail test if max attempts are reached
-        if [[ "$attempt" -ge "$max_attempts" ]]; then
-            log "🔍 Bridges result:"
-            log "$bridges_result"
-            echo "❌ Error: Reached max attempts ($max_attempts) without finding expected bridge with tx hash." >&2
-            return 1
-        fi
-
-        # Sleep before the next attempt
         sleep "$poll_frequency"
     done
+
+    log "❌ Failed to find injected info after index after $max_attempts attempts."
+    return 1
 }
 
 function get_claim() {

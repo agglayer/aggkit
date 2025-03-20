@@ -57,7 +57,6 @@ setup() {
     assert_success
     local injected_info="$output"
     local l1_info_tree_index=$(echo "$injected_info" | jq -r '.l1_info_tree_index')
-    echo "=== Injected info: $injected_info" >&3
     run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_pp1_node_url"
     assert_success
     local proof="$output"
