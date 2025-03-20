@@ -485,3 +485,26 @@ Failed response (`rpc.Error`)
 
 - `code` - error code
 - `message` - error message
+
+### Get Last Reorg Event
+
+The `GetLastReorgEvent` endpoint retrieves the most recent reorg event detected by the ReorgDetector on L1 and L2. Each bridge service can access this data only for L1 and its own corresponding L2 network.
+
+#### Parameters
+
+| **Name**       | **Type** | **Description**                                                      | **Required** | **Notes**                       |
+|----------------|----------|----------------------------------------------------------------------|--------------|---------------------------------|
+| `networkID`    | `uint32` | The ID of the network for which the reorg event is being queried.     | Yes          | 0 for L1(otherwise L2)          |
+
+#### Return value
+
+Successful response (`LastReorg`)
+
+- `detected_at`: Timestamp when the reorg was detected.
+- `from_block`: Starting block number of the reorg.
+- `to_block`: Ending block number of the reorg.
+
+Failed response (`rpc.Error`)
+
+- `code` - error code
+- `message` - error message

@@ -541,3 +541,38 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 	}
 	return info.L1InfoTreeIndex, nil
 }
+
+func (b *BridgeEndpoints) GetLastReorgEvent(networkID uint32) (interface{}, rpc.Error) {
+	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	defer cancel()
+
+	c, merr := b.meter.Int64Counter("reorg_event")
+	if merr != nil {
+		b.logger.Warnf("failed to create reorg_event counter: %s", merr)
+	}
+	c.Add(ctx, 1)
+
+	var (
+		reorgEvent *bridgesync.LastReorg
+		err        error
+	)
+	switch {
+	case networkID == 0:
+		reorgEvent, err = b.bridgeL1.GetLastReorgEvent(ctx)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to last reorg event, error: %s", err))
+		}
+	case networkID == b.networkID:
+		reorgEvent, err = b.bridgeL2.GetLastReorgEvent(ctx)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to last reorg event, error: %s", err))
+		}
+	default:
+		return nil, rpc.NewRPCError(
+			rpc.DefaultErrorCode,
+			fmt.Sprintf("this client does not support network %d", networkID),
+		)
+	}
+
+	return reorgEvent, nil
+}
