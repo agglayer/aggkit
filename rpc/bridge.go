@@ -489,7 +489,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 	// (produced by the smart contract call verifyBatches / verifyBatchesTrustedAggregator)
 	// are included in the L1 info tree. As per the current implementation (smart contracts) of the protocol
 	// this is true. This could change in the future
-	lastVerified, err := b.l1InfoTree.GetLastVerifiedBatches(b.networkID - 1)
+	lastVerified, err := b.l1InfoTree.GetLastVerifiedBatches(b.networkID)
 	if err != nil {
 		return 0, err
 	}
@@ -502,7 +502,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 		return 0, ErrNotOnL1Info
 	}
 
-	firstVerified, err := b.l1InfoTree.GetFirstVerifiedBatches(b.networkID - 1)
+	firstVerified, err := b.l1InfoTree.GetFirstVerifiedBatches(b.networkID)
 	if err != nil {
 		return 0, err
 	}
@@ -515,7 +515,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 	upperLimit := lastVerified.BlockNumber
 	for lowerLimit <= upperLimit {
 		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binnarySearchDivider)
-		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID-1, targetBlock)
+		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
 		if err != nil {
 			return 0, err
 		}

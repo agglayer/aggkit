@@ -129,7 +129,7 @@ func (s *L1InfoTreeSync) GetRollupExitTreeMerkleProof(
 		return tree.EmptyProof, nil
 	}
 
-	return s.processor.rollupExitTree.GetProof(ctx, networkID-1, root)
+	return s.processor.rollupExitTree.GetProof(ctx, networkID, root)
 }
 
 func translateError(err error) error {
@@ -202,7 +202,7 @@ func (s *L1InfoTreeSync) GetLocalExitRoot(
 		return common.Hash{}, errors.New("network 0 is not a rollup, and it's not part of the rollup exit tree")
 	}
 
-	return s.processor.rollupExitTree.GetLeaf(nil, networkID-1, rollupExitRoot)
+	return s.processor.rollupExitTree.GetLeaf(nil, networkID, rollupExitRoot)
 }
 
 func (s *L1InfoTreeSync) GetLastVerifiedBatches(rollupID uint32) (*VerifyBatches, error) {
