@@ -71,7 +71,7 @@ Outputs = ["stderr"]
 			Url="https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
 
 [Common]
-NetworkID = 1
+NetworkID = {{Common.NetworkID}}
 IsValidiumMode = {{IsValidiumMode}}
 ContractVersions = "{{ContractVersions}}"
 
