@@ -201,6 +201,7 @@ function claim_bridge() {
     local destination_rpc_url="$3"
     local max_attempts="$4"
     local poll_frequency="$5"
+    local source_network_id="$6"
 
     local attempt=0
 
@@ -208,12 +209,12 @@ function claim_bridge() {
         ((attempt++))
         log "🔍 Attempt $attempt"
 
-        run claim_call $bridge_info $proof $destination_rpc_url
+        run claim_call $bridge_info $proof $destination_rpc_url "$source_network_id"
         local request_result=$status
         log "💡 claim_call returns $request_result"
         if [ "$request_result" -eq 0 ]; then
             log "🎉 Claim successful"
-            run generate_global_index "$bridge_info"
+            run generate_global_index "$bridge_info" "$source_network_id"
             echo $output
             return 0
         fi
@@ -410,6 +411,7 @@ function claim_call() {
     local bridge_info="$1"
     local proof="$2"
     local destination_rpc_url="$3"
+    local source_network_id="$4"
 
     local claim_sig="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
     local leaf_type=$(echo "$bridge_info" | jq -r '.leaf_type')
@@ -419,7 +421,7 @@ function claim_call() {
 
     local in_merkle_proof=$(echo "$proof" | jq -r '.proof_local_exit_root | join(",")' | sed 's/^/[/' | sed 's/$/]/')
     local in_rollup_merkle_proof=$(echo "$proof" | jq -r '.proof_rollup_exit_root | join(",")' | sed 's/^/[/' | sed 's/$/]/')
-    run generate_global_index "$bridge_info"
+    run generate_global_index "$bridge_info" "$source_network_id"
     local in_global_index=$output
     local in_main_exit_root=$(echo "$proof" | jq -r '.l1_info_tree_leaf.mainnet_exit_root')
     local in_rollup_exit_root=$(echo "$proof" | jq -r '.l1_info_tree_leaf.rollup_exit_root')
@@ -452,27 +454,26 @@ function claim_call() {
 
 function generate_global_index() {
     local bridge_info="$1"
+    local source_network_id="$2"
 
     # Extract values from JSON
-    mainnet=$(echo "$bridge_info" | jq -r '.origin_network')
-    in_dest_net=$(echo "$bridge_info" | jq -r '.destination_network')
     deposit_count=$(echo "$bridge_info" | jq -r '.deposit_count')
 
     # Ensure dest_net and deposit_count are within valid bit ranges
-    dest_net=$((dest_net & 0xFFFFFFFF))           # Mask to 32 bits
+    source_network_id=$((source_network_id & 0xFFFFFFFF))           # Mask to 32 bits
     deposit_count=$((deposit_count & 0xFFFFFFFF)) # Mask to 32 bits
 
     # Construct the final value using bitwise operations
     final_value=0
 
     # 192nd bit: (if mainnet is 0, then 1, otherwise 0)
-    if [ "$mainnet" -eq 0 ]; then
+    if [ "$source_network_id" -eq 0 ]; then
         final_value=$(echo "$final_value + 2^64" | bc)
     fi
 
     # 193-224 bits: (if mainnet is 0, 0; otherwise dest_net - 1)
-    if [ "$mainnet" -ne 0 ]; then
-        dest_shifted=$(echo "($dest_net - 1) * 2^32" | bc)
+    if [ "$source_network_id" -ne 0 ]; then
+        dest_shifted=$(echo "($source_network_id - 1) * 2^32" | bc)
         final_value=$(echo "$final_value + $dest_shifted" | bc)
     fi
 

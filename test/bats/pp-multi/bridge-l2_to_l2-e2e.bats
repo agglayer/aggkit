@@ -60,7 +60,7 @@ setup() {
     run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_pp1_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3
+    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3 0
     assert_success
 
     echo "=== Running LxLy claim L1 to L2(PP2) for $bridge_tx_hash_pp2" >&3
@@ -78,7 +78,7 @@ setup() {
     run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_pp2_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_pp2_url" 10 3
+    run claim_bridge "$bridge" "$proof" "$l2_pp2_url" 10 3 0
     assert_success
 
     # reduce eth amount
@@ -105,7 +105,7 @@ setup() {
     run find_claim_proof "$l2_pp2b_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_pp2_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3
+    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3 2
     assert_success
     local global_index_pp2_to_pp1="$output"
 
@@ -134,7 +134,7 @@ setup() {
     run find_claim_proof "$l2_pp1b_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_pp1_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 3
+    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 3 1
     assert_success
 
     echo "=== Waiting to settled certificate with imported bridge for global_index: $global_index_pp2_to_pp1"

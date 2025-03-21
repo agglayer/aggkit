@@ -122,13 +122,11 @@ func (t *Tree) GetProof(ctx context.Context, index uint32, root common.Hash) (ty
 
 func (t *Tree) getRHTNode(tx db.Querier, nodeHash common.Hash) (*types.TreeNode, error) {
 	node := &types.TreeNode{}
-	fmt.Println("--------- in getRHTNode tx:", tx)
 	err := meddler.QueryRow(
 		tx, node,
 		fmt.Sprintf(`SELECT * FROM %s WHERE hash = $1`, t.rhtTable),
 		nodeHash.String(),
 	)
-	fmt.Println("---------- after meddler query row")
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return node, db.ErrNotFound
