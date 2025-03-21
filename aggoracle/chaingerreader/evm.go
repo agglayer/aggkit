@@ -47,7 +47,7 @@ func checkGlobalExitRootManagerContract(l2GERManager types.L2GERManagerContract,
 
 // GetInjectedGERsForRange returns the injected GlobalExitRoots for the given block range
 func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context,
-	fromBlock, toBlock uint64) ([]common.Hash, error) {
+	fromBlock, toBlock uint64) (map[uint64][]common.Hash, error) {
 	if fromBlock > toBlock {
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
@@ -63,19 +63,21 @@ func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context,
 		return nil, err
 	}
 
-	var gerHashes []common.Hash
+	injectedGERs := make(map[uint64][]common.Hash, 0)
 
 	for iter.Next() {
 		if iter.Error() != nil {
 			return nil, iter.Error()
 		}
 
-		gerHashes = append(gerHashes, iter.Event.NewGlobalExitRoot)
+		eventBlockNum := iter.Event.Raw.BlockNumber
+
+		injectedGERs[eventBlockNum] = append(injectedGERs[eventBlockNum], iter.Event.NewGlobalExitRoot)
 	}
 
 	if err = iter.Close(); err != nil {
 		log.Errorf("failed to close InsertGlobalExitRoot event iterator: %v", err)
 	}
 
-	return gerHashes, nil
+	return injectedGERs, nil
 }
