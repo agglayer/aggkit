@@ -26,7 +26,7 @@ setup() {
     bridge_addr=$bridge_address
     meta_bytes=${META_BYTES:-"0x1234"}
     destination_addr=$target_address
-    timeout="600"
+    timeout="900"
     claim_frequency="30"
 
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
@@ -34,13 +34,13 @@ setup() {
 
 @test "Test L2 to L2 bridge" {
     echo "=== Running LxLy bridge eth L1 to L2(PP1) amount:$amount" >&3
-    destination_net=$l2_pp1b_network_id
+    destination_net=$l2_pp1_network_id
     run bridge_asset "$native_token_addr" "$l1_rpc_url"
     assert_success
     local bridge_tx_hash_pp1=$output
 
     echo "=== Running LxLy bridge eth L1 to L2(PP2) amount:$amount" >&3
-    destination_net=$l2_pp2b_network_id
+    destination_net=$l2_pp2_network_id
     run bridge_asset "$native_token_addr" "$l1_rpc_url"
     assert_success
     local bridge_tx_hash_pp2=$output
@@ -53,11 +53,11 @@ setup() {
     run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 5 "$aggkit_pp1_node_url"
     assert_success
     local l1_info_tree_index="$output"
-    run find_injected_info_after_index "$l2_pp1b_network_id" "$l1_info_tree_index" 10 20 "$aggkit_pp1_node_url"
+    run find_injected_info_after_index "$l2_pp1_network_id" "$l1_info_tree_index" 10 20 "$aggkit_pp1_node_url"
     assert_success
     local injected_info="$output"
     local l1_info_tree_index=$(echo "$injected_info" | jq -r '.l1_info_tree_index')
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_pp1_node_url"
+    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp1_node_url"
     assert_success
     local proof="$output"
     run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3 0
@@ -71,11 +71,11 @@ setup() {
     run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 5 "$aggkit_pp2_node_url"
     assert_success
     local l1_info_tree_index="$output"
-    run find_injected_info_after_index "$l2_pp2b_network_id" "$l1_info_tree_index" 10 20 "$aggkit_pp2_node_url"
+    run find_injected_info_after_index "$l2_pp2_network_id" "$l1_info_tree_index" 10 20 "$aggkit_pp2_node_url"
     assert_success
     local injected_info="$output"
     local l1_info_tree_index=$(echo "$injected_info" | jq -r '.l1_info_tree_index')
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_pp2_node_url"
+    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp2_node_url"
     assert_success
     local proof="$output"
     run claim_bridge "$bridge" "$proof" "$l2_pp2_url" 10 3 0
@@ -84,25 +84,25 @@ setup() {
     # reduce eth amount
     amount=1234567
     echo "=== Running LxLy bridge L2(PP2) to L2(PP1) amount:$amount" >&3
-    destination_net=$l2_pp1b_network_id
+    destination_net=$l2_pp1_network_id
     meta_bytes="0xbeef"
     run bridge_asset "$native_token_addr" "$l2_pp2_url"
     assert_success
     local bridge_tx_hash=$output
 
     echo "=== Running LxLy claim L2(PP2) to L2(PP1) for: $bridge_tx_hash" >&3
-    run get_bridge "$l2_pp2b_network_id" "$bridge_tx_hash" 10 3 "$aggkit_pp2_node_url"
+    run get_bridge "$l2_pp2_network_id" "$bridge_tx_hash" 10 3 "$aggkit_pp2_node_url"
     assert_success
     local bridge="$output"
     local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run find_l1_info_tree_index_for_bridge "$l2_pp2b_network_id" "$deposit_count" 10 5 "$aggkit_pp2_node_url"
+    run find_l1_info_tree_index_for_bridge "$l2_pp2_network_id" "$deposit_count" 10 5 "$aggkit_pp2_node_url"
     assert_success
     local l1_info_tree_index="$output"
-    run find_injected_info_after_index "$l2_pp1b_network_id" "$l1_info_tree_index" 10 20 "$aggkit_pp1_node_url"
+    run find_injected_info_after_index "$l2_pp1_network_id" "$l1_info_tree_index" 10 20 "$aggkit_pp1_node_url"
     assert_success
     local injected_info="$output"
     local l1_info_tree_index=$(echo "$injected_info" | jq -r '.l1_info_tree_index')
-    run find_claim_proof "$l2_pp2b_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_pp2_node_url"
+    run find_claim_proof "$l2_pp2_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp2_node_url"
     assert_success
     local proof="$output"
     run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3 2
@@ -120,18 +120,20 @@ setup() {
     bridge_tx_hash=$output
 
     echo "=== Running LxLy claim L2(PP1) to L1 for $bridge_tx_hash" >&3
-    run get_bridge "$l2_pp1b_network_id" "$bridge_tx_hash" 10 3 "$aggkit_pp1_node_url"
+    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$l2_pp1b_url"
+
+    run get_bridge "$l2_pp1_network_id" "$bridge_tx_hash" 10 3 "$aggkit_pp1_node_url"
     assert_success
     local bridge="$output"
     local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    run find_l1_info_tree_index_for_bridge "$l2_pp1b_network_id" "$deposit_count" 10 5 "$aggkit_pp1_node_url"
+    run find_l1_info_tree_index_for_bridge "$l2_pp1_network_id" "$deposit_count" 10 5 "$aggkit_pp1_node_url"
     assert_success
     local l1_info_tree_index="$output"
     run find_injected_info_after_index "$l1_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_pp1_node_url"
     assert_success
     local injected_info="$output"
     local l1_info_tree_index=$(echo "$injected_info" | jq -r '.l1_info_tree_index')
-    run find_claim_proof "$l2_pp1b_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_pp1_node_url"
+    run find_claim_proof "$l2_pp1_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp1_node_url"
     assert_success
     local proof="$output"
     run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 3 1
