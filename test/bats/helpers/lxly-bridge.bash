@@ -432,10 +432,6 @@ function claim_call() {
     local in_amount=$(echo "$bridge_info" | jq -r '.amount')
     local in_metadata=$(echo "$bridge_info" | jq -r '.metadata')
 
-    log "-=------------ new code"
-    log "in_rollup_merkle_proof: $in_rollup_merkle_proof"
-    log "-=------------ new code"
-
     if [[ $dry_run == "true" ]]; then
         log "📝 Dry run claim (showing calldata only)"
         cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata
@@ -640,10 +636,6 @@ function request_claim() {
     local in_dest_addr=$(jq -r '.dest_addr' $deposit_file)
     local in_amount=$(jq -r '.amount' $deposit_file)
     local in_metadata=$(jq -r '.metadata' $deposit_file)
-
-    log "-=------------ old code"
-    log "in_rollup_merkle_proof: $in_rollup_merkle_proof"
-    log "-=------------ old code"
 
     log "📝 Dry run claim (showing calldata only)"
     cast calldata $claim_sig "$in_merkle_proof" "$in_rollup_merkle_proof" $in_global_index $in_main_exit_root $in_rollup_exit_root $in_orig_net $in_orig_addr $in_dest_net $in_dest_addr $in_amount $in_metadata

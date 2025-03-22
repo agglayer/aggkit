@@ -26,7 +26,6 @@ setup() {
     bridge_addr=$bridge_address
     meta_bytes=${META_BYTES:-"0x1234"}
     destination_addr=$target_address
-    timeout="900"
     claim_frequency="30"
 
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
@@ -120,8 +119,6 @@ setup() {
     bridge_tx_hash=$output
 
     echo "=== Running LxLy claim L2(PP1) to L1 for $bridge_tx_hash" >&3
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$l2_pp1b_url"
-
     run get_bridge "$l2_pp1_network_id" "$bridge_tx_hash" 10 3 "$aggkit_pp1_node_url"
     assert_success
     local bridge="$output"
