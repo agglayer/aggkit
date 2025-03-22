@@ -339,6 +339,16 @@ type LegacyTokenMigration struct {
 	Calldata            []byte         `meddler:"calldata" json:"calldata"`
 }
 
+// RemoveLegacyToken representation of a RemoveLegacySovereignTokenAddress event,
+// that is emitted by the sovereign chain bridge contract.
+type RemoveLegacyToken struct {
+	BlockNum           uint64         `meddler:"block_num" json:"block_num"`
+	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address" json:"legacy_token_address"`
+}
+
 // Event combination of bridge, claim, token mapping and LegacyTokenMigration events
 type Event struct {
 	Pos                  uint64
@@ -346,6 +356,7 @@ type Event struct {
 	Claim                *Claim
 	TokenMapping         *TokenMapping
 	LegacyTokenMigration *LegacyTokenMigration
+	RemoveLegacyToken    *RemoveLegacyToken
 }
 
 type processor struct {
@@ -720,6 +731,15 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 
 		if event.LegacyTokenMigration != nil {
 			if err = meddler.Insert(tx, legacyTokenMigrationTableName, event.LegacyTokenMigration); err != nil {
+				return err
+			}
+		}
+
+		if event.RemoveLegacyToken != nil {
+			deleteLegacyTokenStmt := fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1",
+				legacyTokenMigrationTableName)
+			_, err = tx.Exec(deleteLegacyTokenStmt, event.RemoveLegacyToken.LegacyTokenAddress)
+			if err != nil {
 				return err
 			}
 		}

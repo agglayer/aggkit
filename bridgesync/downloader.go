@@ -34,6 +34,9 @@ var (
 	migrateLegacyTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"MigrateLegacyToken(address,address,address,uint256)",
 	))
+	removeLegacySovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
+		"RemoveLegacySovereignTokenAddress(address)",
+	))
 
 	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
@@ -240,6 +243,26 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			UpdatedTokenAddress: migrateLegacyTokenEvent.UpdatedTokenAddress,
 			Amount:              migrateLegacyTokenEvent.Amount,
 			Calldata:            calldata,
+		}})
+
+		return nil
+	}
+
+	appender[removeLegacySovereignTokenEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
+		removeLegacySovereignTokenEvent, err := bridgeSovereignChain.ParseRemoveLegacySovereignTokenAddress(l)
+		if err != nil {
+			return fmt.Errorf(
+				"error parsing log %+v using d.bridgeSovereignChain.ParseRemoveLegacySovereignTokenAddress: %w",
+				l, err,
+			)
+		}
+
+		b.Events = append(b.Events, Event{RemoveLegacyToken: &RemoveLegacyToken{
+			BlockNum:           b.Num,
+			BlockPos:           uint64(l.Index),
+			BlockTimestamp:     b.Timestamp,
+			TxHash:             l.TxHash,
+			LegacyTokenAddress: removeLegacySovereignTokenEvent.SovereignTokenAddress,
 		}})
 
 		return nil
