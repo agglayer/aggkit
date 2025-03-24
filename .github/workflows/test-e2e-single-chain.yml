@@ -31,7 +31,7 @@ jobs:
       with:
         repository: 0xPolygon/kurtosis-cdk
         path: kurtosis-cdk
-        ref: feat/aggsender-agglayer-grpc-integration
+        ref: 0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f # feat/aggsender-agglayer-grpc-integration
     
     - name: Install Kurtosis CDK tools
       uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk

@@ -8,7 +8,6 @@ import (
 	"os"
 	"os/signal"
 	"runtime"
-	"strings"
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
@@ -147,9 +146,7 @@ func createAggSender(
 	l2Client *ethclient.Client) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
-	// trim the http:// prefix if it exists in the URL because the go-grpc client expects it without it
-	aggLayerURL := strings.TrimPrefix(cfg.AggLayerURL, "http://")
-	agglayerClient, err := agglayer.NewAgglayerGRPCClient(aggLayerURL)
+	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AggLayerURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}

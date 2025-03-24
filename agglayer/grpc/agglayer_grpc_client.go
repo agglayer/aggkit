@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"errors"
+	"strings"
 
 	node "buf.build/gen/go/agglayer/agglayer/grpc/go/agglayer/node/v1/nodev1grpc"
 	v1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/v1"
@@ -27,7 +28,10 @@ type AgglayerGRPCClient struct {
 
 // NewAggchainProofClient initializes a new AggchainProof instance
 func NewAgglayerGRPCClient(serverAddr string) (*AgglayerGRPCClient, error) {
-	grpcClient, err := aggkitCommon.NewClient(serverAddr)
+	// trim the http:// prefix if it exists in the URL because the go-grpc client expects it without it
+	addr := strings.TrimPrefix(serverAddr, "http://")
+
+	grpcClient, err := aggkitCommon.NewClient(addr)
 	if err != nil {
 		return nil, err
 	}
