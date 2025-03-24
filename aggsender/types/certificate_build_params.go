@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/bridgesync"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 )
 
 const (
@@ -22,7 +22,7 @@ type CertificateBuildParams struct {
 	CreatedAt                      uint32
 	RetryCount                     int
 	LastSentCertificate            *CertificateInfo
-	L1InfoTreeRootFromWhichToProve *treeTypes.Root
+	L1InfoTreeRootFromWhichToProve *treetypes.Root
 	AggchainProof                  []byte
 	CustomChainData                []byte
 }

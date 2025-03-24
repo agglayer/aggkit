@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
-	gethTypes "github.com/ethereum/go-ethereum/core/types"
+	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -25,22 +25,22 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 	ctx := context.Background()
 
-	ibe1 := &agglayer.ImportedBridgeExit{
-		BridgeExit: &agglayer.BridgeExit{
+	ibe1 := &agglayertypes.ImportedBridgeExit{
+		BridgeExit: &agglayertypes.BridgeExit{
 			LeafType:  0,
-			TokenInfo: &agglayer.TokenInfo{},
+			TokenInfo: &agglayertypes.TokenInfo{},
 		},
-		GlobalIndex: &agglayer.GlobalIndex{
+		GlobalIndex: &agglayertypes.GlobalIndex{
 			LeafIndex: 1,
 		},
 	}
 
-	ibe2 := &agglayer.ImportedBridgeExit{
-		BridgeExit: &agglayer.BridgeExit{
+	ibe2 := &agglayertypes.ImportedBridgeExit{
+		BridgeExit: &agglayertypes.BridgeExit{
 			LeafType:  0,
-			TokenInfo: &agglayer.TokenInfo{},
+			TokenInfo: &agglayertypes.TokenInfo{},
 		},
-		GlobalIndex: &agglayer.GlobalIndex{
+		GlobalIndex: &agglayertypes.GlobalIndex{
 			LeafIndex: 2,
 		},
 	}
@@ -80,7 +80,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayertypes.InError,
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
 			},
@@ -94,22 +94,22 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1Client *mocks.EthClient,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockChainGERReader *mocks.ChainGERReader) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayertypes.InError,
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}, nil)
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
 				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(
-					&treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
+					&treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByIndex", ctx, uint32(10)).Return(&l1infotreesync.L1InfoTreeLeaf{
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(10), common.HexToHash("0x1")).Return(
-					treeTypes.Proof{}, nil)
+					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return([]common.Hash{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
@@ -117,11 +117,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayertypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
-						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
+						Proof: treetypes.Proof{},
+					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -130,12 +130,12 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				RetryCount:                     1,
 				Bridges:                        []bridgesync.Bridge{{}},
 				Claims:                         []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}},
-				L1InfoTreeRootFromWhichToProve: &treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
+				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
 				AggchainProof:                  []byte("some-proof"),
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayertypes.InError,
 				},
 			},
 		},
@@ -147,11 +147,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1Client *mocks.EthClient,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockChainGERReader *mocks.ChainGERReader) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayertypes.InError,
 				}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{
 					{BlockNum: 5}, {BlockNum: 10}}, nil)
@@ -160,11 +160,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
 				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(
-					&treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
+					&treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByIndex", ctx, uint32(10)).Return(&l1infotreesync.L1InfoTreeLeaf{
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(10), common.HexToHash("0x1")).Return(
-					treeTypes.Proof{}, nil)
+					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return([]common.Hash{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
@@ -172,11 +172,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayertypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
-						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{
+						Proof: treetypes.Proof{},
+					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{
 						{ImportedBridgeExit: ibe1, BlockNumber: 6},
 						{ImportedBridgeExit: ibe2, BlockNumber: 9},
 					}).Return(&types.AggchainProof{
@@ -188,12 +188,12 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				RetryCount:                     1,
 				Bridges:                        []bridgesync.Bridge{{BlockNum: 5}},
 				Claims:                         []bridgesync.Claim{{BlockNum: 6, GlobalIndex: big.NewInt(1)}},
-				L1InfoTreeRootFromWhichToProve: &treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
+				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
 				AggchainProof:                  []byte("some-proof"),
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
-					Status:    agglayer.InError,
+					Status:    agglayertypes.InError,
 				},
 			},
 		},
@@ -205,7 +205,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1Client *mocks.EthClient,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockChainGERReader *mocks.ChainGERReader) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockStorage.On("GetLastSentCertificate").Return(nil, nil).Twice()
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
@@ -213,11 +213,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
 				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(
-					&treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
+					&treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByIndex", ctx, uint32(10)).Return(&l1infotreesync.L1InfoTreeLeaf{
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(10), common.HexToHash("0x1")).Return(
-					treeTypes.Proof{}, nil)
+					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return([]common.Hash{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
@@ -225,11 +225,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayertypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
-						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(nil, errors.New("some error"))
+						Proof: treetypes.Proof{},
+					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
 		},
@@ -241,7 +241,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1Client *mocks.EthClient,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockChainGERReader *mocks.ChainGERReader) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil).Twice()
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
@@ -249,11 +249,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
 				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(
-					&treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
+					&treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByIndex", ctx, uint32(10)).Return(&l1infotreesync.L1InfoTreeLeaf{
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(10), common.HexToHash("0x1")).Return(
-					treeTypes.Proof{}, nil)
+					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(6), uint64(10)).Return([]common.Hash{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(6), uint64(10),
@@ -261,11 +261,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayertypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
-						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
+						Proof: treetypes.Proof{},
+					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
 					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -275,7 +275,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				LastSentCertificate:            &types.CertificateInfo{ToBlock: 5},
 				Bridges:                        []bridgesync.Bridge{{}},
 				Claims:                         []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}},
-				L1InfoTreeRootFromWhichToProve: &treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
+				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
 				AggchainProof:                  []byte("some-proof"),
 				CreatedAt:                      uint32(time.Now().UTC().Unix()),
 			},
@@ -288,7 +288,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1Client *mocks.EthClient,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockChainGERReader *mocks.ChainGERReader) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil).Twice()
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{
@@ -298,11 +298,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
 				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(
-					&treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
+					&treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByIndex", ctx, uint32(10)).Return(&l1infotreesync.L1InfoTreeLeaf{
 					BlockNumber: l1Header.Number.Uint64(), Hash: common.HexToHash("0x2")}, nil)
 				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(10), common.HexToHash("0x1")).Return(
-					treeTypes.Proof{}, nil)
+					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(6), uint64(10)).Return([]common.Hash{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(6), uint64(10),
@@ -310,11 +310,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
 					},
-					agglayer.MerkleProof{
+					agglayertypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
-						Proof: treeTypes.Proof{},
-					}, make(map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayer.ImportedBridgeExitWithBlockNumber{
+						Proof: treetypes.Proof{},
+					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{
 						{ImportedBridgeExit: ibe1, BlockNumber: 8},
 						{ImportedBridgeExit: ibe2, BlockNumber: 9},
 					}).Return(&types.AggchainProof{
@@ -327,7 +327,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				LastSentCertificate:            &types.CertificateInfo{ToBlock: 5},
 				Bridges:                        []bridgesync.Bridge{{BlockNum: 6}},
 				Claims:                         []bridgesync.Claim{{BlockNum: 8, GlobalIndex: big.NewInt(1)}},
-				L1InfoTreeRootFromWhichToProve: &treeTypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
+				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
 				AggchainProof:                  []byte("some-proof"),
 				CreatedAt:                      uint32(time.Now().UTC().Unix()),
 			},
@@ -385,9 +385,9 @@ func Test_AggchainProverFlow_GetFinalizedL1InfoTreeData(t *testing.T) {
 	testCases := []struct {
 		name          string
 		mockFn        func(*mocks.L1InfoTreeSyncer, *mocks.EthClient)
-		expectedProof treeTypes.Proof
+		expectedProof treetypes.Proof
 		expectedLeaf  *l1infotreesync.L1InfoTreeLeaf
-		expectedRoot  *treeTypes.Root
+		expectedRoot  *treetypes.Root
 		expectedError string
 	}{
 		{
@@ -400,7 +400,7 @@ func Test_AggchainProverFlow_GetFinalizedL1InfoTreeData(t *testing.T) {
 		{
 			name: "error getting last L1 Info tree root by block num",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
 				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(nil, errors.New("some error"))
@@ -410,10 +410,10 @@ func Test_AggchainProverFlow_GetFinalizedL1InfoTreeData(t *testing.T) {
 		{
 			name: "error getting L1 Info tree leaf by index",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
-				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(&treeTypes.Root{Index: 0}, nil)
+				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(&treetypes.Root{Index: 0}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByIndex", ctx, uint32(0)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error getting L1 Info tree leaf by index 0: some error",
@@ -421,28 +421,28 @@ func Test_AggchainProverFlow_GetFinalizedL1InfoTreeData(t *testing.T) {
 		{
 			name: "error getting L1 Info tree merkle proof from index to root",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
-				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(&treeTypes.Root{Index: 0, Hash: common.HexToHash("0x1")}, nil)
+				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(&treetypes.Root{Index: 0, Hash: common.HexToHash("0x1")}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByIndex", ctx, uint32(0)).Return(&l1infotreesync.L1InfoTreeLeaf{Hash: common.HexToHash("0x2")}, nil)
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(treeTypes.Proof{}, errors.New("some error"))
+				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(treetypes.Proof{}, errors.New("some error"))
 			},
 			expectedError: "error getting L1 Info tree merkle proof from index 0 to root",
 		},
 		{
 			name: "success",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
-				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(&treeTypes.Root{Index: 0, Hash: common.HexToHash("0x1")}, nil)
+				mockL1InfoTreeSyncer.On("GetLastL1InfoTreeRootByBlockNum", ctx, l1Header.Number.Uint64()).Return(&treetypes.Root{Index: 0, Hash: common.HexToHash("0x1")}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByIndex", ctx, uint32(0)).Return(&l1infotreesync.L1InfoTreeLeaf{Hash: common.HexToHash("0x2")}, nil)
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(treeTypes.Proof{}, nil)
+				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x1")).Return(treetypes.Proof{}, nil)
 			},
-			expectedProof: treeTypes.Proof{},
+			expectedProof: treetypes.Proof{},
 			expectedLeaf:  &l1infotreesync.L1InfoTreeLeaf{Hash: common.HexToHash("0x2")},
-			expectedRoot:  &treeTypes.Root{Index: 0, Hash: common.HexToHash("0x1")},
+			expectedRoot:  &treetypes.Root{Index: 0, Hash: common.HexToHash("0x1")},
 		},
 	}
 
@@ -501,7 +501,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		{
 			name: "error getting latest processed block from l1infotreesyncer",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(uint64(0), common.Hash{}, errors.New("some error"))
 			},
@@ -510,7 +510,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		{
 			name: "l1infotreesyncer did not process any block yet",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(uint64(0), common.Hash{}, nil)
 			},
@@ -519,7 +519,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		{
 			name: "error getting latest processed finalized block",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(uint64(9), common.Hash{}, nil)
 				mockL1Client.On("HeaderByNumber", ctx, big.NewInt(9)).Return(nil, errors.New("some error"))
@@ -529,7 +529,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		{
 			name: "l1infotreesyncer returned a different hash for the latest finalized block",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(
 					l1Header.Number.Uint64(), common.HexToHash("0x2"), nil)
@@ -540,7 +540,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		{
 			name: "success",
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
-				l1Header := &gethTypes.Header{Number: big.NewInt(10)}
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(
 					l1Header.Number.Uint64(), l1Header.Hash(), nil)
@@ -589,7 +589,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 	testCases := []struct {
 		name           string
 		mockFn         func(*mocks.ChainGERReader, *mocks.L1InfoTreeSyncer)
-		expectedProofs map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber
+		expectedProofs map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber
 		expectedError  string
 	}{
 		{
@@ -612,7 +612,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return([]common.Hash{common.HexToHash("0x1")}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(&l1infotreesync.L1InfoTreeLeaf{L1InfoTreeIndex: 0}, nil)
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x2")).Return(treeTypes.Proof{}, errors.New("some error"))
+				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(0), common.HexToHash("0x2")).Return(treetypes.Proof{}, errors.New("some error"))
 			},
 			expectedError: "error getting L1 Info tree merkle proof from index 0 to root 0x0000000000000000000000000000000000000000000000000000000000000002: some error",
 		},
@@ -640,21 +640,21 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 					},
 					nil,
 				)
-				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(1), common.HexToHash("0x2")).Return(treeTypes.Proof{}, nil)
+				mockL1InfoTreeSyncer.On("GetL1InfoTreeMerkleProofFromIndexToRoot", ctx, uint32(1), common.HexToHash("0x2")).Return(treetypes.Proof{}, nil)
 			},
-			expectedProofs: map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber{
+			expectedProofs: map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{
 				common.HexToHash("0x1"): {
 					BlockNumber: 111,
-					ProvenInsertedGERLeaf: agglayer.ProvenInsertedGER{
-						ProofGERToL1Root: &agglayer.MerkleProof{
-							Proof: treeTypes.Proof{},
+					ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
+						ProofGERToL1Root: &agglayertypes.MerkleProof{
+							Proof: treetypes.Proof{},
 							Root:  common.HexToHash("0x2"),
 						},
-						L1Leaf: &agglayer.L1InfoTreeLeaf{
+						L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 							L1InfoTreeIndex: 1,
 							RollupExitRoot:  common.HexToHash("0x33"),
 							MainnetExitRoot: common.HexToHash("0x11"),
-							Inner: &agglayer.L1InfoTreeLeafInner{
+							Inner: &agglayertypes.L1InfoTreeLeafInner{
 								GlobalExitRoot: common.HexToHash("0x1"),
 								BlockHash:      common.HexToHash("0x22"),
 								Timestamp:      112,
@@ -684,7 +684,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 
 			tc.mockFn(mockChainGERReader, mockL1InfoTreeSyncer)
 
-			proofs, err := aggchainFlow.getInjectedGERsProofs(ctx, &treeTypes.Root{Hash: common.HexToHash("0x2"), Index: 10}, 1, 10)
+			proofs, err := aggchainFlow.getInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x2"), Index: 10}, 1, 10)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
@@ -704,7 +704,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 	testCases := []struct {
 		name          string
 		claims        []bridgesync.Claim
-		expectedExits []*agglayer.ImportedBridgeExitWithBlockNumber
+		expectedExits []*agglayertypes.ImportedBridgeExitWithBlockNumber
 		expectedError string
 	}{
 		{
@@ -749,12 +749,12 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 					BlockNum:           2,
 				},
 			},
-			expectedExits: []*agglayer.ImportedBridgeExitWithBlockNumber{
+			expectedExits: []*agglayertypes.ImportedBridgeExitWithBlockNumber{
 				{
-					ImportedBridgeExit: &agglayer.ImportedBridgeExit{
-						BridgeExit: &agglayer.BridgeExit{
-							LeafType: agglayer.LeafTypeAsset,
-							TokenInfo: &agglayer.TokenInfo{
+					ImportedBridgeExit: &agglayertypes.ImportedBridgeExit{
+						BridgeExit: &agglayertypes.BridgeExit{
+							LeafType: agglayertypes.LeafTypeAsset,
+							TokenInfo: &agglayertypes.TokenInfo{
 								OriginNetwork:      1,
 								OriginTokenAddress: common.HexToAddress("0x123"),
 							},
@@ -763,7 +763,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 							Amount:             big.NewInt(100),
 							Metadata:           []byte("metadata"),
 						},
-						GlobalIndex: &agglayer.GlobalIndex{
+						GlobalIndex: &agglayertypes.GlobalIndex{
 							MainnetFlag: false,
 							RollupIndex: 0,
 							LeafIndex:   1,
@@ -772,10 +772,10 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 					BlockNumber: 1,
 				},
 				{
-					ImportedBridgeExit: &agglayer.ImportedBridgeExit{
-						BridgeExit: &agglayer.BridgeExit{
-							LeafType: agglayer.LeafTypeMessage,
-							TokenInfo: &agglayer.TokenInfo{
+					ImportedBridgeExit: &agglayertypes.ImportedBridgeExit{
+						BridgeExit: &agglayertypes.BridgeExit{
+							LeafType: agglayertypes.LeafTypeMessage,
+							TokenInfo: &agglayertypes.TokenInfo{
 								OriginNetwork:      1,
 								OriginTokenAddress: common.HexToAddress("0x123"),
 							},
@@ -784,7 +784,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 							Amount:             big.NewInt(100),
 							Metadata:           []byte("metadata"),
 						},
-						GlobalIndex: &agglayer.GlobalIndex{
+						GlobalIndex: &agglayertypes.GlobalIndex{
 							MainnetFlag: false,
 							RollupIndex: 0,
 							LeafIndex:   2,
@@ -826,7 +826,7 @@ func Test_AggchainProverFlow_CheckIfClaimsArePartOfFinalizedL1InfoTree(t *testin
 	testCases := []struct {
 		name          string
 		mockFn        func(*mocks.L1InfoTreeSyncer)
-		finalizedRoot *treeTypes.Root
+		finalizedRoot *treetypes.Root
 		claims        []bridgesync.Claim
 		expectedError string
 	}{
@@ -835,7 +835,7 @@ func Test_AggchainProverFlow_CheckIfClaimsArePartOfFinalizedL1InfoTree(t *testin
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(nil, errors.New("some error"))
 			},
-			finalizedRoot: &treeTypes.Root{Index: 0},
+			finalizedRoot: &treetypes.Root{Index: 0},
 			claims: []bridgesync.Claim{
 				{GlobalExitRoot: common.HexToHash("0x1")},
 			},
@@ -846,7 +846,7 @@ func Test_AggchainProverFlow_CheckIfClaimsArePartOfFinalizedL1InfoTree(t *testin
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(&l1infotreesync.L1InfoTreeLeaf{L1InfoTreeIndex: 1}, nil)
 			},
-			finalizedRoot: &treeTypes.Root{Index: 0, Hash: common.HexToHash("0x2")},
+			finalizedRoot: &treetypes.Root{Index: 0, Hash: common.HexToHash("0x2")},
 			claims: []bridgesync.Claim{
 				{GlobalExitRoot: common.HexToHash("0x1")},
 			},
@@ -857,7 +857,7 @@ func Test_AggchainProverFlow_CheckIfClaimsArePartOfFinalizedL1InfoTree(t *testin
 			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer) {
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", common.HexToHash("0x1")).Return(&l1infotreesync.L1InfoTreeLeaf{L1InfoTreeIndex: 0}, nil)
 			},
-			finalizedRoot: &treeTypes.Root{Index: 1},
+			finalizedRoot: &treetypes.Root{Index: 1},
 			claims: []bridgesync.Claim{
 				{GlobalExitRoot: common.HexToHash("0x1")},
 			},

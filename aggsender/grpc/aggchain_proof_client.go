@@ -7,11 +7,12 @@ import (
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	aggkitProverV1Grpc "buf.build/gen/go/agglayer/provers/grpc/go/aggkit/prover/v1/proverv1grpc"
 	aggkitProverV1Proto "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
-	agglayer "github.com/agglayer/aggkit/agglayer"
+	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitCommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -37,12 +38,12 @@ type AggchainProofClient struct {
 
 // NewAggchainProofClient initializes a new AggchainProof instance
 func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
-	grpcClient, err := NewClient(serverAddr)
+	grpcClient, err := aggkitCommon.NewClient(serverAddr)
 	if err != nil {
 		return nil, err
 	}
 	return &AggchainProofClient{
-		client: aggkitProverV1Grpc.NewAggchainProofServiceClient(grpcClient.conn),
+		client: aggkitProverV1Grpc.NewAggchainProofServiceClient(grpcClient.Conn()),
 	}, nil
 }
 
@@ -69,8 +70,8 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
 	}
 
-	convertedMerkleProofSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, treeTypes.DefaultHeight)
-	for i := 0; i < int(treeTypes.DefaultHeight); i++ {
+	convertedMerkleProofSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, treetypes.DefaultHeight)
+	for i := 0; i < int(treetypes.DefaultHeight); i++ {
 		convertedMerkleProofSiblings[i] = &agglayerInteropTypesV1Proto.FixedBytes32{Value: l1InfoTreeMerkleProof.Proof[i][:]}
 	}
 	convertedMerkleProof := &agglayerInteropTypesV1Proto.MerkleProof{
@@ -80,8 +81,8 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 
 	convertedGerLeaves := make(map[string]*aggkitProverV1Proto.ProvenInsertedGERWithBlockNumber, 0)
 	for k, v := range gerLeavesWithBlockNumber {
-		convertedProofGerL1RootSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, treeTypes.DefaultHeight)
-		for i := 0; i < int(treeTypes.DefaultHeight); i++ {
+		convertedProofGerL1RootSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, treetypes.DefaultHeight)
+		for i := 0; i < int(treetypes.DefaultHeight); i++ {
 			convertedProofGerL1RootSiblings[i] = &agglayerInteropTypesV1Proto.FixedBytes32{
 				Value: v.ProvenInsertedGERLeaf.ProofGERToL1Root.Proof[i][:],
 			}

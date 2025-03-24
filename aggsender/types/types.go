@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,7 +29,8 @@ type AggsenderFlow interface {
 	// GetCertificateBuildParams returns the parameters to build a certificate
 	GetCertificateBuildParams(ctx context.Context) (*CertificateBuildParams, error)
 	// BuildCertificate builds a certificate based on the buildParams
-	BuildCertificate(ctx context.Context, buildParams *CertificateBuildParams) (*agglayer.Certificate, error)
+	BuildCertificate(ctx context.Context,
+		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
 }
 
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
@@ -37,17 +38,17 @@ type L1InfoTreeSyncer interface {
 	GetInfoByGlobalExitRoot(globalExitRoot common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetL1InfoTreeMerkleProofFromIndexToRoot(
 		ctx context.Context, index uint32, root common.Hash,
-	) (treeTypes.Proof, error)
-	GetL1InfoTreeRootByIndex(ctx context.Context, index uint32) (treeTypes.Root, error)
+	) (treetypes.Proof, error)
+	GetL1InfoTreeRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
 	GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
-	GetLastL1InfoTreeRootByBlockNum(ctx context.Context, blockNum uint64) (*treeTypes.Root, error)
+	GetLastL1InfoTreeRootByBlockNum(ctx context.Context, blockNum uint64) (*treetypes.Root, error)
 }
 
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement
 type L2BridgeSyncer interface {
 	GetBlockByLER(ctx context.Context, ler common.Hash) (uint64, error)
-	GetExitRootByIndex(ctx context.Context, index uint32) (treeTypes.Root, error)
+	GetExitRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
 	GetBridgesPublished(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
 	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Claim, error)
 	OriginNetwork() uint32
@@ -95,16 +96,16 @@ type CertificateInfo struct {
 	RetryCount    int         `meddler:"retry_count"`
 	CertificateID common.Hash `meddler:"certificate_id,hash"`
 	// PreviousLocalExitRoot if it's nil means no reported
-	PreviousLocalExitRoot   *common.Hash               `meddler:"previous_local_exit_root,hash"`
-	NewLocalExitRoot        common.Hash                `meddler:"new_local_exit_root,hash"`
-	FromBlock               uint64                     `meddler:"from_block"`
-	ToBlock                 uint64                     `meddler:"to_block"`
-	Status                  agglayer.CertificateStatus `meddler:"status"`
-	CreatedAt               uint32                     `meddler:"created_at"`
-	UpdatedAt               uint32                     `meddler:"updated_at"`
-	SignedCertificate       string                     `meddler:"signed_certificate"`
-	AggchainProof           []byte                     `meddler:"aggchain_proof"`
-	FinalizedL1InfoTreeRoot *common.Hash               `meddler:"finalized_l1_info_tree_root,hash"`
+	PreviousLocalExitRoot   *common.Hash                    `meddler:"previous_local_exit_root,hash"`
+	NewLocalExitRoot        common.Hash                     `meddler:"new_local_exit_root,hash"`
+	FromBlock               uint64                          `meddler:"from_block"`
+	ToBlock                 uint64                          `meddler:"to_block"`
+	Status                  agglayertypes.CertificateStatus `meddler:"status"`
+	CreatedAt               uint32                          `meddler:"created_at"`
+	UpdatedAt               uint32                          `meddler:"updated_at"`
+	SignedCertificate       string                          `meddler:"signed_certificate"`
+	AggchainProof           []byte                          `meddler:"aggchain_proof"`
+	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
 }
 
 func (c *CertificateInfo) String() string {

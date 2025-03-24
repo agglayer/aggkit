@@ -5,12 +5,12 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/tree"
-	treeTypes "github.com/agglayer/aggkit/tree/types"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -100,16 +100,6 @@ func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*type
 	return buildParams, nil
 }
 
-// BuildCertificate builds a certificate based on the buildParams
-// this function is the implementation of the FlowManager interface
-func (f *baseFlow) BuildCertificate(ctx context.Context,
-	buildParams *types.CertificateBuildParams) (*agglayer.Certificate, error) {
-	f.log.Infof("building certificate for %s estimatedSize=%d",
-		buildParams.String(), buildParams.EstimatedSize())
-
-	return f.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
-}
-
 // limitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
 func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
@@ -144,7 +134,9 @@ func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types
 
 func (f *baseFlow) buildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
-	lastSentCertificateInfo *types.CertificateInfo) (*agglayer.Certificate, error) {
+	lastSentCertificateInfo *types.CertificateInfo) (*agglayertypes.Certificate, error) {
+	f.log.Infof("building certificate for %s estimatedSize=%d", certParams.String(), certParams.EstimatedSize())
+
 	if certParams.IsEmpty() {
 		return nil, errNoBridgesAndClaims
 	}
@@ -173,7 +165,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		certParams.CreatedAt,
 	)
 
-	return &agglayer.Certificate{
+	return &agglayertypes.Certificate{
 		NetworkID:           f.l2Syncer.OriginNetwork(),
 		PrevLocalExitRoot:   previousLER,
 		NewLocalExitRoot:    exitRoot.Hash,
@@ -181,8 +173,6 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		ImportedBridgeExits: importedBridgeExits,
 		Height:              height,
 		Metadata:            meta.ToHash(),
-		AggchainProof:       certParams.AggchainProof,
-		CustomChainData:     certParams.CustomChainData,
 	}, nil
 }
 
@@ -205,16 +195,16 @@ func convertBridgeMetadata(metadata []byte, importedBridgeMetadataAsHash bool) (
 }
 
 // convertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayer.ImportedBridgeExit, error) {
-	leafType := agglayer.LeafTypeAsset
+func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
+	leafType := agglayertypes.LeafTypeAsset
 	if claim.IsMessage {
-		leafType = agglayer.LeafTypeMessage
+		leafType = agglayertypes.LeafTypeMessage
 	}
 	metaData, isMetadataIsHashed := convertBridgeMetadata(claim.Metadata, f.cfg.BridgeMetadataAsHash)
 
-	bridgeExit := &agglayer.BridgeExit{
+	bridgeExit := &agglayertypes.BridgeExit{
 		LeafType: leafType,
-		TokenInfo: &agglayer.TokenInfo{
+		TokenInfo: &agglayertypes.TokenInfo{
 			OriginNetwork:      claim.OriginNetwork,
 			OriginTokenAddress: claim.OriginAddress,
 		},
@@ -230,9 +220,9 @@ func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 		return nil, fmt.Errorf("error decoding global index: %w", err)
 	}
 
-	return &agglayer.ImportedBridgeExit{
+	return &agglayertypes.ImportedBridgeExit{
 		BridgeExit: bridgeExit,
-		GlobalIndex: &agglayer.GlobalIndex{
+		GlobalIndex: &agglayertypes.GlobalIndex{
 			MainnetFlag: mainnetFlag,
 			RollupIndex: rollupIndex,
 			LeafIndex:   leafIndex,
@@ -241,14 +231,14 @@ func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 }
 
 // getBridgeExits converts bridges to agglayer.BridgeExit objects
-func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayer.BridgeExit {
-	bridgeExits := make([]*agglayer.BridgeExit, 0, len(bridges))
+func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.BridgeExit {
+	bridgeExits := make([]*agglayertypes.BridgeExit, 0, len(bridges))
 
 	for _, bridge := range bridges {
 		metaData, isMetadataHashed := convertBridgeMetadata(bridge.Metadata, f.cfg.BridgeMetadataAsHash)
-		bridgeExits = append(bridgeExits, &agglayer.BridgeExit{
-			LeafType: agglayer.LeafType(bridge.LeafType),
-			TokenInfo: &agglayer.TokenInfo{
+		bridgeExits = append(bridgeExits, &agglayertypes.BridgeExit{
+			LeafType: agglayertypes.LeafType(bridge.LeafType),
+			TokenInfo: &agglayertypes.TokenInfo{
 				OriginNetwork:      bridge.OriginNetwork,
 				OriginTokenAddress: bridge.OriginAddress,
 			},
@@ -263,17 +253,17 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayer.Bridg
 	return bridgeExits
 }
 
-// getImportedBridgeExits converts claims to agglayer.ImportedBridgeExit objects and calculates necessary proofs
+// getImportedBridgeExits converts claims to agglayertypes.ImportedBridgeExit objects and calculates necessary proofs
 func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context, claims []bridgesync.Claim,
-	rootFromWhichToProve *treeTypes.Root,
-) ([]*agglayer.ImportedBridgeExit, error) {
+	rootFromWhichToProve *treetypes.Root,
+) ([]*agglayertypes.ImportedBridgeExit, error) {
 	if len(claims) == 0 {
 		// no claims to convert
-		return []*agglayer.ImportedBridgeExit{}, nil
+		return []*agglayertypes.ImportedBridgeExit{}, nil
 	}
 
-	importedBridgeExits := make([]*agglayer.ImportedBridgeExit, 0, len(claims))
+	importedBridgeExits := make([]*agglayertypes.ImportedBridgeExit, 0, len(claims))
 
 	for i, claim := range claims {
 		l1Info, err := f.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
@@ -302,48 +292,48 @@ func (f *baseFlow) getImportedBridgeExits(
 		}
 
 		if ibe.GlobalIndex.MainnetFlag {
-			ibe.ClaimData = &agglayer.ClaimFromMainnnet{
-				L1Leaf: &agglayer.L1InfoTreeLeaf{
+			ibe.ClaimData = &agglayertypes.ClaimFromMainnnet{
+				L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 					L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
 					RollupExitRoot:  claim.RollupExitRoot,
 					MainnetExitRoot: claim.MainnetExitRoot,
-					Inner: &agglayer.L1InfoTreeLeafInner{
+					Inner: &agglayertypes.L1InfoTreeLeafInner{
 						GlobalExitRoot: l1Info.GlobalExitRoot,
 						Timestamp:      l1Info.Timestamp,
 						BlockHash:      l1Info.PreviousBlockHash,
 					},
 				},
-				ProofLeafMER: &agglayer.MerkleProof{
+				ProofLeafMER: &agglayertypes.MerkleProof{
 					Root:  claim.MainnetExitRoot,
 					Proof: claim.ProofLocalExitRoot,
 				},
-				ProofGERToL1Root: &agglayer.MerkleProof{
+				ProofGERToL1Root: &agglayertypes.MerkleProof{
 					Root:  rootFromWhichToProve.Hash,
 					Proof: gerToL1Proof,
 				},
 			}
 		} else {
-			ibe.ClaimData = &agglayer.ClaimFromRollup{
-				L1Leaf: &agglayer.L1InfoTreeLeaf{
+			ibe.ClaimData = &agglayertypes.ClaimFromRollup{
+				L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 					L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
 					RollupExitRoot:  claim.RollupExitRoot,
 					MainnetExitRoot: claim.MainnetExitRoot,
-					Inner: &agglayer.L1InfoTreeLeafInner{
+					Inner: &agglayertypes.L1InfoTreeLeafInner{
 						GlobalExitRoot: l1Info.GlobalExitRoot,
 						Timestamp:      l1Info.Timestamp,
 						BlockHash:      l1Info.PreviousBlockHash,
 					},
 				},
-				ProofLeafLER: &agglayer.MerkleProof{
+				ProofLeafLER: &agglayertypes.MerkleProof{
 					Root: tree.CalculateRoot(ibe.BridgeExit.Hash(),
 						claim.ProofLocalExitRoot, ibe.GlobalIndex.LeafIndex),
 					Proof: claim.ProofLocalExitRoot,
 				},
-				ProofLERToRER: &agglayer.MerkleProof{
+				ProofLERToRER: &agglayertypes.MerkleProof{
 					Root:  claim.RollupExitRoot,
 					Proof: claim.ProofRollupExitRoot,
 				},
-				ProofGERToL1Root: &agglayer.MerkleProof{
+				ProofGERToL1Root: &agglayertypes.MerkleProof{
 					Root:  rootFromWhichToProve.Hash,
 					Proof: gerToL1Proof,
 				},
@@ -408,7 +398,7 @@ func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInf
 	retryCount := 0
 	lastSentBlock := lastSentCertificateInfo.ToBlock
 
-	if lastSentCertificateInfo.Status == agglayer.InError {
+	if lastSentCertificateInfo.Status == agglayertypes.InError {
 		// if the last certificate was in error, we need to resend it
 		// from the block before the error
 		if lastSentCertificateInfo.FromBlock > 0 {
