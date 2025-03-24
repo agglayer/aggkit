@@ -24,6 +24,7 @@ func newPPFlow(log types.Logger,
 	storage db.AggSenderStorage,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	l1Client types.EthClient,
 	signer signer.Signer) *ppFlow {
 	return &ppFlow{
 		signer: signer,
@@ -32,6 +33,7 @@ func newPPFlow(log types.Logger,
 			cfg:              cfg,
 			l2Syncer:         l2Syncer,
 			storage:          storage,
+			l1Client:         l1Client,
 			l1InfoTreeSyncer: l1InfoTreeSyncer,
 		},
 	}
@@ -50,26 +52,17 @@ func (p *ppFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, nil
 	}
 
+	if err := p.verifyBuildParams(buildParams); err != nil {
+		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
+	}
+
 	if len(buildParams.Claims) > 0 {
-		var greatestL1InfoTreeIndexUsed uint32
-
-		for _, claim := range buildParams.Claims {
-			info, err := p.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
-			if err != nil {
-				return nil, fmt.Errorf("error getting info by global exit root: %s: %w", claim.GlobalExitRoot, err)
-			}
-
-			if info.L1InfoTreeIndex > greatestL1InfoTreeIndexUsed {
-				greatestL1InfoTreeIndexUsed = info.L1InfoTreeIndex
-			}
-		}
-
-		rt, err := p.l1InfoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, greatestL1InfoTreeIndexUsed)
+		root, err := p.getLatestFinalizedL1InfoRoot(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("error getting L1 Info tree root by index: %d. Error: %w", greatestL1InfoTreeIndexUsed, err)
+			return nil, fmt.Errorf("ppFlow - error getting latest finalized L1 info root: %w", err)
 		}
 
-		buildParams.L1InfoTreeRootFromWhichToProve = &rt
+		buildParams.L1InfoTreeRootFromWhichToProve = root
 	}
 
 	return buildParams, nil

@@ -3,6 +3,7 @@ package aggsender
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -13,10 +14,12 @@ import (
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"golang.org/x/crypto/sha3"
 )
 
 // baseFlow is a struct that holds the common logic for the different prover types
 type baseFlow struct {
+	l1Client         types.EthClient
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
 	l2Syncer         types.L2BridgeSyncer
 	storage          db.AggSenderStorage
@@ -98,6 +101,12 @@ func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*type
 	}
 
 	return buildParams, nil
+}
+
+// verifyBuildParams verifies the build parameters
+func (f *baseFlow) verifyBuildParams(fullCert *types.CertificateBuildParams) error {
+	// this will be a good place to add more verification checks in the future
+	return f.verifyClaimGERs(fullCert.Claims)
 }
 
 // limitCertSize limits certificate size based on the max size configuration parameter
@@ -388,6 +397,76 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 }
 
+// getLatestFinalizedL1InfoRoot returns the latest processed l1 info tree root
+// based on the latest finalized l1 block
+func (f *baseFlow) getLatestFinalizedL1InfoRoot(ctx context.Context) (*treetypes.Root, error) {
+	lastFinalizedProcessedBlock, err := f.getLatestProcessedFinalizedBlock(ctx)
+	if err != nil {
+		return nil,
+			fmt.Errorf("error getting latest processed finalized block: %w", err)
+	}
+
+	root, err := f.l1InfoTreeSyncer.GetLastL1InfoTreeRootByBlockNum(ctx, lastFinalizedProcessedBlock)
+	if err != nil {
+		return nil,
+			fmt.Errorf("error getting last L1 Info tree root by block num %d: %w",
+				lastFinalizedProcessedBlock, err)
+	}
+
+	return root, nil
+}
+
+// getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer
+func (f *baseFlow) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64, error) {
+	lastFinalizedL1Block, err := f.l1Client.HeaderByNumber(ctx, finalizedBlockBigInt)
+	if err != nil {
+		return 0, fmt.Errorf("error getting latest finalized L1 block: %w", err)
+	}
+
+	lastProcessedBlockNum, lastProcessedBlockHash, err := f.l1InfoTreeSyncer.GetProcessedBlockUntil(ctx,
+		lastFinalizedL1Block.Number.Uint64())
+	if err != nil {
+		return 0, fmt.Errorf("error getting latest processed block from l1infotreesyncer: %w", err)
+	}
+
+	if lastProcessedBlockNum == 0 {
+		return 0, fmt.Errorf("l1infotreesyncer did not process any block yet")
+	}
+
+	if lastFinalizedL1Block.Number.Uint64() > lastProcessedBlockNum {
+		// syncer has a lower block than the finalized block, so we need to get that block from the l1 node
+		lastFinalizedL1Block, err = f.l1Client.HeaderByNumber(ctx, new(big.Int).SetUint64(lastProcessedBlockNum))
+		if err != nil {
+			return 0, fmt.Errorf("error getting latest processed finalized block: %d: %w",
+				lastProcessedBlockNum, err)
+		}
+	}
+
+	if (lastProcessedBlockHash == common.Hash{}) || (lastProcessedBlockHash == lastFinalizedL1Block.Hash()) {
+		// if the hash is empty it means that this is an old block that was processed before this
+		// feature was added, so we will consider it finalized
+		return lastFinalizedL1Block.Number.Uint64(), nil
+	}
+
+	return 0, fmt.Errorf("l1infotreesyncer returned a different hash for "+
+		"the latest finalized block: %d. Might be that syncer did not process a reorg yet. "+
+		"Expected hash: %s, got: %s", lastProcessedBlockNum,
+		lastFinalizedL1Block.Hash().String(), lastProcessedBlockHash.String())
+}
+
+// verifyClaimGERs verifies the correctnes GERs of the claims
+func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
+	for _, claim := range claims {
+		ger := calculateGER(claim.MainnetExitRoot, claim.RollupExitRoot)
+		if ger != claim.GlobalExitRoot {
+			return fmt.Errorf("claim[GlobalIndex: %s, BlockNum: %d]: GER mismatch. Expected: %s, got: %s",
+				claim.GlobalIndex.String(), claim.BlockNum, claim.GlobalExitRoot.String(), ger.String())
+		}
+	}
+
+	return nil
+}
+
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
 // if there is no previosly sent certificate, it returns 0 and 0
 func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
@@ -409,4 +488,15 @@ func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInf
 	}
 
 	return lastSentBlock, retryCount
+}
+
+// calculateGER calculates the GER hash based on the mainnet exit root and the rollup exit root
+func calculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
+	var gerBytes [common.HashLength]byte
+	hasher := sha3.NewLegacyKeccak256()
+	hasher.Write(mainnetExitRoot.Bytes())
+	hasher.Write(rollupExitRoot.Bytes())
+	copy(gerBytes[:], hasher.Sum(nil))
+
+	return gerBytes
 }
