@@ -209,6 +209,29 @@ func TestBuildAppender(t *testing.T) {
 				return l, nil
 			},
 		},
+		{
+			name:           "removeLegacySovereignTokenAddress appender",
+			eventSignature: removeLegacySovereignTokenEventSignature,
+			callFrame:      call{To: bridgeAddr},
+			logBuilder: func() (types.Log, error) {
+				event, err := bridgeSovereignChainABI.EventByID(removeLegacySovereignTokenEventSignature)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				sovereignTokenAddr := common.HexToAddress("0x5")
+				data, err := event.Inputs.Pack(sovereignTokenAddr)
+				if err != nil {
+					return types.Log{}, err
+				}
+
+				l := types.Log{
+					Topics: []common.Hash{removeLegacySovereignTokenEventSignature},
+					Data:   data,
+				}
+				return l, nil
+			},
+		},
 	}
 
 	for _, tt := range tests {
