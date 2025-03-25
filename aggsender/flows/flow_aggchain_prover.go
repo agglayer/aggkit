@@ -21,7 +21,7 @@ var finalizedBlockBigInt = big.NewInt(int64(etherman.Finalized))
 
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type AggchainProverFlow struct {
-	*BaseFlow
+	*baseFlow
 
 	aggchainProofClient grpc.AggchainProofClientInterface
 	gerReader           types.ChainGERReader
@@ -103,7 +103,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 	if buildParams == nil {
 		// use the old logic, where we build the new certificate
-		buildParams, err = a.BaseFlow.getCertificateBuildParamsInternal(ctx)
+		buildParams, err = a.baseFlow.getCertificateBuildParamsInternal(ctx)
 		if err != nil {
 			return nil, err
 		}

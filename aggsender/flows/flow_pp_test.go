@@ -120,7 +120,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			flow := &BaseFlow{}
+			flow := &baseFlow{}
 			exit, err := flow.convertClaimToImportedBridgeExit(tt.claim)
 
 			if tt.expectedError {
@@ -228,7 +228,7 @@ func TestGetBridgeExits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			flow := &BaseFlow{}
+			flow := &baseFlow{}
 			exits := flow.getBridgeExits(tt.bridges)
 
 			require.Equal(t, tt.expectedExits, exits)
@@ -841,7 +841,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			storageMock := mocks.NewAggSenderStorage(t)
-			flow := &BaseFlow{log: log.WithFields("aggsender-test", "getNextHeightAndPreviousLER"), storage: storageMock}
+			flow := &baseFlow{log: log.WithFields("aggsender-test", "getNextHeightAndPreviousLER"), storage: storageMock}
 			if tt.lastSettleCertificateInfoCall || tt.lastSettleCertificateInfo != nil || tt.lastSettleCertificateInfoError != nil {
 				storageMock.EXPECT().GetCertificateByHeight(mock.Anything).Return(tt.lastSettleCertificateInfo, tt.lastSettleCertificateInfoError).Once()
 			}
@@ -931,7 +931,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			t.Parallel()
 
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-			fm := &BaseFlow{
+			fm := &baseFlow{
 				l2Syncer: mockL2Syncer,
 				log:      log.WithFields("flowManager", "TestGetBridgesAndClaims"),
 			}

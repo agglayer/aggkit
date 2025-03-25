@@ -650,7 +650,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 			t.Parallel()
 
 			flow := &AggchainProverFlow{
-				BaseFlow: &BaseFlow{
+				baseFlow: &baseFlow{
 					log: log.WithFields("flowManager", "TestGetImportedBridgeExitsForProver"),
 				},
 			}

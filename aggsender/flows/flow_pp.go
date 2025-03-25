@@ -14,7 +14,7 @@ import (
 
 // PPFlow is a struct that holds the logic for the regular pessimistic proof flow
 type PPFlow struct {
-	*BaseFlow
+	*baseFlow
 
 	signer signer.Signer
 }

@@ -36,7 +36,7 @@ type BaseFlow struct {
 }
 
 // getBridgesAndClaims returns the bridges and claims consumed from the L2 fromBlock to toBlock
-func (f *BaseFlow) getBridgesAndClaims(
+func (f *baseFlow) getBridgesAndClaims(
 	ctx context.Context,
 	fromBlock, toBlock uint64,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
@@ -60,7 +60,7 @@ func (f *BaseFlow) getBridgesAndClaims(
 }
 
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
-func (f *BaseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*types.CertificateBuildParams, error) {
+func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -111,14 +111,14 @@ func (f *BaseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*type
 }
 
 // verifyBuildParams verifies the build parameters
-func (f *BaseFlow) verifyBuildParams(fullCert *types.CertificateBuildParams) error {
+func (f *baseFlow) verifyBuildParams(fullCert *types.CertificateBuildParams) error {
 	// this will be a good place to add more verification checks in the future
 	return f.verifyClaimGERs(fullCert.Claims)
 }
 
 // limitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
-func (f *BaseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
+func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	currentCert := fullCert
 	var previousCert *types.CertificateBuildParams
 	var err error
@@ -148,7 +148,7 @@ func (f *BaseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types
 	}
 }
 
-func (f *BaseFlow) buildCertificate(ctx context.Context,
+func (f *baseFlow) buildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
 	lastSentCertificateInfo *types.CertificateInfo) (*agglayertypes.Certificate, error) {
 	f.log.Infof("building certificate for %s estimatedSize=%d", certParams.String(), certParams.EstimatedSize())
@@ -211,7 +211,7 @@ func convertBridgeMetadata(metadata []byte, importedBridgeMetadataAsHash bool) (
 }
 
 // convertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *BaseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
+func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
 	leafType := agglayertypes.LeafTypeAsset
 	if claim.IsMessage {
 		leafType = agglayertypes.LeafTypeMessage
@@ -247,7 +247,7 @@ func (f *BaseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 }
 
 // getBridgeExits converts bridges to agglayer.BridgeExit objects
-func (f *BaseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.BridgeExit {
+func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.BridgeExit {
 	bridgeExits := make([]*agglayertypes.BridgeExit, 0, len(bridges))
 
 	for _, bridge := range bridges {
@@ -270,7 +270,7 @@ func (f *BaseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 }
 
 // getImportedBridgeExits converts claims to agglayertypes.ImportedBridgeExit objects and calculates necessary proofs
-func (f *BaseFlow) getImportedBridgeExits(
+func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context, claims []bridgesync.Claim,
 	rootFromWhichToProve *treetypes.Root,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
@@ -355,7 +355,7 @@ func (f *BaseFlow) getImportedBridgeExits(
 }
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
-func (f *BaseFlow) getNextHeightAndPreviousLER(
+func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateInfo) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
 		return 0, zeroLER, nil
@@ -399,7 +399,7 @@ func (f *BaseFlow) getNextHeightAndPreviousLER(
 }
 
 // verifyClaimGERs verifies the correctnes GERs of the claims
-func (f *BaseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
+func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 	for _, claim := range claims {
 		ger := calculateGER(claim.MainnetExitRoot, claim.RollupExitRoot)
 		if ger != claim.GlobalExitRoot {
