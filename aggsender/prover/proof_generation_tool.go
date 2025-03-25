@@ -9,9 +9,29 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"google.golang.org/grpc/status"
 )
+
+// ProofGeneration is the interface for generating Aggchain proofs
+type AggchainProofGeneration interface {
+	GenerateAggchainProof(ctx context.Context, fromBlock, toBlock uint64) ([]byte, error)
+}
+
+// AggchainProofFlow is the interface for the Aggchain proof flow
+type AggchainProofFlow interface {
+	CheckIfClaimsArePartOfFinalizedL1InfoTree(finalizedL1InfoTreeRoot *treetypes.Root, claims []bridgesync.Claim) error
+	GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error)
+	GetFinalizedL1InfoTreeData(ctx context.Context) (treetypes.Proof,
+		*l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error)
+	GetImportedBridgeExitsForProver(claims []bridgesync.Claim) ([]*agglayertypes.ImportedBridgeExitWithBlockNumber, error)
+	GetInjectedGERsProofs(ctx context.Context, finalizedL1InfoTreeRoot *treetypes.Root,
+		fromBlock uint64, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
+}
 
 // Config is the configuration for the AggchainProofGenerationTool
 type Config struct {
@@ -31,7 +51,7 @@ type AggchainProofGenerationTool struct {
 	l2Syncer types.L2BridgeSyncer
 
 	aggchainProofClient grpc.AggchainProofClientInterface
-	flow                *flows.AggchainProverFlow
+	flow                AggchainProofFlow
 }
 
 // NewAggchainProofGenerationTool creates a new AggchainProofGenerationTool
@@ -185,8 +205,15 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	if err != nil {
 		a.logger.Errorf("error generating aggchain proof for block range %d : %d: %w", fromBlock, toBlock, err)
 
-		return nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d : %w",
-			fromBlock, toBlock, err)
+		msg := err.Error()
+
+		errS, ok := status.FromError(err)
+		if ok {
+			msg = errS.Message()
+		}
+
+		return nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d: %s",
+			fromBlock, toBlock, msg)
 	}
 
 	a.logger.Infof("Generated Aggchain proof for block range %d : %d", fromBlock, toBlock)

@@ -8,12 +8,12 @@ import (
 
 // AggsenderRPC is the RPC interface for the aggsender
 type AggchainProofGenerationToolRPC struct {
-	tool *AggchainProofGenerationTool
+	tool AggchainProofGeneration
 }
 
 // NewAggchainProofGenerationToolRPC creates a new AggchainProofGenerationToolRPC
 func NewAggchainProofGenerationToolRPC(
-	tool *AggchainProofGenerationTool) *AggchainProofGenerationToolRPC {
+	tool AggchainProofGeneration) *AggchainProofGenerationToolRPC {
 	return &AggchainProofGenerationToolRPC{
 		tool: tool,
 	}
