@@ -9,6 +9,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -31,6 +32,7 @@ var (
 
 type ReorgDetector interface {
 	sync.ReorgDetector
+	GetLastReorgEvent(ctx context.Context) (reorgdetector.ReorgEvent, error)
 }
 
 // BridgeSync manages the state of the exit tree for the bridge contract by processing Ethereum blockchain events.
@@ -338,6 +340,25 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 // BlockFinality returns the block finality type
 func (s *BridgeSync) BlockFinality() etherman.BlockNumberFinality {
 	return s.blockFinality
+}
+
+type LastReorg struct {
+	DetectedAt int64  `json:"detected_at"`
+	FromBlock  uint64 `json:"from_block"`
+	ToBlock    uint64 `json:"to_block"`
+}
+
+func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) {
+	rEvent, err := s.reorgDetector.GetLastReorgEvent(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LastReorg{
+		DetectedAt: rEvent.DetectedAt,
+		FromBlock:  rEvent.FromBlock,
+		ToBlock:    rEvent.ToBlock,
+	}, nil
 }
 
 func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,

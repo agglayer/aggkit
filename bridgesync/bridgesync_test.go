@@ -2,6 +2,7 @@ package bridgesync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"path"
 	"testing"
@@ -10,6 +11,7 @@ import (
 	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -295,4 +297,36 @@ func TestGetClaimPaged(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
 	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
+}
+
+func TestBridgeSync_GetLastReorgEvent(t *testing.T) {
+	expectedReorgEvent := reorgdetector.ReorgEvent{
+		DetectedAt: int64(1710000000),
+		FromBlock:  uint64(100),
+		ToBlock:    uint64(150),
+	}
+	ctx := context.Background()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+	s := BridgeSync{
+		reorgDetector: mockReorgDetector,
+	}
+
+	t.Run("retrieve last reorg event successfully", func(t *testing.T) {
+		mockReorgDetector.EXPECT().GetLastReorgEvent(mock.Anything).Return(expectedReorgEvent, nil).Once()
+
+		reorgEvent, err := s.GetLastReorgEvent(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, reorgEvent)
+		require.Equal(t, expectedReorgEvent.DetectedAt, reorgEvent.DetectedAt)
+		require.Equal(t, expectedReorgEvent.FromBlock, reorgEvent.FromBlock)
+		require.Equal(t, expectedReorgEvent.ToBlock, reorgEvent.ToBlock)
+	})
+
+	t.Run("error retrieving last reorg event", func(t *testing.T) {
+		mockReorgDetector.EXPECT().GetLastReorgEvent(mock.Anything).Return(reorgdetector.ReorgEvent{}, errors.New("reorg event not found")).Once()
+
+		reorgEvent, err := s.GetLastReorgEvent(ctx)
+		require.Error(t, err)
+		require.Nil(t, reorgEvent)
+	})
 }

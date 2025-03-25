@@ -66,10 +66,10 @@ setup() {
     local l1_info_tree_index="$output"
     run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
     assert_success
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_node_url"
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3 "$aggkit_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 3
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 3 "$l1_rpc_network_id"
     assert_success
 
     echo "====== bridgeMessage L2 -> L1" >&3

@@ -1,6 +1,9 @@
 package common
 
-import "github.com/agglayer/aggkit/translator"
+import (
+	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/translator"
+)
 
 // Config holds the configuration for the CDK.
 type Config struct {
@@ -11,4 +14,6 @@ type Config struct {
 	// Contract Versions: elderberry, banana
 	ContractVersions string            `mapstructure:"ContractVersions"`
 	Translator       translator.Config `mapstructure:"Translator"`
+	// L2URL is the URL of the L2 node
+	L2RPC ethermanconfig.RPCClientConfig `mapstructure:"L2RPC"`
 }
