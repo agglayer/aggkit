@@ -1363,3 +1363,29 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 
 	require.Equal(t, expectedClaim, actualClaim)
 }
+
+func TestTokenMappingTypeString(t *testing.T) {
+	tests := []struct {
+		name     string
+		t        TokenMappingType
+		expected string
+	}{
+		{
+			name:     "WrappedToken",
+			t:        WrappedToken,
+			expected: "WrappedToken",
+		},
+		{
+			name:     "SovereignToken",
+			t:        SovereignToken,
+			expected: "SovereignToken",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.t.String())
+		})
+	}
+}
