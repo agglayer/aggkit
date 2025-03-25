@@ -156,7 +156,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 		a.logger.Errorf("error checking if claims are part of finalized L1 Info tree root: %s with index: %d: %w",
 			root.Hash.String(), root.Index, err)
 
-		return nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
+		return nil, fmt.Errorf("error checking if claims are part of "+
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash.String(), root.Index, err)
 	}
 
@@ -170,7 +170,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	if err != nil {
 		a.logger.Errorf("error getting injected GERs proofs: %w", err)
 
-		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
+		return nil, fmt.Errorf("error getting injected GERs proofs: %w", err)
 	}
 
 	// convert claims to imported bridge exits for the block range
@@ -181,7 +181,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	if err != nil {
 		a.logger.Errorf("error converting claims to imported bridge exits for prover: %w", err)
 
-		return nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
+		return nil, fmt.Errorf("error getting imported bridge exits for prover: %w", err)
 	}
 
 	a.logger.Debugf("Converted %d claims to %d imported bridge exits for block range %d : %d",

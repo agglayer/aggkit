@@ -9,6 +9,7 @@ import (
 	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	aggkitProverMocks "github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -108,6 +109,72 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 						MainnetFlag: true,
 						RollupIndex: 1,
 						LeafIndex:   1,
+					},
+					ClaimData: &agglayer.ClaimFromMainnnet{
+						ProofLeafMER: &agglayer.MerkleProof{
+							Root:  common.HexToHash("0x3"),
+							Proof: tree.EmptyProof,
+						},
+						ProofGERToL1Root: &agglayer.MerkleProof{
+							Root:  common.HexToHash("0x4"),
+							Proof: tree.EmptyProof,
+						},
+						L1Leaf: &agglayer.L1InfoTreeLeaf{
+							L1InfoTreeIndex: 1,
+							RollupExitRoot:  common.HexToHash("0x5"),
+							MainnetExitRoot: common.HexToHash("0x6"),
+							Inner: &agglayer.L1InfoTreeLeafInner{
+								GlobalExitRoot: common.HexToHash("0x7"),
+								BlockHash:      common.HexToHash("0x8"),
+								Timestamp:      1,
+							},
+						},
+					},
+				},
+			},
+			{
+				BlockNumber: 2,
+				ImportedBridgeExit: &agglayer.ImportedBridgeExit{
+					BridgeExit: &agglayer.BridgeExit{
+						LeafType:           1,
+						DestinationNetwork: 2,
+						DestinationAddress: common.HexToAddress("0x11"),
+						Amount:             common.Big2,
+						Metadata:           []byte("metadata2"),
+						IsMetadataHashed:   false,
+						TokenInfo: &agglayer.TokenInfo{
+							OriginNetwork:      1,
+							OriginTokenAddress: common.HexToAddress("0x22"),
+						},
+					},
+					GlobalIndex: &agglayer.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 11,
+						LeafIndex:   11,
+					},
+					ClaimData: &agglayer.ClaimFromRollup{
+						ProofLeafLER: &agglayer.MerkleProof{
+							Root:  common.HexToHash("0x33"),
+							Proof: tree.EmptyProof,
+						},
+						ProofGERToL1Root: &agglayer.MerkleProof{
+							Root:  common.HexToHash("0x44"),
+							Proof: tree.EmptyProof,
+						},
+						ProofLERToRER: &agglayer.MerkleProof{
+							Root:  common.HexToHash("0x555"),
+							Proof: tree.EmptyProof,
+						},
+						L1Leaf: &agglayer.L1InfoTreeLeaf{
+							L1InfoTreeIndex: 11,
+							RollupExitRoot:  common.HexToHash("0x55"),
+							MainnetExitRoot: common.HexToHash("0x66"),
+							Inner: &agglayer.L1InfoTreeLeafInner{
+								GlobalExitRoot: common.HexToHash("0x77"),
+								BlockHash:      common.HexToHash("0x88"),
+								Timestamp:      11,
+							},
+						},
 					},
 				},
 			},
