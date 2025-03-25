@@ -1,0 +1,40 @@
+PathRWData = "{{.zkevm_path_rw_data}}/"
+L1URL="{{.l1_rpc_url}}"
+L2URL="{{.l2_rpc_url}}"
+AggLayerURL="{{.agglayer_grpc_url}}"
+
+# This values can be override directly from genesis.json
+rollupCreationBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
+rollupManagerCreationBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
+genesisBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
+polygonBridgeAddr = "{{.zkevm_bridge_address}}"
+
+[Log]
+Environment = "development" # "production" or "development"
+Level = "{{.global_log_level}}"
+Outputs = ["stderr"]
+
+[L1Config]
+	chainId = "{{.l1_chain_id}}"
+	polygonZkEVMGlobalExitRootAddress = "{{.zkevm_global_exit_root_address}}"
+	polygonRollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
+	polTokenAddress = "{{.pol_token_address}}"
+	polygonZkEVMAddress = "{{.zkevm_rollup_address}}"
+	
+[L2Config]
+	GlobalExitRootAddr = "{{.zkevm_global_exit_root_l2_address}}"
+
+[BridgeL2Sync]
+BridgeAddr = "{{.zkevm_L2_bridge_address}}"
+       
+[AggSender]
+CheckStatusCertificateInterval = "1s"
+	[AggSender.MaxSubmitCertificateRate]
+		NumRequests = 20
+		Interval = "1m"
+
+[AggchainProofGen]
+AggchainProofURL = "{{.aggkit_prover_grpc_url}}"
+GlobalExitRootL2Addr = "{{.zkevm_global_exit_root_l2_address}}"
+
+

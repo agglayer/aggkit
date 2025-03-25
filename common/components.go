@@ -13,4 +13,6 @@ const (
 	AGGSENDER = "aggsender"
 	// L1INFOTREESYNC name to identify the l1infotreesync component
 	L1INFOTREESYNC = "l1infotreesync"
+	// AGGCHAINPROOFGEN name to identify the aggchain-proof-gen component
+	AGGCHAINPROOFGEN = "aggchain-proof-gen"
 )

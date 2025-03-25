@@ -18,6 +18,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
+	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -115,6 +116,20 @@ func start(cliCtx *cli.Context) error {
 			rpcServices = append(rpcServices, aggsender.GetRPCServices()...)
 
 			go aggsender.Start(cliCtx.Context)
+		case aggkitcommon.AGGCHAINPROOFGEN:
+			aggchainProofGen, err := createAggchainProofGen(
+				cliCtx.Context,
+				cfg.AggchainProofGen,
+				l1Client,
+				l2Client,
+				l1InfoTreeSync,
+				l2BridgeSync,
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			rpcServices = append(rpcServices, aggchainProofGen.GetRPCServices()...)
 		}
 	}
 	if len(rpcServices) > 0 {
@@ -135,6 +150,31 @@ func start(cliCtx *cli.Context) error {
 	waitSignal(nil)
 
 	return nil
+}
+
+func createAggchainProofGen(
+	ctx context.Context,
+	cfg prover.Config,
+	l1Client *ethclient.Client,
+	l2Client *ethclient.Client,
+	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
+	l2Syncer *bridgesync.BridgeSync) (*prover.AggchainProofGenerationTool, error) {
+	logger := log.WithFields("module", aggkitcommon.AGGCHAINPROOFGEN)
+
+	aggchainProofGen, err := prover.NewAggchainProofGenerationTool(
+		ctx,
+		logger,
+		cfg,
+		l2Syncer,
+		l1InfoTreeSync,
+		l1Client,
+		l2Client,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggchainProofGenerationTool: %w", err)
+	}
+
+	return aggchainProofGen, nil
 }
 
 func createAggSender(
@@ -311,7 +351,8 @@ func runL1InfoTreeSyncerIfNeeded(
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC}, components) {
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
 	l1InfoTreeSync, err := l1infotreesync.New(
@@ -344,6 +385,7 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) *ethclient.Client
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.AGGCHAINPROOFGEN,
 	}, components) {
 		return nil
 	}
@@ -371,7 +413,11 @@ func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Con
 }
 
 func runL2ClientIfNeeded(components []string, urlRPCL2 string) *ethclient.Client {
-	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE,
+		aggkitcommon.BRIDGE,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
 
@@ -392,7 +438,8 @@ func runReorgDetectorL1IfNeeded(
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC},
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.AGGCHAINPROOFGEN},
 		components) {
 		return nil, nil
 	}
@@ -415,7 +462,11 @@ func runReorgDetectorL2IfNeeded(
 	l2Client *ethclient.Client,
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
-	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE,
+		aggkitcommon.BRIDGE,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil, nil
 	}
 	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
@@ -546,7 +597,10 @@ func runBridgeSyncL2IfNeeded(
 	l2Client *ethclient.Client,
 	rollupID uint32,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
+	if !isNeeded([]string{
+		aggkitcommon.BRIDGE,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
 
@@ -606,6 +660,7 @@ func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
 	logger := log.WithFields("module", "RPC")
 
 	healthHandler := healthcheck.NewHealthCheckHandler(logger)
+	logger.Infof("Starting RPC server at %s:%d", cfg.Host, cfg.Port)
 	return jRPC.NewServer(cfg, services,
 		jRPC.WithLogger(logger.GetSugaredLogger()),
 		jRPC.WithHealthHandler(healthHandler))

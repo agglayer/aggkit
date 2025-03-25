@@ -2,6 +2,9 @@ package grpc
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
@@ -12,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitCommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -38,7 +42,8 @@ type AggchainProofClient struct {
 
 // NewAggchainProofClient initializes a new AggchainProof instance
 func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
-	grpcClient, err := aggkitCommon.NewClient(serverAddr)
+	addr := strings.TrimPrefix(serverAddr, "http://")
+	grpcClient, err := aggkitCommon.NewClient(addr)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +124,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	convertedImportedBridgeExitsWithBlockNumber := make([]*aggkitProverV1Proto.ImportedBridgeExitWithBlockNumber,
 		len(importedBridgeExitsWithBlockNumber))
 	for i, importedBridgeExitWithBlockNumber := range importedBridgeExitsWithBlockNumber {
-		convertedBridgeExit := &agglayerInteropTypesV1Proto.ImportedBridgeExit{
+		convertedImportedBridgeExit := &agglayerInteropTypesV1Proto.ImportedBridgeExit{
 			BridgeExit: &agglayerInteropTypesV1Proto.BridgeExit{
 				LeafType: agglayerInteropTypesV1Proto.LeafType(
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.LeafType),
@@ -148,13 +153,97 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 				).Bytes(),
 			},
 		}
+
+		if importedBridgeExitWithBlockNumber.ImportedBridgeExit.ClaimData != nil {
+			switch c := importedBridgeExitWithBlockNumber.ImportedBridgeExit.ClaimData.(type) {
+			case *agglayer.ClaimFromMainnnet:
+				convertedImportedBridgeExit.Claim = &agglayerInteropTypesV1Proto.ImportedBridgeExit_Mainnet{
+					Mainnet: &agglayerInteropTypesV1Proto.ClaimFromMainnet{
+						ProofLeafMer: &agglayerInteropTypesV1Proto.MerkleProof{
+							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
+								Value: c.ProofLeafMER.Root.Bytes(),
+							},
+							Siblings: convertToProtoSiblings(c.ProofLeafMER.Proof),
+						},
+						ProofGerL1Root: &agglayerInteropTypesV1Proto.MerkleProof{
+							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
+								Value: c.ProofGERToL1Root.Root.Bytes(),
+							},
+							Siblings: convertToProtoSiblings(c.ProofGERToL1Root.Proof),
+						},
+						L1Leaf: &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
+							L1InfoTreeIndex: c.L1Leaf.L1InfoTreeIndex,
+							Rer: &agglayerInteropTypesV1Proto.FixedBytes32{
+								Value: c.L1Leaf.RollupExitRoot.Bytes(),
+							},
+							Mer: &agglayerInteropTypesV1Proto.FixedBytes32{
+								Value: c.L1Leaf.MainnetExitRoot.Bytes(),
+							},
+							Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
+								GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{
+									Value: c.L1Leaf.Inner.GlobalExitRoot.Bytes(),
+								},
+								BlockHash: &agglayerInteropTypesV1Proto.FixedBytes32{
+									Value: c.L1Leaf.Inner.BlockHash.Bytes(),
+								},
+								Timestamp: c.L1Leaf.Inner.Timestamp,
+							},
+						},
+					},
+				}
+			case *agglayer.ClaimFromRollup:
+				convertedImportedBridgeExit.Claim = &agglayerInteropTypesV1Proto.ImportedBridgeExit_Rollup{
+					Rollup: &agglayerInteropTypesV1Proto.ClaimFromRollup{
+						ProofLeafLer: &agglayerInteropTypesV1Proto.MerkleProof{
+							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
+								Value: c.ProofLeafLER.Root.Bytes(),
+							},
+							Siblings: convertToProtoSiblings(c.ProofLeafLER.Proof),
+						},
+						ProofLerRer: &agglayerInteropTypesV1Proto.MerkleProof{
+							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
+								Value: c.ProofLERToRER.Root.Bytes(),
+							},
+							Siblings: convertToProtoSiblings(c.ProofLERToRER.Proof),
+						},
+						ProofGerL1Root: &agglayerInteropTypesV1Proto.MerkleProof{
+							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
+								Value: c.ProofGERToL1Root.Root.Bytes(),
+							},
+							Siblings: convertToProtoSiblings(c.ProofGERToL1Root.Proof),
+						},
+						L1Leaf: &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
+							L1InfoTreeIndex: c.L1Leaf.L1InfoTreeIndex,
+							Rer: &agglayerInteropTypesV1Proto.FixedBytes32{
+								Value: c.L1Leaf.RollupExitRoot.Bytes(),
+							},
+							Mer: &agglayerInteropTypesV1Proto.FixedBytes32{
+								Value: c.L1Leaf.MainnetExitRoot.Bytes(),
+							},
+							Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
+								GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{
+									Value: c.L1Leaf.Inner.GlobalExitRoot.Bytes(),
+								},
+								BlockHash: &agglayerInteropTypesV1Proto.FixedBytes32{
+									Value: c.L1Leaf.Inner.BlockHash.Bytes(),
+								},
+								Timestamp: c.L1Leaf.Inner.Timestamp,
+							},
+						},
+					},
+				}
+			default:
+				return nil, fmt.Errorf("unsupported claim data type: %T", c)
+			}
+		}
+
 		convertedImportedBridgeExitsWithBlockNumber[i] = &aggkitProverV1Proto.ImportedBridgeExitWithBlockNumber{
-			ImportedBridgeExit: convertedBridgeExit,
+			ImportedBridgeExit: convertedImportedBridgeExit,
 			BlockNumber:        importedBridgeExitWithBlockNumber.BlockNumber,
 		}
 	}
 
-	resp, err := c.client.GenerateAggchainProof(ctx, &aggkitProverV1Proto.GenerateAggchainProofRequest{
+	request := &aggkitProverV1Proto.GenerateAggchainProofRequest{
 		LastProvenBlock:       lastProvenBlock,
 		RequestedEndBlock:     requestedEndBlock,
 		L1InfoTreeRootHash:    &agglayerInteropTypesV1Proto.FixedBytes32{Value: l1InfoTreeRootHash.Bytes()},
@@ -162,7 +251,18 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		L1InfoTreeMerkleProof: convertedMerkleProof,
 		GerLeaves:             convertedGerLeaves,
 		ImportedBridgeExits:   convertedImportedBridgeExitsWithBlockNumber,
-	})
+	}
+
+	// this is just to log the request to log for debugging purposes
+	raw, err := json.Marshal(request)
+	if err == nil {
+		log.Debug("GenerateAggchainProof inputs:")
+		log.Debug(string(raw))
+	} else {
+		log.Errorf("Failed to marshal GenerateAggchainProof request: %v", err)
+	}
+
+	resp, err := c.client.GenerateAggchainProof(ctx, request)
 	if err != nil {
 		return nil, err
 	}
@@ -174,4 +274,17 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		LocalExitRoot:   common.Hash(resp.LocalExitRootHash.Value),
 		CustomChainData: resp.CustomChainData,
 	}, nil
+}
+
+// convertToProtoSiblings converts a slice of hashes to a slice of proto fixed bytes 32
+func convertToProtoSiblings(siblings treetypes.Proof) []*agglayerInteropTypesV1Proto.FixedBytes32 {
+	protoSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, len(siblings))
+
+	for i, sibling := range siblings {
+		protoSiblings[i] = &agglayerInteropTypesV1Proto.FixedBytes32{
+			Value: sibling.Bytes(),
+		}
+	}
+
+	return protoSiblings
 }

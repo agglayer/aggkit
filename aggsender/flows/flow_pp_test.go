@@ -1,4 +1,4 @@
-package aggsender
+package flows
 
 import (
 	"context"
@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+var ler1 = common.HexToHash("0x123")
 
 func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 	t.Parallel()
@@ -118,7 +120,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			flow := &baseFlow{}
+			flow := &BaseFlow{}
 			exit, err := flow.convertClaimToImportedBridgeExit(tt.claim)
 
 			if tt.expectedError {
@@ -226,7 +228,7 @@ func TestGetBridgeExits(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			flow := &baseFlow{}
+			flow := &BaseFlow{}
 			exits := flow.getBridgeExits(tt.bridges)
 
 			require.Equal(t, tt.expectedExits, exits)
@@ -839,7 +841,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			storageMock := mocks.NewAggSenderStorage(t)
-			flow := &baseFlow{log: log.WithFields("aggsender-test", "getNextHeightAndPreviousLER"), storage: storageMock}
+			flow := &BaseFlow{log: log.WithFields("aggsender-test", "getNextHeightAndPreviousLER"), storage: storageMock}
 			if tt.lastSettleCertificateInfoCall || tt.lastSettleCertificateInfo != nil || tt.lastSettleCertificateInfoError != nil {
 				storageMock.EXPECT().GetCertificateByHeight(mock.Anything).Return(tt.lastSettleCertificateInfo, tt.lastSettleCertificateInfoError).Once()
 			}
@@ -929,7 +931,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			t.Parallel()
 
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-			fm := &baseFlow{
+			fm := &BaseFlow{
 				l2Syncer: mockL2Syncer,
 				log:      log.WithFields("flowManager", "TestGetBridgesAndClaims"),
 			}
@@ -1082,7 +1084,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
-			ppFlow := &ppFlow{
+			ppFlow := &PPFlow{
 				signer: signer,
 				baseFlow: &baseFlow{
 					log:                   log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams"),

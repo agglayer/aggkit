@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -36,7 +37,6 @@ const (
 
 var (
 	errTest = errors.New("unitest  error")
-	ler1    = common.HexToHash("0x123")
 )
 
 func TestConfigString(t *testing.T) {
@@ -448,7 +448,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		aggLayerClient:   mockAggLayerClient,
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
 		cfg:              Config{},
-		flow:             newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer, nil, signer),
+		flow:             flows.NewPPFlow(logger, 0, false, mockStorage, nil, mockL2Syncer, nil, signer),
 		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
@@ -1005,7 +1005,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
-		flow:          newPPFlow(logger, Config{}, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
+		flow:          flows.NewPPFlow(logger, 0, false, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
 	}
 	testCerts := []aggsendertypes.CertificateInfo{
 		{

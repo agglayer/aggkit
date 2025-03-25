@@ -1,0 +1,378 @@
+#!/bin/bash
+#Include common varaibles
+source $(dirname $0)/../test/scripts/env.sh
+###############################################################################
+function log_debug() {
+    echo -e "\033[0;90mDebug: $*" "\033[0m"
+}
+###############################################################################
+function log_error() {
+    echo -e "\033[0;31mError: $*" "\033[0m"
+}
+###############################################################################
+function log_fatal() {
+    log_error $*
+    exit 1
+}
+###############################################################################
+function ok_or_fatal() {
+    if [ $? -ne 0 ]; then
+        log_fatal $*
+    fi
+}
+
+###############################################################################
+function get_value_from_toml_file() {
+    local _FILE="$1"
+    # KEY  = <section1>.<section2>
+    local _SECTION="$2"
+    local _KEY="$3"
+    local _LINE
+    local _inside_section=0
+    if [ $_SECTION == "." ]; then
+        _SECTION=""
+        _inside_section=1
+    fi
+    local _return_next_line=0
+    local _TMP_FILE=$(mktemp)
+    cat $_FILE >$_TMP_FILE
+    # Maybe the file doesnt end with a new line so we added just in case
+    echo >>$_TMP_FILE
+    while read -r _LINE; do
+        # Clean up line from spaces and tabs
+        _LINE=$(echo $_LINE | tr -d '[:space:]')
+        if [ $_inside_section -eq 1 ]; then
+            if [[ "$_LINE" == [* ]]; then
+                return 1
+            fi
+            if [ $_return_next_line -eq 1 ]; then
+                # sed sentence remove quotes
+                echo $_LINE | sed 's/^[[:space:]]*"//;s/"$//'
+
+                return 0
+            fi
+            #local _key_splitted=(${_LINE//=/ })
+            local _key_name=$(echo $_LINE | cut -f 1 -d "=")
+            local _key_value=$(echo $_LINE | cut -f 2- -d "=")
+            if [ "$_key_name" == "$_KEY" ]; then
+                if [ $_key_value == "[" ]; then
+                    _return_next_line=1
+                else
+                    rm $_TMP_FILE
+                    # sed sentence remove quotes
+                    echo $_key_value | sed 's/^[[:space:]]*"//;s/"$//'
+                    return 0
+                fi
+            fi
+        elif [ "$_LINE" == "[${_SECTION}]" ]; then
+            _inside_section=1
+        fi
+
+    done <"$_TMP_FILE"
+    rm $_TMP_FILE
+    return 2
+
+}
+###############################################################################
+function export_key_from_toml_file_or_fatal() {
+    export_key_from_toml_file "$1" "$2" "$3" "$4"
+    if [ $? -ne 0 ]; then
+        local _EXPORTED_VAR_NAME="$1"
+        local _FILE="$2"
+        local _SECTION="$3"
+        local _KEY="$4"
+        log_fatal "$FUNCNAME: key [$_KEY] not found in section [$_SECTION] in file [$_FILE]"
+    fi
+}
+
+###############################################################################
+function export_key_from_toml_file() {
+    local _EXPORTED_VAR_NAME="$1"
+    local _FILE="$2"
+    local _SECTION="$3"
+    local _KEY="$4"
+    local _VALUE=$(get_value_from_toml_file $_FILE $_SECTION $_KEY)
+    if [ -z "$_VALUE" ]; then
+        log_debug "$FUNCNAME: key [$_KEY] not found in section [$_SECTION] in file [$_FILE]"
+        return 1
+    fi
+    export $_EXPORTED_VAR_NAME="$_VALUE"
+    log_debug "$_EXPORTED_VAR_NAME=${!_EXPORTED_VAR_NAME}  \t\t\t# file:$_FILE section:$_SECTION key:$_KEY"
+    return 0
+}
+###############################################################################
+function export_obj_key_from_toml_file_or_fatal() {
+    export_obj_key_from_toml_file $*
+    if [ $? -ne 0 ]; then
+        local _EXPORTED_VAR_NAME="$1"
+        local _FILE="$2"
+        local _SECTION="$3"
+        local _KEY="$4"
+        log_fatal "$FUNCNAME: obj_key [$_KEY] not found in section [$_SECTION] in file [$_FILE]"
+    fi
+}
+
+###############################################################################
+function export_obj_key_from_toml_file() {
+    local _EXPORTED_VAR_NAME="$1"
+    local _FILE="$2"
+    local _SECTION="$3"
+    local _KEY="$4"
+    local _OBJ_KEY="$5"
+    log_debug "export_obj_key_from_toml_file: $_EXPORTED_VAR_NAME $_FILE $_SECTION $_KEY $_OBJ_KEY"
+    local _VALUE=$(get_value_from_toml_file $_FILE $_SECTION $_KEY)
+    if [ -z "$_VALUE" ]; then
+        log_debug "export_obj_key_from_toml_file: obj_key $_KEY not found in section [$_SECTION]"
+        return 1
+    fi
+    local _CLEAN_VALUE=$(echo $_VALUE | tr -d '{' | tr -d '}' | tr ',' '\n')
+    while read -r _LINE; do
+        local _key_splitted=(${_LINE//=/ })
+
+        if [ "${_key_splitted[0]}" == "$_OBJ_KEY" ]; then
+            local _KEY_VALUE=${_key_splitted[1]}
+            if [ "$_KEY_VALUE" == "[" ]; then
+                read -r _LINE
+                _KEY_VALUE=$LINE
+                echo "zzz $_KEY_VALUE"
+            fi
+            local _RES=$(echo $_KEY_VALUE | sed 's/^[[:space:]]*"//;s/"$//')
+            export $_EXPORTED_VAR_NAME="${_RES}"
+            log_debug "$_EXPORTED_VAR_NAME=${!_EXPORTED_VAR_NAME}  \t\t\t# file:$_FILE section:$_SECTION key:$_KEY obj_key:$_OBJ_KEY"
+            return 0
+        fi
+    done <<<"$_CLEAN_VALUE"
+    log_debug "export_obj_key_from_toml_file: obj_key $_OBJ_KEY not found in section $_SECTION/ $_KEY = $_VALUE"
+    return 1
+}
+
+###############################################################################
+function export_values_of_genesis() {
+    local _GENESIS_FILE=$1
+    echo $_GENESIS_FILE
+    if [ ! -f $_GENESIS_FILE ]; then
+        log_fatal "Error: genesis file not found: $_GENESIS_FILE"
+    fi
+    export l1_chain_id=$(jq -r '.genesis_sovereign.L1Config.chainId' $_GENESIS_FILE | tr -d '"')
+    export zkevm_rollup_address=$(jq -r '.genesis_sovereign.L1Config.polygonZkEVMAddress' $_GENESIS_FILE)
+}
+
+function export_values_from_combined_json() {
+    local combined_json_file="/opt/zkevm/combined.json"
+    local contracts_service_wrapper="kurtosis service exec $KURTOSIS_ENCLAVE contracts-001"
+    combined_json_output=$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)
+    echo "$combined_json_output"
+    
+    export zkevm_L2_bridge_address=$(echo "$combined_json_output" | jq -r .polygonZkEVML2BridgeAddress)
+    export zkevm_global_exit_root_l2_address=$(echo "$combined_json_output" | jq -r .polygonZkEVMGlobalExitRootL2Address)
+}
+
+###############################################################################
+function export_values_of_cdk_node_config() {
+    local _CDK_CONFIG_FILE=$1
+    export_key_from_toml_file_or_fatal l1_chain_id $_CDK_CONFIG_FILE L1Config chainId
+    export_key_from_toml_file_or_fatal pol_token_address $_CDK_CONFIG_FILE L1Config polTokenAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_address $_CDK_CONFIG_FILE L1Config polygonRollupManagerAddress
+    export_key_from_toml_file_or_fatal zkevm_global_exit_root_address $_CDK_CONFIG_FILE L1Config polygonZkEVMGlobalExitRootAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_block_number $_CDK_CONFIG_FILE . rollupManagerCreationBlockNumber
+    export_key_from_toml_file_or_fatal zkevm_rollup_address $_CDK_CONFIG_FILE L1Config polygonZkEVMAddress
+    export_key_from_toml_file_or_fatal zkevm_bridge_address $_CDK_CONFIG_FILE . polygonBridgeAddr
+}
+###############################################################################
+# params:
+# $1 -> exported variable name
+# $2 -> service name
+# $3...$n -> endpoint names (will try all of them until one is found)
+###############################################################################
+function export_value_from_kurtosis_or_fail() {
+    local _EXPORTED_VAR_NAME="$1"
+    shift
+    local _SERVICE="$1"
+    shift
+    local _END_POINT
+    local _RESULT
+    log_debug "Trying to get kurtosis value:$_EXPORTED_VAR_NAME =   $KURTOSIS_ENCLAVE $_SERVICE $*"
+    while [ ! -z $1 ]; do
+        _END_POINT=$1
+        shift
+        log_debug "---  kurtosis value:  $KURTOSIS_ENCLAVE $_SERVICE $_END_POINT"
+        _RESULT=$(kurtosis port print $KURTOSIS_ENCLAVE $_SERVICE $_END_POINT 2>/dev/null)
+        if [ ! -z $_RESULT ]; then
+            break
+        fi
+    done
+    export $_EXPORTED_VAR_NAME=$_RESULT
+    if [ -z $_EXPORTED_VAR_NAME ]; then
+        log_fatal "Error getting kurtosis port:  $KURTOSIS_ENCLAVE $_SERVICE $_END_POINT"
+    fi
+    log_debug "$_EXPORTED_VAR_NAME=${!_EXPORTED_VAR_NAME}  \t\t\t# Kurtosis $KURTOSIS_ENCLAVE $_SERVICE $_END_POINT"
+}
+###############################################################################
+function export_portnum_from_kurtosis_or_fail() {
+    local _EXPORTED_VAR_NAME="$1"
+    export_value_from_kurtosis_or_fail $* >/dev/null
+    local _VALUE
+    eval "_VALUE=\$$1"
+    # sed sentece eliminate protocol (xyz://) is have it
+    # kurtosis sometimes include protocol but not always
+    local _PORT=$(echo "$_VALUE" | sed -E 's|^[a-zA-Z]+://||' | cut -f 2 -d ":")
+    if [ -z $_PORT ]; then
+        log_fatal "Error getting port number from kurtosis:  $2 $3 -> $_VALUE"
+    fi
+    export $_EXPORTED_VAR_NAME=$_PORT
+    log_debug "$_EXPORTED_VAR_NAME=${!_EXPORTED_VAR_NAME} \t\t\t# Kurtosis $KURTOSIS_ENCLAVE $2 $3"
+}
+###############################################################################
+function export_ports_from_kurtosis() {
+    export_portnum_from_kurtosis_or_fail l1_rpc_port el-1-geth-lighthouse rpc
+    export_portnum_from_kurtosis_or_fail zkevm_rpc_http_port op-el-1-op-geth-op-node-001 rpc rpc
+    export_portnum_from_kurtosis_or_fail agglayer_grpc_port agglayer aglr-grpc
+    export_portnum_from_kurtosis_or_fail aggkit_prover_grpc_port aggkit-prover grpc
+    export l1_rpc_url="http://localhost:${l1_rpc_port}"
+    export l2_rpc_url="http://localhost:${zkevm_rpc_http_port}"
+    export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
+    export aggkit_prover_grpc_url="http://localhost:${aggkit_prover_grpc_port}"
+}
+
+###############################################################################
+function export_forced_values() {
+    export global_log_level="debug"
+    export l2_rpc_name="localhost"
+    export deployment_suffix=""
+}
+###############################################################################
+function check_requirements() {
+    which kurtosis >/dev/null
+    if [ $? -ne 0 ]; then
+        log_error "kurtosis is not installed. Please install it:"
+        cat <<EOF
+            echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
+        echo "deb [trusted=yes] https://apt.fury.io/kurtosis-tech/ /" | sudo tee /etc/apt/sources.list.d/kurtosis.list
+        sudo apt install kurtosis-cli
+        kurtosis version
+EOF
+        exit 1
+
+    fi
+    if [ -z $TMP_AGGKIT_FOLDER -o -z $KURTOSIS_ENCLAVE ]; then
+        log_fatal "TMP_AGGKIT_FOLDER or KURTOSIS_ENCLAVE is not set. Must be set on file env.sh"
+    fi
+    kurtosis enclave inspect $KURTOSIS_ENCLAVE >/dev/null
+    if [ $? -ne 0 ]; then
+        log_error "Error inspecting enclave $KURTOSIS_ENCLAVE"
+        echo "You must start kurtosis environment before running this script"
+        echo "- start kurtosis:"
+        echo "    kurtosis clean --all; kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file params.yml --image-download always ."
+
+        exit 1
+    fi
+}
+###############################################################################
+function create_dest_folder() {
+    export DEST=${TMP_AGGKIT_FOLDER}/local_config
+    export zkevm_path_rw_data=${TMP_AGGKIT_FOLDER}/runtime
+    [ ! -d ${DEST} ] && mkdir -p ${DEST}
+    rm $DEST/*
+    mkdir $zkevm_path_rw_data
+}
+###############################################################################
+function download_kurtosis_artifacts() {
+    kurtosis files download $KURTOSIS_ENCLAVE sovereign_genesis $DEST
+    ok_or_fatal "Error downloading kurtosis artifact sovereign_genesis to $DEST"
+    export genesis_file=$DEST/genesis.json
+
+    kurtosis files download $KURTOSIS_ENCLAVE agglayer-keystore $DEST
+    ok_or_fatal "Error downloading kurtosis artifact agglayer  to $DEST"
+    export zkevm_l2_agglayer_keystore_file=$DEST/agglayer.keystore
+
+    kurtosis files download $KURTOSIS_ENCLAVE cdk-aggoracle-config-artifact $DEST
+    ok_or_fatal "Error downloading kurtosis artifact cdk-aggoracle-config  to $DEST"
+}
+###############################################################################
+function check_generated_config_file() {
+    grep "<no value>" $DEST_TEMPLATE_FILE >/dev/null
+    if [ $? -ne 1 ]; then
+        log_error "some values are not set, check $ORIG_TEMPLATE_FILE"
+        echo ""
+        echo "missing keys in rendered template: $DEST_TEMPLATE_FILE"
+        echo " "
+        grep "<no value>" $DEST_TEMPLATE_FILE
+        exit 1
+    fi
+}
+###############################################################################
+function parse_command_line_args() {
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+        -h | --help)
+            echo "Usage: $0"
+            echo "  -h: help"
+            exit 0
+            ;;
+        -e | --enclave)
+            KURTOSIS_ENCLAVE=$2
+            shift
+            shift
+            ;;
+        -*)
+            echo "Invalid Option: $1" 1>&2
+            exit 1
+            ;;
+        esac
+    done
+}
+###############################################################################
+# MAIN
+###############################################################################
+set -o pipefail # enable strict command pipe error detection
+parse_command_line_args $*
+rm -Rf tmp/aggkit/runtime/*
+check_requirements
+create_dest_folder
+
+download_kurtosis_artifacts
+
+#export_values_of_genesis $genesis_file
+export_values_from_combined_json
+export_ports_from_kurtosis
+export_values_of_cdk_node_config $DEST/config.toml
+export_forced_values
+
+ORIG_TEMPLATE_FILE=test/config/aggkit-node-config.toml.template
+DEST_TEMPLATE_FILE=$DEST/test.kurtosis.toml
+
+# Generate config file
+go run scripts/run_template.go $ORIG_TEMPLATE_FILE >$DEST_TEMPLATE_FILE
+ok_or_fatal "Error generating template"
+
+check_generated_config_file
+
+echo " "
+echo "file generated at:" $DEST/test.kurtosis.toml
+
+echo "- to restart kurtosis:"
+echo "    kurtosis clean --all; kurtosis run --enclave aggkit --args-file params.yml --image-download always ."
+echo " "
+echo "- Add next configuration to vscode launch.json"
+echo " -----------------------------------------------------------"
+cat <<EOF
+         {
+            "name": "Run aggchain-proof-gen",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "cmd/",
+            "cwd": "\${workspaceFolder}",
+            "args":[
+                "run",
+                "-cfg", "$DEST_TEMPLATE_FILE",
+                "-components", "aggchain-proof-gen"
+            ]
+        },
+
+EOF
+
+echo " -----------------------------------------------------------"
+echo " "
+echo " - rembember to clean previous execution data: "
+echo "     rm -Rf ${zkevm_path_rw_data}/*"

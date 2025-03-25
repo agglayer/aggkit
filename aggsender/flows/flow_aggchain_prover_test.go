@@ -1,4 +1,4 @@
-package aggsender
+package flows
 
 import (
 	"context"
@@ -412,7 +412,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 			mockChainGERReader := mocks.NewChainGERReader(t)
 			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-			aggchainFlow := &aggchainProverFlow{
+			aggchainFlow := &AggchainProverFlow{
 				gerReader:           mockChainGERReader,
 				aggchainProofClient: mockAggchainProofClient,
 				baseFlow: &baseFlow{
@@ -420,7 +420,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					l2Syncer:              mockL2Syncer,
 					storage:               mockStorage,
 					log:                   log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
-					cfg:                   Config{},
 				},
 			}
 
@@ -522,18 +521,17 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 
 			mockChainGERReader := mocks.NewChainGERReader(t)
 			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
-			aggchainFlow := &aggchainProverFlow{
+			aggchainFlow := &AaggchainProverFlow{
 				gerReader: mockChainGERReader,
 				baseFlow: &baseFlow{
 					l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
 					log:                   log.WithFields("flowManager", "Test_AggchainProverFlow_GetInjectedGERsProofs"),
-					cfg:                   Config{},
 				},
 			}
 
 			tc.mockFn(mockChainGERReader, mockL1InfoTreeQuery)
 
-			proofs, err := aggchainFlow.getInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x2"), Index: 10}, 1, 10)
+			proofs, err := aggchainFlow.GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x2"), Index: 10}, 1, 10)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
@@ -651,14 +649,13 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			flow := &aggchainProverFlow{
-				baseFlow: &baseFlow{
+			flow := &AggchainProverFlow{
+				BaseFlow: &BaseFlow{
 					log: log.WithFields("flowManager", "TestGetImportedBridgeExitsForProver"),
-					cfg: Config{},
 				},
 			}
 
-			exits, err := flow.getImportedBridgeExitsForProver(tc.claims)
+			exits, err := flow.GetImportedBridgeExitsForProver(tc.claims)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
