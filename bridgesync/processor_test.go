@@ -1389,3 +1389,199 @@ func TestTokenMappingTypeString(t *testing.T) {
 		})
 	}
 }
+
+func TestDecodeEtrogCalldata(t *testing.T) {
+	var (
+		globalIndex            = big.NewInt(12345)
+		mainnetExitRoot        = common.HexToHash("0x11")
+		rollupExitRoot         = common.HexToHash("0x22")
+		metadata               = []byte("mock metadata")
+		destinationNetwork     = uint32(1)
+		invalidTypePlaceholder = "invalidType"
+	)
+
+	tests := []struct {
+		name              string
+		data              []any
+		expectedIsDecoded bool
+		expectError       bool
+	}{
+		{
+			name: "Valid calldata",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				globalIndex, // GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()), // MainnetExitRoot
+				[common.HashLength]byte(rollupExitRoot.Bytes()),  // RollupExitRoot
+				uint32(0),          // OriginNetwork (not used)
+				common.Address{},   // OriginAddress (not used)
+				destinationNetwork, // DestinationNetwork
+				common.Address{},   // DestinationAddress (not used)
+				big.NewInt(0),      // Amount (not used)
+				metadata,           // Metadata
+			},
+			expectedIsDecoded: true,
+			expectError:       false,
+		},
+		{
+			name: "Mismatched GlobalIndex",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				big.NewInt(99999), // Wrong GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       false, // No error, just a mismatch
+		},
+		{
+			name: "Invalid GlobalIndex Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				[types.DefaultHeight][common.HashLength]byte{},
+				invalidTypePlaceholder, // Invalid GlobalIndex type
+				mainnetExitRoot.Bytes(),
+				rollupExitRoot.Bytes(),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid LocalExitRoot Proof Type",
+			data: []any{
+				invalidTypePlaceholder, // Invalid ProofLocalExitRoot type
+				[types.DefaultHeight][common.HashLength]byte{},
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid RollupExitRoot Proof Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				invalidTypePlaceholder, // Invalid RollupExitRoot proof type
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid MainnetExitRoot Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				globalIndex,            // GlobalIndex
+				invalidTypePlaceholder, // MainnetExitRoot
+				[common.HashLength]byte(rollupExitRoot.Bytes()), // RollupExitRoot
+				uint32(0),          // OriginNetwork (not used)
+				common.Address{},   // OriginAddress (not used)
+				destinationNetwork, // DestinationNetwork
+				common.Address{},   // DestinationAddress (not used)
+				big.NewInt(0),      // Amount (not used)
+				metadata,           // Metadata
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid RollupExitRoot Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				globalIndex, // GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()), // MainnetExitRoot
+				invalidTypePlaceholder,                           // RollupExitRoot
+				uint32(0),                                        // OriginNetwork (not used)
+				common.Address{},                                 // OriginAddress (not used)
+				destinationNetwork,                               // DestinationNetwork
+				common.Address{},                                 // DestinationAddress (not used)
+				big.NewInt(0),                                    // Amount (not used)
+				metadata,                                         // Metadata
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid DestinationNetwork Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				globalIndex, // GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()), // MainnetExitRoot
+				[common.HashLength]byte(rollupExitRoot.Bytes()),  // RollupExitRoot
+				uint32(0),              // OriginNetwork (not used)
+				common.Address{},       // OriginAddress (not used)
+				invalidTypePlaceholder, // DestinationNetwork
+				common.Address{},       // DestinationAddress (not used)
+				big.NewInt(0),          // Amount (not used)
+				metadata,               // Metadata
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid Metadata Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				[types.DefaultHeight][common.HashLength]byte{},
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				123, // Invalid metadata type (should be []byte)
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claim := &Claim{GlobalIndex: globalIndex}
+
+			isDecoded, err := claim.decodeEtrogCalldata(tt.data)
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tt.expectedIsDecoded, isDecoded)
+		})
+	}
+}
