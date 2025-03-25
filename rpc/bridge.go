@@ -22,7 +22,6 @@ const (
 	BRIDGE    = "bridge"
 	meterName = "github.com/agglayer/aggkit/rpc"
 
-	zeroHex              = "0x0"
 	binnarySearchDivider = 2
 )
 
@@ -147,7 +146,7 @@ func (b *BridgeEndpoints) L1InfoTreeIndexForBridge(networkID uint32, depositCoun
 		// TODO: special treatment of the error when not found,
 		// as it's expected that it will take some time for the L1 Info tree to be updated
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
 				"failed to get l1InfoTreeIndex for networkID %d and deposit count %d, error: %s", networkID, depositCount, err),
 			)
 		}
@@ -158,13 +157,13 @@ func (b *BridgeEndpoints) L1InfoTreeIndexForBridge(networkID uint32, depositCoun
 		// TODO: special treatment of the error when not found,
 		// as it's expected that it will take some time for the L1 Info tree to be updated
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
 				"failed to get l1InfoTreeIndex for networkID %d and deposit count %d, error: %s", networkID, depositCount, err),
 			)
 		}
 		return l1InfoTreeIndex, nil
 	}
-	return zeroHex, rpc.NewRPCError(
+	return nil, rpc.NewRPCError(
 		rpc.DefaultErrorCode,
 		fmt.Sprintf("this client does not support network %d", networkID),
 	)
@@ -186,22 +185,22 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 	if networkID == 0 {
 		info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
 		}
 		return info, nil
 	}
 	if networkID == b.networkID {
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
 		}
 		info, err := b.l1InfoTree.GetInfoByIndex(ctx, e.L1InfoTreeIndex)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
 		}
 		return info, nil
 	}
-	return zeroHex, rpc.NewRPCError(
+	return nil, rpc.NewRPCError(
 		rpc.DefaultErrorCode,
 		fmt.Sprintf("this client does not support network %d", networkID),
 	)
@@ -344,38 +343,38 @@ func (b *BridgeEndpoints) ClaimProof(
 
 	info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
 	if err != nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get info from the tree: %s", err))
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get info from the tree: %s", err))
 	}
-	proofRollupExitRoot, err := b.l1InfoTree.GetRollupExitTreeMerkleProof(ctx, networkID, info.GlobalExitRoot)
+	proofRollupExitRoot, err := b.l1InfoTree.GetRollupExitTreeMerkleProof(ctx, networkID, info.RollupExitRoot)
 	if err != nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get rollup exit proof, error: %s", err))
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get rollup exit proof, error: %s", err))
 	}
 	var proofLocalExitRoot tree.Proof
 	switch {
 	case networkID == 0:
 		proofLocalExitRoot, err = b.bridgeL1.GetProof(ctx, depositCount, info.MainnetExitRoot)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get local exit proof, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get local exit proof, error: %s", err))
 		}
 
 	case networkID == b.networkID:
 		localExitRoot, err := b.l1InfoTree.GetLocalExitRoot(ctx, networkID, info.RollupExitRoot)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(
+			return nil, rpc.NewRPCError(
 				rpc.DefaultErrorCode,
 				fmt.Sprintf("failed to get local exit root from rollup exit tree, error: %s", err),
 			)
 		}
 		proofLocalExitRoot, err = b.bridgeL2.GetProof(ctx, depositCount, localExitRoot)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(
+			return nil, rpc.NewRPCError(
 				rpc.DefaultErrorCode,
 				fmt.Sprintf("failed to get local exit proof, error: %s", err),
 			)
 		}
 
 	default:
-		return zeroHex, rpc.NewRPCError(
+		return nil, rpc.NewRPCError(
 			rpc.DefaultErrorCode,
 			fmt.Sprintf("this client does not support network %d", networkID),
 		)
@@ -400,16 +399,16 @@ func (b *BridgeEndpoints) SponsorClaim(claim claimsponsor.Claim) (interface{}, r
 	c.Add(ctx, 1)
 
 	if b.sponsor == nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, "this client does not support claim sponsoring")
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "this client does not support claim sponsoring")
 	}
 	if claim.DestinationNetwork != b.networkID {
-		return zeroHex, rpc.NewRPCError(
+		return nil, rpc.NewRPCError(
 			rpc.DefaultErrorCode,
 			fmt.Sprintf("this client only sponsors claims for network %d", b.networkID),
 		)
 	}
 	if err := b.sponsor.AddClaimToQueue(&claim); err != nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error adding claim to the queue %s", err))
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error adding claim to the queue %s", err))
 	}
 	return nil, nil
 }
@@ -427,11 +426,11 @@ func (b *BridgeEndpoints) GetSponsoredClaimStatus(globalIndex *big.Int) (interfa
 	c.Add(ctx, 1)
 
 	if b.sponsor == nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, "this client does not support claim sponsoring")
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "this client does not support claim sponsoring")
 	}
 	claim, err := b.sponsor.GetClaim(globalIndex)
 	if err != nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claim status, error: %s", err))
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claim status, error: %s", err))
 	}
 	return claim.Status, nil
 }
@@ -490,7 +489,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 	// (produced by the smart contract call verifyBatches / verifyBatchesTrustedAggregator)
 	// are included in the L1 info tree. As per the current implementation (smart contracts) of the protocol
 	// this is true. This could change in the future
-	lastVerified, err := b.l1InfoTree.GetLastVerifiedBatches(b.networkID - 1)
+	lastVerified, err := b.l1InfoTree.GetLastVerifiedBatches(b.networkID)
 	if err != nil {
 		return 0, err
 	}
@@ -503,7 +502,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 		return 0, ErrNotOnL1Info
 	}
 
-	firstVerified, err := b.l1InfoTree.GetFirstVerifiedBatches(b.networkID - 1)
+	firstVerified, err := b.l1InfoTree.GetFirstVerifiedBatches(b.networkID)
 	if err != nil {
 		return 0, err
 	}
@@ -516,7 +515,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 	upperLimit := lastVerified.BlockNumber
 	for lowerLimit <= upperLimit {
 		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binnarySearchDivider)
-		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID-1, targetBlock)
+		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
 		if err != nil {
 			return 0, err
 		}

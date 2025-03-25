@@ -39,7 +39,6 @@ setup() {
     meta_bytes=${META_BYTES:-"0x1234"}
 
     readonly l1_rpc_url=${L1_ETH_RPC_URL:-"$(kurtosis port print $enclave el-1-geth-lighthouse rpc)"}
-    readonly bridge_api_url=${BRIDGE_API_URL:-"$(kurtosis port print $enclave zkevm-bridge-service-001 rpc)"}
     readonly aggkit_node_url=${AGGKIT_NODE_URL:-"$(kurtosis port print $enclave cdk-node-001 rpc)"}
 
     readonly dry_run=${DRY_RUN:-"false"}
@@ -65,10 +64,19 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
 
-    echo "=== Running LxLy claim on L2" >&3
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3 "$aggkit_node_url"
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
+    assert_success
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 "$l1_rpc_network_id"
     assert_success
 
     echo "=== Running LxLy WETH ($weth_token_addr) deposit on L2 to L1 network" >&3
@@ -76,50 +84,7 @@ setup() {
     destination_net=0
     run bridge_asset "$weth_token_addr" "$l2_rpc_url"
     assert_success
-}
-
-@test "Test Bridge APIs workflow" {
-    destination_addr=$sender_addr
-    run cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)'
-    assert_success
-    readonly weth_token_addr=$output
-
-    local initial_receiver_balance=$(cast call --rpc-url "$l2_rpc_url" "$weth_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
-    echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
-
-    echo "=== Running LxLy deposit on L1 to network: $l2_rpc_network_id native_token: $native_token_addr" >&3
-    destination_net=$l2_rpc_network_id
-    run bridge_asset "$native_token_addr" "$l1_rpc_url"
-    assert_success
     local bridge_tx_hash=$output
-
-    echo "------- getBridges API testcase"
-    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3
-    assert_success
-    local bridge
-    bridge="$output"
-    local deposit_count
-    deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
-    echo "------- getBridges API testcase passed"
-    echo "------- l1InfoTreeIndexForBridge API testcase"
-    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 3
-    assert_success
-    local l1_info_tree_index
-    l1_info_tree_index="$output"
-    assert_equal "$l1_info_tree_index" 2
-    echo "------- l1InfoTreeIndexForBridge API testcase passed"
-
-    echo "------- injectedInfoAfterIndex API testcase"
-    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 30
-    assert_success
-    echo "------- injectedInfoAfterIndex API testcase passed"
-
-    echo "------- claimProof API testcase"
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 3
-    assert_success
-    local proof
-    proof="$output"
-    echo "------- claimProof API testcase passed"
 }
 
 @test "Custom gas token deposit L1 -> L2" {
@@ -176,15 +141,25 @@ setup() {
     local bridge_tx_hash=$output
 
     # Claim deposits (settle them on the L2)
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3 "$aggkit_node_url"
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
+    assert_success
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 "$l1_rpc_network_id"
     assert_success
     local claim_global_index="$output"
 
     # Validate the bridge_getClaims API
     echo "------- bridge_getClaims API testcase --------"
-    run get_claim "$l2_rpc_network_id" "$claim_global_index" 10 3
+    run get_claim "$l2_rpc_network_id" "$claim_global_index" 10 3 "$aggkit_node_url"
     assert_success
 
     local origin_network="$(echo "$output" | jq -r '.origin_network')"
@@ -211,10 +186,19 @@ setup() {
     local bridge_tx_hash=$output
 
     # Claim withdrawals (settle them on the L1)
-    timeout="180"
-    claim_frequency="10"
-    destination_net=$l1_rpc_network_id
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
+    run get_bridge "$l2_rpc_network_id" "$bridge_tx_hash" 10 3 "$aggkit_node_url"
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l2_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l1_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
+    assert_success
+    run generate_claim_proof "$l2_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 10 "$l2_rpc_network_id"
     assert_success
 
     # Validate that the token of receiver on L1 has increased by the bridge tokens amount
@@ -273,12 +257,22 @@ setup() {
     local bridge_tx_hash=$output
 
     # Claim deposits (settle them on the L2)
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3 "$aggkit_node_url"
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
+    assert_success
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 "$l1_rpc_network_id"
     assert_success
 
-    run wait_for_expected_token "$l1_erc20_addr" 10 2
+    run wait_for_expected_token "$l1_erc20_addr" 10 2 "$aggkit_node_url"
     assert_success
     local token_mappings_result=$output
 

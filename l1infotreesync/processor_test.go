@@ -271,8 +271,6 @@ func Test_processor_Reorg(t *testing.T) {
 }
 
 func TestProofsFromDifferentTrees(t *testing.T) {
-	fmt.Println("aggregator L1InfoTree ===============================================")
-
 	l1Tree, err := l1infotree.NewL1InfoTree(log.WithFields("test"), types.DefaultHeight, [][32]byte{})
 	require.NoError(t, err)
 

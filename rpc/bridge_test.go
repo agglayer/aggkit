@@ -238,14 +238,14 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 	}
 	mockHappyPath := func() {
 		// to make this work, assume that block number == l1 info tree index == deposit count
-		b.l1InfoTree.On("GetLastVerifiedBatches", uint32(1)).
+		b.l1InfoTree.On("GetLastVerifiedBatches", networkID).
 			Return(lastVerified, nil).
 			Once()
-		b.l1InfoTree.On("GetFirstVerifiedBatches", uint32(1)).
+		b.l1InfoTree.On("GetFirstVerifiedBatches", networkID).
 			Return(firstVerified, nil).
 			Once()
 		verifiedAfterBlock := &l1infotreesync.VerifyBatches{}
-		b.l1InfoTree.On("GetFirstVerifiedBatchesAfterBlock", uint32(1), mock.Anything).
+		b.l1InfoTree.On("GetFirstVerifiedBatchesAfterBlock", networkID, mock.Anything).
 			Run(func(args mock.Arguments) {
 				blockNum, ok := args.Get(1).(uint64)
 				require.True(t, ok)
@@ -281,7 +281,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		{
 			description: "error on GetLastVerified",
 			setupMocks: func() {
-				b.l1InfoTree.On("GetLastVerifiedBatches", uint32(1)).
+				b.l1InfoTree.On("GetLastVerifiedBatches", networkID).
 					Return(nil, fooErr).
 					Once()
 			},
@@ -292,7 +292,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		{
 			description: "error on first GetRootByLER",
 			setupMocks: func() {
-				b.l1InfoTree.On("GetLastVerifiedBatches", uint32(1)).
+				b.l1InfoTree.On("GetLastVerifiedBatches", networkID).
 					Return(lastVerified, nil).
 					Once()
 				b.bridgeL2.On("GetRootByLER", ctx, lastVerified.ExitRoot).
@@ -306,7 +306,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		{
 			description: "not included yet",
 			setupMocks: func() {
-				b.l1InfoTree.On("GetLastVerifiedBatches", uint32(1)).
+				b.l1InfoTree.On("GetLastVerifiedBatches", networkID).
 					Return(lastVerified, nil).
 					Once()
 				b.bridgeL2.On("GetRootByLER", ctx, lastVerified.ExitRoot).
@@ -320,13 +320,13 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		{
 			description: "error on GetFirstVerified",
 			setupMocks: func() {
-				b.l1InfoTree.On("GetLastVerifiedBatches", uint32(1)).
+				b.l1InfoTree.On("GetLastVerifiedBatches", networkID).
 					Return(lastVerified, nil).
 					Once()
 				b.bridgeL2.On("GetRootByLER", ctx, lastVerified.ExitRoot).
 					Return(&tree.Root{Index: 13}, nil).
 					Once()
-				b.l1InfoTree.On("GetFirstVerifiedBatches", uint32(1)).
+				b.l1InfoTree.On("GetFirstVerifiedBatches", networkID).
 					Return(nil, fooErr).
 					Once()
 			},
@@ -337,16 +337,16 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		{
 			description: "error on GetFirstVerifiedBatchesAfterBlock",
 			setupMocks: func() {
-				b.l1InfoTree.On("GetLastVerifiedBatches", uint32(1)).
+				b.l1InfoTree.On("GetLastVerifiedBatches", networkID).
 					Return(lastVerified, nil).
 					Once()
 				b.bridgeL2.On("GetRootByLER", ctx, lastVerified.ExitRoot).
 					Return(&tree.Root{Index: 13}, nil).
 					Once()
-				b.l1InfoTree.On("GetFirstVerifiedBatches", uint32(1)).
+				b.l1InfoTree.On("GetFirstVerifiedBatches", networkID).
 					Return(firstVerified, nil).
 					Once()
-				b.l1InfoTree.On("GetFirstVerifiedBatchesAfterBlock", uint32(1), mock.Anything).
+				b.l1InfoTree.On("GetFirstVerifiedBatchesAfterBlock", networkID, mock.Anything).
 					Return(nil, fooErr).
 					Once()
 			},
@@ -357,16 +357,16 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 		{
 			description: "error on GetRootByLER (inside binnary search)",
 			setupMocks: func() {
-				b.l1InfoTree.On("GetLastVerifiedBatches", uint32(1)).
+				b.l1InfoTree.On("GetLastVerifiedBatches", networkID).
 					Return(lastVerified, nil).
 					Once()
 				b.bridgeL2.On("GetRootByLER", ctx, lastVerified.ExitRoot).
 					Return(&tree.Root{Index: 13}, nil).
 					Once()
-				b.l1InfoTree.On("GetFirstVerifiedBatches", uint32(1)).
+				b.l1InfoTree.On("GetFirstVerifiedBatches", networkID).
 					Return(firstVerified, nil).
 					Once()
-				b.l1InfoTree.On("GetFirstVerifiedBatchesAfterBlock", uint32(1), mock.Anything).
+				b.l1InfoTree.On("GetFirstVerifiedBatchesAfterBlock", networkID, mock.Anything).
 					Return(firstVerified, nil).
 					Once()
 				b.bridgeL2.On("GetRootByLER", ctx, mock.Anything).

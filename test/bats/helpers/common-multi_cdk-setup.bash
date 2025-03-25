@@ -21,14 +21,12 @@ _common_multi_setup() {
     run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | tail -n +2 | jq -r '.gasTokenAddress'"
     assert_success
     readonly gas_token_addr=$output
-    readonly l2_pp1b_url=$(kurtosis port print $enclave zkevm-bridge-service-001 rpc)
-    readonly l2_pp2b_url=$(kurtosis port print $enclave zkevm-bridge-service-002 rpc)
-    readonly l2_pp1_cdk_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
-    readonly l2_pp2_cdk_node_url=$(kurtosis port print $enclave cdk-node-002 rpc)
+    readonly aggkit_pp1_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)
+    readonly aggkit_pp2_node_url=$(kurtosis port print $enclave cdk-node-002 rpc)
 
     readonly l1_rpc_network_id=$(cast call --rpc-url $l1_rpc_url $bridge_address 'networkID() (uint32)')
-    readonly l2_pp1b_network_id=$(cast call --rpc-url $l2_pp1_url $bridge_address 'networkID() (uint32)')
-    readonly l2_pp2b_network_id=$(cast call --rpc-url $l2_pp2_url $bridge_address 'networkID() (uint32)')
+    readonly l2_pp1_network_id=$(cast call --rpc-url $l2_pp1_url $bridge_address 'networkID() (uint32)')
+    readonly l2_pp2_network_id=$(cast call --rpc-url $l2_pp2_url $bridge_address 'networkID() (uint32)')
 
     readonly aggsender_find_imported_bridge="../target/aggsender_find_imported_bridge"
     echo "=== Bridge address=$bridge_address ===" >&3
@@ -37,13 +35,13 @@ _common_multi_setup() {
         echo "=== Gas token address=$gas_token_addr ===" >&3
     fi
     echo "=== L1 network id=$l1_rpc_network_id ===" >&3
-    echo "=== L2 PP1 network id=$l2_pp1b_network_id ===" >&3
-    echo "=== L2 PP2 network id=$l2_pp2b_network_id ===" >&3
+    echo "=== L2 PP1 network id=$l2_pp1_network_id ===" >&3
+    echo "=== L2 PP2 network id=$l2_pp2_network_id ===" >&3
     echo "=== L1 RPC URL=$l1_rpc_url ===" >&3
     echo "=== L2 PP1 URL=$l2_pp1_url ===" >&3
     echo "=== L2 PP2 URL=$l2_pp2_url ===" >&3
-    echo "=== L2 PP1B URL=$l2_pp1b_url ===" >&3
-    echo "=== L2 PP2B URL=$l2_pp2b_url ===" >&3
+    echo "=== Aggkit PP1 URL=$aggkit_pp1_node_url ===" >&3
+    echo "=== Aggkit PP2 URL=$aggkit_pp2_node_url ===" >&3
 }
 
 add_network2_to_agglayer() {
