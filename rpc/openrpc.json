@@ -337,6 +337,38 @@
       "examples": []
     },
     {
+      "name": "bridge_getLastReorgEvent",
+      "summary": "Get Last Reorg Event",
+      "description": "Fetches the last detected reorganization event from the reorg detector.",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/NetworkID"
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The last detected reorg event.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "detected_at": {
+              "type": "integer",
+              "description": "The Unix timestamp when the reorg was detected."
+            },
+            "from_block": {
+              "type": "integer",
+              "description": "Starting block number of the reorg."
+            },
+            "to_block": {
+              "type": "integer",
+              "description": "Ending block number of the reorg."
+            }
+          },
+          "required": ["detected_at", "from_block", "to_block"]
+        }
+      }
+    },    
+    {
       "name": "bridge_getSponsoredClaimStatus",
       "summary": "Gets the proof needed to perform a claim for a given bridge",
       "params": [

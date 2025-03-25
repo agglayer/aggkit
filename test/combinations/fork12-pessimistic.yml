@@ -20,4 +20,4 @@ args:
   enable_normalcy: true
   zkevm_rollup_id: 1
   binary_name: aggkit
-  components: ['aggsender', 'bridge']
+  components: aggsender,bridge

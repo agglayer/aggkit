@@ -1,6 +1,8 @@
 package reorgdetector
 
 import (
+	context "context"
+	"database/sql"
 	"errors"
 	"fmt"
 
@@ -96,4 +98,18 @@ func (rd *ReorgDetector) insertReorgEvent(event ReorgEvent) error {
 		event.Version = aggkit.GetVersion().Brief()
 	}
 	return meddler.Insert(rd.db, "reorg_event", &event)
+}
+
+// GetLastReorgEvent returns the the last ReorgEvent stored in reorg_event table
+func (rd *ReorgDetector) GetLastReorgEvent(ctx context.Context) (ReorgEvent, error) {
+	query := `SELECT * FROM reorg_event ORDER BY detected_at DESC LIMIT 1;`
+	var rEvent ReorgEvent
+	if err := meddler.QueryRow(rd.db, &rEvent, query); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return ReorgEvent{}, nil
+		}
+		return ReorgEvent{}, err
+	}
+
+	return rEvent, nil
 }

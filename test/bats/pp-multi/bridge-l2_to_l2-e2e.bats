@@ -56,10 +56,10 @@ setup() {
     assert_success
     local injected_info="$output"
     local l1_info_tree_index=$(echo "$injected_info" | jq -r '.l1_info_tree_index')
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp1_node_url"
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp1_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3 0
+    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3 "$l1_rpc_network_id"
     assert_success
 
     echo "=== Running LxLy claim L1 to L2(PP2) for $bridge_tx_hash_pp2" >&3
@@ -74,10 +74,10 @@ setup() {
     assert_success
     local injected_info="$output"
     local l1_info_tree_index=$(echo "$injected_info" | jq -r '.l1_info_tree_index')
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp2_node_url"
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp2_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_pp2_url" 10 3 0
+    run claim_bridge "$bridge" "$proof" "$l2_pp2_url" 10 3 "$l1_rpc_network_id"
     assert_success
 
     # reduce eth amount
@@ -101,10 +101,10 @@ setup() {
     assert_success
     local injected_info="$output"
     local l1_info_tree_index=$(echo "$injected_info" | jq -r '.l1_info_tree_index')
-    run find_claim_proof "$l2_pp2_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp2_node_url"
+    run generate_claim_proof "$l2_pp2_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp2_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3 2
+    run claim_bridge "$bridge" "$proof" "$l2_pp1_url" 10 3 "$l2_pp2_network_id"
     assert_success
     local global_index_pp2_to_pp1="$output"
 
@@ -130,10 +130,10 @@ setup() {
     assert_success
     local injected_info="$output"
     local l1_info_tree_index=$(echo "$injected_info" | jq -r '.l1_info_tree_index')
-    run find_claim_proof "$l2_pp1_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp1_node_url"
+    run generate_claim_proof "$l2_pp1_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_pp1_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 3 1
+    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 3 "$l2_pp1_network_id"
     assert_success
 
     echo "=== Waiting to settled certificate with imported bridge for global_index: $global_index_pp2_to_pp1"

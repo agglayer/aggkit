@@ -19,4 +19,4 @@ args:
   agglayer_prover_primary_prover: mock-prover
   zkevm_rollup_id: 1
   binary_name: aggkit
-  components: ['aggsender', 'bridge']
+  components: aggsender,bridge
