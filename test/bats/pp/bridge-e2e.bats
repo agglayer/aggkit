@@ -73,10 +73,10 @@ setup() {
     local l1_info_tree_index="$output"
     run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
     assert_success
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 0
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 "$l1_rpc_network_id"
     assert_success
 
     echo "=== Running LxLy WETH ($weth_token_addr) deposit on L2 to L1 network" >&3
@@ -150,10 +150,10 @@ setup() {
     local l1_info_tree_index="$output"
     run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
     assert_success
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 0
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 "$l1_rpc_network_id"
     assert_success
     local claim_global_index="$output"
 
@@ -195,10 +195,10 @@ setup() {
     local l1_info_tree_index="$output"
     run find_injected_info_after_index "$l1_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
     assert_success
-    run find_claim_proof "$l2_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    run generate_claim_proof "$l2_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 10 1
+    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 10 "$l2_rpc_network_id"
     assert_success
 
     # Validate that the token of receiver on L1 has increased by the bridge tokens amount
@@ -266,10 +266,10 @@ setup() {
     local l1_info_tree_index="$output"
     run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
     assert_success
-    run find_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 0
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 10 "$l1_rpc_network_id"
     assert_success
 
     run wait_for_expected_token "$l1_erc20_addr" 10 2 "$aggkit_node_url"
