@@ -87,7 +87,7 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 		tx, err := setup.GERContract.InsertGlobalExitRoot(setup.Auth, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"))
 		require.NoError(t, err)
 
-		// commit one block
+		// commit one block so the current block is block 6
 		setup.SimBackend.Commit()
 
 		receipt, err := setup.SimBackend.Client().TransactionReceipt(ctx, tx.Hash())
@@ -97,6 +97,6 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 		injectedGERs, err := gerReader.GetInjectedGERsForRange(ctx, 1, 10)
 		require.NoError(t, err)
 		require.Len(t, injectedGERs, 1)
-		require.Equal(t, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"), injectedGERs[0])
+		require.Equal(t, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"), injectedGERs[6][0])
 	})
 }

@@ -36,13 +36,13 @@ func newAggchainProverFlow(log types.Logger,
 	l2Syncer types.L2BridgeSyncer,
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*aggchainProverFlow, error) {
-	l2Etherman, err := chaingerreader.NewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
+	gerReader, err := chaingerreader.NewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error creating L2Etherman: %w", err)
 	}
 
 	return &aggchainProverFlow{
-		gerReader:           l2Etherman,
+		gerReader:           gerReader,
 		aggchainProofClient: aggkitProverClient,
 		baseFlow: &baseFlow{
 			log:              log,
@@ -235,43 +235,45 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 
 	proofs := make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
 
-	for _, gerHash := range injectedGERs {
-		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(gerHash)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error getting L1 Info tree leaf by global exit root %s: %w",
-				gerHash.String(), err)
-		}
+	for blockNum, gerHashes := range injectedGERs {
+		for _, gerHash := range gerHashes {
+			info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(gerHash)
+			if err != nil {
+				return nil, fmt.Errorf("aggchainProverFlow - error getting L1 Info tree leaf by global exit root %s: %w",
+					gerHash.String(), err)
+			}
 
-		if info.L1InfoTreeIndex > finalizedL1InfoTreeRoot.Index {
-			// this should never happen, but if it does, we need to investigate
-			return nil, fmt.Errorf("aggchainProverFlow - L1 Info tree index: %d of injected GER: %s "+
-				"is higher than the last finalized l1 info tree root: %s index: %d",
-				info.L1InfoTreeIndex, gerHash.String(),
-				finalizedL1InfoTreeRoot.Hash, finalizedL1InfoTreeRoot.Index)
-		}
+			if info.L1InfoTreeIndex > finalizedL1InfoTreeRoot.Index {
+				// this should never happen, but if it does, we need to investigate
+				return nil, fmt.Errorf("aggchainProverFlow - L1 Info tree index: %d of injected GER: %s "+
+					"is higher than the last finalized l1 info tree root: %s index: %d",
+					info.L1InfoTreeIndex, gerHash.String(),
+					finalizedL1InfoTreeRoot.Hash, finalizedL1InfoTreeRoot.Index)
+			}
 
-		proof, err := a.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx,
-			info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error getting L1 Info tree merkle proof from index %d to root %s: %w",
-				info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash.String(), err)
-		}
+			proof, err := a.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx,
+				info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash)
+			if err != nil {
+				return nil, fmt.Errorf("aggchainProverFlow - error getting L1 Info tree merkle proof from index %d to root %s: %w",
+					info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash.String(), err)
+			}
 
-		proofs[gerHash] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
-			BlockNumber: info.BlockNumber,
-			ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
-				ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
-				L1Leaf: &agglayertypes.L1InfoTreeLeaf{
-					L1InfoTreeIndex: info.L1InfoTreeIndex,
-					RollupExitRoot:  info.RollupExitRoot,
-					MainnetExitRoot: info.MainnetExitRoot,
-					Inner: &agglayertypes.L1InfoTreeLeafInner{
-						GlobalExitRoot: info.GlobalExitRoot,
-						BlockHash:      info.PreviousBlockHash,
-						Timestamp:      info.Timestamp,
+			proofs[gerHash] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
+				BlockNumber: blockNum,
+				ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
+					ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
+					L1Leaf: &agglayertypes.L1InfoTreeLeaf{
+						L1InfoTreeIndex: info.L1InfoTreeIndex,
+						RollupExitRoot:  info.RollupExitRoot,
+						MainnetExitRoot: info.MainnetExitRoot,
+						Inner: &agglayertypes.L1InfoTreeLeafInner{
+							GlobalExitRoot: info.GlobalExitRoot,
+							BlockHash:      info.PreviousBlockHash,
+							Timestamp:      info.Timestamp,
+						},
 					},
 				},
-			},
+			}
 		}
 	}
 

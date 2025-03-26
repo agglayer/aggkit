@@ -58,7 +58,7 @@ type L2BridgeSyncer interface {
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
-	GetInjectedGERsForRange(ctx context.Context, fromBlock, toBlock uint64) ([]common.Hash, error)
+	GetInjectedGERsForRange(ctx context.Context, fromBlock, toBlock uint64) (map[uint64][]common.Hash, error)
 }
 
 // EthClient is an interface defining functions that an EthClient should implement
