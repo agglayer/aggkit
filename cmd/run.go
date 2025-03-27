@@ -492,7 +492,11 @@ func runLastGERSyncIfNeeded(
 	if err != nil {
 		log.Fatalf("error creating lastGERSync: %s", err)
 	}
-	go lastGERSync.Start(ctx)
+	go func() {
+		if err := lastGERSync.Start(ctx); err != nil {
+			log.Fatalf("lastGERSync failed: %s", err)
+		}
+	}()
 
 	return lastGERSync
 }

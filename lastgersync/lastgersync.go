@@ -2,6 +2,7 @@ package lastgersync
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/agglayer/aggkit/etherman"
@@ -14,11 +15,13 @@ const (
 	reorgDetectorID = "lastGERSync"
 )
 
+// LastGERSync is responsible for managing GER synchronization.
 type LastGERSync struct {
 	driver    *sync.EVMDriver
 	processor *processor
 }
 
+// New initializes and returns a new instance of LastGERSync
 func New(
 	ctx context.Context,
 	dbPath string,
@@ -32,9 +35,9 @@ func New(
 	waitForNewBlocksPeriod time.Duration,
 	downloadBufferSize int,
 ) (*LastGERSync, error) {
-	processor, err := newProcessor(dbPath, "lastGERSync")
+	processor, err := newProcessor(dbPath, reorgDetectorID)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create processor: %w", err)
 	}
 
 	rh := &sync.RetryHandler{
@@ -69,16 +72,23 @@ func New(
 	}, nil
 }
 
-func (s *LastGERSync) Start(ctx context.Context) {
+// Start initiates the synchronization process.
+func (s *LastGERSync) Start(ctx context.Context) error {
+	if s.driver == nil {
+		return fmt.Errorf("driver is not initialized")
+	}
 	s.driver.Sync(ctx)
+	return nil
 }
 
+// GetFirstGERAfterL1InfoTreeIndex returns the first GER after a specified L1 info tree index
 func (s *LastGERSync) GetFirstGERAfterL1InfoTreeIndex(
 	ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
 ) (Event, error) {
 	return s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, atOrAfterL1InfoTreeIndex)
 }
 
+// GetLastProcessedBlock returns the last processed block number
 func (s *LastGERSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return s.processor.GetLastProcessedBlock(ctx)
 }
