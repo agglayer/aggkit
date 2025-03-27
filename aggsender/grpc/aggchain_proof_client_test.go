@@ -40,7 +40,7 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("dummy-proof"), result.Proof)
-	assert.Equal(t, uint64(100), result.StartBlock)
+	assert.Equal(t, uint64(100), result.LastProvenBlock)
 	assert.Equal(t, uint64(200), result.EndBlock)
 	assert.Equal(t, common.Hash{}, result.LocalExitRoot)
 	assert.Equal(t, []byte{}, result.CustomChainData)
