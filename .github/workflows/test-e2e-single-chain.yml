@@ -17,13 +17,13 @@ jobs:
     name: E2E Tests
     needs:
       - build-aggkit-image
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e.yml@ed40c945f21db1c3c99137fcb179e37107cde4b4
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@d580063c007b8c88e122bd187000f20ccd4f74af
     secrets: inherit
     with:
       docker-tag: local
       kurtosis-cdk-ref: arpit/bridge-service
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: ed40c945f21db1c3c99137fcb179e37107cde4b4
+      agglayer-e2e-ref: d580063c007b8c88e122bd187000f20ccd4f74af
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: |
         {
@@ -47,6 +47,18 @@ jobs:
             "zkevm_use_real_verifier": false,
             "agglayer_prover_primary_prover": "mock-prover",
             "enable_normalcy": true,
-            "zkevm_rollup_id": 1
+            "zkevm_rollup_id": 1,
+            "binary_name": "aggkit",
+            "components": "aggsender,bridge"
           }
         }
+
+  check-test-e2e-result:
+    name: E2E Tests | Passed
+    needs:
+      - test-e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-e2e.result) }}
