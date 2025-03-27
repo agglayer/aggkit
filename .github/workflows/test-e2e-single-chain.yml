@@ -1,29 +1,29 @@
-
 name: Test E2E (single chain)
 on: 
-    push:
-      branches:
-        - '**'
-    workflow_dispatch: {}
+  push:
+    branches:
+      - '**'
+  workflow_dispatch: {}
 
 jobs:
   build-aggkit-image:
+    name: Build aggkit docker image
     uses: ./.github/workflows/build-aggkit-image.yml
     with:
       go-version: 1.23.x
       docker-image-name: aggkit
-  
-  test-e2e:
-    name: E2E Tests
+
+  test-single-e2e:
+    name: Single chain E2E test
     needs:
       - build-aggkit-image
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@d580063c007b8c88e122bd187000f20ccd4f74af
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@44eb14615e8787358ea94b778db71025a0173ef1
     secrets: inherit
     with:
       docker-tag: local
       kurtosis-cdk-ref: arpit/bridge-service
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: d580063c007b8c88e122bd187000f20ccd4f74af
+      agglayer-e2e-ref: 44eb14615e8787358ea94b778db71025a0173ef1
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: |
         {
@@ -53,12 +53,12 @@ jobs:
           }
         }
 
-  check-test-e2e-result:
-    name: E2E Tests | Passed
+  check-test-single-e2e-result:
+    name: Check E2E results
     needs:
-      - test-e2e
+      - test-single-e2e
     if: always()
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-e2e.result) }}
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-e2e.result) }}
