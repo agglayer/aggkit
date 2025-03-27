@@ -37,7 +37,7 @@ type processor struct {
 func newProcessor(dbPath string) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to run migrations: %w", err)
+		return nil, err
 	}
 	db, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
