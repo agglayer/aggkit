@@ -27,9 +27,9 @@ func (_m *AggchainProofClientInterface) EXPECT() *AggchainProofClientInterface_E
 	return &AggchainProofClientInterface_Expecter{mock: &_m.Mock}
 }
 
-// GenerateAggchainProof provides a mock function with given fields: startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber
-func (_m *AggchainProofClientInterface) GenerateAggchainProof(startBlock uint64, maxEndBlock uint64, l1InfoTreeRootHash common.Hash, l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf, l1InfoTreeMerkleProof agglayertypes.MerkleProof, gerLeavesWithBlockNumber map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, importedBridgeExitsWithBlockNumber []*agglayertypes.ImportedBridgeExitWithBlockNumber) (*types.AggchainProof, error) {
-	ret := _m.Called(startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)
+// GenerateAggchainProof provides a mock function with given fields: startBlock, requestedEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber
+func (_m *AggchainProofClientInterface) GenerateAggchainProof(startBlock uint64, requestedEndBlock uint64, l1InfoTreeRootHash common.Hash, l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf, l1InfoTreeMerkleProof agglayertypes.MerkleProof, gerLeavesWithBlockNumber map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, importedBridgeExitsWithBlockNumber []*agglayertypes.ImportedBridgeExitWithBlockNumber) (*types.AggchainProof, error) {
+	ret := _m.Called(startBlock, requestedEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GenerateAggchainProof")
@@ -38,10 +38,10 @@ func (_m *AggchainProofClientInterface) GenerateAggchainProof(startBlock uint64,
 	var r0 *types.AggchainProof
 	var r1 error
 	if rf, ok := ret.Get(0).(func(uint64, uint64, common.Hash, l1infotreesync.L1InfoTreeLeaf, agglayertypes.MerkleProof, map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, []*agglayertypes.ImportedBridgeExitWithBlockNumber) (*types.AggchainProof, error)); ok {
-		return rf(startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)
+		return rf(startBlock, requestedEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)
 	}
 	if rf, ok := ret.Get(0).(func(uint64, uint64, common.Hash, l1infotreesync.L1InfoTreeLeaf, agglayertypes.MerkleProof, map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, []*agglayertypes.ImportedBridgeExitWithBlockNumber) *types.AggchainProof); ok {
-		r0 = rf(startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)
+		r0 = rf(startBlock, requestedEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.AggchainProof)
@@ -49,7 +49,7 @@ func (_m *AggchainProofClientInterface) GenerateAggchainProof(startBlock uint64,
 	}
 
 	if rf, ok := ret.Get(1).(func(uint64, uint64, common.Hash, l1infotreesync.L1InfoTreeLeaf, agglayertypes.MerkleProof, map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, []*agglayertypes.ImportedBridgeExitWithBlockNumber) error); ok {
-		r1 = rf(startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)
+		r1 = rf(startBlock, requestedEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -64,17 +64,17 @@ type AggchainProofClientInterface_GenerateAggchainProof_Call struct {
 
 // GenerateAggchainProof is a helper method to define mock.On call
 //   - startBlock uint64
-//   - maxEndBlock uint64
+//   - requestedEndBlock uint64
 //   - l1InfoTreeRootHash common.Hash
 //   - l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf
 //   - l1InfoTreeMerkleProof agglayertypes.MerkleProof
 //   - gerLeavesWithBlockNumber map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber
 //   - importedBridgeExitsWithBlockNumber []*agglayertypes.ImportedBridgeExitWithBlockNumber
-func (_e *AggchainProofClientInterface_Expecter) GenerateAggchainProof(startBlock interface{}, maxEndBlock interface{}, l1InfoTreeRootHash interface{}, l1InfoTreeLeaf interface{}, l1InfoTreeMerkleProof interface{}, gerLeavesWithBlockNumber interface{}, importedBridgeExitsWithBlockNumber interface{}) *AggchainProofClientInterface_GenerateAggchainProof_Call {
-	return &AggchainProofClientInterface_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", startBlock, maxEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)}
+func (_e *AggchainProofClientInterface_Expecter) GenerateAggchainProof(startBlock interface{}, requestedEndBlock interface{}, l1InfoTreeRootHash interface{}, l1InfoTreeLeaf interface{}, l1InfoTreeMerkleProof interface{}, gerLeavesWithBlockNumber interface{}, importedBridgeExitsWithBlockNumber interface{}) *AggchainProofClientInterface_GenerateAggchainProof_Call {
+	return &AggchainProofClientInterface_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", startBlock, requestedEndBlock, l1InfoTreeRootHash, l1InfoTreeLeaf, l1InfoTreeMerkleProof, gerLeavesWithBlockNumber, importedBridgeExitsWithBlockNumber)}
 }
 
-func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) Run(run func(startBlock uint64, maxEndBlock uint64, l1InfoTreeRootHash common.Hash, l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf, l1InfoTreeMerkleProof agglayertypes.MerkleProof, gerLeavesWithBlockNumber map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, importedBridgeExitsWithBlockNumber []*agglayertypes.ImportedBridgeExitWithBlockNumber)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
+func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) Run(run func(startBlock uint64, requestedEndBlock uint64, l1InfoTreeRootHash common.Hash, l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf, l1InfoTreeMerkleProof agglayertypes.MerkleProof, gerLeavesWithBlockNumber map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, importedBridgeExitsWithBlockNumber []*agglayertypes.ImportedBridgeExitWithBlockNumber)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(uint64), args[1].(uint64), args[2].(common.Hash), args[3].(l1infotreesync.L1InfoTreeLeaf), args[4].(agglayertypes.MerkleProof), args[5].(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber), args[6].([]*agglayertypes.ImportedBridgeExitWithBlockNumber))
 	})
