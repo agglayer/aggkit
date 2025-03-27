@@ -35,7 +35,7 @@ func New(
 	waitForNewBlocksPeriod time.Duration,
 	downloadBufferSize int,
 ) (*LastGERSync, error) {
-	processor, err := newProcessor(dbPath, reorgDetectorID)
+	processor, err := newProcessor(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create processor: %w", err)
 	}

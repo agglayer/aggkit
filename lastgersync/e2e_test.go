@@ -60,12 +60,16 @@ func TestLastGERSyncE2E(t *testing.T) {
 }
 
 func updateGlobalExitRoot(t *testing.T, setup *helpers.AggoracleWithEVMChain, i int) {
+	t.Helper()
+
 	_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, common.HexToHash(strconv.Itoa(i)))
 	require.NoError(t, err)
 	setup.L1Environment.SimBackend.Commit()
 }
 
 func testGERSyncer(t *testing.T, ctx context.Context, setup *helpers.AggoracleWithEVMChain, syncer *lastgersync.LastGERSync, i int) {
+	t.Helper()
+
 	expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
 

@@ -34,7 +34,7 @@ type processor struct {
 	log *log.Logger
 }
 
-func newProcessor(dbPath string, loggerPrefix string) (*processor, error) {
+func newProcessor(dbPath string) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run migrations: %w", err)
@@ -43,7 +43,7 @@ func newProcessor(dbPath string, loggerPrefix string) (*processor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
-	logger := log.WithFields("lastger-syncer", loggerPrefix)
+	logger := log.WithFields("lastger-syncer", reorgDetectorID)
 	return &processor{
 		db:  db,
 		log: logger,
