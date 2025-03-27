@@ -21,8 +21,8 @@ const TIMEOUT = 2
 // AggchainProofClientInterface defines an interface for aggchain proof client
 type AggchainProofClientInterface interface {
 	GenerateAggchainProof(
-		startBlock uint64,
-		maxEndBlock uint64,
+		lastProvenBlock uint64,
+		requestedEndBlock uint64,
 		l1InfoTreeRootHash common.Hash,
 		l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 		l1InfoTreeMerkleProof agglayer.MerkleProof,
@@ -48,8 +48,8 @@ func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
 }
 
 func (c *AggchainProofClient) GenerateAggchainProof(
-	startBlock uint64,
-	maxEndBlock uint64,
+	lastProvenBlock uint64,
+	requestedEndBlock uint64,
 	l1InfoTreeRootHash common.Hash,
 	l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
 	l1InfoTreeMerkleProof agglayer.MerkleProof,
@@ -155,8 +155,8 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	}
 
 	resp, err := c.client.GenerateAggchainProof(ctx, &aggkitProverV1Proto.GenerateAggchainProofRequest{
-		StartBlock:            startBlock,
-		MaxEndBlock:           maxEndBlock,
+		LastProvenBlock:       lastProvenBlock,
+		RequestedEndBlock:     requestedEndBlock,
 		L1InfoTreeRootHash:    &agglayerInteropTypesV1Proto.FixedBytes32{Value: l1InfoTreeRootHash.Bytes()},
 		L1InfoTreeLeaf:        convertedL1InfoTreeLeaf,
 		L1InfoTreeMerkleProof: convertedMerkleProof,
@@ -169,7 +169,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 
 	return &types.AggchainProof{
 		Proof:           resp.AggchainProof,
-		StartBlock:      resp.StartBlock,
+		LastProvenBlock: resp.LastProvenBlock,
 		EndBlock:        resp.EndBlock,
 		LocalExitRoot:   common.Hash(resp.LocalExitRootHash.Value),
 		CustomChainData: resp.CustomChainData,

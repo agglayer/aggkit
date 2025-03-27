@@ -84,7 +84,7 @@ type Logger interface {
 }
 
 type AggchainProof struct {
-	StartBlock      uint64
+	LastProvenBlock uint64
 	EndBlock        uint64
 	Proof           []byte
 	CustomChainData []byte

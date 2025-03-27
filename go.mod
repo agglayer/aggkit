@@ -4,10 +4,10 @@ go 1.23.7
 
 require (
 	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250228150343-c7b7fef1692a.2
-	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.5-20250228150343-c7b7fef1692a.1
-	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.5-20250317150713-743b25629858.1
-	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250318160733-103c8b2aec21.2
-	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.5-20250318160733-103c8b2aec21.1
+	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250228150343-c7b7fef1692a.1
+	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250317150713-743b25629858.1
+	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250327122651-3ea16e24e202.2
+	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250327122651-3ea16e24e202.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20250212122525-ec44fb65e861
 	github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.5
@@ -150,7 +150,7 @@ require (
 	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.9.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
-	google.golang.org/protobuf v1.36.5 // indirect
+	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect

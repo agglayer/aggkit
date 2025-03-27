@@ -121,7 +121,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
-				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
+				mockProverClient.On("GenerateAggchainProof", uint64(0), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -131,7 +131,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						Proof: treetypes.Proof{},
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
 					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 10}, nil)
+					Proof: []byte("some-proof"), LastProvenBlock: 1, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:  1,
@@ -185,7 +185,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
-				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
+				mockProverClient.On("GenerateAggchainProof", uint64(0), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -198,7 +198,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						{ImportedBridgeExit: ibe1, BlockNumber: 6},
 						{ImportedBridgeExit: ibe2, BlockNumber: 9},
 					}).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 1, EndBlock: 8}, nil)
+					Proof: []byte("some-proof"), LastProvenBlock: 1, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:  1,
@@ -253,7 +253,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
-				mockProverClient.On("GenerateAggchainProof", uint64(1), uint64(10),
+				mockProverClient.On("GenerateAggchainProof", uint64(0), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -297,7 +297,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(6), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
-				mockProverClient.On("GenerateAggchainProof", uint64(6), uint64(10),
+				mockProverClient.On("GenerateAggchainProof", uint64(5), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -307,7 +307,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						Proof: treetypes.Proof{},
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
 					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 10}, nil)
+					Proof: []byte("some-proof"), LastProvenBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
@@ -355,7 +355,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					treetypes.Proof{}, nil)
 				mockL1InfoTreeSyncer.On("GetInfoByGlobalExitRoot", mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(6), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
-				mockProverClient.On("GenerateAggchainProof", uint64(6), uint64(10),
+				mockProverClient.On("GenerateAggchainProof", uint64(5), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -368,7 +368,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						{ImportedBridgeExit: ibe1, BlockNumber: 8},
 						{ImportedBridgeExit: ibe2, BlockNumber: 9},
 					}).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), StartBlock: 6, EndBlock: 8}, nil)
+					Proof: []byte("some-proof"), LastProvenBlock: 6, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,

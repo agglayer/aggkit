@@ -140,8 +140,14 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
 
+	lastProvenBlock := buildParams.FromBlock
+	if lastProvenBlock > 0 {
+		// if we had previous proofs, the last proven block is the one before the first block in the range
+		lastProvenBlock--
+	}
+
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
-		buildParams.FromBlock,
+		lastProvenBlock,
 		buildParams.ToBlock,
 		root.Hash,
 		*leaf,
@@ -158,7 +164,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	a.log.Infof("aggchainProverFlow - fetched auth proof: %s Range %d : %d from aggchain prover. Requested range: %d : %d",
-		aggchainProof.Proof, aggchainProof.StartBlock, aggchainProof.EndBlock,
+		aggchainProof.Proof, buildParams.FromBlock, aggchainProof.EndBlock,
 		buildParams.FromBlock, buildParams.ToBlock)
 
 	buildParams.AggchainProof = aggchainProof.Proof
