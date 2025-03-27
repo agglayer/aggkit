@@ -20,7 +20,7 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 
 	expectedResponse := &aggkitProverV1Proto.GenerateAggchainProofResponse{
 		AggchainProof:     []byte("dummy-proof"),
-		StartBlock:        100,
+		LastProvenBlock:   100,
 		EndBlock:          200,
 		LocalExitRootHash: &agglayerInteropTypesV1Proto.FixedBytes32{Value: common.Hash{}.Bytes()},
 		CustomChainData:   []byte{},

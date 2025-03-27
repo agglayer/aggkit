@@ -169,7 +169,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 
 	return &types.AggchainProof{
 		Proof:           resp.AggchainProof,
-		StartBlock:      resp.StartBlock,
+		StartBlock:      resp.LastProvenBlock,
 		EndBlock:        resp.EndBlock,
 		LocalExitRoot:   common.Hash(resp.LocalExitRootHash.Value),
 		CustomChainData: resp.CustomChainData,
