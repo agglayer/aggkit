@@ -3,21 +3,17 @@ package aggsender
 import (
 	"context"
 	"fmt"
-	"math/big"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
+	"github.com/agglayer/aggkit/aggsender/l1infotreequery"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/etherman"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
-
-var finalizedBlockBigInt = big.NewInt(int64(etherman.Finalized))
 
 // aggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type aggchainProverFlow struct {
@@ -45,12 +41,11 @@ func newAggchainProverFlow(log types.Logger,
 		gerReader:           gerReader,
 		aggchainProofClient: aggkitProverClient,
 		baseFlow: &baseFlow{
-			log:              log,
-			cfg:              cfg,
-			l2Syncer:         l2Syncer,
-			storage:          storage,
-			l1Client:         l1Client,
-			l1InfoTreeSyncer: l1InfoTreeSyncer,
+			log:                 log,
+			cfg:                 cfg,
+			l2Syncer:            l2Syncer,
+			storage:             storage,
+			l1InfoTreeDataQuery: l1infotreequery.NewL1InfoTreeDataQuery(l1Client, l1InfoTreeSyncer),
 		},
 	}, nil
 }
@@ -116,7 +111,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 
-	proof, leaf, root, err := a.getFinalizedL1InfoTreeData(ctx)
+	proof, leaf, root, err := a.l1InfoTreeDataQuery.GetFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
@@ -125,7 +120,8 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
 	buildParams.L1InfoTreeRootFromWhichToProve = root
 
-	if err := a.checkIfClaimsArePartOfFinalizedL1InfoTree(root, buildParams.Claims); err != nil {
+	if err := a.l1InfoTreeDataQuery.CheckIfClaimsArePartOfFinalizedL1InfoTree(
+		root, buildParams.Claims); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
 	}
@@ -186,27 +182,6 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	return buildParams, nil
 }
 
-// checkIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
-func (a *aggchainProverFlow) checkIfClaimsArePartOfFinalizedL1InfoTree(
-	finalizedL1InfoTreeRoot *treetypes.Root,
-	claims []bridgesync.Claim) error {
-	for _, claim := range claims {
-		info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
-		if err != nil {
-			return fmt.Errorf("error getting claim info by global exit root: %s: %w", claim.GlobalExitRoot, err)
-		}
-
-		if info.L1InfoTreeIndex > finalizedL1InfoTreeRoot.Index {
-			return fmt.Errorf("claim with global exit root: %s has L1 Info tree index: %d "+
-				"higher than the last finalized l1 info tree root: %s index: %d",
-				claim.GlobalExitRoot.String(), info.L1InfoTreeIndex,
-				finalizedL1InfoTreeRoot.Hash, finalizedL1InfoTreeRoot.Index)
-		}
-	}
-
-	return nil
-}
-
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
 func (a *aggchainProverFlow) BuildCertificate(ctx context.Context,
@@ -243,25 +218,9 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 
 	for blockNum, gerHashes := range injectedGERs {
 		for _, gerHash := range gerHashes {
-			info, err := a.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(gerHash)
+			info, proof, err := a.l1InfoTreeDataQuery.GetProofForGER(ctx, gerHash, finalizedL1InfoTreeRoot.Hash)
 			if err != nil {
-				return nil, fmt.Errorf("aggchainProverFlow - error getting L1 Info tree leaf by global exit root %s: %w",
-					gerHash.String(), err)
-			}
-
-			if info.L1InfoTreeIndex > finalizedL1InfoTreeRoot.Index {
-				// this should never happen, but if it does, we need to investigate
-				return nil, fmt.Errorf("aggchainProverFlow - L1 Info tree index: %d of injected GER: %s "+
-					"is higher than the last finalized l1 info tree root: %s index: %d",
-					info.L1InfoTreeIndex, gerHash.String(),
-					finalizedL1InfoTreeRoot.Hash, finalizedL1InfoTreeRoot.Index)
-			}
-
-			proof, err := a.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx,
-				info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash)
-			if err != nil {
-				return nil, fmt.Errorf("aggchainProverFlow - error getting L1 Info tree merkle proof from index %d to root %s: %w",
-					info.L1InfoTreeIndex, finalizedL1InfoTreeRoot.Hash.String(), err)
+				return nil, fmt.Errorf("aggchainProverFlow - error getting proof for GER: %s: %w", gerHash.String(), err)
 			}
 
 			proofs[gerHash] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
@@ -284,35 +243,6 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 	}
 
 	return proofs, nil
-}
-
-// getFinalizedL1InfoTreeData returns the L1 Info tree data for the last finalized processed block
-// l1InfoTreeData is:
-// - the leaf data of the highest index leaf on that block and root
-// - merkle proof of given l1 info tree leaf
-// - the root of the l1 info tree on that block
-func (a *aggchainProverFlow) getFinalizedL1InfoTreeData(ctx context.Context,
-) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error) {
-	root, err := a.getLatestFinalizedL1InfoRoot(ctx)
-	if err != nil {
-		return treetypes.Proof{}, nil, nil,
-			fmt.Errorf("aggchainProverFlow - error getting latest finalized L1 Info tree root: %w", err)
-	}
-
-	leaf, err := a.l1InfoTreeSyncer.GetInfoByIndex(ctx, root.Index)
-	if err != nil {
-		return treetypes.Proof{}, nil, nil,
-			fmt.Errorf("aggchainProverFlow - error getting L1 Info tree leaf by index %d: %w", root.Index, err)
-	}
-
-	proof, err := a.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx, root.Index, root.Hash)
-	if err != nil {
-		return treetypes.Proof{}, nil, nil,
-			fmt.Errorf("aggchainProverFlow - error getting L1 Info tree merkle proof from index %d to root %s: %w",
-				root.Index, root.Hash.String(), err)
-	}
-
-	return proof, leaf, root, nil
 }
 
 // getImportedBridgeExitsForProver converts the claims to imported bridge exits
