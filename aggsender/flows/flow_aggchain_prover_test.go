@@ -270,7 +270,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
 					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(nil, errors.New("some error"))
 			},
-			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
+			expectedError: "error fetching aggchain proof for block range 1 : 10: some error",
 		},
 		{
 			name: "success fetching aggchain proof for new certificate",
@@ -521,7 +521,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 
 			mockChainGERReader := mocks.NewChainGERReader(t)
 			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
-			aggchainFlow := &AaggchainProverFlow{
+			aggchainFlow := &AggchainProverFlow{
 				gerReader: mockChainGERReader,
 				baseFlow: &baseFlow{
 					l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
@@ -531,7 +531,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 
 			tc.mockFn(mockChainGERReader, mockL1InfoTreeQuery)
 
-			proofs, err := aggchainFlow.GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x2"), Index: 10}, 1, 10)
+			proofs, err := aggchainFlow.getInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x2"), Index: 10}, 1, 10)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
@@ -655,7 +655,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 				},
 			}
 
-			exits, err := flow.GetImportedBridgeExitsForProver(tc.claims)
+			exits, err := flow.getImportedBridgeExitsForProver(tc.claims)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

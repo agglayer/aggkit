@@ -5,14 +5,10 @@ import (
 	"errors"
 	"testing"
 
-	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
-	treetypes "github.com/agglayer/aggkit/tree/types"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -39,16 +35,8 @@ func TestGenerateAggchainProof(t *testing.T) {
 			) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(treetypes.Proof{}, &l1infotreesync.L1InfoTreeLeaf{}, &treetypes.Root{}, nil)
-				mockFlow.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(&treetypes.Root{}, []bridgesync.Claim{}).Return(nil)
-				mockFlow.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{}, uint64(1), uint64(10)).Return(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{}, nil)
-				mockFlow.EXPECT().GetImportedBridgeExitsForProver([]bridgesync.Claim{}).Return([]*agglayertypes.ImportedBridgeExitWithBlockNumber{}, nil)
-				mockAggchainProofClient.EXPECT().GenerateAggchainProof(uint64(1), uint64(10), common.Hash{},
-					l1infotreesync.L1InfoTreeLeaf{}, agglayertypes.MerkleProof{
-						Root:  common.Hash{},
-						Proof: treetypes.Proof{},
-					}, map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{},
-					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{}).Return(&types.AggchainProof{Proof: []byte("proof")}, nil)
+				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(1), uint64(10), []bridgesync.Claim{}).Return(
+					&types.AggchainProof{Proof: []byte("proof")}, nil, nil)
 			},
 			expectedProof: []byte("proof"),
 		},
@@ -76,49 +64,6 @@ func TestGenerateAggchainProof(t *testing.T) {
 			expectedError: "error getting claims (imported bridge exits)",
 		},
 		{
-			name: "Failure_GetFinalizedL1InfoTreeData",
-			setupMocks: func(ctx context.Context,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockAggchainProofClient *mocks.AggchainProofClientInterface,
-				mockFlow *mocks.AggchainProofFlow,
-			) {
-				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(treetypes.Proof{}, nil, nil, errors.New("test error"))
-			},
-			expectedError: "error getting finalized L1 Info tree data: test error",
-		},
-		{
-			name: "Failure_CheckIfClaimsArePartOfFinalizedL1InfoTree",
-			setupMocks: func(ctx context.Context,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockAggchainProofClient *mocks.AggchainProofClientInterface,
-				mockFlow *mocks.AggchainProofFlow,
-			) {
-				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(treetypes.Proof{}, &l1infotreesync.L1InfoTreeLeaf{}, &treetypes.Root{}, nil)
-				mockFlow.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(&treetypes.Root{}, []bridgesync.Claim{}).Return(errors.New("test error"))
-			},
-			expectedError: "error checking if claims are part of finalized L1 Info tree root",
-		},
-		{
-			name: "Failure_GetImportedBridgeExitsForProver",
-			setupMocks: func(ctx context.Context,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockAggchainProofClient *mocks.AggchainProofClientInterface,
-				mockFlow *mocks.AggchainProofFlow,
-			) {
-				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(treetypes.Proof{}, &l1infotreesync.L1InfoTreeLeaf{}, &treetypes.Root{}, nil)
-				mockFlow.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(&treetypes.Root{}, []bridgesync.Claim{}).Return(nil)
-				mockFlow.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{}, uint64(1), uint64(10)).Return(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{}, nil)
-				mockFlow.EXPECT().GetImportedBridgeExitsForProver([]bridgesync.Claim{}).Return(nil, errors.New("test error"))
-			},
-			expectedError: "error getting imported bridge exits for prover: test error",
-		},
-		{
 			name: "Failure_GenerateAggchainProof",
 			setupMocks: func(ctx context.Context,
 				mockL2Syncer *mocks.L2BridgeSyncer,
@@ -127,44 +72,10 @@ func TestGenerateAggchainProof(t *testing.T) {
 			) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(treetypes.Proof{}, &l1infotreesync.L1InfoTreeLeaf{}, &treetypes.Root{}, nil)
-				mockFlow.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(&treetypes.Root{}, []bridgesync.Claim{}).Return(nil)
-				mockFlow.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{}, uint64(1), uint64(10)).Return(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{}, nil)
-				mockFlow.EXPECT().GetImportedBridgeExitsForProver([]bridgesync.Claim{}).Return([]*agglayertypes.ImportedBridgeExitWithBlockNumber{}, nil)
-				mockAggchainProofClient.EXPECT().GenerateAggchainProof(uint64(1), uint64(10), common.Hash{},
-					l1infotreesync.L1InfoTreeLeaf{}, agglayertypes.MerkleProof{
-						Root:  common.Hash{},
-						Proof: treetypes.Proof{},
-					}, map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{},
-					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{}).Return(nil, errors.New("test error"))
+				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(1), uint64(10), []bridgesync.Claim{}).Return(
+					nil, nil, errors.New("test error"))
 			},
-			expectedError: "error fetching aggchain proof for block range 1 : 10: test error",
-		},
-		{
-			name: "Failure_LastL2BlockSyncedLowerThanFromBlock",
-			setupMocks: func(ctx context.Context,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockAggchainProofClient *mocks.AggchainProofClientInterface,
-				mockFlow *mocks.AggchainProofFlow,
-			) {
-				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), nil)
-			},
-			expectedError: "last L2 block synced 0 is less than from block requested 1",
-		},
-		{
-			name: "Failure_GetInjectedGERsProofs",
-			setupMocks: func(ctx context.Context,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockAggchainProofClient *mocks.AggchainProofClientInterface,
-				mockFlow *mocks.AggchainProofFlow,
-			) {
-				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(treetypes.Proof{}, &l1infotreesync.L1InfoTreeLeaf{}, &treetypes.Root{}, nil)
-				mockFlow.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(&treetypes.Root{}, []bridgesync.Claim{}).Return(nil)
-				mockFlow.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{}, uint64(1), uint64(10)).Return(nil, errors.New("test error"))
-			},
-			expectedError: "error getting injected GERs proofs: test error",
+			expectedError: "error generating Aggchain proof",
 		},
 	}
 
