@@ -36,5 +36,6 @@ CheckStatusCertificateInterval = "1s"
 [AggchainProofGen]
 AggchainProofURL = "{{.aggkit_prover_grpc_url}}"
 GlobalExitRootL2Addr = "{{.zkevm_global_exit_root_l2_address}}"
+GenerateAggchainProofTimeout = "1h"
 
 
