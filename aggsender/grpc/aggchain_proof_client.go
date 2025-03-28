@@ -20,8 +20,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const TIMEOUT = 2
-
 // AggchainProofClientInterface defines an interface for aggchain proof client
 type AggchainProofClientInterface interface {
 	GenerateAggchainProof(
@@ -38,17 +36,21 @@ type AggchainProofClientInterface interface {
 // AggchainProofClient provides an implementation for the AggchainProofClient interface
 type AggchainProofClient struct {
 	client aggkitProverV1Grpc.AggchainProofServiceClient
+
+	generateAggchainProofTimeout time.Duration
 }
 
 // NewAggchainProofClient initializes a new AggchainProof instance
-func NewAggchainProofClient(serverAddr string) (*AggchainProofClient, error) {
+func NewAggchainProofClient(serverAddr string,
+	generateProofTimeout time.Duration) (*AggchainProofClient, error) {
 	addr := strings.TrimPrefix(serverAddr, "http://")
 	grpcClient, err := aggkitCommon.NewClient(addr)
 	if err != nil {
 		return nil, err
 	}
 	return &AggchainProofClient{
-		client: aggkitProverV1Grpc.NewAggchainProofServiceClient(grpcClient.Conn()),
+		generateAggchainProofTimeout: generateProofTimeout,
+		client:                       aggkitProverV1Grpc.NewAggchainProofServiceClient(grpcClient.Conn()),
 	}, nil
 }
 
@@ -61,7 +63,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	gerLeavesWithBlockNumber map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber,
 	importedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber,
 ) (*types.AggchainProof, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*TIMEOUT)
+	ctx, cancel := context.WithTimeout(context.Background(), c.generateAggchainProofTimeout)
 	defer cancel()
 
 	convertedL1InfoTreeLeaf := &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{

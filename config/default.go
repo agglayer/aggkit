@@ -7,7 +7,7 @@ L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
-
+GenerateAggchainProofTimeout = "1h"
 
 ForkId = 9
 ContractVersions = "elderberry"
@@ -229,6 +229,7 @@ RetryCertInmediatlyAfterInError = true
 GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 # Don't send certificate over 80% of the epoch
 MaxEpochPercentageAllowedToSendCertificate=80
+GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
@@ -241,4 +242,5 @@ Port = 9091
 [AggchainProofGen]
 AggchainProofURL = "{{AggchainProofURL}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 `

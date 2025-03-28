@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	configtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -36,6 +37,9 @@ type Config struct {
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
 	GlobalExitRootL2Addr common.Address `mapstructure:"GlobalExitRootL2"`
+
+	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
+	GenerateAggchainProofTimeout configtypes.Duration `mapstructure:"GenerateAggchainProofTimeout"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs
@@ -58,7 +62,8 @@ func NewAggchainProofGenerationTool(
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*AggchainProofGenerationTool, error) {
-	aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggchainProofURL)
+	aggchainProofClient, err := grpc.NewAggchainProofClient(
+		cfg.AggchainProofURL, cfg.GenerateAggchainProofTimeout.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}
