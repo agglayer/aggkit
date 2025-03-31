@@ -41,11 +41,11 @@ func newAggchainProverFlow(log types.Logger,
 		gerReader:           gerReader,
 		aggchainProofClient: aggkitProverClient,
 		baseFlow: &baseFlow{
-			log:                 log,
-			cfg:                 cfg,
-			l2Syncer:            l2Syncer,
-			storage:             storage,
-			l1InfoTreeDataQuery: l1infotreequery.NewL1InfoTreeDataQuery(l1Client, l1InfoTreeSyncer),
+			log:                   log,
+			cfg:                   cfg,
+			l2Syncer:              l2Syncer,
+			storage:               storage,
+			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 		},
 	}, nil
 }
@@ -111,7 +111,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 
-	proof, leaf, root, err := a.l1InfoTreeDataQuery.GetFinalizedL1InfoTreeData(ctx)
+	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
@@ -120,7 +120,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
 	buildParams.L1InfoTreeRootFromWhichToProve = root
 
-	if err := a.l1InfoTreeDataQuery.CheckIfClaimsArePartOfFinalizedL1InfoTree(
+	if err := a.l1InfoTreeDataQuerier.CheckIfClaimsArePartOfFinalizedL1InfoTree(
 		root, buildParams.Claims); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
@@ -218,7 +218,7 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 
 	for blockNum, gerHashes := range injectedGERs {
 		for _, gerHash := range gerHashes {
-			info, proof, err := a.l1InfoTreeDataQuery.GetProofForGER(ctx, gerHash, finalizedL1InfoTreeRoot.Hash)
+			info, proof, err := a.l1InfoTreeDataQuerier.GetProofForGER(ctx, gerHash, finalizedL1InfoTreeRoot.Hash)
 			if err != nil {
 				return nil, fmt.Errorf("aggchainProverFlow - error getting proof for GER: %s: %w", gerHash.String(), err)
 			}

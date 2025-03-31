@@ -30,11 +30,11 @@ func newPPFlow(log types.Logger,
 	return &ppFlow{
 		signer: signer,
 		baseFlow: &baseFlow{
-			log:                 log,
-			cfg:                 cfg,
-			l2Syncer:            l2Syncer,
-			storage:             storage,
-			l1InfoTreeDataQuery: l1infotreequery.NewL1InfoTreeDataQuery(l1Client, l1InfoTreeSyncer),
+			log:                   log,
+			cfg:                   cfg,
+			l2Syncer:              l2Syncer,
+			storage:               storage,
+			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 		},
 	}
 }
@@ -57,7 +57,7 @@ func (p *ppFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 	}
 
 	if len(buildParams.Claims) > 0 {
-		root, _, err := p.l1InfoTreeDataQuery.GetLatestFinalizedL1InfoRoot(ctx)
+		root, _, err := p.l1InfoTreeDataQuerier.GetLatestFinalizedL1InfoRoot(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("ppFlow - error getting latest finalized L1 info root: %w", err)
 		}

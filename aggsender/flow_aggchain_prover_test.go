@@ -50,7 +50,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		mockFn func(*mocks.AggSenderStorage,
 			*mocks.L2BridgeSyncer,
 			*mocks.AggchainProofClientInterface,
-			*mocks.L1InfoTreeDataQuery,
+			*mocks.L1InfoTreeDataQuerier,
 			*mocks.ChainGERReader,
 		)
 		expectedParams *types.CertificateBuildParams
@@ -61,7 +61,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuery,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockChainGERReader *mocks.ChainGERReader) {
 				mockStorage.On("GetLastSentCertificate").Return(nil, errors.New("some error"))
 			},
@@ -72,7 +72,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuery,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockChainGERReader *mocks.ChainGERReader) {
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
 					FromBlock: 1,
@@ -88,7 +88,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuery,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockChainGERReader *mocks.ChainGERReader) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
@@ -158,7 +158,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuery,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockChainGERReader *mocks.ChainGERReader) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
@@ -229,7 +229,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuery,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockChainGERReader *mocks.ChainGERReader) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
@@ -277,7 +277,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuery,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockChainGERReader *mocks.ChainGERReader) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
@@ -340,7 +340,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuery,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockChainGERReader *mocks.ChainGERReader) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
@@ -411,20 +411,20 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 			mockChainGERReader := mocks.NewChainGERReader(t)
-			mockL1InfoTreeDataQuery := mocks.NewL1InfoTreeDataQuery(t)
+			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 			aggchainFlow := &aggchainProverFlow{
 				gerReader:           mockChainGERReader,
 				aggchainProofClient: mockAggchainProofClient,
 				baseFlow: &baseFlow{
-					l1InfoTreeDataQuery: mockL1InfoTreeDataQuery,
-					l2Syncer:            mockL2Syncer,
-					storage:             mockStorage,
-					log:                 log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
-					cfg:                 Config{},
+					l1InfoTreeDataQuerier: mockL1InfoTreeDataQuerier,
+					l2Syncer:              mockL2Syncer,
+					storage:               mockStorage,
+					log:                   log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
+					cfg:                   Config{},
 				},
 			}
 
-			tc.mockFn(mockStorage, mockL2Syncer, mockAggchainProofClient, mockL1InfoTreeDataQuery, mockChainGERReader)
+			tc.mockFn(mockStorage, mockL2Syncer, mockAggchainProofClient, mockL1InfoTreeDataQuerier, mockChainGERReader)
 
 			params, err := aggchainFlow.GetCertificateBuildParams(ctx)
 			if tc.expectedError != "" {
@@ -436,8 +436,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 			mockStorage.AssertExpectations(t)
 			mockL2Syncer.AssertExpectations(t)
-			mockL1InfoTreeDataQuery.AssertExpectations(t)
-			mockL1InfoTreeDataQuery.AssertExpectations(t)
+			mockL1InfoTreeDataQuerier.AssertExpectations(t)
+			mockL1InfoTreeDataQuerier.AssertExpectations(t)
 			mockAggchainProofClient.AssertExpectations(t)
 		})
 	}
@@ -450,20 +450,20 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		mockFn         func(*mocks.ChainGERReader, *mocks.L1InfoTreeDataQuery)
+		mockFn         func(*mocks.ChainGERReader, *mocks.L1InfoTreeDataQuerier)
 		expectedProofs map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber
 		expectedError  string
 	}{
 		{
 			name: "error getting injected GERs for range",
-			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error getting injected GERs for range 1 : 10: some error",
 		},
 		{
 			name: "error getting proof for GER",
-			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{
 					1: {common.HexToHash("0x1")},
 				}, nil)
@@ -473,7 +473,7 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 		},
 		{
 			name: "success",
-			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{
 					111: {common.HexToHash("0x1")},
 				}, nil)
@@ -521,13 +521,13 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 			t.Parallel()
 
 			mockChainGERReader := mocks.NewChainGERReader(t)
-			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuery(t)
+			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
 			aggchainFlow := &aggchainProverFlow{
 				gerReader: mockChainGERReader,
 				baseFlow: &baseFlow{
-					l1InfoTreeDataQuery: mockL1InfoTreeQuery,
-					log:                 log.WithFields("flowManager", "Test_AggchainProverFlow_GetInjectedGERsProofs"),
-					cfg:                 Config{},
+					l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
+					log:                   log.WithFields("flowManager", "Test_AggchainProverFlow_GetInjectedGERsProofs"),
+					cfg:                   Config{},
 				},
 			}
 

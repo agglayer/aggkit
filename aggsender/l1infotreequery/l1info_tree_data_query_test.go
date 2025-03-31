@@ -114,7 +114,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockL1Client := mocks.NewEthClient(t)
-			l1InfoTreeDataQuery := NewL1InfoTreeDataQuery(mockL1Client, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(mockL1Client, mockL1InfoTreeSyncer)
 
 			tc.mockFn(mockL1InfoTreeSyncer, mockL1Client)
 
@@ -210,7 +210,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
 			mockL1Client := mocks.NewEthClient(t)
-			l1InfoTreeDataQuery := NewL1InfoTreeDataQuery(mockL1Client, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(mockL1Client, mockL1InfoTreeSyncer)
 
 			tc.mockFn(mockL1InfoTreeSyncer, mockL1Client)
 
@@ -293,7 +293,7 @@ func Test_GetProofForGER(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-			l1InfoTreeDataQuery := NewL1InfoTreeDataQuery(nil, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(nil, mockL1InfoTreeSyncer)
 
 			tc.mockFn(mockL1InfoTreeSyncer)
 
@@ -361,7 +361,7 @@ func Test_CheckIfClaimsArePartOfFinalizedL1InfoTree(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-			l1InfoTreeDataQuery := NewL1InfoTreeDataQuery(nil, mockL1InfoTreeSyncer)
+			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(nil, mockL1InfoTreeSyncer)
 
 			tc.mockFn(mockL1InfoTreeSyncer)
 

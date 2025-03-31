@@ -21,7 +21,7 @@ type baseFlow struct {
 	l2Syncer types.L2BridgeSyncer
 	storage  db.AggSenderStorage
 
-	l1InfoTreeDataQuery types.L1InfoTreeDataQuery
+	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 
 	log types.Logger
 	cfg Config
@@ -284,7 +284,7 @@ func (f *baseFlow) getImportedBridgeExits(
 
 		importedBridgeExits = append(importedBridgeExits, ibe)
 
-		l1Info, gerToL1Proof, err := f.l1InfoTreeDataQuery.GetProofForGER(ctx,
+		l1Info, gerToL1Proof, err := f.l1InfoTreeDataQuerier.GetProofForGER(ctx,
 			claim.GlobalExitRoot, rootFromWhichToProve.Hash)
 		if err != nil {
 			return nil, fmt.Errorf(

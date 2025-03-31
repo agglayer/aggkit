@@ -15,19 +15,19 @@ import (
 
 var finalizedBlockBigInt = big.NewInt(int64(etherman.Finalized))
 
-var _ types.L1InfoTreeDataQuery = (*L1InfoTreeDataQuery)(nil)
+var _ types.L1InfoTreeDataQuerier = (*L1InfoTreeDataQuerier)(nil)
 
-// L1InfoTreeDataQuery is a struct that holds the logic to query the L1 Info tree data
-type L1InfoTreeDataQuery struct {
+// L1InfoTreeDataQuerier is a struct that holds the logic to query the L1 Info tree data
+type L1InfoTreeDataQuerier struct {
 	l1Client         types.EthClient
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
 }
 
-// NewL1InfoTreeDataQuery returns a new instance of the L1InfoTreeDataQuery
-func NewL1InfoTreeDataQuery(
+// NewL1InfoTreeDataQuerier returns a new instance of the L1InfoTreeDataQuery
+func NewL1InfoTreeDataQuerier(
 	l1Client types.EthClient,
-	l1InfoTreeSyncer types.L1InfoTreeSyncer) *L1InfoTreeDataQuery {
-	return &L1InfoTreeDataQuery{
+	l1InfoTreeSyncer types.L1InfoTreeSyncer) *L1InfoTreeDataQuerier {
+	return &L1InfoTreeDataQuerier{
 		l1Client:         l1Client,
 		l1InfoTreeSyncer: l1InfoTreeSyncer,
 	}
@@ -35,7 +35,7 @@ func NewL1InfoTreeDataQuery(
 
 // GetLatestFinalizedL1InfoRoot returns the latest processed l1 info tree root
 // based on the latest finalized l1 block
-func (l *L1InfoTreeDataQuery) GetLatestFinalizedL1InfoRoot(ctx context.Context) (
+func (l *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context) (
 	*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error) {
 	lastFinalizedProcessedBlock, err := l.getLatestProcessedFinalizedBlock(ctx)
 	if err != nil {
@@ -61,21 +61,21 @@ func (l *L1InfoTreeDataQuery) GetLatestFinalizedL1InfoRoot(ctx context.Context) 
 
 // GetFinalizedL1InfoTreeData returns the L1 Info tree data for the last finalized processed block
 // l1InfoTreeData is:
-// - the leaf data of the highest index leaf on that block and root
 // - merkle proof of given l1 info tree leaf
+// - the leaf data of the highest index leaf on that block and root
 // - the root of the l1 info tree on that block
-func (l *L1InfoTreeDataQuery) GetFinalizedL1InfoTreeData(ctx context.Context,
+func (l *L1InfoTreeDataQuerier) GetFinalizedL1InfoTreeData(ctx context.Context,
 ) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error) {
 	root, leaf, err := l.GetLatestFinalizedL1InfoRoot(ctx)
 	if err != nil {
 		return treetypes.Proof{}, nil, nil,
-			fmt.Errorf("aggchainProverFlow - error getting latest finalized L1 Info tree root: %w", err)
+			fmt.Errorf("error getting latest finalized L1 Info tree root: %w", err)
 	}
 
 	proof, err := l.l1InfoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(ctx, root.Index, root.Hash)
 	if err != nil {
 		return treetypes.Proof{}, nil, nil,
-			fmt.Errorf("aggchainProverFlow - error getting L1 Info tree merkle proof from index %d to root %s: %w",
+			fmt.Errorf("error getting L1 Info tree merkle proof from index %d to root %s: %w",
 				root.Index, root.Hash.String(), err)
 	}
 
@@ -83,7 +83,7 @@ func (l *L1InfoTreeDataQuery) GetFinalizedL1InfoTreeData(ctx context.Context,
 }
 
 // GetProofForGER returns the L1 Info tree leaf and the merkle proof for the given GER
-func (l *L1InfoTreeDataQuery) GetProofForGER(
+func (l *L1InfoTreeDataQuerier) GetProofForGER(
 	ctx context.Context, ger, rootFromWhichToProve common.Hash) (
 	*l1infotreesync.L1InfoTreeLeaf, treetypes.Proof, error) {
 	l1Info, err := l.l1InfoTreeSyncer.GetInfoByGlobalExitRoot(ger)
@@ -102,7 +102,7 @@ func (l *L1InfoTreeDataQuery) GetProofForGER(
 }
 
 // CheckIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
-func (l *L1InfoTreeDataQuery) CheckIfClaimsArePartOfFinalizedL1InfoTree(
+func (l *L1InfoTreeDataQuerier) CheckIfClaimsArePartOfFinalizedL1InfoTree(
 	finalizedL1InfoTreeRoot *treetypes.Root,
 	claims []bridgesync.Claim) error {
 	for _, claim := range claims {
@@ -123,7 +123,7 @@ func (l *L1InfoTreeDataQuery) CheckIfClaimsArePartOfFinalizedL1InfoTree(
 }
 
 // getLatestProcessedFinalizedBlock returns the latest processed finalized block from the l1infotreesyncer
-func (l *L1InfoTreeDataQuery) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64, error) {
+func (l *L1InfoTreeDataQuerier) getLatestProcessedFinalizedBlock(ctx context.Context) (uint64, error) {
 	lastFinalizedL1Block, err := l.l1Client.HeaderByNumber(ctx, finalizedBlockBigInt)
 	if err != nil {
 		return 0, fmt.Errorf("error getting latest finalized L1 block: %w", err)

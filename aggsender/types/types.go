@@ -61,17 +61,17 @@ type ChainGERReader interface {
 	GetInjectedGERsForRange(ctx context.Context, fromBlock, toBlock uint64) (map[uint64][]common.Hash, error)
 }
 
-// L1InfoTreeDataQuery is an interface defining functions that an L1InfoTreeDataQuery should implement
+// L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
 // It is used to query data from the L1 Info tree
-type L1InfoTreeDataQuery interface {
+type L1InfoTreeDataQuerier interface {
 	// GetLatestFinalizedL1InfoRoot returns the latest processed l1 info tree root
 	// based on the latest finalized l1 block
 	GetLatestFinalizedL1InfoRoot(ctx context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error)
 
 	// GetFinalizedL1InfoTreeData returns the L1 Info tree data for the last finalized processed block
 	// l1InfoTreeData is:
-	// - the leaf data of the highest index leaf on that block and root
 	// - merkle proof of given l1 info tree leaf
+	// - the leaf data of the highest index leaf on that block and root
 	// - the root of the l1 info tree on that block
 	GetFinalizedL1InfoTreeData(ctx context.Context,
 	) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error)
@@ -80,7 +80,7 @@ type L1InfoTreeDataQuery interface {
 	GetProofForGER(ctx context.Context, ger, rootFromWhichToProve common.Hash) (
 		*l1infotreesync.L1InfoTreeLeaf, treetypes.Proof, error)
 
-	// checkIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
+	// CheckIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
 	CheckIfClaimsArePartOfFinalizedL1InfoTree(
 		finalizedL1InfoTreeRoot *treetypes.Root, claims []bridgesync.Claim) error
 }

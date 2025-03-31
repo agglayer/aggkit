@@ -240,8 +240,8 @@ func TestGetImportedBridgeExits(t *testing.T) {
 
 	mockProof := generateTestProof(t)
 
-	mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuery(t)
-	mockL1InfoTreeQuery.On("GetProofForGER", mock.Anything, mock.Anything, mock.Anything).Return(
+	mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
+	mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(
 		&l1infotreesync.L1InfoTreeLeaf{
 			L1InfoTreeIndex:   1,
 			Timestamp:         123456789,
@@ -453,8 +453,8 @@ func TestGetImportedBridgeExits(t *testing.T) {
 			t.Parallel()
 
 			flow := &baseFlow{
-				l1InfoTreeDataQuery: mockL1InfoTreeQuery,
-				log:                 log.WithFields("test", "unittest"),
+				l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
+				log:                   log.WithFields("test", "unittest"),
 			}
 			exits, err := flow.getImportedBridgeExits(context.Background(), tt.claims, &treetypes.Root{Hash: common.HexToHash("0x7891")})
 
@@ -471,7 +471,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 
 func TestBuildCertificate(t *testing.T) {
 	mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
-	mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuery(t)
+	mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
 	mockProof := generateTestProof(t)
 
 	tests := []struct {
@@ -669,9 +669,9 @@ func TestBuildCertificate(t *testing.T) {
 			}
 
 			flow := &baseFlow{
-				l2Syncer:            mockL2BridgeSyncer,
-				l1InfoTreeDataQuery: mockL1InfoTreeQuery,
-				log:                 log.WithFields("test", "unittest"),
+				l2Syncer:              mockL2BridgeSyncer,
+				l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
+				log:                   log.WithFields("test", "unittest"),
 			}
 
 			certParam := &types.CertificateBuildParams{
@@ -955,7 +955,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		mockFn         func(*mocks.AggSenderStorage, *mocks.L2BridgeSyncer, *mocks.L1InfoTreeDataQuery)
+		mockFn         func(*mocks.AggSenderStorage, *mocks.L2BridgeSyncer, *mocks.L1InfoTreeDataQuerier)
 		expectedParams *types.CertificateBuildParams
 		expectedError  string
 	}{
@@ -963,7 +963,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			name: "error getting last processed block",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(0), errors.New("some error"))
 			},
 			expectedError: "error getting last processed block from l2: some error",
@@ -972,7 +972,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			name: "error getting last sent certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(nil, errors.New("some error"))
 			},
@@ -982,7 +982,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			name: "no new blocks to send a certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 10}, nil)
 			},
@@ -992,7 +992,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			name: "error getting bridges and claims",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return(nil, errors.New("some error"))
@@ -1003,7 +1003,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			name: "error claim GER invalid",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
 				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
@@ -1015,7 +1015,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			name: "error GetLatestFinalizedL1InfoRoot",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
@@ -1036,7 +1036,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			name: "success",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuery) {
+				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
@@ -1081,14 +1081,14 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuery(t)
+			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
 			ppFlow := &ppFlow{
 				signer: signer,
 				baseFlow: &baseFlow{
-					log:                 log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams"),
-					storage:             mockStorage,
-					l2Syncer:            mockL2Syncer,
-					l1InfoTreeDataQuery: mockL1InfoTreeQuery,
+					log:                   log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams"),
+					storage:               mockStorage,
+					l2Syncer:              mockL2Syncer,
+					l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
 				},
 			}
 
