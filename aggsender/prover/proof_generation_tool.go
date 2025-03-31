@@ -142,7 +142,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 
 	aggchainProof, _, err := a.flow.GenerateAggchainProof(
 		ctx,
-		lastProvenBlock,
+		fromBlock,
 		maxEndBlock,
 		claims,
 	)
