@@ -255,12 +255,12 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	fromBlock, toBlock uint64,
 	claims []bridgesync.Claim,
 ) (*types.AggchainProof, *treetypes.Root, error) {
-	proof, leaf, root, err := a.l1InfoTreeDataQuery.GetFinalizedL1InfoTreeData(ctx)
+	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
 
-	if err := a.l1InfoTreeDataQuery.CheckIfClaimsArePartOfFinalizedL1InfoTree(
+	if err := a.l1InfoTreeDataQuerier.CheckIfClaimsArePartOfFinalizedL1InfoTree(
 		root, claims); err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
