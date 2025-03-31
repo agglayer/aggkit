@@ -104,8 +104,9 @@ func (a *AggchainProofGenerationTool) GetRPCServices() []rpc.Service {
 // GenerateAggchainProof generates an Aggchain proof
 func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	ctx context.Context,
-	fromBlock, toBlock uint64) ([]byte, error) {
-	a.logger.Infof("Generating Aggchain proof for block range %d : %d", fromBlock, toBlock)
+	lastProvenBlock, maxEndBlock uint64) ([]byte, error) {
+	a.logger.Infof("Generating Aggchain proof. Last proven block: %d. "+
+		"Max end block: %d", lastProvenBlock, maxEndBlock)
 
 	// get last L2 block synced
 	lastL2BlockSynced, err := a.l2Syncer.GetLastProcessedBlock(ctx)
@@ -115,39 +116,41 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 
 	a.logger.Debugf("Last L2 block synced: %d", lastL2BlockSynced)
 
-	// check if last L2 block synced is less than from block
-	if lastL2BlockSynced < fromBlock {
-		a.logger.Errorf("last L2 block synced %d is less than from block requested %d",
-			lastL2BlockSynced, fromBlock)
+	// check if last L2 block synced is less than last proven block
+	if lastL2BlockSynced < lastProvenBlock {
+		a.logger.Errorf("last L2 block synced %d is less than last proven block %d",
+			lastL2BlockSynced, lastProvenBlock)
 
-		return nil, fmt.Errorf("last L2 block synced %d is less than from block requested %d",
-			lastL2BlockSynced, fromBlock)
+		return nil, fmt.Errorf("last L2 block synced %d is less than last proven block %d",
+			lastL2BlockSynced, lastProvenBlock)
 	}
 
-	// get claims for the block range
-	a.logger.Debugf("Getting claims for block range %d : %d", fromBlock, toBlock)
+	fromBlock := lastProvenBlock + 1
 
-	claims, err := a.l2Syncer.GetClaims(ctx, fromBlock, toBlock)
+	// get claims for the block range
+	a.logger.Debugf("Getting claims for block range %d : %d", fromBlock, maxEndBlock)
+
+	claims, err := a.l2Syncer.GetClaims(ctx, fromBlock, maxEndBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error getting claims (imported bridge exits): %w", err)
 	}
 
-	a.logger.Debugf("Got %d claims for block range %d : %d", len(claims), fromBlock, toBlock)
+	a.logger.Debugf("Got %d claims for block range %d : %d", len(claims), fromBlock, maxEndBlock)
 
 	// call the prover to generate the proof
-	a.logger.Debugf("Calling AggchainProofClient to generate proof for block range %d : %d", fromBlock, toBlock)
+	a.logger.Debugf("Calling AggchainProofClient to generate proof for block range %d : %d", fromBlock, maxEndBlock)
 
 	aggchainProof, _, err := a.flow.GenerateAggchainProof(
 		ctx,
-		fromBlock,
-		toBlock,
+		lastProvenBlock,
+		maxEndBlock,
 		claims,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error generating Aggchain proof: %w", err)
 	}
 
-	a.logger.Infof("Generated Aggchain proof for block range %d : %d", fromBlock, toBlock)
+	a.logger.Infof("Generated Aggchain proof for block range %d : %d", fromBlock, maxEndBlock)
 
 	return aggchainProof.Proof, nil
 }
