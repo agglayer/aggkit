@@ -52,8 +52,8 @@ const (
 	callTracerType = "callTracer"
 )
 
-func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
-	syncFullClaims bool) (sync.LogAppenderMap, error) {
+func buildAppender(client aggkittypes.EthClienter,
+	bridgeAddr common.Address, syncFullClaims bool) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
 		return nil, err
@@ -71,18 +71,33 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 
 	appender := make(sync.LogAppenderMap)
 
-	appender[bridgeEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		bridgeEvent, err := bridgeContractV2.ParseBridgeEvent(l)
+	// Add event handlers for the bridge contract
+	appender[bridgeEventSignature] = buildBridgeEventHandler(bridgeContractV2, client, bridgeAddr)
+	appender[claimEventSignature] = buildClaimEventHandler(bridgeContractV2, client, bridgeAddr, syncFullClaims)
+	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
+		bridgeContractV1, client,
+		bridgeAddr, syncFullClaims)
+	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeContractV2, client, bridgeAddr)
+	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeSovereignChain, client, bridgeAddr)
+	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeSovereignChain, client, bridgeAddr)
+	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(bridgeSovereignChain)
+
+	return appender, nil
+}
+
+// buildBridgeEventHandler creates a handler for the Bridge event log.
+func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	client aggkittypes.EthClienter,
+	bridgeAddr common.Address) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		bridgeEvent, err := contract.ParseBridgeEvent(l)
 		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using d.bridgeContractV2.ParseBridgeEvent: %w",
-				l, err,
-			)
+			return fmt.Errorf("error parsing BridgeEvent log %+v: %w", l, err)
 		}
 
 		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
 		if err != nil {
-			return fmt.Errorf("failed to extract the bridge event calldata (tx hash: %s): %w", l.TxHash, err)
+			return fmt.Errorf("failed to extract bridge event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
 
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
@@ -101,18 +116,19 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			FromAddress:        l.Address,
 			Calldata:           calldata,
 		}})
-
 		return nil
 	}
+}
 
-	appender[claimEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		claimEvent, err := bridgeContractV2.ParseClaimEvent(l)
+// buildClaimEventHandler creates a handler for the Claim event log.
+func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using d.bridgeContractV2.ParseClaimEvent: %w",
-				l, err,
-			)
+			return fmt.Errorf("error parsing Claim event log %+v: %w", l, err)
 		}
+
 		claim := &Claim{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
@@ -125,23 +141,27 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			TxHash:             l.TxHash,
 			FromAddress:        l.Address,
 		}
+
 		if syncFullClaims {
 			if err := claim.setClaimCalldata(client, bridgeAddr, l.TxHash); err != nil {
 				return err
 			}
 		}
+
 		b.Events = append(b.Events, Event{Claim: claim})
 		return nil
 	}
+}
 
-	appender[claimEventSignaturePreEtrog] = func(b *sync.EVMBlock, l types.Log) error {
-		claimEvent, err := bridgeContractV1.ParseClaimEvent(l)
+// buildClaimEventHandlerPreEtrog creates a handler for the Claim event log for pre-Etrog contracts.
+func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbridge,
+	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using d.bridgeContractV1.ParseClaimEvent: %w",
-				l, err,
-			)
+			return fmt.Errorf("error parsing Claim event log %+v: %w", l, err)
 		}
+
 		claim := &Claim{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
@@ -151,22 +171,27 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			DestinationAddress: claimEvent.DestinationAddress,
 			Amount:             claimEvent.Amount,
 		}
+
 		if syncFullClaims {
 			if err := claim.setClaimCalldata(client, bridgeAddr, l.TxHash); err != nil {
 				return err
 			}
 		}
+
 		b.Events = append(b.Events, Event{Claim: claim})
 		return nil
 	}
+}
 
-	appender[tokenMappingEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		tokenMappingEvent, err := bridgeContractV2.ParseNewWrappedToken(l)
+// buildTokenMappingHandler creates a handler for the NewWrappedToken event log.
+//
+//nolint:dupl
+func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	client aggkittypes.EthClienter, bridgeAddr common.Address) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		tokenMappingEvent, err := contract.ParseNewWrappedToken(l)
 		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using d.bridgeContractV2.ParseNewWrappedToken: %w",
-				l, err,
-			)
+			return fmt.Errorf("error parsing NewWrappedToken event log %+v: %w", l, err)
 		}
 
 		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
@@ -188,14 +213,17 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 		}})
 		return nil
 	}
+}
 
-	appender[setSovereignTokenEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		setSovereignTokenEvent, err := bridgeSovereignChain.ParseSetSovereignTokenAddress(l)
+// buildSetSovereignTokenHandler creates a handler for the SetSovereignTokenAddress event log.
+//
+//nolint:dupl
+func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
+	client aggkittypes.EthClienter, bridgeAddr common.Address) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseSetSovereignTokenAddress(l)
 		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using d.bridgeSovereignChain.ParseSetSovereignTokenAddress: %w",
-				l, err,
-			)
+			return fmt.Errorf("error parsing SetSovereignTokenAddress event log %+v: %w", l, err)
 		}
 
 		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
@@ -208,24 +236,24 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			BlockPos:            uint64(l.Index),
 			BlockTimestamp:      b.Timestamp,
 			TxHash:              l.TxHash,
-			OriginNetwork:       setSovereignTokenEvent.OriginNetwork,
-			OriginTokenAddress:  setSovereignTokenEvent.OriginTokenAddress,
-			WrappedTokenAddress: setSovereignTokenEvent.SovereignTokenAddress,
-			IsNotMintable:       setSovereignTokenEvent.IsNotMintable,
+			OriginNetwork:       event.OriginNetwork,
+			OriginTokenAddress:  event.OriginTokenAddress,
+			WrappedTokenAddress: event.SovereignTokenAddress,
+			IsNotMintable:       event.IsNotMintable,
 			Calldata:            calldata,
 			Type:                SovereignToken,
 		}})
-
 		return nil
 	}
+}
 
-	appender[migrateLegacyTokenEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		migrateLegacyTokenEvent, err := bridgeSovereignChain.ParseMigrateLegacyToken(l)
+// buildMigrateLegacyTokenHandler creates a handler for the MigrateLegacyToken event log.
+func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
+	client aggkittypes.EthClienter, bridgeAddr common.Address) func(*sync.EVMBlock, types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseMigrateLegacyToken(l)
 		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using d.bridgeSovereignChain.ParseMigrateLegacyToken: %w",
-				l, err,
-			)
+			return fmt.Errorf("error parsing MigrateLegacyToken event log %+v: %w", l, err)
 		}
 
 		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
@@ -238,23 +266,23 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			BlockPos:            uint64(l.Index),
 			BlockTimestamp:      b.Timestamp,
 			TxHash:              l.TxHash,
-			Sender:              migrateLegacyTokenEvent.Sender,
-			LegacyTokenAddress:  migrateLegacyTokenEvent.LegacyTokenAddress,
-			UpdatedTokenAddress: migrateLegacyTokenEvent.UpdatedTokenAddress,
-			Amount:              migrateLegacyTokenEvent.Amount,
+			Sender:              event.Sender,
+			LegacyTokenAddress:  event.LegacyTokenAddress,
+			UpdatedTokenAddress: event.UpdatedTokenAddress,
+			Amount:              event.Amount,
 			Calldata:            calldata,
 		}})
-
 		return nil
 	}
+}
 
-	appender[removeLegacySovereignTokenEventSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		removeLegacySovereignTokenEvent, err := bridgeSovereignChain.ParseRemoveLegacySovereignTokenAddress(l)
+// buildRemoveLegacyTokenHandler creates a handler for the RemoveLegacySovereignTokenAddress event log.
+func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain) func(*sync.EVMBlock,
+	types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseRemoveLegacySovereignTokenAddress(l)
 		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using d.bridgeSovereignChain.ParseRemoveLegacySovereignTokenAddress: %w",
-				l, err,
-			)
+			return fmt.Errorf("error parsing RemoveLegacySovereignTokenAddress event log %+v: %w", l, err)
 		}
 
 		b.Events = append(b.Events, Event{RemoveLegacyToken: &RemoveLegacyToken{
@@ -262,13 +290,10 @@ func buildAppender(client aggkittypes.EthClienter, bridgeAddr common.Address,
 			BlockPos:           uint64(l.Index),
 			BlockTimestamp:     b.Timestamp,
 			TxHash:             l.TxHash,
-			LegacyTokenAddress: removeLegacySovereignTokenEvent.SovereignTokenAddress,
+			LegacyTokenAddress: event.SovereignTokenAddress,
 		}})
-
 		return nil
 	}
-
-	return appender, nil
 }
 
 type call struct {
