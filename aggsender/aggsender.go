@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/metrics"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
@@ -25,12 +26,7 @@ import (
 
 const signatureSize = 65
 
-var (
-	errNoBridgesAndClaims   = errors.New("no bridges and claims to build certificate")
-	errInvalidSignatureSize = errors.New("invalid signature size")
-
-	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
-)
+var errInvalidSignatureSize = errors.New("invalid signature size")
 
 type RateLimiter interface {
 	Call(msg string, allowToSleep bool) *time.Duration
@@ -94,18 +90,24 @@ func New(
 			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
 		}
 
-		aggchainProofClient, err = grpc.NewAggchainProofClient(cfg.AggchainProofURL)
+		aggchainProofClient, err = grpc.NewAggchainProofClient(
+			cfg.AggchainProofURL,
+			cfg.GenerateAggchainProofTimeout.Duration)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}
 
-		flowManager, err = newAggchainProverFlow(logger, cfg, aggchainProofClient, storage,
+		flowManager, err = flows.NewAggchainProverFlow(
+			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash, cfg.GlobalExitRootL2Addr,
+			aggchainProofClient, storage,
 			l1InfoTreeSyncer, l2Syncer, l1Client, l2Client)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggchain prover flow: %w", err)
 		}
 	} else {
-		flowManager = newPPFlow(logger, cfg, storage, l1InfoTreeSyncer, l2Syncer, l1Client, signer)
+		flowManager = flows.NewPPFlow(
+			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash,
+			storage, l1InfoTreeSyncer, l2Syncer, l1Client, signer)
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())

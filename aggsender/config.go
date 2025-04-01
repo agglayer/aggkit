@@ -65,6 +65,8 @@ type Config struct {
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
 	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
+	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
+	GenerateAggchainProofTimeout types.Duration `mapstructure:"GenerateAggchainProofTimeout"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -87,5 +89,6 @@ func (c Config) String() string {
 		"RetryCertImmediatelyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"MaxEpochPercentageAllowedToSendCertificate: " +
-		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n"
+		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n" +
+		"GenerateAggchainProofTimeout: " + c.GenerateAggchainProofTimeout.String() + "\n"
 }

@@ -1,4 +1,4 @@
-package aggsender
+package flows
 
 import (
 	"context"
@@ -21,6 +21,8 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+var ler1 = common.HexToHash("0x123")
 
 func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 	t.Parallel()
@@ -1082,7 +1084,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
-			ppFlow := &ppFlow{
+			ppFlow := &PPFlow{
 				signer: signer,
 				baseFlow: &baseFlow{
 					log:                   log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams"),

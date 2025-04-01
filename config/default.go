@@ -6,7 +6,8 @@ const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
 AggLayerURL = "https://agglayer-dev.polygon.technology"
-
+AggchainProofURL = "http://localhost:5576"
+GenerateAggchainProofTimeout = "1h"
 
 ForkId = 9
 ContractVersions = "elderberry"
@@ -220,7 +221,7 @@ MaxCertSize = 8388608
 BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
-AggkitProverURL = ""
+AggchainProofURL = "{{AggchainProofURL}}"
 # PessimisticProof or AggchainProver
 Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
@@ -228,6 +229,7 @@ RetryCertInmediatlyAfterInError = true
 GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 # Don't send certificate over 80% of the epoch
 MaxEpochPercentageAllowedToSendCertificate=80
+GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
@@ -236,4 +238,9 @@ MaxEpochPercentageAllowedToSendCertificate=80
 Enabled = true
 Host = "localhost"
 Port = 9091
+
+[AggchainProofGen]
+AggchainProofURL = "{{AggchainProofURL}}"
+GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 `

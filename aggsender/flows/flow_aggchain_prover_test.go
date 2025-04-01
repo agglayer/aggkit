@@ -1,4 +1,4 @@
-package aggsender
+package flows
 
 import (
 	"context"
@@ -270,7 +270,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
 					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(nil, errors.New("some error"))
 			},
-			expectedError: "error fetching aggchain proof for block range 1 : 10 : some error",
+			expectedError: "error fetching aggchain proof for block range 1 : 10: some error",
 		},
 		{
 			name: "success fetching aggchain proof for new certificate",
@@ -412,7 +412,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 			mockChainGERReader := mocks.NewChainGERReader(t)
 			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-			aggchainFlow := &aggchainProverFlow{
+			aggchainFlow := &AggchainProverFlow{
 				gerReader:           mockChainGERReader,
 				aggchainProofClient: mockAggchainProofClient,
 				baseFlow: &baseFlow{
@@ -420,7 +420,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					l2Syncer:              mockL2Syncer,
 					storage:               mockStorage,
 					log:                   log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
-					cfg:                   Config{},
 				},
 			}
 
@@ -522,12 +521,11 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 
 			mockChainGERReader := mocks.NewChainGERReader(t)
 			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
-			aggchainFlow := &aggchainProverFlow{
+			aggchainFlow := &AggchainProverFlow{
 				gerReader: mockChainGERReader,
 				baseFlow: &baseFlow{
 					l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
 					log:                   log.WithFields("flowManager", "Test_AggchainProverFlow_GetInjectedGERsProofs"),
-					cfg:                   Config{},
 				},
 			}
 
@@ -651,10 +649,9 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			flow := &aggchainProverFlow{
+			flow := &AggchainProverFlow{
 				baseFlow: &baseFlow{
 					log: log.WithFields("flowManager", "TestGetImportedBridgeExitsForProver"),
-					cfg: Config{},
 				},
 			}
 

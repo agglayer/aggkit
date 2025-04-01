@@ -1,4 +1,4 @@
-package aggsender
+package flows
 
 import (
 	"context"
@@ -13,39 +13,43 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"google.golang.org/grpc/status"
 )
 
-// aggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
-type aggchainProverFlow struct {
+// AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
+type AggchainProverFlow struct {
 	*baseFlow
 
 	aggchainProofClient grpc.AggchainProofClientInterface
 	gerReader           types.ChainGERReader
 }
 
-// newAggchainProverFlow returns a new instance of the aggchainProverFlow
-func newAggchainProverFlow(log types.Logger,
-	cfg Config,
+// NewAggchainProverFlow returns a new instance of the AggchainProverFlow
+func NewAggchainProverFlow(log types.Logger,
+	maxCertSize uint,
+	bridgeMetaDataAsHash bool,
+	gerL2Address common.Address,
 	aggkitProverClient grpc.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	l1Client types.EthClient,
-	l2Client types.EthClient) (*aggchainProverFlow, error) {
-	gerReader, err := chaingerreader.NewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
+	l2Client types.EthClient) (*AggchainProverFlow, error) {
+	gerReader, err := chaingerreader.NewEVMChainGERReader(gerL2Address, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error creating L2Etherman: %w", err)
 	}
 
-	return &aggchainProverFlow{
+	return &AggchainProverFlow{
 		gerReader:           gerReader,
 		aggchainProofClient: aggkitProverClient,
 		baseFlow: &baseFlow{
 			log:                   log,
-			cfg:                   cfg,
 			l2Syncer:              l2Syncer,
 			storage:               storage,
 			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			maxCertSize:           maxCertSize,
+			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},
 	}, nil
 }
@@ -55,7 +59,7 @@ func newAggchainProverFlow(log types.Logger,
 // What differentiates this function from the regular PP flow is that,
 // if the last sent certificate is in error, we need to resend the exact same certificate
 // also, it calls the aggchain prover to get the aggchain proof
-func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
+func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	lastSentCertificateInfo, err := a.storage.GetLastSentCertificate()
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
@@ -111,58 +115,19 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 
-	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
+	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
+		ctx, buildParams.FromBlock, buildParams.ToBlock, buildParams.Claims)
 	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
-	}
-
-	// set the root from which to generate merkle proofs for each claim
-	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
-	buildParams.L1InfoTreeRootFromWhichToProve = root
-
-	if err := a.l1InfoTreeDataQuerier.CheckIfClaimsArePartOfFinalizedL1InfoTree(
-		root, buildParams.Claims); err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
-			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
-	}
-
-	injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, buildParams.FromBlock, buildParams.ToBlock)
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
-	}
-
-	importedBridgeExits, err := a.getImportedBridgeExitsForProver(buildParams.Claims)
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
-	}
-
-	lastProvenBlock := buildParams.FromBlock
-	if lastProvenBlock > 0 {
-		// if we had previous proofs, the last proven block is the one before the first block in the range
-		lastProvenBlock--
-	}
-
-	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
-		lastProvenBlock,
-		buildParams.ToBlock,
-		root.Hash,
-		*leaf,
-		agglayertypes.MerkleProof{
-			Root:  root.Hash,
-			Proof: proof,
-		},
-		injectedGERsProofs,
-		importedBridgeExits,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error fetching aggchain proof for block range %d : %d : %w",
-			buildParams.FromBlock, buildParams.ToBlock, err)
+		return nil, fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
 	}
 
 	a.log.Infof("aggchainProverFlow - fetched auth proof: %s Range %d : %d from aggchain prover. Requested range: %d : %d",
 		aggchainProof.Proof, buildParams.FromBlock, aggchainProof.EndBlock,
 		buildParams.FromBlock, buildParams.ToBlock)
 
+	// set the root from which to generate merkle proofs for each claim
+	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
+	buildParams.L1InfoTreeRootFromWhichToProve = rootFromWhichToProveClaims
 	buildParams.AggchainProof = aggchainProof.Proof
 	buildParams.CustomChainData = aggchainProof.CustomChainData
 
@@ -184,7 +149,7 @@ func (a *aggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
-func (a *aggchainProverFlow) BuildCertificate(ctx context.Context,
+func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
 	cert, err := a.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
 	if err != nil {
@@ -204,7 +169,7 @@ func (a *aggchainProverFlow) BuildCertificate(ctx context.Context,
 
 // getInjectedGERsProofs returns the proofs for the injected GERs in the given block range
 // created from the last finalized L1 Info tree root
-func (a *aggchainProverFlow) getInjectedGERsProofs(
+func (a *AggchainProverFlow) getInjectedGERsProofs(
 	ctx context.Context,
 	finalizedL1InfoTreeRoot *treetypes.Root,
 	fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error) {
@@ -247,7 +212,7 @@ func (a *aggchainProverFlow) getInjectedGERsProofs(
 
 // getImportedBridgeExitsForProver converts the claims to imported bridge exits
 // so that the aggchain prover can use them to generate the aggchain proof
-func (a *aggchainProverFlow) getImportedBridgeExitsForProver(
+func (a *AggchainProverFlow) getImportedBridgeExitsForProver(
 	claims []bridgesync.Claim) ([]*agglayertypes.ImportedBridgeExitWithBlockNumber, error) {
 	importedBridgeExits := make([]*agglayertypes.ImportedBridgeExitWithBlockNumber, 0, len(claims))
 	for _, claim := range claims {
@@ -282,4 +247,64 @@ func adjustBlockRange(buildParams *types.CertificateBuildParams,
 	}
 
 	return buildParams, nil
+}
+
+// GenerateAggchainProof calls the aggkit prover to generate the aggchain proof for the given block range
+func (a *AggchainProverFlow) GenerateAggchainProof(
+	ctx context.Context,
+	fromBlock, toBlock uint64,
+	claims []bridgesync.Claim,
+) (*types.AggchainProof, *treetypes.Root, error) {
+	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
+	if err != nil {
+		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
+	}
+
+	if err := a.l1InfoTreeDataQuerier.CheckIfClaimsArePartOfFinalizedL1InfoTree(
+		root, claims); err != nil {
+		return nil, nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
+			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
+	}
+
+	injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, fromBlock, toBlock)
+	if err != nil {
+		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
+	}
+
+	importedBridgeExits, err := a.getImportedBridgeExitsForProver(claims)
+	if err != nil {
+		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
+	}
+
+	lastProvenBlock := fromBlock
+	if lastProvenBlock > 0 {
+		// if we had previous proofs, the last proven block is the one before the first block in the range
+		lastProvenBlock--
+	}
+
+	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
+		lastProvenBlock,
+		toBlock,
+		root.Hash,
+		*leaf,
+		agglayertypes.MerkleProof{
+			Root:  root.Hash,
+			Proof: proof,
+		},
+		injectedGERsProofs,
+		importedBridgeExits,
+	)
+	if err != nil {
+		msg := err.Error()
+
+		errS, ok := status.FromError(err)
+		if ok {
+			msg = errS.Message()
+		}
+
+		return nil, nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d: %s",
+			fromBlock, toBlock, msg)
+	}
+
+	return aggchainProof, root, nil
 }

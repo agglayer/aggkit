@@ -1,4 +1,4 @@
-package aggsender
+package flows
 
 import (
 	"context"
@@ -12,36 +12,38 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// ppFlow is a struct that holds the logic for the regular pessimistic proof flow
-type ppFlow struct {
+// PPFlow is a struct that holds the logic for the regular pessimistic proof flow
+type PPFlow struct {
 	*baseFlow
 
 	signer signer.Signer
 }
 
-// newPPFlow returns a new instance of the ppFlow
-func newPPFlow(log types.Logger,
-	cfg Config,
+// NewPPFlow returns a new instance of the PPFlow
+func NewPPFlow(log types.Logger,
+	maxCertSize uint,
+	bridgeMetaDataAsHash bool,
 	storage db.AggSenderStorage,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	l1Client types.EthClient,
-	signer signer.Signer) *ppFlow {
-	return &ppFlow{
+	signer signer.Signer) *PPFlow {
+	return &PPFlow{
 		signer: signer,
 		baseFlow: &baseFlow{
 			log:                   log,
-			cfg:                   cfg,
 			l2Syncer:              l2Syncer,
 			storage:               storage,
 			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			maxCertSize:           maxCertSize,
+			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},
 	}
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
-func (p *ppFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
+func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	buildParams, err := p.getCertificateBuildParamsInternal(ctx)
 	if err != nil {
 		return nil, err
@@ -70,7 +72,7 @@ func (p *ppFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
-func (p *ppFlow) BuildCertificate(ctx context.Context,
+func (p *PPFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
 	certificate, err := p.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
 	if err != nil {
@@ -86,7 +88,7 @@ func (p *ppFlow) BuildCertificate(ctx context.Context,
 }
 
 // signCertificate signs a certificate with the aggsender key
-func (p *ppFlow) signCertificate(ctx context.Context,
+func (p *PPFlow) signCertificate(ctx context.Context,
 	certificate *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
 	hashToSign := certificate.HashToSign()
 	sig, err := p.signer.SignHash(ctx, hashToSign)

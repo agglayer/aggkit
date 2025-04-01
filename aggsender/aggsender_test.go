@@ -16,6 +16,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -36,18 +37,18 @@ const (
 
 var (
 	errTest = errors.New("unitest  error")
-	ler1    = common.HexToHash("0x123")
 )
 
 func TestConfigString(t *testing.T) {
 	config := Config{
-		StoragePath:                 "/path/to/storage",
-		AggLayerURL:                 "http://agglayer.url",
-		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
-		URLRPCL2:                    "http://l2.rpc.url",
-		BlockFinality:               "latestBlock",
-		EpochNotificationPercentage: 50,
-		Mode:                        "PP",
+		StoragePath:                  "/path/to/storage",
+		AggLayerURL:                  "http://agglayer.url",
+		AggsenderPrivateKey:          signer.NewLocalSignerConfig("/path/to/key", "password"),
+		URLRPCL2:                     "http://l2.rpc.url",
+		BlockFinality:                "latestBlock",
+		EpochNotificationPercentage:  50,
+		Mode:                         "PP",
+		GenerateAggchainProofTimeout: types.Duration{Duration: time.Second},
 	}
 
 	expected := "StoragePath: /path/to/storage\n" +
@@ -63,7 +64,8 @@ func TestConfigString(t *testing.T) {
 		"CheckStatusCertificateInterval: 0s\n" +
 		"RetryCertImmediatelyAfterInError: false\n" +
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
-		"MaxEpochPercentageAllowedToSendCertificate: 0\n"
+		"MaxEpochPercentageAllowedToSendCertificate: 0\n" +
+		"GenerateAggchainProofTimeout: 1s\n"
 
 	require.Equal(t, expected, config.String())
 }
@@ -448,7 +450,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		aggLayerClient:   mockAggLayerClient,
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
 		cfg:              Config{},
-		flow:             newPPFlow(logger, Config{}, mockStorage, nil, mockL2Syncer, nil, signer),
+		flow:             flows.NewPPFlow(logger, 0, false, mockStorage, nil, mockL2Syncer, nil, signer),
 		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
@@ -1005,7 +1007,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
-		flow:          newPPFlow(logger, Config{}, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
+		flow:          flows.NewPPFlow(logger, 0, false, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
 	}
 	testCerts := []aggsendertypes.CertificateInfo{
 		{
