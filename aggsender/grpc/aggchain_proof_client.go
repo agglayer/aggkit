@@ -62,7 +62,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	convertedL1InfoTreeLeaf := &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
 		Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
 			GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{Value: l1InfoTreeLeaf.GlobalExitRoot[:]},
-			BlockHash:      &agglayerInteropTypesV1Proto.FixedBytes32{Value: l1InfoTreeLeaf.Hash[:]},
+			BlockHash:      &agglayerInteropTypesV1Proto.FixedBytes32{Value: l1InfoTreeLeaf.PreviousBlockHash[:]},
 			Timestamp:      l1InfoTreeLeaf.Timestamp,
 		},
 		Mer:             &agglayerInteropTypesV1Proto.FixedBytes32{Value: l1InfoTreeLeaf.MainnetExitRoot[:]},

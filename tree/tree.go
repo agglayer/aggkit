@@ -230,24 +230,6 @@ func (t *Tree) GetRootByHash(ctx context.Context, hash common.Hash) (*types.Root
 	return &root, nil
 }
 
-// GetLastRootByBlockNum returns the last root processed before the given block number or
-// the root associated to the block number if it exists
-func (t *Tree) GetLastRootByBlockNum(ctx context.Context, blockNum uint64) (*types.Root, error) {
-	var root types.Root
-	if err := meddler.QueryRow(
-		t.db, &root,
-		fmt.Sprintf(`SELECT * FROM %s WHERE block_num <= $1 ORDER BY block_num DESC LIMIT 1;`, t.rootTable),
-		blockNum,
-	); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, db.ErrNotFound
-		}
-		return nil, err
-	}
-
-	return &root, nil
-}
-
 func (t *Tree) GetLeaf(tx db.Querier, index uint32, root common.Hash) (common.Hash, error) {
 	currentNodeHash := root
 	for h := int(types.DefaultHeight - 1); h >= 0; h-- {

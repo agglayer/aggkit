@@ -6,6 +6,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/l1infotreequery"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/signer"
 	"github.com/ethereum/go-ethereum/common"
@@ -29,12 +30,11 @@ func newPPFlow(log types.Logger,
 	return &ppFlow{
 		signer: signer,
 		baseFlow: &baseFlow{
-			log:              log,
-			cfg:              cfg,
-			l2Syncer:         l2Syncer,
-			storage:          storage,
-			l1Client:         l1Client,
-			l1InfoTreeSyncer: l1InfoTreeSyncer,
+			log:                   log,
+			cfg:                   cfg,
+			l2Syncer:              l2Syncer,
+			storage:               storage,
+			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 		},
 	}
 }
@@ -57,7 +57,7 @@ func (p *ppFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 	}
 
 	if len(buildParams.Claims) > 0 {
-		root, err := p.getLatestFinalizedL1InfoRoot(ctx)
+		root, _, err := p.l1InfoTreeDataQuerier.GetLatestFinalizedL1InfoRoot(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("ppFlow - error getting latest finalized L1 info root: %w", err)
 		}

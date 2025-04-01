@@ -42,7 +42,7 @@ type L1InfoTreeSyncer interface {
 	GetL1InfoTreeRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
 	GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
-	GetLastL1InfoTreeRootByBlockNum(ctx context.Context, blockNum uint64) (*treetypes.Root, error)
+	GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement
@@ -59,6 +59,30 @@ type L2BridgeSyncer interface {
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
 	GetInjectedGERsForRange(ctx context.Context, fromBlock, toBlock uint64) (map[uint64][]common.Hash, error)
+}
+
+// L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
+// It is used to query data from the L1 Info tree
+type L1InfoTreeDataQuerier interface {
+	// GetLatestFinalizedL1InfoRoot returns the latest processed l1 info tree root
+	// based on the latest finalized l1 block
+	GetLatestFinalizedL1InfoRoot(ctx context.Context) (*treetypes.Root, *l1infotreesync.L1InfoTreeLeaf, error)
+
+	// GetFinalizedL1InfoTreeData returns the L1 Info tree data for the last finalized processed block
+	// l1InfoTreeData is:
+	// - merkle proof of given l1 info tree leaf
+	// - the leaf data of the highest index leaf on that block and root
+	// - the root of the l1 info tree on that block
+	GetFinalizedL1InfoTreeData(ctx context.Context,
+	) (treetypes.Proof, *l1infotreesync.L1InfoTreeLeaf, *treetypes.Root, error)
+
+	// GetProofForGER returns the L1 Info tree leaf and the merkle proof for the given GER
+	GetProofForGER(ctx context.Context, ger, rootFromWhichToProve common.Hash) (
+		*l1infotreesync.L1InfoTreeLeaf, treetypes.Proof, error)
+
+	// CheckIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
+	CheckIfClaimsArePartOfFinalizedL1InfoTree(
+		finalizedL1InfoTreeRoot *treetypes.Root, claims []bridgesync.Claim) error
 }
 
 // EthClient is an interface defining functions that an EthClient should implement

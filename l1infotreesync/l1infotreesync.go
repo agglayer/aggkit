@@ -295,12 +295,3 @@ func (s *L1InfoTreeSync) GetProcessedBlockUntil(ctx context.Context, blockNum ui
 	}
 	return s.processor.GetProcessedBlockUntil(ctx, blockNum)
 }
-
-// GetLastL1InfoTreeRootByBlockNum returns the last root processed before the given block number or
-// the root associated to the block number if it exists
-func (s *L1InfoTreeSync) GetLastL1InfoTreeRootByBlockNum(ctx context.Context, blockNum uint64) (*types.Root, error) {
-	if s.processor.isHalted() {
-		return nil, sync.ErrInconsistentState
-	}
-	return s.processor.l1InfoTree.GetLastRootByBlockNum(ctx, blockNum)
-}

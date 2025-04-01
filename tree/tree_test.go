@@ -99,38 +99,6 @@ func TestCheckExpectedRoot(t *testing.T) {
 		require.Equal(t, expectedRoot.Hash, root2.Hash)
 		require.Equal(t, expectedRoot.Index, root2.Index)
 	})
-
-	t.Run("GetLastRootByBlockNum - have exact block", func(t *testing.T) {
-		numOfLeavesToAdd := 10
-		treeDB := createTreeDB()
-		merkleTree := tree.NewAppendOnlyTree(treeDB, "")
-
-		addLeaves(merkleTree, treeDB, numOfLeavesToAdd, 0)
-
-		root2, err := merkleTree.GetLastRootByBlockNum(context.Background(), 1)
-		require.NoError(t, err)
-		require.Equal(t, uint64(1), root2.BlockNum)
-	})
-
-	t.Run("GetLastRootByBlockNum - have lower block", func(t *testing.T) {
-		numOfLeavesToAdd := 4
-		treeDB := createTreeDB()
-		merkleTree := tree.NewAppendOnlyTree(treeDB, "")
-
-		addLeaves(merkleTree, treeDB, numOfLeavesToAdd, 0)
-
-		root2, err := merkleTree.GetLastRootByBlockNum(context.Background(), 4)
-		require.NoError(t, err)
-		require.Equal(t, uint64(3), root2.BlockNum)
-	})
-
-	t.Run("GetLastRootByBlockNum - don't have a block", func(t *testing.T) {
-		treeDB := createTreeDB()
-		merkleTree := tree.NewAppendOnlyTree(treeDB, "")
-
-		_, err := merkleTree.GetLastRootByBlockNum(context.Background(), 4)
-		require.ErrorIs(t, err, db.ErrNotFound)
-	})
 }
 
 func TestMTAddLeaf(t *testing.T) {
