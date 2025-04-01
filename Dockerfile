@@ -28,4 +28,4 @@ USER appuser
 
 EXPOSE 5576/tcp
 
-CMD ["/bin/sh", "-c", "aggkit"]
+ENTRYPOINT ["/usr/local/bin/aggkit"]

@@ -7,6 +7,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/common"
 )
 
 const (
@@ -23,7 +24,7 @@ type InitialStatus struct {
 	SettledCert *agglayer.CertificateHeader
 	PendingCert *agglayer.CertificateHeader
 	LocalCert   *types.CertificateInfo
-	log         types.Logger
+	log         common.Logger
 }
 
 type InitialStatusAction int
@@ -54,7 +55,7 @@ func (i *InitialStatusResult) String() string {
 }
 
 // NewInitialStatus creates a new InitialStatus object, get the data from AggLayer and local storage
-func NewInitialStatus(log types.Logger, networkID uint32,
+func NewInitialStatus(log common.Logger, networkID uint32,
 	storage db.AggSenderStorage,
 	aggLayerClient agglayer.AggLayerClientRecoveryQuerier) (*InitialStatus, error) {
 	log.Infof("recovery: checking last settled certificate from AggLayer for network %d", networkID)

@@ -61,6 +61,7 @@ func NewL1(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
+	requireStorageContentCompatibility bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -77,6 +78,7 @@ func NewL1(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
+		requireStorageContentCompatibility,
 	)
 }
 
@@ -95,6 +97,7 @@ func NewL2(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
+	requireStorageContentCompatibility bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -111,6 +114,7 @@ func NewL2(
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
+		requireStorageContentCompatibility,
 	)
 }
 
@@ -129,6 +133,7 @@ func newBridgeSync(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
+	requireStorageContentCompatibility bool,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID)
 
@@ -138,7 +143,7 @@ func newBridgeSync(
 			bridge.String(), err)
 		return nil, err
 	}
-	processor, err := newProcessor(dbPath, logger)
+	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -180,7 +185,8 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID, downloadBufferSize, rh)
+	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID,
+		downloadBufferSize, rh, requireStorageContentCompatibility)
 	if err != nil {
 		return nil, err
 	}

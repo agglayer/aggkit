@@ -38,6 +38,7 @@ func TestE2E(t *testing.T) {
 		etherman.LatestBlock,
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
+		true,
 	)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
