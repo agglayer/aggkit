@@ -348,9 +348,19 @@ setup() {
 
     # Claim deposit (settle it on the L1)
     echo "==== 🔐 Claiming ERC20 token deposit on L1 ($l1_rpc_url)" >&3
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
+    run get_bridge "$l2_rpc_network_id" "$bridge_tx_hash" 10 3 "$aggkit_node_url"
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l2_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l1_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
+    assert_success
+    run generate_claim_proof "$l2_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 10 "$l2_rpc_network_id"
     assert_success
 
     run wait_for_expected_token "$aggkit_node_url" "$l2_erc20_addr" 15 2 "$l1_rpc_network_id"
@@ -384,9 +394,19 @@ setup() {
 
     # Claim deposit (settle it on the L2)
     echo "==== 🔐 Claiming deposit on L2 ($l2_rpc_url)" >&3
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url"
+    run get_bridge "$l1_rpc_network_id" "$bridge_tx_hash" 10 3 "$aggkit_node_url"
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l1_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l2_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
+    assert_success
+    run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 10 "$l1_rpc_network_id"
     assert_success
 
     echo "==== 💰 Verifying balance on L2 ($l2_rpc_url)" >&3
@@ -414,9 +434,19 @@ setup() {
 
     # Claim deposit (settle it on the L1)
     echo "==== 🔐 Claiming ERC20 token deposit on L1 ($l1_rpc_url)" >&3
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$bridge_api_url"
+    run get_bridge "$l2_rpc_network_id" "$bridge_tx_hash" 10 3 "$aggkit_node_url"
+    assert_success
+    local bridge="$output"
+    local deposit_count="$(echo "$bridge" | jq -r '.deposit_count')"
+    run find_l1_info_tree_index_for_bridge "$l2_rpc_network_id" "$deposit_count" 10 5 "$aggkit_node_url"
+    assert_success
+    local l1_info_tree_index="$output"
+    run find_injected_info_after_index "$l1_rpc_network_id" "$l1_info_tree_index" 10 20 "$aggkit_node_url"
+    assert_success
+    run generate_claim_proof "$l2_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
+    assert_success
+    local proof="$output"
+    run claim_bridge "$bridge" "$proof" "$l1_rpc_url" 10 10 "$l2_rpc_network_id"
     assert_success
 
     echo "==== 💰 Verifying balance on L1 ($l1_rpc_url)" >&3
