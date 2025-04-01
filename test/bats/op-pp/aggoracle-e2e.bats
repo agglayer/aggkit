@@ -51,7 +51,7 @@ setup() {
     assert_success
     local bridge_tx_hash=$output
     
-    log "Waiting transaction to be autoclaimed......"
+    log "Waiting GER to be injected to the destination network..."
     sleep 60
 
     timeout="180"
