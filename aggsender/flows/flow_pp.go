@@ -19,7 +19,7 @@ type PPFlow struct {
 	signer signer.Signer
 }
 
-// NewPPFlow returns a new instance of the ppFlow
+// NewPPFlow returns a new instance of the PPFlow
 func NewPPFlow(log types.Logger,
 	maxCertSize uint,
 	bridgeMetaDataAsHash bool,

@@ -6,6 +6,7 @@ import (
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -27,7 +28,7 @@ func TestGenerateAggchainProofRPC(t *testing.T) {
 
 		result, err := genRPC.GenerateAggchainProof(fromBlock, toBlock)
 		require.NoError(t, err)
-		require.Equal(t, expectedProof, result)
+		require.Equal(t, common.Bytes2Hex(expectedProof), result)
 
 		aggchainProofGen.AssertExpectations(t)
 	})

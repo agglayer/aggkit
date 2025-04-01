@@ -24,7 +24,7 @@ type AggchainProverFlow struct {
 	gerReader           types.ChainGERReader
 }
 
-// NewAggchainProverFlow returns a new instance of the aggchainProverFlow
+// NewAggchainProverFlow returns a new instance of the AggchainProverFlow
 func NewAggchainProverFlow(log types.Logger,
 	maxCertSize uint,
 	bridgeMetaDataAsHash bool,
@@ -115,7 +115,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 
-	aggchainProof, rootFromWhichToProoveClaims, err := a.GenerateAggchainProof(
+	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
 		ctx, buildParams.FromBlock, buildParams.ToBlock, buildParams.Claims)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
@@ -127,7 +127,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 	// set the root from which to generate merkle proofs for each claim
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
-	buildParams.L1InfoTreeRootFromWhichToProve = rootFromWhichToProoveClaims
+	buildParams.L1InfoTreeRootFromWhichToProve = rootFromWhichToProveClaims
 	buildParams.AggchainProof = aggchainProof.Proof
 	buildParams.CustomChainData = aggchainProof.CustomChainData
 

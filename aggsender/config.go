@@ -89,5 +89,6 @@ func (c Config) String() string {
 		"RetryCertImmediatelyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"MaxEpochPercentageAllowedToSendCertificate: " +
-		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n"
+		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n" +
+		"GenerateAggchainProofTimeout: " + c.GenerateAggchainProofTimeout.String() + "\n"
 }

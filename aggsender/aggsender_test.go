@@ -41,13 +41,14 @@ var (
 
 func TestConfigString(t *testing.T) {
 	config := Config{
-		StoragePath:                 "/path/to/storage",
-		AggLayerURL:                 "http://agglayer.url",
-		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
-		URLRPCL2:                    "http://l2.rpc.url",
-		BlockFinality:               "latestBlock",
-		EpochNotificationPercentage: 50,
-		Mode:                        "PP",
+		StoragePath:                  "/path/to/storage",
+		AggLayerURL:                  "http://agglayer.url",
+		AggsenderPrivateKey:          signer.NewLocalSignerConfig("/path/to/key", "password"),
+		URLRPCL2:                     "http://l2.rpc.url",
+		BlockFinality:                "latestBlock",
+		EpochNotificationPercentage:  50,
+		Mode:                         "PP",
+		GenerateAggchainProofTimeout: types.Duration{Duration: time.Second},
 	}
 
 	expected := "StoragePath: /path/to/storage\n" +
@@ -63,7 +64,8 @@ func TestConfigString(t *testing.T) {
 		"CheckStatusCertificateInterval: 0s\n" +
 		"RetryCertImmediatelyAfterInError: false\n" +
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
-		"MaxEpochPercentageAllowedToSendCertificate: 0\n"
+		"MaxEpochPercentageAllowedToSendCertificate: 0\n" +
+		"GenerateAggchainProofTimeout: 1s\n"
 
 	require.Equal(t, expected, config.String())
 }

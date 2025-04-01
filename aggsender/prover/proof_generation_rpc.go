@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // AggsenderRPC is the RPC interface for the aggsender
@@ -29,5 +30,5 @@ func (a *AggchainProofGenerationToolRPC) GenerateAggchainProof(
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, err.Error())
 	}
 
-	return proof, nil
+	return common.Bytes2Hex(proof), nil
 }

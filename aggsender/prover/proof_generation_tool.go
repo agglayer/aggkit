@@ -79,7 +79,7 @@ func NewAggchainProofGenerationTool(
 		l2Client,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create AggchainProverFlow: %w", err)
+		return nil, fmt.Errorf("failed to create the AggchainProverFlow: %w", err)
 	}
 
 	return &AggchainProofGenerationTool{
@@ -121,24 +121,25 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 		a.logger.Errorf("last L2 block synced %d is less than last proven block %d",
 			lastL2BlockSynced, lastProvenBlock)
 
-		return nil, fmt.Errorf("last L2 block synced %d is less than last proven block %d",
+		return nil, fmt.Errorf("the last L2 block synced %d is less than the last proven block %d",
 			lastL2BlockSynced, lastProvenBlock)
 	}
 
 	fromBlock := lastProvenBlock + 1
 
 	// get claims for the block range
-	a.logger.Debugf("Getting claims for block range %d : %d", fromBlock, maxEndBlock)
+	a.logger.Debugf("Getting claims for block range [%d : %d]", fromBlock, maxEndBlock)
 
 	claims, err := a.l2Syncer.GetClaims(ctx, fromBlock, maxEndBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error getting claims (imported bridge exits): %w", err)
 	}
 
-	a.logger.Debugf("Got %d claims for block range %d : %d", len(claims), fromBlock, maxEndBlock)
+	a.logger.Debugf("Got %d claims for block range [%d : %d]", len(claims), fromBlock, maxEndBlock)
 
 	// call the prover to generate the proof
-	a.logger.Debugf("Calling AggchainProofClient to generate proof for block range %d : %d", fromBlock, maxEndBlock)
+	a.logger.Debugf("Calling AggchainProofClient to generate proof for block range [%d : %d]",
+		fromBlock, maxEndBlock)
 
 	aggchainProof, _, err := a.flow.GenerateAggchainProof(
 		ctx,
@@ -150,7 +151,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 		return nil, fmt.Errorf("error generating Aggchain proof: %w", err)
 	}
 
-	a.logger.Infof("Generated Aggchain proof for block range %d : %d", fromBlock, maxEndBlock)
+	a.logger.Infof("Generated Aggchain proof for block range [%d : %d]", fromBlock, maxEndBlock)
 
 	return aggchainProof.Proof, nil
 }
