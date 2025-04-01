@@ -153,7 +153,7 @@ setup() {
     run generate_claim_proof "$l1_rpc_network_id" "$deposit_count" "$l1_info_tree_index" 10 5 "$aggkit_node_url"
     assert_success
     local proof="$output"
-    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 10 20 "$l1_rpc_network_id"
+    run claim_bridge "$bridge" "$proof" "$l2_rpc_url" 15 20 "$l1_rpc_network_id"
     assert_success
     local claim_global_index="$output"
 
