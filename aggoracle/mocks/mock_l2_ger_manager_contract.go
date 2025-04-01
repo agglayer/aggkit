@@ -8,7 +8,7 @@ import (
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
 	common "github.com/ethereum/go-ethereum/common"
 
-	globalexitrootmanagerl2sovereignchain "github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
+	globalexitrootmanagerl2sovereignchain "github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -84,24 +84,24 @@ func (_c *L2GERManagerContract_BridgeAddress_Call) RunAndReturn(run func(*bind.C
 	return _c
 }
 
-// FilterInsertGlobalExitRoot provides a mock function with given fields: opts, newGlobalExitRoot, newHashChainValue
-func (_m *L2GERManagerContract) FilterInsertGlobalExitRoot(opts *bind.FilterOpts, newGlobalExitRoot [][32]byte, newHashChainValue [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainInsertGlobalExitRootIterator, error) {
+// FilterUpdateHashChainValue provides a mock function with given fields: opts, newGlobalExitRoot, newHashChainValue
+func (_m *L2GERManagerContract) FilterUpdateHashChainValue(opts *bind.FilterOpts, newGlobalExitRoot [][32]byte, newHashChainValue [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator, error) {
 	ret := _m.Called(opts, newGlobalExitRoot, newHashChainValue)
 
 	if len(ret) == 0 {
-		panic("no return value specified for FilterInsertGlobalExitRoot")
+		panic("no return value specified for FilterUpdateHashChainValue")
 	}
 
-	var r0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainInsertGlobalExitRootIterator
+	var r0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainInsertGlobalExitRootIterator, error)); ok {
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator, error)); ok {
 		return rf(opts, newGlobalExitRoot, newHashChainValue)
 	}
-	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainInsertGlobalExitRootIterator); ok {
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator); ok {
 		r0 = rf(opts, newGlobalExitRoot, newHashChainValue)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainInsertGlobalExitRootIterator)
+			r0 = ret.Get(0).(*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator)
 		}
 	}
 
@@ -114,32 +114,32 @@ func (_m *L2GERManagerContract) FilterInsertGlobalExitRoot(opts *bind.FilterOpts
 	return r0, r1
 }
 
-// L2GERManagerContract_FilterInsertGlobalExitRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FilterInsertGlobalExitRoot'
-type L2GERManagerContract_FilterInsertGlobalExitRoot_Call struct {
+// L2GERManagerContract_FilterUpdateHashChainValue_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FilterUpdateHashChainValue'
+type L2GERManagerContract_FilterUpdateHashChainValue_Call struct {
 	*mock.Call
 }
 
-// FilterInsertGlobalExitRoot is a helper method to define mock.On call
+// FilterUpdateHashChainValue is a helper method to define mock.On call
 //   - opts *bind.FilterOpts
 //   - newGlobalExitRoot [][32]byte
 //   - newHashChainValue [][32]byte
-func (_e *L2GERManagerContract_Expecter) FilterInsertGlobalExitRoot(opts interface{}, newGlobalExitRoot interface{}, newHashChainValue interface{}) *L2GERManagerContract_FilterInsertGlobalExitRoot_Call {
-	return &L2GERManagerContract_FilterInsertGlobalExitRoot_Call{Call: _e.mock.On("FilterInsertGlobalExitRoot", opts, newGlobalExitRoot, newHashChainValue)}
+func (_e *L2GERManagerContract_Expecter) FilterUpdateHashChainValue(opts interface{}, newGlobalExitRoot interface{}, newHashChainValue interface{}) *L2GERManagerContract_FilterUpdateHashChainValue_Call {
+	return &L2GERManagerContract_FilterUpdateHashChainValue_Call{Call: _e.mock.On("FilterUpdateHashChainValue", opts, newGlobalExitRoot, newHashChainValue)}
 }
 
-func (_c *L2GERManagerContract_FilterInsertGlobalExitRoot_Call) Run(run func(opts *bind.FilterOpts, newGlobalExitRoot [][32]byte, newHashChainValue [][32]byte)) *L2GERManagerContract_FilterInsertGlobalExitRoot_Call {
+func (_c *L2GERManagerContract_FilterUpdateHashChainValue_Call) Run(run func(opts *bind.FilterOpts, newGlobalExitRoot [][32]byte, newHashChainValue [][32]byte)) *L2GERManagerContract_FilterUpdateHashChainValue_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(*bind.FilterOpts), args[1].([][32]byte), args[2].([][32]byte))
 	})
 	return _c
 }
 
-func (_c *L2GERManagerContract_FilterInsertGlobalExitRoot_Call) Return(_a0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainInsertGlobalExitRootIterator, _a1 error) *L2GERManagerContract_FilterInsertGlobalExitRoot_Call {
+func (_c *L2GERManagerContract_FilterUpdateHashChainValue_Call) Return(_a0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator, _a1 error) *L2GERManagerContract_FilterUpdateHashChainValue_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L2GERManagerContract_FilterInsertGlobalExitRoot_Call) RunAndReturn(run func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainInsertGlobalExitRootIterator, error)) *L2GERManagerContract_FilterInsertGlobalExitRoot_Call {
+func (_c *L2GERManagerContract_FilterUpdateHashChainValue_Call) RunAndReturn(run func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator, error)) *L2GERManagerContract_FilterUpdateHashChainValue_Call {
 	_c.Call.Return(run)
 	return _c
 }

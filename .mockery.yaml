@@ -16,21 +16,9 @@ packages:
         config:
           mockname: AgglayerClientMock
           filename: mock_agglayer_client.go
-  github.com/agglayer/aggkit/aggoracle/chaingersender:
+  github.com/agglayer/aggkit/aggoracle/types:
     config:
-    interfaces:
-      EthTxManager:
-        configs:
-          - mockname: EthTxManagerMock
-            filename: mock_ethtxmanager.go
-          - mockname: EthTxManagerMock
-            filename: mock_ethtxmanager.go
-            dir: "{{ .InterfaceDir }}/../../test/helpers"
-            outpkg: "helpers"
-      L2GERManagerContract:
-        config:
-          mockname: L2GERManagerMock
-          filename: mock_l2germanager.go
+      all: true
   github.com/agglayer/aggkit/aggsender/db:
     config:
       all: true
