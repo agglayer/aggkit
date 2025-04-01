@@ -56,8 +56,8 @@ KURTOSIS_ENCLAVE=aggkit
 [ ! -f $OP_PP_CONFIG_FILE ] && echo "File $OP_PP_CONFIG_FILE does not exist" && exit 1
 
 build_docker_if_required
-resolve_template $OP_PP_CONFIG_FILE OP_PP_RENDERED_CONFIG_FILE
+# resolve_template $OP_PP_CONFIG_FILE OP_PP_RENDERED_CONFIG_FILE
 
 kurtosis clean --all
-kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file "$OP_PP_RENDERED_CONFIG_FILE" --image-download always $KURTOSIS_FOLDER
+kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file "$OP_PP_CONFIG_FILE" --image-download always $KURTOSIS_FOLDER
 ok_or_fatal "Failed to run kurtosis op pp chain"
