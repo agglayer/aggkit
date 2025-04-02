@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 	"github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -23,6 +23,7 @@ func NewEVMChainGERReader(l2GERManagerAddr common.Address, l2Client types.EthCli
 	if err != nil {
 		return nil, err
 	}
+
 	return newEVMChainGERReader(l2GERManager, l2GERManagerAddr)
 }
 
@@ -52,7 +53,7 @@ func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context,
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
 
-	iter, err := e.l2GERManager.FilterInsertGlobalExitRoot(
+	iter, err := e.l2GERManager.FilterUpdateHashChainValue(
 		&bind.FilterOpts{
 			Context: ctx,
 			Start:   fromBlock,

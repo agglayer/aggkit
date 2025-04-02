@@ -8,8 +8,8 @@ buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250327122651-3ea16e24e202.2 h
 buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250327122651-3ea16e24e202.2/go.mod h1:xm3a1yJlOWaCjcjn2qDENhrctTURS2mMFUJfJJasMIE=
 buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250327122651-3ea16e24e202.1 h1:DiFgGr/wgQa2xklwq0OY2x3WGfb38m8L2FbHmgKKbu0=
 buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250327122651-3ea16e24e202.1/go.mod h1:ejSvLmpUKsnokaT4/eqLdg/5lK4X/2PogSBbqx+DAPg=
-github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20250212122525-ec44fb65e861 h1:G21RAhtWCgy/dv/t1ed3ROJ7+rBgdlovzyz6rTh4FLs=
-github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20250212122525-ec44fb65e861/go.mod h1:HGx8hRdvtcAZZaFHZylN9B8lOZkxM+NrVvOdzw4jQEY=
+github.com/0xPolygon/cdk-contracts-tooling v0.0.3 h1:G7H3UNyDOpoLqDvW9c4lgn2iMnteM1HqUpUAD1gk9VU=
+github.com/0xPolygon/cdk-contracts-tooling v0.0.3/go.mod h1:mFlcEjsm2YBBsu8atHJ3zyVnwM+Z/fMXpVmIJge+WVU=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6 h1:FXL/rcO7/GtZ3kRFw+C7J6vmGnl8gcazg+Gh/NVmnas=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6/go.mod h1:2scWqMMufrQXu7TikDgQ3BsyaKoX8qP26D6E262vSOg=
 github.com/0xPolygon/zkevm-ethtx-manager v0.2.5 h1:t6vLS597OjPcoZzvpGXooIy+ANQEX6LoxYBenRmu15I=

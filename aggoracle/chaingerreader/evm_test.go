@@ -63,7 +63,7 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 
 		toBlock := uint64(10)
 		mockL2GERManager := mocks.NewL2GERManagerContract(t)
-		mockL2GERManager.On("FilterInsertGlobalExitRoot", &bind.FilterOpts{
+		mockL2GERManager.On("FilterUpdateHashChainValue", &bind.FilterOpts{
 			Context: ctx,
 			Start:   1,
 			End:     &toBlock,
