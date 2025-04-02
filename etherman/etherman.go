@@ -10,7 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/idataavailabilityprotocol"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/idataavailabilityprotocol"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/etherman/contracts"

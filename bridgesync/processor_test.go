@@ -11,7 +11,7 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
 	migrationsBridge "github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
