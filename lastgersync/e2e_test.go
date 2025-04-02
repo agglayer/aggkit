@@ -43,6 +43,7 @@ func TestLastGERSyncE2E(t *testing.T) {
 		etherman.LatestBlock,
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
+		true,
 	)
 	require.NoError(t, err)
 

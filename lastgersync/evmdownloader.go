@@ -22,12 +22,14 @@ type EthClienter interface {
 	ethereum.LogFilterer
 	ethereum.BlockNumberReader
 	ethereum.ChainReader
+	ethereum.ChainIDReader
 	bind.ContractBackend
 }
 
 type downloader struct {
 	*sync.EVMDownloaderImplementation
 	l2GERManager   *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
+	l2GERAddr      common.Address
 	l1InfoTreesync *l1infotreesync.L1InfoTreeSync
 	processor      *processor
 	rh             *sync.RetryHandler
@@ -53,9 +55,22 @@ func newDownloader(
 			"lastgersync", l2Client, blockFinality, waitForNewBlocksPeriod, nil, nil, nil, rh,
 		),
 		l2GERManager:   gerContract,
+		l2GERAddr:      l2GERAddr,
 		l1InfoTreesync: l1InfoTreeSync,
 		processor:      processor,
 		rh:             rh,
+	}, nil
+}
+
+// RuntimeData returns the runtime data: chainID + addresses to query
+func (d *downloader) RuntimeData(ctx context.Context) (sync.RuntimeData, error) {
+	chainID, err := d.ChainID(ctx)
+	if err != nil {
+		return sync.RuntimeData{}, err
+	}
+	return sync.RuntimeData{
+		ChainID:   chainID,
+		Addresses: []common.Address{d.l2GERAddr},
 	}, nil
 }
 

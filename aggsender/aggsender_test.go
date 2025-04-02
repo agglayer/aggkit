@@ -2121,6 +2121,12 @@ func TestNewAggSender(t *testing.T) {
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
 }
 
+func TestCheckDBCompatibility(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage)
+	testData.sut.cfg.RequireStorageContentCompatibility = false
+	testData.sut.checkDBCompatibility(testData.ctx)
+}
+
 type testDataFlags = int
 
 const (

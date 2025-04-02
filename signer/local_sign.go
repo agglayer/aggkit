@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 
-	commontypes "github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,7 +19,7 @@ const (
 // LocalSign is a signer that uses a local keystore file
 type LocalSign struct {
 	name          string
-	logger        commontypes.Logger
+	logger        aggkitcommon.Logger
 	file          types.KeystoreFileConfig
 	privateKey    *ecdsa.PrivateKey
 	publicAddress common.Address
@@ -61,7 +60,7 @@ func NewLocalConfig(cfg SignerConfig) (types.KeystoreFileConfig, error) {
 }
 
 // NewLocalSign creates a new LocalSign based on config
-func NewLocalSign(name string, logger commontypes.Logger, file types.KeystoreFileConfig) *LocalSign {
+func NewLocalSign(name string, logger aggkitcommon.Logger, file types.KeystoreFileConfig) *LocalSign {
 	return &LocalSign{
 		name:   name,
 		logger: logger,
@@ -71,7 +70,7 @@ func NewLocalSign(name string, logger commontypes.Logger, file types.KeystoreFil
 
 // NewLocalSignFromPrivateKey creates a new LocalSign based on a private key
 func NewLocalSignFromPrivateKey(name string,
-	logger commontypes.Logger,
+	logger aggkitcommon.Logger,
 	privateKey *ecdsa.PrivateKey) *LocalSign {
 	return &LocalSign{
 		name:          name,

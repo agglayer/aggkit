@@ -108,55 +108,102 @@ func Test_ReorgDetector(t *testing.T) {
 func TestGetTrackedBlocks(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetector_TestGetTrackedBlocks.sqlite")
-	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)}, L1)
+	reorgDetector, err := New(clientL1.Client(), Config{
+		DBPath:              testDir,
+		CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100),
+	}, L1)
 	require.NoError(t, err)
-	list, err := reorgDetector.getTrackedBlocks()
-	require.NoError(t, err)
-	require.Equal(t, len(list), 0)
 
-	expectedList := make(map[string]*headersList)
-	headersMapFoo := make(map[uint64]header)
-	headerFoo2 := header{
-		Num:  2,
-		Hash: common.HexToHash("foofoo"),
-	}
-	err = reorgDetector.saveTrackedBlock("foo", headerFoo2)
-	require.NoError(t, err)
-	headersMapFoo[2] = headerFoo2
-	headerFoo3 := header{
-		Num:  3,
-		Hash: common.HexToHash("foofoofoo"),
-	}
-	err = reorgDetector.saveTrackedBlock("foo", headerFoo3)
-	require.NoError(t, err)
-	headersMapFoo[3] = headerFoo3
-	expectedList["foo"] = &headersList{
-		headers: headersMapFoo,
-	}
-	list, err = reorgDetector.getTrackedBlocks()
-	require.NoError(t, err)
-	require.Equal(t, expectedList, list)
+	t.Run("Initial empty tracked blocks", func(t *testing.T) {
+		list, err := reorgDetector.getTrackedBlocks()
+		require.NoError(t, err)
+		require.Empty(t, list, "Expected no tracked blocks at initialization")
+	})
 
-	headersMapBar := make(map[uint64]header)
-	headerBar2 := header{
-		Num:  2,
-		Hash: common.HexToHash("BarBar"),
-	}
-	err = reorgDetector.saveTrackedBlock("Bar", headerBar2)
-	require.NoError(t, err)
-	headersMapBar[2] = headerBar2
-	expectedList["Bar"] = &headersList{
-		headers: headersMapBar,
-	}
-	list, err = reorgDetector.getTrackedBlocks()
-	require.NoError(t, err)
-	require.Equal(t, expectedList, list)
+	t.Run("Tracked blocks for subscriber Foo", func(t *testing.T) {
+		headerFoo2 := header{Num: 2, Hash: common.HexToHash("foofoo")}
+		err := reorgDetector.saveTrackedBlock("Foo", headerFoo2)
+		require.NoError(t, err)
 
-	require.NoError(t, reorgDetector.loadTrackedHeaders())
-	_, ok := reorgDetector.subscriptions["foo"]
-	require.True(t, ok)
-	_, ok = reorgDetector.subscriptions["Bar"]
-	require.True(t, ok)
+		headerFoo3 := header{Num: 3, Hash: common.HexToHash("foofoofoo")}
+		err = reorgDetector.saveTrackedBlock("Foo", headerFoo3)
+		require.NoError(t, err)
+
+		expectedHeadersFoo := map[uint64]header{
+			2: headerFoo2,
+			3: headerFoo3,
+		}
+		expectedList := map[string]*headersList{
+			"Foo": {headers: expectedHeadersFoo},
+		}
+
+		list, err := reorgDetector.getTrackedBlocks()
+		require.NoError(t, err)
+		require.Equal(t, expectedList, list, "Unexpected tracked blocks for subscriber 'Foo'")
+	})
+
+	t.Run("Tracked blocks for subscribers Foo and Bar", func(t *testing.T) {
+		headerBar2 := header{Num: 2, Hash: common.HexToHash("barbar")}
+		err := reorgDetector.saveTrackedBlock("Bar", headerBar2)
+		require.NoError(t, err)
+
+		expectedList := map[string]*headersList{
+			"Bar": {
+				headers: map[uint64]header{
+					2: headerBar2,
+				},
+			},
+			"Foo": {
+				headers: map[uint64]header{
+					2: {Num: 2, Hash: common.HexToHash("foofoo")},
+					3: {Num: 3, Hash: common.HexToHash("foofoofoo")},
+				},
+			},
+		}
+
+		list, err := reorgDetector.getTrackedBlocks()
+		require.NoError(t, err)
+		require.Equal(t, expectedList, list, "Unexpected tracked blocks after adding subscriber 'Bar'")
+	})
+
+	t.Run("Tracked blocks for subscribers Foo, Bar and Zzz", func(t *testing.T) {
+		headerZzz6 := header{Num: 6, Hash: common.HexToHash("zzzzzz")}
+		err := reorgDetector.saveTrackedBlock("Zzz", headerZzz6)
+		require.NoError(t, err)
+
+		expectedList := map[string]*headersList{
+			"Bar": {
+				headers: map[uint64]header{
+					2: {Num: 2, Hash: common.HexToHash("barbar")},
+				},
+			},
+			"Foo": {
+				headers: map[uint64]header{
+					2: {Num: 2, Hash: common.HexToHash("foofoo")},
+					3: {Num: 3, Hash: common.HexToHash("foofoofoo")},
+				},
+			},
+			"Zzz": {
+				headers: map[uint64]header{
+					6: headerZzz6,
+				},
+			},
+		}
+
+		list, err := reorgDetector.getTrackedBlocks()
+		require.NoError(t, err)
+		require.Equal(t, expectedList, list, "Unexpected tracked blocks after adding subscriber 'Zzz'")
+	})
+
+	t.Run("Load tracked headers updates subscriptions", func(t *testing.T) {
+		require.NoError(t, reorgDetector.loadTrackedHeaders())
+		_, ok := reorgDetector.subscriptions["Foo"]
+		require.True(t, ok, "Expected subscription for 'Foo'")
+		_, ok = reorgDetector.subscriptions["Bar"]
+		require.True(t, ok, "Expected subscription for 'Bar'")
+		_, ok = reorgDetector.subscriptions["Zzz"]
+		require.True(t, ok, "Expected subscription for 'Zzz'")
+	})
 }
 
 func TestNotSubscribed(t *testing.T) {

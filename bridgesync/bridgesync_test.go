@@ -58,6 +58,7 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
+		true,
 	)
 
 	require.NoError(t, err)
@@ -79,6 +80,7 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
+		true,
 	)
 
 	require.NoError(t, err)
@@ -104,6 +106,7 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
+		true,
 	)
 	t.Log(err)
 	require.Error(t, err)
@@ -205,6 +208,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
 		originNetwork,
+		false,
 		false,
 	)
 	require.NoError(t, err)

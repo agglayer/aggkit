@@ -50,6 +50,7 @@ func New(
 	maxRetryAttemptsAfterError int,
 	flags CreationFlags,
 	finalizedBlockType etherman.BlockNumberFinality,
+	requireStorageContentCompatibility bool,
 ) (*L1InfoTreeSync, error) {
 	processor, err := newProcessor(dbPath)
 	if err != nil {
@@ -92,7 +93,8 @@ func New(
 		return nil, err
 	}
 
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID, downloadBufferSize, rh)
+	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
+		downloadBufferSize, rh, requireStorageContentCompatibility)
 	if err != nil {
 		return nil, err
 	}

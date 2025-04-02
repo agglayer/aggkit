@@ -34,6 +34,7 @@ func New(
 	blockFinality etherman.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 	downloadBufferSize int,
+	requireStorageContentCompatibility bool,
 ) (*LastGERSync, error) {
 	processor, err := newProcessor(dbPath)
 	if err != nil {
@@ -61,7 +62,8 @@ func New(
 		return nil, err
 	}
 
-	driver, err := sync.NewEVMDriver(rdL2, processor, downloader, reorgDetectorID, downloadBufferSize, rh)
+	driver, err := sync.NewEVMDriver(rdL2, processor, downloader, reorgDetectorID,
+		downloadBufferSize, rh, requireStorageContentCompatibility)
 	if err != nil {
 		return nil, err
 	}

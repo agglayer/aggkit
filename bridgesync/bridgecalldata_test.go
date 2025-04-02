@@ -122,7 +122,7 @@ func TestBridgeCallData(t *testing.T) {
 	go reorgDetector.Start(ctx) //nolint:errcheck
 
 	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, etherman.LatestBlock, reorgDetector, ethClient,
-		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false)
+		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false, false)
 	require.NoError(t, err)
 	go bridgeSync.Start(ctx)
 

@@ -58,6 +58,9 @@ type Config struct {
 	MaxEpochPercentageAllowedToSendCertificate uint `mapstructure:"MaxEpochPercentageAllowedToSendCertificate"`
 	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
 	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
+	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
+	// is compatible with the running environment
+	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
