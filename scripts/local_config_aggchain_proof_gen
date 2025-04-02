@@ -140,10 +140,11 @@ function export_values_from_combined_json() {
     local combined_json_file="/opt/zkevm/combined.json"
     local contracts_service_wrapper="kurtosis service exec $KURTOSIS_ENCLAVE contracts-001"
     combined_json_output=$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)
-    echo "$combined_json_output"
     
     export zkevm_L2_bridge_address=$(echo "$combined_json_output" | jq -r .polygonZkEVML2BridgeAddress)
     export zkevm_global_exit_root_l2_address=$(echo "$combined_json_output" | jq -r .polygonZkEVMGlobalExitRootL2Address)
+
+    echo "$combined_json_output"
 }
 
 ###############################################################################
