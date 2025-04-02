@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
 )
 
@@ -36,7 +37,7 @@ type ConfigBlockNotifierPolling struct {
 type BlockNotifierPolling struct {
 	ethClient     types.EthClient
 	blockFinality *big.Int
-	logger        types.Logger
+	logger        aggkitcommon.Logger
 	config        ConfigBlockNotifierPolling
 	mu            sync.Mutex
 	lastStatus    *blockNotifierPollingInternalStatus
@@ -50,7 +51,7 @@ type BlockNotifierPolling struct {
 // for more information)
 func NewBlockNotifierPolling(ethClient types.EthClient,
 	config ConfigBlockNotifierPolling,
-	logger types.Logger,
+	logger aggkitcommon.Logger,
 	subscriber types.GenericSubscriber[types.EventNewBlock]) (*BlockNotifierPolling, error) {
 	if subscriber == nil {
 		subscriber = NewGenericSubscriberImpl[types.EventNewBlock]()

@@ -54,7 +54,6 @@ func TestConfigString(t *testing.T) {
 	expected := "StoragePath: /path/to/storage\n" +
 		"AggLayerURL: http://agglayer.url\n" +
 		"AggsenderPrivateKey: local\n" +
-		"URLRPCL2: http://l2.rpc.url\n" +
 		"BlockFinality: latestBlock\n" +
 		"EpochNotificationPercentage: 50\n" +
 		"DryRun: false\n" +
@@ -896,6 +895,12 @@ func TestNewAggSender(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
+}
+
+func TestCheckDBCompatibility(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage)
+	testData.sut.cfg.RequireStorageContentCompatibility = false
+	testData.sut.checkDBCompatibility(testData.ctx)
 }
 
 type testDataFlags = int

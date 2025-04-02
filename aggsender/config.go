@@ -67,6 +67,9 @@ type Config struct {
 	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
 	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
 	GenerateAggchainProofTimeout types.Duration `mapstructure:"GenerateAggchainProofTimeout"`
+	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
+	// is compatible with the running environment
+	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -78,7 +81,6 @@ func (c Config) String() string {
 	return "StoragePath: " + c.StoragePath + "\n" +
 		"AggLayerURL: " + c.AggLayerURL + "\n" +
 		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
-		"URLRPCL2: " + c.URLRPCL2 + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +

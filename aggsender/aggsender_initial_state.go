@@ -9,6 +9,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/common"
 )
 
 const (
@@ -25,7 +26,7 @@ type InitialStatus struct {
 	SettledCert *agglayertypes.CertificateHeader
 	PendingCert *agglayertypes.CertificateHeader
 	LocalCert   *types.CertificateInfo
-	log         types.Logger
+	log         common.Logger
 }
 
 type InitialStatusAction int

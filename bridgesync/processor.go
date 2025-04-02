@@ -11,6 +11,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
@@ -106,23 +107,28 @@ type processor struct {
 	mu           mutex.RWMutex
 	halted       bool
 	haltedReason string
+	compatibility.CompatibilityDataStorager[sync.RuntimeData]
 }
 
-func newProcessor(dbPath string, logger *log.Logger) (*processor, error) {
+func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
 		return nil, err
 	}
-	db, err := db.NewSQLiteDB(dbPath)
+	database, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
 		return nil, err
 	}
 
-	exitTree := tree.NewAppendOnlyTree(db, "")
+	exitTree := tree.NewAppendOnlyTree(database, "")
 	return &processor{
-		db:       db,
+		db:       database,
 		exitTree: exitTree,
 		log:      logger,
+		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+			db.NewKeyValueStorage(database),
+			name,
+		),
 	}, nil
 }
 func (p *processor) GetBridgesPublished(

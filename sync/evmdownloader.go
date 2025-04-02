@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -20,10 +19,9 @@ const (
 )
 
 type EthClienter interface {
-	ethereum.LogFilterer
-	ethereum.BlockNumberReader
-	ethereum.ChainReader
-	bind.ContractBackend
+	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
+	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
+	ChainID(ctx context.Context) (*big.Int, error)
 }
 
 type EVMDownloaderInterface interface {
@@ -32,6 +30,7 @@ type EVMDownloaderInterface interface {
 	GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log
 	GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool)
 	GetLastFinalizedBlock(ctx context.Context) (*types.Header, error)
+	ChainID(ctx context.Context) (uint64, error)
 }
 
 type LogAppenderMap map[common.Hash]func(b *EVMBlock, l types.Log) error
@@ -42,6 +41,7 @@ type EVMDownloader struct {
 	log                        *log.Logger
 	finalizedBlockType         etherman.BlockNumberFinality
 	stopDownloaderOnIterationN int
+	adressessToQuery           []common.Address
 }
 
 func NewEVMDownloader(
@@ -88,6 +88,7 @@ func NewEVMDownloader(
 		syncBlockChunkSize: syncBlockChunkSize,
 		log:                logger,
 		finalizedBlockType: fbtEthermanType,
+		adressessToQuery:   adressessToQuery,
 		EVMDownloaderInterface: &EVMDownloaderImplementation{
 			ethClient:              ethClient,
 			blockFinality:          finality,
@@ -105,6 +106,18 @@ func NewEVMDownloader(
 // setStopDownloaderOnIterationN sets the block number to stop the downloader (just for unittest)
 func (d *EVMDownloader) setStopDownloaderOnIterationN(iteration int) {
 	d.stopDownloaderOnIterationN = iteration
+}
+
+// RuntimeData returns the runtime data: chainID + addresses to query
+func (d *EVMDownloader) RuntimeData(ctx context.Context) (RuntimeData, error) {
+	chainID, err := d.ChainID(ctx)
+	if err != nil {
+		return RuntimeData{}, err
+	}
+	return RuntimeData{
+		ChainID:   chainID,
+		Addresses: d.adressessToQuery,
+	}, nil
 }
 
 func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock) {
@@ -245,6 +258,14 @@ func NewEVMDownloaderImplementation(
 		rh:                     rh,
 		log:                    logger,
 	}
+}
+
+func (d *EVMDownloaderImplementation) ChainID(ctx context.Context) (uint64, error) {
+	chainID, err := d.ethClient.ChainID(ctx)
+	if err != nil || chainID == nil {
+		return 0, fmt.Errorf("fail to get chainID from ethClient. Err: %w", err)
+	}
+	return chainID.Uint64(), nil
 }
 
 func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context) (*types.Header, error) {

@@ -45,6 +45,7 @@ const (
 	DefaultCreationFilePermissions = os.FileMode(0600)
 
 	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of config file as polygonBridgeAddr."
+	specificL2URLDeprecated     = "Use L2URL instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -86,6 +87,14 @@ var (
 		{
 			FieldNamePattern: "L2Config.polygonBridgeAddr",
 			Reason:           bridgeAddrSetOnWrongSection,
+		},
+		{
+			FieldNamePattern: "AggOracle.EVMSender.URLRPCL2",
+			Reason:           specificL2URLDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.URLRPCL2",
+			Reason:           specificL2URLDeprecated,
 		},
 	}
 )
@@ -273,7 +282,9 @@ func loadString(cfg *Config, configData string, configType string,
 	decodeHooks := []viper.DecoderConfigOption{
 		// this allows arrays to be decoded from env var separated by ",", example: MY_VAR="value1,value2,value3"
 		viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
-			mapstructure.TextUnmarshallerHookFunc(), mapstructure.StringToSliceHookFunc(","))),
+			mapstructure.TextUnmarshallerHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		)),
 	}
 
 	err = viper.Unmarshal(&cfg, decodeHooks...)

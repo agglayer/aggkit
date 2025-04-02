@@ -5,6 +5,8 @@ package config
 const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
+
+
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
 GenerateAggchainProofTimeout = "1h"
@@ -45,7 +47,8 @@ genesisBlockNumber = 0
 const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 L1URLSyncChunkSize = 100
-
+RequireStorageContentCompatibility = true
+L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
 `
 
 // DefaultValues is the default configuration
@@ -75,6 +78,8 @@ Outputs = ["stderr"]
 NetworkID = 1
 IsValidiumMode = {{IsValidiumMode}}
 ContractVersions = "{{ContractVersions}}"
+L2RPC = {{L2RPC}}
+
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
@@ -95,6 +100,7 @@ WaitForNewBlocksPeriod="100ms"
 InitialBlock={{genesisBlockNumber}}
 RetryAfterErrorPeriod="1s"
 MaxRetryAttemptsAfterError=-1
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggOracle]
 TargetChainType="EVM"
@@ -103,7 +109,6 @@ BlockFinality="FinalizedBlock"
 WaitPeriodNextGER="100ms"
 	[AggOracle.EVMSender]
 		GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
-		URLRPCL2="{{L2URL}}"
 		GasOffset=0
 		WaitPeriodMonitorTx="100ms"
 		[AggOracle.EVMSender.EthTxManager]
@@ -177,6 +182,7 @@ SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -187,6 +193,7 @@ SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [LastGERSync]
 DBPath = "{{PathRWData}}/lastgersync.sqlite"
@@ -197,6 +204,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [NetworkConfig.L1]
 L1ChainID = {{L1Config.chainId}}
@@ -210,7 +218,6 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 AggLayerURL = "{{AggLayerURL}}"
 AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
-URLRPCL2="{{L2URL}}"
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
@@ -230,6 +237,7 @@ GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 # Don't send certificate over 80% of the epoch
 MaxEpochPercentageAllowedToSendCertificate=80
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"

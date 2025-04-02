@@ -20,7 +20,6 @@ const insertGERFuncName = "insertGlobalExitRoot"
 
 type EVMConfig struct {
 	GlobalExitRootL2Addr common.Address      `mapstructure:"GlobalExitRootL2"`
-	URLRPCL2             string              `mapstructure:"URLRPCL2"`
 	GasOffset            uint64              `mapstructure:"GasOffset"`
 	WaitPeriodMonitorTx  cfgtypes.Duration   `mapstructure:"WaitPeriodMonitorTx"`
 	EthTxManager         ethtxmanager.Config `mapstructure:"EthTxManager"`

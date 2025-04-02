@@ -80,7 +80,7 @@ func TestBigIntString(t *testing.T) {
 func TestProceessor(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTestProceessor.sqlite")
 	logger := log.WithFields("bridge-syncer", "foo")
-	p, err := newProcessor(path, logger)
+	p, err := newProcessor(path, "foo", logger)
 	require.NoError(t, err)
 	actions := []processAction{
 		// processed: ~
@@ -734,7 +734,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	err := migrationsBridge.RunMigrations(path)
 	require.NoError(t, err)
 	logger := log.WithFields("bridge-syncer", "foo")
-	p, err := newProcessor(path, logger)
+	p, err := newProcessor(path, "foo", logger)
 	require.NoError(t, err)
 
 	tx, err := p.db.BeginTx(context.Background(), nil)
@@ -819,7 +819,7 @@ func TestGetBridgesPublished(t *testing.T) {
 			path := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncTestGetBridgesPublished_%s.sqlite", tc.name))
 			require.NoError(t, migrationsBridge.RunMigrations(path))
 			logger := log.WithFields("bridge-syncer", "foo")
-			p, err := newProcessor(path, logger)
+			p, err := newProcessor(path, "foo", logger)
 			require.NoError(t, err)
 
 			tx, err := p.db.BeginTx(context.Background(), nil)
@@ -852,7 +852,7 @@ func TestGetBridgesPublished(t *testing.T) {
 func TestProcessBlockInvalidIndex(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTestProceessor.sqlite")
 	logger := log.WithFields("bridge-syncer", "foo")
-	p, err := newProcessor(path, logger)
+	p, err := newProcessor(path, "foo", logger)
 	require.NoError(t, err)
 	err = p.ProcessBlock(context.Background(), sync.Block{
 		Num: 0,

@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/lastgersync/migrations"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -26,8 +27,9 @@ type eventWithBlockNum struct {
 }
 
 type processor struct {
-	db  *sql.DB
-	log *log.Logger
+	database *sql.DB
+	log      *log.Logger
+	compatibility.CompatibilityDataStorager[sync.RuntimeData]
 }
 
 func newProcessor(dbPath string, loggerPrefix string) (*processor, error) {
@@ -35,33 +37,37 @@ func newProcessor(dbPath string, loggerPrefix string) (*processor, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := db.NewSQLiteDB(dbPath)
+	database, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
 		return nil, err
 	}
 	logger := log.WithFields("lastger-syncer", loggerPrefix)
 	return &processor{
-		db:  db,
-		log: logger,
+		database: database,
+		log:      logger,
+		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+			db.NewKeyValueStorage(database),
+			loggerPrefix,
+		),
 	}, nil
 }
 
 // GetLastProcessedBlock returns the last processed block by the processor, including blocks
 // that don't have events
 func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
-	var lastProcessedBlockNum uint64
+	var lastProcessedBlock uint64
 
-	row := p.db.QueryRow("SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
-	err := row.Scan(&lastProcessedBlockNum)
+	row := p.database.QueryRow("SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
+	err := row.Scan(&lastProcessedBlock)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
-	return lastProcessedBlockNum, err
+	return lastProcessedBlock, err
 }
 
 func (p *processor) getLastIndex() (uint32, error) {
 	var lastIndex uint32
-	row := p.db.QueryRow(`
+	row := p.database.QueryRow(`
 		SELECT l1_info_tree_index 
 		FROM imported_global_exit_root 
 		ORDER BY l1_info_tree_index DESC LIMIT 1;
@@ -74,7 +80,7 @@ func (p *processor) getLastIndex() (uint32, error) {
 }
 
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
-	tx, err := db.NewTx(ctx, p.db)
+	tx, err := db.NewTx(ctx, p.database)
 	if err != nil {
 		return err
 	}
@@ -113,7 +119,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 }
 
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
-	_, err := p.db.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	_, err := p.database.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
 	return fmt.Errorf("error processing reorg: %w", err)
 }
 
@@ -123,7 +129,7 @@ func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 	ctx context.Context, l1InfoTreeIndex uint32,
 ) (Event, error) {
 	e := Event{}
-	err := meddler.QueryRow(p.db, &e, `
+	err := meddler.QueryRow(p.database, &e, `
 		SELECT l1_info_tree_index, global_exit_root
 		FROM imported_global_exit_root
 		WHERE l1_info_tree_index >= $1

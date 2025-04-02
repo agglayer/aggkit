@@ -6,6 +6,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
 const (
@@ -68,7 +69,7 @@ func (c *ConfigEpochNotifierPerBlock) Validate() error {
 
 type EpochNotifierPerBlock struct {
 	blockNotifier types.BlockNotifier
-	logger        types.Logger
+	logger        aggkitcommon.Logger
 
 	lastStartingEpochBlock uint64
 
@@ -77,7 +78,7 @@ type EpochNotifierPerBlock struct {
 }
 
 func NewEpochNotifierPerBlock(blockNotifier types.BlockNotifier,
-	logger types.Logger,
+	logger aggkitcommon.Logger,
 	config ConfigEpochNotifierPerBlock,
 	subscriber types.GenericSubscriber[types.EpochEvent]) (*EpochNotifierPerBlock, error) {
 	if subscriber == nil {

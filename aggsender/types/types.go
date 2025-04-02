@@ -91,7 +91,6 @@ type EthClient interface {
 	ethereum.LogFilterer
 	ethereum.BlockNumberReader
 	ethereum.ChainReader
-	bind.ContractBackend
 }
 
 // Logger is an interface that defines the methods to log messages
