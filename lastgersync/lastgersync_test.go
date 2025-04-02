@@ -2,7 +2,6 @@ package lastgersync
 
 import (
 	"context"
-	"fmt"
 	"path"
 	"testing"
 
@@ -11,12 +10,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
-
-func TestStart(t *testing.T) {
-	lastgersync := &LastGERSync{}
-	err := lastgersync.Start(context.Background())
-	require.Error(t, err, fmt.Errorf("driver is not initialized"))
-}
 
 func TestGetLastProcessedBlock(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "lastgersync_TestGetLastProcessedBlock.sqlite")

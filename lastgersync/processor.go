@@ -108,12 +108,12 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 
 // GetLastIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root table
 func (p *processor) getLastIndex() (uint32, error) {
-	var lastIndex uint32
 	row := p.db.QueryRow(`
 		SELECT l1_info_tree_index 
 		FROM imported_global_exit_root 
 		ORDER BY l1_info_tree_index DESC LIMIT 1;
 	`)
+	var lastIndex uint32
 	err := row.Scan(&lastIndex)
 	if err != nil {
 		return 0, db.ReturnErrNotFound(err)

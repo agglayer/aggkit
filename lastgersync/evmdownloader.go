@@ -45,7 +45,7 @@ func newDownloader(
 	gerContract, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERAddr, l2Client)
 	if err != nil {
-		return nil, fmt.Errorf("failed to initialize L2 GER contract: %w", err)
+		return nil, fmt.Errorf("failed to initialize L2 GER manager contract: %w", err)
 	}
 
 	return &downloader{

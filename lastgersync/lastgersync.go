@@ -74,9 +74,6 @@ func New(
 
 // Start initiates the synchronization process.
 func (s *LastGERSync) Start(ctx context.Context) error {
-	if s.driver == nil {
-		return fmt.Errorf("driver is not initialized")
-	}
 	s.driver.Sync(ctx)
 	return nil
 }
