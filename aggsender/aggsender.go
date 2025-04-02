@@ -78,7 +78,6 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	//signer, err := signer.NewSigner(aggkitcommon.AGGSENDER, logger, ctx, cfg.AggsenderPrivateKey)
 	signer, err := signer.NewSigner(ctx, 0, cfg.AggsenderPrivateKey, aggkitcommon.AGGSENDER, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
