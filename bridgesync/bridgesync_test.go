@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"path"
 	"testing"
 	"time"
@@ -273,6 +274,130 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageNum := uint32(0)
 
 		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		require.ErrorIs(t, err, ErrInvalidPageNumber)
+	})
+
+	t.Run("provide invalid page size", func(t *testing.T) {
+		pageSize := uint32(0)
+		pageNum := uint32(4)
+
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		require.ErrorIs(t, err, ErrInvalidPageSize)
+	})
+
+	t.Run("inconsistent state", func(t *testing.T) {
+		s.processor.halted = true
+		_, _, err := s.GetTokenMappings(context.Background(), 0, 0)
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+	})
+}
+
+func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
+	const (
+		syncBlockChunkSize         = uint64(100)
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+		tokenMigrationsCount       = 20
+		blockNum                   = uint64(1)
+	)
+
+	var (
+		blockFinalityType = etherman.SafeBlock
+		ctx               = context.Background()
+		dbPath            = path.Join(t.TempDir(), "TestGetTokenMigrations.sqlite")
+		bridge            = common.HexToAddress("0x123456")
+	)
+
+	mockEthClient := mocksethclient.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+
+	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	s, err := NewL2(
+		ctx,
+		dbPath,
+		bridge,
+		syncBlockChunkSize,
+		blockFinalityType,
+		mockReorgDetector,
+		mockEthClient,
+		initialBlock,
+		waitForNewBlocksPeriod,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
+		originNetwork,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+
+	allTokenMirgations := make([]*LegacyTokenMigration, 0, tokenMigrationsCount)
+	genericEvts := make([]any, 0, tokenMigrationsCount)
+
+	for i := tokenMigrationsCount - 1; i >= 0; i-- {
+		tokenMigrationEvt := &LegacyTokenMigration{
+			BlockNum:            blockNum,
+			BlockPos:            uint64(i),
+			LegacyTokenAddress:  common.HexToAddress(fmt.Sprintf("%d", i+1)),
+			UpdatedTokenAddress: common.HexToAddress(fmt.Sprintf("%d", i+2)),
+			Amount:              big.NewInt(int64(i * 10)),
+		}
+
+		allTokenMirgations = append(allTokenMirgations, tokenMigrationEvt)
+		genericEvts = append(genericEvts, Event{LegacyTokenMigration: tokenMigrationEvt})
+	}
+
+	block := sync.Block{
+		Num:    blockNum,
+		Events: genericEvts,
+	}
+
+	err = s.processor.ProcessBlock(context.Background(), block)
+	require.NoError(t, err)
+
+	t.Run("retrieve all token migrations", func(t *testing.T) {
+		tokenMigrations, totalTokenMigrations, err := s.GetLegacyTokenMigrations(context.Background(), 1, tokenMigrationsCount)
+		require.NoError(t, err)
+		require.Equal(t, tokenMigrationsCount, totalTokenMigrations)
+		require.Equal(t, allTokenMirgations, tokenMigrations)
+	})
+
+	t.Run("retrieve paginated token migrations", func(t *testing.T) {
+		pageSize := uint32(5)
+
+		for page := uint32(1); page <= 4; page++ {
+			tokenMigrations, totalTokenMigrations, err := s.GetLegacyTokenMigrations(context.Background(), page, pageSize)
+			require.NoError(t, err)
+			require.Equal(t, tokenMigrationsCount, totalTokenMigrations)
+
+			startIndex := (page - 1) * pageSize
+			endIndex := startIndex + pageSize
+			require.Equal(t, allTokenMirgations[startIndex:endIndex], tokenMigrations)
+		}
+	})
+
+	t.Run("retrieve non-existent page", func(t *testing.T) {
+		pageSize := uint32(5)
+		pageNum := uint32(5)
+
+		tokenMigrations, totalTokenMigrations, err := s.GetLegacyTokenMigrations(context.Background(), pageNum, pageSize)
+		require.ErrorIs(t, err, db.ErrNotFound)
+		require.Equal(t, 0, totalTokenMigrations)
+		require.Nil(t, tokenMigrations)
+	})
+
+	t.Run("provide invalid page number", func(t *testing.T) {
+		pageSize := uint32(0)
+		pageNum := uint32(0)
+
+		_, _, err := s.GetLegacyTokenMigrations(context.Background(), pageNum, pageSize)
 		require.ErrorIs(t, err, ErrInvalidPageNumber)
 	})
 
