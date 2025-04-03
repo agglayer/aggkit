@@ -311,6 +311,23 @@ func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize 
 	return s.processor.GetTokenMappings(ctx, pageNumber, pageSize)
 }
 
+func (s *BridgeSync) GetLegacyTokenMigrations(
+	ctx context.Context, pageNumber, pageSize uint32) ([]*LegacyTokenMigration, int, error) {
+	if s.processor.isHalted() {
+		return nil, 0, sync.ErrInconsistentState
+	}
+
+	if pageNumber == 0 {
+		return nil, 0, ErrInvalidPageNumber
+	}
+
+	if pageSize == 0 {
+		return nil, 0, ErrInvalidPageSize
+	}
+
+	return s.processor.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
+}
+
 func (s *BridgeSync) GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error) {
 	if s.processor.isHalted() {
 		return tree.Proof{}, sync.ErrInconsistentState

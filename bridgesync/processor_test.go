@@ -9,6 +9,7 @@ import (
 	"os"
 	"path"
 	"slices"
+	"sort"
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
@@ -466,7 +467,7 @@ var (
 		Num: 5,
 		Events: []interface{}{
 			Event{Claim: &Claim{
-				BlockNum:           4,
+				BlockNum:           5,
 				BlockPos:           0,
 				GlobalIndex:        big.NewInt(4),
 				OriginNetwork:      4,
@@ -475,13 +476,26 @@ var (
 				Amount:             big.NewInt(4),
 			}},
 			Event{Claim: &Claim{
-				BlockNum:           4,
+				BlockNum:           5,
 				BlockPos:           1,
 				GlobalIndex:        big.NewInt(5),
 				OriginNetwork:      5,
 				OriginAddress:      common.HexToAddress("05"),
 				DestinationAddress: common.HexToAddress("05"),
 				Amount:             big.NewInt(5),
+			}},
+			Event{LegacyTokenMigration: &LegacyTokenMigration{
+				BlockNum:            5,
+				BlockPos:            2,
+				Sender:              common.HexToAddress("0x10"),
+				LegacyTokenAddress:  common.HexToAddress("0x11"),
+				UpdatedTokenAddress: common.HexToAddress("0x12"),
+				Amount:              big.NewInt(10),
+			}},
+			Event{RemoveLegacyToken: &RemoveLegacyToken{
+				BlockNum:           5,
+				BlockPos:           3,
+				LegacyTokenAddress: common.HexToAddress("0x11"),
 			}},
 		},
 	}
@@ -1304,6 +1318,98 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestProcessor_GetLegacyTokenMigrations(t *testing.T) {
+	t.Parallel()
+	path := path.Join(t.TempDir(), "tokenMigrations.db")
+	err := migrationsBridge.RunMigrations(path)
+	require.NoError(t, err)
+
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger)
+	require.NoError(t, err)
+
+	const (
+		tokenMigrationsCount       = 50
+		removeTokenMigrationsCount = 10
+	)
+	tokenMigrationEvents := make([]*LegacyTokenMigration, 0, tokenMigrationsCount)
+	removeTokenMigrationEvents := make([]*RemoveLegacyToken, 0, removeTokenMigrationsCount)
+	for i := range tokenMigrationsCount {
+		e := &LegacyTokenMigration{
+			BlockNum:            uint64(1),
+			BlockPos:            uint64(i),
+			LegacyTokenAddress:  common.HexToAddress(fmt.Sprintf("%d", i+1)),
+			UpdatedTokenAddress: common.HexToAddress(fmt.Sprintf("%d", i+2)),
+			Amount:              big.NewInt(int64(i + 1)),
+		}
+		tokenMigrationEvents = append(tokenMigrationEvents, e)
+	}
+
+	// Sort in descending order of block pos and block num
+	sort.Slice(tokenMigrationEvents, func(i, j int) bool {
+		prevTokenMig := tokenMigrationEvents[i]
+		currentTokenMig := tokenMigrationEvents[j]
+		if prevTokenMig.BlockPos > currentTokenMig.BlockPos {
+			return true
+		}
+
+		if prevTokenMig.BlockNum > currentTokenMig.BlockNum {
+			return true
+		}
+
+		return false
+	})
+
+	for i := range removeTokenMigrationsCount {
+		e := &RemoveLegacyToken{
+			BlockNum:           uint64(2),
+			BlockPos:           uint64(i),
+			LegacyTokenAddress: common.HexToAddress(fmt.Sprintf("%d", i+1)),
+		}
+		removeTokenMigrationEvents = append(removeTokenMigrationEvents, e)
+	}
+
+	block1 := sync.Block{
+		Num:    uint64(1),
+		Events: []any{},
+	}
+
+	for _, e := range tokenMigrationEvents {
+		block1.Events = append(block1.Events, Event{LegacyTokenMigration: e})
+	}
+
+	block2 := sync.Block{
+		Num:    uint64(2),
+		Events: []any{},
+	}
+
+	for _, e := range removeTokenMigrationEvents {
+		block2.Events = append(block2.Events, Event{RemoveLegacyToken: e})
+	}
+
+	// Insert all LegacyTokenMigration events
+	err = p.ProcessBlock(context.Background(), block1)
+	require.NoError(t, err)
+
+	result, totalTokenMigrations, err := p.GetLegacyTokenMigrations(context.Background(), 1, tokenMigrationsCount)
+
+	require.NoError(t, err)
+	require.Len(t, result, tokenMigrationsCount)
+	require.Equal(t, result, tokenMigrationEvents)
+	require.Equal(t, tokenMigrationsCount, totalTokenMigrations)
+
+	// Process block that contains RemoveLegacyToken events
+	err = p.ProcessBlock(context.Background(), block2)
+	require.NoError(t, err)
+
+	finalTokenMigrationsCount := tokenMigrationsCount - removeTokenMigrationsCount
+	result, totalTokenMigrations, err = p.GetLegacyTokenMigrations(context.Background(), 1, tokenMigrationsCount)
+	require.NoError(t, err)
+	require.Equal(t, totalTokenMigrations, finalTokenMigrationsCount)
+	require.Len(t, result, finalTokenMigrationsCount)
+	require.Equal(t, tokenMigrationEvents[:finalTokenMigrationsCount], result)
 }
 
 func TestDecodePreEtrogCalldata_Valid(t *testing.T) {
