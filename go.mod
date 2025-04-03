@@ -6,6 +6,7 @@ require (
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef
 	github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.8-0.20250331152204-dfe77eb510de
+	github.com/agglayer/go_signer v0.0.5
 	github.com/ethereum/go-ethereum v1.15.5
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 	github.com/hermeznetwork/tracerr v0.3.2
@@ -48,7 +49,6 @@ require (
 	github.com/DataDog/zstd v1.5.6 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.2 // indirect
-	github.com/agglayer/go_signer v0.0.5 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.32.8 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.28.11 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.52 // indirect

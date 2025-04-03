@@ -30,8 +30,6 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/VictoriaMetrics/fastcache v1.12.2 h1:N0y9ASrJ0F6h0QaC3o6uJb3NIZ9VKLjCM7NQbSmF7WI=
 github.com/VictoriaMetrics/fastcache v1.12.2/go.mod h1:AmC+Nzz1+3G2eCPapF6UcsnkThDcMsQicp4xDukwJYI=
-github.com/agglayer/go_signer v0.0.4 h1:TrblUQUtXUrv1m81mxxVaiUgEZ26NtvTJU6H5PL7vUw=
-github.com/agglayer/go_signer v0.0.4/go.mod h1:YIoQNqvA10L/qV9vlAV8rXjejnyPpnYA0A/zU1uxXeY=
 github.com/agglayer/go_signer v0.0.5 h1:k9tnWhGELZaKqEHG8s7r5V13wBANhokDYZGTlGU/cDo=
 github.com/agglayer/go_signer v0.0.5/go.mod h1:YIoQNqvA10L/qV9vlAV8rXjejnyPpnYA0A/zU1uxXeY=
 github.com/allegro/bigcache v1.2.1-0.20190218064605-e24eb225f156/go.mod h1:Cb/ax3seSYIx7SuZdm2G2xzfwmv3TPSk2ucNfQESPXM=
