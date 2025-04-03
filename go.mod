@@ -48,7 +48,7 @@ require (
 	github.com/DataDog/zstd v1.5.6 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/VictoriaMetrics/fastcache v1.12.2 // indirect
-	github.com/agglayer/go_signer v0.0.4 // indirect
+	github.com/agglayer/go_signer v0.0.5 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.32.8 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.28.11 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.52 // indirect
