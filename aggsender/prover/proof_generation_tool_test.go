@@ -24,7 +24,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 			mockFlow *mocks.AggchainProofFlow,
 		)
 		expectedError string
-		expectedProof []byte
+		expectedProof *types.SP1StarkProof
 	}{
 		{
 			name: "Success",
@@ -36,9 +36,9 @@ func TestGenerateAggchainProof(t *testing.T) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
 				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(1), uint64(10), []bridgesync.Claim{}).Return(
-					&types.AggchainProof{Proof: []byte("proof")}, nil, nil)
+					&types.AggchainProof{SP1StarkProof: &types.SP1StarkProof{Proof: []byte("proof")}}, nil, nil)
 			},
-			expectedProof: []byte("proof"),
+			expectedProof: &types.SP1StarkProof{Proof: []byte("proof")},
 		},
 		{
 			name: "Failure_GetLastProcessedBlock",

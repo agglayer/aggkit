@@ -457,3 +457,62 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 	require.NotNil(t, readCertWithL1Root)
 	require.Equal(t, certWithL1Root, *readCertWithL1Root)
 }
+
+func Test_StorageAggchainProof(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.TODO()
+	dbPath := path.Join(t.TempDir(), "Test_StorageAggchainProof.sqlite")
+	cfg := AggSenderSQLStorageConfig{
+		DBPath:                  dbPath,
+		KeepCertificatesHistory: true,
+	}
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+	require.NotNil(t, storage)
+
+	// no aggchain proof in cert
+	certNoAggchainProof := types.CertificateInfo{
+		Height:           0,
+		CertificateID:    common.HexToHash("0x111"),
+		Status:           agglayertypes.Pending,
+		NewLocalExitRoot: common.HexToHash("0x222"),
+	}
+	require.NoError(t, storage.SaveLastSentCertificate(ctx, certNoAggchainProof))
+
+	readCertNoAggchainProof, err := storage.GetCertificateByHeight(0)
+	require.NoError(t, err)
+	require.NotNil(t, readCertNoAggchainProof)
+	require.Equal(t, certNoAggchainProof, *readCertNoAggchainProof)
+
+	// aggchain proof in cert
+	aggchainProof := &types.AggchainProof{
+		LastProvenBlock: 10,
+		EndBlock:        20,
+		CustomChainData: []byte{0x1, 0x2, 0x3},
+		LocalExitRoot:   common.HexToHash("0x123"),
+		AggchainParams:  common.HexToHash("0x456"),
+		Context: map[string][]byte{
+			"key1": {0x1, 0x2},
+		},
+		SP1StarkProof: &types.SP1StarkProof{
+			Version: "0.1",
+			Proof:   []byte{0x1, 0x2, 0x3},
+			Vkey:    []byte{0x4, 0x5, 0x6},
+		},
+	}
+
+	certWithAggchainProof := types.CertificateInfo{
+		Height:           1,
+		CertificateID:    common.HexToHash("0x222"),
+		Status:           agglayertypes.Settled,
+		NewLocalExitRoot: common.HexToHash("0x223"),
+		AggchainProof:    aggchainProof,
+	}
+	require.NoError(t, storage.SaveLastSentCertificate(ctx, certWithAggchainProof))
+
+	readCertWithAggchainProof, err := storage.GetCertificateByHeight(1)
+	require.NoError(t, err)
+	require.NotNil(t, readCertWithAggchainProof)
+	require.Equal(t, certWithAggchainProof, *readCertWithAggchainProof)
+}

@@ -4,10 +4,16 @@ buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250228150343-c7b
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250228150343-c7b7fef1692a.1/go.mod h1:AORyBne44QocLbS9Zks4hkU3GFtwpYTXcRFdRH5WmqE=
 buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250317150713-743b25629858.1 h1:G4fP0a62iDXoaiP+/3mQ3IvLUA3+DU38o3Tr2QmVs0E=
 buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250317150713-743b25629858.1/go.mod h1:W3XIAooP7VLR0wAorIvMG2xNYX+C48U9QHfn8uUox3I=
+buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250403073306-df9b770ff25d.1 h1:vLqUHNLYJPK4aDHoDOhbo+PwAr9umdqwU2E2Wap2FGE=
+buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250403073306-df9b770ff25d.1/go.mod h1:W3XIAooP7VLR0wAorIvMG2xNYX+C48U9QHfn8uUox3I=
 buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250327122651-3ea16e24e202.2 h1:Uy7Yih3wwTxPgfCQZq+xIUtKMPxHKSPrSNoJ1QTqmzg=
 buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250327122651-3ea16e24e202.2/go.mod h1:xm3a1yJlOWaCjcjn2qDENhrctTURS2mMFUJfJJasMIE=
+buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250403091637-4fd90e526027.2 h1:x5UeilSrRauejHuaC4u7e17FX8RKuEK5UT/Q7L2JkSc=
+buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250403091637-4fd90e526027.2/go.mod h1:rgXdXPca3EdzI4ezKayCV4FTPR6MiWszzxf9Y+ijBO4=
 buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250327122651-3ea16e24e202.1 h1:DiFgGr/wgQa2xklwq0OY2x3WGfb38m8L2FbHmgKKbu0=
 buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250327122651-3ea16e24e202.1/go.mod h1:ejSvLmpUKsnokaT4/eqLdg/5lK4X/2PogSBbqx+DAPg=
+buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250403091637-4fd90e526027.1 h1:UaADVvP+GRT+4X1YkujDekpP1QDWTRnvb759CmpQFJg=
+buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250403091637-4fd90e526027.1/go.mod h1:HmgyhK8tLa4cfrt+7L5w+cE8b/wnricASyRn2CvfpuE=
 github.com/0xPolygon/cdk-contracts-tooling v0.0.3 h1:G7H3UNyDOpoLqDvW9c4lgn2iMnteM1HqUpUAD1gk9VU=
 github.com/0xPolygon/cdk-contracts-tooling v0.0.3/go.mod h1:mFlcEjsm2YBBsu8atHJ3zyVnwM+Z/fMXpVmIJge+WVU=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6 h1:FXL/rcO7/GtZ3kRFw+C7J6vmGnl8gcazg+Gh/NVmnas=

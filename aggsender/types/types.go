@@ -16,6 +16,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+const nilStr = "nil"
+
 type AggsenderMode string
 
 const (
@@ -107,11 +109,58 @@ type Logger interface {
 }
 
 type AggchainProof struct {
-	LastProvenBlock uint64
-	EndBlock        uint64
-	Proof           []byte
-	CustomChainData []byte
-	LocalExitRoot   common.Hash
+	LastProvenBlock uint64            `json:"last_proven_block"`
+	EndBlock        uint64            `json:"end_block"`
+	CustomChainData []byte            `json:"custom_chain_data,omitempty"`
+	LocalExitRoot   common.Hash       `json:"local_exit_root"`
+	AggchainParams  common.Hash       `json:"aggchain_params"`
+	Context         map[string][]byte `json:"context,omitempty"`
+	SP1StarkProof   *SP1StarkProof    `json:"sp1_stark_proof,omitempty"`
+}
+
+func (a *AggchainProof) String() string {
+	if a == nil {
+		return nilStr
+	}
+
+	return fmt.Sprintf("LastProvenBlock: %d \n"+
+		"EndBlock: %d \n"+
+		"CustomChainData: %x \n"+
+		"LocalExitRoot: %s \n"+
+		"AggchainParams: %s \n"+
+		"Context: %v \n"+
+		"SP1StarkProof: %v \n",
+		a.LastProvenBlock,
+		a.EndBlock,
+		a.CustomChainData,
+		a.LocalExitRoot.String(),
+		a.AggchainParams.String(),
+		a.Context,
+		a.SP1StarkProof.String(),
+	)
+}
+
+type SP1StarkProof struct {
+	// SP1 Version
+	Version string `json:"version,omitempty"`
+	// SP1 stark proof.
+	Proof []byte `json:"proof,omitempty"`
+	// SP1 stark proof verification key.
+	Vkey []byte `json:"vkey,omitempty"`
+}
+
+func (s *SP1StarkProof) String() string {
+	if s == nil {
+		return nilStr
+	}
+
+	return fmt.Sprintf("Version: %s \n"+
+		"Proof: %x \n"+
+		"Vkey: %x",
+		s.Version,
+		s.Proof,
+		s.Vkey,
+	)
 }
 
 type CertificateInfo struct {
@@ -127,37 +176,40 @@ type CertificateInfo struct {
 	CreatedAt               uint32                          `meddler:"created_at"`
 	UpdatedAt               uint32                          `meddler:"updated_at"`
 	SignedCertificate       string                          `meddler:"signed_certificate"`
-	AggchainProof           []byte                          `meddler:"aggchain_proof"`
+	AggchainProof           *AggchainProof                  `meddler:"aggchain_proof,aggchainproof"`
 	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
 }
 
 func (c *CertificateInfo) String() string {
 	if c == nil {
-		//nolint:all
-		return "nil"
+		return nilStr
 	}
-	previousLocalExitRoot := "nil"
+	previousLocalExitRoot := nilStr
 	if c.PreviousLocalExitRoot != nil {
 		previousLocalExitRoot = c.PreviousLocalExitRoot.String()
 	}
-	finalizedL1InfoTreeRoot := "nil"
+	finalizedL1InfoTreeRoot := nilStr
 	if c.FinalizedL1InfoTreeRoot != nil {
 		finalizedL1InfoTreeRoot = c.FinalizedL1InfoTreeRoot.String()
 	}
+	aggchainProof := nilStr
+	if c.AggchainProof != nil {
+		aggchainProof = c.AggchainProof.String()
+	}
 
-	return fmt.Sprintf("aggsender.CertificateInfo: "+
-		"Height: %d "+
-		"RetryCount: %d "+
-		"CertificateID: %s "+
-		"PreviousLocalExitRoot: %s "+
-		"NewLocalExitRoot: %s "+
-		"Status: %s "+
-		"FromBlock: %d "+
-		"ToBlock: %d "+
-		"CreatedAt: %s "+
-		"UpdatedAt: %s "+
-		"AggchainProof: %s "+
-		"FinalizedL1InfoTreeRoot: %s",
+	return fmt.Sprintf("aggsender.CertificateInfo: \n"+
+		"Height: %d \n"+
+		"RetryCount: %d \n"+
+		"CertificateID: %s \n"+
+		"PreviousLocalExitRoot: %s \n"+
+		"NewLocalExitRoot: %s \n"+
+		"Status: %s \n"+
+		"FromBlock: %d \n"+
+		"ToBlock: %d \n"+
+		"CreatedAt: %s \n"+
+		"UpdatedAt: %s \n"+
+		"AggchainProof: %s \n"+
+		"FinalizedL1InfoTreeRoot: %s \n",
 		c.Height,
 		c.RetryCount,
 		c.CertificateID.String(),
@@ -168,7 +220,7 @@ func (c *CertificateInfo) String() string {
 		c.ToBlock,
 		time.Unix(int64(c.CreatedAt), 0),
 		time.Unix(int64(c.UpdatedAt), 0),
-		c.AggchainProof,
+		aggchainProof,
 		finalizedL1InfoTreeRoot,
 	)
 }
@@ -176,7 +228,7 @@ func (c *CertificateInfo) String() string {
 // ID returns a string with the unique identifier of the cerificate (height+certificateID)
 func (c *CertificateInfo) ID() string {
 	if c == nil {
-		return "nil"
+		return nilStr
 	}
 	return fmt.Sprintf("%d/%s (retry %d)", c.Height, c.CertificateID.String(), c.RetryCount)
 }
