@@ -1,6 +1,6 @@
 module github.com/agglayer/aggkit
 
-go 1.23.7
+go 1.24
 
 require (
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef
