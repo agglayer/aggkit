@@ -47,7 +47,7 @@ func newDownloader(
 	gerContract, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERAddr, l2Client)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize L2 GER manager contract: %w", err)
 	}
 
 	return &downloader{
@@ -80,6 +80,8 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		nextIndex uint32
 		err       error
 	)
+
+	// Determine the next index to start fetching GERs
 	for {
 		lastIndex, err := d.processor.getLastIndex()
 		if errors.Is(err, db.ErrNotFound) {
@@ -96,6 +98,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		}
 		break
 	}
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -105,8 +108,11 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 			return
 		default:
 		}
+
+		// Wait for new blocks before processing
 		fromBlock = d.WaitForNewBlocks(ctx, fromBlock)
 
+		// Fetch GERs from the determined index
 		attempts = 0
 		var gers []Event
 		for {
@@ -135,9 +141,11 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 				Timestamp:  blockHeader.Timestamp,
 			},
 		}
+		// Set the greatest GER injected from the list
 		d.setGreatestGERInjectedFromList(block, gers)
 
 		downloadedCh <- *block
+		// Update nextIndex based on the last injected GER event
 		if len(block.Events) > 0 {
 			event, ok := block.Events[0].(Event)
 			if !ok {
@@ -157,7 +165,7 @@ func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex u
 		return nil, fmt.Errorf("error calling GetLastL1InfoTreeRoot: %w", err)
 	}
 
-	gers := []Event{}
+	gers := make([]Event, 0, lastRoot.Index-fromL1InfoTreeIndex+1)
 	for i := fromL1InfoTreeIndex; i <= lastRoot.Index; i++ {
 		info, err := d.l1InfoTreesync.GetInfoByIndex(ctx, i)
 		if err != nil {

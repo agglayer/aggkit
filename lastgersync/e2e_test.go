@@ -3,6 +3,7 @@ package lastgersync_test
 import (
 	"context"
 	"fmt"
+	"log"
 	"path"
 	"strconv"
 	"testing"
@@ -16,16 +17,20 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestE2E(t *testing.T) {
+const (
+	retryAfterErrorPeriod      = 30 * time.Millisecond
+	maxRetryAttemptsAfterError = 10
+	waitForNewBlocksPeriod     = 30 * time.Millisecond
+	syncBlockChunkSize         = 10
+	testIterations             = 10
+	syncDelay                  = 150 * time.Millisecond
+)
+
+func TestLastGERSyncE2E(t *testing.T) {
 	ctx := context.Background()
 	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
 	dbPathSyncer := path.Join(t.TempDir(), "lastGERSyncTestE2E.sqlite")
-	const (
-		retryAfterErrorPeriod      = time.Millisecond * 30
-		maxRetryAttemptsAfterError = 10
-		waitForNewBlocksPeriod     = time.Millisecond * 30
-		syncBlockChunkSize         = 10
-	)
+
 	syncer, err := lastgersync.New(
 		ctx,
 		dbPathSyncer,
@@ -41,27 +46,43 @@ func TestE2E(t *testing.T) {
 		true,
 	)
 	require.NoError(t, err)
-	go syncer.Start(ctx)
 
-	for i := 0; i < 10; i++ {
-		// Update GER on L1
-		_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, common.HexToHash(strconv.Itoa(i)))
-		require.NoError(t, err)
-		setup.L1Environment.SimBackend.Commit()
-		time.Sleep(time.Millisecond * 150)
-		expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
-		require.NoError(t, err)
-		isInjected, err := setup.AggoracleSender.IsGERInjected(expectedGER)
-		require.NoError(t, err)
-		require.True(t, isInjected, fmt.Sprintf("iteration %d, GER: %s", i, common.Bytes2Hex(expectedGER[:])))
+	go func() {
+		if err := syncer.Start(ctx); err != nil {
+			log.Fatalf("lastGERSync failed: %s", err)
+		}
+	}()
 
-		// Wait for syncer to catch up
-		lb, err := setup.L2Environment.SimBackend.Client().BlockNumber(ctx)
-		require.NoError(t, err)
-		helpers.RequireProcessorUpdated(t, syncer, lb)
-
-		e, err := syncer.GetFirstGERAfterL1InfoTreeIndex(ctx, uint32(i))
-		require.NoError(t, err, fmt.Sprint("iteration: ", i))
-		require.Equal(t, common.Hash(expectedGER), e.GlobalExitRoot, fmt.Sprint("iteration: ", i))
+	for i := 0; i < testIterations; i++ {
+		updateGlobalExitRoot(t, setup, i)
+		time.Sleep(syncDelay)
+		testGERSyncer(t, ctx, setup, syncer, i)
 	}
+}
+
+func updateGlobalExitRoot(t *testing.T, setup *helpers.AggoracleWithEVMChain, i int) {
+	t.Helper()
+
+	_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, common.HexToHash(strconv.Itoa(i)))
+	require.NoError(t, err)
+	setup.L1Environment.SimBackend.Commit()
+}
+
+func testGERSyncer(t *testing.T, ctx context.Context, setup *helpers.AggoracleWithEVMChain, syncer *lastgersync.LastGERSync, i int) {
+	t.Helper()
+
+	expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
+	require.NoError(t, err)
+
+	isInjected, err := setup.AggoracleSender.IsGERInjected(expectedGER)
+	require.NoError(t, err)
+	require.True(t, isInjected, fmt.Sprintf("iteration %d, GER: %s", i, common.Bytes2Hex(expectedGER[:])))
+
+	lb, err := setup.L2Environment.SimBackend.Client().BlockNumber(ctx)
+	require.NoError(t, err)
+	helpers.RequireProcessorUpdated(t, syncer, lb)
+
+	e, err := syncer.GetFirstGERAfterL1InfoTreeIndex(ctx, uint32(i))
+	require.NoError(t, err, fmt.Sprintf("iteration: %d", i))
+	require.Equal(t, common.Hash(expectedGER), e.GlobalExitRoot, fmt.Sprintf("iteration: %d", i))
 }
