@@ -30,7 +30,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.35.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.36.0
-	golang.org/x/net v0.37.0
+	golang.org/x/net v0.38.0
 	golang.org/x/sync v0.12.0
 	modernc.org/sqlite v1.37.0
 )
