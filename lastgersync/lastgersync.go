@@ -8,12 +8,19 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/sync"
+	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
-	reorgDetectorID = "lastGERSync"
+	reorgDetectorID = "lastGERSyncer"
 )
+
+// L1InfoTreeQuerier is abstraction for querying the L1InfoTree data
+type L1InfoTreeQuerier interface {
+	GetLastL1InfoTreeRoot(ctx context.Context) (treetypes.Root, error)
+	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
+}
 
 // LastGERSync is responsible for managing GER synchronization.
 type LastGERSync struct {
@@ -28,7 +35,7 @@ func New(
 	rdL2 sync.ReorgDetector,
 	l2Client EthClienter,
 	globalExitRootL2 common.Address,
-	l1InfoTreesync *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSync L1InfoTreeQuerier,
 	retryAfterErrorPeriod time.Duration,
 	maxRetryAttemptsAfterError int,
 	blockFinality etherman.BlockNumberFinality,
@@ -52,7 +59,7 @@ func New(
 	downloader, err := newDownloader(
 		l2Client,
 		globalExitRootL2,
-		l1InfoTreesync,
+		l1InfoTreeSync,
 		processor,
 		rh,
 		bf,

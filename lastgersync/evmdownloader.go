@@ -10,7 +10,6 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum"
@@ -30,7 +29,7 @@ type downloader struct {
 	*sync.EVMDownloaderImplementation
 	l2GERManager   *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
 	l2GERAddr      common.Address
-	l1InfoTreesync *l1infotreesync.L1InfoTreeSync
+	l1InfoTreeSync L1InfoTreeQuerier
 	processor      *processor
 	rh             *sync.RetryHandler
 }
@@ -38,7 +37,7 @@ type downloader struct {
 func newDownloader(
 	l2Client EthClienter,
 	l2GERAddr common.Address,
-	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSync L1InfoTreeQuerier,
 	processor *processor,
 	rh *sync.RetryHandler,
 	blockFinality *big.Int,
@@ -56,7 +55,7 @@ func newDownloader(
 		),
 		l2GERManager:   gerContract,
 		l2GERAddr:      l2GERAddr,
-		l1InfoTreesync: l1InfoTreeSync,
+		l1InfoTreeSync: l1InfoTreeSync,
 		processor:      processor,
 		rh:             rh,
 	}, nil
@@ -157,7 +156,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 }
 
 func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex uint32) ([]Event, error) {
-	lastRoot, err := d.l1InfoTreesync.GetLastL1InfoTreeRoot(ctx)
+	lastRoot, err := d.l1InfoTreeSync.GetLastL1InfoTreeRoot(ctx)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, nil
 	}
@@ -167,7 +166,7 @@ func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex u
 
 	gers := make([]Event, 0, lastRoot.Index-fromL1InfoTreeIndex+1)
 	for i := fromL1InfoTreeIndex; i <= lastRoot.Index; i++ {
-		info, err := d.l1InfoTreesync.GetInfoByIndex(ctx, i)
+		info, err := d.l1InfoTreeSync.GetInfoByIndex(ctx, i)
 		if err != nil {
 			return nil, fmt.Errorf("error calling GetInfoByIndex: %w", err)
 		}

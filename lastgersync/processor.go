@@ -45,7 +45,7 @@ func newProcessor(dbPath string) (*processor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
-	logger := log.WithFields("lastger-syncer", reorgDetectorID)
+	logger := log.WithFields("module", reorgDetectorID)
 	return &processor{
 		database: database,
 		log:      logger,
@@ -138,9 +138,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 
 // GetFirstGERAfterL1InfoTreeIndex returns the first GER injected into the chain that is associated with
 // or greater than the specified l1InfoTreeIndex.
-func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
-	ctx context.Context, l1InfoTreeIndex uint32,
-) (Event, error) {
+func (p *processor) GetFirstGERAfterL1InfoTreeIndex(ctx context.Context, l1InfoTreeIndex uint32) (Event, error) {
 	e := Event{}
 	err := meddler.QueryRow(p.database, &e, `
 		SELECT l1_info_tree_index, global_exit_root
