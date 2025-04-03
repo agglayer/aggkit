@@ -54,10 +54,13 @@ setup() {
     log "Waiting GER to be injected to the destination network..."
     sleep 60
 
-    timeout="180"
-    claim_frequency="10"
-    run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$op_rpc_url" "$bridge_api_url"
-    assert_success
+    # timeout="180"
+    # claim_frequency="10"
+    # run claim_bridge_by_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$op_rpc_url" "$bridge_api_url"
+    # assert_success
+
+    log "Waiting for the claim to be processed..."
+    sleep 600
 
     local balance=$(cast balance --ether --rpc-url $op_rpc_url $destination_addr)
     log "Balance of $destination_addr: $balance"

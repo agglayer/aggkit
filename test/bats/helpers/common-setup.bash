@@ -20,6 +20,6 @@ _common_setup() {
     readonly enclave=${KURTOSIS_ENCLAVE:-aggkit}
     readonly contracts_container=${KURTOSIS_CONTRACTS:-contracts-001}
     readonly contracts_service_wrapper=${KURTOSIS_CONTRACTS_WRAPPER:-"kurtosis service exec $enclave $contracts_container"}
-    readonly erigon_rpc_node=${KURTOSIS_ERIGON_RPC:-cdk-erigon-rpc-001}
-    readonly l2_rpc_url=${L2_ETH_RPC_URL:-"$(kurtosis port print $enclave $erigon_rpc_node rpc)"}
+    # readonly erigon_rpc_node=${KURTOSIS_ERIGON_RPC:-cdk-erigon-rpc-001}
+    # readonly l2_rpc_url=${L2_ETH_RPC_URL:-"$(kurtosis port print $enclave $erigon_rpc_node rpc)"}
 }
