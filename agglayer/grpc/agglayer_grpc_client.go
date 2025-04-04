@@ -239,7 +239,7 @@ func convertToProtoBridgeExit(be *types.BridgeExit) *v1types.BridgeExit {
 
 	if be.Amount != nil {
 		protoBridgeExit.Amount = &v1types.FixedBytes32{
-			Value: be.Amount.Bytes(),
+			Value: common.BigToHash(be.Amount).Bytes(),
 		}
 	}
 
