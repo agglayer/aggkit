@@ -314,8 +314,9 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 	default:
 		logs := d.GetLogs(ctx, fromBlock, toBlock)
 		blocks := make(EVMBlocks, 0, len(logs))
+		var latestBlock *EVMBlock
 		for _, l := range logs {
-			if len(blocks) == 0 || blocks[len(blocks)-1].Num < l.BlockNumber {
+			if latestBlock == nil || latestBlock.Num < l.BlockNumber {
 				b, canceled := d.GetBlockHeader(ctx, l.BlockNumber)
 				if canceled {
 					return nil
@@ -329,7 +330,7 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 					)
 					return d.GetEventsByBlockRange(ctx, fromBlock, toBlock)
 				}
-				blocks = append(blocks, &EVMBlock{
+				latestBlock = &EVMBlock{
 					EVMBlockHeader: EVMBlockHeader{
 						Num:        l.BlockNumber,
 						Hash:       l.BlockHash,
@@ -337,12 +338,13 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 						ParentHash: b.ParentHash,
 					},
 					Events: []interface{}{},
-				})
+				}
+				blocks = append(blocks, latestBlock)
 			}
 
 			for {
 				attempts := 0
-				err := d.appender[l.Topics[0]](blocks[len(blocks)-1], l)
+				err := d.appender[l.Topics[0]](latestBlock, l)
 				if err != nil {
 					attempts++
 					d.log.Error("error trying to append log: ", err)
