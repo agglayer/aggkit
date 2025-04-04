@@ -5,7 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/signer"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
@@ -16,7 +16,7 @@ type Config struct {
 	// AggLayerURL is the URL of the AggLayer
 	AggLayerURL string `mapstructure:"AggLayerURL"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
-	AggsenderPrivateKey signer.SignerConfig `mapstructure:"AggsenderPrivateKey"`
+	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
 	URLRPCL2 string `mapstructure:"URLRPCL2"`
 	// BlockFinality indicates which finality the AggLayer follows

@@ -8,7 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/l1infotreequery"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/signer"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -16,7 +16,7 @@ import (
 type PPFlow struct {
 	*baseFlow
 
-	signer signer.Signer
+	signer signertypes.Signer
 }
 
 // NewPPFlow returns a new instance of the PPFlow
@@ -27,7 +27,7 @@ func NewPPFlow(log types.Logger,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	l1Client types.EthClient,
-	signer signer.Signer) *PPFlow {
+	signer signertypes.Signer) *PPFlow {
 	return &PPFlow{
 		signer: signer,
 		baseFlow: &baseFlow{
