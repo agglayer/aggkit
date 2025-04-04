@@ -308,7 +308,7 @@ type TokenMapping struct {
 	Metadata            []byte           `meddler:"metadata" json:"metadata"`
 	IsNotMintable       bool             `meddler:"is_not_mintable" json:"is_not_mintable"`
 	Calldata            []byte           `meddler:"calldata" json:"calldata"`
-	Type                TokenMappingType `meddler:"type" json:"type"`
+	Type                TokenMappingType `meddler:"token_type" json:"token_type"`
 }
 
 // MarshalJSON for hex-encoding Metadata and Calldata fields

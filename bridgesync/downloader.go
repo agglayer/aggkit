@@ -56,17 +56,19 @@ func buildAppender(client aggkittypes.EthClienter,
 	bridgeAddr common.Address, syncFullClaims bool) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
 	}
 
 	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, client)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create PolygonZkEVMBridgeV2 SC binding (bridge addr: %s): %w",
+			bridgeAddr, err)
 	}
 
 	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, client)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain SC binding (bridge addr: %s): %w",
+			bridgeAddr, err)
 	}
 
 	appender := make(sync.LogAppenderMap)

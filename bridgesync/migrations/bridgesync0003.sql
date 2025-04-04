@@ -3,7 +3,7 @@ ALTER TABLE token_mapping
 DROP COLUMN is_not_mintable;
 
 ALTER TABLE token_mapping
-DROP COLUMN type NOT NULL;
+DROP COLUMN token_type;
 
 DROP TABLE IF EXISTS legacy_token_migration;
 
@@ -12,7 +12,7 @@ ALTER TABLE token_mapping
 ADD COLUMN is_not_mintable BOOLEAN NOT NULL;
 
 ALTER TABLE token_mapping
-ADD COLUMN type SMALLINT NOT NULL;
+ADD COLUMN token_type SMALLINT NOT NULL;
 
 CREATE TABLE
     legacy_token_migration (
