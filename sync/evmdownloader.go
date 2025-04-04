@@ -312,8 +312,8 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 	case <-ctx.Done():
 		return nil
 	default:
-		blocks := EVMBlocks{}
 		logs := d.GetLogs(ctx, fromBlock, toBlock)
+		blocks := make(EVMBlocks, 0, len(logs))
 		for _, l := range logs {
 			if len(blocks) == 0 || blocks[len(blocks)-1].Num < l.BlockNumber {
 				b, canceled := d.GetBlockHeader(ctx, l.BlockNumber)
