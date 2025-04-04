@@ -16,8 +16,6 @@ const (
 	InitialStatusActionNone InitialStatusAction = iota
 	InitialStatusActionUpdateCurrentCert
 	InitialStatusActionInsertNewCert
-
-	nilStr = "nil"
 )
 
 var ErrAgglayerInconsistence = errors.New("recovery: agglayer inconsistence")
@@ -44,14 +42,14 @@ type InitialStatusResult struct {
 
 func (i *InitialStatusResult) String() string {
 	if i == nil {
-		return nilStr
+		return types.NilStr
 	}
 	res := fmt.Sprintf("Action: %d, Message: %s", i.Action, i.Message)
 
 	if i.Cert != nil {
 		res += fmt.Sprintf(", Cert: %s", i.Cert.ID())
 	} else {
-		res += ", Cert: " + nilStr
+		res += ", Cert: " + types.NilStr
 	}
 	return res
 }

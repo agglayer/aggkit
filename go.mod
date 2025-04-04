@@ -5,9 +5,9 @@ go 1.23.7
 require (
 	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250228150343-c7b7fef1692a.2
 	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250228150343-c7b7fef1692a.1
-	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250317150713-743b25629858.1
-	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250327122651-3ea16e24e202.2
-	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250327122651-3ea16e24e202.1
+	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250403073306-df9b770ff25d.1
+	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250403091637-4fd90e526027.2
+	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250403091637-4fd90e526027.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.3
 	github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.7

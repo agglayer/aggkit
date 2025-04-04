@@ -131,7 +131,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						Proof: treetypes.Proof{},
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
 					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), LastProvenBlock: 1, EndBlock: 10}, nil)
+					SP1StarkProof: &types.SP1StarkProof{Proof: []byte("some-proof")}, LastProvenBlock: 1, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:  1,
@@ -145,7 +145,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
-				AggchainProof:                  []byte("some-proof"),
+				AggchainProof: &types.AggchainProof{
+					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
+					LastProvenBlock: 1,
+					EndBlock:        10,
+				},
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
@@ -201,7 +205,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						{ImportedBridgeExit: ibe1, BlockNumber: 6},
 						{ImportedBridgeExit: ibe2, BlockNumber: 9},
 					}).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), LastProvenBlock: 1, EndBlock: 8}, nil)
+					SP1StarkProof: &types.SP1StarkProof{Proof: []byte("some-proof")}, LastProvenBlock: 1, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:  1,
@@ -216,7 +220,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
-				AggchainProof:                  []byte("some-proof"),
+				AggchainProof: &types.AggchainProof{
+					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
+					LastProvenBlock: 1,
+					EndBlock:        8,
+				},
 				LastSentCertificate: &types.CertificateInfo{
 					FromBlock: 1,
 					ToBlock:   10,
@@ -316,7 +324,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						Proof: treetypes.Proof{},
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
 					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), LastProvenBlock: 6, EndBlock: 10}, nil)
+					SP1StarkProof: &types.SP1StarkProof{Proof: []byte("some-proof")}, LastProvenBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
@@ -331,8 +339,12 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
-				AggchainProof:                  []byte("some-proof"),
-				CreatedAt:                      uint32(time.Now().UTC().Unix()),
+				AggchainProof: &types.AggchainProof{
+					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
+					LastProvenBlock: 6,
+					EndBlock:        10,
+				},
+				CreatedAt: uint32(time.Now().UTC().Unix()),
 			},
 		},
 		{
@@ -380,7 +392,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						{ImportedBridgeExit: ibe1, BlockNumber: 8},
 						{ImportedBridgeExit: ibe2, BlockNumber: 9},
 					}).Return(&types.AggchainProof{
-					Proof: []byte("some-proof"), LastProvenBlock: 6, EndBlock: 8}, nil)
+					SP1StarkProof: &types.SP1StarkProof{Proof: []byte("some-proof")}, LastProvenBlock: 6, EndBlock: 8}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
 				FromBlock:           6,
@@ -396,8 +408,12 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x1"), Index: 10},
-				AggchainProof:                  []byte("some-proof"),
-				CreatedAt:                      uint32(time.Now().UTC().Unix()),
+				AggchainProof: &types.AggchainProof{
+					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
+					LastProvenBlock: 6,
+					EndBlock:        8,
+				},
+				CreatedAt: uint32(time.Now().UTC().Unix()),
 			},
 		},
 	}

@@ -122,14 +122,13 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	a.log.Infof("aggchainProverFlow - fetched auth proof: %s Range %d : %d from aggchain prover. Requested range: %d : %d",
-		aggchainProof.Proof, buildParams.FromBlock, aggchainProof.EndBlock,
+		aggchainProof.SP1StarkProof.Proof, buildParams.FromBlock, aggchainProof.EndBlock,
 		buildParams.FromBlock, buildParams.ToBlock)
 
 	// set the root from which to generate merkle proofs for each claim
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
 	buildParams.L1InfoTreeRootFromWhichToProve = rootFromWhichToProveClaims
-	buildParams.AggchainProof = aggchainProof.Proof
-	buildParams.CustomChainData = aggchainProof.CustomChainData
+	buildParams.AggchainProof = aggchainProof
 
 	buildParams, err = adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
 	if err != nil {
@@ -157,12 +156,12 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	}
 
 	cert.AggchainData = &agglayertypes.AggchainDataProof{
-		Proof:          buildParams.AggchainProof,
-		AggchainParams: common.Hash{},           // TODO - after prover proto is updated, we need to update this
-		Context:        make(map[string][]byte), // TODO - after prover proto is updated, we need to update this
+		Proof:          buildParams.AggchainProof.SP1StarkProof.Proof,
+		AggchainParams: buildParams.AggchainProof.AggchainParams,
+		Context:        buildParams.AggchainProof.Context,
 	}
 
-	cert.CustomChainData = buildParams.CustomChainData
+	cert.CustomChainData = buildParams.AggchainProof.CustomChainData
 
 	return cert, nil
 }

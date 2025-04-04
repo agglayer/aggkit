@@ -3,7 +3,7 @@ package grpc
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"strings"
 	"time"
 
@@ -19,6 +19,8 @@ import (
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
+
+var errProofNotSP1Stark = errors.New("aggchain proof is not SP1Stark")
 
 // AggchainProofClientInterface defines an interface for aggchain proof client
 type AggchainProofClientInterface interface {
@@ -126,27 +128,8 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	convertedImportedBridgeExitsWithBlockNumber := make([]*aggkitProverV1Proto.ImportedBridgeExitWithBlockNumber,
 		len(importedBridgeExitsWithBlockNumber))
 	for i, importedBridgeExitWithBlockNumber := range importedBridgeExitsWithBlockNumber {
-		convertedImportedBridgeExit := &agglayerInteropTypesV1Proto.ImportedBridgeExit{
-			BridgeExit: &agglayerInteropTypesV1Proto.BridgeExit{
-				LeafType: agglayerInteropTypesV1Proto.LeafType(
-					importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.LeafType),
-				TokenInfo: &agglayerInteropTypesV1Proto.TokenInfo{
-					OriginNetwork: importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.TokenInfo.OriginNetwork,
-					OriginTokenAddress: &agglayerInteropTypesV1Proto.FixedBytes20{
-						Value: importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.TokenInfo.OriginTokenAddress[:],
-					},
-				},
-				DestNetwork: importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.DestinationNetwork,
-				DestAddress: &agglayerInteropTypesV1Proto.FixedBytes20{
-					Value: importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.DestinationAddress[:],
-				},
-				Amount: &agglayerInteropTypesV1Proto.FixedBytes32{
-					Value: importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.Amount.Bytes(),
-				},
-				Metadata: &agglayerInteropTypesV1Proto.FixedBytes32{
-					Value: importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.Metadata,
-				},
-			},
+		convertedImportedBridgeExitsWithBlockNumber[i] = &aggkitProverV1Proto.ImportedBridgeExitWithBlockNumber{
+			BlockNumber: importedBridgeExitWithBlockNumber.BlockNumber,
 			GlobalIndex: &agglayerInteropTypesV1Proto.FixedBytes32{
 				Value: bridgesync.GenerateGlobalIndex(
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.MainnetFlag,
@@ -154,94 +137,9 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.LeafIndex,
 				).Bytes(),
 			},
-		}
-
-		if importedBridgeExitWithBlockNumber.ImportedBridgeExit.ClaimData != nil {
-			switch c := importedBridgeExitWithBlockNumber.ImportedBridgeExit.ClaimData.(type) {
-			case *agglayer.ClaimFromMainnnet:
-				convertedImportedBridgeExit.Claim = &agglayerInteropTypesV1Proto.ImportedBridgeExit_Mainnet{
-					Mainnet: &agglayerInteropTypesV1Proto.ClaimFromMainnet{
-						ProofLeafMer: &agglayerInteropTypesV1Proto.MerkleProof{
-							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
-								Value: c.ProofLeafMER.Root.Bytes(),
-							},
-							Siblings: convertToProtoSiblings(c.ProofLeafMER.Proof),
-						},
-						ProofGerL1Root: &agglayerInteropTypesV1Proto.MerkleProof{
-							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
-								Value: c.ProofGERToL1Root.Root.Bytes(),
-							},
-							Siblings: convertToProtoSiblings(c.ProofGERToL1Root.Proof),
-						},
-						L1Leaf: &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
-							L1InfoTreeIndex: c.L1Leaf.L1InfoTreeIndex,
-							Rer: &agglayerInteropTypesV1Proto.FixedBytes32{
-								Value: c.L1Leaf.RollupExitRoot.Bytes(),
-							},
-							Mer: &agglayerInteropTypesV1Proto.FixedBytes32{
-								Value: c.L1Leaf.MainnetExitRoot.Bytes(),
-							},
-							Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
-								GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{
-									Value: c.L1Leaf.Inner.GlobalExitRoot.Bytes(),
-								},
-								BlockHash: &agglayerInteropTypesV1Proto.FixedBytes32{
-									Value: c.L1Leaf.Inner.BlockHash.Bytes(),
-								},
-								Timestamp: c.L1Leaf.Inner.Timestamp,
-							},
-						},
-					},
-				}
-			case *agglayer.ClaimFromRollup:
-				convertedImportedBridgeExit.Claim = &agglayerInteropTypesV1Proto.ImportedBridgeExit_Rollup{
-					Rollup: &agglayerInteropTypesV1Proto.ClaimFromRollup{
-						ProofLeafLer: &agglayerInteropTypesV1Proto.MerkleProof{
-							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
-								Value: c.ProofLeafLER.Root.Bytes(),
-							},
-							Siblings: convertToProtoSiblings(c.ProofLeafLER.Proof),
-						},
-						ProofLerRer: &agglayerInteropTypesV1Proto.MerkleProof{
-							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
-								Value: c.ProofLERToRER.Root.Bytes(),
-							},
-							Siblings: convertToProtoSiblings(c.ProofLERToRER.Proof),
-						},
-						ProofGerL1Root: &agglayerInteropTypesV1Proto.MerkleProof{
-							Root: &agglayerInteropTypesV1Proto.FixedBytes32{
-								Value: c.ProofGERToL1Root.Root.Bytes(),
-							},
-							Siblings: convertToProtoSiblings(c.ProofGERToL1Root.Proof),
-						},
-						L1Leaf: &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
-							L1InfoTreeIndex: c.L1Leaf.L1InfoTreeIndex,
-							Rer: &agglayerInteropTypesV1Proto.FixedBytes32{
-								Value: c.L1Leaf.RollupExitRoot.Bytes(),
-							},
-							Mer: &agglayerInteropTypesV1Proto.FixedBytes32{
-								Value: c.L1Leaf.MainnetExitRoot.Bytes(),
-							},
-							Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
-								GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{
-									Value: c.L1Leaf.Inner.GlobalExitRoot.Bytes(),
-								},
-								BlockHash: &agglayerInteropTypesV1Proto.FixedBytes32{
-									Value: c.L1Leaf.Inner.BlockHash.Bytes(),
-								},
-								Timestamp: c.L1Leaf.Inner.Timestamp,
-							},
-						},
-					},
-				}
-			default:
-				return nil, fmt.Errorf("unsupported claim data type: %T", c)
-			}
-		}
-
-		convertedImportedBridgeExitsWithBlockNumber[i] = &aggkitProverV1Proto.ImportedBridgeExitWithBlockNumber{
-			ImportedBridgeExit: convertedImportedBridgeExit,
-			BlockNumber:        importedBridgeExitWithBlockNumber.BlockNumber,
+			BridgeExitHash: &agglayerInteropTypesV1Proto.FixedBytes32{
+				Value: importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.Hash().Bytes(),
+			},
 		}
 	}
 
@@ -269,24 +167,22 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		return nil, err
 	}
 
-	return &types.AggchainProof{
-		Proof:           resp.AggchainProof,
-		LastProvenBlock: resp.LastProvenBlock,
-		EndBlock:        resp.EndBlock,
-		LocalExitRoot:   common.Hash(resp.LocalExitRootHash.Value),
-		CustomChainData: resp.CustomChainData,
-	}, nil
-}
-
-// convertToProtoSiblings converts a slice of hashes to a slice of proto fixed bytes 32
-func convertToProtoSiblings(siblings treetypes.Proof) []*agglayerInteropTypesV1Proto.FixedBytes32 {
-	protoSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, len(siblings))
-
-	for i, sibling := range siblings {
-		protoSiblings[i] = &agglayerInteropTypesV1Proto.FixedBytes32{
-			Value: sibling.Bytes(),
-		}
+	proof, ok := resp.AggchainProof.Proof.(*agglayerInteropTypesV1Proto.AggchainProof_Sp1Stark)
+	if !ok {
+		return nil, errProofNotSP1Stark
 	}
 
-	return protoSiblings
+	return &types.AggchainProof{
+		SP1StarkProof: &types.SP1StarkProof{
+			Proof:   proof.Sp1Stark.Proof,
+			Vkey:    proof.Sp1Stark.Vkey,
+			Version: proof.Sp1Stark.Version,
+		},
+		LastProvenBlock: resp.LastProvenBlock,
+		EndBlock:        resp.EndBlock,
+		LocalExitRoot:   common.BytesToHash(resp.LocalExitRootHash.Value),
+		CustomChainData: resp.CustomChainData,
+		AggchainParams:  common.BytesToHash(resp.AggchainProof.AggchainParams.Value),
+		Context:         resp.AggchainProof.Context,
+	}, nil
 }

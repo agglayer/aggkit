@@ -17,7 +17,7 @@ import (
 
 // ProofGeneration is the interface for generating Aggchain proofs
 type AggchainProofGeneration interface {
-	GenerateAggchainProof(ctx context.Context, fromBlock, toBlock uint64) ([]byte, error)
+	GenerateAggchainProof(ctx context.Context, fromBlock, toBlock uint64) (*types.SP1StarkProof, error)
 }
 
 // AggchainProofFlow is the interface for the Aggchain proof flow
@@ -104,7 +104,7 @@ func (a *AggchainProofGenerationTool) GetRPCServices() []rpc.Service {
 // GenerateAggchainProof generates an Aggchain proof
 func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	ctx context.Context,
-	lastProvenBlock, maxEndBlock uint64) ([]byte, error) {
+	lastProvenBlock, maxEndBlock uint64) (*types.SP1StarkProof, error) {
 	a.logger.Infof("Generating Aggchain proof. Last proven block: %d. "+
 		"Max end block: %d", lastProvenBlock, maxEndBlock)
 
@@ -153,5 +153,5 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 
 	a.logger.Infof("Generated Aggchain proof for block range [%d : %d]", fromBlock, maxEndBlock)
 
-	return aggchainProof.Proof, nil
+	return aggchainProof.SP1StarkProof, nil
 }

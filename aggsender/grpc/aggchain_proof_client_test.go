@@ -20,7 +20,21 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 	client := &AggchainProofClient{client: mockClient}
 
 	expectedResponse := &aggkitProverV1Proto.GenerateAggchainProofResponse{
-		AggchainProof:     []byte("dummy-proof"),
+		AggchainProof: &agglayerInteropTypesV1Proto.AggchainProof{
+			AggchainParams: &agglayerInteropTypesV1Proto.FixedBytes32{
+				Value: common.HexToHash("0x1").Bytes(),
+			},
+			Context: map[string][]byte{
+				"key1": []byte("value1"),
+			},
+			Proof: &agglayerInteropTypesV1Proto.AggchainProof_Sp1Stark{
+				Sp1Stark: &agglayerInteropTypesV1Proto.SP1StarkProof{
+					Version: "0.1",
+					Proof:   []byte("dummy-proof"),
+					Vkey:    []byte("dummy-vkey"),
+				},
+			},
+		},
 		LastProvenBlock:   100,
 		EndBlock:          200,
 		LocalExitRootHash: &agglayerInteropTypesV1Proto.FixedBytes32{Value: common.Hash{}.Bytes()},
@@ -40,11 +54,13 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 	)
 
 	assert.NoError(t, err)
-	assert.Equal(t, []byte("dummy-proof"), result.Proof)
+	assert.Equal(t, []byte("dummy-proof"), result.SP1StarkProof.Proof)
 	assert.Equal(t, uint64(100), result.LastProvenBlock)
 	assert.Equal(t, uint64(200), result.EndBlock)
 	assert.Equal(t, common.Hash{}, result.LocalExitRoot)
 	assert.Equal(t, []byte{}, result.CustomChainData)
+	assert.Equal(t, map[string][]byte{"key1": []byte("value1")}, result.Context)
+	assert.Equal(t, common.HexToHash("0x1").Bytes(), result.AggchainParams.Bytes())
 	mockClient.AssertExpectations(t)
 }
 
