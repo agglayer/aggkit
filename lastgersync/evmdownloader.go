@@ -43,6 +43,10 @@ func newDownloader(
 	blockFinality *big.Int,
 	waitForNewBlocksPeriod time.Duration,
 ) (*downloader, error) {
+	// TODO: @Stefan-Ethernal we should consider whether we need to instantiate
+	// the Polygonzkevmglobalexitrootv2 contract or GlobalExitRootManagerL2SovereignChain contract
+	// Extract SovereignChainDownloader and use the SovereignChain GER contract
+	// gerContract, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(l2GERAddr, l2Client)
 	gerContract, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERAddr, l2Client)
 	if err != nil {
@@ -86,7 +90,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		if errors.Is(err, db.ErrNotFound) {
 			nextIndex = 0
 		} else if err != nil {
-			log.Errorf("error getting last indes: %v", err)
+			log.Errorf("error getting last index: %v", err)
 			attempts++
 			d.rh.Handle("getLastIndex", attempts)
 
@@ -101,7 +105,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debug("closing channel")
+			log.Debug("aborting the lastgersync downloader...")
 			close(downloadedCh)
 
 			return
@@ -113,7 +117,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 
 		// Fetch GERs from the determined index
 		attempts = 0
-		var gers []Event
+		var gers []GlobalExitRootInfo
 		for {
 			gers, err = d.getGERsFromIndex(ctx, nextIndex)
 			if err != nil {
@@ -127,35 +131,35 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 			break
 		}
 
-		blockHeader, isCanceled := d.GetBlockHeader(ctx, fromBlock)
+		header, isCanceled := d.GetBlockHeader(ctx, fromBlock)
 		if isCanceled {
 			return
 		}
 
 		block := &sync.EVMBlock{
 			EVMBlockHeader: sync.EVMBlockHeader{
-				Num:        blockHeader.Num,
-				Hash:       blockHeader.Hash,
-				ParentHash: blockHeader.ParentHash,
-				Timestamp:  blockHeader.Timestamp,
+				Num:        header.Num,
+				Hash:       header.Hash,
+				ParentHash: header.ParentHash,
+				Timestamp:  header.Timestamp,
 			},
 		}
-		// Set the greatest GER injected from the list
-		d.setGreatestGERInjectedFromList(block, gers)
+		// Set the greatest GER injected from retrieved GERs
+		d.populateGreatestInjectedGER(block, gers)
 
 		downloadedCh <- *block
-		// Update nextIndex based on the last injected GER event
+		// Update nextIndex based on the last injected GER info
 		if len(block.Events) > 0 {
-			event, ok := block.Events[0].(Event)
+			lastInjectedGER, ok := block.Events[0].(GlobalExitRootInfo)
 			if !ok {
-				log.Errorf("unexpected type %T in events", block.Events[0])
+				log.Errorf("unexpected type %T in events", lastInjectedGER)
 			}
-			nextIndex = event.L1InfoTreeIndex + 1
+			nextIndex = lastInjectedGER.L1InfoTreeIndex + 1
 		}
 	}
 }
 
-func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex uint32) ([]Event, error) {
+func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex uint32) ([]GlobalExitRootInfo, error) {
 	lastRoot, err := d.l1InfoTreeSync.GetLastL1InfoTreeRoot(ctx)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, nil
@@ -164,13 +168,13 @@ func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex u
 		return nil, fmt.Errorf("error calling GetLastL1InfoTreeRoot: %w", err)
 	}
 
-	gers := make([]Event, 0, lastRoot.Index-fromL1InfoTreeIndex+1)
+	gers := make([]GlobalExitRootInfo, 0, lastRoot.Index-fromL1InfoTreeIndex+1)
 	for i := fromL1InfoTreeIndex; i <= lastRoot.Index; i++ {
 		info, err := d.l1InfoTreeSync.GetInfoByIndex(ctx, i)
 		if err != nil {
 			return nil, fmt.Errorf("error calling GetInfoByIndex: %w", err)
 		}
-		gers = append(gers, Event{
+		gers = append(gers, GlobalExitRootInfo{
 			L1InfoTreeIndex: i,
 			GlobalExitRoot:  info.GlobalExitRoot,
 		})
@@ -179,21 +183,22 @@ func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex u
 	return gers, nil
 }
 
-func (d *downloader) setGreatestGERInjectedFromList(b *sync.EVMBlock, list []Event) {
-	for _, event := range list {
-		var attempts int
+func (d *downloader) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []GlobalExitRootInfo) {
+	for _, gerInfo := range gerInfos {
+		attempts := 0
 		for {
-			blockHashBigInt, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, event.GlobalExitRoot)
+			blockHashBigInt, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerInfo.GlobalExitRoot)
 			if err != nil {
 				attempts++
-				log.Errorf("failed to check if global exit root %s is injected on L2: %s", event.GlobalExitRoot.Hex(), err)
+				log.Errorf("failed to check if global exit root %s is injected on L2: %s", gerInfo.GlobalExitRoot.Hex(), err)
 				d.rh.Handle("GlobalExitRootMap", attempts)
 
 				continue
 			}
 
+			// Check if the GER is injected on L2
 			if common.BigToHash(blockHashBigInt) != aggkitcommon.ZeroHash {
-				b.Events = []interface{}{event}
+				b.Events = []interface{}{gerInfo}
 			}
 
 			break

@@ -90,7 +90,7 @@ func (s *LastGERSync) Start(ctx context.Context) error {
 // GetFirstGERAfterL1InfoTreeIndex returns the first GER after a specified L1 info tree index
 func (s *LastGERSync) GetFirstGERAfterL1InfoTreeIndex(
 	ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
-) (Event, error) {
+) (GlobalExitRootInfo, error) {
 	return s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, atOrAfterL1InfoTreeIndex)
 }
 

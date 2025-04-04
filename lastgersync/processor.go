@@ -19,12 +19,12 @@ type BlockNum struct {
 	Num uint64 `meddler:"num"`
 }
 
-type Event struct {
+type GlobalExitRootInfo struct {
 	GlobalExitRoot  ethCommon.Hash `meddler:"global_exit_root,hash"`
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 }
 
-type eventWithBlockNum struct {
+type gerInfoWithBlockNum struct {
 	GlobalExitRoot  ethCommon.Hash `meddler:"global_exit_root,hash"`
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 	BlockNum        uint64         `meddler:"block_num"`
@@ -75,15 +75,16 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		return err
 	}
 	for _, e := range block.Events {
-		event, ok := e.(Event)
+		event, ok := e.(GlobalExitRootInfo)
 		if !ok {
 			return errors.New("failed to convert sync.Block.Event to Event")
 		}
-		if err = meddler.Insert(tx, "imported_global_exit_root", &eventWithBlockNum{
-			GlobalExitRoot:  event.GlobalExitRoot,
-			L1InfoTreeIndex: event.L1InfoTreeIndex,
-			BlockNum:        block.Num,
-		}); err != nil {
+		if err = meddler.Insert(tx, "imported_global_exit_root",
+			&gerInfoWithBlockNum{
+				GlobalExitRoot:  event.GlobalExitRoot,
+				L1InfoTreeIndex: event.L1InfoTreeIndex,
+				BlockNum:        block.Num,
+			}); err != nil {
 			return err
 		}
 	}
@@ -138,8 +139,9 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 
 // GetFirstGERAfterL1InfoTreeIndex returns the first GER injected into the chain that is associated with
 // or greater than the specified l1InfoTreeIndex.
-func (p *processor) GetFirstGERAfterL1InfoTreeIndex(ctx context.Context, l1InfoTreeIndex uint32) (Event, error) {
-	e := Event{}
+func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
+	ctx context.Context, l1InfoTreeIndex uint32) (GlobalExitRootInfo, error) {
+	e := GlobalExitRootInfo{}
 	err := meddler.QueryRow(p.database, &e, `
 		SELECT l1_info_tree_index, global_exit_root
 		FROM imported_global_exit_root
