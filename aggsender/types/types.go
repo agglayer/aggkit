@@ -16,7 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const nilStr = "nil"
+const NilStr = "nil"
 
 type AggsenderMode string
 
@@ -120,7 +120,7 @@ type AggchainProof struct {
 
 func (a *AggchainProof) String() string {
 	if a == nil {
-		return nilStr
+		return NilStr
 	}
 
 	return fmt.Sprintf("LastProvenBlock: %d \n"+
@@ -151,7 +151,7 @@ type SP1StarkProof struct {
 
 func (s *SP1StarkProof) String() string {
 	if s == nil {
-		return nilStr
+		return NilStr
 	}
 
 	return fmt.Sprintf("Version: %s \n"+
@@ -182,17 +182,17 @@ type CertificateInfo struct {
 
 func (c *CertificateInfo) String() string {
 	if c == nil {
-		return nilStr
+		return NilStr
 	}
-	previousLocalExitRoot := nilStr
+	previousLocalExitRoot := NilStr
 	if c.PreviousLocalExitRoot != nil {
 		previousLocalExitRoot = c.PreviousLocalExitRoot.String()
 	}
-	finalizedL1InfoTreeRoot := nilStr
+	finalizedL1InfoTreeRoot := NilStr
 	if c.FinalizedL1InfoTreeRoot != nil {
 		finalizedL1InfoTreeRoot = c.FinalizedL1InfoTreeRoot.String()
 	}
-	aggchainProof := nilStr
+	aggchainProof := NilStr
 	if c.AggchainProof != nil {
 		aggchainProof = c.AggchainProof.String()
 	}
@@ -228,7 +228,7 @@ func (c *CertificateInfo) String() string {
 // ID returns a string with the unique identifier of the cerificate (height+certificateID)
 func (c *CertificateInfo) ID() string {
 	if c == nil {
-		return nilStr
+		return NilStr
 	}
 	return fmt.Sprintf("%d/%s (retry %d)", c.Height, c.CertificateID.String(), c.RetryCount)
 }

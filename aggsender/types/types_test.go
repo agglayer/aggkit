@@ -33,7 +33,7 @@ func TestMetadataConversions(t *testing.T) {
 func TestCertificateInfo_String(t *testing.T) {
 	t.Run("NilCertificateInfo", func(t *testing.T) {
 		var certInfo *CertificateInfo
-		require.Equal(t, nilStr, certInfo.String())
+		require.Equal(t, NilStr, certInfo.String())
 	})
 
 	t.Run("CompleteCertificateInfo", func(t *testing.T) {
