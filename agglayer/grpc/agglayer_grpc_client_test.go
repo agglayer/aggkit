@@ -7,8 +7,9 @@ import (
 	"math/big"
 	"testing"
 
+	v1nodetypes "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	node "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/v1"
-	v1Types "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/protocol/types/v1"
+	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/tree"
@@ -45,7 +46,7 @@ func TestGetEpochConfiguration(t *testing.T) {
 		}
 
 		expectedResponse := &node.GetEpochConfigurationResponse{
-			EpochConfiguration: &v1Types.EpochConfiguration{
+			EpochConfiguration: &v1nodetypes.EpochConfiguration{
 				GenesisBlock:  1000,
 				EpochDuration: 10,
 			},
@@ -92,24 +93,24 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 		certificateIndex := uint64(1)
 
 		expectedResponse := &node.GetLatestCertificateHeaderResponse{
-			CertificateHeader: &v1Types.CertificateHeader{
+			CertificateHeader: &v1nodetypes.CertificateHeader{
 				NetworkId:        networkID,
 				Height:           100,
 				EpochNumber:      &epoch,
 				CertificateIndex: &certificateIndex,
-				CertificateId: &v1Types.CertificateId{
-					Value: &v1Types.FixedBytes32{
+				CertificateId: &v1nodetypes.CertificateId{
+					Value: &v1types.FixedBytes32{
 						Value: common.HexToHash("0x010203").Bytes(),
 					},
 				},
-				PrevLocalExitRoot: &v1Types.FixedBytes32{
+				PrevLocalExitRoot: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x010201").Bytes(),
 				},
-				NewLocalExitRoot: &v1Types.FixedBytes32{
+				NewLocalExitRoot: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x010202").Bytes(),
 				},
-				Status: v1Types.CertificateStatus_CERTIFICATE_STATUS_PENDING,
-				Metadata: &v1Types.FixedBytes32{
+				Status: v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_PENDING,
+				Metadata: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x011201").Bytes(),
 				},
 			},
@@ -164,24 +165,24 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 		certificateIndex := uint64(1)
 
 		expectedResponse := &node.GetLatestCertificateHeaderResponse{
-			CertificateHeader: &v1Types.CertificateHeader{
+			CertificateHeader: &v1nodetypes.CertificateHeader{
 				NetworkId:        networkID,
 				Height:           100,
 				EpochNumber:      &epoch,
 				CertificateIndex: &certificateIndex,
-				CertificateId: &v1Types.CertificateId{
-					Value: &v1Types.FixedBytes32{
+				CertificateId: &v1nodetypes.CertificateId{
+					Value: &v1types.FixedBytes32{
 						Value: common.HexToHash("0x010203").Bytes(),
 					},
 				},
-				PrevLocalExitRoot: &v1Types.FixedBytes32{
+				PrevLocalExitRoot: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x010201").Bytes(),
 				},
-				NewLocalExitRoot: &v1Types.FixedBytes32{
+				NewLocalExitRoot: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x010202").Bytes(),
 				},
-				Status: v1Types.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
-				Metadata: &v1Types.FixedBytes32{
+				Status: v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
+				Metadata: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x011201").Bytes(),
 				},
 			},
@@ -236,24 +237,24 @@ func TestGetCertificateHeader(t *testing.T) {
 		certificateIndex := uint64(1)
 
 		expectedResponse := &node.GetCertificateHeaderResponse{
-			CertificateHeader: &v1Types.CertificateHeader{
+			CertificateHeader: &v1nodetypes.CertificateHeader{
 				NetworkId:        1,
 				Height:           100,
 				EpochNumber:      &epoch,
 				CertificateIndex: &certificateIndex,
-				CertificateId: &v1Types.CertificateId{
-					Value: &v1Types.FixedBytes32{
+				CertificateId: &v1nodetypes.CertificateId{
+					Value: &v1types.FixedBytes32{
 						Value: certificateID.Bytes(),
 					},
 				},
-				PrevLocalExitRoot: &v1Types.FixedBytes32{
+				PrevLocalExitRoot: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x010201").Bytes(),
 				},
-				NewLocalExitRoot: &v1Types.FixedBytes32{
+				NewLocalExitRoot: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x010202").Bytes(),
 				},
-				Status: v1Types.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
-				Metadata: &v1Types.FixedBytes32{
+				Status: v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
+				Metadata: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x011201").Bytes(),
 				},
 			},
@@ -381,12 +382,52 @@ func TestSendCertificate(t *testing.T) {
 						},
 					},
 				},
+				{
+					BridgeExit: &types.BridgeExit{
+						LeafType: types.LeafTypeMessage,
+						TokenInfo: &types.TokenInfo{
+							OriginNetwork:      11,
+							OriginTokenAddress: common.HexToAddress("0x011"),
+						},
+						DestinationNetwork: 22,
+						DestinationAddress: common.HexToAddress("0x012"),
+					},
+					GlobalIndex: &types.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 11,
+						LeafIndex:   2,
+					},
+					ClaimData: &types.ClaimFromRollup{
+						ProofLeafLER: &types.MerkleProof{
+							Root:  common.HexToHash("0x0112"),
+							Proof: tree.EmptyProof,
+						},
+						ProofGERToL1Root: &types.MerkleProof{
+							Root:  common.HexToHash("0x0122"),
+							Proof: tree.EmptyProof,
+						},
+						ProofLERToRER: &types.MerkleProof{
+							Root:  common.HexToHash("0x0123"),
+							Proof: tree.EmptyProof,
+						},
+						L1Leaf: &types.L1InfoTreeLeaf{
+							L1InfoTreeIndex: 2,
+							RollupExitRoot:  common.HexToHash("0x11"),
+							MainnetExitRoot: common.HexToHash("0x12"),
+							Inner: &types.L1InfoTreeLeafInner{
+								GlobalExitRoot: common.HexToHash("0x13"),
+								BlockHash:      common.HexToHash("0x14"),
+								Timestamp:      122222,
+							},
+						},
+					},
+				},
 			},
 		}
 
 		expectedResponse := &node.SubmitCertificateResponse{
-			CertificateId: &v1Types.CertificateId{
-				Value: &v1Types.FixedBytes32{
+			CertificateId: &v1nodetypes.CertificateId{
+				Value: &v1types.FixedBytes32{
 					Value: common.HexToHash("0x010203").Bytes(),
 				},
 			},
@@ -406,22 +447,22 @@ func TestLeafTypeToProto(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    types.LeafType
-		expected v1Types.LeafType
+		expected v1types.LeafType
 	}{
 		{
 			name:     "LeafTypeAsset",
 			input:    types.LeafTypeAsset,
-			expected: v1Types.LeafType_LEAF_TYPE_TRANSFER,
+			expected: v1types.LeafType_LEAF_TYPE_TRANSFER,
 		},
 		{
 			name:     "LeafTypeMessage",
 			input:    types.LeafTypeMessage,
-			expected: v1Types.LeafType_LEAF_TYPE_MESSAGE,
+			expected: v1types.LeafType_LEAF_TYPE_MESSAGE,
 		},
 		{
 			name:     "Default case",
 			input:    types.LeafType(99), // some undefined leaf type
-			expected: v1Types.LeafType_LEAF_TYPE_UNSPECIFIED,
+			expected: v1types.LeafType_LEAF_TYPE_UNSPECIFIED,
 		},
 	}
 
@@ -440,37 +481,37 @@ func TestCertificateStatusFromProto(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		input    v1Types.CertificateStatus
+		input    v1nodetypes.CertificateStatus
 		expected types.CertificateStatus
 	}{
 		{
 			name:     "Pending status",
-			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_PENDING,
+			input:    v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_PENDING,
 			expected: types.Pending,
 		},
 		{
 			name:     "Proven status",
-			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_PROVEN,
+			input:    v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_PROVEN,
 			expected: types.Proven,
 		},
 		{
 			name:     "Candidate status",
-			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_CANDIDATE,
+			input:    v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_CANDIDATE,
 			expected: types.Candidate,
 		},
 		{
 			name:     "InError status",
-			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_IN_ERROR,
+			input:    v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_IN_ERROR,
 			expected: types.InError,
 		},
 		{
 			name:     "Settled status",
-			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
+			input:    v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_SETTLED,
 			expected: types.Settled,
 		},
 		{
 			name:     "Default status",
-			input:    v1Types.CertificateStatus_CERTIFICATE_STATUS_UNSPECIFIED,
+			input:    v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_UNSPECIFIED,
 			expected: types.Pending,
 		},
 	}

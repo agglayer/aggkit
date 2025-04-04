@@ -190,6 +190,8 @@ func (a *AggchainDataSignature) UnmarshalJSON(data []byte) error {
 // This is used in the aggchain prover path
 type AggchainDataProof struct {
 	Proof          []byte            `json:"proof"`
+	Version        string            `json:"version"`
+	Vkey           []byte            `json:"vkey"`
 	AggchainParams common.Hash       `json:"aggchain_params"`
 	Context        map[string][]byte `json:"context"`
 }
@@ -200,10 +202,14 @@ func (a *AggchainDataProof) MarshalJSON() ([]byte, error) {
 		Proof          string            `json:"proof"`
 		AggchainParams string            `json:"aggchain_params"`
 		Context        map[string][]byte `json:"context"`
+		Version        string            `json:"version"`
+		VKey           string            `json:"vkey"`
 	}{
 		Proof:          common.Bytes2Hex(a.Proof),
 		AggchainParams: a.AggchainParams.String(),
 		Context:        a.Context,
+		Version:        a.Version,
+		VKey:           common.Bytes2Hex(a.Vkey),
 	})
 }
 
@@ -213,6 +219,8 @@ func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 		Proof          string            `json:"proof"`
 		AggchainParams string            `json:"aggchain_params"`
 		Context        map[string][]byte `json:"context"`
+		Version        string            `json:"version"`
+		VKey           string            `json:"vkey"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -221,6 +229,8 @@ func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 	a.Proof = common.Hex2Bytes(aux.Proof)
 	a.AggchainParams = common.HexToHash(aux.AggchainParams)
 	a.Context = aux.Context
+	a.Version = aux.Version
+	a.Vkey = common.Hex2Bytes(aux.VKey)
 
 	return nil
 }
