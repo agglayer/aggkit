@@ -95,7 +95,7 @@ func NewEVMDownloader(
 			waitForNewBlocksPeriod: waitForNewBlocksPeriod,
 			appender:               appender,
 			topicsToQuery:          topicsToQuery,
-			adressessToQuery:       adressessToQuery,
+			adressesToQuery:        adressessToQuery,
 			rh:                     rh,
 			log:                    logger,
 			finalizedBlockType:     fbt,
@@ -231,7 +231,7 @@ type EVMDownloaderImplementation struct {
 	waitForNewBlocksPeriod time.Duration
 	appender               LogAppenderMap
 	topicsToQuery          []common.Hash
-	adressessToQuery       []common.Address
+	adressesToQuery        []common.Address
 	rh                     *RetryHandler
 	log                    *log.Logger
 	finalizedBlockType     *big.Int
@@ -244,7 +244,7 @@ func NewEVMDownloaderImplementation(
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,
 	topicsToQuery []common.Hash,
-	adressessToQuery []common.Address,
+	adressesToQuery []common.Address,
 	rh *RetryHandler,
 ) *EVMDownloaderImplementation {
 	logger := log.WithFields("syncer", syncerID)
@@ -254,7 +254,7 @@ func NewEVMDownloaderImplementation(
 		waitForNewBlocksPeriod: waitForNewBlocksPeriod,
 		appender:               appender,
 		topicsToQuery:          topicsToQuery,
-		adressessToQuery:       adressessToQuery,
+		adressesToQuery:        adressesToQuery,
 		rh:                     rh,
 		log:                    logger,
 	}
@@ -365,7 +365,7 @@ func filterQueryToString(query ethereum.FilterQuery) string {
 func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
 	query := ethereum.FilterQuery{
 		FromBlock: new(big.Int).SetUint64(fromBlock),
-		Addresses: d.adressessToQuery,
+		Addresses: d.adressesToQuery,
 		ToBlock:   new(big.Int).SetUint64(toBlock),
 	}
 	var (
