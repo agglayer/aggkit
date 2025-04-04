@@ -90,7 +90,7 @@ func TestMigration0002(t *testing.T) {
 			wrapped_token_address,
 			metadata,
 			is_not_mintable,
-			type
+			token_type
 		) VALUES (1, 0, 1739270804, '0xabcd', 2, '0x3', '0x5', NULL, FALSE, 1);
 
 		INSERT INTO bridge (
@@ -139,7 +139,7 @@ func TestMigration0002(t *testing.T) {
 		WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address"`
 		Metadata            []byte         `meddler:"metadata"`
 		IsNotMintable       bool           `meddler:"is_not_mintable"`
-		Type                uint8          `meddler:"type"`
+		Type                uint8          `meddler:"token_type"`
 	}
 
 	err = meddler.QueryRow(db, &tokenMapping,
