@@ -262,9 +262,14 @@ func NewEVMDownloaderImplementation(
 
 func (d *EVMDownloaderImplementation) ChainID(ctx context.Context) (uint64, error) {
 	chainID, err := d.ethClient.ChainID(ctx)
-	if err != nil || chainID == nil {
-		return 0, fmt.Errorf("fail to get chainID from ethClient. Err: %w", err)
+	if err != nil {
+		return 0, fmt.Errorf("failed to retrieve chain id. Err: %w", err)
 	}
+
+	if chainID == nil {
+		return 0, errors.New("chain id is undefined")
+	}
+
 	return chainID.Uint64(), nil
 }
 
