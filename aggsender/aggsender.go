@@ -22,7 +22,6 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/go_signer/signer"
-	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -48,8 +47,6 @@ type AggSender struct {
 	compatibilityStoragedChecker compatibility.CompatibilityChecker
 
 	cfg Config
-
-	signer signertypes.Signer
 
 	status      types.AggsenderStatus
 	rateLimiter RateLimiter
