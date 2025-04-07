@@ -356,13 +356,14 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 				blocks = append(blocks, latestBlock)
 			}
 
+			appenderFn := d.appender[l.Topics[0]]
 			for {
 				attempts := 0
-				err := d.appender[l.Topics[0]](latestBlock, l)
+				err := appenderFn(latestBlock, l)
 				if err != nil {
 					attempts++
 					d.log.Error("error trying to append log: ", err)
-					d.rh.Handle("getLogs", attempts)
+					d.rh.Handle("appendLogs", attempts)
 					continue
 				}
 				break
