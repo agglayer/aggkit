@@ -54,8 +54,7 @@ func RepackGRPCErrorWithDetails(err error) error {
 				for k, v := range info.Metadata {
 					detail += fmt.Sprintf("%s: %s, ", k, v)
 				}
-				// Remove trailing comma and space
-				detail = detail[:len(detail)-2] + "}"
+				detail = strings.TrimSuffix(detail, ", ") + "}"
 			}
 
 			detailStr := fmt.Sprintf("Reason: %s, Domain: %s. %s", info.Reason, info.Domain, detail)
