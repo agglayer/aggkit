@@ -72,14 +72,7 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	signer, err := signer.NewSigner(ctx, 0, cfg.AggsenderPrivateKey, aggkitcommon.AGGSENDER, logger)
-	if err != nil {
-		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
-	}
-	err = signer.Initialize(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
-	}
+
 	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
 
 	var (
@@ -107,6 +100,15 @@ func New(
 			return nil, fmt.Errorf("error creating aggchain prover flow: %w", err)
 		}
 	} else {
+		signer, err := signer.NewSigner(ctx, 0, cfg.AggsenderPrivateKey, aggkitcommon.AGGSENDER, logger)
+		if err != nil {
+			return nil, fmt.Errorf("error NewSigner. Err: %w", err)
+		}
+		err = signer.Initialize(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
+		}
+
 		flowManager = flows.NewPPFlow(
 			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash,
 			storage, l1InfoTreeSyncer, l2Syncer, l1Client, signer)

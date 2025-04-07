@@ -28,7 +28,9 @@ Outputs = ["stderr"]
 BridgeAddr = "{{.zkevm_L2_bridge_address}}"
        
 [AggSender]
+AggchainProofURL="{{.aggkit_prover_grpc_url}}"
 CheckStatusCertificateInterval = "1s"
+Mode = "AggchainProof"
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1m"

@@ -48,7 +48,7 @@ func NewAgglayerGRPCClient(serverAddr string) (*AgglayerGRPCClient, error) {
 func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error) {
 	response, err := a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
 	if err != nil {
-		return nil, err
+		return nil, aggkitCommon.RepackGRPCErrorWithDetails(err)
 	}
 
 	return &types.ClockConfiguration{
@@ -134,7 +134,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 	})
 
 	if err != nil {
-		return common.Hash{}, err
+		return common.Hash{}, aggkitCommon.RepackGRPCErrorWithDetails(err)
 	}
 
 	return common.BytesToHash(response.CertificateId.Value.Value), nil
@@ -151,7 +151,7 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, aggkitCommon.RepackGRPCErrorWithDetails(err)
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
@@ -168,7 +168,7 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, aggkitCommon.RepackGRPCErrorWithDetails(err)
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
@@ -185,7 +185,7 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(ctx context.Context,
 		},
 		})
 	if err != nil {
-		return nil, err
+		return nil, aggkitCommon.RepackGRPCErrorWithDetails(err)
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
