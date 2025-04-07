@@ -19,10 +19,11 @@ func Test_getLastIndex(t *testing.T) {
 		Num:  1,
 		Hash: common.Hash{},
 		Events: []interface{}{
-			&GlobalExitRootInfo{
-				GlobalExitRoot:  common.HexToHash("0x1"),
-				L1InfoTreeIndex: 2,
-			},
+			&Event{
+				GERInfo: &GlobalExitRootInfo{
+					GlobalExitRoot:  common.HexToHash("0x1"),
+					L1InfoTreeIndex: 2,
+				}},
 		},
 	}
 	err = processor.ProcessBlock(context.TODO(), block)
@@ -42,20 +43,22 @@ func TestReorg(t *testing.T) {
 		Num:  1,
 		Hash: common.Hash{},
 		Events: []interface{}{
-			&GlobalExitRootInfo{
-				GlobalExitRoot:  common.HexToHash("0x1"),
-				L1InfoTreeIndex: 2,
-			},
+			&Event{
+				GERInfo: &GlobalExitRootInfo{
+					GlobalExitRoot:  common.HexToHash("0x1"),
+					L1InfoTreeIndex: 2,
+				}},
 		},
 	}
 	block2 := sync.Block{
 		Num:  2,
 		Hash: common.Hash{},
 		Events: []interface{}{
-			&GlobalExitRootInfo{
-				GlobalExitRoot:  common.HexToHash("0x2"),
-				L1InfoTreeIndex: 3,
-			},
+			&Event{
+				GERInfo: &GlobalExitRootInfo{
+					GlobalExitRoot:  common.HexToHash("0x2"),
+					L1InfoTreeIndex: 3,
+				}},
 		},
 	}
 	err = processor.ProcessBlock(context.TODO(), block1)

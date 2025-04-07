@@ -86,25 +86,27 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	if err := meddler.Insert(tx, "block", &BlockNum{Num: block.Num}); err != nil {
 		return err
 	}
-	for _, e := range block.Events {
-		switch evt := e.(type) {
-		case *GlobalExitRootInfo:
+	for _, genericEvt := range block.Events {
+		event, ok := genericEvt.(*Event)
+		if !ok {
+			return fmt.Errorf("unexpected event type %T", event)
+		}
+
+		switch {
+		case event.GERInfo != nil:
 			if err = meddler.Insert(tx, importedGERTableName,
 				&gerInfoWithBlockNum{
-					GlobalExitRoot:  evt.GlobalExitRoot,
-					L1InfoTreeIndex: evt.L1InfoTreeIndex,
+					GlobalExitRoot:  event.GERInfo.GlobalExitRoot,
+					L1InfoTreeIndex: event.GERInfo.L1InfoTreeIndex,
 					BlockNum:        block.Num,
 				}); err != nil {
 				return err
 			}
-		case *RemoveGEREvent:
-			_, err := tx.Exec(deleteGERStmt, evt.GlobalExitRoot.Hex())
+		case event.RemoveGEREvent != nil:
+			_, err := tx.Exec(deleteGERStmt, event.RemoveGEREvent.GlobalExitRoot.Hex())
 			if err != nil {
-				return fmt.Errorf("failed to remove global exit root %s: %w", evt.GlobalExitRoot.Hex(), err)
+				return fmt.Errorf("failed to remove global exit root %s: %w", event.RemoveGEREvent.GlobalExitRoot.Hex(), err)
 			}
-
-		default:
-			return fmt.Errorf("unexpected event type %T", evt)
 		}
 	}
 
