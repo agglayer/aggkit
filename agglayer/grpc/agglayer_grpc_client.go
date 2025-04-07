@@ -14,7 +14,6 @@ import (
 	aggkitCommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
-	"google.golang.org/genproto/googleapis/rpc/errdetails"
 )
 
 var (
@@ -23,7 +22,6 @@ var (
 )
 
 type AgglayerGRPCClient struct {
-	errdetails.ErrorInfo
 	networkStateService node.NodeStateServiceClient
 	cfgService          node.ConfigurationServiceClient
 	submissionService   node.CertificateSubmissionServiceClient
