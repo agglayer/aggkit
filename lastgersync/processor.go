@@ -134,14 +134,14 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 
 // GetLastIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root table
 func (p *processor) getLastIndex() (uint32, error) {
-	var lastIndex uint32
-	err := meddler.QueryRow(p.database, &lastIndex,
+	var latestGERInfo GlobalExitRootInfo
+	err := meddler.QueryRow(p.database, &latestGERInfo,
 		fmt.Sprintf(`SELECT l1_info_tree_index FROM %s 
 		ORDER BY l1_info_tree_index DESC LIMIT 1;`, importedGERTableName))
 	if err != nil {
 		return 0, db.ReturnErrNotFound(err)
 	}
-	return lastIndex, nil
+	return latestGERInfo.L1InfoTreeIndex, nil
 }
 
 // Reorg removes all blocks and associated data starting from a specific block number from lastgersync database

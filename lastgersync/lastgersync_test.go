@@ -20,7 +20,7 @@ func TestGetLastProcessedBlock(t *testing.T) {
 		Num:  1,
 		Hash: common.Hash{},
 		Events: []interface{}{
-			GlobalExitRootInfo{
+			&GlobalExitRootInfo{
 				GlobalExitRoot:  common.HexToHash("0x1"),
 				L1InfoTreeIndex: 2,
 			},
@@ -47,7 +47,7 @@ func TestGetFirstGERAfterL1InfoTreeIndex(t *testing.T) {
 		Num:  1,
 		Hash: common.Hash{},
 		Events: []interface{}{
-			GlobalExitRootInfo{
+			&GlobalExitRootInfo{
 				GlobalExitRoot:  common.HexToHash("0x1"),
 				L1InfoTreeIndex: 2,
 			},
