@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -33,8 +34,8 @@ func New(
 	ctx context.Context,
 	dbPath string,
 	rdL2 sync.ReorgDetector,
-	l2Client EthClienter,
-	globalExitRootL2 common.Address,
+	l2Client aggkittypes.BaseEthereumClienter,
+	l2GERManagerAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
 	retryAfterErrorPeriod time.Duration,
 	maxRetryAttemptsAfterError int,
@@ -58,7 +59,7 @@ func New(
 	}
 	downloader, err := newDownloader(
 		l2Client,
-		globalExitRootL2,
+		l2GERManagerAddr,
 		l1InfoTreeSync,
 		processor,
 		rh,

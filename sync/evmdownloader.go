@@ -35,6 +35,15 @@ type EVMDownloaderInterface interface {
 
 type LogAppenderMap map[common.Hash]func(b *EVMBlock, l types.Log) error
 
+// GetTopics returns the EVM event topics that are being queried
+func (m LogAppenderMap) GetTopics() []common.Hash {
+	topics := make([]common.Hash, 0, len(m))
+	for topic := range m {
+		topics = append(topics, topic)
+	}
+	return topics
+}
+
 type EVMDownloader struct {
 	syncBlockChunkSize uint64
 	EVMDownloaderInterface
@@ -61,11 +70,6 @@ func NewEVMDownloader(
 		return nil, err
 	}
 
-	topicsToQuery := make([]common.Hash, 0, len(appender))
-	for topic := range appender {
-		topicsToQuery = append(topicsToQuery, topic)
-	}
-
 	fbtEthermanType := finalizedBlockType
 	fbt, err := finalizedBlockType.ToBlockNum()
 	if err != nil {
@@ -89,17 +93,16 @@ func NewEVMDownloader(
 		log:                logger,
 		finalizedBlockType: fbtEthermanType,
 		adressessToQuery:   adressessToQuery,
-		EVMDownloaderInterface: &EVMDownloaderImplementation{
-			ethClient:              ethClient,
-			blockFinality:          finality,
-			waitForNewBlocksPeriod: waitForNewBlocksPeriod,
-			appender:               appender,
-			topicsToQuery:          topicsToQuery,
-			adressesToQuery:        adressessToQuery,
-			rh:                     rh,
-			log:                    logger,
-			finalizedBlockType:     fbt,
-		},
+		EVMDownloaderInterface: NewEVMDownloaderImplementation(
+			syncerID,
+			ethClient,
+			finality,
+			waitForNewBlocksPeriod,
+			appender,
+			adressessToQuery,
+			rh,
+			fbt,
+		),
 	}, nil
 }
 
@@ -243,20 +246,26 @@ func NewEVMDownloaderImplementation(
 	blockFinality *big.Int,
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,
-	topicsToQuery []common.Hash,
 	adressesToQuery []common.Address,
 	rh *RetryHandler,
+	finalizedBlockType *big.Int,
 ) *EVMDownloaderImplementation {
 	logger := log.WithFields("syncer", syncerID)
+	var topics []common.Hash
+	if appender != nil {
+		topics = appender.GetTopics()
+	}
+
 	return &EVMDownloaderImplementation{
 		ethClient:              ethClient,
 		blockFinality:          blockFinality,
 		waitForNewBlocksPeriod: waitForNewBlocksPeriod,
 		appender:               appender,
-		topicsToQuery:          topicsToQuery,
+		topicsToQuery:          topics,
 		adressesToQuery:        adressesToQuery,
 		rh:                     rh,
 		log:                    logger,
+		finalizedBlockType:     finalizedBlockType,
 	}
 }
 
@@ -274,6 +283,11 @@ func (d *EVMDownloaderImplementation) ChainID(ctx context.Context) (uint64, erro
 }
 
 func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context) (*types.Header, error) {
+	// if the finalized block type is nil, it means that the reorgs are not happening on the network
+	if d.finalizedBlockType == nil {
+		return d.ethClient.HeaderByNumber(ctx, d.blockFinality)
+	}
+
 	return d.ethClient.HeaderByNumber(ctx, d.finalizedBlockType)
 }
 

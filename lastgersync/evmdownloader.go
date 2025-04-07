@@ -12,17 +12,22 @@ import (
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
-	"github.com/ethereum/go-ethereum"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
-type EthClienter interface {
-	ethereum.LogFilterer
-	ethereum.BlockNumberReader
-	ethereum.ChainReader
-	ethereum.ChainIDReader
-	bind.ContractBackend
+var (
+	// event UpdateRemovalHashChainValue(bytes32 indexed removedGlobalExitRoot,	bytes32 indexed newRemovalHashChainValue)
+	removeGEREventSignature = crypto.Keccak256Hash([]byte("UpdateRemovalHashChainValue(bytes32,bytes32)"))
+)
+
+// Event is the combination of the events that are emitted by the L2 GER manager
+type Event struct {
+	GERInfo        *GlobalExitRootInfo
+	RemoveGEREvent *RemoveGEREvent
 }
 
 type downloader struct {
@@ -35,7 +40,7 @@ type downloader struct {
 }
 
 func newDownloader(
-	l2Client EthClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
 	processor *processor,
@@ -43,25 +48,25 @@ func newDownloader(
 	blockFinality *big.Int,
 	waitForNewBlocksPeriod time.Duration,
 ) (*downloader, error) {
-	// TODO: @Stefan-Ethernal we should consider whether we need to instantiate
-	// the Polygonzkevmglobalexitrootv2 contract or GlobalExitRootManagerL2SovereignChain contract
-	// Extract SovereignChainDownloader and use the SovereignChain GER contract
-	// gerContract, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(l2GERAddr, l2Client)
 	gerContract, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERAddr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize L2 GER manager contract: %w", err)
 	}
 
+	appender := buildAppender(gerContract)
+	evmDownloader := sync.NewEVMDownloaderImplementation(
+		"lastgersync", l2Client, blockFinality,
+		waitForNewBlocksPeriod, appender, []common.Address{l2GERAddr},
+		rh, nil)
+
 	return &downloader{
-		EVMDownloaderImplementation: sync.NewEVMDownloaderImplementation(
-			"lastgersync", l2Client, blockFinality, waitForNewBlocksPeriod, nil, nil, nil, rh,
-		),
-		l2GERManager:   gerContract,
-		l2GERAddr:      l2GERAddr,
-		l1InfoTreeSync: l1InfoTreeSync,
-		processor:      processor,
-		rh:             rh,
+		EVMDownloaderImplementation: evmDownloader,
+		l2GERManager:                gerContract,
+		l2GERAddr:                   l2GERAddr,
+		l1InfoTreeSync:              l1InfoTreeSync,
+		processor:                   processor,
+		rh:                          rh,
 	}, nil
 }
 
@@ -117,7 +122,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 
 		// Fetch GERs from the determined index
 		attempts = 0
-		var gers []GlobalExitRootInfo
+		var gers []*GlobalExitRootInfo
 		for {
 			gers, err = d.getGERsFromIndex(ctx, nextIndex)
 			if err != nil {
@@ -150,16 +155,14 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		downloadedCh <- *block
 		// Update nextIndex based on the last injected GER info
 		if len(block.Events) > 0 {
-			lastInjectedGER, ok := block.Events[0].(GlobalExitRootInfo)
-			if !ok {
-				log.Errorf("unexpected type %T in events", lastInjectedGER)
+			if e, ok := block.Events[0].(*GlobalExitRootInfo); ok {
+				nextIndex = e.L1InfoTreeIndex + 1
 			}
-			nextIndex = lastInjectedGER.L1InfoTreeIndex + 1
 		}
 	}
 }
 
-func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex uint32) ([]GlobalExitRootInfo, error) {
+func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex uint32) ([]*GlobalExitRootInfo, error) {
 	lastRoot, err := d.l1InfoTreeSync.GetLastL1InfoTreeRoot(ctx)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, nil
@@ -168,13 +171,13 @@ func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex u
 		return nil, fmt.Errorf("error calling GetLastL1InfoTreeRoot: %w", err)
 	}
 
-	gers := make([]GlobalExitRootInfo, 0, lastRoot.Index-fromL1InfoTreeIndex+1)
+	gers := make([]*GlobalExitRootInfo, 0, lastRoot.Index-fromL1InfoTreeIndex+1)
 	for i := fromL1InfoTreeIndex; i <= lastRoot.Index; i++ {
 		info, err := d.l1InfoTreeSync.GetInfoByIndex(ctx, i)
 		if err != nil {
 			return nil, fmt.Errorf("error calling GetInfoByIndex: %w", err)
 		}
-		gers = append(gers, GlobalExitRootInfo{
+		gers = append(gers, &GlobalExitRootInfo{
 			L1InfoTreeIndex: i,
 			GlobalExitRoot:  info.GlobalExitRoot,
 		})
@@ -183,7 +186,7 @@ func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex u
 	return gers, nil
 }
 
-func (d *downloader) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []GlobalExitRootInfo) {
+func (d *downloader) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*GlobalExitRootInfo) {
 	for _, gerInfo := range gerInfos {
 		attempts := 0
 		for {
@@ -198,10 +201,30 @@ func (d *downloader) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []Gl
 
 			// Check if the GER is injected on L2
 			if common.BigToHash(blockHashBigInt) != aggkitcommon.ZeroHash {
-				b.Events = []interface{}{gerInfo}
+				b.Events = []any{&Event{GERInfo: gerInfo}}
 			}
 
 			break
 		}
 	}
+}
+
+func buildAppender(
+	l2GERManager *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain) sync.LogAppenderMap {
+	appender := make(sync.LogAppenderMap)
+
+	appender[removeGEREventSignature] = func(block *sync.EVMBlock, log types.Log) error {
+		removeGEREvent, err := l2GERManager.ParseUpdateRemovalHashChainValue(log)
+		if err != nil {
+			return fmt.Errorf("error parsing UpdateRemovalHashChainValue event log %+v: %w", log, err)
+		}
+
+		block.Events = []any{
+			&Event{
+				RemoveGEREvent: &RemoveGEREvent{GlobalExitRoot: removeGEREvent.RemovedGlobalExitRoot},
+			}}
+		return nil
+	}
+
+	return appender
 }

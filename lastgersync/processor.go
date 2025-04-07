@@ -15,6 +15,14 @@ import (
 	"github.com/russross/meddler"
 )
 
+const (
+	importedGERTableName = "imported_global_exit_root"
+)
+
+var (
+	deleteGERStmt = fmt.Sprintf("DELETE FROM %s WHERE global_exit_root = $1;", importedGERTableName)
+)
+
 type BlockNum struct {
 	Num uint64 `meddler:"num"`
 }
@@ -28,6 +36,10 @@ type gerInfoWithBlockNum struct {
 	GlobalExitRoot  ethCommon.Hash `meddler:"global_exit_root,hash"`
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 	BlockNum        uint64         `meddler:"block_num"`
+}
+
+type RemoveGEREvent struct {
+	GlobalExitRoot ethCommon.Hash `meddler:"removed_global_exit_root,hash"`
 }
 
 type processor struct {
@@ -75,17 +87,24 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		return err
 	}
 	for _, e := range block.Events {
-		event, ok := e.(GlobalExitRootInfo)
-		if !ok {
-			return errors.New("failed to convert sync.Block.Event to Event")
-		}
-		if err = meddler.Insert(tx, "imported_global_exit_root",
-			&gerInfoWithBlockNum{
-				GlobalExitRoot:  event.GlobalExitRoot,
-				L1InfoTreeIndex: event.L1InfoTreeIndex,
-				BlockNum:        block.Num,
-			}); err != nil {
-			return err
+		switch evt := e.(type) {
+		case *GlobalExitRootInfo:
+			if err = meddler.Insert(tx, importedGERTableName,
+				&gerInfoWithBlockNum{
+					GlobalExitRoot:  evt.GlobalExitRoot,
+					L1InfoTreeIndex: evt.L1InfoTreeIndex,
+					BlockNum:        block.Num,
+				}); err != nil {
+				return err
+			}
+		case *RemoveGEREvent:
+			_, err := tx.Exec(deleteGERStmt, evt.GlobalExitRoot.Hex())
+			if err != nil {
+				return fmt.Errorf("failed to remove global exit root %s: %w", evt.GlobalExitRoot.Hex(), err)
+			}
+
+		default:
+			return fmt.Errorf("unexpected event type %T", evt)
 		}
 	}
 
@@ -115,13 +134,10 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 
 // GetLastIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root table
 func (p *processor) getLastIndex() (uint32, error) {
-	row := p.database.QueryRow(`
-		SELECT l1_info_tree_index 
-		FROM imported_global_exit_root 
-		ORDER BY l1_info_tree_index DESC LIMIT 1;
-	`)
 	var lastIndex uint32
-	err := row.Scan(&lastIndex)
+	err := meddler.QueryRow(p.database, &lastIndex,
+		fmt.Sprintf(`SELECT l1_info_tree_index FROM %s 
+		ORDER BY l1_info_tree_index DESC LIMIT 1;`, importedGERTableName))
 	if err != nil {
 		return 0, db.ReturnErrNotFound(err)
 	}
