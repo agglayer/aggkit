@@ -3,7 +3,6 @@ module github.com/agglayer/aggkit
 go 1.24.2
 
 require (
-	github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef
 	github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.9
 	github.com/agglayer/go_signer v0.0.5
