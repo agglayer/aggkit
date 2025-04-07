@@ -157,6 +157,8 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 
 	cert.AggchainData = &agglayertypes.AggchainDataProof{
 		Proof:          buildParams.AggchainProof.SP1StarkProof.Proof,
+		Version:        buildParams.AggchainProof.SP1StarkProof.Version,
+		Vkey:           buildParams.AggchainProof.SP1StarkProof.Vkey,
 		AggchainParams: buildParams.AggchainProof.AggchainParams,
 		Context:        buildParams.AggchainProof.Context,
 	}

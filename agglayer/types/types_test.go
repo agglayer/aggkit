@@ -1141,8 +1141,10 @@ func TestAggchainDataProof_MarshalUnmarshalJSON(t *testing.T) {
 				Proof:          common.FromHex("0x123456"),
 				AggchainParams: common.HexToHash("0xabcdef"),
 				Context:        map[string][]byte{},
+				Version:        "0.1",
+				Vkey:           common.FromHex("0x123456"),
 			},
-			expected: `{"proof":"123456","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000abcdef","context":{}}`,
+			expected: `{"proof":"123456","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000abcdef","context":{},"version":"0.1","vkey":"123456"}`,
 		},
 		{
 			name: "Empty AggchainDataProof",
@@ -1150,8 +1152,10 @@ func TestAggchainDataProof_MarshalUnmarshalJSON(t *testing.T) {
 				Proof:          []byte{},
 				AggchainParams: common.Hash{},
 				Context:        map[string][]byte{},
+				Version:        "",
+				Vkey:           []byte{},
 			},
-			expected: `{"proof":"","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000000000","context":{}}`,
+			expected: `{"proof":"","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000000000","context":{},"version":"","vkey":""}`,
 		},
 	}
 
