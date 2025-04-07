@@ -50,6 +50,10 @@ var (
 
 	// tableNameRegex is the regex pattern to validate table names
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+
+	// deleteLegacyTokenSQL is the SQL statement to delete legacy token migration event
+	// with specific legacy token address
+	deleteLegacyTokenSQL = fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1", legacyTokenMigrationTableName)
 )
 
 // Bridge is the representation of a bridge event
@@ -773,9 +777,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.RemoveLegacyToken != nil {
-			deleteLegacyTokenStmt := fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1",
-				legacyTokenMigrationTableName)
-			_, err := tx.Exec(deleteLegacyTokenStmt, event.RemoveLegacyToken.LegacyTokenAddress.Hex())
+			_, err := tx.Exec(deleteLegacyTokenSQL, event.RemoveLegacyToken.LegacyTokenAddress.Hex())
 			if err != nil {
 				return err
 			}
