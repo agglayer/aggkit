@@ -89,7 +89,6 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 	var (
 		attempts  int
 		nextIndex uint32
-		lastBlock uint64
 		err       error
 	)
 
@@ -122,7 +121,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		}
 
 		// Wait for new blocks before processing
-		lastBlock = d.WaitForNewBlocks(ctx, fromBlock)
+		fromBlock = d.WaitForNewBlocks(ctx, fromBlock)
 
 		// Fetch GERs from the determined index
 		attempts = 0
@@ -140,7 +139,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 			break
 		}
 
-		header, isCanceled := d.GetBlockHeader(ctx, lastBlock)
+		header, isCanceled := d.GetBlockHeader(ctx, fromBlock)
 		if isCanceled {
 			return
 		}
@@ -156,16 +155,17 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		// Set the greatest GER injected from retrieved GERs
 		d.populateGreatestInjectedGER(block, gers)
 
-		downloadedCh <- *block
 		// Update nextIndex based on the last injected GER info
 		if len(block.Events) > 0 {
 			if e, ok := block.Events[0].(*GlobalExitRootInfo); ok {
 				nextIndex = e.L1InfoTreeIndex + 1
 			}
+			downloadedCh <- *block
 		} else {
-			toBlock := min(fromBlock+d.syncBlockChunkSize, lastBlock)
-			for _, b := range d.GetEventsByBlockRange(ctx, lastBlock, toBlock) {
-				downloadedCh <- *b
+			// TODO: Optimize?
+			// toBlock := min(fromBlock+d.syncBlockChunkSize, lastBlock)
+			for _, block := range d.GetEventsByBlockRange(ctx, fromBlock, fromBlock) {
+				downloadedCh <- *block
 			}
 		}
 	}
