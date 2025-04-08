@@ -29,7 +29,7 @@ func Test_getLastIndex(t *testing.T) {
 	err = processor.ProcessBlock(context.TODO(), block)
 	require.NoError(t, err)
 
-	index, err := processor.getLastIndex()
+	index, err := processor.getLatestL1InfoTreeIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint32(2), index)
 }
@@ -73,7 +73,7 @@ func TestReorg(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(1), blockNum)
 
-	index, err := processor.getLastIndex()
+	index, err := processor.getLatestL1InfoTreeIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint32(2), index)
 }

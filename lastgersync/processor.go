@@ -134,8 +134,8 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return block.Num, nil
 }
 
-// GetLastIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root table
-func (p *processor) getLastIndex() (uint32, error) {
+// getLatestL1InfoTreeIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root table
+func (p *processor) getLatestL1InfoTreeIndex() (uint32, error) {
 	var latestGERInfo GlobalExitRootInfo
 	err := meddler.QueryRow(p.database, &latestGERInfo,
 		fmt.Sprintf(`SELECT l1_info_tree_index FROM %s 

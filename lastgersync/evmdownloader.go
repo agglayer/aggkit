@@ -87,25 +87,25 @@ func (d *downloader) RuntimeData(ctx context.Context) (sync.RuntimeData, error) 
 
 func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock) {
 	var (
-		attempts  int
-		nextIndex uint32
-		err       error
+		attempts            int
+		nextL1InfoTreeIndex uint32
+		err                 error
 	)
 
 	// Determine the next index to start fetching GERs
 	for {
-		lastIndex, err := d.processor.getLastIndex()
+		latestL1InfoTreeIndex, err := d.processor.getLatestL1InfoTreeIndex()
 		if errors.Is(err, db.ErrNotFound) {
-			nextIndex = 0
+			nextL1InfoTreeIndex = 0
 		} else if err != nil {
-			log.Errorf("error getting last index: %v", err)
+			log.Errorf("error getting latest l1 info tree index: %v", err)
 			attempts++
-			d.rh.Handle("getLastIndex", attempts)
+			d.rh.Handle("getLatestL1InfoTreeIndex", attempts)
 
 			continue
 		}
-		if lastIndex > 0 {
-			nextIndex = lastIndex + 1
+		if latestL1InfoTreeIndex > 0 {
+			nextL1InfoTreeIndex = latestL1InfoTreeIndex + 1
 		}
 		break
 	}
@@ -127,7 +127,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		attempts = 0
 		var gers []*GlobalExitRootInfo
 		for {
-			gers, err = d.getGERsFromIndex(ctx, nextIndex)
+			gers, err = d.getGERsFromIndex(ctx, nextL1InfoTreeIndex)
 			if err != nil {
 				log.Errorf("error getting GERs: %v", err)
 				attempts++
@@ -158,7 +158,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		// Update nextIndex based on the last injected GER info
 		if len(block.Events) > 0 {
 			if e, ok := block.Events[0].(*GlobalExitRootInfo); ok {
-				nextIndex = e.L1InfoTreeIndex + 1
+				nextL1InfoTreeIndex = e.L1InfoTreeIndex + 1
 			}
 			downloadedCh <- *block
 		} else {
