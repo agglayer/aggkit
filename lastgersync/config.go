@@ -17,12 +17,14 @@ type Config struct {
 	GlobalExitRootL2Addr common.Address `mapstructure:"GlobalExitRootL2Addr"`
 	// RetryAfterErrorPeriod is the time that will be waited when an unexpected error happens before retry
 	RetryAfterErrorPeriod types.Duration `mapstructure:"RetryAfterErrorPeriod"`
+	// SyncBlockChunkSize is the amount of blocks that will be queried to the client on each request
+	SyncBlockChunkSize uint64 `mapstructure:"SyncBlockChunkSize"`
 	// MaxRetryAttemptsAfterError is the maximum number of consecutive attempts that will happen before panicing.
 	// Any number smaller than zero will be considered as unlimited retries
 	MaxRetryAttemptsAfterError int `mapstructure:"MaxRetryAttemptsAfterError"`
 	// WaitForNewBlocksPeriod time that will be waited when the synchronizer has reached the latest block
 	WaitForNewBlocksPeriod types.Duration `mapstructure:"WaitForNewBlocksPeriod"`
-	// DownloadBufferSize buffer of events to be porcessed. When the buffer limit is reached,
+	// DownloadBufferSize buffer size of events to be processed. When the buffer limit is reached,
 	// downloading will stop until the processing catches up.
 	DownloadBufferSize int `mapstructure:"DownloadBufferSize"`
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database

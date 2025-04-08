@@ -37,6 +37,7 @@ func TestLastGERSyncE2E(t *testing.T) {
 		setup.L2Environment.ReorgDetector,
 		setup.L2Environment.SimBackend.Client(),
 		setup.L2Environment.GERAddr,
+		syncBlockChunkSize,
 		setup.InfoTreeSync,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,

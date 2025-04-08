@@ -36,6 +36,7 @@ func New(
 	rdL2 sync.ReorgDetector,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERManagerAddr common.Address,
+	syncBlockChunkSize uint64,
 	l1InfoTreeSync L1InfoTreeQuerier,
 	retryAfterErrorPeriod time.Duration,
 	maxRetryAttemptsAfterError int,
@@ -60,6 +61,7 @@ func New(
 	downloader, err := newDownloader(
 		l2Client,
 		l2GERManagerAddr,
+		syncBlockChunkSize,
 		l1InfoTreeSync,
 		processor,
 		rh,

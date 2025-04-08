@@ -32,16 +32,18 @@ type Event struct {
 
 type downloader struct {
 	*sync.EVMDownloaderImplementation
-	l2GERManager   *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
-	l2GERAddr      common.Address
-	l1InfoTreeSync L1InfoTreeQuerier
-	processor      *processor
-	rh             *sync.RetryHandler
+	l2GERManager       *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
+	l2GERAddr          common.Address
+	syncBlockChunkSize uint64
+	l1InfoTreeSync     L1InfoTreeQuerier
+	processor          *processor
+	rh                 *sync.RetryHandler
 }
 
 func newDownloader(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERAddr common.Address,
+	syncBlockChunkSize uint64,
 	l1InfoTreeSync L1InfoTreeQuerier,
 	processor *processor,
 	rh *sync.RetryHandler,
@@ -64,6 +66,7 @@ func newDownloader(
 		EVMDownloaderImplementation: evmDownloader,
 		l2GERManager:                gerContract,
 		l2GERAddr:                   l2GERAddr,
+		syncBlockChunkSize:          syncBlockChunkSize,
 		l1InfoTreeSync:              l1InfoTreeSync,
 		processor:                   processor,
 		rh:                          rh,
@@ -86,6 +89,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 	var (
 		attempts  int
 		nextIndex uint32
+		lastBlock uint64
 		err       error
 	)
 
@@ -118,7 +122,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		}
 
 		// Wait for new blocks before processing
-		fromBlock = d.WaitForNewBlocks(ctx, fromBlock)
+		lastBlock = d.WaitForNewBlocks(ctx, fromBlock)
 
 		// Fetch GERs from the determined index
 		attempts = 0
@@ -136,7 +140,7 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 			break
 		}
 
-		header, isCanceled := d.GetBlockHeader(ctx, fromBlock)
+		header, isCanceled := d.GetBlockHeader(ctx, lastBlock)
 		if isCanceled {
 			return
 		}
@@ -157,6 +161,11 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 		if len(block.Events) > 0 {
 			if e, ok := block.Events[0].(*GlobalExitRootInfo); ok {
 				nextIndex = e.L1InfoTreeIndex + 1
+			}
+		} else {
+			toBlock := min(fromBlock+d.syncBlockChunkSize, lastBlock)
+			for _, b := range d.GetEventsByBlockRange(ctx, lastBlock, toBlock) {
+				downloadedCh <- *b
 			}
 		}
 	}
@@ -190,7 +199,7 @@ func (d *downloader) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*G
 	for _, gerInfo := range gerInfos {
 		attempts := 0
 		for {
-			blockHashBigInt, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerInfo.GlobalExitRoot)
+			blockHashOrTimestamp, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerInfo.GlobalExitRoot)
 			if err != nil {
 				attempts++
 				log.Errorf("failed to check if global exit root %s is injected on L2: %s", gerInfo.GlobalExitRoot.Hex(), err)
@@ -200,7 +209,10 @@ func (d *downloader) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*G
 			}
 
 			// Check if the GER is injected on L2
-			if common.BigToHash(blockHashBigInt) != aggkitcommon.ZeroHash {
+			if common.BigToHash(blockHashOrTimestamp) != aggkitcommon.ZeroHash ||
+				common.Big0.Cmp(blockHashOrTimestamp) != 0 {
+				// for GlobalExitRootManagerL2 contract, we are storing the block timestamp
+				// instead of the block hash
 				b.Events = []any{&Event{GERInfo: gerInfo}}
 			}
 
@@ -209,6 +221,9 @@ func (d *downloader) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*G
 	}
 }
 
+// buildAppender creates a log appender for the downloader
+// It parses the logs emitted by the L2 GER manager and populates the block events
+// with the corresponding events.
 func buildAppender(
 	l2GERManager *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain) sync.LogAppenderMap {
 	appender := make(sync.LogAppenderMap)

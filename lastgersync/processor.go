@@ -20,7 +20,7 @@ const (
 )
 
 var (
-	deleteGERStmt = fmt.Sprintf("DELETE FROM %s WHERE global_exit_root = $1;", importedGERTableName)
+	deleteGERSql = fmt.Sprintf("DELETE FROM %s WHERE global_exit_root = $1;", importedGERTableName)
 )
 
 type BlockNum struct {
@@ -103,7 +103,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		case event.RemoveGEREvent != nil:
-			_, err := tx.Exec(deleteGERStmt, event.RemoveGEREvent.GlobalExitRoot.Hex())
+			_, err := tx.Exec(deleteGERSql, event.RemoveGEREvent.GlobalExitRoot.Hex())
 			if err != nil {
 				return fmt.Errorf("failed to remove global exit root %s: %w", event.RemoveGEREvent.GlobalExitRoot.Hex(), err)
 			}
