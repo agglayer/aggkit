@@ -1,9 +1,5 @@
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250228150343-c7b7fef1692a.2 h1:pnYnk9vgHc78bScfNv3hBHd6tmqJUg64ZZmPunYk550=
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250228150343-c7b7fef1692a.2/go.mod h1:XwnIrPbNZN01Tt9NG0xpJiV9F76v+8wLtAeMloJtbgg=
 buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250404090611-7f9f451280ee.2 h1:EpT1tAWPFUIx3cU6dK2leIthBhLOKOw6ympq6hm7Cvg=
 buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250404090611-7f9f451280ee.2/go.mod h1:zl4J37UuoUUcvqdLAkVYqQB5UcWs+DCGC3jbmVRbPzA=
-buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250228150343-c7b7fef1692a.1 h1:ytP1CHl3kqVUV3RiofouLM+8Ij/2OrYoC0OXPgO5DG8=
-buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250228150343-c7b7fef1692a.1/go.mod h1:AORyBne44QocLbS9Zks4hkU3GFtwpYTXcRFdRH5WmqE=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250404090611-7f9f451280ee.1 h1:m42o/q+42p5FDSyRQXXPl3xEnceOi9vjJ1muDeE0HhE=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250404090611-7f9f451280ee.1/go.mod h1:gpKWP3fihl4pBXg3UG+CXgEgDugkVATGVyulVyjR/f8=
 buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250403073306-df9b770ff25d.1 h1:vLqUHNLYJPK4aDHoDOhbo+PwAr9umdqwU2E2Wap2FGE=
@@ -31,8 +27,8 @@ github.com/0xPolygon/cdk-contracts-tooling v0.0.3 h1:G7H3UNyDOpoLqDvW9c4lgn2iMnt
 github.com/0xPolygon/cdk-contracts-tooling v0.0.3/go.mod h1:mFlcEjsm2YBBsu8atHJ3zyVnwM+Z/fMXpVmIJge+WVU=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6 h1:FXL/rcO7/GtZ3kRFw+C7J6vmGnl8gcazg+Gh/NVmnas=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6/go.mod h1:2scWqMMufrQXu7TikDgQ3BsyaKoX8qP26D6E262vSOg=
-github.com/0xPolygon/zkevm-ethtx-manager v0.2.9 h1:rAI4mg8BAqtBb4VGKwj8jFd7S9v7hlTrV7IiZ0BdjHw=
-github.com/0xPolygon/zkevm-ethtx-manager v0.2.9/go.mod h1:1D9OdlaS466k40YmH3KuUnbnlOmKCXnD3mzORIgPuvY=
+github.com/0xPolygon/zkevm-ethtx-manager v0.2.7 h1:eS2ewz4z+S16ZWQRyci6Y3U9YSR+sx1opB0/NxhmKlQ=
+github.com/0xPolygon/zkevm-ethtx-manager v0.2.7/go.mod h1:xuLx/9KDv5wO8mnkiiX5pZHyTWQZXyHjmBRBGEzNGXo=
 github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.7 h1:KJM1QlNZdZjNRS+ajPauD4uG+uaYgItaL+96Om3f8aI=
 github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.7/go.mod h1:exl+KHnTN6Y8HG4nSUXni4qKbAug0HjJqpebMSgl72k=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
