@@ -5,13 +5,14 @@ import (
 	"path"
 	"testing"
 
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
-func Test_getLastIndex(t *testing.T) {
-	testDir := path.Join(t.TempDir(), "lastgersync_Test_getLastIndex.sqlite")
+func Test_getLatestL1InfoTreeIndex(t *testing.T) {
+	testDir := path.Join(t.TempDir(), "lastgersync_Test_getLatestL1InfoTreeIndex.sqlite")
 	processor, err := newProcessor(testDir)
 	require.NoError(t, err)
 
@@ -32,6 +33,124 @@ func Test_getLastIndex(t *testing.T) {
 	index, err := processor.getLatestL1InfoTreeIndex()
 	require.NoError(t, err)
 	require.Equal(t, uint32(2), index)
+}
+
+func TestProcessBlock(t *testing.T) {
+	testDir := path.Join(t.TempDir(), "lastgersync_Test_ProcessBlock.sqlite")
+	p, err := newProcessor(testDir)
+	require.NoError(t, err)
+
+	l1InfoTreeIndex := uint32(42)
+
+	tests := []struct {
+		name          string
+		blocks        []sync.Block
+		expectedIndex uint32
+		expectedErr   string
+	}{
+		{
+			name: "Add GERInfo",
+			blocks: []sync.Block{
+				{
+					Num: 1,
+					Events: []any{
+						&Event{
+							GERInfo: &GlobalExitRootInfo{
+								GlobalExitRoot:  common.HexToHash("0x1234"),
+								L1InfoTreeIndex: l1InfoTreeIndex,
+							},
+						},
+					},
+				},
+			},
+			expectedIndex: l1InfoTreeIndex,
+		},
+		{
+			name: "Remove GER event",
+			blocks: []sync.Block{
+				{
+					Num: 2,
+					Events: []any{
+						&Event{
+							RemoveGEREvent: &RemoveGEREvent{
+								GlobalExitRoot: common.HexToHash("0x1234"),
+							},
+						},
+					},
+				},
+			},
+			expectedIndex: 0,
+			expectedErr:   db.ErrNotFound.Error(),
+		},
+		{
+			name: "Insert multiple GER events and remove",
+			blocks: []sync.Block{
+				{
+					Num: 3,
+					Events: []any{
+						&Event{
+							GERInfo: &GlobalExitRootInfo{
+								GlobalExitRoot:  common.HexToHash("0x1234"),
+								L1InfoTreeIndex: l1InfoTreeIndex,
+							},
+						},
+					},
+				},
+				{
+					Num: 4,
+					Events: []any{
+						&Event{
+							GERInfo: &GlobalExitRootInfo{
+								GlobalExitRoot:  common.HexToHash("0x5678"),
+								L1InfoTreeIndex: l1InfoTreeIndex + 1,
+							},
+						},
+					},
+				},
+				{
+					Num: 5,
+					Events: []any{
+						&Event{
+							GERInfo: &GlobalExitRootInfo{
+								GlobalExitRoot:  common.HexToHash("0x9876"),
+								L1InfoTreeIndex: l1InfoTreeIndex + 2,
+							},
+						},
+					},
+				},
+				{
+					Num: 6,
+					Events: []any{
+						&Event{
+							RemoveGEREvent: &RemoveGEREvent{
+								GlobalExitRoot: common.HexToHash("0x9876"),
+							},
+						},
+					},
+				},
+			},
+			expectedIndex: l1InfoTreeIndex + 1,
+		},
+	}
+
+	ctx := context.Background()
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for _, b := range tt.blocks {
+				err := p.ProcessBlock(ctx, b)
+				require.NoError(t, err)
+			}
+
+			index, err := p.getLatestL1InfoTreeIndex()
+			if tt.expectedErr == "" {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedIndex, index)
+			} else {
+				require.ErrorContains(t, err, tt.expectedErr)
+			}
+		})
+	}
 }
 
 func TestReorg(t *testing.T) {
