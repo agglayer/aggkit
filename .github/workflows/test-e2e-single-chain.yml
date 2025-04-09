@@ -17,16 +17,18 @@ jobs:
     name: Single chain E2E test
     needs:
       - build-aggkit-image
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@138c855016e591ecdbb26735bc589156012520a7
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@22665185bde0d441089c49ba68cd70ca369cc5d9
     secrets: inherit
     with:
       docker-tag: local
       kurtosis-cdk-ref: arpit/bridge-service
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: 138c855016e591ecdbb26735bc589156012520a7
+      agglayer-e2e-ref: 22665185bde0d441089c49ba68cd70ca369cc5d9
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: |
-        cat ../test_e2e_single_chain_args.json | jq -c .
+        args=$(cat ../test_e2e_single_chain_args.json | jq -c .)
+        echo $args
+        $args
 
   check-test-single-e2e-result:
     name: Check E2E results
