@@ -93,7 +93,8 @@ func New(
 		}
 
 		flowManager, err = flows.NewAggchainProverFlow(
-			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash, cfg.GlobalExitRootL2Addr,
+			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash,
+			cfg.GlobalExitRootL2Addr, cfg.SovereignRollupAddr,
 			aggchainProofClient, storage,
 			l1InfoTreeSyncer, l2Syncer, l1Client, l2Client)
 		if err != nil {

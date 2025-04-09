@@ -681,3 +681,49 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 		})
 	}
 }
+
+func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name           string
+		fromBlock      uint64
+		startL2Block   uint64
+		expectedResult uint64
+	}{
+		{
+			name:           "fromBlock is 0, return startL2Block",
+			fromBlock:      0,
+			startL2Block:   1,
+			expectedResult: 1,
+		},
+		{
+			name:           "fromBlock is 0, startL2Block is 0",
+			fromBlock:      0,
+			startL2Block:   0,
+			expectedResult: 0,
+		},
+		{
+			name:           "fromBlock is greater than 0",
+			fromBlock:      10,
+			startL2Block:   1,
+			expectedResult: 9,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			flow := &AggchainProverFlow{
+				baseFlow: &baseFlow{
+					startL2Block: tc.startL2Block,
+				},
+			}
+
+			result := flow.getLastProvenBlock(tc.fromBlock)
+			require.Equal(t, tc.expectedResult, result)
+		})
+	}
+}

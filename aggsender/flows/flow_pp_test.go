@@ -1114,12 +1114,21 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 		name                    string
 		lastSentCertificateInfo *types.CertificateInfo
 		expectedBlock           uint64
+		startL2Block            uint64
 		expectedRetryCount      int
 	}{
 		{
-			name:                    "No last sent certificate",
+			name:                    "No last sent certificate, start block is 0",
 			lastSentCertificateInfo: nil,
 			expectedBlock:           0,
+			startL2Block:            0,
+			expectedRetryCount:      0,
+		},
+		{
+			name:                    "No last sent certificate, start block is 1000",
+			lastSentCertificateInfo: nil,
+			expectedBlock:           1000,
+			startL2Block:            1000,
 			expectedRetryCount:      0,
 		},
 		{
@@ -1161,7 +1170,9 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			block, retryCount := getLastSentBlockAndRetryCount(tt.lastSentCertificateInfo)
+			baseFlow := &baseFlow{startL2Block: tt.startL2Block}
+
+			block, retryCount := baseFlow.getLastSentBlockAndRetryCount(tt.lastSentCertificateInfo)
 
 			require.Equal(t, tt.expectedBlock, block)
 			require.Equal(t, tt.expectedRetryCount, retryCount)

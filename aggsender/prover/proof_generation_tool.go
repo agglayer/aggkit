@@ -25,7 +25,7 @@ type AggchainProofFlow interface {
 	// GenerateAggchainProof generates an Aggchain proof
 	GenerateAggchainProof(
 		ctx context.Context,
-		fromBlock, toBlock uint64,
+		lastProvenBlock, toBlock uint64,
 		claims []bridgesync.Claim) (*types.AggchainProof, *treetypes.Root, error)
 }
 
@@ -40,6 +40,9 @@ type Config struct {
 
 	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
 	GenerateAggchainProofTimeout configtypes.Duration `mapstructure:"GenerateAggchainProofTimeout"`
+
+	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
+	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs
@@ -70,7 +73,8 @@ func NewAggchainProofGenerationTool(
 
 	aggchainProverFlow, err := flows.NewAggchainProverFlow(
 		logger,
-		0, false, cfg.GlobalExitRootL2Addr,
+		0, false,
+		cfg.GlobalExitRootL2Addr, cfg.SovereignRollupAddr,
 		aggchainProofClient,
 		nil,
 		l1InfoTreeSyncer,
@@ -143,7 +147,7 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 
 	aggchainProof, _, err := a.flow.GenerateAggchainProof(
 		ctx,
-		fromBlock,
+		lastProvenBlock,
 		maxEndBlock,
 		claims,
 	)
