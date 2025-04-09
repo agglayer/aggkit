@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -15,7 +14,6 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -131,11 +129,11 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		convertedImportedBridgeExitsWithBlockNumber[i] = &aggkitProverV1Proto.ImportedBridgeExitWithBlockNumber{
 			BlockNumber: importedBridgeExitWithBlockNumber.BlockNumber,
 			GlobalIndex: &agglayerInteropTypesV1Proto.FixedBytes32{
-				Value: bridgesync.GenerateGlobalIndex(
+				Value: common.BigToHash(bridgesync.GenerateGlobalIndex(
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.MainnetFlag,
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.RollupIndex,
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.LeafIndex,
-				).Bytes(),
+				)).Bytes(),
 			},
 			BridgeExitHash: &agglayerInteropTypesV1Proto.FixedBytes32{
 				Value: importedBridgeExitWithBlockNumber.ImportedBridgeExit.BridgeExit.Hash().Bytes(),
@@ -151,15 +149,6 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		L1InfoTreeMerkleProof: convertedMerkleProof,
 		GerLeaves:             convertedGerLeaves,
 		ImportedBridgeExits:   convertedImportedBridgeExitsWithBlockNumber,
-	}
-
-	// this is just to log the request to log for debugging purposes
-	raw, err := json.Marshal(request)
-	if err == nil {
-		log.Debug("GenerateAggchainProof inputs:")
-		log.Debug(string(raw))
-	} else {
-		log.Errorf("Failed to marshal GenerateAggchainProof request: %v", err)
 	}
 
 	resp, err := c.client.GenerateAggchainProof(ctx, request)

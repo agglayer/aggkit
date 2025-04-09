@@ -303,8 +303,28 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 			msg = errS.Message()
 		}
 
-		return nil, nil, fmt.Errorf("error fetching aggchain proof for block range %d : %d: %s",
-			fromBlock, toBlock, msg)
+		return nil, nil, fmt.Errorf(`error fetching aggchain proof for block range %d : %d: %s. Message sent: 
+			lastProvenBlock: %d,
+			toBlock: %d,
+			root.Hash: %s,
+			*leaf: %+v,
+			agglayertypes.MerkleProof{
+				Root:  %s,
+				Proof: %+v,
+			},
+			injectedGERsProofs: %+v,
+			importedBridgeExits: %+v,
+		`,
+			fromBlock, toBlock, msg,
+			lastProvenBlock,
+			toBlock,
+			root.Hash,
+			*leaf,
+			root.Hash,
+			proof,
+			injectedGERsProofs,
+			importedBridgeExits,
+		)
 	}
 
 	return aggchainProof, root, nil
