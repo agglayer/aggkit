@@ -128,7 +128,7 @@ reset:
 		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
 			attempts++
 			d.log.Error("error checking compatibility data between downloader (runtime) and processor (db): ", err)
-			d.rh.Handle("Sync", attempts)
+			d.rh.Handle("CompatibilityChecker", attempts)
 			continue
 		}
 		break
