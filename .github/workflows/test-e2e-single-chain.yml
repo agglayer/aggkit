@@ -25,7 +25,7 @@ jobs:
       - name: Read kurtosis-cdk-args from file
         id: read-args
         run: |
-          CONTENT=$(cat ../test_e2e_single_chain_args.json | jq -c .)
+          CONTENT=$(cat ./.github/test_e2e_single_chain_args.json | jq -c .)
           echo "args=${CONTENT}" >> $GITHUB_OUTPUT
 
   test-single-e2e:
