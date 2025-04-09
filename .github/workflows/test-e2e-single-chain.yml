@@ -13,10 +13,26 @@ jobs:
       go-version: 1.23.x
       docker-image-name: aggkit
 
+  read-aggkit-args:
+    name: Read aggkit args
+    runs-on: ubuntu-latest
+    outputs:
+      kurtosis-cdk-args: ${{ steps.read-args.outputs.args }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read kurtosis-cdk-args from file
+        id: read-args
+        run: |
+          CONTENT=$(cat ../test_e2e_single_chain_args.json | jq -c .)
+          echo "args=${CONTENT}" >> $GITHUB_OUTPUT
+
   test-single-e2e:
     name: Single chain E2E test
     needs:
       - build-aggkit-image
+      - read-aggkit-args
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@22665185bde0d441089c49ba68cd70ca369cc5d9
     secrets: inherit
     with:
@@ -25,10 +41,7 @@ jobs:
       docker-artifact-name: aggkit
       agglayer-e2e-ref: 22665185bde0d441089c49ba68cd70ca369cc5d9
       kurtosis-cdk-enclave-name: aggkit
-      kurtosis-cdk-args: |
-        args=$(cat ../test_e2e_single_chain_args.json | jq -c .)
-        echo $args
-        $args
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args }}
 
   check-test-single-e2e-result:
     name: Check E2E results
