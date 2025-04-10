@@ -230,11 +230,11 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 	fooErr := errors.New("foo")
 	firstVerified := &l1infotreesync.VerifyBatches{
 		BlockNumber: 10,
-		ExitRoot:    common.HexToHash("alfa"),
+		ExitRoot:    common.HexToHash("a1fa"),
 	}
 	lastVerified := &l1infotreesync.VerifyBatches{
 		BlockNumber: 1000,
-		ExitRoot:    common.HexToHash("alfa"),
+		ExitRoot:    common.HexToHash("a1fa"),
 	}
 	mockHappyPath := func() {
 		// to make this work, assume that block number == l1 info tree index == deposit count
@@ -260,7 +260,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 				ler, ok := args.Get(1).(common.Hash)
 				require.True(t, ok)
 				index := aggkitcommon.BytesToUint32(ler.Bytes()[28:]) // hash is 32 bytes, uint32 is just 4
-				if ler == common.HexToHash("alfa") {
+				if ler == common.HexToHash("a1fa") {
 					index = uint32(lastVerified.BlockNumber)
 				}
 				rootByLER.Index = index
@@ -444,7 +444,7 @@ func TestGetTokenMappings(t *testing.T) {
 			},
 		}
 
-		bridgeMocks.bridgeL1.On("GetTokenMappings", mock.Anything, page, pageSize).
+		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
 			Return(tokenMappings, len(tokenMappings), nil)
 
 		result, err := bridgeMocks.bridge.GetTokenMappings(0, &page, &pageSize)
@@ -480,11 +480,13 @@ func TestGetTokenMappings(t *testing.T) {
 				OriginNetwork:       1,
 				OriginTokenAddress:  common.HexToAddress("0x1"),
 				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Type:                bridgesync.SovereignToken,
+				IsNotMintable:       true,
 				Metadata:            []byte("metadata"),
 			},
 		}
 
-		bridgeMocks.bridgeL2.On("GetTokenMappings", mock.Anything, page, pageSize).
+		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
 			Return(tokenMappings, len(tokenMappings), nil)
 
 		result, err := bridgeMocks.bridge.GetTokenMappings(networkID, &page, &pageSize)
@@ -504,6 +506,91 @@ func TestGetTokenMappings(t *testing.T) {
 
 		result, err := bridgeMocks.bridge.GetTokenMappings(unsupportedNetworkID, nil, nil)
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get token mappings, unsupported network %d", unsupportedNetworkID))
+		require.Nil(t, result)
+	})
+}
+
+func TestGetLegacyTokenMigrations(t *testing.T) {
+	networkID := uint32(10)
+	bridgeMocks := newBridgeWithMocks(t, networkID)
+
+	t.Run("GetLegacyTokenMigrations for L1 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		tokenMigrations := []*bridgesync.LegacyTokenMigration{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x1"),
+				Sender:              common.HexToAddress("0x2"),
+				LegacyTokenAddress:  common.HexToAddress("0x3"),
+				UpdatedTokenAddress: common.HexToAddress("0x4"),
+				Amount:              big.NewInt(100),
+				Calldata:            common.Hex2Bytes("efabcd"),
+			},
+		}
+
+		bridgeMocks.bridgeL1.EXPECT().GetLegacyTokenMigrations(mock.Anything, page, pageSize).
+			Return(tokenMigrations, len(tokenMigrations), nil)
+
+		result, err := bridgeMocks.bridge.GetLegacyTokenMigrations(0, &page, &pageSize)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		tokenMigrationsRes, ok := result.(*LegacyTokenMigrationsResult)
+		require.True(t, ok)
+		require.Equal(t, tokenMigrations, tokenMigrationsRes.TokenMigrations)
+		require.Equal(t, len(tokenMigrationsRes.TokenMigrations), tokenMigrationsRes.Count)
+
+		actualJSON, marshalErr := json.Marshal(tokenMigrationsRes.TokenMigrations)
+		require.NoError(t, marshalErr)
+
+		expectedJSON, marshalErr := json.Marshal(tokenMigrations)
+		require.NoError(t, marshalErr)
+
+		require.JSONEq(t, string(expectedJSON), string(actualJSON))
+
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetLegacyTokenMigrations for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		tokenMigrations := []*bridgesync.LegacyTokenMigration{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x10"),
+				Sender:              common.HexToAddress("0x20"),
+				LegacyTokenAddress:  common.HexToAddress("0x30"),
+				UpdatedTokenAddress: common.HexToAddress("0x40"),
+				Amount:              big.NewInt(10),
+			},
+		}
+
+		bridgeMocks.bridgeL2.EXPECT().GetLegacyTokenMigrations(mock.Anything, page, pageSize).
+			Return(tokenMigrations, len(tokenMigrations), nil)
+
+		result, err := bridgeMocks.bridge.GetLegacyTokenMigrations(networkID, &page, &pageSize)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+
+		tokenMigrationsRes, ok := result.(*LegacyTokenMigrationsResult)
+		require.True(t, ok)
+		require.Equal(t, tokenMigrations, tokenMigrationsRes.TokenMigrations)
+		require.Equal(t, len(tokenMigrations), tokenMigrationsRes.Count)
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
+	})
+
+	t.Run("GetLegacyTokenMigrations with unsupported network", func(t *testing.T) {
+		unsupportedNetworkID := uint32(999)
+
+		result, err := bridgeMocks.bridge.GetLegacyTokenMigrations(unsupportedNetworkID, nil, nil)
+		require.ErrorContains(t, err, fmt.Sprintf("failed to get legacy token migrations, unsupported network %d", unsupportedNetworkID))
 		require.Nil(t, result)
 	})
 }

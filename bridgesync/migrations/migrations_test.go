@@ -88,8 +88,10 @@ func TestMigration0002(t *testing.T) {
 			origin_network,
 			origin_token_address,
 			wrapped_token_address,
-			metadata
-		) VALUES (1, 0, 1739270804, '0xabcd', 2, '0x3', '0x5', NULL);
+			metadata,
+			is_not_mintable,
+			token_type
+		) VALUES (1, 0, 1739270804, '0xabcd', 2, '0x3', '0x5', NULL, FALSE, 1);
 
 		INSERT INTO bridge (
 			block_num,
@@ -136,6 +138,8 @@ func TestMigration0002(t *testing.T) {
 		OriginTokenAddress  common.Address `meddler:"origin_token_address,address"`
 		WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address"`
 		Metadata            []byte         `meddler:"metadata"`
+		IsNotMintable       bool           `meddler:"is_not_mintable"`
+		Type                uint8          `meddler:"token_type"`
 	}
 
 	err = meddler.QueryRow(db, &tokenMapping,
@@ -148,6 +152,8 @@ func TestMigration0002(t *testing.T) {
 	require.Equal(t, uint32(2), tokenMapping.OriginNetwork)
 	require.Equal(t, common.HexToAddress("0x3"), tokenMapping.OriginTokenAddress)
 	require.Equal(t, common.HexToAddress("0x5"), tokenMapping.WrappedTokenAddress)
+	require.Equal(t, false, tokenMapping.IsNotMintable)
+	require.Equal(t, uint8(1), tokenMapping.Type)
 
 	var bridge struct {
 		BlockNum           uint64   `meddler:"block_num"`
@@ -193,4 +199,61 @@ func TestMigration0002(t *testing.T) {
 	require.NotNil(t, claim)
 	require.Equal(t, uint64(1739270804), claim.BlockTimestamp)
 	require.Equal(t, "0x123", claim.FromAddress)
+}
+
+func TestMigrations0003(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTest0003.sqlite")
+
+	err := RunMigrations(dbPath)
+	require.NoError(t, err)
+	db, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	var legacyTokenMigration struct {
+		BlockNum            uint64         `meddler:"block_num"`
+		BlockPos            uint64         `meddler:"block_pos"`
+		BlockTimestamp      uint64         `meddler:"block_timestamp"`
+		TxHash              common.Hash    `meddler:"tx_hash,hash"`
+		Sender              common.Address `meddler:"sender,address"`
+		LegacyTokenAddress  common.Address `meddler:"legacy_token_address,address"`
+		UpdatedTokenAddress common.Address `meddler:"updated_token_address,address"`
+		Amount              *big.Int       `meddler:"amount,bigint"`
+	}
+
+	_, err = tx.Exec(`
+		INSERT INTO block (num) VALUES (1);
+
+		INSERT INTO legacy_token_migration (
+			block_num,
+			block_pos,
+			block_timestamp,
+			tx_hash,
+			sender,
+			legacy_token_address,
+			updated_token_address,
+			amount,
+			calldata
+		) VALUES (1, 10, 1739270804, '0xabcd', '0x3', '0x5', '0x7', 1000, NULL);
+	`)
+	require.NoError(t, err)
+
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	err = meddler.QueryRow(db, &legacyTokenMigration,
+		`SELECT * FROM legacy_token_migration`)
+	require.NoError(t, err)
+	require.NotNil(t, legacyTokenMigration)
+	require.Equal(t, uint64(1), legacyTokenMigration.BlockNum)
+	require.Equal(t, uint64(10), legacyTokenMigration.BlockPos)
+	require.Equal(t, uint64(1739270804), legacyTokenMigration.BlockTimestamp)
+	require.Equal(t, common.HexToAddress("0x3"), legacyTokenMigration.Sender)
+	require.Equal(t, common.HexToAddress("0x5"), legacyTokenMigration.LegacyTokenAddress)
+	require.Equal(t, common.HexToAddress("0x7"), legacyTokenMigration.UpdatedTokenAddress)
+	require.Equal(t, big.NewInt(1000), legacyTokenMigration.Amount)
 }

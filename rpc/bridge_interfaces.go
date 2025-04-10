@@ -21,6 +21,8 @@ type Bridger interface {
 		depositCount *uint64,
 	) ([]*bridgesync.BridgeResponse, int, error)
 	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*bridgesync.TokenMapping, int, error)
+	GetLegacyTokenMigrations(
+		ctx context.Context, pageNumber, pageSize uint32) ([]*bridgesync.LegacyTokenMigration, int, error)
 	GetClaimsPaged(ctx context.Context, page, pageSize uint32) ([]*bridgesync.ClaimResponse, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 }
