@@ -94,18 +94,13 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 
 		switch {
 		case event.GERInfo != nil:
-			if err = meddler.Insert(tx, importedGERTableName,
-				&gerInfoWithBlockNum{
-					GlobalExitRoot:  event.GERInfo.GlobalExitRoot,
-					L1InfoTreeIndex: event.GERInfo.L1InfoTreeIndex,
-					BlockNum:        block.Num,
-				}); err != nil {
+			if err := p.handleGERInsertion(tx, event, block.Num); err != nil {
 				return err
 			}
+
 		case event.RemoveGEREvent != nil:
-			_, err := tx.Exec(deleteGERSql, event.RemoveGEREvent.GlobalExitRoot.Hex())
-			if err != nil {
-				return fmt.Errorf("failed to remove global exit root %s: %w", event.RemoveGEREvent.GlobalExitRoot.Hex(), err)
+			if err := p.handleRemoveGEREvent(tx, event); err != nil {
+				return err
 			}
 		}
 	}
@@ -114,6 +109,31 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		return err
 	}
 	p.log.Debugf("processed %d events until block %d", len(block.Events), block.Num)
+	return nil
+}
+
+// handleGERInsertion inserts the given global exit root entry to `imported_global_exit_root`
+func (*processor) handleGERInsertion(tx db.Txer, event *Event, blockNum uint64) error {
+	gerInfoWithBlockNum := &gerInfoWithBlockNum{
+		GlobalExitRoot:  event.GERInfo.GlobalExitRoot,
+		L1InfoTreeIndex: event.GERInfo.L1InfoTreeIndex,
+		BlockNum:        blockNum,
+	}
+
+	if err := meddler.Insert(tx, importedGERTableName, gerInfoWithBlockNum); err != nil {
+		return fmt.Errorf("failed to insert GER entry (value=%x, block=%d): %w",
+			event.GERInfo.GlobalExitRoot, blockNum, err)
+	}
+	return nil
+}
+
+// handleRemoveGEREvent removes the global exit root entry from `imported_global_exit_root` table,
+// by the global exit root value
+func (*processor) handleRemoveGEREvent(tx db.Txer, event *Event) error {
+	_, err := tx.Exec(deleteGERSql, event.RemoveGEREvent.GlobalExitRoot.Hex())
+	if err != nil {
+		return fmt.Errorf("failed to remove global exit root %s: %w", event.RemoveGEREvent.GlobalExitRoot.Hex(), err)
+	}
 	return nil
 }
 
