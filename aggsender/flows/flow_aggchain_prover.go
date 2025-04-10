@@ -14,7 +14,6 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
-	"google.golang.org/grpc/status"
 )
 
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
@@ -315,14 +314,8 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		importedBridgeExits,
 	)
 	if err != nil {
-		msg := err.Error()
-
-		errS, ok := status.FromError(err)
-		if ok {
-			msg = errS.Message()
-		}
-
-		return nil, nil, fmt.Errorf(`error fetching aggchain proof for block range %d : %d: %s. Message sent: 
+		return nil, nil, fmt.Errorf(`error fetching aggchain proof for lastProvenBlock: %d, maxEndBlock: %d: %w. 
+			Message sent: 
 			lastProvenBlock: %d,
 			toBlock: %d,
 			root.Hash: %s,
@@ -334,7 +327,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 			injectedGERsProofs: %+v,
 			importedBridgeExits: %+v,
 		`,
-			fromBlock, toBlock, msg,
+			lastProvenBlock, toBlock, err,
 			lastProvenBlock,
 			toBlock,
 			root.Hash,

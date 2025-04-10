@@ -278,7 +278,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
 					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(nil, errors.New("some error"))
 			},
-			expectedError: "error fetching aggchain proof for block range 1 : 10: some error",
+			expectedError: "error fetching aggchain proof for lastProvenBlock: 0, maxEndBlock: 10: some error",
 		},
 		{
 			name: "success fetching aggchain proof for new certificate",
