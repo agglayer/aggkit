@@ -9,9 +9,10 @@ import (
 	"os"
 	"path"
 	"slices"
+	"sort"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
 	migrationsBridge "github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -82,7 +83,7 @@ func TestBigIntString(t *testing.T) {
 func TestProcessor(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgeSyncerProcessor.db")
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, logger)
+	p, err := newProcessor(path, "bridge-syncer", logger)
 	require.NoError(t, err)
 	actions := []processAction{
 		// processed: ~
@@ -466,7 +467,7 @@ var (
 		Num: 5,
 		Events: []interface{}{
 			Event{Claim: &Claim{
-				BlockNum:           4,
+				BlockNum:           5,
 				BlockPos:           0,
 				GlobalIndex:        big.NewInt(4),
 				OriginNetwork:      4,
@@ -475,13 +476,26 @@ var (
 				Amount:             big.NewInt(4),
 			}},
 			Event{Claim: &Claim{
-				BlockNum:           4,
+				BlockNum:           5,
 				BlockPos:           1,
 				GlobalIndex:        big.NewInt(5),
 				OriginNetwork:      5,
 				OriginAddress:      common.HexToAddress("05"),
 				DestinationAddress: common.HexToAddress("05"),
 				Amount:             big.NewInt(5),
+			}},
+			Event{LegacyTokenMigration: &LegacyTokenMigration{
+				BlockNum:            5,
+				BlockPos:            2,
+				Sender:              common.HexToAddress("0x10"),
+				LegacyTokenAddress:  common.HexToAddress("0x11"),
+				UpdatedTokenAddress: common.HexToAddress("0x12"),
+				Amount:              big.NewInt(10),
+			}},
+			Event{RemoveLegacyToken: &RemoveLegacyToken{
+				BlockNum:           5,
+				BlockPos:           3,
+				LegacyTokenAddress: common.HexToAddress("0x11"),
 			}},
 		},
 	}
@@ -797,7 +811,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	err := migrationsBridge.RunMigrations(path)
 	require.NoError(t, err)
 	logger := log.WithFields("bridge-syncer", "foo")
-	p, err := newProcessor(path, logger)
+	p, err := newProcessor(path, "foo", logger)
 	require.NoError(t, err)
 
 	tx, err := p.db.BeginTx(context.Background(), nil)
@@ -882,7 +896,7 @@ func TestGetBridgesPublished(t *testing.T) {
 			path := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncTestGetBridgesPublished_%s.sqlite", tc.name))
 			require.NoError(t, migrationsBridge.RunMigrations(path))
 			logger := log.WithFields("bridge-syncer", "foo")
-			p, err := newProcessor(path, logger)
+			p, err := newProcessor(path, "foo", logger)
 			require.NoError(t, err)
 
 			tx, err := p.db.BeginTx(context.Background(), nil)
@@ -915,7 +929,7 @@ func TestGetBridgesPublished(t *testing.T) {
 func TestProcessBlockInvalidIndex(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTestProcessor.sqlite")
 	logger := log.WithFields("bridge-syncer", "foo")
-	p, err := newProcessor(path, logger)
+	p, err := newProcessor(path, "foo", logger)
 	require.NoError(t, err)
 	err = p.ProcessBlock(context.Background(), sync.Block{
 		Num: 0,
@@ -951,7 +965,7 @@ func TestGetBridgesPaged(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgesyncGetBridgesPaged.sqlite")
 	require.NoError(t, migrationsBridge.RunMigrations(path))
 	logger := log.WithFields("bridge-syncer", "foo")
-	p, err := newProcessor(path, logger)
+	p, err := newProcessor(path, "bridge-syncer", logger)
 	require.NoError(t, err)
 
 	tx, err := p.db.BeginTx(context.Background(), nil)
@@ -1113,7 +1127,7 @@ func TestGetClaimsPaged(t *testing.T) {
 	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
 	require.NoError(t, migrationsBridge.RunMigrations(path))
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, logger)
+	p, err := newProcessor(path, "bridge-syncer", logger)
 	require.NoError(t, err)
 
 	tx, err := p.db.BeginTx(context.Background(), nil)
@@ -1214,7 +1228,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 	require.NoError(t, err)
 
 	logger := log.WithFields("module", "bridge-syncer")
-	p, err := newProcessor(path, logger)
+	p, err := newProcessor(path, "bridge-syncer", logger)
 	require.NoError(t, err)
 
 	allTokenMappings := make([]*TokenMapping, 0, tokenMappingsCount)
@@ -1225,6 +1239,14 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 			OriginTokenAddress:  common.HexToAddress(fmt.Sprintf("%d", i)),
 			WrappedTokenAddress: common.HexToAddress(fmt.Sprintf("%d", i+1)),
 			Metadata:            common.Hex2Bytes(fmt.Sprintf("%x", i+1)),
+		}
+
+		if i%2 == 0 {
+			tokenMappingEvt.Type = WrappedToken
+			tokenMappingEvt.IsNotMintable = false
+		} else {
+			tokenMappingEvt.Type = SovereignToken
+			tokenMappingEvt.IsNotMintable = true
 		}
 
 		block := sync.Block{
@@ -1298,7 +1320,99 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 	}
 }
 
-func TestDecodePreEtrogCalldata(t *testing.T) {
+func TestProcessor_GetLegacyTokenMigrations(t *testing.T) {
+	t.Parallel()
+	path := path.Join(t.TempDir(), "tokenMigrations.db")
+	err := migrationsBridge.RunMigrations(path)
+	require.NoError(t, err)
+
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger)
+	require.NoError(t, err)
+
+	const (
+		tokenMigrationsCount       = 50
+		removeTokenMigrationsCount = 10
+	)
+	tokenMigrationEvents := make([]*LegacyTokenMigration, 0, tokenMigrationsCount)
+	removeTokenMigrationEvents := make([]*RemoveLegacyToken, 0, removeTokenMigrationsCount)
+	for i := range tokenMigrationsCount {
+		e := &LegacyTokenMigration{
+			BlockNum:            uint64(1),
+			BlockPos:            uint64(i),
+			LegacyTokenAddress:  common.HexToAddress(fmt.Sprintf("%d", i+1)),
+			UpdatedTokenAddress: common.HexToAddress(fmt.Sprintf("%d", i+2)),
+			Amount:              big.NewInt(int64(i + 1)),
+		}
+		tokenMigrationEvents = append(tokenMigrationEvents, e)
+	}
+
+	// Sort in descending order of block pos and block num
+	sort.Slice(tokenMigrationEvents, func(i, j int) bool {
+		prevTokenMig := tokenMigrationEvents[i]
+		currentTokenMig := tokenMigrationEvents[j]
+		if prevTokenMig.BlockPos > currentTokenMig.BlockPos {
+			return true
+		}
+
+		if prevTokenMig.BlockNum > currentTokenMig.BlockNum {
+			return true
+		}
+
+		return false
+	})
+
+	for i := range removeTokenMigrationsCount {
+		e := &RemoveLegacyToken{
+			BlockNum:           uint64(2),
+			BlockPos:           uint64(i),
+			LegacyTokenAddress: common.HexToAddress(fmt.Sprintf("%d", i+1)),
+		}
+		removeTokenMigrationEvents = append(removeTokenMigrationEvents, e)
+	}
+
+	block1 := sync.Block{
+		Num:    uint64(1),
+		Events: []any{},
+	}
+
+	for _, e := range tokenMigrationEvents {
+		block1.Events = append(block1.Events, Event{LegacyTokenMigration: e})
+	}
+
+	block2 := sync.Block{
+		Num:    uint64(2),
+		Events: []any{},
+	}
+
+	for _, e := range removeTokenMigrationEvents {
+		block2.Events = append(block2.Events, Event{RemoveLegacyToken: e})
+	}
+
+	// Insert all LegacyTokenMigration events
+	err = p.ProcessBlock(context.Background(), block1)
+	require.NoError(t, err)
+
+	result, totalTokenMigrations, err := p.GetLegacyTokenMigrations(context.Background(), 1, tokenMigrationsCount)
+
+	require.NoError(t, err)
+	require.Len(t, result, tokenMigrationsCount)
+	require.Equal(t, result, tokenMigrationEvents)
+	require.Equal(t, tokenMigrationsCount, totalTokenMigrations)
+
+	// Process block that contains RemoveLegacyToken events
+	err = p.ProcessBlock(context.Background(), block2)
+	require.NoError(t, err)
+
+	finalTokenMigrationsCount := tokenMigrationsCount - removeTokenMigrationsCount
+	result, totalTokenMigrations, err = p.GetLegacyTokenMigrations(context.Background(), 1, tokenMigrationsCount)
+	require.NoError(t, err)
+	require.Equal(t, totalTokenMigrations, finalTokenMigrationsCount)
+	require.Len(t, result, finalTokenMigrationsCount)
+	require.Equal(t, tokenMigrationEvents[:finalTokenMigrationsCount], result)
+}
+
+func TestDecodePreEtrogCalldata_Valid(t *testing.T) {
 	bridgeV1ABI, err := polygonzkevmbridge.PolygonzkevmbridgeMetaData.GetAbi()
 	require.NoError(t, err)
 
@@ -1354,4 +1468,403 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 	require.True(t, isFound)
 
 	require.Equal(t, expectedClaim, actualClaim)
+}
+
+func TestTokenMappingTypeString(t *testing.T) {
+	tests := []struct {
+		name     string
+		t        TokenMappingType
+		expected string
+	}{
+		{
+			name:     "WrappedToken",
+			t:        WrappedToken,
+			expected: "WrappedToken",
+		},
+		{
+			name:     "SovereignToken",
+			t:        SovereignToken,
+			expected: "SovereignToken",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.expected, tt.t.String())
+		})
+	}
+}
+
+func TestDecodePreEtrogCalldata(t *testing.T) {
+	var (
+		globalIndex            = uint32(12345)
+		mainnetExitRoot        = common.HexToHash("0x11")
+		rollupExitRoot         = common.HexToHash("0x22")
+		metadata               = []byte("mock metadata")
+		destinationNetwork     = uint32(1)
+		invalidTypePlaceholder = "invalidType"
+	)
+
+	tests := []struct {
+		name              string
+		data              []any
+		expectedIsDecoded bool
+		expectError       bool
+	}{
+		{
+			name: "Valid calldata",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // Proof
+				globalIndex, // GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()), // MainnetExitRoot
+				[common.HashLength]byte(rollupExitRoot.Bytes()),  // RollupExitRoot
+				uint32(1),          // OriginNetwork (not used)
+				common.Address{},   // OriginTokenAddress (not used)
+				destinationNetwork, // DestinationNetwork
+				common.Address{},   // DestinationAddress (not used)
+				big.NewInt(0),      // Amount (not used)
+				metadata,           // Metadata
+			},
+			expectedIsDecoded: true,
+			expectError:       false,
+		},
+		{
+			name: "Mismatched GlobalIndex",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // Proof
+				uint32(99999), // Wrong GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(1),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       false, // No error, just a mismatch
+		},
+		{
+			name: "Invalid GlobalIndex Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				invalidTypePlaceholder, // Invalid GlobalIndex type (should be uint32)
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(1),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid Proof Type",
+			data: []any{
+				invalidTypePlaceholder, // Invalid Proof type
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(1),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid MainnetExitRoot Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				globalIndex,
+				invalidTypePlaceholder, // Invalid MainnetExitRoot type
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(1),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid RollupExitRoot Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				invalidTypePlaceholder, // Invalid RollupExitRoot type
+				uint32(1),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid DestinationNetwork Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(1),
+				common.Address{},
+				invalidTypePlaceholder, // Invalid DestinationNetwork type
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid Metadata Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(1),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				123, // Invalid metadata type (should be []byte)
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claim := &Claim{
+				GlobalIndex:        new(big.Int).SetUint64(uint64(globalIndex)),
+				MainnetExitRoot:    common.Hash{},
+				RollupExitRoot:     common.Hash{},
+				DestinationNetwork: 0,
+				Metadata:           nil,
+			}
+
+			match, err := claim.decodePreEtrogCalldata(tt.data)
+
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tt.expectedIsDecoded, match)
+		})
+	}
+}
+
+func TestDecodeEtrogCalldata(t *testing.T) {
+	var (
+		globalIndex            = big.NewInt(12345)
+		mainnetExitRoot        = common.HexToHash("0x11")
+		rollupExitRoot         = common.HexToHash("0x22")
+		metadata               = []byte("mock metadata")
+		destinationNetwork     = uint32(1)
+		invalidTypePlaceholder = "invalidType"
+	)
+
+	tests := []struct {
+		name              string
+		data              []any
+		expectedIsDecoded bool
+		expectError       bool
+	}{
+		{
+			name: "Valid calldata",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				globalIndex, // GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()), // MainnetExitRoot
+				[common.HashLength]byte(rollupExitRoot.Bytes()),  // RollupExitRoot
+				uint32(0),          // OriginNetwork (not used)
+				common.Address{},   // OriginAddress (not used)
+				destinationNetwork, // DestinationNetwork
+				common.Address{},   // DestinationAddress (not used)
+				big.NewInt(0),      // Amount (not used)
+				metadata,           // Metadata
+			},
+			expectedIsDecoded: true,
+			expectError:       false,
+		},
+		{
+			name: "Mismatched GlobalIndex",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				big.NewInt(99999), // Wrong GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       false, // No error, just a mismatch
+		},
+		{
+			name: "Invalid GlobalIndex Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				[types.DefaultHeight][common.HashLength]byte{},
+				invalidTypePlaceholder, // Invalid GlobalIndex type
+				mainnetExitRoot.Bytes(),
+				rollupExitRoot.Bytes(),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid LocalExitRoot Proof Type",
+			data: []any{
+				invalidTypePlaceholder, // Invalid ProofLocalExitRoot type
+				[types.DefaultHeight][common.HashLength]byte{},
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid RollupExitRoot Proof Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				invalidTypePlaceholder, // Invalid RollupExitRoot proof type
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				metadata,
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid MainnetExitRoot Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				globalIndex,            // GlobalIndex
+				invalidTypePlaceholder, // MainnetExitRoot
+				[common.HashLength]byte(rollupExitRoot.Bytes()), // RollupExitRoot
+				uint32(0),          // OriginNetwork (not used)
+				common.Address{},   // OriginAddress (not used)
+				destinationNetwork, // DestinationNetwork
+				common.Address{},   // DestinationAddress (not used)
+				big.NewInt(0),      // Amount (not used)
+				metadata,           // Metadata
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid RollupExitRoot Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				globalIndex, // GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()), // MainnetExitRoot
+				invalidTypePlaceholder,                           // RollupExitRoot
+				uint32(0),                                        // OriginNetwork (not used)
+				common.Address{},                                 // OriginAddress (not used)
+				destinationNetwork,                               // DestinationNetwork
+				common.Address{},                                 // DestinationAddress (not used)
+				big.NewInt(0),                                    // Amount (not used)
+				metadata,                                         // Metadata
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid DestinationNetwork Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofLocalExitRoot
+				[types.DefaultHeight][common.HashLength]byte{}, // ProofRollupExitRoot
+				globalIndex, // GlobalIndex
+				[common.HashLength]byte(mainnetExitRoot.Bytes()), // MainnetExitRoot
+				[common.HashLength]byte(rollupExitRoot.Bytes()),  // RollupExitRoot
+				uint32(0),              // OriginNetwork (not used)
+				common.Address{},       // OriginAddress (not used)
+				invalidTypePlaceholder, // DestinationNetwork
+				common.Address{},       // DestinationAddress (not used)
+				big.NewInt(0),          // Amount (not used)
+				metadata,               // Metadata
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+		{
+			name: "Invalid Metadata Type",
+			data: []any{
+				[types.DefaultHeight][common.HashLength]byte{},
+				[types.DefaultHeight][common.HashLength]byte{},
+				globalIndex,
+				[common.HashLength]byte(mainnetExitRoot.Bytes()),
+				[common.HashLength]byte(rollupExitRoot.Bytes()),
+				uint32(0),
+				common.Address{},
+				destinationNetwork,
+				common.Address{},
+				big.NewInt(0),
+				123, // Invalid metadata type (should be []byte)
+			},
+			expectedIsDecoded: false,
+			expectError:       true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			claim := &Claim{GlobalIndex: globalIndex}
+
+			isDecoded, err := claim.decodeEtrogCalldata(tt.data)
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tt.expectedIsDecoded, isDecoded)
+		})
+	}
 }

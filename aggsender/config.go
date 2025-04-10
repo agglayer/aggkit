@@ -5,7 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/signer"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 )
 
 // Config is the configuration for the AggSender
@@ -15,7 +15,7 @@ type Config struct {
 	// AggLayerURL is the URL of the AggLayer
 	AggLayerURL string `mapstructure:"AggLayerURL"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
-	AggsenderPrivateKey signer.SignerConfig `mapstructure:"AggsenderPrivateKey"`
+	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// BlockFinality indicates which finality follows AggLayer
 	BlockFinality string `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 	// EpochNotificationPercentage indicates the percentage of the epoch
@@ -58,6 +58,9 @@ type Config struct {
 	MaxEpochPercentageAllowedToSendCertificate uint `mapstructure:"MaxEpochPercentageAllowedToSendCertificate"`
 	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
 	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
+	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
+	// is compatible with the running environment
+	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

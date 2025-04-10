@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	aggkitCommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
@@ -38,6 +39,9 @@ const (
 
 	// tokenMappingTableName is the name of the table that stores token mapping events
 	tokenMappingTableName = "token_mapping"
+
+	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
+	legacyTokenMigrationTableName = "legacy_token_migration"
 )
 
 var (
@@ -46,6 +50,10 @@ var (
 
 	// tableNameRegex is the regex pattern to validate table names
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+
+	// deleteLegacyTokenSQL is the SQL statement to delete legacy token migration event
+	// with specific legacy token address
+	deleteLegacyTokenSQL = fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1", legacyTokenMigrationTableName)
 )
 
 // Bridge is the representation of a bridge event
@@ -281,17 +289,30 @@ type ClaimResponse struct {
 	FromAddress        common.Address `json:"from_address"`
 }
 
+type TokenMappingType uint8
+
+const (
+	WrappedToken = iota
+	SovereignToken
+)
+
+func (l TokenMappingType) String() string {
+	return [...]string{"WrappedToken", "SovereignToken"}[l]
+}
+
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
-	BlockNum            uint64         `meddler:"block_num" json:"block_num"`
-	BlockPos            uint64         `meddler:"block_pos" json:"block_pos"`
-	BlockTimestamp      uint64         `meddler:"block_timestamp" json:"block_timestamp"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
-	OriginNetwork       uint32         `meddler:"origin_network" json:"origin_network"`
-	OriginTokenAddress  common.Address `meddler:"origin_token_address,address" json:"origin_token_address"`
-	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
-	Metadata            []byte         `meddler:"metadata" json:"metadata"`
-	Calldata            []byte         `meddler:"calldata" json:"calldata"`
+	BlockNum            uint64           `meddler:"block_num" json:"block_num"`
+	BlockPos            uint64           `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp      uint64           `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash              common.Hash      `meddler:"tx_hash,hash" json:"tx_hash"`
+	OriginNetwork       uint32           `meddler:"origin_network" json:"origin_network"`
+	OriginTokenAddress  common.Address   `meddler:"origin_token_address,address" json:"origin_token_address"`
+	WrappedTokenAddress common.Address   `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
+	Metadata            []byte           `meddler:"metadata" json:"metadata"`
+	IsNotMintable       bool             `meddler:"is_not_mintable" json:"is_not_mintable"`
+	Calldata            []byte           `meddler:"calldata" json:"calldata"`
+	Type                TokenMappingType `meddler:"token_type" json:"token_type"`
 }
 
 // MarshalJSON for hex-encoding Metadata and Calldata fields
@@ -308,12 +329,38 @@ func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// Event combination of bridge, claim and token mapping events
+// LegacyTokenMigration representation of a MigrateLegacyToken event,
+// that is emitted by the sovereign chain bridge contract.
+type LegacyTokenMigration struct {
+	BlockNum            uint64         `meddler:"block_num" json:"block_num"`
+	BlockPos            uint64         `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	Sender              common.Address `meddler:"sender,address" json:"sender"`
+	LegacyTokenAddress  common.Address `meddler:"legacy_token_address,address" json:"legacy_token_address"`
+	UpdatedTokenAddress common.Address `meddler:"updated_token_address,address" json:"updated_token_address"`
+	Amount              *big.Int       `meddler:"amount,bigint" json:"amount"`
+	Calldata            []byte         `meddler:"calldata" json:"calldata"`
+}
+
+// RemoveLegacyToken representation of a RemoveLegacySovereignTokenAddress event,
+// that is emitted by the sovereign chain bridge contract.
+type RemoveLegacyToken struct {
+	BlockNum           uint64         `meddler:"block_num" json:"block_num"`
+	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address" json:"legacy_token_address"`
+}
+
+// Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
-	Pos          uint64
-	Bridge       *Bridge
-	Claim        *Claim
-	TokenMapping *TokenMapping
+	Pos                  uint64
+	Bridge               *Bridge
+	Claim                *Claim
+	TokenMapping         *TokenMapping
+	LegacyTokenMigration *LegacyTokenMigration
+	RemoveLegacyToken    *RemoveLegacyToken
 }
 
 type processor struct {
@@ -323,23 +370,28 @@ type processor struct {
 	mu           mutex.RWMutex
 	halted       bool
 	haltedReason string
+	compatibility.CompatibilityDataStorager[sync.RuntimeData]
 }
 
-func newProcessor(dbPath string, logger *log.Logger) (*processor, error) {
+func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
 		return nil, err
 	}
-	db, err := db.NewSQLiteDB(dbPath)
+	database, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
 		return nil, err
 	}
 
-	exitTree := tree.NewAppendOnlyTree(db, "")
+	exitTree := tree.NewAppendOnlyTree(database, "")
 	return &processor{
-		db:       db,
+		db:       database,
 		exitTree: exitTree,
 		log:      logger,
+		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+			db.NewKeyValueStorage(database),
+			name,
+		),
 	}, nil
 }
 
@@ -419,8 +471,7 @@ func (p *processor) GetBridgesPaged(
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	orderBy := "deposit_count"
-	order := "DESC"
+	orderByClause := "deposit_count DESC"
 	whereClause := ""
 	count, err := p.GetTotalNumberOfRecords(bridgeTableName)
 	if err != nil {
@@ -437,7 +488,7 @@ func (p *processor) GetBridgesPaged(
 			pageNumber, pageSize, count)
 		return nil, 0, db.ErrNotFound
 	}
-	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderBy, order, whereClause)
+	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -487,10 +538,9 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, db.ErrNotFound
 	}
 
-	orderBy := "block_num DESC, block_pos"
-	order := "DESC"
+	orderByClause := "block_num DESC, block_pos DESC"
 	whereClause := ""
-	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderBy, order, whereClause)
+	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -523,6 +573,45 @@ func (p *processor) GetClaimsPaged(
 	return claimResponsePtrs, count, nil
 }
 
+// GetLegacyTokenMigrations returns the paged legacy token migrations from the database
+func (p *processor) GetLegacyTokenMigrations(
+	ctx context.Context, pageNumber, pageSize uint32) ([]*LegacyTokenMigration, int, error) {
+	totalTokenMigrations, err := p.GetTotalNumberOfRecords(legacyTokenMigrationTableName)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", legacyTokenMigrationTableName, err)
+	}
+
+	if totalTokenMigrations == 0 {
+		return []*LegacyTokenMigration{}, 0, nil
+	}
+
+	offset := (pageNumber - 1) * pageSize
+	if offset >= uint32(totalTokenMigrations) {
+		p.log.Debugf(
+			"offset is larger than the total legacy token migrations (page number=%d, page size=%d, total legacy migrations=%d)",
+			pageNumber, pageSize, totalTokenMigrations)
+		return nil, 0, db.ErrNotFound
+	}
+
+	orderByClause := "block_num, block_pos DESC"
+	whereClause := ""
+	rows, err := p.queryPaged(p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause)
+	if err != nil {
+		return nil, 0, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			p.log.Warnf("error closing rows: %v", err)
+		}
+	}()
+	tokenMigrations := []*LegacyTokenMigration{}
+	if err = meddler.ScanAll(rows, &tokenMigrations); err != nil {
+		return nil, 0, err
+	}
+
+	return tokenMigrations, totalTokenMigrations, nil
+}
+
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
 	if err := p.isBlockProcessed(tx, toBlock); err != nil {
 		return nil, err
@@ -543,15 +632,15 @@ func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, ta
 // queryPaged returns a paged result from the given table
 func (p *processor) queryPaged(tx db.Querier,
 	offset, pageSize uint32,
-	table, orderBy, order, whereClause string,
+	table, orderByClause, whereClause string,
 ) (*sql.Rows, error) {
 	rows, err := tx.Query(fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		%s
-		ORDER BY %s %s
+		ORDER BY %s
 		LIMIT $1 OFFSET $2;
-	`, table, whereClause, orderBy, order), pageSize, offset)
+	`, table, whereClause, orderByClause), pageSize, offset)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound
@@ -680,6 +769,19 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		}
+
+		if event.LegacyTokenMigration != nil {
+			if err = meddler.Insert(tx, legacyTokenMigrationTableName, event.LegacyTokenMigration); err != nil {
+				return err
+			}
+		}
+
+		if event.RemoveLegacyToken != nil {
+			_, err := tx.Exec(deleteLegacyTokenSQL, event.RemoveLegacyToken.LegacyTokenAddress.Hex())
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -706,7 +808,7 @@ func (p *processor) GetTotalNumberOfRecords(tableName string) (int, error) {
 	return count, nil
 }
 
-// GetTokenMappings returns the token mappings in the database
+// GetTokenMappings returns the paged token mappings from the database
 func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
 	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName)
 	if err != nil {
@@ -745,11 +847,8 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 		}
 	}()
 
-	const (
-		orderByColumn = "block_num"
-		order         = "DESC"
-	)
-	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByColumn, order, "")
+	orderByClause := "block_num DESC"
+	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
 		p.log.Errorf("failed to fetch token mappings: %v", err)
 		return nil, err

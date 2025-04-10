@@ -10,7 +10,7 @@ jobs:
     name: Build aggkit docker image
     uses: ./.github/workflows/build-aggkit-image.yml
     with:
-      go-version: 1.23.x
+      go-version: 1.24.x
       docker-image-name: aggkit
 
   build-tools:
@@ -25,7 +25,7 @@ jobs:
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.23.x
+          go-version: 1.24.x
 
       - name: Build Aggsender Find Imported Bridge
         run: make build-tools
