@@ -67,6 +67,8 @@ type Config struct {
 	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
 	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
 	GenerateAggchainProofTimeout types.Duration `mapstructure:"GenerateAggchainProofTimeout"`
+	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
+	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
@@ -88,9 +90,10 @@ func (c Config) String() string {
 		"AggchainProofURL: " + c.AggchainProofURL + "\n" +
 		"Mode: " + c.Mode + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
-		"RetryCertImmediatelyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
+		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"MaxEpochPercentageAllowedToSendCertificate: " +
 		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n" +
-		"GenerateAggchainProofTimeout: " + c.GenerateAggchainProofTimeout.String() + "\n"
+		"GenerateAggchainProofTimeout: " + c.GenerateAggchainProofTimeout.String() + "\n" +
+		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n"
 }

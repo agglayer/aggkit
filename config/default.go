@@ -232,11 +232,12 @@ AggchainProofURL = "{{AggchainProofURL}}"
 # PessimisticProof or AggchainProver
 Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
-RetryCertInmediatlyAfterInError = true
+RetryCertAfterInError = false
 GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 # Don't send certificate over 80% of the epoch
 MaxEpochPercentageAllowedToSendCertificate=80
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
@@ -249,6 +250,7 @@ Port = 9091
 
 [AggchainProofGen]
 AggchainProofURL = "{{AggchainProofURL}}"
+SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 `

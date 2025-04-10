@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
@@ -13,7 +14,6 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
-	"google.golang.org/grpc/status"
 )
 
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
@@ -24,11 +24,26 @@ type AggchainProverFlow struct {
 	gerReader           types.ChainGERReader
 }
 
+func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
+	a, err := aggchainfep.NewAggchainfepCaller(sovereignRollupAddr, l1Client)
+	if err != nil {
+		return 0, fmt.Errorf("aggchainProverFlow - error creating sovereign rollup caller: %w", err)
+	}
+
+	startL2Block, err := a.StartingBlockNumber(nil)
+	if err != nil {
+		return 0, fmt.Errorf("aggchainProverFlow - error getting starting block number: %w", err)
+	}
+
+	return startL2Block.Uint64(), nil
+}
+
 // NewAggchainProverFlow returns a new instance of the AggchainProverFlow
 func NewAggchainProverFlow(log types.Logger,
 	maxCertSize uint,
 	bridgeMetaDataAsHash bool,
 	gerL2Address common.Address,
+	sovereignRollupAddr common.Address,
 	aggkitProverClient grpc.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
@@ -40,6 +55,11 @@ func NewAggchainProverFlow(log types.Logger,
 		return nil, fmt.Errorf("aggchainProverFlow - error creating L2Etherman: %w", err)
 	}
 
+	startL2Block, err := getL2StartBlock(sovereignRollupAddr, l1Client)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
+	}
+
 	return &AggchainProverFlow{
 		gerReader:           gerReader,
 		aggchainProofClient: aggkitProverClient,
@@ -49,6 +69,7 @@ func NewAggchainProverFlow(log types.Logger,
 			storage:               storage,
 			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 			maxCertSize:           maxCertSize,
+			startL2Block:          startL2Block,
 			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},
 	}, nil
@@ -115,15 +136,17 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 
+	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock)
+
 	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
-		ctx, buildParams.FromBlock, buildParams.ToBlock, buildParams.Claims)
+		ctx, lastProvenBlock, buildParams.ToBlock, buildParams.Claims)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
 	}
 
-	a.log.Infof("aggchainProverFlow - fetched auth proof: %s Range %d : %d from aggchain prover. Requested range: %d : %d",
-		aggchainProof.SP1StarkProof.Proof, buildParams.FromBlock, aggchainProof.EndBlock,
-		buildParams.FromBlock, buildParams.ToBlock)
+	a.log.Infof("aggchainProverFlow - fetched auth proof for lastProvenBlock: %d, maxEndBlock: %d "+
+		"from aggchain prover. End block gotten from the prover: %d",
+		lastProvenBlock, buildParams.ToBlock, aggchainProof.EndBlock)
 
 	// set the root from which to generate merkle proofs for each claim
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
@@ -253,7 +276,7 @@ func adjustBlockRange(buildParams *types.CertificateBuildParams,
 // GenerateAggchainProof calls the aggkit prover to generate the aggchain proof for the given block range
 func (a *AggchainProverFlow) GenerateAggchainProof(
 	ctx context.Context,
-	fromBlock, toBlock uint64,
+	lastProvenBlock, toBlock uint64,
 	claims []bridgesync.Claim,
 ) (*types.AggchainProof, *treetypes.Root, error) {
 	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
@@ -267,6 +290,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
 	}
 
+	fromBlock := lastProvenBlock + 1
 	injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
@@ -275,12 +299,6 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	importedBridgeExits, err := a.getImportedBridgeExitsForProver(claims)
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
-	}
-
-	lastProvenBlock := fromBlock
-	if lastProvenBlock > 0 {
-		// if we had previous proofs, the last proven block is the one before the first block in the range
-		lastProvenBlock--
 	}
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
@@ -296,14 +314,8 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		importedBridgeExits,
 	)
 	if err != nil {
-		msg := err.Error()
-
-		errS, ok := status.FromError(err)
-		if ok {
-			msg = errS.Message()
-		}
-
-		return nil, nil, fmt.Errorf(`error fetching aggchain proof for block range %d : %d: %s. Message sent: 
+		return nil, nil, fmt.Errorf(`error fetching aggchain proof for lastProvenBlock: %d, maxEndBlock: %d: %w. 
+			Message sent: 
 			lastProvenBlock: %d,
 			toBlock: %d,
 			root.Hash: %s,
@@ -315,7 +327,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 			injectedGERsProofs: %+v,
 			importedBridgeExits: %+v,
 		`,
-			fromBlock, toBlock, msg,
+			lastProvenBlock, toBlock, err,
 			lastProvenBlock,
 			toBlock,
 			root.Hash,
@@ -328,4 +340,14 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	}
 
 	return aggchainProof, root, nil
+}
+
+func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64) uint64 {
+	if fromBlock == 0 {
+		// if this is the first certificate, we need to start from the starting L2 block
+		// that we got from the sovereign rollup
+		return a.startL2Block
+	}
+
+	return fromBlock - 1
 }

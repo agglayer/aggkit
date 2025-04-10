@@ -33,6 +33,7 @@ type baseFlow struct {
 
 	maxCertSize          uint
 	bridgeMetaDataAsHash bool
+	startL2Block         uint64
 }
 
 // getBridgesAndClaims returns the bridges and claims consumed from the L2 fromBlock to toBlock
@@ -71,7 +72,7 @@ func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*type
 		return nil, err
 	}
 
-	previousToBlock, retryCount := getLastSentBlockAndRetryCount(lastSentCertificateInfo)
+	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificateInfo)
 
 	if previousToBlock >= lastL2BlockSynced {
 		f.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
@@ -412,10 +413,11 @@ func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 }
 
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
-// if there is no previosly sent certificate, it returns 0 and 0
-func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
+// if there is no previosly sent certificate, it returns startL2Block and 0
+func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
 	if lastSentCertificateInfo == nil {
-		return 0, 0
+		// this is the first certificate so we start from what we have set in start L2 block
+		return f.startL2Block, 0
 	}
 
 	retryCount := 0

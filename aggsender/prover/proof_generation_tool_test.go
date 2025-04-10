@@ -35,7 +35,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 			) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(1), uint64(10), []bridgesync.Claim{}).Return(
+				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), []bridgesync.Claim{}).Return(
 					&types.AggchainProof{SP1StarkProof: &types.SP1StarkProof{Proof: []byte("proof")}}, nil, nil)
 			},
 			expectedProof: &types.SP1StarkProof{Proof: []byte("proof")},
@@ -72,7 +72,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 			) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(1), uint64(10), []bridgesync.Claim{}).Return(
+				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), []bridgesync.Claim{}).Return(
 					nil, nil, errors.New("test error"))
 			},
 			expectedError: "error generating Aggchain proof",
@@ -86,7 +86,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			fromBlock := uint64(0)
+			lastProvenBlock := uint64(0)
 			toBlock := uint64(10)
 
 			mockLogger := log.WithFields("test", tt.name)
@@ -103,7 +103,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 
 			tt.setupMocks(ctx, mockL2Syncer, mockAggchainProofClient, mockFlow)
 
-			proof, err := tool.GenerateAggchainProof(ctx, fromBlock, toBlock)
+			proof, err := tool.GenerateAggchainProof(ctx, lastProvenBlock, toBlock)
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
 			} else {

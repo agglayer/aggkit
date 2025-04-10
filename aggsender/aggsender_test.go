@@ -50,6 +50,7 @@ func TestConfigString(t *testing.T) {
 		EpochNotificationPercentage:  50,
 		Mode:                         "PP",
 		GenerateAggchainProofTimeout: types.Duration{Duration: time.Second},
+		SovereignRollupAddr:          common.HexToAddress("0x1"),
 	}
 
 	expected := "StoragePath: /path/to/storage\n" +
@@ -62,10 +63,11 @@ func TestConfigString(t *testing.T) {
 		"AggchainProofURL: \n" +
 		"Mode: PP\n" +
 		"CheckStatusCertificateInterval: 0s\n" +
-		"RetryCertImmediatelyAfterInError: false\n" +
+		"RetryCertAfterInError: false\n" +
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
 		"MaxEpochPercentageAllowedToSendCertificate: 0\n" +
-		"GenerateAggchainProofTimeout: 1s\n"
+		"GenerateAggchainProofTimeout: 1s\n" +
+		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"
 
 	require.Equal(t, expected, config.String())
 }
