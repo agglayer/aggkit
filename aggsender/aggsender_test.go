@@ -63,7 +63,7 @@ func TestConfigString(t *testing.T) {
 		"AggchainProofURL: \n" +
 		"Mode: PP\n" +
 		"CheckStatusCertificateInterval: 0s\n" +
-		"RetryCertImmediatelyAfterInError: false\n" +
+		"RetryCertAfterInError: false\n" +
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
 		"MaxEpochPercentageAllowedToSendCertificate: 0\n" +
 		"GenerateAggchainProofTimeout: 1s\n" +
