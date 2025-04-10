@@ -483,7 +483,6 @@ func runLastGERSyncIfNeeded(
 		reorgDetectorL2,
 		l2Client,
 		cfg.GlobalExitRootL2Addr,
-		cfg.SyncBlockChunkSize,
 		l1InfoTreeSync,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,

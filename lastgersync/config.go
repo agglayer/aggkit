@@ -17,8 +17,6 @@ type Config struct {
 	GlobalExitRootL2Addr common.Address `mapstructure:"GlobalExitRootL2Addr"`
 	// RetryAfterErrorPeriod is the time that will be waited when an unexpected error happens before retry
 	RetryAfterErrorPeriod types.Duration `mapstructure:"RetryAfterErrorPeriod"`
-	// SyncBlockChunkSize is the amount of blocks that will be queried to the client on each request
-	SyncBlockChunkSize uint64 `mapstructure:"SyncBlockChunkSize"`
 	// MaxRetryAttemptsAfterError is the maximum number of consecutive attempts that will happen before panicing.
 	// Any number smaller than zero will be considered as unlimited retries
 	MaxRetryAttemptsAfterError int `mapstructure:"MaxRetryAttemptsAfterError"`

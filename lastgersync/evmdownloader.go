@@ -32,18 +32,16 @@ type Event struct {
 
 type downloader struct {
 	*sync.EVMDownloaderImplementation
-	l2GERManager       *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
-	l2GERAddr          common.Address
-	syncBlockChunkSize uint64
-	l1InfoTreeSync     L1InfoTreeQuerier
-	processor          *processor
-	rh                 *sync.RetryHandler
+	l2GERManager   *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
+	l2GERAddr      common.Address
+	l1InfoTreeSync L1InfoTreeQuerier
+	processor      *processor
+	rh             *sync.RetryHandler
 }
 
 func newDownloader(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERAddr common.Address,
-	syncBlockChunkSize uint64,
 	l1InfoTreeSync L1InfoTreeQuerier,
 	processor *processor,
 	rh *sync.RetryHandler,
@@ -66,7 +64,6 @@ func newDownloader(
 		EVMDownloaderImplementation: evmDownloader,
 		l2GERManager:                gerContract,
 		l2GERAddr:                   l2GERAddr,
-		syncBlockChunkSize:          syncBlockChunkSize,
 		l1InfoTreeSync:              l1InfoTreeSync,
 		processor:                   processor,
 		rh:                          rh,
@@ -162,8 +159,6 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 			}
 			downloadedCh <- *block
 		} else {
-			// TODO: Optimize?
-			// toBlock := min(fromBlock+d.syncBlockChunkSize, lastBlock)
 			for _, block := range d.GetEventsByBlockRange(ctx, fromBlock, fromBlock) {
 				downloadedCh <- *block
 			}
