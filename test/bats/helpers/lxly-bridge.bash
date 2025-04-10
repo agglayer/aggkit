@@ -14,7 +14,7 @@ function bridge_message() {
     else
         local balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$sender_addr" | awk '{print $1}')
         local token_balance=$(cast --from-wei "$balance_wei")
-        log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
+        log "💎 $sender_addr token ($token_addr) balance: $token_balance [eth]"
     fi
 
     log "🚀 Bridge message $amount wei → $destination_addr [network: $destination_net, token: $token_addr, rpc: $rpc_url]"
@@ -57,10 +57,10 @@ function bridge_asset() {
     else
         local balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$sender_addr" | awk '{print $1}')
         local token_balance=$(cast --from-wei "$balance_wei")
-        log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
+        log "💎 $sender_addr token ($token_addr) balance: $token_balance [eth]"
     fi
 
-    log "🚀 Bridge asset $amount wei → $destination_addr [network: $destination_net]"
+    log "🚀 Bridge asset $amount wei → $destination_addr [network: $destination_net, rpc url: $rpc_url]"
 
     if [[ $dry_run == "true" ]]; then
         log "📝 Dry run bridge asset (showing calldata only)"
@@ -84,6 +84,8 @@ function bridge_asset() {
             echo $bridge_tx_hash
         else
             log "❌ Error: Transaction failed (no hash returned)"
+            log "Response:"
+            log "$response"
             return 1
         fi
     fi
@@ -256,29 +258,32 @@ function check_claim_revert_code() {
 }
 
 function wait_for_expected_token() {
-    local expected_origin_token="$1"
-    local max_attempts="$2"
-    local poll_frequency="$3"
-    local aggkit_url="$4"
+    local bridge_indexer_url="$1"
+    local expected_origin_token="$2"
+    local max_attempts="$3"
+    local poll_frequency="$4"
+    local network_id="$5"
 
     local attempt=0
     local token_mappings_result
     local origin_token_address
 
+    log "⏳ Waiting for expected origin_token_address $bridge_indexer_url @ $enclave..."
+
     while true; do
         ((attempt++))
 
         # Fetch token mappings from the RPC
-        token_mappings_result=$(cast rpc --rpc-url "$aggkit_url" "bridge_getTokenMappings" "$l2_rpc_network_id")
+        token_mappings_result=$(cast rpc --rpc-url "$bridge_indexer_url" "bridge_getTokenMappings" "$network_id")
 
         # Extract the first origin_token_address (if available)
         origin_token_address=$(echo "$token_mappings_result" | jq -r '.tokenMappings[0].origin_token_address')
 
-        echo "Attempt $attempt: found origin_token_address = $origin_token_address (Expected: $expected_origin_token)" >&3
+        log "Attempt $attempt: found origin_token_address = $origin_token_address (Expected: $expected_origin_token)"
 
         # Break loop if the expected token is found
         if [[ "$origin_token_address" == "$expected_origin_token" ]]; then
-            echo "Success: Expected origin_token_address '$expected_origin_token' found. Exiting loop." >&3
+            log "✅ Expected origin_token_address '$expected_origin_token' found. Exiting loop."
             echo "$token_mappings_result"
             return 0
         fi
