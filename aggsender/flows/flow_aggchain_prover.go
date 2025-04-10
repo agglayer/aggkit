@@ -56,7 +56,7 @@ func NewAggchainProverFlow(log types.Logger,
 		return nil, fmt.Errorf("aggchainProverFlow - error creating L2Etherman: %w", err)
 	}
 
-	startL2Block, err := getL2StartBlock(gerL2Address, l1Client)
+	startL2Block, err := getL2StartBlock(sovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 	}
