@@ -144,9 +144,9 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
 	}
 
-	a.log.Infof("aggchainProverFlow - fetched auth proof: %s Range %d : %d from aggchain prover. Requested range: %d : %d",
-		aggchainProof.SP1StarkProof.Proof, buildParams.FromBlock, aggchainProof.EndBlock,
-		buildParams.FromBlock, buildParams.ToBlock)
+	a.log.Infof("aggchainProverFlow - fetched auth proof for lastProvenBlock: %d, maxEndBlock: %d "+
+		"from aggchain prover. End block gotten from the prover: %d",
+		lastProvenBlock, buildParams.ToBlock, aggchainProof.EndBlock)
 
 	// set the root from which to generate merkle proofs for each claim
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
