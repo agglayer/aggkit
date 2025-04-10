@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"slices"
 	"time"
 
 	"github.com/agglayer/aggkit/etherman"
@@ -292,8 +293,7 @@ func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context)
 }
 
 func (d *EVMDownloaderImplementation) WaitForNewBlocks(
-	ctx context.Context, lastBlockSeen uint64,
-) (newLastBlock uint64) {
+	ctx context.Context, latestSyncedBlock uint64) (newLatestBlock uint64) {
 	attempts := 0
 	ticker := time.NewTicker(d.waitForNewBlocksPeriod)
 	defer ticker.Stop()
@@ -301,20 +301,20 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 		select {
 		case <-ctx.Done():
 			d.log.Info("context cancelled")
-			return lastBlockSeen
+			return latestSyncedBlock
 		case <-ticker.C:
 			header, err := d.ethClient.HeaderByNumber(ctx, d.blockFinality)
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++
 					d.log.Error("error getting last block num from eth client: ", err)
-					d.rh.Handle("waitForNewBlocks", attempts)
+					d.rh.Handle("WaitForNewBlocks", attempts)
 				} else {
 					d.log.Warn("context has been canceled while trying to get header by number")
 				}
 				continue
 			}
-			if header.Number.Uint64() > lastBlockSeen {
+			if header.Number.Uint64() > latestSyncedBlock {
 				return header.Number.Uint64()
 			}
 		}
@@ -380,16 +380,18 @@ func filterQueryToString(query ethereum.FilterQuery) string {
 }
 
 func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
-	query := ethereum.FilterQuery{
-		FromBlock: new(big.Int).SetUint64(fromBlock),
-		Addresses: d.addressesToQuery,
-		ToBlock:   new(big.Int).SetUint64(toBlock),
-	}
 	var (
 		attempts       = 0
 		unfilteredLogs []types.Log
 		err            error
 	)
+
+	query := ethereum.FilterQuery{
+		Addresses: d.addressesToQuery,
+		FromBlock: new(big.Int).SetUint64(fromBlock),
+		ToBlock:   new(big.Int).SetUint64(toBlock),
+	}
+
 	for {
 		unfilteredLogs, err = d.ethClient.FilterLogs(ctx, query)
 		if err != nil {
@@ -408,16 +410,15 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 		}
 		break
 	}
+
 	logs := make([]types.Log, 0, len(unfilteredLogs))
 	for _, l := range unfilteredLogs {
 		if l.Removed {
 			d.log.Warnf("log removed: %+v", l)
+			continue
 		}
-		for _, topic := range d.topicsToQuery {
-			if l.Topics[0] == topic && !l.Removed {
-				logs = append(logs, l)
-				break
-			}
+		if slices.Contains(d.topicsToQuery, l.Topics[0]) {
+			logs = append(logs, l)
 		}
 	}
 	return logs
