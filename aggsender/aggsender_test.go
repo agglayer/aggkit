@@ -22,8 +22,9 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/signer"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/agglayer/go_signer/signer"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
@@ -289,6 +290,9 @@ func TestAggSenderStart(t *testing.T) {
 		Config{
 			StoragePath:          path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
 			DelayBeetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
+			AggsenderPrivateKey: signertypes.SignerConfig{
+				Method: signertypes.MethodNone,
+			},
 		},
 		aggLayerMock,
 		nil,
@@ -319,6 +323,9 @@ func TestAggSenderSendCertificates(t *testing.T) {
 	config := Config{
 		MaxSubmitCertificateRate: aggkitcommon.RateLimitConfig{NumRequests: 1, Interval: types.Duration{Duration: 1 * time.Second}},
 		StoragePath:              path.Join(t.TempDir(), "aggsenderTestAggSenderSendCertificates.sqlite"),
+		AggsenderPrivateKey: signertypes.SignerConfig{
+			Method: signertypes.MethodNone,
+		},
 	}
 	aggSender, err := New(
 		ctx,
@@ -2115,7 +2122,11 @@ func TestLimitEpochPercent_Greater(t *testing.T) {
 }
 
 func TestNewAggSender(t *testing.T) {
-	sut, err := New(context.TODO(), log.WithFields("module", "ut"), Config{}, nil, nil, nil, nil)
+	sut, err := New(context.TODO(), log.WithFields("module", "ut"), Config{
+		AggsenderPrivateKey: signertypes.SignerConfig{
+			Method: signertypes.MethodNone,
+		},
+	}, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
