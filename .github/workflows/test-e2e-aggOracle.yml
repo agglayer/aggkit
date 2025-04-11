@@ -44,15 +44,6 @@ jobs:
         path: kurtosis-cdk
         ref: cb8e973dd11d030e06920822fec9c337be8c24f9
     
-    # - name: Install polycli
-    #   run: |
-    #     tmp_dir=$(mktemp -d) 
-    #     curl -L "https://github.com/0xPolygon/polygon-cli/releases/download/${{ env.POLYCLI_VERSION }}/polycli_${{ env.POLYCLI_VERSION }}_linux_amd64.tar.gz" | tar -xz -C "$tmp_dir" 
-    #     mv "$tmp_dir"/* /usr/local/bin/polycli 
-    #     rm -rf "$tmp_dir"
-    #     sudo chmod +x /usr/local/bin/polycli
-    #     /usr/local/bin/polycli version
-
     - name: Install Kurtosis CDK tools
       uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
 
