@@ -21,7 +21,7 @@ require (
 	github.com/knadh/koanf/parsers/toml v0.1.0
 	github.com/knadh/koanf/providers/rawbytes v0.1.0
 	github.com/knadh/koanf/v2 v2.1.2
-	github.com/mattn/go-sqlite3 v1.14.24
+	github.com/mattn/go-sqlite3 v1.14.27
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pelletier/go-toml/v2 v2.2.3
 	github.com/prometheus/client_golang v1.21.1
@@ -35,9 +35,9 @@ require (
 	go.opentelemetry.io/otel v1.35.0
 	go.opentelemetry.io/otel/metric v1.35.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.36.0
+	golang.org/x/crypto v0.37.0
 	golang.org/x/net v0.38.0
-	golang.org/x/sync v0.12.0
+	golang.org/x/sync v0.13.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8
 	google.golang.org/grpc v1.67.3
 	modernc.org/sqlite v1.37.0
@@ -181,8 +181,8 @@ require (
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/oauth2 v0.25.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 	golang.org/x/tools v0.31.0 // indirect
 	google.golang.org/api v0.215.0 // indirect
