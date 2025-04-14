@@ -113,6 +113,11 @@ func TestLastGERSync_GERRemoval(t *testing.T) {
 	require.NoError(t, err)
 	setup.L2Environment.SimBackend.Commit()
 
+	// wait for the GER removal events to be processed
+	lb, err := setup.L2Environment.SimBackend.Client().BlockNumber(ctx)
+	require.NoError(t, err)
+	helpers.RequireProcessorUpdated(t, syncer, lb)
+
 	for _, removedGER := range gersToRemove {
 		isInjected, err := setup.AggoracleSender.IsGERInjected(removedGER)
 		require.NoError(t, err)
