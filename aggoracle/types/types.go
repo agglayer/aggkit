@@ -42,4 +42,11 @@ type L2GERManagerContract interface {
 	BridgeAddress(*bind.CallOpts) (common.Address, error)
 	FilterUpdateHashChainValue(opts *bind.FilterOpts, newGlobalExitRoot [][32]byte, newHashChainValue [][32]byte) (
 		*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateHashChainValueIterator, error)
+	FilterUpdateRemovalHashChainValue(
+		opts *bind.FilterOpts,
+		removedGlobalExitRoot [][32]byte,
+		newRemovalHashChainValue [][32]byte) (
+		*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator,
+		error,
+	)
 }

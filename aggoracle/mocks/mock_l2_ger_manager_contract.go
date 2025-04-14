@@ -144,6 +144,66 @@ func (_c *L2GERManagerContract_FilterUpdateHashChainValue_Call) RunAndReturn(run
 	return _c
 }
 
+// FilterUpdateRemovalHashChainValue provides a mock function with given fields: opts, removedGlobalExitRoot, newRemovalHashChainValue
+func (_m *L2GERManagerContract) FilterUpdateRemovalHashChainValue(opts *bind.FilterOpts, removedGlobalExitRoot [][32]byte, newRemovalHashChainValue [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator, error) {
+	ret := _m.Called(opts, removedGlobalExitRoot, newRemovalHashChainValue)
+
+	if len(ret) == 0 {
+		panic("no return value specified for FilterUpdateRemovalHashChainValue")
+	}
+
+	var r0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator, error)); ok {
+		return rf(opts, removedGlobalExitRoot, newRemovalHashChainValue)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.FilterOpts, [][32]byte, [][32]byte) *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator); ok {
+		r0 = rf(opts, removedGlobalExitRoot, newRemovalHashChainValue)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.FilterOpts, [][32]byte, [][32]byte) error); ok {
+		r1 = rf(opts, removedGlobalExitRoot, newRemovalHashChainValue)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'FilterUpdateRemovalHashChainValue'
+type L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call struct {
+	*mock.Call
+}
+
+// FilterUpdateRemovalHashChainValue is a helper method to define mock.On call
+//   - opts *bind.FilterOpts
+//   - removedGlobalExitRoot [][32]byte
+//   - newRemovalHashChainValue [][32]byte
+func (_e *L2GERManagerContract_Expecter) FilterUpdateRemovalHashChainValue(opts interface{}, removedGlobalExitRoot interface{}, newRemovalHashChainValue interface{}) *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call {
+	return &L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call{Call: _e.mock.On("FilterUpdateRemovalHashChainValue", opts, removedGlobalExitRoot, newRemovalHashChainValue)}
+}
+
+func (_c *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call) Run(run func(opts *bind.FilterOpts, removedGlobalExitRoot [][32]byte, newRemovalHashChainValue [][32]byte)) *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.FilterOpts), args[1].([][32]byte), args[2].([][32]byte))
+	})
+	return _c
+}
+
+func (_c *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call) Return(_a0 *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator, _a1 error) *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call) RunAndReturn(run func(*bind.FilterOpts, [][32]byte, [][32]byte) (*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator, error)) *L2GERManagerContract_FilterUpdateRemovalHashChainValue_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GlobalExitRootMap provides a mock function with given fields: opts, ger
 func (_m *L2GERManagerContract) GlobalExitRootMap(opts *bind.CallOpts, ger [32]byte) (*big.Int, error) {
 	ret := _m.Called(opts, ger)

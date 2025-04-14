@@ -3,9 +3,10 @@
 package mocks
 
 import (
-	context "context"
-
 	chaingerreader "github.com/agglayer/aggkit/aggoracle/chaingerreader"
+	common "github.com/ethereum/go-ethereum/common"
+
+	context "context"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -24,23 +25,23 @@ func (_m *ChainGERReader) EXPECT() *ChainGERReader_Expecter {
 }
 
 // GetInjectedGERsForRange provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *ChainGERReader) GetInjectedGERsForRange(ctx context.Context, fromBlock uint64, toBlock uint64) (map[uint64][]chaingerreader.InjectedGER, error) {
+func (_m *ChainGERReader) GetInjectedGERsForRange(ctx context.Context, fromBlock uint64, toBlock uint64) (map[common.Hash]chaingerreader.InjectedGER, error) {
 	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetInjectedGERsForRange")
 	}
 
-	var r0 map[uint64][]chaingerreader.InjectedGER
+	var r0 map[common.Hash]chaingerreader.InjectedGER
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) (map[uint64][]chaingerreader.InjectedGER, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) (map[common.Hash]chaingerreader.InjectedGER, error)); ok {
 		return rf(ctx, fromBlock, toBlock)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) map[uint64][]chaingerreader.InjectedGER); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) map[common.Hash]chaingerreader.InjectedGER); ok {
 		r0 = rf(ctx, fromBlock, toBlock)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(map[uint64][]chaingerreader.InjectedGER)
+			r0 = ret.Get(0).(map[common.Hash]chaingerreader.InjectedGER)
 		}
 	}
 
@@ -73,12 +74,12 @@ func (_c *ChainGERReader_GetInjectedGERsForRange_Call) Run(run func(ctx context.
 	return _c
 }
 
-func (_c *ChainGERReader_GetInjectedGERsForRange_Call) Return(_a0 map[uint64][]chaingerreader.InjectedGER, _a1 error) *ChainGERReader_GetInjectedGERsForRange_Call {
+func (_c *ChainGERReader_GetInjectedGERsForRange_Call) Return(_a0 map[common.Hash]chaingerreader.InjectedGER, _a1 error) *ChainGERReader_GetInjectedGERsForRange_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *ChainGERReader_GetInjectedGERsForRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) (map[uint64][]chaingerreader.InjectedGER, error)) *ChainGERReader_GetInjectedGERsForRange_Call {
+func (_c *ChainGERReader_GetInjectedGERsForRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) (map[common.Hash]chaingerreader.InjectedGER, error)) *ChainGERReader_GetInjectedGERsForRange_Call {
 	_c.Call.Return(run)
 	return _c
 }

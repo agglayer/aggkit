@@ -63,7 +63,7 @@ type L2BridgeSyncer interface {
 type ChainGERReader interface {
 	GetInjectedGERsForRange(
 		ctx context.Context,
-		fromBlock, toBlock uint64) (map[uint64][]chaingerreader.InjectedGER, error)
+		fromBlock, toBlock uint64) (map[common.Hash]chaingerreader.InjectedGER, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement

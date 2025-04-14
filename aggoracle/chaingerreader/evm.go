@@ -58,12 +58,13 @@ func checkGlobalExitRootManagerContract(l2GERManager types.L2GERManagerContract,
 
 // GetInjectedGERsForRange returns the injected GlobalExitRoots for the given block range
 func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context,
-	fromBlock, toBlock uint64) (map[uint64][]InjectedGER, error) {
+	fromBlock, toBlock uint64) (map[common.Hash]InjectedGER, error) {
 	if fromBlock > toBlock {
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
 
-	iter, err := e.l2GERManager.FilterUpdateHashChainValue(
+	// first get all inserted GERs in the block range
+	insertIter, err := e.l2GERManager.FilterUpdateHashChainValue(
 		&bind.FilterOpts{
 			Context: ctx,
 			Start:   fromBlock,
@@ -74,24 +75,49 @@ func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context,
 		return nil, err
 	}
 
-	injectedGERs := make(map[uint64][]InjectedGER, 0)
+	injectedGERs := make(map[common.Hash]InjectedGER, 0)
 
-	for iter.Next() {
-		if iter.Error() != nil {
-			return nil, iter.Error()
+	for insertIter.Next() {
+		if insertIter.Error() != nil {
+			return nil, insertIter.Error()
 		}
 
-		eventBlockNum := iter.Event.Raw.BlockNumber
-
-		injectedGERs[eventBlockNum] = append(injectedGERs[eventBlockNum], InjectedGER{
-			BlockNumber:    eventBlockNum,
-			BlockIndex:     iter.Event.Raw.Index,
-			GlobalExitRoot: iter.Event.NewGlobalExitRoot,
-		})
+		ger := insertIter.Event.NewGlobalExitRoot
+		injectedGERs[ger] = InjectedGER{
+			BlockNumber:    insertIter.Event.Raw.BlockNumber,
+			BlockIndex:     insertIter.Event.Raw.Index,
+			GlobalExitRoot: ger,
+		}
 	}
 
-	if err = iter.Close(); err != nil {
+	if err = insertIter.Close(); err != nil {
 		log.Errorf("failed to close InsertGlobalExitRoot event iterator: %v", err)
+	}
+
+	// then get all removed GERs in the block range
+	// and remove them from the injectedGERs map
+	removalIter, err := e.l2GERManager.FilterUpdateRemovalHashChainValue(
+		&bind.FilterOpts{
+			Context: ctx,
+			Start:   fromBlock,
+			End:     &toBlock,
+		}, nil, nil)
+	if err != nil {
+		log.Errorf("failed to create RemoveGlobalExitRoot event iterator: %v", err)
+		return nil, err
+	}
+
+	for removalIter.Next() {
+		if removalIter.Error() != nil {
+			return nil, removalIter.Error()
+		}
+
+		ger := removalIter.Event.RemovedGlobalExitRoot
+		delete(injectedGERs, ger)
+	}
+
+	if err = removalIter.Close(); err != nil {
+		log.Errorf("failed to close RemoveGlobalExitRoot event iterator: %v", err)
 	}
 
 	return injectedGERs, nil
