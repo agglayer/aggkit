@@ -7,79 +7,77 @@ on:
 
 jobs:
   build-aggkit-image:
+    name: Build aggkit docker image
     uses: ./.github/workflows/build-aggkit-image.yml
     with:
       go-version: 1.24.x
       docker-image-name: aggkit
 
-  test-e2e:
-    needs: build-aggkit-image
+  build-tools:
+    name: Build aggsender find imported bridge tool
+    needs:
+      - build-aggkit-image
     runs-on: amd-runner-2204
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        e2e-group:
-          - fork12-multi-pessimistic
-
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    - name: Install Go
-      uses: actions/setup-go@v5
-      with:
-        go-version: 1.24.x
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.x
 
-    - name: Build Tools
-      run: make build-tools
+      - name: Build Aggsender Find Imported Bridge
+        run: make build-tools
       
-    - name: Checkout kurtosis-cdk
-      uses: actions/checkout@v4
-      with:
-        repository: 0xPolygon/kurtosis-cdk
-        path: kurtosis-cdk
-        ref: arpit/bridge-service
-    
-    - name: Install Kurtosis CDK tools
-      uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: aggsender_find_imported_bridge
+          path: ./target/aggsender_find_imported_bridge
 
-    - name: Setup Bats and bats libs
-      uses: bats-core/bats-action@2.0.0
-    
-    - name: Download aggkit archive
-      uses: actions/download-artifact@v4
-      with:
-        name: aggkit
-        path: /tmp
-    
-    - name: Load aggkit image
-      run: |
-        docker load --input /tmp/aggkit.tar
-        docker image ls -a
+  read-aggkit-args:
+    name: Read aggkit args
+    runs-on: ubuntu-latest
+    outputs:
+      kurtosis-cdk-args-1: ${{ steps.read-args.outputs.args-1 }}
+      kurtosis-cdk-args-2: ${{ steps.read-args.outputs.args-2 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Run E2E tests
-      run: make test-e2e-fork12-multi-pessimistic
-      working-directory: test
-      env:
-        KURTOSIS_FOLDER: ${{ github.workspace }}/kurtosis-cdk
-        BATS_LIB_PATH: /usr/lib/
-        AGGLAYER_PROVER_SP1_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
-    
-    - name: Dump enclave logs
-      if: failure()
-      run: kurtosis dump ./dump
+      - name: Read kurtosis-cdk-args from file
+        id: read-args
+        run: |
+          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_1.json | jq -c .)
+          echo "args-1=${CONTENT}" >> $GITHUB_OUTPUT
+          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_2.json | jq -c .)
+          echo "args-2=${CONTENT}" >> $GITHUB_OUTPUT
+  
+  test-multi-e2e:
+    name: Multi chains E2E test
+    needs:
+      - build-aggkit-image
+      - build-tools
+      - read-aggkit-args
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@22665185bde0d441089c49ba68cd70ca369cc5d9
+    secrets: inherit
+    with:
+      docker-tag: local
+      kurtosis-cdk-ref: arpit/bridge-service
+      docker-artifact-name: aggkit
+      agglayer-e2e-ref: 22665185bde0d441089c49ba68cd70ca369cc5d9
+      kurtosis-cdk-enclave-name: aggkit
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
+      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
 
-    - name: Generate archive name
-      if: failure()
-      run: |
-        archive_name="dump_run_with_args_${{matrix.e2e-group}}_${{ github.run_id }}"
-        echo "ARCHIVE_NAME=${archive_name}" >> "$GITHUB_ENV"
-        echo "Generated archive name: ${archive_name}"
-
-    - name: Upload logs
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ env.ARCHIVE_NAME }}
-        path: ./dump
+  check-test-multi-e2e-result:
+    name: Check E2E results
+    needs:
+      - test-multi-e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-e2e.result) }}
