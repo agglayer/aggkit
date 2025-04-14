@@ -104,14 +104,6 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
 		}
 
-		if len(bridges) == 0 {
-			// this should never happen, if it does, we need to investigate
-			// (maybe someone deleted the bridge syncer db, so we might need to wait for it to catch up)
-			// just keep return an error here
-			return nil, fmt.Errorf("aggchainProverFlow - we have an InError certificate: %s, "+
-				"but no bridges to resend the same certificate", lastSentCertificateInfo.String())
-		}
-
 		// we need to resend the same certificate
 		buildParams = &types.CertificateBuildParams{
 			FromBlock:           lastSentCertificateInfo.FromBlock,
