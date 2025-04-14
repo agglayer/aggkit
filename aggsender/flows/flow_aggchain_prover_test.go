@@ -712,3 +712,116 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 		})
 	}
 }
+
+func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	createdAt := time.Now().UTC()
+
+	testCases := []struct {
+		name           string
+		mockFn         func(*mocks.L2BridgeSyncer)
+		buildParams    *types.CertificateBuildParams
+		expectedError  string
+		expectedResult *agglayertypes.Certificate
+	}{
+		{
+			name: "error building certificate",
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
+				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(treetypes.Root{}, errors.New("some error"))
+			},
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 1,
+				ToBlock:   10,
+				Bridges:   []bridgesync.Bridge{},
+				Claims:    []bridgesync.Claim{},
+				L1InfoTreeRootFromWhichToProve: &treetypes.Root{
+					Hash:     common.HexToHash("0x1"),
+					BlockNum: 10,
+				},
+			},
+			expectedError: "error building certificate: error getting exit root by index",
+		},
+		{
+			name: "success building certificate",
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
+				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(treetypes.Root{Hash: common.HexToHash("0x1")}, nil)
+				mockL2Syncer.EXPECT().OriginNetwork().Return(uint32(1))
+			},
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 1,
+				ToBlock:   10,
+				Bridges:   []bridgesync.Bridge{},
+				Claims:    []bridgesync.Claim{},
+				CreatedAt: uint32(createdAt.Unix()),
+				L1InfoTreeRootFromWhichToProve: &treetypes.Root{
+					Hash:     common.HexToHash("0x1"),
+					BlockNum: 10,
+				},
+				AggchainProof: &types.AggchainProof{
+					SP1StarkProof: &types.SP1StarkProof{
+						Proof:   []byte("some-proof"),
+						Version: "0.1",
+						Vkey:    []byte("some-vkey"),
+					},
+					LastProvenBlock: 1,
+					EndBlock:        10,
+					CustomChainData: []byte("some-data"),
+					LocalExitRoot:   common.HexToHash("0x1"),
+					AggchainParams:  common.HexToHash("0x2"),
+					Context: map[string][]byte{
+						"key1": []byte("value1"),
+					},
+				},
+			},
+			expectedResult: &agglayertypes.Certificate{
+				NetworkID:           1,
+				Height:              0,
+				NewLocalExitRoot:    common.HexToHash("0x1"),
+				CustomChainData:     []byte("some-data"),
+				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix())).ToHash(),
+				BridgeExits:         []*agglayertypes.BridgeExit{},
+				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
+				PrevLocalExitRoot:   zeroLER,
+				AggchainData: &agglayertypes.AggchainDataProof{
+					Proof:          []byte("some-proof"),
+					Version:        "0.1",
+					Vkey:           []byte("some-vkey"),
+					AggchainParams: common.HexToHash("0x2"),
+					Context: map[string][]byte{
+						"key1": []byte("value1"),
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
+			if tc.mockFn != nil {
+				tc.mockFn(mockL2Syncer)
+			}
+
+			aggchainFlow := &AggchainProverFlow{
+				baseFlow: &baseFlow{
+					log:      log.WithFields("flowManager", "Test_AggchainProverFlow_BuildCertificate"),
+					l2Syncer: mockL2Syncer,
+				},
+			}
+
+			certificate, err := aggchainFlow.BuildCertificate(ctx, tc.buildParams)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, certificate)
+				require.Equal(t, tc.expectedResult, certificate)
+			}
+		})
+	}
+}
