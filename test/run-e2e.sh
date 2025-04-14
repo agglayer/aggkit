@@ -9,7 +9,7 @@ fi
 
 DATA_AVAILABILITY_MODE=$2
 if [ -z $DATA_AVAILABILITY_MODE ]; then
-    echo "Missing DATA_AVAILABILITY_MODE: ['pessimistic', 'sovereign']"
+    echo "Missing DATA_AVAILABILITY_MODE: ['pessimistic', 'op-succint']"
     exit 1
 fi
 
