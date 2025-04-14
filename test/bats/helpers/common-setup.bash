@@ -25,5 +25,6 @@ _common_setup() {
         readonly l2_rpc_url="$(kurtosis port print $enclave $l2_rpc_node rpc)"
     else
         readonly l2_rpc_url="$L2_ETH_RPC_URL"
+        echo "L2 RPC URL: $l2_rpc_url" >&3
     fi
 }
