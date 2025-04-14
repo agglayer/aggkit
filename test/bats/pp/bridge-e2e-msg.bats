@@ -20,6 +20,9 @@ setup() {
     destination_net=${DESTINATION_NET:-"1"}
     destination_addr=${DESTINATION_ADDRESS:-"0x0bb7AA0b4FdC2D2862c088424260e99ed6299148"}
 
+    ether_value=${ETHER_VALUE:-"0.0200000054"}
+    amount=$(cast to-wei $ether_value ether)
+
     readonly native_token_addr=${NATIVE_TOKEN_ADDRESS:-"0x0000000000000000000000000000000000000000"}
     readonly is_forced=${IS_FORCED:-"true"}
     readonly bridge_addr=$BRIDGE_ADDRESS
