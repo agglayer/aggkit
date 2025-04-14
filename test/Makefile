@@ -8,7 +8,7 @@ generate-mocks:
 test-e2e-fork12-pessimistic: stop
 	./run-e2e.sh fork12 pessimistic cdk-erigon-rpc-001
 	export BATS_TEST_TIMEOUT=1800
-	bats bats/pp/bridge-e2e.bats \
+	bats bats/pp/bridge-native-token-e2e.bats \
 	bats/pp/bridge-e2e-msg.bats \
 	bats/pp/e2e-pp.bats
 
@@ -16,7 +16,7 @@ test-e2e-fork12-pessimistic: stop
 test-e2e-fork12-op-succint: stop
 	./run-e2e.sh fork12 op-succint op-el-1-op-geth-op-node-001
 	export BATS_TEST_TIMEOUT=1800 \
-	bats bats/pp/bridge-e2e.bats \
+	bats bats/pp/bridge-native-token-e2e.bats \
 	bats/pp/bridge-e2e-msg.bats \
 	bats/pp/e2e-pp.bats
 

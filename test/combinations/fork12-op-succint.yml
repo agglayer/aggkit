@@ -14,8 +14,8 @@ args:
   aggkit_prover_primary_prover: "network-prover"
   aggkit_prover_sp1_key: "0xbcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31"
   consensus_contract_type: fep
-  gas_token_enabled: true
-  gas_token_address: ''
+  # OP Succint doesn't support the custom gas token functionality
+  gas_token_enabled: false
   # true = mock
   # false = network
   # Using the network provers will use the real SP1 verifier contract which is also deployed together in the Kurtosis devnet.

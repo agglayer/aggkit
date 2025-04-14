@@ -19,20 +19,8 @@ setup() {
     readonly sender_addr="$(cast wallet address --private-key $sender_private_key)"
     destination_net=${DESTINATION_NET:-"1"}
     destination_addr=${DESTINATION_ADDRESS:-"0x0bb7AA0b4FdC2D2862c088424260e99ed6299148"}
-    ether_value=${ETHER_VALUE:-"0.0200000054"}
-    amount=$(cast to-wei $ether_value ether)
+
     readonly native_token_addr=${NATIVE_TOKEN_ADDRESS:-"0x0000000000000000000000000000000000000000"}
-    if [[ -n "$GAS_TOKEN_ADDR" ]]; then
-        echo "Using provided GAS_TOKEN_ADDR: $GAS_TOKEN_ADDR" >&3
-        gas_token_addr="$GAS_TOKEN_ADDR"
-    else
-        echo "GAS_TOKEN_ADDR not provided, retrieving from rollup parameters file." >&3
-        readonly rollup_params_file=/opt/zkevm/create_rollup_parameters.json
-        run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | tail -n +2 | jq -r '.gasTokenAddress'"
-        assert_success
-        assert_output --regexp "0x[a-fA-F0-9]{40}"
-        gas_token_addr=$output
-    fi
     readonly is_forced=${IS_FORCED:-"true"}
     readonly bridge_addr=$BRIDGE_ADDRESS
     readonly meta_bytes=${META_BYTES:-"0x1234"}
@@ -46,7 +34,6 @@ setup() {
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
     readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'WETHToken() (address)')
 }
-
 
 @test "Transfer message" {
     echo "====== bridgeMessage L1 -> L2" >&3
