@@ -659,6 +659,7 @@ func (l *L1InfoTreeLeaf) String() string {
 type ProvenInsertedGERWithBlockNumber struct {
 	BlockNumber           uint64            `json:"block_number"`
 	ProvenInsertedGERLeaf ProvenInsertedGER `json:"inserted_ger_leaf"`
+	BlockIndex            uint              `json:"block_index"`
 }
 
 type ProvenInsertedGER struct {

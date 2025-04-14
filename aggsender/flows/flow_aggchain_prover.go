@@ -205,29 +205,28 @@ func (a *AggchainProverFlow) getInjectedGERsProofs(
 
 	proofs := make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
 
-	for blockNum, gerHashes := range injectedGERs {
-		for _, gerHash := range gerHashes {
-			info, proof, err := a.l1InfoTreeDataQuerier.GetProofForGER(ctx, gerHash, finalizedL1InfoTreeRoot.Hash)
-			if err != nil {
-				return nil, fmt.Errorf("aggchainProverFlow - error getting proof for GER: %s: %w", gerHash.String(), err)
-			}
+	for ger, injectedGER := range injectedGERs {
+		info, proof, err := a.l1InfoTreeDataQuerier.GetProofForGER(ctx, ger, finalizedL1InfoTreeRoot.Hash)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error getting proof for GER: %s: %w", ger.String(), err)
+		}
 
-			proofs[gerHash] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
-				BlockNumber: blockNum,
-				ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
-					ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
-					L1Leaf: &agglayertypes.L1InfoTreeLeaf{
-						L1InfoTreeIndex: info.L1InfoTreeIndex,
-						RollupExitRoot:  info.RollupExitRoot,
-						MainnetExitRoot: info.MainnetExitRoot,
-						Inner: &agglayertypes.L1InfoTreeLeafInner{
-							GlobalExitRoot: info.GlobalExitRoot,
-							BlockHash:      info.PreviousBlockHash,
-							Timestamp:      info.Timestamp,
-						},
+		proofs[ger] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
+			BlockNumber: injectedGER.BlockNumber,
+			BlockIndex:  injectedGER.BlockIndex,
+			ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
+				ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
+				L1Leaf: &agglayertypes.L1InfoTreeLeaf{
+					L1InfoTreeIndex: info.L1InfoTreeIndex,
+					RollupExitRoot:  info.RollupExitRoot,
+					MainnetExitRoot: info.MainnetExitRoot,
+					Inner: &agglayertypes.L1InfoTreeLeafInner{
+						GlobalExitRoot: info.GlobalExitRoot,
+						BlockHash:      info.PreviousBlockHash,
+						Timestamp:      info.Timestamp,
 					},
 				},
-			}
+			},
 		}
 	}
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -60,7 +61,9 @@ type L2BridgeSyncer interface {
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
-	GetInjectedGERsForRange(ctx context.Context, fromBlock, toBlock uint64) (map[uint64][]common.Hash, error)
+	GetInjectedGERsForRange(
+		ctx context.Context,
+		fromBlock, toBlock uint64) (map[common.Hash]chaingerreader.InjectedGER, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement

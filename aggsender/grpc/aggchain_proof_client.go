@@ -96,6 +96,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		}
 		convertedGerLeaves[k.String()] = &aggkitProverV1Proto.ProvenInsertedGERWithBlockNumber{
 			BlockNumber: v.BlockNumber,
+			BlockIndex:  uint64(v.BlockIndex),
 			ProvenInsertedGer: &aggkitProverV1Proto.ProvenInsertedGER{
 				ProofGerL1Root: &agglayerInteropTypesV1Proto.MerkleProof{
 					Root:     &agglayerInteropTypesV1Proto.FixedBytes32{Value: v.ProvenInsertedGERLeaf.ProofGERToL1Root.Root[:]},
