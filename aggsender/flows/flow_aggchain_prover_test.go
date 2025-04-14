@@ -69,22 +69,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			expectedError: "some error",
 		},
 		{
-			name: "resend InError certificate with no bridges",
-			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockProverClient *mocks.AggchainProofClientInterface,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
-				mockChainGERReader *mocks.ChainGERReader) {
-				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{
-					FromBlock: 1,
-					ToBlock:   10,
-					Status:    agglayertypes.InError,
-				}, nil)
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
-			},
-			expectedError: "no bridges to resend the same certificate",
-		},
-		{
 			name: "resend InError certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,

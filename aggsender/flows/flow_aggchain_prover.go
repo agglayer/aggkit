@@ -94,7 +94,11 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		// if the last certificate was in error, we need to resend it
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
 
-		bridges, claims, err := a.getBridgesAndClaims(ctx, lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock)
+		bridges, claims, err := a.getBridgesAndClaims(
+			ctx, lastSentCertificateInfo.FromBlock,
+			lastSentCertificateInfo.ToBlock,
+			true,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
 		}
@@ -121,15 +125,10 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 	if buildParams == nil {
 		// use the old logic, where we build the new certificate
-		buildParams, err = a.baseFlow.getCertificateBuildParamsInternal(ctx)
+		buildParams, err = a.baseFlow.getCertificateBuildParamsInternal(ctx, true)
 		if err != nil {
 			return nil, err
 		}
-	}
-
-	if buildParams.NumberOfBridges() == 0 {
-		// no bridges so no need to build the certificate
-		return nil, nil
 	}
 
 	if err := a.verifyBuildParams(buildParams); err != nil {
@@ -156,14 +155,6 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	buildParams, err = adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
 	if err != nil {
 		return nil, err
-	}
-
-	if buildParams.NumberOfBridges() == 0 {
-		// what can happen is that the aggchain prover returned a different range than the one requested
-		// and the bridges were not in that range, so no need to build the certificate
-		a.log.Infof("no bridges consumed, no need to send a certificate from block: %d to block: %d",
-			buildParams.FromBlock, buildParams.ToBlock)
-		return nil, nil
 	}
 
 	return buildParams, nil

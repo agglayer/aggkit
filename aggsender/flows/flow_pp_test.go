@@ -867,6 +867,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 		name            string
 		fromBlock       uint64
 		toBlock         uint64
+		allowEmptyCert  bool
 		mockFn          func(*mocks.L2BridgeSyncer)
 		expectedBridges []bridgesync.Bridge
 		expectedClaims  []bridgesync.Claim
@@ -938,7 +939,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 
 			tc.mockFn(mockL2Syncer)
 
-			bridges, claims, err := fm.getBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock)
+			bridges, claims, err := fm.getBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock, tc.allowEmptyCert)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
