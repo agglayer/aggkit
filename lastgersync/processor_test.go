@@ -72,8 +72,9 @@ func TestProcessBlock(t *testing.T) {
 					Num: 2,
 					Events: []any{
 						&Event{
-							RemoveGEREvent: &RemoveGEREvent{
+							GEREvent: &GEREvent{
 								GlobalExitRoot: common.HexToHash("0x1234"),
+								IsRemove:       true,
 							},
 						},
 					},
@@ -122,8 +123,9 @@ func TestProcessBlock(t *testing.T) {
 					Num: 6,
 					Events: []any{
 						&Event{
-							RemoveGEREvent: &RemoveGEREvent{
+							GEREvent: &GEREvent{
 								GlobalExitRoot: common.HexToHash("0x9876"),
+								IsRemove:       true,
 							},
 						},
 					},

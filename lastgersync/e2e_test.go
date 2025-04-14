@@ -45,6 +45,7 @@ func TestLastGERSyncE2E(t *testing.T) {
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,
+		lastgersync.FEP,
 	)
 	require.NoError(t, err)
 
@@ -79,6 +80,7 @@ func TestLastGERSync_GERRemoval(t *testing.T) {
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,
+		lastgersync.PP,
 	)
 	require.NoError(t, err)
 

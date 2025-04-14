@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -15,31 +15,24 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/crypto"
-)
-
-var (
-	// event UpdateRemovalHashChainValue(bytes32 indexed removedGlobalExitRoot,	bytes32 indexed newRemovalHashChainValue)
-	removeGEREventSignature = crypto.Keccak256Hash([]byte("UpdateRemovalHashChainValue(bytes32,bytes32)"))
 )
 
 // Event is the combination of the events that are emitted by the L2 GER manager
 type Event struct {
-	GERInfo        *GlobalExitRootInfo
-	RemoveGEREvent *RemoveGEREvent
+	GERInfo  *GlobalExitRootInfo
+	GEREvent *GEREvent
 }
 
-type downloader struct {
+type downloaderFEP struct {
 	*sync.EVMDownloaderImplementation
-	l2GERManager   *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
+	l2GERManager   *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
 	l2GERAddr      common.Address
 	l1InfoTreeSync L1InfoTreeQuerier
 	processor      *processor
 	rh             *sync.RetryHandler
 }
 
-func newDownloader(
+func newDownloaderFEP(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
@@ -47,22 +40,21 @@ func newDownloader(
 	rh *sync.RetryHandler,
 	blockFinality *big.Int,
 	waitForNewBlocksPeriod time.Duration,
-) (*downloader, error) {
-	gerContract, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+) (*downloaderFEP, error) {
+	l2GERManager, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(
 		l2GERAddr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize L2 GER manager contract: %w", err)
 	}
 
-	appender := buildAppender(gerContract)
 	evmDownloader := sync.NewEVMDownloaderImplementation(
 		"lastgersync", l2Client, blockFinality,
-		waitForNewBlocksPeriod, appender, []common.Address{l2GERAddr},
+		waitForNewBlocksPeriod, nil, nil,
 		rh, nil)
 
-	return &downloader{
+	return &downloaderFEP{
 		EVMDownloaderImplementation: evmDownloader,
-		l2GERManager:                gerContract,
+		l2GERManager:                l2GERManager,
 		l2GERAddr:                   l2GERAddr,
 		l1InfoTreeSync:              l1InfoTreeSync,
 		processor:                   processor,
@@ -71,7 +63,7 @@ func newDownloader(
 }
 
 // RuntimeData returns the runtime data: chainID + addresses to query
-func (d *downloader) RuntimeData(ctx context.Context) (sync.RuntimeData, error) {
+func (d *downloaderFEP) RuntimeData(ctx context.Context) (sync.RuntimeData, error) {
 	chainID, err := d.ChainID(ctx)
 	if err != nil {
 		return sync.RuntimeData{}, err
@@ -82,7 +74,7 @@ func (d *downloader) RuntimeData(ctx context.Context) (sync.RuntimeData, error) 
 	}, nil
 }
 
-func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock) {
+func (d *downloaderFEP) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock) {
 	var (
 		attempts            int
 		nextL1InfoTreeIndex uint32
@@ -166,7 +158,8 @@ func (d *downloader) Download(ctx context.Context, fromBlock uint64, downloadedC
 	}
 }
 
-func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex uint32) ([]*GlobalExitRootInfo, error) {
+func (d *downloaderFEP) getGERsFromIndex(
+	ctx context.Context, fromL1InfoTreeIndex uint32) ([]*GlobalExitRootInfo, error) {
 	lastRoot, err := d.l1InfoTreeSync.GetLastL1InfoTreeRoot(ctx)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, nil
@@ -190,7 +183,7 @@ func (d *downloader) getGERsFromIndex(ctx context.Context, fromL1InfoTreeIndex u
 	return gers, nil
 }
 
-func (d *downloader) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*GlobalExitRootInfo) {
+func (d *downloaderFEP) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*GlobalExitRootInfo) {
 	for _, gerInfo := range gerInfos {
 		attempts := 0
 		for {
@@ -214,27 +207,4 @@ func (d *downloader) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*G
 			break
 		}
 	}
-}
-
-// buildAppender creates a log appender for the downloader
-// It parses the logs emitted by the L2 GER manager and populates the block events
-// with the corresponding events.
-func buildAppender(
-	l2GERManager *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain) sync.LogAppenderMap {
-	appender := make(sync.LogAppenderMap)
-
-	appender[removeGEREventSignature] = func(block *sync.EVMBlock, log types.Log) error {
-		removeGEREvent, err := l2GERManager.ParseUpdateRemovalHashChainValue(log)
-		if err != nil {
-			return fmt.Errorf("error parsing UpdateRemovalHashChainValue event log %+v: %w", log, err)
-		}
-
-		block.Events = []any{
-			&Event{
-				RemoveGEREvent: &RemoveGEREvent{GlobalExitRoot: removeGEREvent.RemovedGlobalExitRoot},
-			}}
-		return nil
-	}
-
-	return appender
 }

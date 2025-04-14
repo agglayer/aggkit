@@ -17,10 +17,18 @@ const (
 	reorgDetectorID = "lastGERSyncer"
 )
 
+type SyncMode string
+
+const (
+	FEP SyncMode = "FEP"
+	PP  SyncMode = "PP"
+)
+
 // L1InfoTreeQuerier is abstraction for querying the L1InfoTree data
 type L1InfoTreeQuerier interface {
 	GetLastL1InfoTreeRoot(ctx context.Context) (treetypes.Root, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
 // LastGERSync is responsible for managing GER synchronization.
@@ -43,6 +51,7 @@ func New(
 	waitForNewBlocksPeriod time.Duration,
 	downloadBufferSize int,
 	requireStorageContentCompatibility bool,
+	syncMode SyncMode,
 ) (*LastGERSync, error) {
 	processor, err := newProcessor(dbPath)
 	if err != nil {
@@ -57,15 +66,27 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	downloader, err := newDownloader(
-		l2Client,
-		l2GERManagerAddr,
-		l1InfoTreeSync,
-		processor,
-		rh,
-		bf,
-		waitForNewBlocksPeriod,
-	)
+
+	var downloader sync.Downloader
+
+	switch syncMode {
+	case FEP:
+		downloader, err = newDownloaderFEP(l2Client, l2GERManagerAddr,
+			l1InfoTreeSync, processor,
+			rh, bf, waitForNewBlocksPeriod,
+		)
+
+	case PP:
+		downloader, err = newDownloaderPP(
+			l2Client, l2GERManagerAddr,
+			l1InfoTreeSync, processor,
+			rh, bf, waitForNewBlocksPeriod,
+		)
+
+	default:
+		return nil, fmt.Errorf("unknown sync mode %s provided", syncMode)
+	}
+
 	if err != nil {
 		return nil, err
 	}

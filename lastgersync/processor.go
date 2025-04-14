@@ -16,11 +16,7 @@ import (
 )
 
 const (
-	importedGERTableName = "imported_global_exit_root"
-)
-
-var (
-	deleteGERSql = fmt.Sprintf("DELETE FROM %s WHERE global_exit_root = $1;", importedGERTableName)
+	deleteGERSql = "DELETE FROM imported_global_exit_root WHERE global_exit_root = $1;"
 )
 
 type BlockNum struct {
@@ -38,8 +34,11 @@ type gerInfoWithBlockNum struct {
 	BlockNum        uint64         `meddler:"block_num"`
 }
 
-type RemoveGEREvent struct {
-	GlobalExitRoot ethCommon.Hash `meddler:"removed_global_exit_root,hash"`
+type GEREvent struct {
+	BlockNum        uint64
+	GlobalExitRoot  ethCommon.Hash
+	L1InfoTreeIndex uint32
+	IsRemove        bool
 }
 
 type processor struct {
@@ -86,6 +85,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	if err := meddler.Insert(tx, "block", &BlockNum{Num: block.Num}); err != nil {
 		return err
 	}
+
 	for _, genericEvt := range block.Events {
 		event, ok := genericEvt.(*Event)
 		if !ok {
@@ -98,8 +98,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 
-		case event.RemoveGEREvent != nil:
-			if err := p.handleRemoveGEREvent(tx, event); err != nil {
+		case event.GEREvent != nil:
+			if err := p.handleGEREvent(tx, event.GEREvent); err != nil {
 				return err
 			}
 		}
@@ -120,20 +120,33 @@ func (*processor) handleGERInsertion(tx db.Txer, event *Event, blockNum uint64) 
 		BlockNum:        blockNum,
 	}
 
-	if err := meddler.Insert(tx, importedGERTableName, gerInfoWithBlockNum); err != nil {
+	if err := meddler.Insert(tx, "imported_global_exit_root", gerInfoWithBlockNum); err != nil {
 		return fmt.Errorf("failed to insert GER entry (value=%x, block=%d): %w",
 			event.GERInfo.GlobalExitRoot, blockNum, err)
 	}
 	return nil
 }
 
-// handleRemoveGEREvent removes the global exit root entry from `imported_global_exit_root` table,
-// by the global exit root value
-func (*processor) handleRemoveGEREvent(tx db.Txer, event *Event) error {
-	_, err := tx.Exec(deleteGERSql, event.RemoveGEREvent.GlobalExitRoot.Hex())
-	if err != nil {
-		return fmt.Errorf("failed to remove global exit root %s: %w", event.RemoveGEREvent.GlobalExitRoot.Hex(), err)
+// handleGEREvent either inserts or removes the global exit root entry from `imported_global_exit_root` table,
+func (p *processor) handleGEREvent(tx db.Txer, event *GEREvent) error {
+	if event.IsRemove {
+		_, err := tx.Exec(deleteGERSql, event.GlobalExitRoot.Hex())
+		if err != nil {
+			return fmt.Errorf("failed to remove global exit root %s: %w", event.GlobalExitRoot.Hex(), err)
+		}
+	} else {
+		err := meddler.Insert(tx,
+			"imported_global_exit_root",
+			&gerInfoWithBlockNum{
+				BlockNum:        event.BlockNum,
+				GlobalExitRoot:  event.GlobalExitRoot,
+				L1InfoTreeIndex: event.L1InfoTreeIndex,
+			})
+		if err != nil {
+			return fmt.Errorf("failed to insert global exit root %s: %w", event.GlobalExitRoot.Hex(), err)
+		}
 	}
+
 	return nil
 }
 
@@ -158,8 +171,8 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 func (p *processor) getLatestL1InfoTreeIndex() (uint32, error) {
 	var latestGERInfo GlobalExitRootInfo
 	err := meddler.QueryRow(p.database, &latestGERInfo,
-		fmt.Sprintf(`SELECT l1_info_tree_index FROM %s 
-		ORDER BY l1_info_tree_index DESC LIMIT 1;`, importedGERTableName))
+		`SELECT l1_info_tree_index FROM imported_global_exit_root 
+		ORDER BY l1_info_tree_index DESC LIMIT 1;`)
 	if err != nil {
 		return 0, db.ReturnErrNotFound(err)
 	}

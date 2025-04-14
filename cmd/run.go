@@ -490,10 +490,12 @@ func runLastGERSyncIfNeeded(
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
+		cfg.SyncMode,
 	)
 	if err != nil {
 		log.Fatalf("error creating lastGERSync: %s", err)
 	}
+
 	go func() {
 		if err := lastGERSync.Start(ctx); err != nil {
 			log.Fatalf("lastGERSync failed: %s", err)
