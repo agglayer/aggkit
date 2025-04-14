@@ -27,13 +27,27 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+    
+    # fork12-pessimistic uses the https://github.com/0xPolygon/kurtosis-cdk/tree/feat/aggsender-agglayer-grpc-integration
+    # fork12-sovereign uses the https://github.com/0xPolygon/kurtosis-cdk/tree/jihwan/integrations
+    - name: Set kurtosis-cdk ref
+      id: set-kurtosis-cdk-ref
+      run: |
+        if [[ "${{ matrix.e2e-group }}" == "fork12-pessimistic" ]]; then
+          echo "ref=0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f" >> $GITHUB_OUTPUT
+        elif [[ "${{ matrix.e2e-group }}" == "fork12-sovereign" ]]; then
+          echo "ref=375a35baba1041d9ab66abae6565de02f97f52eb" >> $GITHUB_OUTPUT 
+        else
+          echo "Unknown e2e group" >&2
+          exit 1
+        fi
+
     - name: Checkout kurtosis-cdk
       uses: actions/checkout@v4
       with:
         repository: 0xPolygon/kurtosis-cdk
         path: kurtosis-cdk
-        ref: 375a35baba1041d9ab66abae6565de02f97f52eb # https://github.com/0xPolygon/kurtosis-cdk/tree/jihwan/integrations
+        ref: ${{ steps.set-kurtosis-cdk-ref.outputs.ref }}
     
     - name: Install Kurtosis CDK tools
       uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
