@@ -14,8 +14,10 @@ test-e2e-fork12-pessimistic: stop
 
 .PHONY: test-e2e-fork12-op-succint
 test-e2e-fork12-op-succint: stop
-	./run-e2e.sh fork12 op-succint op-el-1-op-geth-op-node-001
-	export BATS_TEST_TIMEOUT=1800 \
+	L2_ETH_RPC_URL=$$(./run-e2e.sh fork12 op-succint op-el-1-op-geth-op-node-001) && \
+	BATS_TEST_TIMEOUT=1800 \
+	echo "Using L2_ETH_RPC_URL=$$L2_ETH_RPC_URL"
+	L2_ETH_RPC_URL=$$L2_ETH_RPC_URL \
 	bats bats/pp/bridge-native-token-e2e.bats \
 	bats/pp/bridge-e2e-msg.bats \
 	bats/pp/e2e-pp.bats

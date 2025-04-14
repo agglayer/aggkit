@@ -3,13 +3,13 @@ source $(dirname $0)/scripts/env.sh
 
 FORK=$1
 if [ -z $FORK ]; then
-    echo "Missing FORK: [valid values: 'fork12']"
+    echo "Missing FORK parameter: [valid values: 'fork12']"
     exit 1
 fi
 
 DATA_AVAILABILITY_MODE=$2
 if [ -z $DATA_AVAILABILITY_MODE ]; then
-    echo "Missing DATA_AVAILABILITY_MODE: ['pessimistic', 'op-succint']"
+    echo "Missing DATA_AVAILABILITY_MODE parameter: ['pessimistic', 'op-succint']"
     exit 1
 fi
 
@@ -36,7 +36,9 @@ KURTOSIS_CONFIG_FILE="combinations/$FORK-$DATA_AVAILABILITY_MODE.yml"
 TEMP_CONFIG_FILE=$(mktemp "aggkit-kurtosis.yml-XXXXX")
 echo "rendering $KURTOSIS_CONFIG_FILE to temp file $TEMP_CONFIG_FILE"
 go run ../scripts/run_template.go $KURTOSIS_CONFIG_FILE >$TEMP_CONFIG_FILE
-kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file "$TEMP_CONFIG_FILE" --image-download always $KURTOSIS_FOLDER
+kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file "$TEMP_CONFIG_FILE" --image-download always $KURTOSIS_FOLDER &&
+    L2_RPC_URL=$(kurtosis port print $KURTOSIS_ENCLAVE $L2_RPC_NODE_ID rpc)
+
 rm $TEMP_CONFIG_FILE
 
-export L2_ETH_RPC_URL=$(kurtosis port print $KURTOSIS_ENCLAVE $L2_RPC_NODE_ID rpc)
+echo $L2_RPC_URL
