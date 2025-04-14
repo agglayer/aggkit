@@ -750,14 +750,12 @@ func TestSendCertificate(t *testing.T) {
 			expectedError: "error getting certificate build params",
 		},
 		{
-			name: "no consumed bridges",
+			name: "no new blocks consumed",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockFlow *mocks.AggsenderFlow,
 				mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
-					Bridges: []bridgesync.Bridge{},
-				}, nil).Once()
+				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(nil, nil).Once()
 			},
 		},
 		{

@@ -2,6 +2,7 @@ package flows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
@@ -94,17 +95,13 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		// if the last certificate was in error, we need to resend it
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
 
-		bridges, claims, err := a.getBridgesAndClaims(ctx, lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.ToBlock)
+		bridges, claims, err := a.getBridgesAndClaims(
+			ctx, lastSentCertificateInfo.FromBlock,
+			lastSentCertificateInfo.ToBlock,
+			true,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
-		}
-
-		if len(bridges) == 0 {
-			// this should never happen, if it does, we need to investigate
-			// (maybe someone deleted the bridge syncer db, so we might need to wait for it to catch up)
-			// just keep return an error here
-			return nil, fmt.Errorf("aggchainProverFlow - we have an InError certificate: %s, "+
-				"but no bridges to resend the same certificate", lastSentCertificateInfo.String())
 		}
 
 		// we need to resend the same certificate
@@ -121,15 +118,16 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 	if buildParams == nil {
 		// use the old logic, where we build the new certificate
-		buildParams, err = a.baseFlow.getCertificateBuildParamsInternal(ctx)
+		buildParams, err = a.baseFlow.getCertificateBuildParamsInternal(ctx, true)
 		if err != nil {
+			if errors.Is(err, errNoNewBlocks) {
+				// no new blocks to send a certificate
+				// this is a valid case, so just return nil without error
+				return nil, nil
+			}
+
 			return nil, err
 		}
-	}
-
-	if buildParams.NumberOfBridges() == 0 {
-		// no bridges so no need to build the certificate
-		return nil, nil
 	}
 
 	if err := a.verifyBuildParams(buildParams); err != nil {
@@ -158,14 +156,6 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, err
 	}
 
-	if buildParams.NumberOfBridges() == 0 {
-		// what can happen is that the aggchain prover returned a different range than the one requested
-		// and the bridges were not in that range, so no need to build the certificate
-		a.log.Infof("no bridges consumed, no need to send a certificate from block: %d to block: %d",
-			buildParams.FromBlock, buildParams.ToBlock)
-		return nil, nil
-	}
-
 	return buildParams, nil
 }
 
@@ -173,7 +163,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 // this function is the implementation of the FlowManager interface
 func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	cert, err := a.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
+	cert, err := a.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error building certificate: %w", err)
 	}

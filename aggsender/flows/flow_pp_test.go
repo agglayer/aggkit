@@ -682,7 +682,7 @@ func TestBuildCertificate(t *testing.T) {
 				Claims:                         tt.claims,
 				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x7891")},
 			}
-			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificateInfo)
+			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificateInfo, false)
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -867,6 +867,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 		name            string
 		fromBlock       uint64
 		toBlock         uint64
+		allowEmptyCert  bool
 		mockFn          func(*mocks.L2BridgeSyncer)
 		expectedBridges []bridgesync.Bridge
 		expectedClaims  []bridgesync.Claim
@@ -913,6 +914,18 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			expectedClaims:  []bridgesync.Claim{},
 		},
 		{
+			name: "allow empty cert",
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
+				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
+				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
+			},
+			fromBlock:       1,
+			toBlock:         10,
+			allowEmptyCert:  true,
+			expectedBridges: []bridgesync.Bridge{},
+			expectedClaims:  []bridgesync.Claim{},
+		},
+		{
 			name:      "success",
 			fromBlock: 1,
 			toBlock:   10,
@@ -938,7 +951,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 
 			tc.mockFn(mockL2Syncer)
 
-			bridges, claims, err := fm.getBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock)
+			bridges, claims, err := fm.getBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock, tc.allowEmptyCert)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

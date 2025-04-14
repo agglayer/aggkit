@@ -2,6 +2,7 @@ package flows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -44,8 +45,14 @@ func NewPPFlow(log types.Logger,
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	buildParams, err := p.getCertificateBuildParamsInternal(ctx)
+	buildParams, err := p.getCertificateBuildParamsInternal(ctx, false)
 	if err != nil {
+		if errors.Is(err, errNoNewBlocks) {
+			// no new blocks to send a certificate
+			// this is a valid case, so just return nil without error
+			return nil, nil
+		}
+
 		return nil, err
 	}
 
@@ -74,7 +81,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	certificate, err := p.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
+	certificate, err := p.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, false)
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error building certificate: %w", err)
 	}

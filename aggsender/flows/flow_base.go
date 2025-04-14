@@ -19,6 +19,7 @@ import (
 
 var (
 	errNoBridgesAndClaims = errors.New("no bridges and claims to build certificate")
+	errNoNewBlocks        = errors.New("no new blocks to send a certificate")
 
 	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
@@ -40,13 +41,14 @@ type baseFlow struct {
 func (f *baseFlow) getBridgesAndClaims(
 	ctx context.Context,
 	fromBlock, toBlock uint64,
+	allowEmptyCert bool,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
 	bridges, err := f.l2Syncer.GetBridgesPublished(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
 	}
 
-	if len(bridges) == 0 {
+	if len(bridges) == 0 && !allowEmptyCert {
 		f.log.Infof("no bridges consumed, no need to send a certificate from block: %d to block: %d",
 			fromBlock, toBlock)
 		return nil, nil, nil
@@ -61,7 +63,8 @@ func (f *baseFlow) getBridgesAndClaims(
 }
 
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
-func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*types.CertificateBuildParams, error) {
+func (f *baseFlow) getCertificateBuildParamsInternal(
+	ctx context.Context, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -75,15 +78,15 @@ func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*type
 	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificateInfo)
 
 	if previousToBlock >= lastL2BlockSynced {
-		f.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
+		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
 			previousToBlock, lastL2BlockSynced)
-		return nil, nil
+		return nil, errNoNewBlocks
 	}
 
 	fromBlock := previousToBlock + 1
 	toBlock := lastL2BlockSynced
 
-	bridges, claims, err := f.getBridgesAndClaims(ctx, fromBlock, toBlock)
+	bridges, claims, err := f.getBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
 	if err != nil {
 		return nil, err
 	}
@@ -98,12 +101,12 @@ func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context) (*type
 		CreatedAt:           uint32(time.Now().UTC().Unix()),
 	}
 
-	if buildParams.NumberOfBridges() == 0 {
+	if !allowEmptyCert && buildParams.NumberOfBridges() == 0 {
 		// no bridges so no need to build the certificate
 		return nil, nil
 	}
 
-	buildParams, err = f.limitCertSize(buildParams)
+	buildParams, err = f.limitCertSize(buildParams, allowEmptyCert)
 	if err != nil {
 		return nil, fmt.Errorf("error limitCertSize: %w", err)
 	}
@@ -119,29 +122,28 @@ func (f *baseFlow) verifyBuildParams(fullCert *types.CertificateBuildParams) err
 
 // limitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
-func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
+func (f *baseFlow) limitCertSize(
+	fullCert *types.CertificateBuildParams, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
 	currentCert := fullCert
-	var previousCert *types.CertificateBuildParams
 	var err error
-	for {
-		if currentCert.NumberOfBridges() == 0 {
-			// We can't reduce more the certificate, so this is the minium size
-			f.log.Warnf("We reach the minium size of bridge. Certificate size: %d >max size: %d",
-				previousCert.EstimatedSize(), f.maxCertSize)
-			return previousCert, nil
-		}
 
-		if f.maxCertSize == 0 || currentCert.EstimatedSize() < f.maxCertSize {
+	for {
+		if currentCert.NumberOfBridges() == 0 && !allowEmptyCert {
+			f.log.Warnf("Minimum certificate size reached. Estimated size: %d > max size: %d",
+				currentCert.EstimatedSize(), f.maxCertSize)
 			return currentCert, nil
 		}
 
-		// Minimum size of the certificate
+		if f.maxCertSize == 0 || currentCert.EstimatedSize() <= f.maxCertSize {
+			return currentCert, nil
+		}
+
 		if currentCert.NumberOfBlocks() <= 1 {
-			f.log.Warnf("reach the minium num blocks [%d to %d]. Certificate size: %d >max size: %d",
+			f.log.Warnf("Minimum number of blocks reached [%d to %d]. Estimated size: %d > max size: %d",
 				currentCert.FromBlock, currentCert.ToBlock, currentCert.EstimatedSize(), f.maxCertSize)
 			return currentCert, nil
 		}
-		previousCert = currentCert
+
 		currentCert, err = currentCert.Range(currentCert.FromBlock, currentCert.ToBlock-1)
 		if err != nil {
 			return nil, fmt.Errorf("error reducing certificate: %w", err)
@@ -151,10 +153,11 @@ func (f *baseFlow) limitCertSize(fullCert *types.CertificateBuildParams) (*types
 
 func (f *baseFlow) buildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
-	lastSentCertificateInfo *types.CertificateInfo) (*agglayertypes.Certificate, error) {
+	lastSentCertificateInfo *types.CertificateInfo,
+	allowEmptyCert bool) (*agglayertypes.Certificate, error) {
 	f.log.Infof("building certificate for %s estimatedSize=%d", certParams.String(), certParams.EstimatedSize())
 
-	if certParams.IsEmpty() {
+	if !allowEmptyCert && certParams.IsEmpty() {
 		return nil, errNoBridgesAndClaims
 	}
 
