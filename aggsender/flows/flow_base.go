@@ -19,6 +19,7 @@ import (
 
 var (
 	errNoBridgesAndClaims = errors.New("no bridges and claims to build certificate")
+	errNoNewBlocks        = errors.New("no new blocks to send a certificate")
 
 	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
@@ -77,9 +78,9 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificateInfo)
 
 	if previousToBlock >= lastL2BlockSynced {
-		f.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
+		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
 			previousToBlock, lastL2BlockSynced)
-		return nil, nil
+		return nil, errNoNewBlocks
 	}
 
 	fromBlock := previousToBlock + 1
@@ -152,10 +153,11 @@ func (f *baseFlow) limitCertSize(
 
 func (f *baseFlow) buildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
-	lastSentCertificateInfo *types.CertificateInfo) (*agglayertypes.Certificate, error) {
+	lastSentCertificateInfo *types.CertificateInfo,
+	allowEmptyCert bool) (*agglayertypes.Certificate, error) {
 	f.log.Infof("building certificate for %s estimatedSize=%d", certParams.String(), certParams.EstimatedSize())
 
-	if certParams.IsEmpty() {
+	if !allowEmptyCert && certParams.IsEmpty() {
 		return nil, errNoBridgesAndClaims
 	}
 

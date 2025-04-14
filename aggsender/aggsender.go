@@ -283,7 +283,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error getting certificate build params: %w", err)
 	}
 
-	if certificateParams == nil || len(certificateParams.Bridges) == 0 {
+	if certificateParams == nil {
 		return nil, nil
 	}
 

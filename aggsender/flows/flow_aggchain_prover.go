@@ -2,6 +2,7 @@ package flows
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
@@ -127,6 +128,12 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		// use the old logic, where we build the new certificate
 		buildParams, err = a.baseFlow.getCertificateBuildParamsInternal(ctx, true)
 		if err != nil {
+			if errors.Is(err, errNoNewBlocks) {
+				// no new blocks to send a certificate
+				// this is a valid case, so just return nil without error
+				return nil, nil
+			}
+
 			return nil, err
 		}
 	}
@@ -164,7 +171,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 // this function is the implementation of the FlowManager interface
 func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	cert, err := a.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate)
+	cert, err := a.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error building certificate: %w", err)
 	}
