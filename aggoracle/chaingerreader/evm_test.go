@@ -97,6 +97,6 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 		injectedGERs, err := gerReader.GetInjectedGERsForRange(ctx, 1, 10)
 		require.NoError(t, err)
 		require.Len(t, injectedGERs, 1)
-		require.Equal(t, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"), injectedGERs[6][0])
+		require.Equal(t, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"), injectedGERs[6][0].GlobalExitRoot)
 	})
 }

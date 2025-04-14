@@ -8,6 +8,7 @@ import (
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -120,7 +121,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					nil,
 				)
 				mockL1InfoDataQuery.On("CheckIfClaimsArePartOfFinalizedL1InfoTree", mock.Anything, mock.Anything).Return(nil)
-				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
+				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]chaingerreader.InjectedGER{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(0), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
@@ -191,7 +192,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					nil,
 				)
 				mockL1InfoDataQuery.On("CheckIfClaimsArePartOfFinalizedL1InfoTree", mock.Anything, mock.Anything).Return(nil)
-				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
+				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]chaingerreader.InjectedGER{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(0), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
@@ -266,7 +267,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					nil,
 				)
 				mockL1InfoDataQuery.On("CheckIfClaimsArePartOfFinalizedL1InfoTree", mock.Anything, mock.Anything).Return(nil)
-				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
+				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]chaingerreader.InjectedGER{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(0), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
@@ -313,7 +314,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					nil,
 				)
 				mockL1InfoDataQuery.On("CheckIfClaimsArePartOfFinalizedL1InfoTree", mock.Anything, mock.Anything).Return(nil)
-				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(6), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
+				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(6), uint64(10)).Return(map[uint64][]chaingerreader.InjectedGER{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(5), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
@@ -378,7 +379,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					nil,
 				)
 				mockL1InfoDataQuery.On("CheckIfClaimsArePartOfFinalizedL1InfoTree", mock.Anything, mock.Anything).Return(nil)
-				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(6), uint64(10)).Return(map[uint64][]common.Hash{}, nil)
+				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(6), uint64(10)).Return(map[uint64][]chaingerreader.InjectedGER{}, nil)
 				mockProverClient.On("GenerateAggchainProof", uint64(5), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
@@ -479,8 +480,8 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 		{
 			name: "error getting proof for GER",
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
-				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{
-					1: {common.HexToHash("0x1")},
+				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]chaingerreader.InjectedGER{
+					1: {{GlobalExitRoot: common.HexToHash("0x1")}},
 				}, nil)
 				mockL1InfoTreeQuery.On("GetProofForGER", ctx, common.HexToHash("0x1"), common.HexToHash("0x2")).Return(nil, treetypes.Proof{}, errors.New("some error"))
 			},
@@ -489,8 +490,8 @@ func Test_AggchainProverFlow_GetInjectedGERsProofs(t *testing.T) {
 		{
 			name: "success",
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
-				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]common.Hash{
-					111: {common.HexToHash("0x1")},
+				mockChainGERReader.On("GetInjectedGERsForRange", ctx, uint64(1), uint64(10)).Return(map[uint64][]chaingerreader.InjectedGER{
+					111: {{GlobalExitRoot: common.HexToHash("0x1")}},
 				}, nil)
 				mockL1InfoTreeQuery.On("GetProofForGER", ctx, common.HexToHash("0x1"), common.HexToHash("0x2")).Return(
 					&l1infotreesync.L1InfoTreeLeaf{

@@ -206,14 +206,15 @@ func (a *AggchainProverFlow) getInjectedGERsProofs(
 	proofs := make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
 
 	for blockNum, gerHashes := range injectedGERs {
-		for _, gerHash := range gerHashes {
-			info, proof, err := a.l1InfoTreeDataQuerier.GetProofForGER(ctx, gerHash, finalizedL1InfoTreeRoot.Hash)
+		for _, ger := range gerHashes {
+			info, proof, err := a.l1InfoTreeDataQuerier.GetProofForGER(ctx, ger.GlobalExitRoot, finalizedL1InfoTreeRoot.Hash)
 			if err != nil {
-				return nil, fmt.Errorf("aggchainProverFlow - error getting proof for GER: %s: %w", gerHash.String(), err)
+				return nil, fmt.Errorf("aggchainProverFlow - error getting proof for GER: %s: %w", ger.GlobalExitRoot.String(), err)
 			}
 
-			proofs[gerHash] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
+			proofs[ger.GlobalExitRoot] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
 				BlockNumber: blockNum,
+				BlockIndex:  ger.BlockIndex,
 				ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
 					ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
 					L1Leaf: &agglayertypes.L1InfoTreeLeaf{

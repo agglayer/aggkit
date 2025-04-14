@@ -11,6 +11,16 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// InjectedGER is a struct that represents the injected GlobalExitRoot event
+type InjectedGER struct {
+	// BlockNumber is the block number of the event
+	BlockNumber uint64
+	// BlockIndex is the index of the event in the block
+	BlockIndex uint
+	// NewGlobalExitRoot is the new GlobalExitRoot injected
+	GlobalExitRoot common.Hash
+}
+
 // EVMChainGERReader is a component used to read GlobalExitRootManager L2 contract
 type EVMChainGERReader struct {
 	l2GERManager types.L2GERManagerContract
@@ -48,7 +58,7 @@ func checkGlobalExitRootManagerContract(l2GERManager types.L2GERManagerContract,
 
 // GetInjectedGERsForRange returns the injected GlobalExitRoots for the given block range
 func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context,
-	fromBlock, toBlock uint64) (map[uint64][]common.Hash, error) {
+	fromBlock, toBlock uint64) (map[uint64][]InjectedGER, error) {
 	if fromBlock > toBlock {
 		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
 	}
@@ -64,7 +74,7 @@ func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context,
 		return nil, err
 	}
 
-	injectedGERs := make(map[uint64][]common.Hash, 0)
+	injectedGERs := make(map[uint64][]InjectedGER, 0)
 
 	for iter.Next() {
 		if iter.Error() != nil {
@@ -73,7 +83,11 @@ func (e *EVMChainGERReader) GetInjectedGERsForRange(ctx context.Context,
 
 		eventBlockNum := iter.Event.Raw.BlockNumber
 
-		injectedGERs[eventBlockNum] = append(injectedGERs[eventBlockNum], iter.Event.NewGlobalExitRoot)
+		injectedGERs[eventBlockNum] = append(injectedGERs[eventBlockNum], InjectedGER{
+			BlockNumber:    eventBlockNum,
+			BlockIndex:     iter.Event.Raw.Index,
+			GlobalExitRoot: iter.Event.NewGlobalExitRoot,
+		})
 	}
 
 	if err = iter.Close(); err != nil {
