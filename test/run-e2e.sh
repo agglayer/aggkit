@@ -13,8 +13,14 @@ if [ -z $DATA_AVAILABILITY_MODE ]; then
     exit 1
 fi
 
+L2_RPC_NODE_ID=$3
+if [ -z $L2_RPC_NODE_ID ]; then
+    echo "Missing L2_RPC_NODE_ID parameter"
+    exit 1
+fi
+
 BASE_FOLDER=$(dirname $0)
-if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ] ; then
+if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ]; then
     echo "Building aggkit:local docker image"
     pushd $BASE_FOLDER/..
     make build-docker
@@ -29,6 +35,8 @@ cp $BASE_FOLDER/config/kurtosis-cdk-node-config.toml.template $KURTOSIS_FOLDER/t
 KURTOSIS_CONFIG_FILE="combinations/$FORK-$DATA_AVAILABILITY_MODE.yml"
 TEMP_CONFIG_FILE=$(mktemp "aggkit-kurtosis.yml-XXXXX")
 echo "rendering $KURTOSIS_CONFIG_FILE to temp file $TEMP_CONFIG_FILE"
-go run ../scripts/run_template.go $KURTOSIS_CONFIG_FILE > $TEMP_CONFIG_FILE
+go run ../scripts/run_template.go $KURTOSIS_CONFIG_FILE >$TEMP_CONFIG_FILE
 kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file "$TEMP_CONFIG_FILE" --image-download always $KURTOSIS_FOLDER
 rm $TEMP_CONFIG_FILE
+
+export L2_ETH_RPC_URL=$(kurtosis port print $KURTOSIS_ENCLAVE $L2_RPC_NODE_ID rpc)
