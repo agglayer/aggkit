@@ -166,21 +166,14 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("error getting imported bridge exits: %w", err)
 	}
 
-	depositCount := certParams.MaxDepositCount()
-
-	exitRoot, err := f.l2Syncer.GetExitRootByIndexAndBlockNumber(ctx, depositCount, certParams.ToBlock)
-	if err != nil {
-		return nil, fmt.Errorf("error getting exit root by index: %d. Error: %w", depositCount, err)
-	}
-
-	newLER := zeroLER
-	if exitRoot != nil {
-		newLER = exitRoot.Hash
-	}
-
 	height, previousLER, err := f.getNextHeightAndPreviousLER(lastSentCertificateInfo)
 	if err != nil {
 		return nil, fmt.Errorf("error getting next height and previous LER: %w", err)
+	}
+
+	newLER, err := f.getNewLocalExitRoot(ctx, certParams.MaxDepositCount(), certParams.ToBlock, previousLER)
+	if err != nil {
+		return nil, fmt.Errorf("error getting new local exit root: %w", err)
 	}
 
 	meta := types.NewCertificateMetadata(
@@ -198,6 +191,26 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		Height:              height,
 		Metadata:            meta.ToHash(),
 	}, nil
+}
+
+// getNewLocalExitRoot gets the new local exit root for the certificate
+func (f *baseFlow) getNewLocalExitRoot(
+	ctx context.Context,
+	index uint32,
+	toBlock uint64,
+	previousLER common.Hash) (common.Hash, error) {
+	exitRoot, err := f.l2Syncer.GetExitRootByIndexAndBlockNumber(ctx, index, toBlock)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("error getting exit root by index: %d. Error: %w", 0, err)
+	}
+	if exitRoot == nil {
+		// no ler for this index and block,
+		// means that the ceritifcate is empty,
+		// so no change in LER happened
+		return previousLER, nil
+	}
+
+	return exitRoot.Hash, nil
 }
 
 // createCertificateMetadata creates the metadata for the certificate

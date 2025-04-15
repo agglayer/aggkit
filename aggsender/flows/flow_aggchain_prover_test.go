@@ -651,7 +651,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				Claims:                         []bridgesync.Claim{},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 			},
-			expectedError: "error building certificate: error getting exit root by index",
+			expectedError: "error getting exit root by index",
 		},
 		{
 			name: "success building certificate",
