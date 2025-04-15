@@ -21,11 +21,10 @@ _common_setup() {
     readonly contracts_container=${KURTOSIS_CONTRACTS:-contracts-001}
     readonly contracts_service_wrapper=${KURTOSIS_CONTRACTS_WRAPPER:-"kurtosis service exec $enclave $contracts_container"}
     if [[ -z "$L2_ETH_RPC_URL" ]]; then
-        echo "L2_ETH_RPC_URL not provided ($L2_ETH_RPC_URL)" >&3
         readonly l2_rpc_node=${L2_RPC_NODE:-cdk-erigon-rpc-001}
+        echo "L2_ETH_RPC_URL not provided, resolving it from Kurtosis environment (L2_RPC_NODE: $l2_rpc_node)" >&3
         readonly l2_rpc_url="$(kurtosis port print $enclave $l2_rpc_node rpc)"
     else
         readonly l2_rpc_url="$L2_ETH_RPC_URL"
-        echo "L2 RPC URL: $l2_rpc_url" >&3
     fi
 }
