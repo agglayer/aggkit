@@ -239,7 +239,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 						a.log.Error(err)
 					}
 				} else {
-					a.log.Infof("An InError cert exists but skipping send cert because RetryCertInmediatlyAfterInError is false")
+					a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
 				}
 			}
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {

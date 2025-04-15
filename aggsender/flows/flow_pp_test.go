@@ -590,9 +590,9 @@ func TestBuildCertificate(t *testing.T) {
 				Height: 2,
 			},
 			mockFn: func() {
-				mockL2BridgeSyncer.On("OriginNetwork").Return(uint32(1))
-				mockL2BridgeSyncer.On("GetExitRootByIndex", mock.Anything, mock.Anything).Return(treetypes.Root{Hash: common.HexToHash("0x789")}, nil)
-				mockL1InfoTreeQuery.On("GetProofForGER", mock.Anything, mock.Anything, mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
+				mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1))
+				mockL2BridgeSyncer.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).Return(treetypes.Root{Hash: common.HexToHash("0x789")}, nil)
+				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
 					L1InfoTreeIndex:   1,
 					Timestamp:         123456789,
 					PreviousBlockHash: common.HexToHash("0xabc"),
@@ -647,7 +647,7 @@ func TestBuildCertificate(t *testing.T) {
 				Height:           1,
 			},
 			mockFn: func() {
-				mockL1InfoTreeQuery.On("GetProofForGER", mock.Anything, mock.Anything, mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
+				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
 					L1InfoTreeIndex:   1,
 					Timestamp:         123456789,
 					PreviousBlockHash: common.HexToHash("0xabc"),
