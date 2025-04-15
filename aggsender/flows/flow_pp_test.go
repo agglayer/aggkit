@@ -458,7 +458,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 				l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
 				log:                   log.WithFields("test", "unittest"),
 			}
-			exits, err := flow.getImportedBridgeExits(context.Background(), tt.claims, &treetypes.Root{Hash: common.HexToHash("0x7891")})
+			exits, err := flow.getImportedBridgeExits(context.Background(), tt.claims, common.HexToHash("0x7891"))
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -680,7 +680,7 @@ func TestBuildCertificate(t *testing.T) {
 				ToBlock:                        tt.toBlock,
 				Bridges:                        tt.bridges,
 				Claims:                         tt.claims,
-				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x7891")},
+				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x7891"),
 			}
 			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificateInfo, false)
 
@@ -1080,7 +1080,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					}},
 				CreatedAt:                      uint32(time.Now().UTC().Unix()),
-				L1InfoTreeRootFromWhichToProve: &treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10},
+				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
 			},
 		},
 	}

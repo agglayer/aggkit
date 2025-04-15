@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/bridgesync"
-	treetypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
@@ -22,7 +22,7 @@ type CertificateBuildParams struct {
 	CreatedAt                      uint32
 	RetryCount                     int
 	LastSentCertificate            *CertificateInfo
-	L1InfoTreeRootFromWhichToProve *treetypes.Root
+	L1InfoTreeRootFromWhichToProve common.Hash
 	AggchainProof                  *AggchainProof
 }
 

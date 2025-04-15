@@ -87,10 +87,6 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
 
-	var (
-		buildParams *types.CertificateBuildParams
-	)
-
 	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayertypes.InError {
 		// if the last certificate was in error, we need to resend it
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
@@ -104,30 +100,28 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
 		}
 
-		// we need to resend the same certificate
-		buildParams = &types.CertificateBuildParams{
-			FromBlock:           lastSentCertificateInfo.FromBlock,
-			ToBlock:             lastSentCertificateInfo.ToBlock,
-			RetryCount:          lastSentCertificateInfo.RetryCount + 1,
-			Bridges:             bridges,
-			Claims:              claims,
-			LastSentCertificate: lastSentCertificateInfo,
-			CreatedAt:           lastSentCertificateInfo.CreatedAt,
-		}
+		return &types.CertificateBuildParams{
+			FromBlock:                      lastSentCertificateInfo.FromBlock,
+			ToBlock:                        lastSentCertificateInfo.ToBlock,
+			RetryCount:                     lastSentCertificateInfo.RetryCount + 1,
+			Bridges:                        bridges,
+			Claims:                         claims,
+			LastSentCertificate:            lastSentCertificateInfo,
+			CreatedAt:                      lastSentCertificateInfo.CreatedAt,
+			AggchainProof:                  lastSentCertificateInfo.AggchainProof,
+			L1InfoTreeRootFromWhichToProve: *lastSentCertificateInfo.FinalizedL1InfoTreeRoot,
+		}, nil
 	}
 
-	if buildParams == nil {
-		// use the old logic, where we build the new certificate
-		buildParams, err = a.baseFlow.getCertificateBuildParamsInternal(ctx, true)
-		if err != nil {
-			if errors.Is(err, errNoNewBlocks) {
-				// no new blocks to send a certificate
-				// this is a valid case, so just return nil without error
-				return nil, nil
-			}
-
-			return nil, err
+	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true)
+	if err != nil {
+		if errors.Is(err, errNoNewBlocks) {
+			// no new blocks to send a certificate
+			// this is a valid case, so just return nil without error
+			return nil, nil
 		}
+
+		return nil, err
 	}
 
 	if err := a.verifyBuildParams(buildParams); err != nil {
@@ -148,7 +142,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 	// set the root from which to generate merkle proofs for each claim
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
-	buildParams.L1InfoTreeRootFromWhichToProve = rootFromWhichToProveClaims
+	buildParams.L1InfoTreeRootFromWhichToProve = rootFromWhichToProveClaims.Hash
 	buildParams.AggchainProof = aggchainProof
 
 	buildParams, err = adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
