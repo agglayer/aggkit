@@ -591,7 +591,7 @@ func TestBuildCertificate(t *testing.T) {
 			},
 			mockFn: func() {
 				mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1))
-				mockL2BridgeSyncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, mock.Anything, uint64(10)).Return(&treetypes.Root{Hash: common.HexToHash("0x789")}, nil)
+				mockL2BridgeSyncer.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).Return(treetypes.Root{Hash: common.HexToHash("0x789")}, nil)
 				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
 					L1InfoTreeIndex:   1,
 					Timestamp:         123456789,

@@ -213,24 +213,6 @@ func (t *Tree) GetRootByIndex(ctx context.Context, index uint32) (types.Root, er
 	return root, nil
 }
 
-// GetRootByIndexAndBlockNum returns the root associated to the index and block number
-func (t *Tree) GetRootByIndexAndBlockNum(ctx context.Context, index uint32, blockNum uint64) (*types.Root, error) {
-	var root types.Root
-	err := meddler.QueryRow(
-		t.db, &root,
-		fmt.Sprintf(`SELECT * FROM %s WHERE position = $1 AND block_num <= $2
-			ORDER BY block_num DESC, block_position DESC LIMIT 1;`, t.rootTable),
-		index, blockNum,
-	)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, db.ErrNotFound
-		}
-		return nil, err
-	}
-	return &root, nil
-}
-
 // GetRootByHash returns the root associated to the hash
 func (t *Tree) GetRootByHash(ctx context.Context, hash common.Hash) (*types.Root, error) {
 	var root types.Root

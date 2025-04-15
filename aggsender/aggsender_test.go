@@ -486,7 +486,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		},
 	}, nil)
 	mockL2Syncer.EXPECT().GetClaims(mock.Anything, uint64(11), uint64(50)).Return([]bridgesync.Claim{}, nil)
-	mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, uint32(1), uint64(50)).Return(&treetypes.Root{}, nil).Once()
+	mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, uint32(1)).Return(treetypes.Root{}, nil).Once()
 	mockL2Syncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
 	mockAggLayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.Hash{}, nil).Once()
 
@@ -886,7 +886,7 @@ func TestLimitEpochPercent_Greater(t *testing.T) {
 	}, nil).Once()
 	testData.l2syncerMock.EXPECT().GetBridgesPublished(ctx, uint64(21), uint64(100)).Return(NewBridgesData(t, 0, []uint64{21, 21, 21, 22, 22, 22}), nil).Once()
 	testData.l2syncerMock.EXPECT().GetClaims(ctx, uint64(21), uint64(100)).Return(nil, nil).Once()
-	testData.l2syncerMock.EXPECT().GetExitRootByIndexAndBlockNumber(ctx, mock.Anything, uint64(100)).Return(&treetypes.Root{}, nil).Once()
+	testData.l2syncerMock.EXPECT().GetExitRootByIndex(ctx, mock.Anything).Return(treetypes.Root{}, nil).Once()
 	testData.l2syncerMock.EXPECT().OriginNetwork().Return(uint32(1)).Once()
 	testData.epochNotifierMock.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{
 		Epoch:        1,

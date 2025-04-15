@@ -169,8 +169,8 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			previousLER: common.HexToHash("0x123"),
 			expectedLER: common.HexToHash("0x456"),
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, mock.Anything, uint64(10)).
-					Return(&treetypes.Root{Hash: common.HexToHash("0x456")}, nil)
+				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
+					Return(treetypes.Root{Hash: common.HexToHash("0x456")}, nil)
 			},
 		},
 		{
@@ -181,10 +181,10 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			},
 			previousLER:   common.HexToHash("0x123"),
 			expectedLER:   common.HexToHash("0x123"),
-			expectedError: "",
+			expectedError: "not found",
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, mock.Anything, uint64(10)).
-					Return(nil, db.ErrNotFound)
+				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
+					Return(treetypes.Root{}, db.ErrNotFound)
 			},
 		},
 		{
@@ -197,8 +197,8 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			expectedLER:   common.Hash{},
 			expectedError: "error getting exit root by index: 0. Error: unexpected error",
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, mock.Anything, uint64(10)).
-					Return(nil, errors.New("unexpected error"))
+				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
+					Return(treetypes.Root{}, errors.New("unexpected error"))
 			},
 		},
 	}

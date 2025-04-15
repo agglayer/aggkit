@@ -250,29 +250,27 @@ func (_c *L2BridgeSyncer_GetClaims_Call) RunAndReturn(run func(context.Context, 
 	return _c
 }
 
-// GetExitRootByIndexAndBlockNumber provides a mock function with given fields: ctx, index, blockNum
-func (_m *L2BridgeSyncer) GetExitRootByIndexAndBlockNumber(ctx context.Context, index uint32, blockNum uint64) (*treetypes.Root, error) {
-	ret := _m.Called(ctx, index, blockNum)
+// GetExitRootByIndex provides a mock function with given fields: ctx, index
+func (_m *L2BridgeSyncer) GetExitRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error) {
+	ret := _m.Called(ctx, index)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetExitRootByIndexAndBlockNumber")
+		panic("no return value specified for GetExitRootByIndex")
 	}
 
-	var r0 *treetypes.Root
+	var r0 treetypes.Root
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint64) (*treetypes.Root, error)); ok {
-		return rf(ctx, index, blockNum)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) (treetypes.Root, error)); ok {
+		return rf(ctx, index)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint64) *treetypes.Root); ok {
-		r0 = rf(ctx, index, blockNum)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) treetypes.Root); ok {
+		r0 = rf(ctx, index)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*treetypes.Root)
-		}
+		r0 = ret.Get(0).(treetypes.Root)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint64) error); ok {
-		r1 = rf(ctx, index, blockNum)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32) error); ok {
+		r1 = rf(ctx, index)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -280,32 +278,31 @@ func (_m *L2BridgeSyncer) GetExitRootByIndexAndBlockNumber(ctx context.Context, 
 	return r0, r1
 }
 
-// L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetExitRootByIndexAndBlockNumber'
-type L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call struct {
+// L2BridgeSyncer_GetExitRootByIndex_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetExitRootByIndex'
+type L2BridgeSyncer_GetExitRootByIndex_Call struct {
 	*mock.Call
 }
 
-// GetExitRootByIndexAndBlockNumber is a helper method to define mock.On call
+// GetExitRootByIndex is a helper method to define mock.On call
 //   - ctx context.Context
 //   - index uint32
-//   - blockNum uint64
-func (_e *L2BridgeSyncer_Expecter) GetExitRootByIndexAndBlockNumber(ctx interface{}, index interface{}, blockNum interface{}) *L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call {
-	return &L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call{Call: _e.mock.On("GetExitRootByIndexAndBlockNumber", ctx, index, blockNum)}
+func (_e *L2BridgeSyncer_Expecter) GetExitRootByIndex(ctx interface{}, index interface{}) *L2BridgeSyncer_GetExitRootByIndex_Call {
+	return &L2BridgeSyncer_GetExitRootByIndex_Call{Call: _e.mock.On("GetExitRootByIndex", ctx, index)}
 }
 
-func (_c *L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call) Run(run func(ctx context.Context, index uint32, blockNum uint64)) *L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call {
+func (_c *L2BridgeSyncer_GetExitRootByIndex_Call) Run(run func(ctx context.Context, index uint32)) *L2BridgeSyncer_GetExitRootByIndex_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32), args[2].(uint64))
+		run(args[0].(context.Context), args[1].(uint32))
 	})
 	return _c
 }
 
-func (_c *L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call) Return(_a0 *treetypes.Root, _a1 error) *L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call {
+func (_c *L2BridgeSyncer_GetExitRootByIndex_Call) Return(_a0 treetypes.Root, _a1 error) *L2BridgeSyncer_GetExitRootByIndex_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call) RunAndReturn(run func(context.Context, uint32, uint64) (*treetypes.Root, error)) *L2BridgeSyncer_GetExitRootByIndexAndBlockNumber_Call {
+func (_c *L2BridgeSyncer_GetExitRootByIndex_Call) RunAndReturn(run func(context.Context, uint32) (treetypes.Root, error)) *L2BridgeSyncer_GetExitRootByIndex_Call {
 	_c.Call.Return(run)
 	return _c
 }
