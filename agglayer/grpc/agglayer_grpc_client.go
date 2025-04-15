@@ -101,6 +101,9 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 	protoCert := &v1nodetypes.Certificate{
 		NetworkId: certificate.NetworkID,
 		Height:    certificate.Height,
+		L1InfoRoot: &v1types.FixedBytes32{
+			Value: certificate.L1InfoRoot.Bytes(),
+		},
 		PrevLocalExitRoot: &v1types.FixedBytes32{
 			Value: certificate.PrevLocalExitRoot.Bytes(),
 		},

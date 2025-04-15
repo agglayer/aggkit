@@ -690,6 +690,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				BridgeExits:         []*agglayertypes.BridgeExit{},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
 				PrevLocalExitRoot:   zeroLER,
+				L1InfoRoot:          common.HexToHash("0x1"),
 				AggchainData: &agglayertypes.AggchainDataProof{
 					Proof:          []byte("some-proof"),
 					Version:        "0.1",
