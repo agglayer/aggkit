@@ -296,6 +296,16 @@ func (s *BridgeSync) GetExitRootByIndex(ctx context.Context, index uint32) (tree
 	return s.processor.exitTree.GetRootByIndex(ctx, index)
 }
 
+// GetExitRootByIndexAndBlockNumber returns the root of the exit tree related to the given index
+// which was added no later than the given block number
+func (s *BridgeSync) GetExitRootByIndexAndBlockNumber(ctx context.Context, index uint32, blockNum uint64) (*tree.Root, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+
+	return s.processor.exitTree.GetRootByIndexAndBlockNum(ctx, index, blockNum)
+}
+
 // OriginNetwork returns the network ID of the origin chain
 func (s *BridgeSync) OriginNetwork() uint32 {
 	return s.originNetwork

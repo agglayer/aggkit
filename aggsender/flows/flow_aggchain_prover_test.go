@@ -642,7 +642,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		{
 			name: "error building certificate",
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(treetypes.Root{}, errors.New("some error"))
+				mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, uint32(0), uint64(10)).Return(nil, errors.New("some error"))
 			},
 			buildParams: &types.CertificateBuildParams{
 				FromBlock:                      1,
@@ -656,7 +656,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		{
 			name: "success building certificate",
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(treetypes.Root{Hash: common.HexToHash("0x1")}, nil)
+				mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, uint32(0), uint64(10)).Return(&treetypes.Root{Hash: common.HexToHash("0x1")}, nil)
 				mockL2Syncer.EXPECT().OriginNetwork().Return(uint32(1))
 			},
 			buildParams: &types.CertificateBuildParams{

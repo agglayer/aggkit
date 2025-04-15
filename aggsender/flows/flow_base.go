@@ -168,9 +168,14 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 
 	depositCount := certParams.MaxDepositCount()
 
-	exitRoot, err := f.l2Syncer.GetExitRootByIndex(ctx, depositCount)
+	exitRoot, err := f.l2Syncer.GetExitRootByIndexAndBlockNumber(ctx, depositCount, certParams.ToBlock)
 	if err != nil {
 		return nil, fmt.Errorf("error getting exit root by index: %d. Error: %w", depositCount, err)
+	}
+
+	newLER := zeroLER
+	if exitRoot != nil {
+		newLER = exitRoot.Hash
 	}
 
 	height, previousLER, err := f.getNextHeightAndPreviousLER(lastSentCertificateInfo)
@@ -187,7 +192,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 	return &agglayertypes.Certificate{
 		NetworkID:           f.l2Syncer.OriginNetwork(),
 		PrevLocalExitRoot:   previousLER,
-		NewLocalExitRoot:    exitRoot.Hash,
+		NewLocalExitRoot:    newLER,
 		BridgeExits:         bridgeExits,
 		ImportedBridgeExits: importedBridgeExits,
 		Height:              height,
