@@ -2,7 +2,7 @@ package flows
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"testing"
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
@@ -141,56 +141,84 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 }
 
 func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
-		name          string
-		index         uint32
-		toBlock       uint64
-		previousLER   common.Hash
-		mockExitRoot  *treetypes.Root
-		mockError     error
-		expectedLER   common.Hash
-		expectedError string
+		name            string
+		certParams      *types.CertificateBuildParams
+		mockFn          func(mockL2Syncer *mocks.L2BridgeSyncer)
+		previousLER     common.Hash
+		expectedLER     common.Hash
+		expectedError   string
+		numberOfBridges int
 	}{
 		{
-			name:        "successful retrieval of new LER",
-			index:       1,
-			toBlock:     100,
-			previousLER: common.HexToHash("0x123"),
-			mockExitRoot: &treetypes.Root{
-				Hash: common.HexToHash("0x456"),
+			name: "no bridges, return previous LER",
+			certParams: &types.CertificateBuildParams{
+				Bridges: []bridgesync.Bridge{},
 			},
+			previousLER: common.HexToHash("0x123"),
+			expectedLER: common.HexToHash("0x123"),
+		},
+		{
+			name: "exit root found, return new exit root",
+			certParams: &types.CertificateBuildParams{
+				Bridges: []bridgesync.Bridge{{}, {}},
+				ToBlock: 10,
+			},
+			previousLER: common.HexToHash("0x123"),
 			expectedLER: common.HexToHash("0x456"),
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
+				mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, mock.Anything, uint64(10)).
+					Return(&treetypes.Root{Hash: common.HexToHash("0x456")}, nil)
+			},
 		},
 		{
-			name:          "error retrieving exit root",
-			index:         1,
-			toBlock:       100,
+			name: "exit root not found, return previous LER",
+			certParams: &types.CertificateBuildParams{
+				Bridges: []bridgesync.Bridge{{}, {}},
+				ToBlock: 10,
+			},
 			previousLER:   common.HexToHash("0x123"),
-			mockError:     fmt.Errorf("mock error"),
-			expectedError: "error getting exit root by index: 0. Error: mock error",
+			expectedLER:   common.HexToHash("0x123"),
+			expectedError: "",
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
+				mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, mock.Anything, uint64(10)).
+					Return(nil, db.ErrNotFound)
+			},
 		},
 		{
-			name:         "no exit root, return previous LER",
-			index:        1,
-			toBlock:      100,
-			previousLER:  common.HexToHash("0x123"),
-			mockExitRoot: nil,
-			mockError:    db.ErrNotFound,
-			expectedLER:  common.HexToHash("0x123"),
+			name: "error fetching exit root, return error",
+			certParams: &types.CertificateBuildParams{
+				Bridges: []bridgesync.Bridge{{}, {}},
+				ToBlock: 10,
+			},
+			previousLER:   common.HexToHash("0x123"),
+			expectedLER:   common.Hash{},
+			expectedError: "error getting exit root by index: 0. Error: unexpected error",
+			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
+				mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, mock.Anything, uint64(10)).
+					Return(nil, errors.New("unexpected error"))
+			},
 		},
 	}
 
 	for _, tt := range tests {
+		tt := tt
+
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-			mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, tt.index, tt.toBlock).
-				Return(tt.mockExitRoot, tt.mockError)
+			if tt.mockFn != nil {
+				tt.mockFn(mockL2Syncer)
+			}
 
 			f := &baseFlow{
 				l2Syncer: mockL2Syncer,
 			}
 
-			result, err := f.getNewLocalExitRoot(context.Background(), tt.index, tt.toBlock, tt.previousLER)
+			result, err := f.getNewLocalExitRoot(context.Background(), tt.certParams, tt.previousLER)
 
 			if tt.expectedError != "" {
 				require.Error(t, err)

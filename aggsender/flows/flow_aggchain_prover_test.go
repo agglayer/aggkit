@@ -647,7 +647,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			buildParams: &types.CertificateBuildParams{
 				FromBlock:                      1,
 				ToBlock:                        10,
-				Bridges:                        []bridgesync.Bridge{},
+				Bridges:                        []bridgesync.Bridge{{}},
 				Claims:                         []bridgesync.Claim{},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 			},
@@ -656,7 +656,6 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		{
 			name: "success building certificate",
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetExitRootByIndexAndBlockNumber(mock.Anything, uint32(0), uint64(10)).Return(&treetypes.Root{Hash: common.HexToHash("0x1")}, nil)
 				mockL2Syncer.EXPECT().OriginNetwork().Return(uint32(1))
 			},
 			buildParams: &types.CertificateBuildParams{
@@ -685,7 +684,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			expectedResult: &agglayertypes.Certificate{
 				NetworkID:           1,
 				Height:              0,
-				NewLocalExitRoot:    common.HexToHash("0x1"),
+				NewLocalExitRoot:    zeroLER,
 				CustomChainData:     []byte("some-data"),
 				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix())).ToHash(),
 				BridgeExits:         []*agglayertypes.BridgeExit{},

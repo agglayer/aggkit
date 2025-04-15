@@ -172,7 +172,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("error getting next height and previous LER: %w", err)
 	}
 
-	newLER, err := f.getNewLocalExitRoot(ctx, certParams.MaxDepositCount(), certParams.ToBlock, previousLER)
+	newLER, err := f.getNewLocalExitRoot(ctx, certParams, previousLER)
 	if err != nil {
 		return nil, fmt.Errorf("error getting new local exit root: %w", err)
 	}
@@ -197,10 +197,15 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 // getNewLocalExitRoot gets the new local exit root for the certificate
 func (f *baseFlow) getNewLocalExitRoot(
 	ctx context.Context,
-	index uint32,
-	toBlock uint64,
+	certParams *types.CertificateBuildParams,
 	previousLER common.Hash) (common.Hash, error) {
-	exitRoot, err := f.l2Syncer.GetExitRootByIndexAndBlockNumber(ctx, index, toBlock)
+	if certParams.NumberOfBridges() == 0 {
+		// if there is no bridge exits we return the previous LER
+		// since there was no change in the local exit root
+		return previousLER, nil
+	}
+
+	exitRoot, err := f.l2Syncer.GetExitRootByIndexAndBlockNumber(ctx, certParams.MaxDepositCount(), certParams.ToBlock)
 	if err != nil {
 		if errors.Is(err, aggkitdb.ErrNotFound) {
 			// if the exit root is not found, we return the previous LER
