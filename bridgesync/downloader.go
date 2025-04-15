@@ -299,8 +299,8 @@ func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 }
 
 type call struct {
-	To    common.Address    `json:"to"`
 	From  common.Address    `json:"from"`
+	To    common.Address    `json:"to"`
 	Value *rpcTypes.ArgBig  `json:"value"`
 	Err   *string           `json:"error"`
 	Input rpcTypes.ArgBytes `json:"input"`
