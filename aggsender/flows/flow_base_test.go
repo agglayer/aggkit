@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -174,6 +175,7 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			toBlock:      100,
 			previousLER:  common.HexToHash("0x123"),
 			mockExitRoot: nil,
+			mockError:    db.ErrNotFound,
 			expectedLER:  common.HexToHash("0x123"),
 		},
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitdb "github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -201,13 +202,13 @@ func (f *baseFlow) getNewLocalExitRoot(
 	previousLER common.Hash) (common.Hash, error) {
 	exitRoot, err := f.l2Syncer.GetExitRootByIndexAndBlockNumber(ctx, index, toBlock)
 	if err != nil {
+		if errors.Is(err, aggkitdb.ErrNotFound) {
+			// if the exit root is not found, we return the previous LER
+			// this means that there are no new exits in the range
+			return previousLER, nil
+		}
+
 		return common.Hash{}, fmt.Errorf("error getting exit root by index: %d. Error: %w", 0, err)
-	}
-	if exitRoot == nil {
-		// no ler for this index and block,
-		// means that the ceritifcate is empty,
-		// so no change in LER happened
-		return previousLER, nil
 	}
 
 	return exitRoot.Hash, nil
