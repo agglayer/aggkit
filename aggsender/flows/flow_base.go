@@ -11,7 +11,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/tree"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/crypto/sha3"
@@ -276,7 +275,7 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 // getImportedBridgeExits converts claims to agglayertypes.ImportedBridgeExit objects and calculates necessary proofs
 func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context, claims []bridgesync.Claim,
-	rootFromWhichToProve *treetypes.Root,
+	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
 	if len(claims) == 0 {
 		// no claims to convert
@@ -297,11 +296,11 @@ func (f *baseFlow) getImportedBridgeExits(
 		importedBridgeExits = append(importedBridgeExits, ibe)
 
 		l1Info, gerToL1Proof, err := f.l1InfoTreeDataQuerier.GetProofForGER(ctx,
-			claim.GlobalExitRoot, rootFromWhichToProve.Hash)
+			claim.GlobalExitRoot, rootFromWhichToProve)
 		if err != nil {
 			return nil, fmt.Errorf(
 				"error getting L1 Info tree merkle proof for leaf index: %d and root: %s. Error: %w",
-				l1Info.L1InfoTreeIndex, rootFromWhichToProve.Hash, err,
+				l1Info.L1InfoTreeIndex, rootFromWhichToProve, err,
 			)
 		}
 
@@ -322,7 +321,7 @@ func (f *baseFlow) getImportedBridgeExits(
 					Proof: claim.ProofLocalExitRoot,
 				},
 				ProofGERToL1Root: &agglayertypes.MerkleProof{
-					Root:  rootFromWhichToProve.Hash,
+					Root:  rootFromWhichToProve,
 					Proof: gerToL1Proof,
 				},
 			}
@@ -348,7 +347,7 @@ func (f *baseFlow) getImportedBridgeExits(
 					Proof: claim.ProofRollupExitRoot,
 				},
 				ProofGERToL1Root: &agglayertypes.MerkleProof{
-					Root:  rootFromWhichToProve.Hash,
+					Root:  rootFromWhichToProve,
 					Proof: gerToL1Proof,
 				},
 			}

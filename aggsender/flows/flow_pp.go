@@ -71,7 +71,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 			return nil, fmt.Errorf("ppFlow - error getting latest finalized L1 info root: %w", err)
 		}
 
-		buildParams.L1InfoTreeRootFromWhichToProve = root
+		buildParams.L1InfoTreeRootFromWhichToProve = root.Hash
 	}
 
 	return buildParams, nil

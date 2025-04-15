@@ -311,6 +311,12 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
+		raw, unmarshalErr := json.Marshal(certificate)
+		if unmarshalErr == nil {
+			// we ignore the marshal error, since marshaled certificate is only needed for logging
+			a.log.Errorf("error sending certificate. Err: %w. Certificate: %s", err, string(raw))
+		}
+
 		return nil, fmt.Errorf("error sending certificate: %w", err)
 	}
 
@@ -323,10 +329,6 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	prevLER := common.BytesToHash(certificate.PrevLocalExitRoot[:])
-	var finalizedL1InfoTreeRoot *common.Hash
-	if certificateParams.L1InfoTreeRootFromWhichToProve != nil {
-		finalizedL1InfoTreeRoot = &certificateParams.L1InfoTreeRootFromWhichToProve.Hash
-	}
 
 	certInfo := types.CertificateInfo{
 		Height:                  certificate.Height,
@@ -339,7 +341,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		CreatedAt:               certificateParams.CreatedAt,
 		UpdatedAt:               certificateParams.CreatedAt,
 		AggchainProof:           certificateParams.AggchainProof,
-		FinalizedL1InfoTreeRoot: finalizedL1InfoTreeRoot,
+		FinalizedL1InfoTreeRoot: &certificateParams.L1InfoTreeRootFromWhichToProve,
 		SignedCertificate:       string(raw),
 	}
 	// TODO: Improve this case, if a cert is not save in the storage, we are going to settle a unknown certificate
