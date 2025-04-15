@@ -146,7 +146,7 @@ type Claim struct {
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
-func (c *Claim) decodeEtrogCalldata(data []any) (bool, error) {
+func (c *Claim) decodeEtrogCalldata(senderAddr common.Address, data []any) (bool, error) {
 	// Unpack method inputs. Note that both claimAsset and claimMessage have the same interface
 	// for the relevant parts
 	// claimAsset/claimMessage(
@@ -211,12 +211,13 @@ func (c *Claim) decodeEtrogCalldata(data []any) (bool, error) {
 	}
 
 	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
+	c.FromAddress = senderAddr
 
 	return true, nil
 }
 
 // decodePreEtrogCalldata decodes the claim calldata for pre-Etrog forks
-func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
+func (c *Claim) decodePreEtrogCalldata(senderAddr common.Address, data []any) (bool, error) {
 	// claimMessage/claimAsset(
 	// 	0: bytes32[32] smtProof,
 	// 	1: uint32 index,
@@ -271,6 +272,7 @@ func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
 	}
 
 	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
+	c.FromAddress = senderAddr
 
 	return true, nil
 }
