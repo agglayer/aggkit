@@ -344,7 +344,7 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 	return nil, db.ErrNotFound
 }
 
-// extractCall tries to extract the call for the transaction indentified by transaction hash.
+// extractCall tries to extract the call for the transaction identified by transaction hash.
 // It relies on debug_traceTransaction JSON RPC function.
 func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*call, error) {
 	c := &call{To: contractAddr}

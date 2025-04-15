@@ -62,6 +62,7 @@ type Bridge struct {
 	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type" json:"leaf_type"`
+	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
 	OriginNetwork      uint32         `meddler:"origin_network" json:"origin_network"`
 	OriginAddress      common.Address `meddler:"origin_address" json:"origin_address"`
 	DestinationNetwork uint32         `meddler:"destination_network" json:"destination_network"`
@@ -70,7 +71,6 @@ type Bridge struct {
 	Metadata           []byte         `meddler:"metadata" json:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
 	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
-	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
 	Calldata           []byte         `meddler:"calldata" json:"calldata"`
 }
 
@@ -127,6 +127,7 @@ func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
 type Claim struct {
 	BlockNum            uint64         `meddler:"block_num"`
 	BlockPos            uint64         `meddler:"block_pos"`
+	FromAddress         common.Address `meddler:"from_address,address"`
 	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
 	OriginNetwork       uint32         `meddler:"origin_network"`
 	OriginAddress       common.Address `meddler:"origin_address"`
@@ -142,7 +143,6 @@ type Claim struct {
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
 	TxHash              common.Hash    `meddler:"tx_hash,hash"`
-	FromAddress         common.Address `meddler:"from_address,address"`
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
