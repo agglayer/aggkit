@@ -16,7 +16,7 @@ setup() {
 }
 
 @test "Verify certificate settlement" {
-    echo "Waiting 10 minutes to get some settle certificate...." >&3
+    echo "Waiting 10 minutes to get some settled certificate...." >&3
 
     readonly bridge_addr=$BRIDGE_ADDRESS
     readonly l2_rpc_network_id=$(cast call --rpc-url $l2_rpc_url $bridge_addr 'networkID() (uint32)')
