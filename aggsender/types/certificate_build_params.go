@@ -23,6 +23,7 @@ type CertificateBuildParams struct {
 	RetryCount                     int
 	LastSentCertificate            *CertificateInfo
 	L1InfoTreeRootFromWhichToProve common.Hash
+	L1InfoTreeLeafCount            uint32
 	AggchainProof                  *AggchainProof
 }
 
@@ -49,6 +50,7 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		LastSentCertificate:            c.LastSentCertificate,
 		AggchainProof:                  c.AggchainProof,
 		L1InfoTreeRootFromWhichToProve: c.L1InfoTreeRootFromWhichToProve,
+		L1InfoTreeLeafCount:            c.L1InfoTreeLeafCount,
 	}
 
 	for _, bridge := range c.Bridges {

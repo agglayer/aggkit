@@ -65,13 +65,14 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
 	}
 
-	if len(buildParams.Claims) > 0 {
+	if buildParams.NumberOfClaims() > 0 {
 		root, _, err := p.l1InfoTreeDataQuerier.GetLatestFinalizedL1InfoRoot(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("ppFlow - error getting latest finalized L1 info root: %w", err)
 		}
 
 		buildParams.L1InfoTreeRootFromWhichToProve = root.Hash
+		buildParams.L1InfoTreeLeafCount = root.Index + 1
 	}
 
 	return buildParams, nil

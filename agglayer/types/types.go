@@ -246,7 +246,7 @@ type Certificate struct {
 	Metadata            common.Hash           `json:"metadata"`
 	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 	AggchainData        AggchainData          `json:"data,omitempty"`
-	L1InfoRoot          common.Hash           `json:"l1_info_root,omitempty"`
+	L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
@@ -261,7 +261,7 @@ func (c *Certificate) UnmarshalJSON(data []byte) error {
 		Metadata            common.Hash           `json:"metadata"`
 		CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 		AggchainData        AggchainDataSelector  `json:"data,omitempty"`
-		L1InfoRoot          common.Hash           `json:"l1_info_root,omitempty"`
+		L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -276,7 +276,7 @@ func (c *Certificate) UnmarshalJSON(data []byte) error {
 	c.Metadata = aux.Metadata
 	c.CustomChainData = aux.CustomChainData
 	c.AggchainData = aux.AggchainData.GetObject()
-	c.L1InfoRoot = aux.L1InfoRoot
+	c.L1InfoTreeLeafCount = aux.L1InfoTreeLeafCount
 
 	return nil
 }
