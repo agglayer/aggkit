@@ -105,6 +105,10 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
+			FromAddress:        foundCall.From,
+			TxHash:             l.TxHash,
+			Calldata:           foundCall.Input,
+			BlockTimestamp:     b.Timestamp,
 			LeafType:           bridgeEvent.LeafType,
 			OriginNetwork:      bridgeEvent.OriginNetwork,
 			OriginAddress:      bridgeEvent.OriginAddress,
@@ -113,10 +117,6 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 			Amount:             bridgeEvent.Amount,
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
-			BlockTimestamp:     b.Timestamp,
-			TxHash:             l.TxHash,
-			FromAddress:        foundCall.From,
-			Calldata:           foundCall.Input,
 		}})
 		return nil
 	}

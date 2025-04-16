@@ -60,9 +60,11 @@ var (
 type Bridge struct {
 	BlockNum           uint64         `meddler:"block_num" json:"block_num"`
 	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
+	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	Calldata           []byte         `meddler:"calldata" json:"calldata"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type" json:"leaf_type"`
-	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
 	OriginNetwork      uint32         `meddler:"origin_network" json:"origin_network"`
 	OriginAddress      common.Address `meddler:"origin_address" json:"origin_address"`
 	DestinationNetwork uint32         `meddler:"destination_network" json:"destination_network"`
@@ -70,8 +72,6 @@ type Bridge struct {
 	Amount             *big.Int       `meddler:"amount,bigint" json:"amount"`
 	Metadata           []byte         `meddler:"metadata" json:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
-	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
-	Calldata           []byte         `meddler:"calldata" json:"calldata"`
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
@@ -128,6 +128,7 @@ type Claim struct {
 	BlockNum            uint64         `meddler:"block_num"`
 	BlockPos            uint64         `meddler:"block_pos"`
 	FromAddress         common.Address `meddler:"from_address,address"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
 	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
 	OriginNetwork       uint32         `meddler:"origin_network"`
 	OriginAddress       common.Address `meddler:"origin_address"`
@@ -142,7 +143,6 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash"`
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
