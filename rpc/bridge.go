@@ -116,7 +116,7 @@ func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSiz
 		if err != nil {
 			return nil,
 				rpc.NewRPCError(rpc.DefaultErrorCode,
-					fmt.Sprintf("failed to get token mappings for L2 network %d, error: %s", networkID, err))
+					fmt.Sprintf("failed to get token mappings for the L2 network (ID=%d), error: %s", networkID, err))
 		}
 
 	default:
@@ -320,12 +320,14 @@ func (b *BridgeEndpoints) GetBridges(networkID uint32, pageNumber, pageSize *uin
 	case networkID == mainnetNetworkID:
 		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get bridges, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get bridges for the L1 network, error: %s", err))
 		}
 	case networkID == b.networkID:
 		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get bridges, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get bridges for the L2 network (ID=%d), error: %s", networkID, err))
 		}
 	default:
 		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
@@ -369,12 +371,14 @@ func (b *BridgeEndpoints) GetClaims(networkID uint32, pageNumber, pageSize *uint
 	case networkID == mainnetNetworkID:
 		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claims, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get claims for the L1 network, error: %s", err))
 		}
 	case networkID == b.networkID:
 		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claims, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s", networkID, err))
 		}
 	default:
 		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
