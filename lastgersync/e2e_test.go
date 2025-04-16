@@ -28,6 +28,7 @@ const (
 )
 
 func TestLastGERSyncE2E(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
 	dbPathSyncer := path.Join(t.TempDir(), "lastGERSyncTestE2E.sqlite")
@@ -63,6 +64,7 @@ func TestLastGERSyncE2E(t *testing.T) {
 }
 
 func TestLastGERSync_GERRemoval(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
 	dbPathSyncer := path.Join(t.TempDir(), "lastGERSyncTestE2E.sqlite")
