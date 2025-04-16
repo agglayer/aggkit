@@ -1421,6 +1421,7 @@ func TestDecodePreEtrogCalldata_Valid(t *testing.T) {
 	originAddress := common.HexToAddress("0x0a0a")
 	amount := big.NewInt(150)
 	destinationAddr := common.HexToAddress("0x0b0b")
+	zeroAddr := common.HexToAddress("0x0")
 
 	proof := types.Proof{}
 	for i := range types.DefaultHeight {
@@ -1463,7 +1464,7 @@ func TestDecodePreEtrogCalldata_Valid(t *testing.T) {
 	claimAssetData, err := method.Inputs.Unpack(claimAssetInput[4:])
 	require.NoError(t, err)
 
-	isFound, err := actualClaim.decodePreEtrogCalldata(claimAssetData)
+	isFound, err := actualClaim.decodePreEtrogCalldata(zeroAddr, claimAssetData)
 	require.NoError(t, err)
 	require.True(t, isFound)
 
@@ -1504,6 +1505,7 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 		metadata               = []byte("mock metadata")
 		destinationNetwork     = uint32(1)
 		invalidTypePlaceholder = "invalidType"
+		zeroAddr               = common.HexToAddress("0x0")
 	)
 
 	tests := []struct {
@@ -1660,7 +1662,7 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 				Metadata:           nil,
 			}
 
-			match, err := claim.decodePreEtrogCalldata(tt.data)
+			match, err := claim.decodePreEtrogCalldata(zeroAddr, tt.data)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -1681,6 +1683,7 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 		metadata               = []byte("mock metadata")
 		destinationNetwork     = uint32(1)
 		invalidTypePlaceholder = "invalidType"
+		zeroAddr               = common.HexToAddress("0x0")
 	)
 
 	tests := []struct {
@@ -1857,7 +1860,7 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			claim := &Claim{GlobalIndex: globalIndex}
 
-			isDecoded, err := claim.decodeEtrogCalldata(tt.data)
+			isDecoded, err := claim.decodeEtrogCalldata(zeroAddr, tt.data)
 			if tt.expectError {
 				require.Error(t, err)
 			} else {

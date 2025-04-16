@@ -528,7 +528,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
-		false,
+		true,
 		cfg.RequireStorageContentCompatibility,
 	)
 	if err != nil {

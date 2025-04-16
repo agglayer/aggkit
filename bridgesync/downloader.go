@@ -97,7 +97,7 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 			return fmt.Errorf("error parsing BridgeEvent log %+v: %w", l, err)
 		}
 
-		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		foundCall, err := extractCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -105,6 +105,10 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
+			FromAddress:        foundCall.From,
+			TxHash:             l.TxHash,
+			Calldata:           foundCall.Input,
+			BlockTimestamp:     b.Timestamp,
 			LeafType:           bridgeEvent.LeafType,
 			OriginNetwork:      bridgeEvent.OriginNetwork,
 			OriginAddress:      bridgeEvent.OriginAddress,
@@ -113,10 +117,6 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 			Amount:             bridgeEvent.Amount,
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
-			BlockTimestamp:     b.Timestamp,
-			TxHash:             l.TxHash,
-			FromAddress:        l.Address,
-			Calldata:           calldata,
 		}})
 		return nil
 	}
@@ -196,7 +196,7 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 			return fmt.Errorf("error parsing NewWrappedToken event log %+v: %w", l, err)
 		}
 
-		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		foundCall, err := extractCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract the NewWrappedToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -210,7 +210,7 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 			OriginTokenAddress:  tokenMappingEvent.OriginTokenAddress,
 			WrappedTokenAddress: tokenMappingEvent.WrappedTokenAddress,
 			Metadata:            tokenMappingEvent.Metadata,
-			Calldata:            calldata,
+			Calldata:            foundCall.Input,
 			Type:                WrappedToken,
 		}})
 		return nil
@@ -228,7 +228,7 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 			return fmt.Errorf("error parsing SetSovereignTokenAddress event log %+v: %w", l, err)
 		}
 
-		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		foundCall, err := extractCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract the SetSovereignTokenAddress event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -242,7 +242,7 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 			OriginTokenAddress:  event.OriginTokenAddress,
 			WrappedTokenAddress: event.SovereignTokenAddress,
 			IsNotMintable:       event.IsNotMintable,
-			Calldata:            calldata,
+			Calldata:            foundCall.Input,
 			Type:                SovereignToken,
 		}})
 		return nil
@@ -258,7 +258,7 @@ func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sov
 			return fmt.Errorf("error parsing MigrateLegacyToken event log %+v: %w", l, err)
 		}
 
-		calldata, err := extractCalldata(client, bridgeAddr, l.TxHash)
+		foundCall, err := extractCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract the MigrateLegacyToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -272,7 +272,7 @@ func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sov
 			LegacyTokenAddress:  event.LegacyTokenAddress,
 			UpdatedTokenAddress: event.UpdatedTokenAddress,
 			Amount:              event.Amount,
-			Calldata:            calldata,
+			Calldata:            foundCall.Input,
 		}})
 		return nil
 	}
@@ -299,6 +299,7 @@ func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 }
 
 type call struct {
+	From  common.Address    `json:"from"`
 	To    common.Address    `json:"to"`
 	Value *rpcTypes.ArgBig  `json:"value"`
 	Err   *string           `json:"error"`
@@ -310,8 +311,8 @@ type tracerCfg struct {
 	Tracer string `json:"tracer"`
 }
 
-// findCalldata traverses the call trace using DFS and either returns calldata or stops when a callback succeeds.
-func findCalldata(rootCall call, targetAddr common.Address, callback func([]byte) (bool, error)) ([]byte, error) {
+// findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
+func findCall(rootCall call, targetAddr common.Address, callback func(call) (bool, error)) (*call, error) {
 	callStack := stack.New()
 	callStack.Push(rootCall)
 
@@ -324,15 +325,15 @@ func findCalldata(rootCall call, targetAddr common.Address, callback func([]byte
 
 		if currentCall.To == targetAddr {
 			if callback != nil {
-				found, err := callback(currentCall.Input)
+				found, err := callback(currentCall)
 				if err != nil {
 					return nil, err
 				}
 				if found {
-					return currentCall.Input, nil
+					return &currentCall, nil
 				}
 			} else {
-				return currentCall.Input, nil
+				return &currentCall, nil
 			}
 		}
 
@@ -343,16 +344,16 @@ func findCalldata(rootCall call, targetAddr common.Address, callback func([]byte
 	return nil, db.ErrNotFound
 }
 
-// extractCalldata tries to extract the calldata for the transaction indentified by transaction hash.
+// extractCall tries to extract the call for the transaction identified by transaction hash.
 // It relies on debug_traceTransaction JSON RPC function.
-func extractCalldata(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) ([]byte, error) {
+func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*call, error) {
 	c := &call{To: contractAddr}
 	err := client.Call(c, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
 	}
 
-	return findCalldata(*c, contractAddr, nil)
+	return findCall(*c, contractAddr, nil)
 }
 
 // setClaimCalldata traces the transaction to find and decode calldata for the given bridge address.
@@ -370,9 +371,9 @@ func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.A
 		return err
 	}
 
-	_, err = findCalldata(*callFrame, bridge,
-		func(data []byte) (bool, error) {
-			return c.tryDecodeClaimCalldata(data)
+	_, err = findCall(*callFrame, bridge,
+		func(call call) (bool, error) {
+			return c.tryDecodeClaimCalldata(call.From, call.Input)
 		})
 
 	return err
@@ -382,7 +383,7 @@ func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.A
 // It checks if the method ID corresponds to either the claim asset or claim message methods.
 // If a match is found, it decodes the calldata using the ABI of the bridge contract and updates the claim object.
 // Returns true if the calldata is successfully decoded and matches the expected format, otherwise returns false.
-func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
+func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) (bool, error) {
 	methodID := input[:4]
 	switch {
 	case bytes.Equal(methodID, claimAssetEtrogMethodID):
@@ -403,7 +404,7 @@ func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
 			return false, err
 		}
 
-		found, err := c.decodeEtrogCalldata(data)
+		found, err := c.decodeEtrogCalldata(senderAddr, data)
 		if err != nil {
 			return false, err
 		}
@@ -433,7 +434,7 @@ func (c *Claim) tryDecodeClaimCalldata(input []byte) (bool, error) {
 			return false, err
 		}
 
-		found, err := c.decodePreEtrogCalldata(data)
+		found, err := c.decodePreEtrogCalldata(senderAddr, data)
 		if err != nil {
 			return false, err
 		}
