@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
-	"github.com/agglayer/aggkit/aggsender/l1infotreequery"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -51,8 +50,8 @@ func NewAggchainProverFlow(log types.Logger,
 	sovereignRollupAddr common.Address,
 	aggkitProverClient grpc.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
-	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	l2Syncer types.L2BridgeSyncer,
+	l1InfoTreeSyncer types.L1InfoTreeDataQuerier,
+	l2Syncer types.BridgeDataQuerier,
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*AggchainProverFlow, error) {
 	gerReader, err := funcNewEVMChainGERReader(gerL2Address, l2Client)
@@ -70,9 +69,9 @@ func NewAggchainProverFlow(log types.Logger,
 		aggchainProofClient: aggkitProverClient,
 		baseFlow: &baseFlow{
 			log:                   log,
-			l2Syncer:              l2Syncer,
+			l2BridgeQuerier:       l2Syncer,
 			storage:               storage,
-			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			l1InfoTreeDataQuerier: l1InfoTreeSyncer,
 			maxCertSize:           maxCertSize,
 			startL2Block:          startL2Block,
 			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,

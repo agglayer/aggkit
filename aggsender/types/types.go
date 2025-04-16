@@ -61,6 +61,17 @@ type L2BridgeSyncer interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 }
 
+// BridgeDataQuerier is an interface defining functions that an BridgeDataQuerier should implement
+type BridgeDataQuerier interface {
+	GetBridgesAndClaims(
+		ctx context.Context,
+		fromBlock, toBlock uint64,
+	) ([]bridgesync.Bridge, []bridgesync.Claim, error)
+	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
+	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	OriginNetwork() uint32
+}
+
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
 	GetInjectedGERsForRange(

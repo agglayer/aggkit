@@ -7,7 +7,6 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
-	"github.com/agglayer/aggkit/aggsender/l1infotreequery"
 	"github.com/agglayer/aggkit/aggsender/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -25,17 +24,16 @@ func NewPPFlow(log types.Logger,
 	maxCertSize uint,
 	bridgeMetaDataAsHash bool,
 	storage db.AggSenderStorage,
-	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	l2Syncer types.L2BridgeSyncer,
-	l1Client types.EthClient,
+	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
+	l2BridgeQuerier types.BridgeDataQuerier,
 	signer signertypes.Signer) *PPFlow {
 	return &PPFlow{
 		signer: signer,
 		baseFlow: &baseFlow{
 			log:                   log,
-			l2Syncer:              l2Syncer,
+			l2BridgeQuerier:       l2BridgeQuerier,
 			storage:               storage,
-			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 			maxCertSize:           maxCertSize,
 			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},

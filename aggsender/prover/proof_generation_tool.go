@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/agglayer/aggkit/aggsender/bridgequery"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/grpc"
+	"github.com/agglayer/aggkit/aggsender/l1infotreequery"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	configtypes "github.com/agglayer/aggkit/config/types"
@@ -77,8 +79,8 @@ func NewAggchainProofGenerationTool(
 		cfg.GlobalExitRootL2Addr, cfg.SovereignRollupAddr,
 		aggchainProofClient,
 		nil,
-		l1InfoTreeSyncer,
-		l2Syncer,
+		l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+		bridgequery.NewBridgeDataQuerier(l2Syncer),
 		l1Client,
 		l2Client,
 	)

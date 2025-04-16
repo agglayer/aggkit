@@ -25,7 +25,7 @@ var (
 
 // baseFlow is a struct that holds the common logic for the different prover types
 type baseFlow struct {
-	l2Syncer              types.L2BridgeSyncer
+	l2BridgeQuerier       types.BridgeDataQuerier
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 
@@ -42,9 +42,9 @@ func (f *baseFlow) getBridgesAndClaims(
 	fromBlock, toBlock uint64,
 	allowEmptyCert bool,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
-	bridges, err := f.l2Syncer.GetBridges(ctx, fromBlock, toBlock)
+	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
 	if err != nil {
-		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
+		return nil, nil, fmt.Errorf("error getting bridges and claims: %w", err)
 	}
 
 	if len(bridges) == 0 && !allowEmptyCert {
@@ -53,18 +53,13 @@ func (f *baseFlow) getBridgesAndClaims(
 		return nil, nil, nil
 	}
 
-	claims, err := f.l2Syncer.GetClaims(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error getting claims: %w", err)
-	}
-
 	return bridges, claims, nil
 }
 
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) getCertificateBuildParamsInternal(
 	ctx context.Context, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
-	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
+	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
 	}
@@ -183,7 +178,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 	)
 
 	return &agglayertypes.Certificate{
-		NetworkID:           f.l2Syncer.OriginNetwork(),
+		NetworkID:           f.l2BridgeQuerier.OriginNetwork(),
 		PrevLocalExitRoot:   previousLER,
 		NewLocalExitRoot:    newLER,
 		BridgeExits:         bridgeExits,
@@ -207,12 +202,12 @@ func (f *baseFlow) getNewLocalExitRoot(
 
 	depositCount := certParams.MaxDepositCount()
 
-	exitRoot, err := f.l2Syncer.GetExitRootByIndex(ctx, depositCount)
+	exitRoot, err := f.l2BridgeQuerier.GetExitRootByIndex(ctx, depositCount)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("error getting exit root by index: %d. Error: %w", depositCount, err)
 	}
 
-	return exitRoot.Hash, nil
+	return exitRoot, nil
 }
 
 // createCertificateMetadata creates the metadata for the certificate

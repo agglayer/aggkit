@@ -11,9 +11,9 @@ import (
 	zkevm "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/flows"
-	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/metrics"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -21,7 +21,6 @@ import (
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -38,26 +37,26 @@ type RateLimiter interface {
 type AggSender struct {
 	log aggkitcommon.Logger
 
-	l2Syncer         types.L2BridgeSyncer
-	l1infoTreeSyncer types.L1InfoTreeSyncer
-	epochNotifier    types.EpochNotifier
+	epochNotifier types.EpochNotifier
 
 	storage                      db.AggSenderStorage
 	aggLayerClient               agglayer.AgglayerClientInterface
 	compatibilityStoragedChecker compatibility.CompatibilityChecker
 
-	cfg Config
+	cfg config.Config
 
 	status      types.AggsenderStatus
 	rateLimiter RateLimiter
 	flow        types.AggsenderFlow
+
+	l2OriginNetwork uint32
 }
 
 // New returns a new AggSender instance
 func New(
 	ctx context.Context,
 	logger *log.Logger,
-	cfg Config,
+	cfg config.Config,
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 	l2Syncer types.L2BridgeSyncer,
@@ -75,44 +74,18 @@ func New(
 
 	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
 
-	var (
-		aggchainProofClient grpc.AggchainProofClientInterface
-		flowManager         types.AggsenderFlow
+	flowManager, err := flows.NewFlow(
+		ctx,
+		cfg,
+		logger,
+		storage,
+		l1Client,
+		l2Client,
+		l1InfoTreeSyncer,
+		l2Syncer,
 	)
-
-	if types.AggsenderMode(cfg.Mode) == types.AggchainProofMode {
-		if cfg.AggchainProofURL == "" {
-			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
-		}
-
-		aggchainProofClient, err = grpc.NewAggchainProofClient(
-			cfg.AggchainProofURL,
-			cfg.GenerateAggchainProofTimeout.Duration)
-		if err != nil {
-			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
-		}
-
-		flowManager, err = flows.NewAggchainProverFlow(
-			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash,
-			cfg.GlobalExitRootL2Addr, cfg.SovereignRollupAddr,
-			aggchainProofClient, storage,
-			l1InfoTreeSyncer, l2Syncer, l1Client, l2Client)
-		if err != nil {
-			return nil, fmt.Errorf("error creating aggchain prover flow: %w", err)
-		}
-	} else {
-		signer, err := signer.NewSigner(ctx, 0, cfg.AggsenderPrivateKey, aggkitcommon.AGGSENDER, logger)
-		if err != nil {
-			return nil, fmt.Errorf("error NewSigner. Err: %w", err)
-		}
-		err = signer.Initialize(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
-		}
-
-		flowManager = flows.NewPPFlow(
-			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash,
-			storage, l1InfoTreeSyncer, l2Syncer, l1Client, signer)
+	if err != nil {
+		return nil, fmt.Errorf("error creating flow manager: %w", err)
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
@@ -129,14 +102,13 @@ func New(
 		cfg:                          cfg,
 		log:                          logger,
 		storage:                      storage,
-		l2Syncer:                     l2Syncer,
 		aggLayerClient:               aggLayerClient,
-		l1infoTreeSyncer:             l1InfoTreeSyncer,
 		epochNotifier:                epochNotifier,
 		status:                       types.AggsenderStatus{Status: types.StatusNone},
 		flow:                         flowManager,
 		rateLimiter:                  rateLimit,
 		compatibilityStoragedChecker: compatibilityStoragedChecker,
+		l2OriginNetwork:              l2Syncer.OriginNetwork(),
 	}, nil
 }
 
@@ -145,7 +117,7 @@ func (a *AggSender) Info() types.AggsenderInfo {
 		AggsenderStatus:          a.status,
 		Version:                  zkevm.GetVersion(),
 		EpochNotifierDescription: a.epochNotifier.String(),
-		NetworkID:                a.l2Syncer.OriginNetwork(),
+		NetworkID:                a.l2OriginNetwork,
 	}
 	return res
 }
@@ -465,8 +437,7 @@ func (a *AggSender) updateCertificateStatus(ctx context.Context,
 
 // checkLastCertificateFromAgglayer checks the last certificate from agglayer
 func (a *AggSender) checkLastCertificateFromAgglayer(ctx context.Context) error {
-	networkID := a.l2Syncer.OriginNetwork()
-	initialStatus, err := NewInitialStatus(ctx, a.log, networkID, a.storage, a.aggLayerClient)
+	initialStatus, err := NewInitialStatus(ctx, a.log, a.l2OriginNetwork, a.storage, a.aggLayerClient)
 	if err != nil {
 		return fmt.Errorf("recovery: error retrieving initial status: %w", err)
 	}

@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -146,7 +145,7 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 	tests := []struct {
 		name            string
 		certParams      *types.CertificateBuildParams
-		mockFn          func(mockL2Syncer *mocks.L2BridgeSyncer)
+		mockFn          func(mockL2BridgeQuerier *mocks.BridgeDataQuerier)
 		previousLER     common.Hash
 		expectedLER     common.Hash
 		expectedError   string
@@ -168,9 +167,9 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			},
 			previousLER: common.HexToHash("0x123"),
 			expectedLER: common.HexToHash("0x456"),
-			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
-					Return(treetypes.Root{Hash: common.HexToHash("0x456")}, nil)
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeDataQuerier) {
+				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
+					Return(common.HexToHash("0x456"), nil)
 			},
 		},
 		{
@@ -182,9 +181,9 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			previousLER:   common.HexToHash("0x123"),
 			expectedLER:   common.HexToHash("0x123"),
 			expectedError: "not found",
-			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
-					Return(treetypes.Root{}, db.ErrNotFound)
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeDataQuerier) {
+				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
+					Return(common.Hash{}, db.ErrNotFound)
 			},
 		},
 		{
@@ -196,9 +195,9 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			previousLER:   common.HexToHash("0x123"),
 			expectedLER:   common.Hash{},
 			expectedError: "error getting exit root by index: 0. Error: unexpected error",
-			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
-					Return(treetypes.Root{}, errors.New("unexpected error"))
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeDataQuerier) {
+				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
+					Return(common.Hash{}, errors.New("unexpected error"))
 			},
 		},
 	}
@@ -209,13 +208,13 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
+			mockL2BridgeQuerier := mocks.NewBridgeDataQuerier(t)
 			if tt.mockFn != nil {
-				tt.mockFn(mockL2Syncer)
+				tt.mockFn(mockL2BridgeQuerier)
 			}
 
 			f := &baseFlow{
-				l2Syncer: mockL2Syncer,
+				l2BridgeQuerier: mockL2BridgeQuerier,
 			}
 
 			result, err := f.getNewLocalExitRoot(context.Background(), tt.certParams, tt.previousLER)
