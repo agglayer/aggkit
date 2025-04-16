@@ -418,6 +418,10 @@ func (p *processor) GetBridges(
 	}()
 	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTableName)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
+			return []Bridge{}, nil
+		}
 		return nil, err
 	}
 	bridgePtrs := []*Bridge{}
@@ -447,6 +451,10 @@ func (p *processor) GetClaims(
 	}()
 	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTableName)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
+			return []Claim{}, nil
+		}
 		return nil, err
 	}
 	claimPtrs := []*Claim{}
@@ -492,6 +500,11 @@ func (p *processor) GetBridgesPaged(
 	}
 	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no bridges were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
+				pageNumber, pageSize, whereClause)
+			return nil, count, nil
+		}
 		return nil, 0, err
 	}
 	defer func() {
@@ -544,6 +557,11 @@ func (p *processor) GetClaimsPaged(
 	whereClause := ""
 	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, count, nil
+		}
 		return nil, 0, err
 	}
 	defer func() {
@@ -578,20 +596,20 @@ func (p *processor) GetClaimsPaged(
 // GetLegacyTokenMigrations returns the paged legacy token migrations from the database
 func (p *processor) GetLegacyTokenMigrations(
 	ctx context.Context, pageNumber, pageSize uint32) ([]*LegacyTokenMigration, int, error) {
-	totalTokenMigrations, err := p.GetTotalNumberOfRecords(legacyTokenMigrationTableName)
+	count, err := p.GetTotalNumberOfRecords(legacyTokenMigrationTableName)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", legacyTokenMigrationTableName, err)
 	}
 
-	if totalTokenMigrations == 0 {
-		return []*LegacyTokenMigration{}, 0, nil
+	if count == 0 {
+		return nil, 0, nil
 	}
 
 	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(totalTokenMigrations) {
+	if offset >= uint32(count) {
 		p.log.Debugf(
-			"offset is larger than the total legacy token migrations (page number=%d, page size=%d, total legacy migrations=%d)",
-			pageNumber, pageSize, totalTokenMigrations)
+			"offset is larger than the total legacy token migrations "+
+				"(page number=%d, page size=%d, total legacy token migrations=%d)", pageNumber, pageSize, count)
 		return nil, 0, db.ErrNotFound
 	}
 
@@ -599,6 +617,11 @@ func (p *processor) GetLegacyTokenMigrations(
 	whereClause := ""
 	rows, err := p.queryPaged(p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no legacy token migrations were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, count, nil
+		}
 		return nil, 0, err
 	}
 	defer func() {
@@ -611,7 +634,7 @@ func (p *processor) GetLegacyTokenMigrations(
 		return nil, 0, err
 	}
 
-	return tokenMigrations, totalTokenMigrations, nil
+	return tokenMigrations, count, nil
 }
 
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
@@ -852,6 +875,13 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	orderByClause := "block_num DESC"
 	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			pageNumber := (offset / pageSize) + 1
+			p.log.Debugf("no token mappings were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, nil
+		}
+
 		p.log.Errorf("failed to fetch token mappings: %v", err)
 		return nil, err
 	}
