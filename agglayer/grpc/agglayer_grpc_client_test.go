@@ -332,6 +332,7 @@ func TestSendCertificate(t *testing.T) {
 			NewLocalExitRoot:  common.HexToHash("0x010202"),
 			Metadata:          common.HexToHash("0x011201"),
 			CustomChainData:   []byte{0x1, 0x2, 0x3},
+			L1InfoRoot:        common.HexToHash("0x0102011"),
 			BridgeExits: []*types.BridgeExit{
 				{
 					LeafType: types.LeafTypeAsset,

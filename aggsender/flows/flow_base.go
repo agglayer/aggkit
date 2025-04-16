@@ -190,6 +190,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		ImportedBridgeExits: importedBridgeExits,
 		Height:              height,
 		Metadata:            meta.ToHash(),
+		L1InfoRoot:          certParams.L1InfoTreeRootFromWhichToProve,
 	}, nil
 }
 
