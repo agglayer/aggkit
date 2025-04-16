@@ -1,6 +1,7 @@
 module github.com/agglayer/aggkit
 
 go 1.22.4
+toolchain go1.24.1
 
 require (
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef
@@ -27,9 +28,9 @@ require (
 	go.opentelemetry.io/otel v1.34.0
 	go.opentelemetry.io/otel/metric v1.34.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.33.0
-	golang.org/x/net v0.34.0
-	golang.org/x/sync v0.11.0
+	golang.org/x/crypto v0.36.0
+	golang.org/x/net v0.38.0
+	golang.org/x/sync v0.12.0
 	google.golang.org/protobuf v1.36.5
 	modernc.org/sqlite v1.34.5
 )
@@ -139,8 +140,8 @@ require (
 	go.opentelemetry.io/otel/trace v1.34.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
 	golang.org/x/exp v0.0.0-20241108190413-2d47ceb2692f // indirect
-	golang.org/x/sys v0.30.0 // indirect
-	golang.org/x/text v0.22.0 // indirect
+	golang.org/x/sys v0.31.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 	golang.org/x/time v0.5.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
