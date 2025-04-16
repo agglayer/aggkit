@@ -141,18 +141,16 @@ func (d *downloaderFEP) Download(ctx context.Context, fromBlock uint64, download
 				Timestamp:  header.Timestamp,
 			},
 		}
+
 		// Set the greatest GER injected from retrieved GERs
 		d.populateGreatestInjectedGER(block, gers)
+
+		downloadedCh <- *block
 
 		// Update nextIndex based on the last injected GER info
 		if len(block.Events) > 0 {
 			if e, ok := block.Events[0].(*GlobalExitRootInfo); ok {
 				nextL1InfoTreeIndex = e.L1InfoTreeIndex + 1
-			}
-			downloadedCh <- *block
-		} else {
-			for _, block := range d.GetEventsByBlockRange(ctx, fromBlock, fromBlock) {
-				downloadedCh <- *block
 			}
 		}
 	}
@@ -172,12 +170,13 @@ func (d *downloaderFEP) getGERsFromIndex(
 	for i := fromL1InfoTreeIndex; i <= lastRoot.Index; i++ {
 		info, err := d.l1InfoTreeSync.GetInfoByIndex(ctx, i)
 		if err != nil {
-			return nil, fmt.Errorf("error calling GetInfoByIndex: %w", err)
+			return nil, fmt.Errorf("failed to retrieve l1 info tree leaf for index=%d: %w", i, err)
 		}
-		gers = append(gers, &GlobalExitRootInfo{
-			L1InfoTreeIndex: i,
-			GlobalExitRoot:  info.GlobalExitRoot,
-		})
+		gers = append(gers,
+			&GlobalExitRootInfo{
+				L1InfoTreeIndex: i,
+				GlobalExitRoot:  info.GlobalExitRoot,
+			})
 	}
 
 	return gers, nil

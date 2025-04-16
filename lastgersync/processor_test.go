@@ -2,6 +2,7 @@ package lastgersync
 
 import (
 	"context"
+	"fmt"
 	"path"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 )
 
 func Test_getLatestL1InfoTreeIndex(t *testing.T) {
+	t.Parallel()
 	testDir := path.Join(t.TempDir(), "lastgersync_Test_getLatestL1InfoTreeIndex.sqlite")
 	processor, err := newProcessor(testDir)
 	require.NoError(t, err)
@@ -36,10 +38,7 @@ func Test_getLatestL1InfoTreeIndex(t *testing.T) {
 }
 
 func TestProcessBlock(t *testing.T) {
-	testDir := path.Join(t.TempDir(), "lastgersync_Test_ProcessBlock.sqlite")
-	p, err := newProcessor(testDir)
-	require.NoError(t, err)
-
+	t.Parallel()
 	l1InfoTreeIndex := uint32(42)
 
 	tests := []struct {
@@ -72,8 +71,14 @@ func TestProcessBlock(t *testing.T) {
 					Num: 2,
 					Events: []any{
 						&Event{
+							GERInfo: &GlobalExitRootInfo{
+								GlobalExitRoot:  common.HexToHash("0xffee"),
+								L1InfoTreeIndex: l1InfoTreeIndex,
+							},
+						},
+						&Event{
 							GEREvent: &GEREvent{
-								GlobalExitRoot: common.HexToHash("0x1234"),
+								GlobalExitRoot: common.HexToHash("0xffee"),
 								IsRemove:       true,
 							},
 						},
@@ -138,7 +143,14 @@ func TestProcessBlock(t *testing.T) {
 	ctx := context.Background()
 
 	for _, tt := range tests {
+		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			testDir := path.Join(t.TempDir(), fmt.Sprintf("lastgersync_Test_ProcessBlock_%s.sqlite", tt.name))
+			p, err := newProcessor(testDir)
+			require.NoError(t, err)
+
 			for _, b := range tt.blocks {
 				err := p.ProcessBlock(ctx, b)
 				require.NoError(t, err)

@@ -19,6 +19,10 @@ const (
 	DefaultWaitPeriodBlockNotFound = time.Millisecond * 100
 )
 
+var (
+	errChainIDUndefined = errors.New("chain id is undefined")
+)
+
 type EthClienter interface {
 	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
 	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
@@ -277,7 +281,7 @@ func (d *EVMDownloaderImplementation) ChainID(ctx context.Context) (uint64, erro
 	}
 
 	if chainID == nil {
-		return 0, errors.New("chain id is undefined")
+		return 0, errChainIDUndefined
 	}
 
 	return chainID.Uint64(), nil

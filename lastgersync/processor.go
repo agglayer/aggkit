@@ -94,7 +94,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 
 		switch {
 		case event.GERInfo != nil:
-			if err := p.handleGERInsertion(tx, event, block.Num); err != nil {
+			gerEvent := &GEREvent{
+				BlockNum:        block.Num,
+				GlobalExitRoot:  event.GERInfo.GlobalExitRoot,
+				L1InfoTreeIndex: event.GERInfo.L1InfoTreeIndex,
+			}
+			if err := p.handleGERInsertion(tx, gerEvent); err != nil {
 				return err
 			}
 
@@ -113,16 +118,16 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 }
 
 // handleGERInsertion inserts the given global exit root entry to `imported_global_exit_root`
-func (*processor) handleGERInsertion(tx db.Txer, event *Event, blockNum uint64) error {
+func (*processor) handleGERInsertion(tx db.Txer, gerInfo *GEREvent) error {
 	gerInfoWithBlockNum := &gerInfoWithBlockNum{
-		GlobalExitRoot:  event.GERInfo.GlobalExitRoot,
-		L1InfoTreeIndex: event.GERInfo.L1InfoTreeIndex,
-		BlockNum:        blockNum,
+		GlobalExitRoot:  gerInfo.GlobalExitRoot,
+		L1InfoTreeIndex: gerInfo.L1InfoTreeIndex,
+		BlockNum:        gerInfo.BlockNum,
 	}
 
 	if err := meddler.Insert(tx, "imported_global_exit_root", gerInfoWithBlockNum); err != nil {
 		return fmt.Errorf("failed to insert GER entry (value=%x, block=%d): %w",
-			event.GERInfo.GlobalExitRoot, blockNum, err)
+			gerInfo.GlobalExitRoot, gerInfo.BlockNum, err)
 	}
 	return nil
 }
@@ -135,13 +140,7 @@ func (p *processor) handleGEREvent(tx db.Txer, event *GEREvent) error {
 			return fmt.Errorf("failed to remove global exit root %s: %w", event.GlobalExitRoot.Hex(), err)
 		}
 	} else {
-		err := meddler.Insert(tx,
-			"imported_global_exit_root",
-			&gerInfoWithBlockNum{
-				BlockNum:        event.BlockNum,
-				GlobalExitRoot:  event.GlobalExitRoot,
-				L1InfoTreeIndex: event.L1InfoTreeIndex,
-			})
+		err := p.handleGERInsertion(tx, event)
 		if err != nil {
 			return fmt.Errorf("failed to insert global exit root %s: %w", event.GlobalExitRoot.Hex(), err)
 		}
