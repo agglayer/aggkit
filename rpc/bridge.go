@@ -212,7 +212,7 @@ func (b *BridgeEndpoints) L1InfoTreeIndexForBridge(networkID uint32, depositCoun
 		// as it's expected that it will take some time for the L1 Info tree to be updated
 		if err != nil {
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
-				"failed to get l1InfoTreeIndex for networkID %d and deposit count %d, error: %s", networkID, depositCount, err),
+				"failed to get l1 info tree index for L1 network and deposit count %d, error: %s", depositCount, err),
 			)
 		}
 		return l1InfoTreeIndex, nil
@@ -229,7 +229,7 @@ func (b *BridgeEndpoints) L1InfoTreeIndexForBridge(networkID uint32, depositCoun
 		return l1InfoTreeIndex, nil
 	}
 	return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
-		fmt.Sprintf("this client does not support network %d", networkID),
+		fmt.Sprintf("this client does not support network (ID=%d)", networkID),
 	)
 }
 
