@@ -19,8 +19,8 @@ test-e2e-fork12-op-succint: stop
 	export BATS_TEST_TIMEOUT=1800 && \
 	export L2_ETH_RPC_URL=$$L2_ETH_RPC_URL && \
 	bats bats/pp/bridge-native-token-e2e.bats \
-	     bats/pp/bridge-e2e-msg.bats
-	     # bats/pp/e2e-pp.bats # Uncomment once the op-succint work is stabilized
+	     bats/pp/bridge-e2e-msg.bats \
+	     bats/pp/e2e-pp.bats
 
 .PHONY: test-e2e-fork12-multi-pessimistic
 test-e2e-fork12-multi-pessimistic: stop
