@@ -22,11 +22,13 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -449,6 +451,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
 	mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+	mockL1Client := mocks.NewEthClient(t)
 	logger := log.WithFields("aggsender-test", "no claims test")
 	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 	aggSender := &AggSender{
@@ -458,7 +461,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		aggLayerClient:   mockAggLayerClient,
 		l1infoTreeSyncer: mockL1InfoTreeSyncer,
 		cfg:              Config{},
-		flow:             flows.NewPPFlow(logger, 0, false, mockStorage, nil, mockL2Syncer, nil, signer),
+		flow:             flows.NewPPFlow(logger, 0, false, mockStorage, mockL1InfoTreeSyncer, mockL2Syncer, mockL1Client, signer),
 		rateLimiter:      aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
@@ -485,6 +488,13 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 			DepositCount:       1,
 		},
 	}, nil)
+	finalizedL1Block := &ethtypes.Header{Number: big.NewInt(50)}
+	mockL1Client.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(finalizedL1Block, nil).Once()
+	mockL1InfoTreeSyncer.EXPECT().GetProcessedBlockUntil(ctx, finalizedL1Block.Number.Uint64()).Return(uint64(50), finalizedL1Block.Hash(), nil).Once()
+	mockL1InfoTreeSyncer.EXPECT().GetLatestInfoUntilBlock(ctx, uint64(50)).Return(&l1infotreesync.L1InfoTreeLeaf{
+		L1InfoTreeIndex: 1,
+	}, nil).Once()
+	mockL1InfoTreeSyncer.EXPECT().GetL1InfoTreeRootByIndex(ctx, uint32(1)).Return(treetypes.Root{}, nil).Once()
 	mockL2Syncer.EXPECT().GetClaims(mock.Anything, uint64(11), uint64(50)).Return([]bridgesync.Claim{}, nil)
 	mockL2Syncer.EXPECT().GetExitRootByIndex(mock.Anything, uint32(1)).Return(treetypes.Root{}, nil).Once()
 	mockL2Syncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
@@ -886,6 +896,13 @@ func TestLimitEpochPercent_Greater(t *testing.T) {
 	}, nil).Once()
 	testData.l2syncerMock.EXPECT().GetBridgesPublished(ctx, uint64(21), uint64(100)).Return(NewBridgesData(t, 0, []uint64{21, 21, 21, 22, 22, 22}), nil).Once()
 	testData.l2syncerMock.EXPECT().GetClaims(ctx, uint64(21), uint64(100)).Return(nil, nil).Once()
+	finalizedL1Block := &ethtypes.Header{Number: big.NewInt(50)}
+	testData.l1ClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(finalizedL1Block, nil).Once()
+	testData.l1InfoTreeSyncerMock.EXPECT().GetProcessedBlockUntil(ctx, finalizedL1Block.Number.Uint64()).Return(uint64(50), finalizedL1Block.Hash(), nil).Once()
+	testData.l1InfoTreeSyncerMock.EXPECT().GetLatestInfoUntilBlock(ctx, uint64(50)).Return(&l1infotreesync.L1InfoTreeLeaf{
+		L1InfoTreeIndex: 1,
+	}, nil).Once()
+	testData.l1InfoTreeSyncerMock.EXPECT().GetL1InfoTreeRootByIndex(ctx, uint32(1)).Return(treetypes.Root{}, nil).Once()
 	testData.l2syncerMock.EXPECT().GetExitRootByIndex(ctx, mock.Anything).Return(treetypes.Root{}, nil).Once()
 	testData.l2syncerMock.EXPECT().OriginNetwork().Return(uint32(1)).Once()
 	testData.epochNotifierMock.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{
@@ -930,6 +947,7 @@ type aggsenderTestData struct {
 	epochNotifierMock    *mocks.EpochNotifier
 	sut                  *AggSender
 	testCerts            []aggsendertypes.CertificateInfo
+	l1ClientMock         *mocks.EthClient
 }
 
 func NewBridgesData(t *testing.T, num int, blockNum []uint64) []bridgesync.Bridge {
@@ -1049,5 +1067,6 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		epochNotifierMock:    epochNotifierMock,
 		sut:                  sut,
 		testCerts:            testCerts,
+		l1ClientMock:         l1ClientMock,
 	}
 }
