@@ -1182,3 +1182,74 @@ func Test_PPFlow_CheckInitialStatus(t *testing.T) {
 	sut := &PPFlow{}
 	require.Nil(t, sut.CheckInitialStatus(context.TODO()))
 }
+
+func Test_PPFlow_SignCertificate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		mockSignerFn  func(*mocks.Signer)
+		certificate   *agglayertypes.Certificate
+		expectedCert  *agglayertypes.Certificate
+		expectedError string
+	}{
+		{
+			name: "successfully signs certificate",
+			mockSignerFn: func(mockSigner *mocks.Signer) {
+				mockSigner.EXPECT().SignHash(ctx, mock.Anything).Return([]byte("mock_signature"), nil)
+				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0x123"))
+			},
+			certificate: &agglayertypes.Certificate{
+				NewLocalExitRoot: common.HexToHash("0x456"),
+			},
+			expectedCert: &agglayertypes.Certificate{
+				NewLocalExitRoot: common.HexToHash("0x456"),
+				AggchainData: &agglayertypes.AggchainDataSignature{
+					Signature: []byte("mock_signature"),
+				},
+			},
+		},
+		{
+			name: "error signing certificate",
+			mockSignerFn: func(mockSigner *mocks.Signer) {
+				mockSigner.EXPECT().SignHash(ctx, mock.Anything).Return(nil, errors.New("signing error"))
+			},
+			certificate: &agglayertypes.Certificate{
+				NewLocalExitRoot: common.HexToHash("0x456"),
+			},
+			expectedError: "signing error",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockSigner := mocks.NewSigner(t)
+			if tt.mockSignerFn != nil {
+				tt.mockSignerFn(mockSigner)
+			}
+
+			ppFlow := &PPFlow{
+				signer: mockSigner,
+				baseFlow: &baseFlow{
+					log: log.WithFields("test", "Test_PPFlow_SignCertificate"),
+				},
+			}
+
+			signedCert, err := ppFlow.signCertificate(ctx, tt.certificate)
+
+			if tt.expectedError != "" {
+				require.ErrorContains(t, err, tt.expectedError)
+				require.Nil(t, signedCert)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedCert, signedCert)
+			}
+		})
+	}
+}

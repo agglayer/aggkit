@@ -141,7 +141,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		{
 			name: "resend InError certificate - no aggchain proof in db",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockL2BridgeQuerier *mocks.BridgeDataQuerier,
 				mockProverClient *mocks.AggchainProofClientInterface,
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockChainGERReader *mocks.ChainGERReader) {
@@ -154,8 +154,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					ToBlock:   10,
 					Status:    agglayertypes.InError,
 				}, nil)
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
 						GlobalExitRoot:  ger,
