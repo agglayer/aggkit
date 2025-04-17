@@ -249,18 +249,22 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 	if networkID == mainnetNetworkID {
 		info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get L1 info tree leaf for index %d, error: %s", l1InfoTreeIndex, err))
 		}
 		return info, nil
 	}
 	if networkID == b.networkID {
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get injected global exit root for L1 info tree index %d, error: %s", l1InfoTreeIndex, err))
 		}
 		info, err := b.l1InfoTree.GetInfoByIndex(ctx, e.L1InfoTreeIndex)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get L1 info tree leaf for index %d na L2 network (ID=%d), error: %s",
+					e.L1InfoTreeIndex, networkID, err))
 		}
 		return info, nil
 	}

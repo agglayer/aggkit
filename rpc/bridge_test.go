@@ -7,23 +7,62 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
 	mocks "github.com/agglayer/aggkit/rpc/mocks"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	fooErrMsg = "foo"
-	barErrMsg = "bar"
+const (
+	fooErrMsg   = "foo"
+	barErrMsg   = "bar"
+	l2NetworkID = uint32(10)
 )
+
+type bridgeWithMocks struct {
+	bridge       *BridgeEndpoints
+	sponsor      *mocks.ClaimSponsorer
+	l1InfoTree   *mocks.L1InfoTreer
+	injectedGERs *mocks.LastGERer
+	bridgeL1     *mocks.Bridger
+	bridgeL2     *mocks.Bridger
+}
+
+func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
+	t.Helper()
+	b := bridgeWithMocks{
+		sponsor:      mocks.NewClaimSponsorer(t),
+		l1InfoTree:   mocks.NewL1InfoTreer(t),
+		injectedGERs: mocks.NewLastGERer(t),
+		bridgeL1:     mocks.NewBridger(t),
+		bridgeL2:     mocks.NewBridger(t),
+	}
+	logger := log.WithFields("module", "bridgerpc")
+	b.bridge = NewBridgeEndpoints(
+		logger, 0, 0, networkID, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
+	)
+	return b
+}
+
+func (b *bridgeWithMocks) setBridgeL1(l1Bridger *mocks.Bridger) {
+	b.bridgeL1 = l1Bridger
+	b.bridge.bridgeL1 = l1Bridger
+}
+
+func (b *bridgeWithMocks) setBridgeL2(l2Bridger *mocks.Bridger) {
+	b.bridgeL2 = l2Bridger
+	b.bridge.bridgeL2 = l2Bridger
+}
 
 func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 	type testCase struct {
@@ -430,7 +469,6 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 }
 
 func TestGetTokenMappings(t *testing.T) {
-	l2NetworkID := uint32(10)
 	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 	t.Run("GetTokenMappings for L1 network", func(t *testing.T) {
@@ -511,6 +549,7 @@ func TestGetTokenMappings(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
 		result, err := bridgeMocks.bridge.GetTokenMappings(unsupportedNetworkID, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get token mappings, unsupported network %d", unsupportedNetworkID))
 		require.Nil(t, result)
@@ -520,6 +559,7 @@ func TestGetTokenMappings(t *testing.T) {
 		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(fooErrMsg))
 
 		result, err := bridgeMocks.bridge.GetTokenMappings(mainnetNetworkID, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get token mappings for the L1 network, error: %s", fooErrMsg))
 		require.Nil(t, result)
@@ -529,6 +569,7 @@ func TestGetTokenMappings(t *testing.T) {
 		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(barErrMsg))
 
 		result, err := bridgeMocks.bridge.GetTokenMappings(l2NetworkID, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get token mappings for the L2 network (ID=%d), error: %s",
 			l2NetworkID, barErrMsg))
@@ -537,7 +578,6 @@ func TestGetTokenMappings(t *testing.T) {
 }
 
 func TestGetLegacyTokenMigrations(t *testing.T) {
-	l2NetworkID := uint32(10)
 	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 	t.Run("GetLegacyTokenMigrations for L1 network", func(t *testing.T) {
@@ -616,6 +656,7 @@ func TestGetLegacyTokenMigrations(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
 		result, err := bridgeMocks.bridge.GetLegacyTokenMigrations(unsupportedNetworkID, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get legacy token migrations, unsupported network %d", unsupportedNetworkID))
 		require.Nil(t, result)
@@ -627,6 +668,7 @@ func TestGetLegacyTokenMigrations(t *testing.T) {
 			Return(nil, 0, errors.New(fooErrMsg))
 
 		result, err := bridgeMocks.bridge.GetLegacyTokenMigrations(mainnetNetworkID, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get legacy token migrations for the L1 network, error: %s", fooErrMsg))
 		require.Nil(t, result)
@@ -638,6 +680,7 @@ func TestGetLegacyTokenMigrations(t *testing.T) {
 			Return(nil, 0, errors.New(barErrMsg))
 
 		result, err := bridgeMocks.bridge.GetLegacyTokenMigrations(l2NetworkID, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get legacy token migrations for L2 network (ID=%d), error: %s",
 			l2NetworkID, barErrMsg))
@@ -645,43 +688,7 @@ func TestGetLegacyTokenMigrations(t *testing.T) {
 	})
 }
 
-type bridgeWithMocks struct {
-	bridge       *BridgeEndpoints
-	sponsor      *mocks.ClaimSponsorer
-	l1InfoTree   *mocks.L1InfoTreer
-	injectedGERs *mocks.LastGERer
-	bridgeL1     *mocks.Bridger
-	bridgeL2     *mocks.Bridger
-}
-
-func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
-	t.Helper()
-	b := bridgeWithMocks{
-		sponsor:      mocks.NewClaimSponsorer(t),
-		l1InfoTree:   mocks.NewL1InfoTreer(t),
-		injectedGERs: mocks.NewLastGERer(t),
-		bridgeL1:     mocks.NewBridger(t),
-		bridgeL2:     mocks.NewBridger(t),
-	}
-	logger := log.WithFields("module", "bridgerpc")
-	b.bridge = NewBridgeEndpoints(
-		logger, 0, 0, networkID, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
-	)
-	return b
-}
-
-func (b *bridgeWithMocks) setBridgeL1(l1Bridger *mocks.Bridger) {
-	b.bridgeL1 = l1Bridger
-	b.bridge.bridgeL1 = l1Bridger
-}
-
-func (b *bridgeWithMocks) setBridgeL2(l2Bridger *mocks.Bridger) {
-	b.bridgeL2 = l2Bridger
-	b.bridge.bridgeL2 = l2Bridger
-}
-
 func TestGetBridges(t *testing.T) {
-	l2NetworkID := uint32(10)
 	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 	t.Run("GetBridges for L1 network", func(t *testing.T) {
@@ -771,6 +778,7 @@ func TestGetBridges(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
 		result, err := bridgeMocks.bridge.GetBridges(unsupportedNetworkID, nil, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
 		require.Nil(t, result)
@@ -782,6 +790,7 @@ func TestGetBridges(t *testing.T) {
 			Return(nil, 0, errors.New(fooErrMsg))
 
 		result, err := bridgeMocks.bridge.GetBridges(mainnetNetworkID, nil, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get bridges for the L1 network, error: %s", fooErrMsg))
 		require.Nil(t, result)
@@ -793,6 +802,7 @@ func TestGetBridges(t *testing.T) {
 			Return(nil, 0, errors.New(barErrMsg))
 
 		result, err := bridgeMocks.bridge.GetBridges(l2NetworkID, nil, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get bridges for the L2 network (ID=%d), error: %s",
 			l2NetworkID, barErrMsg))
@@ -801,7 +811,6 @@ func TestGetBridges(t *testing.T) {
 }
 
 func TestGetClaims(t *testing.T) {
-	l2NetworkID := uint32(10)
 	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 	t.Run("GetClaims for L1 network", func(t *testing.T) {
@@ -870,6 +879,7 @@ func TestGetClaims(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
 		result, err := bridgeMocks.bridge.GetClaims(unsupportedNetworkID, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
 		require.Nil(t, result)
@@ -879,6 +889,7 @@ func TestGetClaims(t *testing.T) {
 		bridgeMocks.bridgeL1.EXPECT().GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(fooErrMsg))
 
 		result, err := bridgeMocks.bridge.GetClaims(mainnetNetworkID, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get claims for the L1 network, error: %s", fooErrMsg))
 		require.Nil(t, result)
@@ -888,6 +899,7 @@ func TestGetClaims(t *testing.T) {
 		bridgeMocks.bridgeL2.EXPECT().GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(barErrMsg))
 
 		result, err := bridgeMocks.bridge.GetClaims(l2NetworkID, nil, nil)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s",
 			l2NetworkID, barErrMsg))
@@ -896,7 +908,6 @@ func TestGetClaims(t *testing.T) {
 }
 
 func TestGetLastReorgEvent(t *testing.T) {
-	l2NetworkID := uint32(10)
 	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 	t.Run("GetLastReorgEvent for L1 network", func(t *testing.T) {
@@ -943,6 +954,7 @@ func TestGetLastReorgEvent(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
 		result, err := bridgeMocks.bridge.GetLastReorgEvent(unsupportedNetworkID)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
 		require.Nil(t, result)
@@ -953,6 +965,7 @@ func TestGetLastReorgEvent(t *testing.T) {
 		bridgeMocks.bridgeL1.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, errors.New(fooErrMsg))
 
 		result, err := bridgeMocks.bridge.GetLastReorgEvent(mainnetNetworkID)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", fooErrMsg))
 		require.Nil(t, result)
@@ -963,8 +976,116 @@ func TestGetLastReorgEvent(t *testing.T) {
 		bridgeMocks.bridgeL2.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, errors.New(barErrMsg))
 
 		result, err := bridgeMocks.bridge.GetLastReorgEvent(l2NetworkID)
+		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get last reorg event for the L2 network (ID=%d), error: %s", l2NetworkID, barErrMsg))
+		require.Nil(t, result)
+	})
+}
+
+func TestInjectedInfoAfterIndex(t *testing.T) {
+	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+	l1InfoTreeLeaf := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:       uint64(3),
+		BlockPosition:     uint64(0),
+		L1InfoTreeIndex:   uint32(1),
+		PreviousBlockHash: common.HexToHash("0x1"),
+		Timestamp:         uint64(time.Now().Unix()),
+		MainnetExitRoot:   common.HexToHash("0x2"),
+		RollupExitRoot:    common.HexToHash("0x3"),
+		Hash:              common.HexToHash("0x4"),
+	}
+
+	l1InfoTreeLeaf.GlobalExitRoot = crypto.Keccak256Hash(
+		append(l1InfoTreeLeaf.MainnetExitRoot.Bytes(),
+			l1InfoTreeLeaf.RollupExitRoot.Bytes()...))
+
+	t.Run("InjectedInfoAfterIndex for L1 network", func(t *testing.T) {
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(l1InfoTreeLeaf, nil)
+
+		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(mainnetNetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
+		require.NoError(t, err)
+		require.Equal(t, l1InfoTreeLeaf, result)
+	})
+
+	t.Run("InjectedInfoAfterIndex for L2 network", func(t *testing.T) {
+		bridgeMocks.injectedGERs.EXPECT().
+			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(
+				lastgersync.Event{
+					GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
+					L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
+				}, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(l1InfoTreeLeaf, nil)
+
+		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(l2NetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
+		require.NoError(t, err)
+		require.Equal(t, l1InfoTreeLeaf, result)
+	})
+
+	t.Run("InjectedInfoAfterIndex for unsupported network", func(t *testing.T) {
+		unsupportedNetworkID := uint32(100)
+
+		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(unsupportedNetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
+		require.NotNil(t, err)
+		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
+		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
+		require.Nil(t, result)
+	})
+
+	t.Run("InjectedInfoAfterIndex for L1 network failed", func(t *testing.T) {
+		bridgeMocks = newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, mock.Anything).
+			Return(nil, errors.New(fooErrMsg))
+
+		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(mainnetNetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
+		require.NotNil(t, err)
+		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
+		require.ErrorContains(t, err,
+			fmt.Sprintf("failed to get L1 info tree leaf for index %d, error: %s", l1InfoTreeLeaf.L1InfoTreeIndex, fooErrMsg))
+		require.Nil(t, result)
+	})
+
+	t.Run("InjectedInfoAfterIndex for L2 network failed (GetFirstGERAfterL1InfoTreeIndex failure)", func(t *testing.T) {
+		bridgeMocks = newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.injectedGERs.EXPECT().
+			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(lastgersync.Event{}, errors.New(barErrMsg))
+
+		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(l2NetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
+		require.NotNil(t, err)
+		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
+		require.ErrorContains(t, err,
+			fmt.Sprintf("failed to get injected global exit root for L1 info tree index %d, error: %s", l1InfoTreeLeaf.L1InfoTreeIndex, barErrMsg))
+		require.Nil(t, result)
+	})
+
+	t.Run("InjectedInfoAfterIndex for L2 network failed (GetInfoByIndex failure)", func(t *testing.T) {
+		bridgeMocks = newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, mock.Anything).
+			Return(nil, errors.New(fooErrMsg))
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(lastgersync.Event{
+				GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
+				L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
+			}, nil)
+
+		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(l2NetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
+		require.NotNil(t, err)
+		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
+		require.ErrorContains(t, err,
+			fmt.Sprintf("failed to get L1 info tree leaf for index %d na L2 network (ID=%d), error: %s",
+				l1InfoTreeLeaf.L1InfoTreeIndex, l2NetworkID, fooErrMsg))
 		require.Nil(t, result)
 	})
 }
