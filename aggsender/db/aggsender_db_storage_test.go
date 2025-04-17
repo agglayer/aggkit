@@ -449,6 +449,7 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 		Status:                  agglayertypes.Settled,
 		NewLocalExitRoot:        common.HexToHash("0x23"),
 		FinalizedL1InfoTreeRoot: &common.Hash{},
+		L1InfoTreeLeafCount:     100,
 	}
 	require.NoError(t, storage.SaveLastSentCertificate(ctx, certWithL1Root))
 
@@ -456,6 +457,7 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, readCertWithL1Root)
 	require.Equal(t, certWithL1Root, *readCertWithL1Root)
+	require.Equal(t, certWithL1Root.L1InfoTreeLeafCount, readCertWithL1Root.L1InfoTreeLeafCount)
 }
 
 func Test_StorageAggchainProof(t *testing.T) {

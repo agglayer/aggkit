@@ -110,6 +110,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			CreatedAt:                      lastSentCertificateInfo.CreatedAt,
 			AggchainProof:                  lastSentCertificateInfo.AggchainProof,
 			L1InfoTreeRootFromWhichToProve: *lastSentCertificateInfo.FinalizedL1InfoTreeRoot,
+			L1InfoTreeLeafCount:            lastSentCertificateInfo.L1InfoTreeLeafCount,
 		}, nil
 	}
 

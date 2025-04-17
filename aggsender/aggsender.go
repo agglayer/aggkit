@@ -342,6 +342,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		UpdatedAt:               certificateParams.CreatedAt,
 		AggchainProof:           certificateParams.AggchainProof,
 		FinalizedL1InfoTreeRoot: &certificateParams.L1InfoTreeRootFromWhichToProve,
+		L1InfoTreeLeafCount:     certificateParams.L1InfoTreeLeafCount,
 		SignedCertificate:       string(raw),
 	}
 	// TODO: Improve this case, if a cert is not save in the storage, we are going to settle a unknown certificate
