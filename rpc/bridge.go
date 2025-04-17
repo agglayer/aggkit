@@ -178,7 +178,7 @@ func (b *BridgeEndpoints) GetLegacyTokenMigrations(
 		if err != nil {
 			return nil,
 				rpc.NewRPCError(rpc.DefaultErrorCode,
-					fmt.Sprintf("failed to get legacy token migrations for L2 network %d, error: %s", networkID, err))
+					fmt.Sprintf("failed to get legacy token migrations for L2 network (ID=%d), error: %s", networkID, err))
 		}
 
 	default:
@@ -620,12 +620,14 @@ func (b *BridgeEndpoints) GetLastReorgEvent(networkID uint32) (interface{}, rpc.
 	case networkID == mainnetNetworkID:
 		reorgEvent, err = b.bridgeL1.GetLastReorgEvent(ctx)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to last reorg event, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", err))
 		}
 	case networkID == b.networkID:
 		reorgEvent, err = b.bridgeL2.GetLastReorgEvent(ctx)
 		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to last reorg event, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get last reorg event for the L2 network (ID=%d), error: %s", networkID, err))
 		}
 	default:
 		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
