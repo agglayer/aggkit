@@ -5,8 +5,8 @@ deployment_stages:
 
 args:
   aggkit_image: aggkit:local
-  agglayer_image: ghcr.io/agglayer/agglayer:0.3.0-rc.15
-  aggkit_prover_image: ghcr.io/agglayer/aggkit-prover:0.1.0-rc.19
+  agglayer_image: ghcr.io/agglayer/agglayer:0.3.0-rc.16
+  aggkit_prover_image: ghcr.io/agglayer/aggkit-prover:0.1.0-rc.20
   op_succinct_contract_deployer_image: atanmarko/op-succinct-contract-deployer:v1.2.11-agglayer
   op_succinct_server_image: ghcr.io/agglayer/op-succinct/succinct-proposer:v1.2.12-agglayer
   op_succinct_proposer_image: ghcr.io/agglayer/op-succinct/op-proposer:v1.2.12-agglayer
