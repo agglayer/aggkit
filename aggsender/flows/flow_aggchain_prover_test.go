@@ -71,7 +71,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			expectedError: "some error",
 		},
 		{
-			name: "resend InError certificate",
+			name: "resend InError certificate - have aggchain proof in db",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2Syncer *mocks.L2BridgeSyncer,
 				mockProverClient *mocks.AggchainProofClientInterface,
@@ -127,6 +127,81 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						LastProvenBlock: 1,
 						EndBlock:        10,
 					},
+				},
+			},
+		},
+		{
+			name: "resend InError certificate - no aggchain proof in db",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2Syncer *mocks.L2BridgeSyncer,
+				mockProverClient *mocks.AggchainProofClientInterface,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
+				mockChainGERReader *mocks.ChainGERReader) {
+				rer := common.HexToHash("0x1")
+				mer := common.HexToHash("0x2")
+				ger := calculateGER(mer, rer)
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
+				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{
+					FromBlock: 1,
+					ToBlock:   10,
+					Status:    agglayertypes.InError,
+				}, nil)
+				mockL2Syncer.EXPECT().GetBridgesPublished(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{
+					{
+						GlobalIndex:     big.NewInt(1),
+						GlobalExitRoot:  ger,
+						MainnetExitRoot: mer,
+						RollupExitRoot:  rer,
+					}}, nil)
+				mockL1InfoDataQuery.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
+					treetypes.Proof{},
+					&l1infotreesync.L1InfoTreeLeaf{
+						BlockNumber: l1Header.Number.Uint64(),
+						Hash:        common.HexToHash("0x2"),
+					},
+					&treetypes.Root{
+						Hash:  common.HexToHash("0x1"),
+						Index: 10,
+					},
+					nil,
+				)
+				mockL1InfoDataQuery.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(mock.Anything, mock.Anything).Return(nil)
+				mockChainGERReader.EXPECT().GetInjectedGERsForRange(ctx, uint64(1), uint64(10)).Return(map[common.Hash]chaingerreader.InjectedGER{}, nil)
+				mockProverClient.EXPECT().GenerateAggchainProof(uint64(0), uint64(10),
+					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
+						BlockNumber: l1Header.Number.Uint64(),
+						Hash:        common.HexToHash("0x2"),
+					},
+					agglayertypes.MerkleProof{
+						Root:  common.HexToHash("0x1"),
+						Proof: treetypes.Proof{},
+					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}}).Return(&types.AggchainProof{
+					SP1StarkProof: &types.SP1StarkProof{Proof: []byte("some-proof")}, LastProvenBlock: 0, EndBlock: 10}, nil)
+			},
+			expectedParams: &types.CertificateBuildParams{
+				FromBlock:  1,
+				ToBlock:    10,
+				RetryCount: 1,
+				LastSentCertificate: &types.CertificateInfo{
+					FromBlock: 1,
+					ToBlock:   10,
+					Status:    agglayertypes.InError,
+				},
+				Bridges:             []bridgesync.Bridge{{}},
+				L1InfoTreeLeafCount: 11,
+				Claims: []bridgesync.Claim{{
+					GlobalIndex:     big.NewInt(1),
+					RollupExitRoot:  common.HexToHash("0x1"),
+					MainnetExitRoot: common.HexToHash("0x2"),
+					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+				}},
+				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
+				AggchainProof: &types.AggchainProof{
+					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
+					LastProvenBlock: 0,
+					EndBlock:        10,
 				},
 			},
 		},
