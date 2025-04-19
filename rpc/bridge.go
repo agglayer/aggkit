@@ -495,7 +495,8 @@ func (b *BridgeEndpoints) GetSponsoredClaimStatus(globalIndex *big.Int) (interfa
 	}
 	claim, err := b.sponsor.GetClaim(globalIndex)
 	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claim status, error: %s", err))
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			fmt.Sprintf("failed to get claim status for global index %d, error: %s", globalIndex, err))
 	}
 	return claim.Status, nil
 }

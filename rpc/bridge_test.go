@@ -11,6 +11,7 @@ import (
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
@@ -1179,5 +1180,44 @@ func TestL1InfoTreeIndexForBridge(t *testing.T) {
 		require.Nil(t, result)
 		require.ErrorContains(t, err,
 			fmt.Sprintf("failed to get l1 info tree index for L1 network and deposit count %d, error: %s", depositCount, fooErrMsg))
+	})
+}
+
+func TestGetSponsoredClaimStatus(t *testing.T) {
+	t.Run("Client does not support sponsored claims", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.sponsor = nil
+
+		result, err := bridgeMocks.bridge.GetSponsoredClaimStatus(common.Big1)
+		require.Nil(t, result)
+		require.NotNil(t, err)
+		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
+		require.ErrorContains(t, err, "this client does not support claim sponsoring")
+	})
+
+	t.Run("Failed to get claim status", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.sponsor.EXPECT().GetClaim(mock.Anything).
+			Return(nil, errors.New(fooErrMsg))
+
+		result, err := bridgeMocks.bridge.GetSponsoredClaimStatus(common.Big1)
+		require.Nil(t, result)
+		require.NotNil(t, err)
+		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
+		require.ErrorContains(t, err,
+			fmt.Sprintf("failed to get claim status for global index %d, error: %s", common.Big1, fooErrMsg))
+	})
+
+	t.Run("Claim status retrieval successful", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.sponsor.EXPECT().GetClaim(mock.Anything).
+			Return(&claimsponsor.Claim{
+				GlobalIndex: common.Big2,
+				Status:      claimsponsor.PendingClaimStatus,
+			}, nil)
+
+		result, err := bridgeMocks.bridge.GetSponsoredClaimStatus(common.Big1)
+		require.Nil(t, err)
+		require.Equal(t, result, claimsponsor.PendingClaimStatus)
 	})
 }
