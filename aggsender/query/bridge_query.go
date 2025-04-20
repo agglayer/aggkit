@@ -35,7 +35,7 @@ func (b *bridgeDataQuerier) GetBridgesAndClaims(
 	ctx context.Context,
 	fromBlock, toBlock uint64,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
-	bridges, err := b.bridgeSyncer.GetBridgesPublished(ctx, fromBlock, toBlock)
+	bridges, err := b.bridgeSyncer.GetBridges(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
 	}

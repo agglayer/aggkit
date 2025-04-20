@@ -103,6 +103,14 @@ type L1InfoTreeDataQuerier interface {
 		finalizedL1InfoTreeRoot *treetypes.Root, claims []bridgesync.Claim) error
 }
 
+// GERQuerier is an interface defining functions that an GERQuerier should implement
+type GERQuerier interface {
+	GetInjectedGERsProofs(
+		ctx context.Context,
+		finalizedL1InfoTreeRoot *treetypes.Root,
+		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
+}
+
 // EthClient is an interface defining functions that an EthClient should implement
 type EthClient interface {
 	bind.ContractBackend
