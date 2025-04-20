@@ -1087,7 +1087,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount)
+			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount, nil)
 
 			if tc.expectedError != nil {
 				require.Equal(t, tc.expectedError, err)
@@ -1205,7 +1205,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize)
+			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize, nil)
 
 			if tc.expectedError != nil {
 				require.Equal(t, tc.expectedError, err)

@@ -27,7 +27,7 @@ func (_m *Bridger) EXPECT() *Bridger_Expecter {
 }
 
 // GetBridgesPaged provides a mock function with given fields: ctx, pageNumber, pageSize, depositCount
-func (_m *Bridger) GetBridgesPaged(ctx context.Context, pageNumber uint32, pageSize uint32, depositCount *uint64) ([]*bridgesync.BridgeResponse, int, error) {
+func (_m *Bridger) GetBridgesPaged(ctx context.Context, pageNumber uint32, pageSize uint32, depositCount *uint64, networkIDs []uint32) ([]*bridgesync.BridgeResponse, int, error) {
 	ret := _m.Called(ctx, pageNumber, pageSize, depositCount)
 
 	if len(ret) == 0 {
@@ -37,25 +37,25 @@ func (_m *Bridger) GetBridgesPaged(ctx context.Context, pageNumber uint32, pageS
 	var r0 []*bridgesync.BridgeResponse
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64) ([]*bridgesync.BridgeResponse, int, error)); ok {
-		return rf(ctx, pageNumber, pageSize, depositCount)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64, []uint32) ([]*bridgesync.BridgeResponse, int, error)); ok {
+		return rf(ctx, pageNumber, pageSize, depositCount, networkIDs)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64) []*bridgesync.BridgeResponse); ok {
-		r0 = rf(ctx, pageNumber, pageSize, depositCount)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *uint64, []uint32) []*bridgesync.BridgeResponse); ok {
+		r0 = rf(ctx, pageNumber, pageSize, depositCount, networkIDs)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*bridgesync.BridgeResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, *uint64) int); ok {
-		r1 = rf(ctx, pageNumber, pageSize, depositCount)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, *uint64, []uint32) int); ok {
+		r1 = rf(ctx, pageNumber, pageSize, depositCount, networkIDs)
 	} else {
 		r1 = ret.Get(1).(int)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, *uint64) error); ok {
-		r2 = rf(ctx, pageNumber, pageSize, depositCount)
+	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, *uint64, []uint32) error); ok {
+		r2 = rf(ctx, pageNumber, pageSize, depositCount, networkIDs)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -95,7 +95,7 @@ func (_c *Bridger_GetBridgesPaged_Call) RunAndReturn(run func(context.Context, u
 }
 
 // GetClaimsPaged provides a mock function with given fields: ctx, page, pageSize
-func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32) ([]*bridgesync.ClaimResponse, int, error) {
+func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32) ([]*bridgesync.ClaimResponse, int, error) {
 	ret := _m.Called(ctx, page, pageSize)
 
 	if len(ret) == 0 {
@@ -105,25 +105,25 @@ func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uin
 	var r0 []*bridgesync.ClaimResponse
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) ([]*bridgesync.ClaimResponse, int, error)); ok {
-		return rf(ctx, page, pageSize)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32) ([]*bridgesync.ClaimResponse, int, error)); ok {
+		return rf(ctx, page, pageSize, networkIDs)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) []*bridgesync.ClaimResponse); ok {
-		r0 = rf(ctx, page, pageSize)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, []uint32) []*bridgesync.ClaimResponse); ok {
+		r0 = rf(ctx, page, pageSize, networkIDs)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*bridgesync.ClaimResponse)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32) int); ok {
-		r1 = rf(ctx, page, pageSize)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, []uint32) int); ok {
+		r1 = rf(ctx, page, pageSize, networkIDs)
 	} else {
 		r1 = ret.Get(1).(int)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32) error); ok {
-		r2 = rf(ctx, page, pageSize)
+	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, []uint32) error); ok {
+		r2 = rf(ctx, page, pageSize, networkIDs)
 	} else {
 		r2 = ret.Error(2)
 	}

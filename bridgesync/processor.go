@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"strings"
 	mutex "sync"
 
 	"github.com/agglayer/aggkit/bridgesync/migrations"
@@ -462,7 +463,7 @@ func (p *processor) GetClaims(
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64,
+	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32,
 ) ([]*BridgeResponse, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -484,6 +485,21 @@ func (p *processor) GetBridgesPaged(
 		pageNumber = 1
 		pageSize = 1
 	}
+
+	if len(networkIDs) > 0 {
+		placeholders := make([]string, len(networkIDs))
+		for i, id := range networkIDs {
+			placeholders[i] = fmt.Sprintf("%d", id)
+		}
+		networkIDsInClause := buildNetworkIDsFilter(networkIDs, "origin_network")
+
+		if len(whereClause) > 0 {
+			whereClause += " AND " + networkIDsInClause
+		} else {
+			whereClause = "WHERE " + networkIDsInClause
+		}
+	}
+
 	offset := (pageNumber - 1) * pageSize
 	if offset >= uint32(count) {
 		p.log.Debugf("offset is larger than total bridges (page number=%d, page size=%d, total bridges=%d)",
@@ -517,7 +533,7 @@ func (p *processor) GetBridgesPaged(
 }
 
 func (p *processor) GetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32,
+	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32,
 ) ([]*ClaimResponse, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -542,6 +558,21 @@ func (p *processor) GetClaimsPaged(
 
 	orderByClause := "block_num DESC, block_pos DESC"
 	whereClause := ""
+
+	if len(networkIDs) > 0 {
+		placeholders := make([]string, len(networkIDs))
+		for i, id := range networkIDs {
+			placeholders[i] = fmt.Sprintf("%d", id)
+		}
+		networkIDsInClause := buildNetworkIDsFilter(networkIDs, "destination_network")
+
+		if len(whereClause) > 0 {
+			whereClause += " AND " + networkIDsInClause
+		} else {
+			whereClause = "WHERE " + networkIDsInClause
+		}
+	}
+
 	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
 		return nil, 0, err
@@ -869,6 +900,16 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	}
 
 	return tokenMappings, nil
+}
+
+// buildNetworkIDsFilter builds a SQL filter for the given network IDs
+
+func buildNetworkIDsFilter(networkIDs []uint32, networkIDColName string) string {
+	placeholders := make([]string, len(networkIDs))
+	for i, id := range networkIDs {
+		placeholders[i] = fmt.Sprintf("%d", id)
+	}
+	return fmt.Sprintf("%s IN (%s)", networkIDColName, strings.Join(placeholders, ", "))
 }
 
 func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {

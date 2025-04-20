@@ -178,7 +178,7 @@ func TestBridgeCallData(t *testing.T) {
 
 	// wait for bridge event to get indexed
 	for attempt < maxAttempts {
-		bridgeResponse, totalCount, err := bridgeSync.GetBridgesPaged(ctx, page, pageSize, nil)
+		bridgeResponse, totalCount, err := bridgeSync.GetBridgesPaged(ctx, page, pageSize, nil, nil)
 		require.NoError(t, err)
 
 		if len(bridgeResponse) > 0 {
