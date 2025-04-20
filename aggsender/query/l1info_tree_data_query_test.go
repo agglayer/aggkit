@@ -1,4 +1,4 @@
-package l1infotreequery
+package query
 
 import (
 	"context"

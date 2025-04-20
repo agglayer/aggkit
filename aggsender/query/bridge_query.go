@@ -1,4 +1,4 @@
-package bridgequery
+package query
 
 import (
 	"context"

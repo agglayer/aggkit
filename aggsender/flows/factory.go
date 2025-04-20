@@ -4,11 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/agglayer/aggkit/aggsender/bridgequery"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
-	"github.com/agglayer/aggkit/aggsender/l1infotreequery"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
@@ -42,8 +41,8 @@ func NewFlow(
 			cfg.MaxCertSize,
 			cfg.BridgeMetadataAsHash,
 			storage,
-			l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
-			bridgequery.NewBridgeDataQuerier(l2BridgeSyncer),
+			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			query.NewBridgeDataQuerier(l2BridgeSyncer),
 			signer,
 		), nil
 	case types.AggchainProofMode:
@@ -66,8 +65,8 @@ func NewFlow(
 			cfg.SovereignRollupAddr,
 			aggchainProofClient,
 			storage,
-			l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
-			bridgequery.NewBridgeDataQuerier(l2BridgeSyncer),
+			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			query.NewBridgeDataQuerier(l2BridgeSyncer),
 			l1Client,
 			l2Client,
 		)
