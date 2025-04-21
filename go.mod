@@ -12,7 +12,7 @@ require (
 	github.com/hermeznetwork/tracerr v0.3.2
 	github.com/iden3/go-iden3-crypto v0.0.17
 	github.com/invopop/jsonschema v0.13.0
-	github.com/knadh/koanf/parsers/json v0.1.0
+	github.com/knadh/koanf/parsers/json v1.0.0
 	github.com/knadh/koanf/parsers/toml v0.1.0
 	github.com/knadh/koanf/providers/rawbytes v0.1.0
 	github.com/knadh/koanf/v2 v2.1.2
