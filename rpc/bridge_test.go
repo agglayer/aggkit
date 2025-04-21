@@ -1221,3 +1221,52 @@ func TestGetSponsoredClaimStatus(t *testing.T) {
 		require.Equal(t, result, claimsponsor.PendingClaimStatus)
 	})
 }
+
+func TestSponsorClaim(t *testing.T) {
+	t.Run("Client does not support sponsored claims", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridge.sponsor = nil
+
+		result, err := bridgeMocks.bridge.SponsorClaim(claimsponsor.Claim{})
+		require.Nil(t, result)
+		require.NotNil(t, err)
+		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
+		require.ErrorContains(t, err, "this client does not support claim sponsoring")
+	})
+
+	t.Run("Unsupported network id", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		result, err := bridgeMocks.bridge.SponsorClaim(claimsponsor.Claim{DestinationNetwork: 999})
+		require.Nil(t, result)
+		require.NotNil(t, err)
+		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
+		require.ErrorContains(t, err,
+			fmt.Sprintf("this client only sponsors claims for destination network %d", l2NetworkID))
+	})
+
+	t.Run("Failed to add claim to the queue", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.sponsor.EXPECT().
+			AddClaimToQueue(mock.Anything).
+			Return(errors.New(fooErrMsg))
+
+		result, err := bridgeMocks.bridge.SponsorClaim(claimsponsor.Claim{DestinationNetwork: l2NetworkID})
+		require.Nil(t, result)
+		require.NotNil(t, err)
+		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
+		require.ErrorContains(t, err,
+			fmt.Sprintf("error adding claim to the queue %s", fooErrMsg))
+	})
+
+	t.Run("Claim is added to the queue", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.sponsor.EXPECT().
+			AddClaimToQueue(mock.Anything).
+			Return(nil)
+
+		result, err := bridgeMocks.bridge.SponsorClaim(claimsponsor.Claim{DestinationNetwork: l2NetworkID})
+		require.Nil(t, result)
+		require.Nil(t, err)
+	})
+}

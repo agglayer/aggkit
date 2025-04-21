@@ -469,7 +469,7 @@ func (b *BridgeEndpoints) SponsorClaim(claim claimsponsor.Claim) (interface{}, r
 	}
 	if claim.DestinationNetwork != b.networkID {
 		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
-			fmt.Sprintf("this client only sponsors claims for network %d", b.networkID),
+			fmt.Sprintf("this client only sponsors claims for destination network %d", b.networkID),
 		)
 	}
 	if err := b.sponsor.AddClaimToQueue(&claim); err != nil {
