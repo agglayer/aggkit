@@ -1,4 +1,4 @@
-package aggsender
+package statuschecker
 
 import (
 	"fmt"
@@ -18,7 +18,7 @@ type certTestData struct {
 }
 
 type initialStateResultTest struct {
-	action InitialStatusAction
+	action initialStatusAction
 	subMsg string
 	cert   *certTestData
 }
@@ -251,7 +251,7 @@ func runTestCases(t *testing.T, tests []testCaseData) {
 	logger := log.WithFields("module", "unit-test")
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			sut := InitialStatus{log: logger}
+			sut := initialStatus{log: logger}
 			if tt.localCert != nil {
 				sut.LocalCert = &types.CertificateInfo{
 					CertificateID: tt.localCert.CertificateID,
@@ -274,7 +274,7 @@ func runTestCases(t *testing.T, tests []testCaseData) {
 				}
 			}
 
-			action, err := sut.Process()
+			action, err := sut.process()
 			if tt.resultError {
 				require.Error(t, err)
 				require.Nil(t, action)
@@ -283,13 +283,13 @@ func runTestCases(t *testing.T, tests []testCaseData) {
 				if tt.resultActions != nil {
 					fmt.Print("test:", tt.name)
 					fmt.Print("result:", action.String())
-					require.Equal(t, tt.resultActions.action, action.Action)
-					require.Contains(t, action.Message, tt.resultActions.subMsg)
+					require.Equal(t, tt.resultActions.action, action.action)
+					require.Contains(t, action.message, tt.resultActions.subMsg)
 					if tt.resultActions.cert != nil {
-						require.NotNil(t, action.Cert)
-						require.Equal(t, tt.resultActions.cert.CertificateID, action.Cert.CertificateID)
-						require.Equal(t, tt.resultActions.cert.Height, action.Cert.Height)
-						require.Equal(t, tt.resultActions.cert.Status, action.Cert.Status)
+						require.NotNil(t, action.cert)
+						require.Equal(t, tt.resultActions.cert.CertificateID, action.cert.CertificateID)
+						require.Equal(t, tt.resultActions.cert.Height, action.cert.Height)
+						require.Equal(t, tt.resultActions.cert.Status, action.cert.Status)
 					}
 				}
 			}

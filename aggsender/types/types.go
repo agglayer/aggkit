@@ -18,6 +18,12 @@ const (
 	AggchainProofMode    AggsenderMode = "AggchainProof"
 )
 
+// CertStatus holds the status of pending and in error certificates
+type CertStatus struct {
+	ExistPendingCerts   bool
+	ExistNewInErrorCert bool
+}
+
 type AggchainProof struct {
 	LastProvenBlock uint64            `json:"last_proven_block"`
 	EndBlock        uint64            `json:"end_block"`

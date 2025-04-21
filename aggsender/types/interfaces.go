@@ -2,6 +2,7 @@ package types
 
 import (
 	"context"
+	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
@@ -120,4 +121,14 @@ type Logger interface {
 	Warnf(format string, args ...interface{})
 	Debug(args ...interface{})
 	Debugf(format string, args ...interface{})
+}
+
+// CertificateStatusChecker is an interface defining functions that a CertificateStatusChecker should implement
+type CertificateStatusChecker interface {
+	StartStatusChecking(ctx context.Context, checkStatusInterval time.Duration) <-chan CertStatus
+	CheckPendingCertificatesStatus(ctx context.Context) CertStatus
+	CheckInitialStatus(
+		ctx context.Context,
+		delayBetweenRetries time.Duration,
+		aggsenderStatus *AggsenderStatus)
 }
