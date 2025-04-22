@@ -16,10 +16,7 @@ type Bridger interface {
 	GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error)
 	GetRootByLER(ctx context.Context, ler common.Hash) (*tree.Root, error)
 	GetBridgesPaged(
-		ctx context.Context,
-		pageNumber, pageSize uint32,
-		depositCount *uint64,
-	) ([]*bridgesync.BridgeResponse, int, error)
+		ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64) ([]*bridgesync.BridgeResponse, int, error)
 	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*bridgesync.TokenMapping, int, error)
 	GetLegacyTokenMigrations(
 		ctx context.Context, pageNumber, pageSize uint32) ([]*bridgesync.LegacyTokenMigration, int, error)
