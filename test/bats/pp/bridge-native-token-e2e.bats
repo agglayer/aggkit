@@ -12,7 +12,7 @@ setup() {
     ether_value=${ETHER_VALUE:-"0.0200000054"}
     amount=$(cast to-wei $ether_value ether)
     readonly native_token_addr=${NATIVE_TOKEN_ADDRESS:-"0x0000000000000000000000000000000000000000"}
-    
+
     readonly is_forced=${IS_FORCED:-"true"}
     readonly l1_bridge_addr=$L1_BRIDGE_ADDRESS
     readonly l2_bridge_addr=$L2_BRIDGE_ADDRESS
@@ -25,12 +25,17 @@ setup() {
     readonly l1_rpc_network_id=$(cast call --rpc-url $l1_rpc_url $l1_bridge_addr 'networkID() (uint32)')
     readonly l2_rpc_network_id=$(cast call --rpc-url $l2_rpc_url $l2_bridge_addr 'networkID() (uint32)')
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
-    
+
     readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $l2_bridge_addr 'WETHToken() (address)')
-    echo "WETH token address: $weth_token_addr" >&3
 }
 
-@test "Native gas token deposit to WETH" {
+@test "Native token transfer L1 -> L2" {
+    l1_native_token_balance=$(get_token_balance "$l1_rpc_url" "$native_token_addr" "$sender_addr")
+    l2_native_token_balance=$(get_token_balance "$l2_rpc_url" "$native_token_addr" "$sender_addr")
+
+    log "Sender native token balance on L1: $l1_native_token_balance"
+    log "Sender native token balance on L2: $l2_native_token_balance"
+
     destination_addr=$sender_addr
     local initial_receiver_balance=$(cast call --rpc-url "$l2_rpc_url" "$weth_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
     echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
