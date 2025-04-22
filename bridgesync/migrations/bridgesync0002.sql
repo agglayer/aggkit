@@ -5,6 +5,7 @@ ALTER TABLE claim DROP COLUMN tx_hash;
 ALTER TABLE bridge DROP COLUMN block_timestamp;
 ALTER TABLE claim DROP COLUMN block_timestamp;
 ALTER TABLE bridge DROP COLUMN from_address;
+ALTER TABLE bridge DROP COLUMN gas_token_address;
 ALTER TABLE claim DROP COLUMN from_address;
 ALTER TABLE bridge DROP COLUMN calldata;
 
@@ -27,5 +28,6 @@ ALTER TABLE claim ADD COLUMN tx_hash VARCHAR;
 ALTER TABLE bridge ADD COLUMN block_timestamp INTEGER;
 ALTER TABLE claim ADD COLUMN block_timestamp INTEGER;
 ALTER TABLE bridge ADD COLUMN from_address VARCHAR;
+ALTER TABLE bridge ADD COLUMN gas_token_address VARCHAR;
 ALTER TABLE claim ADD COLUMN from_address VARCHAR;
 ALTER TABLE bridge ADD COLUMN calldata BLOB;

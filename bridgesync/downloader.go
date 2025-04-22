@@ -97,6 +97,11 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 			return fmt.Errorf("error parsing BridgeEvent log %+v: %w", l, err)
 		}
 
+		gasTokenAddress, err := contract.GasTokenAddress(nil)
+		if err != nil {
+			return fmt.Errorf("error parsing gas token address: %w", err)
+		}
+
 		foundCall, err := extractCall(client, bridgeAddr, l.TxHash)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event calldata (tx hash: %s): %w", l.TxHash, err)
@@ -117,6 +122,7 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 			Amount:             bridgeEvent.Amount,
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
+			GasTokenAddress:    gasTokenAddress,
 		}})
 		return nil
 	}
