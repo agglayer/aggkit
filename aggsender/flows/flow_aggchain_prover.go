@@ -100,18 +100,32 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
 		}
 
-		return &types.CertificateBuildParams{
-			FromBlock:                      lastSentCertificateInfo.FromBlock,
-			ToBlock:                        lastSentCertificateInfo.ToBlock,
-			RetryCount:                     lastSentCertificateInfo.RetryCount + 1,
-			Bridges:                        bridges,
-			Claims:                         claims,
-			LastSentCertificate:            lastSentCertificateInfo,
-			CreatedAt:                      lastSentCertificateInfo.CreatedAt,
-			AggchainProof:                  lastSentCertificateInfo.AggchainProof,
-			L1InfoTreeRootFromWhichToProve: *lastSentCertificateInfo.FinalizedL1InfoTreeRoot,
-			L1InfoTreeLeafCount:            lastSentCertificateInfo.L1InfoTreeLeafCount,
-		}, nil
+		buildParams := &types.CertificateBuildParams{
+			FromBlock:           lastSentCertificateInfo.FromBlock,
+			ToBlock:             lastSentCertificateInfo.ToBlock,
+			RetryCount:          lastSentCertificateInfo.RetryCount + 1,
+			Bridges:             bridges,
+			Claims:              claims,
+			LastSentCertificate: lastSentCertificateInfo,
+			CreatedAt:           lastSentCertificateInfo.CreatedAt,
+		}
+
+		if lastSentCertificateInfo.AggchainProof == nil {
+			// this can happen if the aggsender db was deleted, so the aggsender
+			// got the last sent certificate from agglayer, but in that data we do not have
+			// the aggchain proof that was generated before, so we need to call the prover again
+
+			return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
+		}
+
+		// if we have the aggchain proof, we need to set it in the build params
+		// and set the root from which to prove the imported bridge exits
+		// no need to call the prover again
+		buildParams.AggchainProof = lastSentCertificateInfo.AggchainProof
+		buildParams.L1InfoTreeRootFromWhichToProve = *lastSentCertificateInfo.FinalizedL1InfoTreeRoot
+		buildParams.L1InfoTreeLeafCount = lastSentCertificateInfo.L1InfoTreeLeafCount
+
+		return buildParams, nil
 	}
 
 	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true)
@@ -125,6 +139,13 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, err
 	}
 
+	return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
+}
+
+// verifyBuildParams verifies the certificate build params and returns an error if they are not valid
+// it also calls the prover to get the aggchain proof
+func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
+	ctx context.Context, buildParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	if err := a.verifyBuildParams(buildParams); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
@@ -147,12 +168,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	buildParams.AggchainProof = aggchainProof
 	buildParams.L1InfoTreeLeafCount = rootFromWhichToProveClaims.Index + 1
 
-	buildParams, err = adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
-	if err != nil {
-		return nil, err
-	}
-
-	return buildParams, nil
+	return adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
 }
 
 // BuildCertificate builds a certificate based on the buildParams
