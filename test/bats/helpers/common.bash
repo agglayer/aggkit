@@ -390,12 +390,6 @@ function get_token_balance() {
         return 1
     fi
 
-    # Validation: Check if rpc_url is a valid URL (basic check)
-    if ! [[ "$rpc_url" =~ ^https?:// ]]; then
-        echo "Error: Invalid RPC URL '$rpc_url'" >&2
-        return 1
-    fi
-
     # Validation: Check if Ethereum addresses are valid (starts with 0x and is 42 characters long)
     for addr in "$token_addr" "$account_addr"; do
         if ! [[ "$addr" =~ ^0x[a-fA-F0-9]{40}$ ]]; then
