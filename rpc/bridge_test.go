@@ -1017,7 +1017,7 @@ func TestInjectedInfoAfterIndex(t *testing.T) {
 		bridgeMocks.injectedGERs.EXPECT().
 			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
 			Return(
-				lastgersync.Event{
+				lastgersync.GlobalExitRootInfo{
 					GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
 					L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
 				}, nil)
@@ -1059,7 +1059,7 @@ func TestInjectedInfoAfterIndex(t *testing.T) {
 		bridgeMocks = newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.injectedGERs.EXPECT().
 			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(lastgersync.Event{}, errors.New(barErrMsg))
+			Return(lastgersync.GlobalExitRootInfo{}, errors.New(barErrMsg))
 
 		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(l2NetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
 		require.NotNil(t, err)
@@ -1077,7 +1077,7 @@ func TestInjectedInfoAfterIndex(t *testing.T) {
 
 		bridgeMocks.injectedGERs.EXPECT().
 			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(lastgersync.Event{
+			Return(lastgersync.GlobalExitRootInfo{
 				GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
 				L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
 			}, nil)
