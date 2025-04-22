@@ -36,7 +36,7 @@ jobs:
         if [[ "${{ matrix.e2e-group }}" == "fork12-pessimistic" ]]; then
           echo "ref=0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f" >> $GITHUB_OUTPUT
         elif [[ "${{ matrix.e2e-group }}" == "fork12-op-succint" ]]; then
-          echo "ref=e1f06451a1a49d420c114f559f18ddc8a3b6e1a6" >> $GITHUB_OUTPUT 
+          echo "ref=4afaf689af3264dcb23eb92817b5c25949b62b12" >> $GITHUB_OUTPUT 
         else
           echo "Unknown e2e group ${{ matrix.e2e-group }}" >&2
           exit 1
