@@ -230,6 +230,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				RetryCount:          0,
 				LastSentCertificate: &types.CertificateInfo{ToBlock: 5},
 				Bridges:             []bridgesync.Bridge{{}},
+				L1InfoTreeLeafCount: 11,
 				Claims: []bridgesync.Claim{{
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
@@ -296,6 +297,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				FromBlock:           6,
 				ToBlock:             8,
 				RetryCount:          0,
+				L1InfoTreeLeafCount: 11,
 				LastSentCertificate: &types.CertificateInfo{ToBlock: 5},
 				Bridges:             []bridgesync.Bridge{{BlockNum: 6}},
 				Claims: []bridgesync.Claim{{
@@ -690,7 +692,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				BridgeExits:         []*agglayertypes.BridgeExit{},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
 				PrevLocalExitRoot:   zeroLER,
-				L1InfoRoot:          common.HexToHash("0x1"),
+				L1InfoTreeLeafCount: 0,
 				AggchainData: &agglayertypes.AggchainDataProof{
 					Proof:          []byte("some-proof"),
 					Version:        "0.1",

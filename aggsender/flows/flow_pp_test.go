@@ -587,8 +587,7 @@ func TestBuildCertificate(t *testing.T) {
 						},
 					},
 				},
-				Height:     2,
-				L1InfoRoot: common.HexToHash("0x7891"),
+				Height: 2,
 			},
 			mockFn: func() {
 				mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1))
@@ -1072,6 +1071,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				FromBlock:           6,
 				ToBlock:             10,
 				RetryCount:          0,
+				L1InfoTreeLeafCount: 1,
 				LastSentCertificate: &types.CertificateInfo{ToBlock: 5},
 				Bridges:             []bridgesync.Bridge{{}},
 				Claims: []bridgesync.Claim{

@@ -110,6 +110,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			CreatedAt:                      lastSentCertificateInfo.CreatedAt,
 			AggchainProof:                  lastSentCertificateInfo.AggchainProof,
 			L1InfoTreeRootFromWhichToProve: *lastSentCertificateInfo.FinalizedL1InfoTreeRoot,
+			L1InfoTreeLeafCount:            lastSentCertificateInfo.L1InfoTreeLeafCount,
 		}, nil
 	}
 
@@ -144,6 +145,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
 	buildParams.L1InfoTreeRootFromWhichToProve = rootFromWhichToProveClaims.Hash
 	buildParams.AggchainProof = aggchainProof
+	buildParams.L1InfoTreeLeafCount = rootFromWhichToProveClaims.Index + 1
 
 	buildParams, err = adjustBlockRange(buildParams, buildParams.ToBlock, aggchainProof.EndBlock)
 	if err != nil {

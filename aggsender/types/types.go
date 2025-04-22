@@ -181,6 +181,7 @@ type CertificateInfo struct {
 	SignedCertificate       string                          `meddler:"signed_certificate"`
 	AggchainProof           *AggchainProof                  `meddler:"aggchain_proof,aggchainproof"`
 	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
+	L1InfoTreeLeafCount     uint32                          `meddler:"l1_info_tree_leaf_count"`
 }
 
 func (c *CertificateInfo) String() string {

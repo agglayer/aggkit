@@ -2,10 +2,14 @@ buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250404090611-7f9f451280ee.2 
 buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250404090611-7f9f451280ee.2/go.mod h1:zl4J37UuoUUcvqdLAkVYqQB5UcWs+DCGC3jbmVRbPzA=
 buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250415163324-0a14d5159507.2 h1:SBF6eVmp6IdIiKWMW/DhXbVbzodyiVilxue0KoWlT+o=
 buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250415163324-0a14d5159507.2/go.mod h1:yJ1zu743Hyc/pGI6PjGywQTE3nKAUq1dQbtTy/T45Vk=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250416180731-ff8952695828.2 h1:iesZoH6hEHWjg+Vv87dgRmMrEP3RtmAfXTiq/ONdlME=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250416180731-ff8952695828.2/go.mod h1:qLXl0jnkGL4ahlAy9Rz3tVECDZVkz/+xzUGXF1TzuFc=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250404090611-7f9f451280ee.1 h1:m42o/q+42p5FDSyRQXXPl3xEnceOi9vjJ1muDeE0HhE=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250404090611-7f9f451280ee.1/go.mod h1:gpKWP3fihl4pBXg3UG+CXgEgDugkVATGVyulVyjR/f8=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250415163324-0a14d5159507.1 h1:I9Cr+C4WSHxy5s1vfR9ZKEWrFjtg2HmniZ+uswdoKXg=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250415163324-0a14d5159507.1/go.mod h1:gpKWP3fihl4pBXg3UG+CXgEgDugkVATGVyulVyjR/f8=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250416180731-ff8952695828.1 h1:VzRjMEC9fUaRQ6GpQ1NhD8/tAmYXLhwhcquDIgCywDM=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250416180731-ff8952695828.1/go.mod h1:gpKWP3fihl4pBXg3UG+CXgEgDugkVATGVyulVyjR/f8=
 buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250403073306-df9b770ff25d.1 h1:vLqUHNLYJPK4aDHoDOhbo+PwAr9umdqwU2E2Wap2FGE=
 buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250403073306-df9b770ff25d.1/go.mod h1:W3XIAooP7VLR0wAorIvMG2xNYX+C48U9QHfn8uUox3I=
 buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250403091637-4fd90e526027.2 h1:x5UeilSrRauejHuaC4u7e17FX8RKuEK5UT/Q7L2JkSc=
