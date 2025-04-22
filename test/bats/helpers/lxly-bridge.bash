@@ -175,7 +175,13 @@ function claim_tx_hash() {
     local current_time=$(date +%s)
     local end_time=$((current_time + timeout))
     if [ -z $bridge_service_url ]; then
-        log "❌ claim_tx_hash bad params"
+        log "❌ claim_tx_hash bridge_service_url parameter not provided"
+        log "❌ claim_tx_hash: $*"
+        exit 1
+    fi
+
+    if [ -z $bridge_addr ]; then
+        log "❌ claim_tx_hash bridge_addr parameter not provided"
         log "❌ claim_tx_hash: $*"
         exit 1
     fi
@@ -227,7 +233,7 @@ function claim_tx_hash() {
 
     while true; do
         log "⏳ Requesting claim for $tx_hash..."
-        run request_claim $current_deposit $current_proof $destination_rpc_url
+        run request_claim $current_deposit $current_proof $destination_rpc_url $bridge_addr
         request_result=$status
         log "💡 request_claim returns $request_result"
         if [ $request_result -eq 0 ]; then
