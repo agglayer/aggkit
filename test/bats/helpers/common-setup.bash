@@ -27,4 +27,24 @@ _common_setup() {
     else
         readonly l2_rpc_url="$L2_ETH_RPC_URL"
     fi
+
+    if [ -z "$L1_BRIDGE_ADDRESS" ]; then
+        local combined_json_file="/opt/zkevm/combined.json"
+        echo "L1_BRIDGE_ADDRESS env variable is not provided, resolving the bridge address from the Kurtosis CDK '$combined_json_file'" >&3
+
+        # Fetching the combined JSON output and filtering to get polygonZkEVMBridgeAddress
+        combined_json_output=$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)
+        L1_BRIDGE_ADDRESS=$(echo "$combined_json_output" | jq -r .polygonZkEVMBridgeAddress)
+    fi
+
+    if [ -z "$L2_BRIDGE_ADDRESS" ]; then
+        local combined_json_file="/opt/zkevm/combined.json"
+        echo "L2_BRIDGE_ADDRESS env variable is not provided, resolving the bridge address from the Kurtosis CDK '$combined_json_file'" >&3
+
+        # Fetching the combined JSON output and filtering to get polygonZkEVML2BridgeAddress
+        combined_json_output=$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)
+        L2_BRIDGE_ADDRESS=$(echo "$combined_json_output" | jq -r .polygonZkEVML2BridgeAddress)
+    fi
+
+    echo "L1 bridge address=$L1_BRIDGE_ADDRESS; L2 bridge address=$L2_BRIDGE_ADDRESS" >&3
 }
