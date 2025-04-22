@@ -190,7 +190,7 @@ function claim_tx_hash() {
         current_time=$(date +%s)
         elapsed_time=$((current_time - start_time))
         if ((current_time > end_time)); then
-            log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time [s])"
+            log "❌ Exiting... Timeout reached waiting for bridge (tx_hash=$tx_hash) to be claimed timeout: $timeout! (elapsed: $elapsed_time [s])"
             exit 1
         fi
 
@@ -198,14 +198,14 @@ function claim_tx_hash() {
         curl -s "$bridge_service_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
         if [[ $deposit_count == 0 ]]; then
-            log "❌ the tx_hash [$tx_hash] not found (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
+            log "❌ the bridge (tx_hash=$tx_hash) not found (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
             sleep "$claim_frequency"
             continue
         fi
 
         local ready_for_claim=$(jq -r '.[0].ready_for_claim' $bridge_deposit_file)
         if [ $ready_for_claim != "true" ]; then
-            log "⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
+            log "⏳ the bridge (tx_hash=$tx_hash) is not ready for claim yet (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
             sleep "$claim_frequency"
             continue
         else
@@ -217,7 +217,7 @@ function claim_tx_hash() {
     log "🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time [s])"
     local curr_claim_tx_hash=$(jq '.[0].claim_tx_hash' $bridge_deposit_file)
     if [ $curr_claim_tx_hash != "\"\"" ]; then
-        log "🎉 the tx_hash $tx_hash is already claimed"
+        log "🎉 the bridge (tx_hash=$tx_hash) is already claimed"
         exit 0
     fi
 
@@ -235,19 +235,19 @@ function claim_tx_hash() {
         log "⏳ Requesting claim for $tx_hash..."
         run request_claim $current_deposit $current_proof $destination_rpc_url $bridge_addr
         request_result=$status
-        log "💡 request_claim returns $request_result"
+        log "💡 request_claim returns status code $request_result"
         if [ $request_result -eq 0 ]; then
-            log "🎉 Claim successful"
+            log "🎉 The bridge (tx_hash=$tx_hash) is claimed successfully!"
             break
         fi
 
         if [ $request_result -eq 2 ]; then
-            # GlobalExitRootInvalid() let's retry
+            # GlobalExitRootInvalid() let's retry, since it means that the global exit root is not yet injected to the destination network
             log "⏳ Claim failed this time (GER is not yet injected on destination). We'll retry in $claim_frequency seconds "
             current_time=$(date +%s)
             elapsed_time=$((current_time - start_time))
             if ((current_time > end_time)); then
-                log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time [s])"
+                log "❌ Exiting... Timeout reached waiting for bridge to be claimed (tx_hash=$tx_hash) timeout: $timeout! (elapsed: $elapsed_time [s])"
                 exit 1
             fi
             sleep $claim_frequency
@@ -255,13 +255,13 @@ function claim_tx_hash() {
         fi
 
         if [ $request_result -ne 0 ]; then
-            log "✅ Claim successful tx_hash [$tx_hash]"
+            log "❌ Claim failed for bridge (tx_hash=$tx_hash)"
             exit 1
         fi
     done
 
     export global_index=$(jq -r '.global_index' $current_deposit)
-    log "✅ Deposit claimed ($global_index)"
+    log "✅ Brodge (tx_hash=$tx_hash) claimed ($global_index)"
 
     # clean up temp files
     rm $current_deposit
