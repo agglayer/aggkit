@@ -9,12 +9,11 @@ function bridge_message() {
     local bridge_addr="$3"
     local bridge_sig='bridgeMessage(uint32,address,bool,bytes)'
 
-     if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-        local eth_balance=get_token_balance "$rpc_url" "$token_addr" "$sender_addr"
-        log "💰 $sender_addr ETH Balance: $eth_balance wei"
+    local token_balance=$(get_token_balance "$rpc_url" "$token_addr" "$sender_addr")
+    if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
+        log "💰 $sender_addr ETH Balance: $token_balance eth"
     else
-        local token_balance=get_token_balance "$rpc_url" "$token_addr" "$sender_addr"
-        log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
+        log "💎 $sender_addr Token Balance: $token_balance eth [$token_addr]"
     fi
 
     log "🚀 Bridge message $amount wei → $destination_addr [network: $destination_net, token: $token_addr, rpc: $rpc_url]"
@@ -52,12 +51,11 @@ function bridge_asset() {
     local bridge_addr="$3"
     local bridge_sig='bridgeAsset(uint32,address,uint256,address,bool,bytes)'
 
+    local token_balance=$(get_token_balance "$rpc_url" "$token_addr" "$sender_addr")
     if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-        local eth_balance=get_token_balance "$rpc_url" "$token_addr" "$sender_addr"
-        log "💰 $sender_addr ETH Balance: $eth_balance wei"
+        log "💰 $sender_addr ETH Balance: $token_balance eth"
     else
-        local token_balance=get_token_balance "$rpc_url" "$token_addr" "$sender_addr"
-        log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
+        log "💎 $sender_addr ERC20 Token [$token_addr] Balance: $token_balance eth"
     fi
 
     log "🚀 Bridge asset $amount wei → $destination_addr [network: $destination_net]"
@@ -358,7 +356,7 @@ function wait_for_claim() {
     local start_time=$(date +%s)
     local end_time=$((start_time + timeout))
 
-     if [ -z $bridge_addr ]; then
+    if [ -z $bridge_addr ]; then
         log "❌ wait_for_claim bridge_addr parameter not provided"
         log "❌ wait_for_claim: $*"
         exit 1
