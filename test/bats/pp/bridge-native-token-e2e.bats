@@ -25,7 +25,9 @@ setup() {
     readonly l1_rpc_network_id=$(cast call --rpc-url $l1_rpc_url $l1_bridge_addr 'networkID() (uint32)')
     readonly l2_rpc_network_id=$(cast call --rpc-url $l2_rpc_url $l2_bridge_addr 'networkID() (uint32)')
     gas_price=$(cast gas-price --rpc-url "$l2_rpc_url")
+    
     readonly weth_token_addr=$(cast call --rpc-url $l2_rpc_url $l2_bridge_addr 'WETHToken() (address)')
+    echo "WETH token address: $weth_token_addr" >&3
 }
 
 @test "Native gas token deposit to WETH" {
