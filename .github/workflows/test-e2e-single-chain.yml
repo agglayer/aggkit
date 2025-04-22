@@ -29,7 +29,7 @@ jobs:
       uses: actions/checkout@v4
     
     # fork12-pessimistic uses the https://github.com/0xPolygon/kurtosis-cdk/tree/feat/aggsender-agglayer-grpc-integration
-    # fork12-op-succint uses the https://github.com/0xPolygon/kurtosis-cdk/tree/jihwan/integrations
+    # fork12-op-succint uses the https://github.com/0xPolygon/kurtosis-cdk/tree/main
     - name: Set kurtosis-cdk ref
       id: set-kurtosis-cdk-ref
       run: |
