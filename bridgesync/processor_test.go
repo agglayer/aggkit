@@ -1065,7 +1065,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:    nil,
 			expectedCount:   7,
 			expectedBridges: []*BridgeResponse{},
-			expectedError:   "provided offset is greater than the total",
+			expectedError:   "provided page number is invalid for given page size",
 		},
 		{
 			name:          "t7",
@@ -1189,12 +1189,12 @@ func TestGetClaimsPaged(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name:           "t4: offset is larger than total claims",
+			name:           "t4: invalid page number",
 			pageSize:       3,
 			page:           4,
 			expectedCount:  0,
 			expectedClaims: []*ClaimResponse{},
-			expectedError:  "provided offset is greater than the total",
+			expectedError:  "provided page number is invalid for given page size",
 		},
 	}
 
@@ -1294,7 +1294,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 			pageNumber:  6,
 			pageSize:    10,
 			expectedLen: 0,
-			expectedErr: "provided offset is greater than the total",
+			expectedErr: "provided page number is invalid for given page size",
 		},
 	}
 

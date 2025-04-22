@@ -494,10 +494,10 @@ func (p *processor) GetBridgesPaged(
 	}
 	offset := (pageNumber - 1) * pageSize
 	if offset >= uint32(bridgesCount) {
-		p.log.Debugf("offset is greater than total bridges (page number=%d, page size=%d, total bridges=%d)",
-			pageNumber, pageSize, bridgesCount)
-		return nil, 0, fmt.Errorf("provided offset is greater than the total bridges count (offset=%d, total count=%d)",
-			offset, bridgesCount)
+		p.log.Debugf("provided page number is invalid for given page size and total number of bridges"+
+			" (page number=%d, page size=%d, total bridges=%d)", pageNumber, pageSize, bridgesCount)
+		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of bridges"+
+			" (page number=%d, page size=%d, total bridges=%d)", pageNumber, pageSize, bridgesCount)
 	}
 	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
@@ -549,10 +549,10 @@ func (p *processor) GetClaimsPaged(
 
 	offset := (pageNumber - 1) * pageSize
 	if offset >= uint32(claimsCount) {
-		p.log.Debugf("offset is greater than total claims (page number=%d, page size=%d, total claims=%d)",
-			pageNumber, pageSize, claimsCount)
-		return nil, 0, fmt.Errorf("provided offset is greater than the total claims count (offset=%d, total count=%d)",
-			offset, claimsCount)
+		p.log.Debugf("provided page number is invalid for given page size and total number of claims"+
+			" (page number=%d, page size=%d, total claims=%d)", pageNumber, pageSize, claimsCount)
+		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of claims"+
+			" (page number=%d, page size=%d, total claims=%d)", pageNumber, pageSize, claimsCount)
 	}
 
 	orderByClause := "block_num DESC, block_pos DESC"
@@ -609,13 +609,12 @@ func (p *processor) GetLegacyTokenMigrations(
 
 	offset := (pageNumber - 1) * pageSize
 	if offset >= uint32(legacyTokenMigrationsCount) {
-		p.log.Debugf(
-			"offset is greater than the total legacy token migrations "+
-				"(page number=%d, page size=%d, total legacy token migrations=%d)",
-			pageNumber, pageSize, legacyTokenMigrationsCount)
+		p.log.Debugf("provided page number is invalid for given page size and total number of legacy token migrations"+
+			" (page number=%d, page size=%d, total count=%d)", pageNumber, pageSize, legacyTokenMigrationsCount)
 		return nil, 0,
-			fmt.Errorf("provided offset is greater than the total legacy token migrations count (offset=%d, total count=%d)",
-				offset, legacyTokenMigrationsCount)
+			fmt.Errorf("provided page number is invalid for given page size and total number of legacy token migrations"+
+				" (page number=%d, page size=%d, total token migrations=%d)",
+				pageNumber, pageSize, legacyTokenMigrationsCount)
 	}
 
 	orderByClause := "block_num, block_pos DESC"
@@ -851,11 +850,10 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 
 	offset := (pageNumber - 1) * pageSize
 	if offset >= uint32(totalTokenMappings) {
-		p.log.Debugf("offset is greater than total token mappings (page number=%d, page size=%d, total token mappings=%d)",
-			pageNumber, pageSize, totalTokenMappings)
-		return nil, 0,
-			fmt.Errorf("provided offset is greater than the total token mappings count (offset=%d, total count=%d)",
-				offset, totalTokenMappings)
+		p.log.Debugf("provided page number is invalid for given page size and total number of token mappings"+
+			" (page number=%d, page size=%d, total token mappings=%d)", pageNumber, pageSize, totalTokenMappings)
+		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of token mappings"+
+			" (page number=%d, page size=%d, total token mappings=%d)", pageNumber, pageSize, totalTokenMappings)
 	}
 
 	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
