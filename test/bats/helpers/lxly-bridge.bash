@@ -9,12 +9,11 @@ function bridge_message() {
     local bridge_addr="$3"
     local bridge_sig='bridgeMessage(uint32,address,bool,bytes)'
 
-    if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-        local eth_balance=$(cast balance -e --rpc-url "$rpc_url" "$sender_addr")
+     if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
+        local eth_balance=get_token_balance "$rpc_url" "$token_addr" "$sender_addr"
         log "💰 $sender_addr ETH Balance: $eth_balance wei"
     else
-        local balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$sender_addr" | awk '{print $1}')
-        local token_balance=$(cast --from-wei "$balance_wei")
+        local token_balance=get_token_balance "$rpc_url" "$token_addr" "$sender_addr"
         log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
     fi
 
@@ -54,11 +53,10 @@ function bridge_asset() {
     local bridge_sig='bridgeAsset(uint32,address,uint256,address,bool,bytes)'
 
     if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-        local eth_balance=$(cast balance -e --rpc-url "$rpc_url" "$sender_addr")
+        local eth_balance=get_token_balance "$rpc_url" "$token_addr" "$sender_addr"
         log "💰 $sender_addr ETH Balance: $eth_balance wei"
     else
-        local balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$sender_addr" | awk '{print $1}')
-        local token_balance=$(cast --from-wei "$balance_wei")
+        local token_balance=get_token_balance "$rpc_url" "$token_addr" "$sender_addr"
         log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
     fi
 
