@@ -261,7 +261,7 @@ function claim_tx_hash() {
     done
 
     export global_index=$(jq -r '.global_index' $current_deposit)
-    log "✅ Brodge (tx_hash=$tx_hash) claimed ($global_index)"
+    log "✅ Bridge (tx_hash=$tx_hash) claimed ($global_index)"
 
     # clean up temp files
     rm $current_deposit
@@ -359,6 +359,12 @@ function wait_for_claim() {
     local bridge_addr="$5"         # bridge address
     local start_time=$(date +%s)
     local end_time=$((start_time + timeout))
+
+     if [ -z $bridge_addr ]; then
+        log "❌ wait_for_claim bridge_addr parameter not provided"
+        log "❌ wait_for_claim: $*"
+        exit 1
+    fi
 
     while true; do
         local current_time=$(date +%s)
