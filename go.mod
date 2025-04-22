@@ -25,7 +25,7 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/prometheus/client_golang v1.22.0
-	github.com/prometheus/client_model v0.6.1
+	github.com/prometheus/client_model v0.6.2
 	github.com/rubenv/sql-migrate v1.8.0
 	github.com/russross/meddler v1.0.1
 	github.com/spf13/viper v1.20.1
