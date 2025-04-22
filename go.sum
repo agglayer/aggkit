@@ -17,8 +17,8 @@ github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef 
 github.com/0xPolygon/cdk-contracts-tooling v0.0.2-0.20241225094934-1d381f5703ef/go.mod h1:mFlcEjsm2YBBsu8atHJ3zyVnwM+Z/fMXpVmIJge+WVU=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6 h1:FXL/rcO7/GtZ3kRFw+C7J6vmGnl8gcazg+Gh/NVmnas=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6/go.mod h1:2scWqMMufrQXu7TikDgQ3BsyaKoX8qP26D6E262vSOg=
-github.com/0xPolygon/zkevm-ethtx-manager v0.2.9 h1:rAI4mg8BAqtBb4VGKwj8jFd7S9v7hlTrV7IiZ0BdjHw=
-github.com/0xPolygon/zkevm-ethtx-manager v0.2.9/go.mod h1:1D9OdlaS466k40YmH3KuUnbnlOmKCXnD3mzORIgPuvY=
+github.com/0xPolygon/zkevm-ethtx-manager v0.2.10 h1:RVvO1NgJ4GuDfWiC2QiiDA/C6fs0h8DvCMOZrhu4v/A=
+github.com/0xPolygon/zkevm-ethtx-manager v0.2.10/go.mod h1:1D9OdlaS466k40YmH3KuUnbnlOmKCXnD3mzORIgPuvY=
 github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.7 h1:KJM1QlNZdZjNRS+ajPauD4uG+uaYgItaL+96Om3f8aI=
 github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.7/go.mod h1:exl+KHnTN6Y8HG4nSUXni4qKbAug0HjJqpebMSgl72k=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
