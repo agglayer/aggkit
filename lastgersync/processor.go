@@ -89,7 +89,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	for _, genericEvt := range block.Events {
 		event, ok := genericEvt.(*Event)
 		if !ok {
-			return fmt.Errorf("unexpected event type %T", event)
+			return fmt.Errorf("unexpected event type %T", genericEvt)
 		}
 
 		switch {
