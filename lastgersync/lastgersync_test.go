@@ -20,10 +20,11 @@ func TestGetLastProcessedBlock(t *testing.T) {
 		Num:  1,
 		Hash: common.Hash{},
 		Events: []interface{}{
-			Event{
-				GlobalExitRoot:  common.HexToHash("0x1"),
-				L1InfoTreeIndex: 2,
-			},
+			&Event{
+				GERInfo: &GlobalExitRootInfo{
+					GlobalExitRoot:  common.HexToHash("0x1"),
+					L1InfoTreeIndex: 2,
+				}},
 		},
 	}
 	err = processor.ProcessBlock(context.TODO(), block)
@@ -47,10 +48,11 @@ func TestGetFirstGERAfterL1InfoTreeIndex(t *testing.T) {
 		Num:  1,
 		Hash: common.Hash{},
 		Events: []interface{}{
-			Event{
-				GlobalExitRoot:  common.HexToHash("0x1"),
-				L1InfoTreeIndex: 2,
-			},
+			&Event{
+				GERInfo: &GlobalExitRootInfo{
+					GlobalExitRoot:  common.HexToHash("0x1"),
+					L1InfoTreeIndex: 2,
+				}},
 		},
 	}
 	err = processor.ProcessBlock(context.TODO(), block)

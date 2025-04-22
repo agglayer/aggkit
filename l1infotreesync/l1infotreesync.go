@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	reorgDetectorID    = "l1infotreesync"
+	reorgDetectorID    = "l1InfoTreeSyncer"
 	downloadBufferSize = 1000
 )
 

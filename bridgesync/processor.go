@@ -557,18 +557,18 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	claimResponsePtrs := make([]*ClaimResponse, len(claimPtrs))
-	for i, bridgePtr := range claimPtrs {
+	for i, claimPtr := range claimPtrs {
 		claimResponsePtrs[i] = &ClaimResponse{
-			GlobalIndex:        bridgePtr.GlobalIndex,
-			DestinationNetwork: bridgePtr.DestinationNetwork,
-			TxHash:             bridgePtr.TxHash,
-			Amount:             bridgePtr.Amount,
-			BlockNum:           bridgePtr.BlockNum,
-			FromAddress:        bridgePtr.FromAddress,
-			DestinationAddress: bridgePtr.DestinationAddress,
-			OriginAddress:      bridgePtr.OriginAddress,
-			OriginNetwork:      bridgePtr.OriginNetwork,
-			BlockTimestamp:     bridgePtr.BlockTimestamp,
+			GlobalIndex:        claimPtr.GlobalIndex,
+			DestinationNetwork: claimPtr.DestinationNetwork,
+			TxHash:             claimPtr.TxHash,
+			Amount:             claimPtr.Amount,
+			BlockNum:           claimPtr.BlockNum,
+			FromAddress:        claimPtr.FromAddress,
+			DestinationAddress: claimPtr.DestinationAddress,
+			OriginAddress:      claimPtr.OriginAddress,
+			OriginNetwork:      claimPtr.OriginNetwork,
+			BlockTimestamp:     claimPtr.BlockTimestamp,
 		}
 	}
 

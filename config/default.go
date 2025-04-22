@@ -205,6 +205,7 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+SyncMode = "FEP"
 
 [NetworkConfig.L1]
 L1ChainID = {{L1Config.chainId}}
