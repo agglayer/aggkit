@@ -17,13 +17,23 @@ function fund() {
         return 1
     fi
 
-    gas_price=$(cast gas-price --rpc-url "$rpc_url")
-
-    # Fund the receiver address with the specified amount of the specified token
-    cast send --rpc-url "$rpc_url" --private-key "$sender_private_key" --gas-price "$gas_price" --value "$amount" "$receiver_addr"
-    if [ $? -ne 0 ]; then
-        echo "Failed to fund $receiver_addr with $amount of native tokens"
+    # Fetch gas price
+    local raw_gas_price
+    if ! raw_gas_price=$(cast gas-price --rpc-url "$rpc_url" 2>/dev/null); then
+        echo "❌ Failed to fetch gas price from $rpc_url"
         return 1
     fi
-    echo "Successfully funded $receiver_addr with $amount of native tokens"
+
+    # Bump gas price by 50% to avoid transaction being underpriced
+    local gas_price=$(printf "%.0f" "$(echo "$raw_gas_price * 1.5" | bc -l)")
+
+    echo "Using bumped gas price: $gas_price wei (original: $raw_gas_price wei)"
+
+    # Fund the receiver address with the specified amount of the specified token
+    cast send --rpc-url "$rpc_url" --legacy --private-key "$sender_private_key" --gas-price "$gas_price" --value "$amount" "$receiver_addr"
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to fund $receiver_addr with $amount of native tokens"
+        return 1
+    fi
+    echo "✅ Successfully funded $receiver_addr with $amount of native tokens"
 }
