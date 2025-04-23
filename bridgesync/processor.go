@@ -72,6 +72,7 @@ type Bridge struct {
 	Amount             *big.Int       `meddler:"amount,bigint" json:"amount"`
 	Metadata           []byte         `meddler:"metadata" json:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
+	IsNativeToken      bool           `meddler:"is_native_token" json:"is_native_token"`
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions

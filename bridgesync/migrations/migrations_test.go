@@ -38,8 +38,9 @@ func TestMigration0001(t *testing.T) {
 			destination_address,
 			amount,
 			metadata,
-			deposit_count
-		) VALUES (1, 0, 0, 0, '0x0000', 0, '0x0000', 0, NULL, 0);
+			deposit_count,
+			is_native_token
+		) VALUES (1, 0, 0, 0, '0x0000', 0, '0x0000', 0, NULL, 0, true);
 
 		INSERT INTO claim (
 			block_num,
@@ -106,8 +107,9 @@ func TestMigration0002(t *testing.T) {
 			deposit_count,
 			block_timestamp,
 			tx_hash,
-			from_address
-		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd', '0x123');
+			from_address,
+			is_native_token
+		) VALUES (1, 0, 0, 0, '0x3', 0, '0x0000', 0, NULL, 0, 1739270804, '0xabcd', '0x123', true);
 
 		INSERT INTO claim (
 			block_num,
@@ -169,6 +171,7 @@ func TestMigration0002(t *testing.T) {
 		BlockTimestamp     uint64   `meddler:"block_timestamp"`
 		TxHash             string   `meddler:"tx_hash"`
 		FromAddress        string   `meddler:"from_address"`
+		IsNativeToken      bool     `meddler:"is_native_token"`
 	}
 
 	err = meddler.QueryRow(db, &bridge,

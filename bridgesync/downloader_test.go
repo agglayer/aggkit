@@ -240,6 +240,17 @@ func TestBuildAppender(t *testing.T) {
 			require.NoError(t, err)
 
 			ethClient := mocks.NewEthClienter(t)
+
+			// Add this to satisfy contract.GasTokenAddress call
+			ethClient.EXPECT().
+				CallContract(
+					mock.Anything,
+					mock.Anything,
+					mock.Anything,
+				).
+				Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+				Maybe()
+
 			ethClient.EXPECT().
 				Call(&tt.callFrame, debugTraceTxEndpoint, mock.Anything, mock.Anything).
 				Return(nil).

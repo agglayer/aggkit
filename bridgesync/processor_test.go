@@ -949,13 +949,13 @@ func TestGetBridgesPaged(t *testing.T) {
 	toBlock := uint64(10)
 	bridges :=
 		[]Bridge{
-			{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1)},
-			{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)},
-			{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1)},
-			{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1)},
-			{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1)},
-			{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1)},
-			{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1)},
+			{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x1"), IsNativeToken: true},
+			{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false},
+			{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x3"), IsNativeToken: true},
+			{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x4"), IsNativeToken: true},
+			{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x5"), IsNativeToken: false},
+			{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x6"), IsNativeToken: true},
+			{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x7"), IsNativeToken: true},
 		}
 	bridgeHashMap := make(map[uint64]common.Hash)
 	for _, bridge := range bridges {
@@ -1002,7 +1002,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:  nil,
 			expectedCount: 7,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[6]},
+				{Bridge: Bridge{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x7"), IsNativeToken: true}, BridgeHash: bridgeHashMap[6]},
 			},
 			expectedError: "",
 		},
@@ -1013,13 +1013,13 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:  nil,
 			expectedCount: 7,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[6]},
-				{Bridge: Bridge{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[5]},
-				{Bridge: Bridge{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[4]},
-				{Bridge: Bridge{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[3]},
-				{Bridge: Bridge{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[2]},
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
-				{Bridge: Bridge{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
+				{Bridge: Bridge{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x7"), IsNativeToken: true}, BridgeHash: bridgeHashMap[6]},
+				{Bridge: Bridge{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x6"), IsNativeToken: true}, BridgeHash: bridgeHashMap[5]},
+				{Bridge: Bridge{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x5"), IsNativeToken: false}, BridgeHash: bridgeHashMap[4]},
+				{Bridge: Bridge{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x4"), IsNativeToken: true}, BridgeHash: bridgeHashMap[3]},
+				{Bridge: Bridge{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x3"), IsNativeToken: true}, BridgeHash: bridgeHashMap[2]},
+				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false}, BridgeHash: bridgeHashMap[1]},
+				{Bridge: Bridge{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x1"), IsNativeToken: true}, BridgeHash: bridgeHashMap[0]},
 			},
 			expectedError: "",
 		},
@@ -1030,9 +1030,9 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:  nil,
 			expectedCount: 7,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[3]},
-				{Bridge: Bridge{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[2]},
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
+				{Bridge: Bridge{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x4"), IsNativeToken: true}, BridgeHash: bridgeHashMap[3]},
+				{Bridge: Bridge{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x3"), IsNativeToken: true}, BridgeHash: bridgeHashMap[2]},
+				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false}, BridgeHash: bridgeHashMap[1]},
 			},
 			expectedError: "",
 		},
@@ -1043,7 +1043,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:  depositCountPtr(1),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[1]},
+				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false}, BridgeHash: bridgeHashMap[1]},
 			},
 			expectedError: "",
 		},
@@ -1054,7 +1054,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:  depositCountPtr(1),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[2]},
+				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false}, BridgeHash: bridgeHashMap[1]},
 			},
 			expectedError: "",
 		},
@@ -1074,7 +1074,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:  depositCountPtr(0),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1)}, BridgeHash: bridgeHashMap[0]},
+				{Bridge: Bridge{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x1"), IsNativeToken: true}, BridgeHash: bridgeHashMap[0]},
 			},
 			expectedError: "",
 		},
