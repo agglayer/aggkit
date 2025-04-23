@@ -13,7 +13,7 @@ function fund() {
     local rpc_url=$4
 
     if [ -z "$sender_private_key" ] || [ -z "$receiver_addr" ] || [ -z "$amount" ] || [ -z "$rpc_url" ]; then
-        echo "Usage: fund <sender_private_key> <receiver_addr> <amount> <rpc_url>"
+        echo "⚠️ Usage: fund <sender_private_key> <receiver_addr> <amount> <rpc_url>"
         return 1
     fi
 
@@ -36,4 +36,28 @@ function fund() {
         return 1
     fi
     echo "✅ Successfully funded $receiver_addr with $amount of native tokens"
+}
+
+# Function is used to resolve the L2 RPC URL from the Kurtosis environment.
+# It takes two arguments:
+# 1. enclave: The name of the Kurtosis enclave
+# 2. l2_rpc_node: The name of the L2 RPC node (default: cdk-erigon-rpc-001)
+function get_l2_rpc_url() {
+    local enclave=$1
+    local l2_rpc_node=${2:-cdk-erigon-rpc-001}
+
+    if [[ -z "$enclave" ]]; then
+        echo "❌ Missing enclave name. Usage: get_l2_rpc_url <enclave> [l2_rpc_node]" >&2
+        return 1
+    fi
+
+    local l2_rpc_url
+
+    l2_rpc_url=$(kurtosis port print "$enclave" "$l2_rpc_node" rpc)
+    if [ $? -ne 0 ]; then
+        echo "❌ Failed to resolve L2 RPC URL from Kurtosis environment"
+        return 1
+    fi
+
+    echo "$l2_rpc_url"
 }
