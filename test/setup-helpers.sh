@@ -30,7 +30,12 @@ function fund() {
     echo "Using bumped gas price: $gas_price wei (original: $raw_gas_price wei)"
 
     # Fund the receiver address with the specified amount of the specified token
-    cast send --rpc-url "$rpc_url" --legacy --private-key "$sender_private_key" --gas-price "$gas_price" --value "$amount" "$receiver_addr"
+    cast send --rpc-url "$rpc_url" \
+        --legacy --private-key "$sender_private_key" \
+        --gas-price "$gas_price" \
+        --timeout 180s \
+        --value "$amount" \
+        "$receiver_addr"
     if [ $? -ne 0 ]; then
         echo "❌ Failed to fund $receiver_addr with $amount of native tokens"
         return 1
