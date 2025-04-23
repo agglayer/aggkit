@@ -22,7 +22,7 @@ _common_setup() {
     readonly contracts_container="${KURTOSIS_CONTRACTS:-contracts-001}"
     readonly contracts_service_wrapper="${KURTOSIS_CONTRACTS_WRAPPER:-"kurtosis service exec $enclave $contracts_container"}"
 
-    if [[ -z "${L2_ETH_RPC_URL:-}" ]]; then
+    if [[ -z "${L2_ETH_RPC_URL}" ]]; then
         readonly l2_rpc_node="${L2_RPC_NODE:-cdk-erigon-rpc-001}"
         echo "ℹ️ L2_ETH_RPC_URL not provided, resolving from Kurtosis (L2_RPC_NODE: $l2_rpc_node)" >&3
         readonly l2_rpc_url="$(kurtosis port print "$enclave" "$l2_rpc_node" rpc)" || {
@@ -35,7 +35,7 @@ _common_setup() {
 
     local combined_json_output=""
 
-    if [[ -z "${L1_BRIDGE_ADDRESS:-}" || -z "${L2_BRIDGE_ADDRESS:-}" ]]; then
+    if [[ -z "${L1_BRIDGE_ADDRESS}" || -z "${L2_BRIDGE_ADDRESS}" ]]; then
         local combined_json_file="/opt/zkevm/combined.json"
         echo "ℹ️ Some bridge addresses are missing, fetching from CDK: $combined_json_file" >&3
         combined_json_output="$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)" || {
@@ -44,14 +44,14 @@ _common_setup() {
         }
     fi
 
-    if [[ -z "${L1_BRIDGE_ADDRESS:-}" ]]; then
+    if [[ -z "${L1_BRIDGE_ADDRESS}" ]]; then
         L1_BRIDGE_ADDRESS="$(echo "$combined_json_output" | jq -r .polygonZkEVMBridgeAddress)" || {
             echo "❌ Failed to extract L1_BRIDGE_ADDRESS from "$combined_json_file"" >&2
             return 1
         }
     fi
 
-    if [[ -z "${L2_BRIDGE_ADDRESS:-}" ]]; then
+    if [[ -z "${L2_BRIDGE_ADDRESS}" ]]; then
         L2_BRIDGE_ADDRESS="$(echo "$combined_json_output" | jq -r .polygonZkEVML2BridgeAddress)" || {
             echo "❌ Failed to extract L2_BRIDGE_ADDRESS from "$combined_json_file"" >&2
             return 1

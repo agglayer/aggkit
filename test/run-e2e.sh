@@ -29,7 +29,7 @@ cp $BASE_FOLDER/config/kurtosis-cdk-node-config.toml.template $KURTOSIS_FOLDER/t
 KURTOSIS_CONFIG_FILE="combinations/$FORK-$DATA_AVAILABILITY_MODE.yml"
 TEMP_CONFIG_FILE=$(mktemp "aggkit-kurtosis.yml-XXXXX")
 echo "rendering $KURTOSIS_CONFIG_FILE to temp file $TEMP_CONFIG_FILE" >&2
-go run ../scripts/run_template.go $KURTOSIS_CONFIG_FILE >$TEMP_CONFIG_FILE
+go run ../scripts/run_template.go $KURTOSIS_CONFIG_FILE > $TEMP_CONFIG_FILE
 kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file "$TEMP_CONFIG_FILE" --image-download always $KURTOSIS_FOLDER
 
 rm $TEMP_CONFIG_FILE
