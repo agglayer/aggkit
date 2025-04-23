@@ -33,7 +33,8 @@ function fund() {
     cast send --rpc-url "$rpc_url" \
         --legacy --private-key "$sender_private_key" \
         --gas-price "$gas_price" \
-        --timeout 180s \
+        --timeout 180 \
+        --rpc-timeout 180 \
         --value "$amount" \
         "$receiver_addr"
     if [ $? -ne 0 ]; then
