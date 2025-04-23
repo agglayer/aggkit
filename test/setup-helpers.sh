@@ -25,8 +25,8 @@ function fund() {
         return 1
     fi
 
-    # Bump gas price by 50% to avoid transaction being underpriced
-    local gas_price=$(printf "%.0f" "$(echo "$raw_gas_price * 1.5" | bc -l)")
+    # Bump gas price by 100% to avoid transaction being underpriced
+    local gas_price=$(printf "%.0f" "$(echo "$raw_gas_price * 2" | bc -l)")
 
     echo "Using bumped gas price: $gas_price wei (original: $raw_gas_price wei)"
 
