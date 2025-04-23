@@ -40,12 +40,13 @@ func (c *ConfigEpochNotifierPerBlock) String() string {
 		c.StartingEpochBlock, c.NumBlockPerEpoch, c.EpochNotificationPercentage)
 }
 
-func NewConfigEpochNotifierPerBlock(aggLayer agglayer.AggLayerClientGetEpochConfiguration,
+func NewConfigEpochNotifierPerBlock(ctx context.Context,
+	aggLayer agglayer.AggLayerClientGetEpochConfiguration,
 	epochNotificationPercentage uint) (*ConfigEpochNotifierPerBlock, error) {
 	if aggLayer == nil {
 		return nil, fmt.Errorf("newConfigEpochNotifierPerBlock: aggLayerClient is required")
 	}
-	clockConfig, err := aggLayer.GetEpochConfiguration()
+	clockConfig, err := aggLayer.GetEpochConfiguration(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("newConfigEpochNotifierPerBlock: error getting clock configuration from AggLayer: %w", err)
 	}

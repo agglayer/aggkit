@@ -8,7 +8,8 @@ L2URL = "http://localhost:8123"
 
 
 AggLayerURL = "https://agglayer-dev.polygon.technology"
-
+AggchainProofURL = "http://localhost:5576"
+GenerateAggchainProofTimeout = "1h"
 
 ForkId = 9
 ContractVersions = "elderberry"
@@ -219,7 +220,6 @@ AggLayerURL = "{{AggLayerURL}}"
 AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
-SaveCertificatesToFilesPath = ""
 MaxRetriesStoreCertificate = 3
 DelayBeetweenRetries = "60s"
 KeepCertificatesHistory = true
@@ -228,16 +228,29 @@ MaxCertSize = 8388608
 BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
+AggchainProofURL = "{{AggchainProofURL}}"
+# PessimisticProof or AggchainProver
+Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
-RetryCertInmediatlyAfterInError = true
+RetryCertAfterInError = false
+GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 # Don't send certificate over 80% of the epoch
 MaxEpochPercentageAllowedToSendCertificate=80
+GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
+		
 [Prometheus]
 Enabled = true
 Host = "localhost"
 Port = 9091
+
+[AggchainProofGen]
+AggchainProofURL = "{{AggchainProofURL}}"
+SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
+GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 `

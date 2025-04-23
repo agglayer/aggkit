@@ -1,11 +1,10 @@
-package tree_test
+package tree
 
 import (
 	"context"
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -13,7 +12,7 @@ import (
 
 func TestUpdatableTreeExploratory(t *testing.T) {
 	treeDB := createTreeDBForTest(t)
-	sut := tree.NewUpdatableTree(treeDB, "")
+	sut := NewUpdatableTree(treeDB, "")
 	blockNum := uint64(1)
 	blockPosition := uint64(1)
 	leaf1 := types.Leaf{

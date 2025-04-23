@@ -1,4 +1,4 @@
-package agglayer
+package types
 
 import (
 	"encoding/json"
@@ -123,6 +123,118 @@ const (
 	LeafTypeMessage
 )
 
+type AggchainData interface {
+	json.Marshaler
+	json.Unmarshaler
+}
+
+// AggchainDataSelector is a helper struct that allow to decice which type of aggchain data to unmarshal
+type AggchainDataSelector struct {
+	obj AggchainData
+}
+
+func (a *AggchainDataSelector) GetObject() AggchainData {
+	return a.obj
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataSelector) UnmarshalJSON(data []byte) error {
+	var obj map[string]interface{}
+	if string(data) == nullStr {
+		return nil
+	}
+	if err := json.Unmarshal(data, &obj); err != nil {
+		return err
+	}
+	var ok bool
+	if _, ok = obj["signature"]; ok {
+		a.obj = &AggchainDataSignature{}
+	} else if _, ok = obj["proof"]; ok {
+		a.obj = &AggchainDataProof{}
+	} else {
+		return errors.New("invalid aggchain_data type")
+	}
+
+	return json.Unmarshal(data, &a.obj)
+}
+
+// AggchainDataSignature is the data structure that will hold the signature
+// of the aggsender key that signed the certificate
+// This is used in the regular PP path
+type AggchainDataSignature struct {
+	Signature []byte `json:"signature"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataSignature) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Signature string `json:"signature"`
+	}{
+		Signature: common.Bytes2Hex(a.Signature),
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataSignature) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Signature string `json:"signature"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	a.Signature = common.Hex2Bytes(aux.Signature)
+	return nil
+}
+
+// AggchainDataProof is the data structure that will hold the proof of the certificate
+// This is used in the aggchain prover path
+type AggchainDataProof struct {
+	Proof          []byte            `json:"proof"`
+	Version        string            `json:"version"`
+	Vkey           []byte            `json:"vkey"`
+	AggchainParams common.Hash       `json:"aggchain_params"`
+	Context        map[string][]byte `json:"context"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataProof) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Proof          string            `json:"proof"`
+		AggchainParams string            `json:"aggchain_params"`
+		Context        map[string][]byte `json:"context"`
+		Version        string            `json:"version"`
+		VKey           string            `json:"vkey"`
+	}{
+		Proof:          common.Bytes2Hex(a.Proof),
+		AggchainParams: a.AggchainParams.String(),
+		Context:        a.Context,
+		Version:        a.Version,
+		VKey:           common.Bytes2Hex(a.Vkey),
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Proof          string            `json:"proof"`
+		AggchainParams string            `json:"aggchain_params"`
+		Context        map[string][]byte `json:"context"`
+		Version        string            `json:"version"`
+		VKey           string            `json:"vkey"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	a.Proof = common.Hex2Bytes(aux.Proof)
+	a.AggchainParams = common.HexToHash(aux.AggchainParams)
+	a.Context = aux.Context
+	a.Version = aux.Version
+	a.Vkey = common.Hex2Bytes(aux.VKey)
+
+	return nil
+}
+
 // Certificate is the data structure that will be sent to the agglayer
 type Certificate struct {
 	NetworkID           uint32                `json:"network_id"`
@@ -132,6 +244,41 @@ type Certificate struct {
 	BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
 	Metadata            common.Hash           `json:"metadata"`
+	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
+	AggchainData        AggchainData          `json:"data,omitempty"`
+	L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (c *Certificate) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		NetworkID           uint32                `json:"network_id"`
+		Height              uint64                `json:"height"`
+		PrevLocalExitRoot   common.Hash           `json:"prev_local_exit_root"`
+		NewLocalExitRoot    common.Hash           `json:"new_local_exit_root"`
+		BridgeExits         []*BridgeExit         `json:"bridge_exits"`
+		ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
+		Metadata            common.Hash           `json:"metadata"`
+		CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
+		AggchainData        AggchainDataSelector  `json:"data,omitempty"`
+		L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	c.NetworkID = aux.NetworkID
+	c.Height = aux.Height
+	c.PrevLocalExitRoot = aux.PrevLocalExitRoot
+	c.NewLocalExitRoot = aux.NewLocalExitRoot
+	c.BridgeExits = aux.BridgeExits
+	c.ImportedBridgeExits = aux.ImportedBridgeExits
+	c.Metadata = aux.Metadata
+	c.CustomChainData = aux.CustomChainData
+	c.AggchainData = aux.AggchainData.GetObject()
+	c.L1InfoTreeLeafCount = aux.L1InfoTreeLeafCount
+
+	return nil
 }
 
 // ID returns a string with the ident of this cert (height/certID)
@@ -147,8 +294,9 @@ func (c *Certificate) Brief() string {
 	if c == nil {
 		return nilStr
 	}
-	res := fmt.Sprintf("agglayer.Cert {height: %d prevLER: %s newLER: %s exits: %d imported_exits: %d}", c.Height,
-		c.PrevLocalExitRoot.String(), c.NewLocalExitRoot.String(),
+	res := fmt.Sprintf("agglayer.Cert {height: %d prevLER: %s, newLER: %s, "+
+		"exits: %d imported_exits: %d}",
+		c.Height, c.PrevLocalExitRoot.String(), c.NewLocalExitRoot.String(),
 		len(c.BridgeExits), len(c.ImportedBridgeExits))
 	return res
 }
@@ -193,6 +341,7 @@ func (c *Certificate) HashToSign() common.Hash {
 }
 
 // SignedCertificate is the struct that contains the certificate and the signature of the signer
+// NOTE: this is an old and deprecated struct, only to be used for backward compatibility
 type SignedCertificate struct {
 	*Certificate
 	Signature *Signature `json:"signature"`
@@ -512,6 +661,22 @@ func (l *L1InfoTreeLeaf) String() string {
 	)
 }
 
+type ProvenInsertedGERWithBlockNumber struct {
+	BlockNumber           uint64            `json:"block_number"`
+	ProvenInsertedGERLeaf ProvenInsertedGER `json:"inserted_ger_leaf"`
+	BlockIndex            uint              `json:"block_index"`
+}
+
+type ProvenInsertedGER struct {
+	ProofGERToL1Root *MerkleProof    `json:"proof_ger_l1root"`
+	L1Leaf           *L1InfoTreeLeaf `json:"l1_leaf"`
+}
+
+type ImportedBridgeExitWithBlockNumber struct {
+	BlockNumber        uint64              `json:"block_number"`
+	ImportedBridgeExit *ImportedBridgeExit `json:"imported_bridge_exit"`
+}
+
 // Claim is the interface that will be implemented by the different types of claims
 type Claim interface {
 	Type() string
@@ -751,6 +916,7 @@ type CertificateHeader struct {
 	Status                CertificateStatus `json:"status"`
 	Metadata              common.Hash       `json:"metadata"`
 	Error                 error             `json:"-"`
+	SettlementTxHash      *common.Hash      `json:"settlement_tx_hash,omitempty"`
 }
 
 // ID returns a string with the ident of this cert (height/certID)
@@ -781,9 +947,14 @@ func (c *CertificateHeader) String() string {
 	if c.PreviousLocalExitRoot != nil {
 		previousLocalExitRoot = c.PreviousLocalExitRoot.String()
 	}
+	settlementTxHash := nilStr
+	if c.SettlementTxHash != nil {
+		settlementTxHash = c.SettlementTxHash.String()
+	}
 	return fmt.Sprintf("Height: %d, CertificateID: %s, PreviousLocalExitRoot: %s, NewLocalExitRoot: %s. Status: %s."+
-		" Errors: [%s]",
-		c.Height, c.CertificateID.String(), previousLocalExitRoot, c.NewLocalExitRoot.String(), c.Status.String(), errors)
+		" SettlementTxnHash: %s, Errors: [%s]",
+		c.Height, c.CertificateID.String(), previousLocalExitRoot, c.NewLocalExitRoot.String(), c.Status.String(),
+		settlementTxHash, errors)
 }
 
 func (c *CertificateHeader) UnmarshalJSON(data []byte) error {

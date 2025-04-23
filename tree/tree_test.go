@@ -1,4 +1,4 @@
-package tree_test
+package tree
 
 import (
 	"context"
@@ -11,7 +11,6 @@ import (
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/migrations"
 	"github.com/agglayer/aggkit/tree/testvectors"
 	"github.com/agglayer/aggkit/tree/types"
@@ -30,7 +29,7 @@ func TestCheckExpectedRoot(t *testing.T) {
 		return treeDB
 	}
 
-	addLeaves := func(merkletree *tree.AppendOnlyTree,
+	addLeaves := func(merkletree *AppendOnlyTree,
 		treeDB *sql.DB,
 		numOfLeavesToAdd, from int) {
 		tx, err := db.NewTx(context.Background(), treeDB)
@@ -51,7 +50,7 @@ func TestCheckExpectedRoot(t *testing.T) {
 		indexToCheck := uint32(numOfLeavesToAdd - 1)
 
 		treeDB := createTreeDB()
-		merkleTree := tree.NewAppendOnlyTree(treeDB, "")
+		merkleTree := NewAppendOnlyTree(treeDB, "")
 
 		addLeaves(merkleTree, treeDB, numOfLeavesToAdd, 0)
 
@@ -70,7 +69,7 @@ func TestCheckExpectedRoot(t *testing.T) {
 		numOfLeavesToAdd := 10
 		indexToCheck := uint32(numOfLeavesToAdd - 1)
 		treeDB := createTreeDB()
-		merkleTree := tree.NewAppendOnlyTree(treeDB, "")
+		merkleTree := NewAppendOnlyTree(treeDB, "")
 
 		addLeaves(merkleTree, treeDB, numOfLeavesToAdd, 0)
 
@@ -120,7 +119,7 @@ func TestMTAddLeaf(t *testing.T) {
 			require.NoError(t, err)
 			_, err = treeDB.Exec(`select * from root`)
 			require.NoError(t, err)
-			merkletree := tree.NewAppendOnlyTree(treeDB, "")
+			merkletree := NewAppendOnlyTree(treeDB, "")
 
 			// Add exisiting leaves
 			tx, err := db.NewTx(ctx, treeDB)
@@ -172,7 +171,7 @@ func TestMTGetProof(t *testing.T) {
 			require.NoError(t, err)
 			treeDB, err := db.NewSQLiteDB(dbPath)
 			require.NoError(t, err)
-			tre := tree.NewAppendOnlyTree(treeDB, "")
+			tre := NewAppendOnlyTree(treeDB, "")
 
 			tx, err := db.NewTx(ctx, treeDB)
 			require.NoError(t, err)

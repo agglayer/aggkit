@@ -16,24 +16,32 @@ packages:
         config:
           mockname: AgglayerClientMock
           filename: mock_agglayer_client.go
-  github.com/agglayer/aggkit/aggoracle/chaingersender:
+  github.com/agglayer/aggkit/aggoracle/types:
     config:
-    interfaces:
-      EthTxManager:
-        configs:
-          - mockname: EthTxManagerMock
-            filename: mock_ethtxmanager.go
-          - mockname: EthTxManagerMock
-            filename: mock_ethtxmanager.go
-            dir: "{{ .InterfaceDir }}/../../test/helpers"
-            outpkg: "helpers"
-      L2GERManagerContract:
-        config:
-          mockname: L2GERManagerMock
-          filename: mock_l2germanager.go
+      all: true
   github.com/agglayer/aggkit/aggsender/db:
     config:
       all: true
+  github.com/agglayer/aggkit/aggsender/prover:
+    config:
+      all: true
+  github.com/agglayer/aggkit/aggsender/grpc:
+    config:
+      all: true
+  buf.build/gen/go/agglayer/provers/grpc/go/aggkit/prover/v1/proverv1grpc:
+    config:
+      all: true
+      dir: "../aggsender/mocks"
+  buf.build/gen/go/agglayer/agglayer/grpc/go/agglayer/node/v1/nodev1grpc:
+    config:
+      dir: "../agglayer/mocks"
+    interfaces:
+      NodeStateServiceClient:
+        config:
+      ConfigurationServiceClient:
+        config:
+      CertificateSubmissionServiceClient:
+        config:
   github.com/agglayer/aggkit/aggsender/rpc:
     config:
       all: true

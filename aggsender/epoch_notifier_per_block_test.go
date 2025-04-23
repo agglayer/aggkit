@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/agglayer"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/etherman"
@@ -114,18 +115,19 @@ func TestEpochStep(t *testing.T) {
 }
 
 func TestNewConfigEpochNotifierPerBlock(t *testing.T) {
-	_, err := NewConfigEpochNotifierPerBlock(nil, 1)
+	ctx := context.Background()
+	_, err := NewConfigEpochNotifierPerBlock(ctx, nil, 1)
 	require.Error(t, err)
 	aggLayerMock := agglayer.NewAgglayerClientMock(t)
-	aggLayerMock.On("GetEpochConfiguration").Return(nil, fmt.Errorf("error")).Once()
-	_, err = NewConfigEpochNotifierPerBlock(aggLayerMock, 1)
+	aggLayerMock.On("GetEpochConfiguration", mock.Anything).Return(nil, fmt.Errorf("error")).Once()
+	_, err = NewConfigEpochNotifierPerBlock(ctx, aggLayerMock, 1)
 	require.Error(t, err)
-	cfgAggLayer := &agglayer.ClockConfiguration{
+	cfgAggLayer := &agglayertypes.ClockConfiguration{
 		GenesisBlock:  123,
 		EpochDuration: 456,
 	}
-	aggLayerMock.On("GetEpochConfiguration").Return(cfgAggLayer, nil).Once()
-	cfg, err := NewConfigEpochNotifierPerBlock(aggLayerMock, 1)
+	aggLayerMock.On("GetEpochConfiguration", mock.Anything).Return(cfgAggLayer, nil).Once()
+	cfg, err := NewConfigEpochNotifierPerBlock(ctx, aggLayerMock, 1)
 	require.NoError(t, err)
 	require.Equal(t, uint64(123), cfg.StartingEpochBlock)
 	require.Equal(t, uint(456), cfg.NumBlockPerEpoch)

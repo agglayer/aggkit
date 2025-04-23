@@ -171,6 +171,7 @@ func (p *processor) GetL1InfoTreeMerkleProof(
 	if err != nil {
 		return treeTypes.Proof{}, treeTypes.Root{}, err
 	}
+
 	proof, err := p.l1InfoTree.GetProof(ctx, root.Index, root.Hash)
 	return proof, root, err
 }
@@ -232,13 +233,35 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 }
 
 func (p *processor) getLastProcessedBlockWithTx(tx db.Querier) (uint64, error) {
-	var lastProcessedBlock uint64
+	var lastProcessedBlockNum uint64
+
 	row := tx.QueryRow("SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
-	err := row.Scan(&lastProcessedBlock)
+	err := row.Scan(&lastProcessedBlockNum)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
-	return lastProcessedBlock, err
+	return lastProcessedBlockNum, err
+}
+
+// GetProcessedBlockUntil returns the last processed block until the given blockNum
+// Returns the given blockNum if it has been processed, or the last processed block before it
+func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64) (uint64, common.Hash, error) {
+	var (
+		processedBlockNum  uint64
+		processedBlockHash *string
+	)
+
+	row := p.db.QueryRow("SELECT num, hash FROM block WHERE num <= $1 ORDER BY num DESC LIMIT 1;", blockNum)
+	if err := row.Scan(&processedBlockNum, &processedBlockHash); err != nil {
+		return 0, common.Hash{}, err
+	}
+
+	hash := common.Hash{}
+	if processedBlockHash != nil {
+		hash = common.HexToHash(*processedBlockHash)
+	}
+
+	return processedBlockNum, hash, nil
 }
 
 // Reorg triggers a purge and reset process on the processor to leaf it on a state
