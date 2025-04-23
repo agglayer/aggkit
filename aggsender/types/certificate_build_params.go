@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -40,11 +41,17 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 	if c.FromBlock > fromBlock || c.ToBlock < toBlock {
 		return nil, fmt.Errorf("invalid range")
 	}
+
+	span := toBlock - fromBlock + 1
+	fullSpan := c.ToBlock - c.FromBlock + 1
+
 	newCert := &CertificateBuildParams{
-		FromBlock:                      fromBlock,
-		ToBlock:                        toBlock,
-		Bridges:                        make([]bridgesync.Bridge, 0),
-		Claims:                         make([]bridgesync.Claim, 0),
+		FromBlock: fromBlock,
+		ToBlock:   toBlock,
+		Bridges: make([]bridgesync.Bridge, 0,
+			aggkitcommon.EstimateSliceCapacity(len(c.Bridges), span, fullSpan)),
+		Claims: make([]bridgesync.Claim, 0,
+			aggkitcommon.EstimateSliceCapacity(len(c.Claims), span, fullSpan)),
 		CreatedAt:                      c.CreatedAt,
 		RetryCount:                     c.RetryCount,
 		LastSentCertificate:            c.LastSentCertificate,
