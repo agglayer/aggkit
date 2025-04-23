@@ -18,6 +18,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/mitchellh/mapstructure"
@@ -147,6 +148,9 @@ type Config struct {
 
 	// AggchainProofGen is the configuration of the Aggchain Proof Generation Tool
 	AggchainProofGen prover.Config
+
+	// Profiling is the configuration of the profiling service
+	Profiling pprof.Config
 }
 
 // Load loads the configuration
