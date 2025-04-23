@@ -72,7 +72,7 @@ type Bridge struct {
 	Amount             *big.Int       `meddler:"amount,bigint" json:"amount"`
 	Metadata           []byte         `meddler:"metadata" json:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
-	GasTokenAddress    common.Address `meddler:"gas_token_address" json:"gas_token_address"`
+	IsNativeToken      bool           `meddler:"is_native_token" json:"is_native_token"`
 }
 
 // Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
@@ -106,8 +106,7 @@ func (b *Bridge) Hash() common.Hash {
 
 // BridgeResponse is the representation of a bridge event with additional fields
 type BridgeResponse struct {
-	BridgeHash  common.Hash `json:"bridge_hash"`
-	NativeToken bool        `json:"native_token"`
+	BridgeHash common.Hash `json:"bridge_hash"`
 	Bridge
 }
 
@@ -508,9 +507,8 @@ func (p *processor) GetBridgesPaged(
 	bridgeResponsePtrs := make([]*BridgeResponse, len(bridgePtrs))
 	for i, bridgePtr := range bridgePtrs {
 		bridgeResponsePtrs[i] = &BridgeResponse{
-			Bridge:      *bridgePtr,
-			BridgeHash:  bridgePtr.Hash(),
-			NativeToken: bridgePtr.GasTokenAddress == bridgePtr.OriginAddress,
+			Bridge:     *bridgePtr,
+			BridgeHash: bridgePtr.Hash(),
 		}
 	}
 	if depositCount != nil {

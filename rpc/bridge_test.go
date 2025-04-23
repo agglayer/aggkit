@@ -641,10 +641,9 @@ func TestGetBridges(t *testing.T) {
 					DepositCount:       0,
 					Metadata:           common.Hex2Bytes("deadbeef"),
 					Calldata:           common.Hex2Bytes("abcd"),
-					GasTokenAddress:    common.HexToAddress("0x3"),
+					IsNativeToken:      true,
 				},
-				BridgeHash:  common.HexToHash("0x1"),
-				NativeToken: false,
+				BridgeHash: common.HexToHash("0x1"),
 			},
 		}
 
@@ -687,10 +686,9 @@ func TestGetBridges(t *testing.T) {
 					Amount:             common.Big0,
 					DepositCount:       0,
 					Metadata:           []byte("metadata"),
-					GasTokenAddress:    common.HexToAddress("0x1"),
+					IsNativeToken:      true,
 				},
-				BridgeHash:  common.HexToHash("0x1"),
-				NativeToken: true,
+				BridgeHash: common.HexToHash("0x1"),
 			},
 		}
 		bridgeMocks.bridge.networkID = 10

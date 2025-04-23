@@ -40,6 +40,14 @@ func TestNewLx(t *testing.T) {
 	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Times(2)
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
@@ -190,6 +198,14 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
@@ -314,6 +330,14 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
