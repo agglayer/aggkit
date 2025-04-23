@@ -78,7 +78,7 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 
-		setup := helpers.L2Setup(t)
+		setup := helpers.L2Setup(t, helpers.DefaultEnvironmentConfig())
 		setup.EthTxManagerMock.ExpectedCalls = nil
 
 		gerReader, err := NewEVMChainGERReader(setup.GERAddr, setup.SimBackend.Client())

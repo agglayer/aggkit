@@ -156,8 +156,8 @@ func start(cliCtx *cli.Context) error {
 func createAggchainProofGen(
 	ctx context.Context,
 	cfg prover.Config,
-	l1Client etherman.EthClienter,
-	l2Client etherman.EthClienter,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync) (*prover.AggchainProofGenerationTool, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGCHAINPROOFGEN)
@@ -184,7 +184,7 @@ func createAggSender(
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
-	l2Client etherman.EthClienter) (*aggsender.AggSender, error) {
+	l2Client aggkittypes.BaseEthereumClienter) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AggLayerURL)
@@ -415,7 +415,7 @@ func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Con
 	return rollupID
 }
 
-func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) etherman.EthClienter {
+func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.BRIDGE,

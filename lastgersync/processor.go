@@ -67,33 +67,6 @@ func newProcessor(dbPath string) (*processor, error) {
 	}, nil
 }
 
-// GetLastProcessedBlock returns the last processed block by the processor, including blocks
-// that don't have events
-func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
-	var lastProcessedBlock uint64
-
-	row := p.database.QueryRow("SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
-	err := row.Scan(&lastProcessedBlock)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
-	}
-	return lastProcessedBlock, err
-}
-
-func (p *processor) getLastIndex() (uint32, error) {
-	var lastIndex uint32
-	row := p.database.QueryRow(`
-		SELECT l1_info_tree_index 
-		FROM imported_global_exit_root 
-		ORDER BY l1_info_tree_index DESC LIMIT 1;
-	`)
-	err := row.Scan(&lastIndex)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
-	}
-	return lastIndex, err
-}
-
 // ProcessBlock stores a block and its related events in the lastgersync database
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	tx, err := db.NewTx(ctx, p.database)
