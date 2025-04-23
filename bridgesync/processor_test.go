@@ -836,7 +836,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 		IsMessage:           false,
 	}
 
-	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, testClaim.BlockNum)
+	_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, testClaim.BlockNum, fmt.Sprintf("0x%x", testClaim.BlockNum))
 	require.NoError(t, err)
 	require.NoError(t, meddler.Insert(tx, "claim", testClaim))
 
@@ -903,7 +903,7 @@ func TestGetBridgesPublished(t *testing.T) {
 			require.NoError(t, err)
 
 			for i := tc.fromBlock; i <= tc.toBlock; i++ {
-				_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+				_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, i, fmt.Sprintf("0x%x", i))
 				require.NoError(t, err)
 			}
 

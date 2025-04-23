@@ -9,32 +9,28 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/0xPolygon/cdk-rpc/types"
+	rpcTypes "github.com/0xPolygon/cdk-rpc/types"
+	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 const errCodeAgglayerRateLimitExceeded int = -10007
 
-var (
-	ErrAgglayerRateLimitExceeded = fmt.Errorf("agglayer rate limit exceeded")
-	jSONRPCCall                  = rpc.JSONRPCCall
-)
+var ErrAgglayerRateLimitExceeded = errors.New("agglayer rate limit exceeded")
 
 type AggLayerClientGetEpochConfiguration interface {
-	GetEpochConfiguration() (*ClockConfiguration, error)
+	GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error)
 }
 
 type AggLayerClientRecoveryQuerier interface {
-	GetLatestSettledCertificateHeader(networkID uint32) (*CertificateHeader, error)
-	GetLatestPendingCertificateHeader(networkID uint32) (*CertificateHeader, error)
+	GetLatestSettledCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error)
+	GetLatestPendingCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error)
 }
 
 // AgglayerClientInterface is the interface that defines the methods that the AggLayerClient will implement
 type AgglayerClientInterface interface {
-	SendTx(signedTx SignedTx) (common.Hash, error)
-	WaitTxToBeMined(hash common.Hash, ctx context.Context) error
-	SendCertificate(certificate *SignedCertificate) (common.Hash, error)
-	GetCertificateHeader(certificateHash common.Hash) (*CertificateHeader, error)
+	SendCertificate(ctx context.Context, certificate *types.Certificate) (common.Hash, error)
+	GetCertificateHeader(ctx context.Context, certificateHash common.Hash) (*types.CertificateHeader, error)
 	AggLayerClientGetEpochConfiguration
 	AggLayerClientRecoveryQuerier
 }
@@ -65,7 +61,7 @@ func (c *AggLayerClient) SendTx(signedTx SignedTx) (common.Hash, error) {
 		return common.Hash{}, fmt.Errorf("%v %v", response.Error.Code, response.Error.Message)
 	}
 
-	var result types.ArgHash
+	var result rpcTypes.ArgHash
 	err = json.Unmarshal(response.Result, &result)
 	if err != nil {
 		return common.Hash{}, err
@@ -101,106 +97,4 @@ func (c *AggLayerClient) WaitTxToBeMined(hash common.Hash, ctx context.Context) 
 			}
 		}
 	}
-}
-
-// SendCertificate sends a certificate to the AggLayer
-func (c *AggLayerClient) SendCertificate(certificate *SignedCertificate) (common.Hash, error) {
-	certificateToSend := certificate.CopyWithDefaulting()
-
-	response, err := rpc.JSONRPCCall(c.url, "interop_sendCertificate", certificateToSend)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	if response.Error != nil {
-		return common.Hash{}, fmt.Errorf("%d %s", response.Error.Code, response.Error.Message)
-	}
-
-	var result types.ArgHash
-	err = json.Unmarshal(response.Result, &result)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	return result.Hash(), nil
-}
-
-// GetCertificateHeader returns the certificate header associated to the hash
-func (c *AggLayerClient) GetCertificateHeader(certificateHash common.Hash) (*CertificateHeader, error) {
-	response, err := rpc.JSONRPCCall(c.url, "interop_getCertificateHeader", certificateHash)
-	if err != nil {
-		return nil, err
-	}
-
-	if response.Error != nil {
-		return nil, fmt.Errorf("%d %s", response.Error.Code, response.Error.Message)
-	}
-
-	var result *CertificateHeader
-	err = json.Unmarshal(response.Result, &result)
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-// GetEpochConfiguration returns the clock configuration of AggLayer
-func (c *AggLayerClient) GetEpochConfiguration() (*ClockConfiguration, error) {
-	response, err := jSONRPCCall(c.url, "interop_getEpochConfiguration")
-	if err != nil {
-		return nil, err
-	}
-
-	if response.Error != nil {
-		return nil, fmt.Errorf("GetEpochConfiguration code=%d msg=%s", response.Error.Code, response.Error.Message)
-	}
-
-	var result *ClockConfiguration
-	err = json.Unmarshal(response.Result, &result)
-	if err != nil {
-		return nil, err
-	}
-
-	return result, nil
-}
-
-func (c *AggLayerClient) GetLatestSettledCertificateHeader(networkID uint32) (*CertificateHeader, error) {
-	response, err := jSONRPCCall(c.url, "interop_getLatestSettledCertificateHeader", networkID)
-	if err != nil {
-		return nil, fmt.Errorf("interop_getLatestSettledCertificateHeader rpc call failed: %w", err)
-	}
-
-	if response.Error != nil {
-		return nil, fmt.Errorf("interop_getLatestSettledCertificateHeader rpc call returned an error:  code=%d msg=%s",
-			response.Error.Code, response.Error.Message)
-	}
-
-	var result *CertificateHeader
-	err = json.Unmarshal(response.Result, &result)
-	if err != nil {
-		return nil, fmt.Errorf("GetLatestSettledCertificateHeader error Unmashal. Err: %w", err)
-	}
-
-	return result, nil
-}
-
-func (c *AggLayerClient) GetLatestPendingCertificateHeader(networkID uint32) (*CertificateHeader, error) {
-	response, err := jSONRPCCall(c.url, "interop_getLatestPendingCertificateHeader", networkID)
-	if err != nil {
-		return nil, fmt.Errorf("interop_getLatestPendingCertificateHeader rpc call failed: %w", err)
-	}
-
-	if response.Error != nil {
-		return nil, fmt.Errorf("interop_getLatestPendingCertificateHeader rpc call returned an error:  code=%d msg=%s",
-			response.Error.Code, response.Error.Message)
-	}
-
-	var result *CertificateHeader
-	err = json.Unmarshal(response.Result, &result)
-	if err != nil {
-		return nil, fmt.Errorf("GetLatestPendingCertificateHeader error Unmashal. Err: %w", err)
-	}
-
-	return result, nil
 }

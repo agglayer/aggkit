@@ -6,6 +6,7 @@ import (
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
+	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
 // Config is the configuration for the AggSender
@@ -16,16 +17,15 @@ type Config struct {
 	AggLayerURL string `mapstructure:"AggLayerURL"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
 	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
-	// BlockFinality indicates which finality follows AggLayer
+	// URLRPCL2 is the URL of the L2 RPC node
+	URLRPCL2 string `mapstructure:"URLRPCL2"`
+	// BlockFinality indicates which finality the AggLayer follows
 	BlockFinality string `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 	// EpochNotificationPercentage indicates the percentage of the epoch
 	// the AggSender should send the certificate
 	// 0 -> Begin
 	// 50 -> Middle
 	EpochNotificationPercentage uint `mapstructure:"EpochNotificationPercentage"`
-	// SaveCertificatesToFilesPath if != "" tells  the AggSender to save the certificates to a file in this path
-	SaveCertificatesToFilesPath string `mapstructure:"SaveCertificatesToFilesPath"`
-
 	// MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
 	// 0 is infinite
 	MaxRetriesStoreCertificate int `mapstructure:"MaxRetriesStoreCertificate"`
@@ -44,6 +44,10 @@ type Config struct {
 	DryRun bool `mapstructure:"DryRun"`
 	// EnableRPC is a flag to enable the RPC for aggsender
 	EnableRPC bool `mapstructure:"EnableRPC"`
+	// AggchainProofURL is the URL of the AggkitProver
+	AggchainProofURL string `mapstructure:"AggchainProofURL"`
+	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)
+	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
 	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
 	CheckStatusCertificateInterval types.Duration `mapstructure:"CheckStatusCertificateInterval"`
 	// RetryCertAfterInError when a cert pass to 'InError'
@@ -58,6 +62,13 @@ type Config struct {
 	MaxEpochPercentageAllowedToSendCertificate uint `mapstructure:"MaxEpochPercentageAllowedToSendCertificate"`
 	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
 	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
+	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
+	// this address is needed for the AggchainProof mode of the AggSender
+	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
+	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
+	GenerateAggchainProofTimeout types.Duration `mapstructure:"GenerateAggchainProofTimeout"`
+	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
+	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
@@ -74,12 +85,15 @@ func (c Config) String() string {
 		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
-		"SaveCertificatesToFilesPath: " + c.SaveCertificatesToFilesPath + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
+		"AggchainProofURL: " + c.AggchainProofURL + "\n" +
+		"Mode: " + c.Mode + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
-		"RetryCertImmediatelyAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
+		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"MaxEpochPercentageAllowedToSendCertificate: " +
-		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n"
+		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n" +
+		"GenerateAggchainProofTimeout: " + c.GenerateAggchainProofTimeout.String() + "\n" +
+		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n"
 }

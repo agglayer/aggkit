@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridgev2"
@@ -164,8 +165,14 @@ func newBridgeSync(
 	}
 
 	if lastProcessedBlock < initialBlock {
+		block, err := ethClient.BlockByNumber(ctx, new(big.Int).SetUint64(initialBlock))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get initial block %d: %w", initialBlock, err)
+		}
+
 		err = processor.ProcessBlock(ctx, sync.Block{
-			Num: initialBlock,
+			Num:  initialBlock,
+			Hash: block.Hash(),
 		})
 		if err != nil {
 			return nil, err

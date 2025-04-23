@@ -697,13 +697,14 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 }
 
 func (p *processor) getLastProcessedBlockWithTx(tx db.Querier) (uint64, error) {
-	var lastProcessedBlock uint64
+	var lastProcessedBlockNum uint64
+
 	row := tx.QueryRow("SELECT num FROM block ORDER BY num DESC LIMIT 1;")
-	err := row.Scan(&lastProcessedBlock)
+	err := row.Scan(&lastProcessedBlockNum)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
-	return lastProcessedBlock, err
+	return lastProcessedBlockNum, err
 }
 
 // Reorg triggers a purge and reset process on the processor to leaf it on a state
@@ -760,7 +761,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO block (num) VALUES ($1)`, block.Num); err != nil {
+	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
 		return err
 	}
 	for _, e := range block.Events {

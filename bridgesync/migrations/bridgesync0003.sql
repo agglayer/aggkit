@@ -7,6 +7,9 @@ DROP COLUMN token_type;
 
 DROP TABLE IF EXISTS legacy_token_migration;
 
+ALTER TABLE block
+DROP COLUMN hash;
+
 -- +migrate Up
 ALTER TABLE token_mapping
 ADD COLUMN is_not_mintable BOOLEAN NOT NULL;
@@ -27,3 +30,6 @@ CREATE TABLE
         calldata BLOB,
         PRIMARY KEY (block_num, block_pos)
     );
+
+ALTER TABLE block
+ADD COLUMN hash VARCHAR;

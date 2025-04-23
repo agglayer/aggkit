@@ -1,10 +1,12 @@
 package aggsender
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
 	"github.com/agglayer/aggkit/agglayer"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
@@ -14,15 +16,13 @@ const (
 	InitialStatusActionNone InitialStatusAction = iota
 	InitialStatusActionUpdateCurrentCert
 	InitialStatusActionInsertNewCert
-
-	nilStr = "nil"
 )
 
 var ErrAgglayerInconsistence = errors.New("recovery: agglayer inconsistence")
 
 type InitialStatus struct {
-	SettledCert *agglayer.CertificateHeader
-	PendingCert *agglayer.CertificateHeader
+	SettledCert *agglayertypes.CertificateHeader
+	PendingCert *agglayertypes.CertificateHeader
 	LocalCert   *types.CertificateInfo
 	log         common.Logger
 }
@@ -37,35 +37,36 @@ func (i InitialStatusAction) String() string {
 type InitialStatusResult struct {
 	Action  InitialStatusAction
 	Message string
-	Cert    *agglayer.CertificateHeader
+	Cert    *agglayertypes.CertificateHeader
 }
 
 func (i *InitialStatusResult) String() string {
 	if i == nil {
-		return nilStr
+		return types.NilStr
 	}
 	res := fmt.Sprintf("Action: %d, Message: %s", i.Action, i.Message)
 
 	if i.Cert != nil {
 		res += fmt.Sprintf(", Cert: %s", i.Cert.ID())
 	} else {
-		res += ", Cert: " + nilStr
+		res += ", Cert: " + types.NilStr
 	}
 	return res
 }
 
 // NewInitialStatus creates a new InitialStatus object, get the data from AggLayer and local storage
-func NewInitialStatus(log common.Logger, networkID uint32,
+func NewInitialStatus(ctx context.Context,
+	log types.Logger, networkID uint32,
 	storage db.AggSenderStorage,
 	aggLayerClient agglayer.AggLayerClientRecoveryQuerier) (*InitialStatus, error) {
 	log.Infof("recovery: checking last settled certificate from AggLayer for network %d", networkID)
-	aggLayerLastSettledCert, err := aggLayerClient.GetLatestSettledCertificateHeader(networkID)
+	aggLayerLastSettledCert, err := aggLayerClient.GetLatestSettledCertificateHeader(ctx, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting GetLatestSettledCertificateHeader from agglayer: %w", err)
 	}
 
 	log.Infof("recovery: checking last pending certificate from AggLayer for network %d", networkID)
-	aggLayerLastPendingCert, err := aggLayerClient.GetLatestPendingCertificateHeader(networkID)
+	aggLayerLastPendingCert, err := aggLayerClient.GetLatestPendingCertificateHeader(ctx, networkID)
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting GetLatestPendingCertificateHeader from agglayer: %w", err)
 	}
@@ -197,7 +198,7 @@ func (i *InitialStatus) checkAgglayerConsistenceCerts() error {
 	return nil
 }
 
-func (i *InitialStatus) getLatestAggLayerCert() *agglayer.CertificateHeader {
+func (i *InitialStatus) getLatestAggLayerCert() *agglayertypes.CertificateHeader {
 	if i.PendingCert == nil {
 		return i.SettledCert
 	}

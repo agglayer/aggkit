@@ -26,7 +26,7 @@ func TestMigration0001(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = tx.Exec(`
-		INSERT INTO block (num) VALUES (1);
+		INSERT INTO block (num, hash) VALUES (1, '0xA1FA');
 
 		INSERT INTO bridge (
 			block_num,
@@ -78,7 +78,7 @@ func TestMigration0002(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = tx.Exec(`
-		INSERT INTO block (num) VALUES (1);
+		INSERT INTO block (num, hash) VALUES (1, '0xBEEF');;
 
 		INSERT INTO token_mapping (
 			block_num, 
@@ -226,7 +226,7 @@ func TestMigrations0003(t *testing.T) {
 	}
 
 	_, err = tx.Exec(`
-		INSERT INTO block (num) VALUES (1);
+		INSERT INTO block (num, hash) VALUES (1, '0xABBA');
 
 		INSERT INTO legacy_token_migration (
 			block_num,

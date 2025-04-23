@@ -37,6 +37,7 @@ jobs:
     secrets: inherit
     with:
       docker-tag: local
+      # TODO: we should use this one (0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f) or continue with the arpit/bridge-service after it is rebased
       kurtosis-cdk-ref: arpit/bridge-service
       docker-artifact-name: aggkit
       agglayer-e2e-ref: 22665185bde0d441089c49ba68cd70ca369cc5d9
