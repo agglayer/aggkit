@@ -132,3 +132,21 @@ func BigIntToLittleEndianBytes(n *big.Int) []byte {
 
 	return leBytes
 }
+
+// EstimateSliceCapacity estimates the capacity of a slice based on the total number
+// of elements, the span of interest, and the full span of the range.
+//
+// Parameters:
+//   - total: The total number of elements.
+//   - span: The span of interest within the range.
+//   - fullSpan: The full span of the range.
+//
+// Returns:
+//   - An integer representing the estimated slice capacity. If fullSpan is 0, the
+//     function returns 0 to avoid division by zero.
+func EstimateSliceCapacity(total int, span, fullSpan uint64) int {
+	if fullSpan == 0 {
+		return 0
+	}
+	return int((uint64(total) * span) / fullSpan)
+}
