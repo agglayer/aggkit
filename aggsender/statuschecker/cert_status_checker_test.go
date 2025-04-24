@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
-	"time"
 
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -476,55 +475,6 @@ func TestCheckLastCertificateFromAgglayer(t *testing.T) {
 
 			mockStorage.AssertExpectations(t)
 			mockAggLayerClient.AssertExpectations(t)
-		})
-	}
-}
-
-func TestStartStatusChecking(t *testing.T) {
-	tests := []struct {
-		name                string
-		checkStatusInterval time.Duration
-		ctxTimeout          time.Duration
-	}{
-		{
-			name:                "Zero interval - no status checking",
-			checkStatusInterval: 0,
-		},
-		{
-			name:                "Valid interval - status checking starts",
-			checkStatusInterval: 100 * time.Millisecond,
-			ctxTimeout:          300 * time.Millisecond,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockLogger := log.WithFields("test", "unittest")
-			mockStorage := mocks.NewAggSenderStorage(t)
-			mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
-
-			certStatusChecker := &certStatusChecker{
-				log:            mockLogger,
-				storage:        mockStorage,
-				agglayerClient: mockAggLayerClient,
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), tt.ctxTimeout)
-			defer cancel()
-
-			statusCh := certStatusChecker.StartStatusChecking(ctx, tt.checkStatusInterval)
-
-			if tt.checkStatusInterval == 0 {
-				require.Empty(t, statusCh)
-			} else {
-				select {
-				case <-ctx.Done():
-					// Ensure the channel is closed after context timeout
-					require.NotNil(t, statusCh)
-				case <-time.After(tt.ctxTimeout + 100*time.Millisecond):
-					t.Fatal("Test timed out waiting for status checking to stop")
-				}
-			}
 		})
 	}
 }

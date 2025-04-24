@@ -450,12 +450,9 @@ func TestCheckDBCompatibility(t *testing.T) {
 }
 
 func TestAggSenderStartFailFlowCheckInitialStatus(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow)
+	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow|testDataFlagMockStatusChecker)
 	testData.sut.cfg.RequireStorageContentCompatibility = false
-	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil)
-	testData.storageMock.EXPECT().GetLastSentCertificate().Return(nil, nil)
-	testData.agglayerClientMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
-	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
+	testData.certStatusCheckerMock.EXPECT().CheckInitialStatus(mock.Anything, mock.Anything, testData.sut.status).Once()
 	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(fmt.Errorf("error")).Once()
 
 	require.Panics(t, func() {
@@ -464,7 +461,7 @@ func TestAggSenderStartFailFlowCheckInitialStatus(t *testing.T) {
 }
 
 func TestAggSenderStartFailsCompatibilityChecker(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockCompatibilityChecker)
+	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockCompatibilityChecker|testDataFlagMockStatusChecker)
 	testData.sut.cfg.RequireStorageContentCompatibility = true
 	testData.compatibilityChekerMock.EXPECT().Check(mock.Anything, mock.Anything).Return(fmt.Errorf("error")).Once()
 
@@ -477,42 +474,42 @@ func TestSendCertificates(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name                   string
-		mockFn                 func(*mocks.CertificateStatusChecker, *mocks.EpochNotifier, *mocks.AggSenderStorage, *mocks.AggsenderFlow)
-		returnAfterNIterations int
+		name                    string
+		mockFn                  func(*mocks.CertificateStatusChecker, *mocks.EpochNotifier, *mocks.AggSenderStorage, *mocks.AggsenderFlow)
+		returnAfterNIterations  int
+		certStatusCheckInterval time.Duration
 	}{
 		{
 			name: "context canceled",
 			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderFlow) {
-				mockCertStatusChecker.EXPECT().StartStatusChecking(mock.Anything, mock.Anything).Return(make(chan aggsendertypes.CertStatus))
-				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(make(chan aggsendertypes.EpochEvent))
+				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(make(chan aggsendertypes.EpochEvent)).Once()
 			},
 			returnAfterNIterations: 0,
 		},
 		{
 			name: "retry certificate after in-error",
 			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderFlow) {
-				checkCertChannel := make(chan aggsendertypes.CertStatus, 1)
-				checkCertChannel <- aggsendertypes.CertStatus{
+				mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts:   false,
 					ExistNewInErrorCert: true,
-				}
-				mockCertStatusChecker.EXPECT().StartStatusChecking(mock.Anything, mock.Anything).Return(checkCertChannel)
-				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(make(chan aggsendertypes.EpochEvent))
+				}).Once()
+				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(make(chan aggsendertypes.EpochEvent)).Once()
+				mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{}).Once()
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(nil, nil).Once()
 			},
-			returnAfterNIterations: 1,
+			returnAfterNIterations:  1,
+			certStatusCheckInterval: 100 * time.Millisecond,
 		},
 		{
 			name: "epoch received with no pending certificates",
 			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderFlow) {
 				chEpoch := make(chan aggsendertypes.EpochEvent, 1)
 				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
-				mockCertStatusChecker.EXPECT().StartStatusChecking(mock.Anything, mock.Anything).Return(make(chan aggsendertypes.CertStatus))
-				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch)
+				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
+				mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{}).Once()
 				mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts: false,
-				})
+				}).Once()
 				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(nil, nil).Once()
 			},
 			returnAfterNIterations: 1,
@@ -522,11 +519,10 @@ func TestSendCertificates(t *testing.T) {
 			mockFn: func(mockCertStatusChecker *mocks.CertificateStatusChecker, mockEpochNotifier *mocks.EpochNotifier, mockStorage *mocks.AggSenderStorage, mockFlow *mocks.AggsenderFlow) {
 				chEpoch := make(chan aggsendertypes.EpochEvent, 1)
 				chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
-				mockCertStatusChecker.EXPECT().StartStatusChecking(mock.Anything, mock.Anything).Return(make(chan aggsendertypes.CertStatus))
-				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch)
+				mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
 				mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
 					ExistPendingCerts: true,
-				})
+				}).Once()
 			},
 			returnAfterNIterations: 1,
 		},
@@ -553,7 +549,8 @@ func TestSendCertificates(t *testing.T) {
 				storage:           mockStorage,
 				flow:              mockFlow,
 				cfg: config.Config{
-					RetryCertAfterInError: true,
+					RetryCertAfterInError:          true,
+					CheckStatusCertificateInterval: types.NewDuration(tt.certStatusCheckInterval),
 				},
 				status: &aggsendertypes.AggsenderStatus{},
 			}
@@ -583,6 +580,7 @@ const (
 	testDataFlagMockStorage              testDataFlags = 1
 	testDataFlagMockFlow                 testDataFlags = 2
 	testDataFlagMockCompatibilityChecker testDataFlags = 4
+	testDataFlagMockStatusChecker        testDataFlags = 8
 )
 
 type aggsenderTestData struct {
@@ -594,6 +592,7 @@ type aggsenderTestData struct {
 	epochNotifierMock       *mocks.EpochNotifier
 	flowMock                *mocks.AggsenderFlow
 	compatibilityChekerMock *mocksdb.CompatibilityChecker
+	certStatusCheckerMock   *mocks.CertificateStatusChecker
 	sut                     *AggSender
 	testCerts               []aggsendertypes.CertificateInfo
 }
@@ -662,6 +661,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		l2OriginNetwork: networkIDTest,
 		aggLayerClient:  agglayerClientMock,
 		storage:         storage,
+		status:          &aggsendertypes.AggsenderStatus{},
 		cfg: config.Config{
 			MaxCertSize:          1024 * 1024,
 			DelayBeetweenRetries: types.Duration{Duration: time.Millisecond},
@@ -680,6 +680,12 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	if creationFlags&testDataFlagMockCompatibilityChecker != 0 {
 		compatibilityCheckerMock = mocksdb.NewCompatibilityChecker(t)
 		sut.compatibilityStoragedChecker = compatibilityCheckerMock
+	}
+
+	var statusCheckerMock *mocks.CertificateStatusChecker
+	if creationFlags&testDataFlagMockStatusChecker != 0 {
+		statusCheckerMock = mocks.NewCertificateStatusChecker(t)
+		sut.certStatusChecker = statusCheckerMock
 	}
 
 	testCerts := []aggsendertypes.CertificateInfo{
@@ -706,6 +712,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		epochNotifierMock:       epochNotifierMock,
 		flowMock:                flowMock,
 		compatibilityChekerMock: compatibilityCheckerMock,
+		certStatusCheckerMock:   statusCheckerMock,
 		sut:                     sut,
 		testCerts:               testCerts,
 	}

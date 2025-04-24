@@ -162,15 +162,26 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 
 // sendCertificates sends certificates to the aggLayer
 func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations int) {
-	checkCertChannel := a.certStatusChecker.StartStatusChecking(ctx, a.cfg.CheckStatusCertificateInterval.Duration)
+	var checkCertChannel <-chan time.Time
+	if a.cfg.CheckStatusCertificateInterval.Duration > 0 {
+		checkCertTicker := time.NewTicker(a.cfg.CheckStatusCertificateInterval.Duration)
+		defer checkCertTicker.Stop()
+		checkCertChannel = checkCertTicker.C
+	} else {
+		a.log.Infof("CheckStatusCertificateInterval is 0, so we are not going to check the certificate status")
+		checkCertChannel = make(chan time.Time)
+	}
 
 	chEpoch := a.epochNotifier.Subscribe("aggsender")
 	a.status.Status = types.StatusCertificateStage
 	iteration := 0
 	for {
 		select {
-		case checkResult := <-checkCertChannel:
+		case <-checkCertChannel:
 			iteration++
+			a.log.Debugf("Checking perodical certificates status (%s)",
+				a.cfg.CheckCertConfigBriefString())
+			checkResult := a.certStatusChecker.CheckPendingCertificatesStatus(ctx)
 			if !checkResult.ExistPendingCerts && checkResult.ExistNewInErrorCert {
 				if a.cfg.RetryCertAfterInError {
 					a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())

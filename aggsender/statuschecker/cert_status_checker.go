@@ -94,49 +94,6 @@ func (c *certStatusChecker) CheckInitialStatus(
 	}
 }
 
-// StartStatusChecking starts a periodic process to check the status of certificates.
-// It runs in a separate goroutine and sends the certificate status updates to a returned channel.
-//
-// Parameters:
-//   - ctx: The context used to manage the lifecycle of the status checking process.
-//   - checkStatusInterval: The interval at which the certificate status is checked. If set to 0,
-//     the status checking process will not start, and an empty channel will be returned.
-//
-// Returns:
-//   - A receive-only channel (<-chan types.CertStatus) through which certificate status updates
-//     are sent. The channel will be closed when the context is canceled.
-//
-// Notes:
-//   - If the context is canceled, the status checking process will stop, and no further updates
-//     will be sent to the channel.
-//   - The function logs messages to indicate the start and stop of the status checking process.
-func (c *certStatusChecker) StartStatusChecking(
-	ctx context.Context, checkStatusInterval time.Duration) <-chan types.CertStatus {
-	if checkStatusInterval == 0 {
-		c.log.Infof("CheckStatusCertificateInterval is 0, so we are not going to check the certificate status")
-		return make(<-chan types.CertStatus)
-	}
-
-	c.log.Infof("start checking certificates status every %s", checkStatusInterval)
-	ticker := time.NewTicker(checkStatusInterval)
-	defer ticker.Stop()
-
-	statusCh := make(chan types.CertStatus, 1)
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				c.log.Infof("stopping checking certificates status")
-				return
-			case <-ticker.C:
-				statusCh <- c.CheckPendingCertificatesStatus(context.Background())
-			}
-		}
-	}()
-
-	return statusCh
-}
-
 // CheckPendingCertificatesStatus checks the status of pending certificates
 // and updates in the storage if it changed on agglayer
 // It returns:

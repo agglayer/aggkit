@@ -105,55 +105,6 @@ func (_c *CertificateStatusChecker_CheckPendingCertificatesStatus_Call) RunAndRe
 	return _c
 }
 
-// StartStatusChecking provides a mock function with given fields: ctx, checkStatusInterval
-func (_m *CertificateStatusChecker) StartStatusChecking(ctx context.Context, checkStatusInterval time.Duration) <-chan types.CertStatus {
-	ret := _m.Called(ctx, checkStatusInterval)
-
-	if len(ret) == 0 {
-		panic("no return value specified for StartStatusChecking")
-	}
-
-	var r0 <-chan types.CertStatus
-	if rf, ok := ret.Get(0).(func(context.Context, time.Duration) <-chan types.CertStatus); ok {
-		r0 = rf(ctx, checkStatusInterval)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(<-chan types.CertStatus)
-		}
-	}
-
-	return r0
-}
-
-// CertificateStatusChecker_StartStatusChecking_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'StartStatusChecking'
-type CertificateStatusChecker_StartStatusChecking_Call struct {
-	*mock.Call
-}
-
-// StartStatusChecking is a helper method to define mock.On call
-//   - ctx context.Context
-//   - checkStatusInterval time.Duration
-func (_e *CertificateStatusChecker_Expecter) StartStatusChecking(ctx interface{}, checkStatusInterval interface{}) *CertificateStatusChecker_StartStatusChecking_Call {
-	return &CertificateStatusChecker_StartStatusChecking_Call{Call: _e.mock.On("StartStatusChecking", ctx, checkStatusInterval)}
-}
-
-func (_c *CertificateStatusChecker_StartStatusChecking_Call) Run(run func(ctx context.Context, checkStatusInterval time.Duration)) *CertificateStatusChecker_StartStatusChecking_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(time.Duration))
-	})
-	return _c
-}
-
-func (_c *CertificateStatusChecker_StartStatusChecking_Call) Return(_a0 <-chan types.CertStatus) *CertificateStatusChecker_StartStatusChecking_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *CertificateStatusChecker_StartStatusChecking_Call) RunAndReturn(run func(context.Context, time.Duration) <-chan types.CertStatus) *CertificateStatusChecker_StartStatusChecking_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // NewCertificateStatusChecker creates a new instance of CertificateStatusChecker. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewCertificateStatusChecker(t interface {
