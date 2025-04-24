@@ -30,15 +30,16 @@ _common_setup() {
         local resolved_url=""
 
         for node in "${fallback_nodes[@]}"; do
-            echo "🔍 Trying L2 RPC node: $node" >&3
-            resolved_url=$(kurtosis port print "$enclave" "$node" rpc)
-            if [ $? -ne 0 ]; then
-                echo "⚠️ Failed to resolve the L2 RPC URL from $node, trying next one..." >&3
+            # Need to invoke the command this way, otherwise it would fail the entire test
+            # if the node is not running, but this is just a sanity check
+            if ! kurtosis service inspect "$enclave" "$node" >/dev/null 2>&1; then
+                echo "⚠️ Node $node is not running in the "$enclave", trying next one..." >&3
                 continue
             fi
 
+            resolved_url=$(kurtosis port print "$enclave" "$node" rpc)
             if [ -n "$resolved_url" ]; then
-                echo "✅ Successfully resolved L2 RPC URL from $node" >&3
+                echo "✅ Successfully resolved L2 RPC URL ("$resolved_url") from "$node"" >&3
                 break
             fi
         done
