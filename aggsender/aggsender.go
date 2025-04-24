@@ -3,7 +3,6 @@ package aggsender
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
@@ -24,10 +23,6 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 )
-
-const signatureSize = 65
-
-var errInvalidSignatureSize = errors.New("invalid signature size")
 
 type RateLimiter interface {
 	Call(msg string, allowToSleep bool) *time.Duration
@@ -320,18 +315,4 @@ func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Cer
 		}
 	}
 	return nil
-}
-
-// extractSignatureData extracts the R, S, and V from a 65-byte signature
-func extractSignatureData(signature []byte) (r, s common.Hash, isOddParity bool, err error) {
-	if len(signature) != signatureSize {
-		err = errInvalidSignatureSize
-		return
-	}
-
-	r = common.BytesToHash(signature[:32])   // First 32 bytes are R
-	s = common.BytesToHash(signature[32:64]) // Next 32 bytes are S
-	isOddParity = signature[64]%2 == 1       //nolint:mnd // Last byte is V
-
-	return
 }

@@ -108,64 +108,6 @@ func TestAggSenderStart(t *testing.T) {
 	time.Sleep(200 * time.Millisecond)
 }
 
-func TestExtractSignatureData(t *testing.T) {
-	t.Parallel()
-
-	testR := common.HexToHash("0x1")
-	testV := common.HexToHash("0x2")
-
-	tests := []struct {
-		name              string
-		signature         []byte
-		expectedR         common.Hash
-		expectedS         common.Hash
-		expectedOddParity bool
-		expectedError     error
-	}{
-		{
-			name:              "Valid signature - odd parity",
-			signature:         append(append(testR.Bytes(), testV.Bytes()...), 1),
-			expectedR:         testR,
-			expectedS:         testV,
-			expectedOddParity: true,
-			expectedError:     nil,
-		},
-		{
-			name:              "Valid signature - even parity",
-			signature:         append(append(testR.Bytes(), testV.Bytes()...), 2),
-			expectedR:         testR,
-			expectedS:         testV,
-			expectedOddParity: false,
-			expectedError:     nil,
-		},
-		{
-			name:          "Invalid signature size",
-			signature:     make([]byte, 64), // Invalid size
-			expectedError: errInvalidSignatureSize,
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			r, s, isOddParity, err := extractSignatureData(tt.signature)
-
-			if tt.expectedError != nil {
-				require.Error(t, err)
-				require.Equal(t, tt.expectedError, err)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedR, r)
-				require.Equal(t, tt.expectedS, s)
-				require.Equal(t, tt.expectedOddParity, isOddParity)
-			}
-		})
-	}
-}
-
 func TestExploratoryGenerateCert(t *testing.T) {
 	t.Skip("This test is only for exploratory purposes, to generate json format of the certificate")
 
