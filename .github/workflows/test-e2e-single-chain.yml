@@ -22,7 +22,7 @@ jobs:
       matrix:
         e2e-group:
           - fork12-pessimistic
-          - fork12-op-succint
+          - fork12-op-succinct
 
     steps:
     - name: Checkout code
@@ -34,7 +34,7 @@ jobs:
         if [[ "${{ matrix.e2e-group }}" == "fork12-pessimistic" ]]; then
           # https://github.com/0xPolygon/kurtosis-cdk/tree/feat/aggsender-agglayer-grpc-integration
           echo "ref=0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f" >> $GITHUB_OUTPUT
-        elif [[ "${{ matrix.e2e-group }}" == "fork12-op-succint" ]]; then
+        elif [[ "${{ matrix.e2e-group }}" == "fork12-op-succinct" ]]; then
           # https://github.com/0xPolygon/kurtosis-cdk/tree/main
           echo "ref=4447745444f706e5ba2be6217f17e7434d95c5b0" >> $GITHUB_OUTPUT 
         else

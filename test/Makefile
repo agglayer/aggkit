@@ -12,9 +12,9 @@ test-e2e-fork12-pessimistic: stop
 		 bats/pp/bridge-e2e-msg.bats \
 		 bats/pp/e2e-pp.bats
 
-.PHONY: test-e2e-fork12-op-succint
-test-e2e-fork12-op-succint: stop
-	./run-e2e.sh fork12 op-succint
+.PHONY: test-e2e-fork12-op-succinct
+test-e2e-fork12-op-succinct: stop
+	./run-e2e.sh fork12 op-succinct
 	@bash -c '\
 		export BATS_TEST_TIMEOUT=1800; \
 		export FUND_L2=true; \
