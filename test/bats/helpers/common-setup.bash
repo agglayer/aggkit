@@ -28,10 +28,16 @@ _common_setup() {
 
         local fallback_nodes=("op-el-1-op-geth-op-node-001" "cdk-erigon-rpc-001")
         local resolved_url=""
+
         for node in "${fallback_nodes[@]}"; do
             echo "🔍 Trying L2 RPC node: $node" >&3
             resolved_url=$(get_l2_rpc_url "$enclave" "$node")
-            if [ $? -eq 0 ] && [ -n "$resolved_url" ]; then
+            if [ $? -ne 0 ]; then
+                echo "⚠️ Failed to resolve the L2 RPC URL from $node, trying next one..." >&3
+                continue
+            fi
+
+            if [ -n "$resolved_url" ]; then
                 echo "✅ Successfully resolved L2 RPC URL from $node" >&3
                 break
             fi
