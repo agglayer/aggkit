@@ -148,9 +148,7 @@ func start(cliCtx *cli.Context) error {
 	}
 
 	if cfg.Profiling.ProfilingEnabled {
-		go pprof.StartProfilingHTTPServer(cfg.Profiling)
-	} else {
-		log.Info("Profiling server is disabled")
+		go pprof.StartProfilingHTTPServer(cliCtx.Context, cfg.Profiling)
 	}
 
 	waitSignal(nil)

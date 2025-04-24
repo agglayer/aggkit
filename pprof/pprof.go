@@ -1,6 +1,7 @@
 package pprof
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -11,12 +12,15 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 )
 
+const serverShutdownTimeout = 5 * time.Second
+
 // StartProfilingHTTPServer starts an HTTP server for profiling using the provided configuration.
 // It sets up endpoints for pprof profiling and listens on the specified host and port.
 // The server includes handlers for various pprof endpoints such as index, profile, cmdline,
 // symbol, and trace. The server's read and header timeouts are set to two minutes.
 //
 // Parameters:
+//   - ctx (context.Context): The context for managing server lifecycle.
 //   - c (Config): The configuration object containing the profiling host and port.
 //
 // Behavior:
@@ -24,7 +28,8 @@ import (
 //   - Logs the port on which the profiling server is listening.
 //   - Handles server closure gracefully, logging a warning if the server is stopped
 //     or an error if the connection is closed unexpectedly.
-func StartProfilingHTTPServer(c Config) {
+//   - Supports graceful shutdown using context cancellation or timeout.
+func StartProfilingHTTPServer(ctx context.Context, c Config) {
 	const two = 2
 	mux := http.NewServeMux()
 	address := fmt.Sprintf("%s:%d", c.ProfilingHost, c.ProfilingPort)
@@ -43,6 +48,20 @@ func StartProfilingHTTPServer(c Config) {
 		ReadHeaderTimeout: two * time.Minute,
 		ReadTimeout:       two * time.Minute,
 	}
+
+	go func() {
+		// Wait for context cancellation or timeout
+		<-ctx.Done()
+		log.Warnf("shutting down profiling server")
+
+		// Gracefully shut down the server
+		shutdownCtx, cancel := context.WithTimeout(ctx, serverShutdownTimeout)
+		defer cancel()
+		if err := profilingServer.Shutdown(shutdownCtx); err != nil {
+			log.Errorf("error shutting down profiling server: %v", err)
+		}
+	}()
+
 	log.Infof("profiling server listening on port %d", c.ProfilingPort)
 	if err := profilingServer.Serve(lis); err != nil {
 		if err == http.ErrServerClosed {
@@ -50,6 +69,5 @@ func StartProfilingHTTPServer(c Config) {
 			return
 		}
 		log.Errorf("closed http connection for profiling server: %v", err)
-		return
 	}
 }

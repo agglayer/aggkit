@@ -1,6 +1,7 @@
 package pprof
 
 import (
+	"context"
 	"fmt"
 	"net"
 	"net/http"
@@ -18,8 +19,11 @@ func TestStartProfilingHttpServer(t *testing.T) {
 		ProfilingPort: 6060,
 	}
 
+	context, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	// Start the profiling server in a separate goroutine
-	go StartProfilingHTTPServer(Config{
+	go StartProfilingHTTPServer(context, Config{
 		ProfilingHost: config.ProfilingHost,
 		ProfilingPort: config.ProfilingPort,
 	})
