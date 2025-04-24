@@ -54,17 +54,34 @@ _common_setup() {
         readonly l2_rpc_url="$L2_ETH_RPC_URL"
     fi
 
-    if [[ "${FUND_L2}" == "true" ]]; then
-        echo "💸 FUND_L2 is enabled, invoking fund..." >&3
-        local l2_coinbase_key="ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-        local receiver="0xE34aaF64b29273B7D567FCFc40544c014EEe9970"
-        local amount="1000ether"
+    if [[ -z "${DISABLE_L2_FUND}" || "${DISABLE_L2_FUND}" == "false" ]]; then
+        readonly test_account_key=${SENDER_PRIVATE_KEY:-"12d7de8621a77640c9241b2595ba78ce443d05e94090365ab3bb5e19df82c625"}
+        readonly test_account_addr="$(cast wallet address --private-key $test_account_key)"
 
-        fund "$l2_coinbase_key" "$receiver" "$amount" "$l2_rpc_url"
+        local token_balance
+        token_balance=$(cast balance --rpc-url "$l2_rpc_url" "$test_account_addr" 2>/dev/null)
+
         if [ $? -ne 0 ]; then
-            echo "❌ Funding L2 receiver "$receiver" failed" >&2
-            return 1
+            echo "⚠️ Failed to fetch token balance for $test_account_addr on $l2_rpc_url" >&2
+            token_balance="0" # Default to zero if balance can't be fetched
         fi
+
+        # Only fund if balance is zero
+        if [ "$token_balance" = "0" ]; then
+            local l2_coinbase_key="ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+            local amount="1000ether"
+
+            echo "💸 Balance is zero, invoking fund for $test_account_addr..." >&3
+            fund "$l2_coinbase_key" "$test_account_addr" "$amount" "$l2_rpc_url"
+            if [ $? -ne 0 ]; then
+                echo "❌ Funding L2 receiver $test_account_addr failed" >&2
+                return 1
+            fi
+        else
+            echo "✅ Receiver $test_account_addr already has $token_balance wei" >&3
+        fi
+    else
+        echo "🚫 Skipping L2 funding since DISABLE_L2_FUND is set to true" >&3
     fi
 
     local combined_json_output=""
@@ -125,19 +142,16 @@ function fund() {
     while [ $attempt -le $max_attempts ]; do
         echo "🚀 Attempt $attempt to fund the $receiver_addr..." >&2
 
-        # Fetch gas price before each attempt
         local raw_gas_price
         raw_gas_price=$(cast gas-price --rpc-url "$rpc_url" 2>/dev/null)
-        local status=$?
-        if [ $status -ne 0 ] || [ -z "$raw_gas_price" ]; then
+        if [ $? -ne 0 ] || [ -z "$raw_gas_price" ]; then
             echo "❌ Failed to fetch gas price from $rpc_url (attempt $attempt)" >&2
-            return 1
+            break
         fi
 
         # Bump gas price by 50%
         local gas_price
         gas_price=$(printf "%.0f" "$(echo "$raw_gas_price * 1.5" | bc -l)")
-
         echo "Using bumped gas price: $gas_price [wei] (original: $raw_gas_price [wei])" >&2
 
         cast send --rpc-url "$rpc_url" \
@@ -145,10 +159,10 @@ function fund() {
             --private-key "$sender_private_key" \
             --gas-price "$gas_price" \
             --value "$amount" \
-            "$receiver_addr"
+            "$receiver_addr" >/dev/null 2>&1
 
-        status=$?
-        if [ $status -eq 0 ]; then
+        if [ $? -eq 0 ]; then
+            echo "✅ Successfully funded $receiver_addr with $amount of native tokens" >&2
             success=1
             break
         fi
@@ -159,7 +173,7 @@ function fund() {
     done
 
     if [ $success -eq 0 ]; then
-        echo "❌ Failed to fund $receiver_addr after $max_attempts attempts" >&2
+        echo "❌ Failed to fund $receiver_addr after $max_attempts attempts. Continuing..." >&2
         return 1
     fi
 
