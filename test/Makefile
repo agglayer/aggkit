@@ -9,8 +9,8 @@ test-e2e-fork12-pessimistic: stop
 	./run-e2e.sh fork12 pessimistic
 	export BATS_TEST_TIMEOUT=1800
 	bats bats/pp/bridge-native-token-e2e.bats \
-		 bats/pp/bridge-e2e-msg.bats \
-		 bats/pp/e2e-pp.bats
+	     bats/pp/bridge-e2e-msg.bats \
+	     bats/pp/e2e-pp.bats
 
 .PHONY: test-e2e-fork12-op-succinct
 test-e2e-fork12-op-succinct: stop
