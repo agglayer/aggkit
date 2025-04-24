@@ -31,7 +31,7 @@ _common_setup() {
 
         for node in "${fallback_nodes[@]}"; do
             echo "🔍 Trying L2 RPC node: $node" >&3
-            resolved_url=$(get_l2_rpc_url "$enclave" "$node")
+            resolved_url=$(kurtosis port print "$enclave" "$node" rpc)
             if [ $? -ne 0 ]; then
                 echo "⚠️ Failed to resolve the L2 RPC URL from $node, trying next one..." >&3
                 continue
@@ -163,29 +163,4 @@ function fund() {
     fi
 
     echo "✅ Successfully funded $receiver_addr with $amount of native tokens" >&2
-}
-
-# Function is used to resolve the L2 RPC URL from the Kurtosis environment.
-# It takes two arguments:
-# 1. enclave: The name of the Kurtosis enclave
-# 2. l2_rpc_node: The name of the L2 RPC node
-function get_l2_rpc_url() {
-    local enclave=$1
-    local l2_rpc_node=${2}
-
-    if [[ -z "$enclave" ]]; then
-        echo "❌ Missing enclave name. Usage: get_l2_rpc_url <enclave> <l2_rpc_node>" >&2
-        return 1
-    fi
-
-    local l2_rpc_url
-
-    l2_rpc_url=$(kurtosis port print "$enclave" "$l2_rpc_node" rpc)
-    local status=$?
-    if [ $status -ne 0 ]; then
-        echo "❌ Failed to resolve L2 RPC URL from Kurtosis environment" >&2
-        return 1
-    fi
-
-    echo "$l2_rpc_url"
 }
