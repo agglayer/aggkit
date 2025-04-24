@@ -166,9 +166,9 @@ function fund() {
             continue
         }
 
-        echo "⚠️ Attempt $attempt failed. Retrying in 3s..." >&2
-        sleep 3
-        attempt=$((attempt + 1))
+        echo "✅ Successfully funded $receiver_addr with $amount of native tokens" >&2
+        success=1
+        break
     done
 
     if [ $success -eq 0 ]; then
