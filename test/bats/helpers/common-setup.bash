@@ -78,7 +78,7 @@ _common_setup() {
             fi
             echo "✅ Successfully funded $test_account_addr with $amount on L2" >&3
         else
-            echo "✅ Receiver $test_account_addr already has L2 "$(cast --from-wei "$token_balance")" ETH" >&3
+            echo "✅ Receiver $test_account_addr already has L2 "$(cast --from-wei "$token_balance")" ETH on L2" >&3
         fi
     else
         echo "🚫 Skipping L2 funding since DISABLE_L2_FUND is set to true" >&3
