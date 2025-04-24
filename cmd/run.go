@@ -29,6 +29,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/rpc"
@@ -144,6 +145,10 @@ func start(cliCtx *cli.Context) error {
 		go startPrometheusHTTPServer(cfg.Prometheus)
 	} else {
 		log.Info("Prometheus metrics server is disabled")
+	}
+
+	if cfg.Profiling.ProfilingEnabled {
+		go pprof.StartProfilingHTTPServer(cliCtx.Context, cfg.Profiling)
 	}
 
 	waitSignal(nil)
