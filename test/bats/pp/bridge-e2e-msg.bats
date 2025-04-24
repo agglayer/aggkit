@@ -29,12 +29,6 @@ setup() {
 }
 
 @test "Transfer message" {
-    l1_native_token_balance=$(get_token_balance "$l1_rpc_url" "$native_token_addr" "$sender_addr")
-    l2_native_token_balance=$(get_token_balance "$l2_rpc_url" "$native_token_addr" "$sender_addr")
-
-    log "Sender native token balance on L1: $l1_native_token_balance"
-    log "Sender native token balance on L2: $l2_native_token_balance"
-
     echo "====== bridgeMessage L1 -> L2" >&3
     destination_addr=$sender_addr
     destination_net=$l2_rpc_network_id
