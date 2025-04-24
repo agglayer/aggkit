@@ -31,7 +31,7 @@ setup() {
 
 @test "Native token transfer L1 -> L2" {
     destination_addr=$sender_addr
-    local initial_receiver_balance=$(cast call --rpc-url "$l2_rpc_url" "$weth_token_addr" "$balance_of_fn_sig" "$destination_addr" | awk '{print $1}')
+    local initial_receiver_balance=$(get_token_balance "$l2_rpc_url" "$weth_token_addr" "$destination_addr")
     echo "Initial receiver balance of native token on L2 $initial_receiver_balance" >&3
 
     echo "=== Running L1 native token deposit to L2 network $l2_rpc_network_id (native_token: $native_token_addr)" >&3

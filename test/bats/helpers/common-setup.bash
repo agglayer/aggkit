@@ -59,7 +59,7 @@ _common_setup() {
         readonly test_account_addr="$(cast wallet address --private-key $test_account_key)"
 
         local token_balance
-        token_balance=$(cast balance --rpc-url "$l2_rpc_url" "$test_account_addr" 2>/dev/null)
+        token_balance=$(cast balance -e --rpc-url "$l2_rpc_url" "$test_account_addr" 2>/dev/null)
 
         if [ $? -ne 0 ]; then
             echo "⚠️ Failed to fetch token balance for $test_account_addr on $l2_rpc_url" >&2
@@ -71,14 +71,15 @@ _common_setup() {
             local l2_coinbase_key="ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
             local amount="1000ether"
 
-            echo "💸 Balance is zero, invoking fund for $test_account_addr..." >&3
+            echo "💸 "$test_account_addr" L2 balance is zero, funding it with amount="$amount"..." >&3
             fund "$l2_coinbase_key" "$test_account_addr" "$amount" "$l2_rpc_url"
             if [ $? -ne 0 ]; then
                 echo "❌ Funding L2 receiver $test_account_addr failed" >&2
                 return 1
             fi
+            echo "✅ Successfully funded $test_account_addr with $amount on L2" >&3
         else
-            echo "✅ Receiver $test_account_addr already has $token_balance wei" >&3
+            echo "✅ Receiver $test_account_addr already has L2 $token_balance ETH" >&3
         fi
     else
         echo "🚫 Skipping L2 funding since DISABLE_L2_FUND is set to true" >&3
@@ -166,7 +167,6 @@ function fund() {
             continue
         }
 
-        echo "✅ Successfully funded $receiver_addr with $amount of native tokens" >&2
         success=1
         break
     done
