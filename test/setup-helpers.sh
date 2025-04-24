@@ -1,11 +1,5 @@
 #!/bin/bash
 
-# Function is used to fund the receiver address with native tokens
-# from the sender address. It takes four arguments:
-# 1. sender_private_key: The private key of the sender address
-# 2. receiver_addr: The address to be funded
-# 3. amount: The amount of native tokens to be sent
-# 4. rpc_url: The RPC URL of the Ethereum network
 function fund() {
     local sender_private_key=$1
     local receiver_addr=$2
@@ -17,36 +11,54 @@ function fund() {
         return 1
     fi
 
-    # Fetch gas price
-    local raw_gas_price=$(cast gas-price --rpc-url "$rpc_url" 2>/dev/null)
-    status=$?
-    if [ $status -ne 0 ]; then
-        echo "❌ Failed to fetch gas price from $rpc_url" >&2
+    local max_attempts=3
+    local attempt=1
+    local success=0
+
+    while [ $attempt -le $max_attempts ]; do
+        echo "🚀 Attempt $attempt to fund the $receiver_addr..." >&2
+
+        # Fetch gas price before each attempt
+        local raw_gas_price
+        raw_gas_price=$(cast gas-price --rpc-url "$rpc_url" 2>/dev/null)
+        local status=$?
+        if [ $status -ne 0 ] || [ -z "$raw_gas_price" ]; then
+            echo "❌ Failed to fetch gas price from $rpc_url (attempt $attempt)" >&2
+            return 1
+        fi
+
+        # Bump gas price by 50%
+        local gas_price
+        gas_price=$(printf "%.0f" "$(echo "$raw_gas_price * 1.5" | bc -l)")
+
+        echo "Using bumped gas price: $gas_price [wei] (original: $raw_gas_price [wei])" >&2
+
+        cast send --rpc-url "$rpc_url" \
+            --legacy \
+            --private-key "$sender_private_key" \
+            --gas-price "$gas_price" \
+            --value "$amount" \
+            "$receiver_addr"
+
+        status=$?
+        if [ $status -eq 0 ]; then
+            success=1
+            break
+        fi
+
+        echo "⚠️ Attempt $attempt failed. Retrying in 3s..." >&2
+        sleep 3
+        attempt=$((attempt + 1))
+    done
+
+    if [ $success -eq 0 ]; then
+        echo "❌ Failed to fund $receiver_addr after $max_attempts attempts" >&2
         return 1
-    fi
-
-    # Bump gas price by 100% to avoid transaction being underpriced
-    local gas_price=$(printf "%.0f" "$(echo "$raw_gas_price * 2" | bc -l)")
-
-    echo "Using bumped gas price: $gas_price wei (original: $raw_gas_price wei)"
-
-    # Fund the receiver address with the specified amount of the specified token
-    cast send --rpc-url "$rpc_url" \
-        --legacy --private-key "$sender_private_key" \
-        --gas-price "$gas_price" \
-        --timeout 180 \
-        --rpc-timeout 180 \
-        --value "$amount" \
-        "$receiver_addr"
-
-    local status=$?
-    if [ $status -ne 0 ]; then
-        echo "❌ Failed to fund $receiver_addr with $amount of native tokens" >&2
-        return $status
     fi
 
     echo "✅ Successfully funded $receiver_addr with $amount of native tokens" >&2
 }
+
 
 # Function is used to resolve the L2 RPC URL from the Kurtosis environment.
 # It takes two arguments:
