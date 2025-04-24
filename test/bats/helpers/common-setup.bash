@@ -59,8 +59,7 @@ _common_setup() {
         readonly test_account_addr="$(cast wallet address --private-key $test_account_key)"
 
         local token_balance
-        token_balance=$(cast balance -e --rpc-url "$l2_rpc_url" "$test_account_addr" 2>/dev/null)
-
+        token_balance=$(cast balance --rpc-url "$l2_rpc_url" "$test_account_addr" 2>/dev/null)
         if [ $? -ne 0 ]; then
             echo "⚠️ Failed to fetch token balance for $test_account_addr on $l2_rpc_url" >&2
             token_balance="0" # Default to zero if balance can't be fetched
@@ -79,7 +78,7 @@ _common_setup() {
             fi
             echo "✅ Successfully funded $test_account_addr with $amount on L2" >&3
         else
-            echo "✅ Receiver $test_account_addr already has L2 $token_balance ETH" >&3
+            echo "✅ Receiver $test_account_addr already has L2 "$(cast --from-wei "$token_balance")" ETH" >&3
         fi
     else
         echo "🚫 Skipping L2 funding since DISABLE_L2_FUND is set to true" >&3
