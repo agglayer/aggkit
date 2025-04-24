@@ -257,5 +257,5 @@ GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 [Profiling]
 ProfilingHost = "localhost"
 ProfilingPort = 6060
-ProfilingEnabled = true
+ProfilingEnabled = false
 `
