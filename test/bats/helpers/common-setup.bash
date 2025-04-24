@@ -32,10 +32,10 @@ _common_setup() {
         for node in "${fallback_nodes[@]}"; do
             # Need to invoke the command this way, otherwise it would fail the entire test
             # if the node is not running, but this is just a sanity check
-            if ! kurtosis service inspect "$enclave" "$node" >/dev/null 2>&1; then
+            kurtosis service inspect "$enclave" "$node" || {
                 echo "⚠️ Node $node is not running in the "$enclave", trying next one..." >&3
                 continue
-            fi
+            }
 
             resolved_url=$(kurtosis port print "$enclave" "$node" rpc)
             if [ -n "$resolved_url" ]; then
@@ -159,13 +159,12 @@ function fund() {
             --private-key "$sender_private_key" \
             --gas-price "$gas_price" \
             --value "$amount" \
-            "$receiver_addr" >/dev/null 2>&1
-
-        if [ $? -eq 0 ]; then
-            echo "✅ Successfully funded $receiver_addr with $amount of native tokens" >&2
-            success=1
-            break
-        fi
+            "$receiver_addr" || {
+            echo "⚠️ Attempt $attempt failed. Retrying in 3s..." >&2
+            sleep 3
+            attempt=$((attempt + 1))
+            continue
+        }
 
         echo "⚠️ Attempt $attempt failed. Retrying in 3s..." >&2
         sleep 3
