@@ -90,7 +90,7 @@ func (b *Bridge) Hash() common.Hash {
 	metaHash := keccak256.Hash(b.Metadata)
 	var buf [bigIntSize]byte
 	if b.Amount == nil {
-		b.Amount = big.NewInt(0)
+		b.Amount = common.Big0
 	}
 
 	return common.BytesToHash(keccak256.Hash(
@@ -292,6 +292,22 @@ type ClaimResponse struct {
 	FromAddress        common.Address `json:"from_address"`
 }
 
+// NewClaimResponse creates ClaimResponse instance out of the provided Claim
+func NewClaimResponse(claim *Claim) *ClaimResponse {
+	return &ClaimResponse{
+		GlobalIndex:        claim.GlobalIndex,
+		DestinationNetwork: claim.DestinationNetwork,
+		TxHash:             claim.TxHash,
+		Amount:             claim.Amount,
+		BlockNum:           claim.BlockNum,
+		FromAddress:        claim.FromAddress,
+		DestinationAddress: claim.DestinationAddress,
+		OriginAddress:      claim.OriginAddress,
+		OriginNetwork:      claim.OriginNetwork,
+		BlockTimestamp:     claim.BlockTimestamp,
+	}
+}
+
 type TokenMappingType uint8
 
 const (
@@ -487,12 +503,7 @@ func (p *processor) GetBridgesPaged(
 	}
 
 	if len(networkIDs) > 0 {
-		placeholders := make([]string, len(networkIDs))
-		for i, id := range networkIDs {
-			placeholders[i] = fmt.Sprintf("%d", id)
-		}
-		networkIDsInClause := buildNetworkIDsFilter(networkIDs, "origin_network")
-
+		networkIDsInClause := buildNetworkIDsFilter(networkIDs, "destination_network")
 		if len(whereClause) > 0 {
 			whereClause += " AND " + networkIDsInClause
 		} else {
@@ -560,12 +571,7 @@ func (p *processor) GetClaimsPaged(
 	whereClause := ""
 
 	if len(networkIDs) > 0 {
-		placeholders := make([]string, len(networkIDs))
-		for i, id := range networkIDs {
-			placeholders[i] = fmt.Sprintf("%d", id)
-		}
-		networkIDsInClause := buildNetworkIDsFilter(networkIDs, "destination_network")
-
+		networkIDsInClause := buildNetworkIDsFilter(networkIDs, "origin_network")
 		if len(whereClause) > 0 {
 			whereClause += " AND " + networkIDsInClause
 		} else {
@@ -588,19 +594,8 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	claimResponsePtrs := make([]*ClaimResponse, len(claimPtrs))
-	for i, bridgePtr := range claimPtrs {
-		claimResponsePtrs[i] = &ClaimResponse{
-			GlobalIndex:        bridgePtr.GlobalIndex,
-			DestinationNetwork: bridgePtr.DestinationNetwork,
-			TxHash:             bridgePtr.TxHash,
-			Amount:             bridgePtr.Amount,
-			BlockNum:           bridgePtr.BlockNum,
-			FromAddress:        bridgePtr.FromAddress,
-			DestinationAddress: bridgePtr.DestinationAddress,
-			OriginAddress:      bridgePtr.OriginAddress,
-			OriginNetwork:      bridgePtr.OriginNetwork,
-			BlockTimestamp:     bridgePtr.BlockTimestamp,
-		}
+	for i, claimPtr := range claimPtrs {
+		claimResponsePtrs[i] = NewClaimResponse(claimPtr)
 	}
 
 	return claimResponsePtrs, count, nil
@@ -902,14 +897,13 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	return tokenMappings, nil
 }
 
-// buildNetworkIDsFilter builds a SQL filter for the given network IDs
-
-func buildNetworkIDsFilter(networkIDs []uint32, networkIDColName string) string {
+// buildNetworkIDsFilter builds SQL filter for the given network IDs
+func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
 	placeholders := make([]string, len(networkIDs))
 	for i, id := range networkIDs {
 		placeholders[i] = fmt.Sprintf("%d", id)
 	}
-	return fmt.Sprintf("%s IN (%s)", networkIDColName, strings.Join(placeholders, ", "))
+	return fmt.Sprintf("%s IN (%s)", networkIDColumn, strings.Join(placeholders, ", "))
 }
 
 func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
