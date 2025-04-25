@@ -92,9 +92,12 @@ packages:
       processorInterface:
         config:
           mockname: "ProcessorMock"
-      evmDownloaderFull:
+      EVMDownloaderInterface:
         config:
           mockname: "EVMDownloaderMock"
+      downloaderInterface:
+        config:
+          mockname: "DownloaderMock"
       EthClienter:
         config:
           mockname: "L2Mock"

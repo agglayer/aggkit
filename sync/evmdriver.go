@@ -21,7 +21,7 @@ type Block struct {
 	Hash   common.Hash
 }
 
-type downloader interface {
+type downloaderInterface interface {
 	Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock)
 	// RuntimeData returns the runtime data from this downloader
 	// this is used to check that DB is compatible with the runtime data
@@ -32,7 +32,7 @@ type EVMDriver struct {
 	reorgDetector        ReorgDetector
 	reorgSub             *reorgdetector.Subscription
 	processor            processorInterface
-	downloader           downloader
+	downloader           downloaderInterface
 	reorgDetectorID      string
 	downloadBufferSize   int
 	rh                   *RetryHandler
@@ -88,7 +88,7 @@ type ReorgDetector interface {
 func NewEVMDriver(
 	reorgDetector ReorgDetector,
 	processor processorInterface,
-	downloader downloader,
+	downloader downloaderInterface,
 	reorgDetectorID string,
 	downloadBufferSize int,
 	rh *RetryHandler,
@@ -99,7 +99,7 @@ func NewEVMDriver(
 	if err != nil {
 		return nil, err
 	}
-	compatibilityChecker := compatibility.NewCompatibilityCheck[RuntimeData](
+	compatibilityChecker := compatibility.NewCompatibilityCheck(
 		requireStorageContentCompatibility,
 		downloader.RuntimeData,
 		processor)
