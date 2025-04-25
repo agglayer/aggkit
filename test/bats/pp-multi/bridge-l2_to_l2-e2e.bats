@@ -35,22 +35,22 @@ setup() {
 @test "Test L2 to L2 bridge" {
     echo "=== Running LxLy bridge eth L1 to L2(PP1) amount:$amount" >&3
     destination_net=$l2_pp1b_network_id
-    run bridge_asset "$native_token_addr" "$l1_rpc_url"
+    run bridge_asset "$native_token_addr" "$l1_rpc_url" "$bridge_addr"
     assert_success
     local bridge_tx_hash_pp1=$output
 
     echo "=== Running LxLy bridge eth L1 to L2(PP2) amount:$amount" >&3
     destination_net=$l2_pp2b_network_id
-    run bridge_asset "$native_token_addr" "$l1_rpc_url"
+    run bridge_asset "$native_token_addr" "$l1_rpc_url" "$bridge_addr"
     assert_success
     local bridge_tx_hash_pp2=$output
 
     echo "=== Running LxLy claim L1 to L2(PP1) for $bridge_tx_hash_pp1" >&3
-    run claim_tx_hash "$timeout" "$bridge_tx_hash_pp1" "$destination_addr" "$l2_pp1_url" "$l2_pp1b_url"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash_pp1" "$destination_addr" "$l2_pp1_url" "$l2_pp1b_url" "$bridge_addr"
     assert_success
 
     echo "=== Running LxLy claim L1 to L2(PP2) for $bridge_tx_hash_pp2" >&3
-    run claim_tx_hash "$timeout" "$bridge_tx_hash_pp2" "$destination_addr" "$l2_pp2_url" "$l2_pp2b_url"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash_pp2" "$destination_addr" "$l2_pp2_url" "$l2_pp2b_url" "$bridge_addr"
     assert_success
 
     # reduce eth amount
@@ -58,12 +58,12 @@ setup() {
     echo "=== Running LxLy bridge L2(PP2) to L2(PP1) amount:$amount" >&3
     destination_net=$l2_pp1b_network_id
     meta_bytes="0xbeef"
-    run bridge_asset "$native_token_addr" "$l2_pp2_url"
+    run bridge_asset "$native_token_addr" "$l2_pp2_url" "$bridge_addr"
     assert_success
     local bridge_tx_hash=$output
 
     echo "=== Running LxLy claim L2(PP2) to L2(PP1) for: $bridge_tx_hash" >&3
-    claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_pp1_url" "$l2_pp2b_url"
+    claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_pp1_url" "$l2_pp2b_url" "$bridge_addr"
     local global_index_pp2_to_pp1="$global_index"
 
     # Now we need to do a bridge on L2(PP1) to trigger a certificate to be sent to L1
@@ -72,12 +72,12 @@ setup() {
     echo "=== Running LxLy bridge eth L2(PP1) to L1 (trigger certificate sending on PP1) amount:$amount" >&3
     destination_net=$l1_rpc_network_id
     meta_bytes="0xabcd"
-    run bridge_asset "$native_token_addr" "$l2_pp1_url"
+    run bridge_asset "$native_token_addr" "$l2_pp1_url" "$bridge_addr"
     assert_success
     bridge_tx_hash=$output
 
     echo "=== Running LxLy claim L2(PP1) to L1 for $bridge_tx_hash" >&3
-    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$l2_pp1b_url"
+    run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l1_rpc_url" "$l2_pp1b_url" "$bridge_addr"
     assert_success
 
     echo "=== Waiting to settled certificate with imported bridge for global_index: $global_index_pp2_to_pp1"

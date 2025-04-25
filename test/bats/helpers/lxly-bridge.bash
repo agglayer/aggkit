@@ -6,15 +6,14 @@ load '../helpers/common'
 function bridge_message() {
     local token_addr="$1"
     local rpc_url="$2"
+    local bridge_addr="$3"
     local bridge_sig='bridgeMessage(uint32,address,bool,bytes)'
 
+    local token_balance=$(get_token_balance "$rpc_url" "$token_addr" "$sender_addr")
     if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-        local eth_balance=$(cast balance -e --rpc-url "$rpc_url" "$sender_addr")
-        log "💰 $sender_addr ETH Balance: $eth_balance wei"
+        log "💰 $sender_addr ETH balance: $token_balance eth"
     else
-        local balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$sender_addr" | awk '{print $1}')
-        local token_balance=$(cast --from-wei "$balance_wei")
-        log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
+        log "💎 $sender_addr ERC20 [$token_addr] token balance: $token_balance eth"
     fi
 
     log "🚀 Bridge message $amount wei → $destination_addr [network: $destination_net, token: $token_addr, rpc: $rpc_url]"
@@ -49,15 +48,14 @@ function bridge_message() {
 function bridge_asset() {
     local token_addr="$1"
     local rpc_url="$2"
+    local bridge_addr="$3"
     local bridge_sig='bridgeAsset(uint32,address,uint256,address,bool,bytes)'
 
+    local token_balance=$(get_token_balance "$rpc_url" "$token_addr" "$sender_addr")
     if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-        local eth_balance=$(cast balance -e --rpc-url "$rpc_url" "$sender_addr")
-        log "💰 $sender_addr ETH Balance: $eth_balance wei"
+        log "💰 $sender_addr ETH balance: $token_balance eth"
     else
-        local balance_wei=$(cast call --rpc-url "$rpc_url" "$token_addr" "$balance_of_fn_sig" "$sender_addr" | awk '{print $1}')
-        local token_balance=$(cast --from-wei "$balance_wei")
-        log "💎 $sender_addr Token Balance: $token_balance units [$token_addr]"
+        log "💎 $sender_addr ERC20 [$token_addr] token balance: $token_balance eth"
     fi
 
     log "🚀 Bridge asset $amount wei → $destination_addr [network: $destination_net]"
@@ -92,6 +90,7 @@ function bridge_asset() {
 function claim() {
     local destination_rpc_url="$1"
     local bridge_type="$2"
+    local bridge_addr="$3"
     local claim_sig="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
     if [[ $bridge_type == "bridgeMessage" ]]; then
         claim_sig="claimMessage(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
@@ -164,6 +163,7 @@ function claim_tx_hash() {
     local destination_addr="$3"
     local destination_rpc_url="$4"
     local bridge_service_url="$5"
+    local bridge_addr="$6"
 
     readonly bridge_deposit_file=$(mktemp)
     local ready_for_claim="false"
@@ -171,7 +171,13 @@ function claim_tx_hash() {
     local current_time=$(date +%s)
     local end_time=$((current_time + timeout))
     if [ -z $bridge_service_url ]; then
-        log "❌ claim_tx_hash bad params"
+        log "❌ claim_tx_hash bridge_service_url parameter not provided"
+        log "❌ claim_tx_hash: $*"
+        exit 1
+    fi
+
+    if [ -z $bridge_addr ]; then
+        log "❌ claim_tx_hash bridge_addr parameter not provided"
         log "❌ claim_tx_hash: $*"
         exit 1
     fi
@@ -180,7 +186,7 @@ function claim_tx_hash() {
         current_time=$(date +%s)
         elapsed_time=$((current_time - start_time))
         if ((current_time > end_time)); then
-            log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time [s])"
+            log "❌ Exiting... Timeout reached waiting for bridge (tx_hash=$tx_hash) to be claimed timeout: $timeout! (elapsed: $elapsed_time [s])"
             exit 1
         fi
 
@@ -188,14 +194,14 @@ function claim_tx_hash() {
         curl -s "$bridge_service_url/bridges/$destination_addr?limit=100&offset=0" | jq "[.deposits[] | select(.tx_hash == \"$tx_hash\" )]" >$bridge_deposit_file
         deposit_count=$(jq '. | length' $bridge_deposit_file)
         if [[ $deposit_count == 0 ]]; then
-            log "❌ the tx_hash [$tx_hash] not found (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
+            log "❌ the bridge (tx_hash=$tx_hash) not found (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
             sleep "$claim_frequency"
             continue
         fi
 
         local ready_for_claim=$(jq -r '.[0].ready_for_claim' $bridge_deposit_file)
         if [ $ready_for_claim != "true" ]; then
-            log "⏳ the tx_hash $tx_hash is not ready for claim yet (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
+            log "⏳ the bridge (tx_hash=$tx_hash) is not ready for claim yet (elapsed: $elapsed_time [s] / timeout: $timeout [s])"
             sleep "$claim_frequency"
             continue
         else
@@ -207,7 +213,7 @@ function claim_tx_hash() {
     log "🎉 the tx_hash $tx_hash is ready for claim! (elapsed: $elapsed_time [s])"
     local curr_claim_tx_hash=$(jq '.[0].claim_tx_hash' $bridge_deposit_file)
     if [ $curr_claim_tx_hash != "\"\"" ]; then
-        log "🎉 the tx_hash $tx_hash is already claimed"
+        log "🎉 the bridge (tx_hash=$tx_hash) is already claimed"
         exit 0
     fi
 
@@ -223,21 +229,21 @@ function claim_tx_hash() {
 
     while true; do
         log "⏳ Requesting claim for $tx_hash..."
-        run request_claim $current_deposit $current_proof $destination_rpc_url
+        run request_claim $current_deposit $current_proof $destination_rpc_url $bridge_addr
         request_result=$status
-        log "💡 request_claim returns $request_result"
+        log "💡 request_claim returns status code $request_result"
         if [ $request_result -eq 0 ]; then
-            log "🎉 Claim successful"
+            log "🎉 The bridge (tx_hash=$tx_hash) is claimed successfully!"
             break
         fi
 
         if [ $request_result -eq 2 ]; then
-            # GlobalExitRootInvalid() let's retry
+            # GlobalExitRootInvalid() let's retry, since it means that the global exit root is not yet injected to the destination network
             log "⏳ Claim failed this time (GER is not yet injected on destination). We'll retry in $claim_frequency seconds "
             current_time=$(date +%s)
             elapsed_time=$((current_time - start_time))
             if ((current_time > end_time)); then
-                log "❌ Exiting... Timeout reached waiting for tx_hash [$tx_hash] timeout: $timeout! (elapsed: $elapsed_time [s])"
+                log "❌ Exiting... Timeout reached waiting for bridge to be claimed (tx_hash=$tx_hash) timeout: $timeout! (elapsed: $elapsed_time [s])"
                 exit 1
             fi
             sleep $claim_frequency
@@ -245,13 +251,13 @@ function claim_tx_hash() {
         fi
 
         if [ $request_result -ne 0 ]; then
-            log "✅ Claim successful tx_hash [$tx_hash]"
+            log "❌ Claim failed for bridge (tx_hash=$tx_hash)"
             exit 1
         fi
     done
 
     export global_index=$(jq -r '.global_index' $current_deposit)
-    log "✅ Deposit claimed ($global_index)"
+    log "✅ Bridge (tx_hash=$tx_hash) claimed ($global_index)"
 
     # clean up temp files
     rm $current_deposit
@@ -277,6 +283,7 @@ function request_claim() {
     local deposit_file="$1"
     local proof_file="$2"
     local destination_rpc_url="$3"
+    local bridge_addr="$4"
 
     local leaf_type=$(jq -r '.leaf_type' $deposit_file)
     local claim_sig="claimAsset(bytes32[32],bytes32[32],uint256,bytes32,bytes32,uint32,address,uint32,address,uint256,bytes)"
@@ -345,8 +352,15 @@ function wait_for_claim() {
     local claim_frequency="$2"     # claim frequency (in seconds)
     local destination_rpc_url="$3" # destination rpc url
     local bridge_type="$4"         # bridgeAsset or bridgeMessage
+    local bridge_addr="$5"         # bridge address
     local start_time=$(date +%s)
     local end_time=$((start_time + timeout))
+
+    if [ -z $bridge_addr ]; then
+        log "❌ wait_for_claim bridge_addr parameter not provided"
+        log "❌ wait_for_claim: $*"
+        exit 1
+    fi
 
     while true; do
         local current_time=$(date +%s)
@@ -355,7 +369,7 @@ function wait_for_claim() {
             return 1
         fi
 
-        run claim $destination_rpc_url $bridge_type
+        run claim $destination_rpc_url $bridge_type $bridge_addr
         if [ $status -eq 0 ]; then
             break
         fi
