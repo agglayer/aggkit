@@ -17,6 +17,10 @@ type EpochStatus struct {
 	PercentEpoch float64
 }
 
+func (e EpochStatus) String() string {
+	return fmt.Sprintf("EpochStatus: [%d, %.2f%%]", e.Epoch, e.PercentEpoch*100.0)
+}
+
 func (e EpochEvent) String() string {
 	return fmt.Sprintf("EpochEvent: epoch=%d extra=%s", e.Epoch, e.ExtraInfo)
 }
