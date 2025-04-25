@@ -75,8 +75,8 @@ type Bridge struct {
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
 }
 
-// Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
 // Hash returns the hash of the bridge event as expected by the exit tree
+// Note: can't change the Hash() here after adding BlockTimestamp and TxHash. Might affect previous versions
 func (b *Bridge) Hash() common.Hash {
 	const (
 		uint32ByteSize = 4
@@ -108,6 +108,14 @@ func (b *Bridge) Hash() common.Hash {
 type BridgeResponse struct {
 	BridgeHash common.Hash `json:"bridge_hash"`
 	Bridge
+}
+
+// NewBridgeResponse creates a new BridgeResponse instance out of the provided Bridge instance
+func NewBridgeResponse(bridge *Bridge) *BridgeResponse {
+	return &BridgeResponse{
+		Bridge:     *bridge,
+		BridgeHash: bridge.Hash(),
+	}
 }
 
 // MarshalJSON for hex-encoding Metadata field
@@ -503,11 +511,11 @@ func (p *processor) GetBridgesPaged(
 	}
 
 	if len(networkIDs) > 0 {
-		networkIDsInClause := buildNetworkIDsFilter(networkIDs, "destination_network")
+		networkIDsFilter := buildNetworkIDsFilter(networkIDs, "destination_network")
 		if len(whereClause) > 0 {
-			whereClause += " AND " + networkIDsInClause
+			whereClause += " AND " + networkIDsFilter
 		} else {
-			whereClause = "WHERE " + networkIDsInClause
+			whereClause = "WHERE " + networkIDsFilter
 		}
 	}
 
@@ -532,10 +540,7 @@ func (p *processor) GetBridgesPaged(
 	}
 	bridgeResponsePtrs := make([]*BridgeResponse, len(bridgePtrs))
 	for i, bridgePtr := range bridgePtrs {
-		bridgeResponsePtrs[i] = &BridgeResponse{
-			Bridge:     *bridgePtr,
-			BridgeHash: bridgePtr.Hash(),
-		}
+		bridgeResponsePtrs[i] = NewBridgeResponse(bridgePtr)
 	}
 	if depositCount != nil {
 		count = len(bridgePtrs)
@@ -571,11 +576,11 @@ func (p *processor) GetClaimsPaged(
 	whereClause := ""
 
 	if len(networkIDs) > 0 {
-		networkIDsInClause := buildNetworkIDsFilter(networkIDs, "origin_network")
+		networkIDsFilter := buildNetworkIDsFilter(networkIDs, "origin_network")
 		if len(whereClause) > 0 {
-			whereClause += " AND " + networkIDsInClause
+			whereClause += " AND " + networkIDsFilter
 		} else {
-			whereClause = "WHERE " + networkIDsInClause
+			whereClause = "WHERE " + networkIDsFilter
 		}
 	}
 
