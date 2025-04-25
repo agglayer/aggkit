@@ -150,7 +150,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 
-	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock)
+	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, buildParams.LastSentCertificate)
 
 	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
 		ctx, lastProvenBlock, buildParams.ToBlock, buildParams.Claims)
@@ -343,9 +343,11 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	return aggchainProof, root, nil
 }
 
-func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64) uint64 {
-	if fromBlock == 0 {
+func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificate *types.CertificateInfo) uint64 {
+	if fromBlock == 0 || (lastCertificate != nil && lastCertificate.ToBlock < a.startL2Block) {
 		// if this is the first certificate, we need to start from the starting L2 block
+		// that we got from the sovereign rollup
+		// if the last certificate is settled on PP, the last proven block is the starting L2 block
 		// that we got from the sovereign rollup
 		return a.startL2Block
 	}
