@@ -508,24 +508,15 @@ func (p *processor) GetBridgesPaged(
 		}
 	}()
 	orderByClause := "deposit_count DESC"
-	whereClause := ""
 	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName)
 	if err != nil {
 		return nil, 0, err
 	}
+
+	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs)
 	if depositCount != nil {
-		whereClause = fmt.Sprintf("WHERE deposit_count = %d", *depositCount)
 		pageNumber = 1
 		pageSize = 1
-	}
-
-	if len(networkIDs) > 0 {
-		networkIDsFilter := buildNetworkIDsFilter(networkIDs, "destination_network")
-		if len(whereClause) > 0 {
-			whereClause += " AND " + networkIDsFilter
-		} else {
-			whereClause = "WHERE " + networkIDsFilter
-		}
 	}
 
 	offset := (pageNumber - 1) * pageSize
@@ -561,6 +552,25 @@ func (p *processor) GetBridgesPaged(
 		bridgesCount = len(bridgePtrs)
 	}
 	return bridgeResponsePtrs, bridgesCount, nil
+}
+
+// buildBridgesFilterClause builds the WHERE clause for the bridges table
+// based on the provided depositCount and networkIDs
+func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32) string {
+	const clauseCapacity = 2
+	clauses := make([]string, 0, clauseCapacity)
+	if depositCount != nil {
+		clauses = append(clauses, fmt.Sprintf("deposit_count = %d", *depositCount))
+	}
+
+	if len(networkIDs) > 0 {
+		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "destination_network"))
+	}
+
+	if len(clauses) > 0 {
+		return "WHERE " + strings.Join(clauses, " AND ")
+	}
+	return ""
 }
 
 func (p *processor) GetClaimsPaged(
