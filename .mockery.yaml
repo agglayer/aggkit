@@ -102,8 +102,9 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+      exclude:
+        - RuntimeDataGetterFunc
   github.com/agglayer/aggkit/etherman:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
-
