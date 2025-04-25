@@ -52,7 +52,7 @@ type L1InfoTreeSyncer interface {
 type L2BridgeSyncer interface {
 	GetBlockByLER(ctx context.Context, ler common.Hash) (uint64, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
-	GetBridgesPublished(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
+	GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
 	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Claim, error)
 	OriginNetwork() uint32
 	BlockFinality() etherman.BlockNumberFinality

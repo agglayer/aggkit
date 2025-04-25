@@ -878,7 +878,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			fromBlock: 1,
 			toBlock:   10,
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "some error",
 		},
@@ -887,7 +887,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			fromBlock: 1,
 			toBlock:   10,
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
 			},
 			expectedBridges: nil,
 			expectedClaims:  nil,
@@ -897,7 +897,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			fromBlock: 1,
 			toBlock:   10,
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "some error",
@@ -907,7 +907,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			fromBlock: 1,
 			toBlock:   10,
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
 			},
 			expectedBridges: []bridgesync.Bridge{{}},
@@ -916,7 +916,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 		{
 			name: "allow empty cert",
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
 			},
 			fromBlock:       1,
@@ -930,7 +930,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			fromBlock: 1,
 			toBlock:   10,
 			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
 			},
 			expectedBridges: []bridgesync.Bridge{{}},
@@ -1010,7 +1010,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return(nil, errors.New("some error"))
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return(nil, errors.New("some error"))
 			},
 			expectedError: "some error",
 		},
@@ -1021,7 +1021,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
 			},
 			expectedError: "GER mismatch",
@@ -1036,7 +1036,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				ger := calculateGER(mer, rer)
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
 					{
 						GlobalExitRoot:  ger,
@@ -1057,7 +1057,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				ger := calculateGER(mer, rer)
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
-				mockL2Syncer.On("GetBridgesPublished", ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
 					{
 						GlobalExitRoot:  ger,
