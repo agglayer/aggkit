@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
-	migrationsBridge "github.com/agglayer/aggkit/bridgesync/migrations"
+	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -34,7 +34,7 @@ func TestBigIntString(t *testing.T) {
 
 	dbPath := path.Join(t.TempDir(), "bridgesyncTestBigIntString.sqlite")
 
-	err := migrationsBridge.RunMigrations(dbPath)
+	err := migrations.RunMigrations(dbPath)
 	require.NoError(t, err)
 	db, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
@@ -808,7 +808,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 func TestInsertAndGetClaim(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTestInsertAndGetClaim.sqlite")
 	log.Debugf("sqlite path: %s", path)
-	err := migrationsBridge.RunMigrations(path)
+	err := migrations.RunMigrations(path)
 	require.NoError(t, err)
 	logger := log.WithFields("bridge-syncer", "foo")
 	p, err := newProcessor(path, "foo", logger)
@@ -894,7 +894,7 @@ func TestGetBridgesPublished(t *testing.T) {
 			t.Parallel()
 
 			path := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncTestGetBridgesPublished_%s.sqlite", tc.name))
-			require.NoError(t, migrationsBridge.RunMigrations(path))
+			require.NoError(t, migrations.RunMigrations(path))
 			logger := log.WithFields("bridge-syncer", "foo")
 			p, err := newProcessor(path, "foo", logger)
 			require.NoError(t, err)
@@ -963,7 +963,7 @@ func TestGetBridgesPaged(t *testing.T) {
 	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetBridgesPaged.sqlite")
-	require.NoError(t, migrationsBridge.RunMigrations(path))
+	require.NoError(t, migrations.RunMigrations(path))
 	logger := log.WithFields("bridge-syncer", "foo")
 	p, err := newProcessor(path, "bridge-syncer", logger)
 	require.NoError(t, err)
@@ -1114,18 +1114,17 @@ func TestGetClaimsPaged(t *testing.T) {
 	num2 := new(big.Int)
 	num2.SetString("18446744073709551618", 10)
 
-	claims :=
-		[]Claim{
-			{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1)},
-			{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-			{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
-			{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1)},
-			{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1)},
-			{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
-		}
+	claims := []*Claim{
+		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1},
+		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1},
+		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2},
+		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2},
+		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3},
+		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4},
+	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
-	require.NoError(t, migrationsBridge.RunMigrations(path))
+	require.NoError(t, migrations.RunMigrations(path))
 	logger := log.WithFields("module", "bridge-syncer")
 	p, err := newProcessor(path, "bridge-syncer", logger)
 	require.NoError(t, err)
@@ -1139,7 +1138,7 @@ func TestGetClaimsPaged(t *testing.T) {
 	}
 
 	for _, claim := range claims {
-		require.NoError(t, meddler.Insert(tx, "claim", &claim))
+		require.NoError(t, meddler.Insert(tx, "claim", claim))
 	}
 	require.NoError(t, tx.Commit())
 
@@ -1147,54 +1146,77 @@ func TestGetClaimsPaged(t *testing.T) {
 		name           string
 		pageSize       uint32
 		page           uint32
+		networkIDs     []uint32
 		expectedCount  int
 		expectedClaims []*ClaimResponse
 		expectedError  error
 	}{
 		{
-			name:          "t1",
-			pageSize:      1,
-			page:          2,
-			expectedCount: 6,
-			expectedClaims: []*ClaimResponse{
-				{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1)},
-			},
-			expectedError: nil,
+			name:           "pagination: page 2, size 1",
+			pageSize:       1,
+			page:           2,
+			expectedCount:  len(claims),
+			expectedClaims: []*ClaimResponse{NewClaimResponse(claims[4])},
+			expectedError:  nil,
 		},
 		{
-			name:          "t2",
+			name:          "all results on the same page",
 			pageSize:      20,
 			page:          1,
-			expectedCount: 6,
+			expectedCount: len(claims),
 			expectedClaims: []*ClaimResponse{
-				{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
-				{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1)},
-				{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1)},
-				{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
-				{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-				{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1)},
+				NewClaimResponse(claims[5]),
+				NewClaimResponse(claims[4]),
+				NewClaimResponse(claims[3]),
+				NewClaimResponse(claims[2]),
+				NewClaimResponse(claims[1]),
+				NewClaimResponse(claims[0]),
 			},
 			expectedError: nil,
 		},
 		{
-			name:          "t3",
+			name:          "pagination: page 2, size 3",
 			pageSize:      3,
 			page:          2,
-			expectedCount: 6,
+			expectedCount: len(claims),
 			expectedClaims: []*ClaimResponse{
-				{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
-				{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-				{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1)},
+				NewClaimResponse(claims[2]),
+				NewClaimResponse(claims[1]),
+				NewClaimResponse(claims[0]),
 			},
 			expectedError: nil,
 		},
 		{
-			name:           "t4: offset is larger than total claims",
+			name:           "invalid page size",
 			pageSize:       3,
 			page:           4,
 			expectedCount:  0,
 			expectedClaims: []*ClaimResponse{},
 			expectedError:  db.ErrNotFound,
+		},
+		{
+			name:          "filter by network ids (all results within the same page)",
+			pageSize:      3,
+			page:          1,
+			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
+			expectedCount: len(claims),
+			expectedClaims: []*ClaimResponse{
+				NewClaimResponse(claims[4]),
+				NewClaimResponse(claims[1]),
+				NewClaimResponse(claims[0]),
+			},
+			expectedError: nil,
+		},
+		{
+			name:          "filter by network ids (paginated results)",
+			pageSize:      1,
+			page:          2,
+			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
+			expectedCount: len(claims),
+			expectedClaims: []*ClaimResponse{
+				NewClaimResponse(claims[1]),
+			},
+			expectedError: nil,
 		},
 	}
 
@@ -1205,7 +1227,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize, nil)
+			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize, tc.networkIDs)
 
 			if tc.expectedError != nil {
 				require.Equal(t, tc.expectedError, err)
@@ -1224,7 +1246,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 	const tokenMappingsCount = 50
 
 	path := path.Join(t.TempDir(), "tokenMapping.db")
-	err := migrationsBridge.RunMigrations(path)
+	err := migrations.RunMigrations(path)
 	require.NoError(t, err)
 
 	logger := log.WithFields("module", "bridge-syncer")
@@ -1323,7 +1345,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 func TestProcessor_GetLegacyTokenMigrations(t *testing.T) {
 	t.Parallel()
 	path := path.Join(t.TempDir(), "tokenMigrations.db")
-	err := migrationsBridge.RunMigrations(path)
+	err := migrations.RunMigrations(path)
 	require.NoError(t, err)
 
 	logger := log.WithFields("module", "bridge-syncer")
