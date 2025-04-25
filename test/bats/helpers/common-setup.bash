@@ -33,7 +33,7 @@ _common_setup() {
             # Need to invoke the command this way, otherwise it would fail the entire test
             # if the node is not running, but this is just a sanity check
             kurtosis service inspect "$enclave" "$node" || {
-                echo "⚠️ Node $node is not running in the "$enclave", trying next one..." >&3
+                echo "⚠️ Node $node is not running in the "$enclave" enclave, trying next one..." >&3
                 continue
             }
 
@@ -62,15 +62,18 @@ _common_setup() {
         token_balance=$(cast balance --rpc-url "$l2_rpc_url" "$test_account_addr" 2>/dev/null)
         if [ $? -ne 0 ]; then
             echo "⚠️ Failed to fetch token balance for $test_account_addr on $l2_rpc_url" >&2
-            token_balance="0" # Default to zero if balance can't be fetched
+            token_balance=0
         fi
 
-        # Only fund if balance is zero
-        if [ "$token_balance" = "0" ]; then
+        # Threshold: 0.1 ether in wei
+        local threshold=100000000000000000
+
+        # Only fund if balance is less than or equal to 0.1 ether
+        if [[ $token_balance -le $threshold ]]; then
             local l2_coinbase_key="ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
             local amount="1000ether"
 
-            echo "💸 "$test_account_addr" L2 balance is zero, funding it with amount="$amount"..." >&3
+            echo "💸 $test_account_addr L2 balance is low (≤ 0.1 ETH), funding with amount=$amount..." >&3
             fund "$l2_coinbase_key" "$test_account_addr" "$amount" "$l2_rpc_url"
             if [ $? -ne 0 ]; then
                 echo "❌ Funding L2 receiver $test_account_addr failed" >&2
@@ -78,7 +81,7 @@ _common_setup() {
             fi
             echo "✅ Successfully funded $test_account_addr with $amount on L2" >&3
         else
-            echo "✅ Receiver $test_account_addr already has L2 "$(cast --from-wei "$token_balance")" ETH on L2" >&3
+            echo "✅ Receiver $test_account_addr already has $(cast --from-wei "$token_balance") ETH on L2" >&3
         fi
     else
         echo "🚫 Skipping L2 funding since DISABLE_L2_FUND is set to true" >&3

@@ -378,7 +378,7 @@ function run_with_timeout() {
 
 # Function to get the token balance of a given address
 # It checks if the token address is zero (ETH) or a valid ERC20 token address
-# and retrieves the balance accordingly.
+# and retrieves the balance (in ETH) accordingly.
 function get_token_balance() {
     local rpc_url="$1"      # RPC URL
     local token_addr="$2"   # Token address (0x0 for ETH)

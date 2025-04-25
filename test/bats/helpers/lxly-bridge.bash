@@ -11,9 +11,9 @@ function bridge_message() {
 
     local token_balance=$(get_token_balance "$rpc_url" "$token_addr" "$sender_addr")
     if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-        log "💰 $sender_addr ETH Balance: $token_balance eth"
+        log "💰 $sender_addr ETH balance: $token_balance eth"
     else
-        log "💎 $sender_addr Token Balance: $token_balance eth [$token_addr]"
+        log "💎 $sender_addr ERC20 [$token_addr] token balance: $token_balance eth"
     fi
 
     log "🚀 Bridge message $amount wei → $destination_addr [network: $destination_net, token: $token_addr, rpc: $rpc_url]"
@@ -53,9 +53,9 @@ function bridge_asset() {
 
     local token_balance=$(get_token_balance "$rpc_url" "$token_addr" "$sender_addr")
     if [[ $token_addr == "0x0000000000000000000000000000000000000000" ]]; then
-        log "💰 $sender_addr ETH Balance: $token_balance eth"
+        log "💰 $sender_addr ETH balance: $token_balance eth"
     else
-        log "💎 $sender_addr ERC20 Token [$token_addr] Balance: $token_balance eth"
+        log "💎 $sender_addr ERC20 [$token_addr] token balance: $token_balance eth"
     fi
 
     log "🚀 Bridge asset $amount wei → $destination_addr [network: $destination_net]"
