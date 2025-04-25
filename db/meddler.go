@@ -57,6 +57,11 @@ func SlicePtrsToSlice(slice interface{}) interface{} {
 	return res.Interface()
 }
 
+// RegisterMeddlerType registers a new meddler type with the given name
+func RegisterMeddler(name string, meddlerType meddler.Meddler) {
+	meddler.Register(name, meddlerType)
+}
+
 // BigIntMeddler encodes or decodes the field value to or from string
 type BigIntMeddler struct{}
 

@@ -4,6 +4,8 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
@@ -14,11 +16,16 @@ const (
 
 // CertificateBuildParams is a struct that holds the parameters to build a certificate
 type CertificateBuildParams struct {
-	FromBlock uint64
-	ToBlock   uint64
-	Bridges   []bridgesync.Bridge
-	Claims    []bridgesync.Claim
-	CreatedAt uint32
+	FromBlock                      uint64
+	ToBlock                        uint64
+	Bridges                        []bridgesync.Bridge
+	Claims                         []bridgesync.Claim
+	CreatedAt                      uint32
+	RetryCount                     int
+	LastSentCertificate            *CertificateInfo
+	L1InfoTreeRootFromWhichToProve common.Hash
+	L1InfoTreeLeafCount            uint32
+	AggchainProof                  *AggchainProof
 }
 
 func (c *CertificateBuildParams) String() string {
@@ -34,11 +41,23 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 	if c.FromBlock > fromBlock || c.ToBlock < toBlock {
 		return nil, fmt.Errorf("invalid range")
 	}
+
+	span := toBlock - fromBlock + 1
+	fullSpan := c.ToBlock - c.FromBlock + 1
+
 	newCert := &CertificateBuildParams{
 		FromBlock: fromBlock,
 		ToBlock:   toBlock,
-		Bridges:   make([]bridgesync.Bridge, 0),
-		Claims:    make([]bridgesync.Claim, 0),
+		Bridges: make([]bridgesync.Bridge, 0,
+			aggkitcommon.EstimateSliceCapacity(len(c.Bridges), span, fullSpan)),
+		Claims: make([]bridgesync.Claim, 0,
+			aggkitcommon.EstimateSliceCapacity(len(c.Claims), span, fullSpan)),
+		CreatedAt:                      c.CreatedAt,
+		RetryCount:                     c.RetryCount,
+		LastSentCertificate:            c.LastSentCertificate,
+		AggchainProof:                  c.AggchainProof,
+		L1InfoTreeRootFromWhichToProve: c.L1InfoTreeRootFromWhichToProve,
+		L1InfoTreeLeafCount:            c.L1InfoTreeLeafCount,
 	}
 
 	for _, bridge := range c.Bridges {

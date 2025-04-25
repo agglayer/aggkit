@@ -836,7 +836,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 		IsMessage:           false,
 	}
 
-	_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, testClaim.BlockNum)
+	_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, testClaim.BlockNum, fmt.Sprintf("0x%x", testClaim.BlockNum))
 	require.NoError(t, err)
 	require.NoError(t, meddler.Insert(tx, "claim", testClaim))
 
@@ -903,7 +903,7 @@ func TestGetBridgesPublished(t *testing.T) {
 			require.NoError(t, err)
 
 			for i := tc.fromBlock; i <= tc.toBlock; i++ {
-				_, err = tx.Exec(`INSERT INTO block (num) VALUES ($1)`, i)
+				_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, i, fmt.Sprintf("0x%x", i))
 				require.NoError(t, err)
 			}
 
@@ -988,7 +988,7 @@ func TestGetBridgesPaged(t *testing.T) {
 		networkIDs      []uint32
 		expectedCount   int
 		expectedBridges []*BridgeResponse
-		expectedError   error
+		expectedError   string
 	}{
 		{
 			name:          "t1",
@@ -999,7 +999,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedBridges: []*BridgeResponse{
 				NewBridgeResponse(bridges[6]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:          "t2",
@@ -1016,7 +1016,7 @@ func TestGetBridgesPaged(t *testing.T) {
 				NewBridgeResponse(bridges[1]),
 				NewBridgeResponse(bridges[0]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:          "t3",
@@ -1029,7 +1029,7 @@ func TestGetBridgesPaged(t *testing.T) {
 				NewBridgeResponse(bridges[2]),
 				NewBridgeResponse(bridges[1]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:          "t4",
@@ -1040,7 +1040,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedBridges: []*BridgeResponse{
 				NewBridgeResponse(bridges[1]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:          "t5",
@@ -1051,7 +1051,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedBridges: []*BridgeResponse{
 				NewBridgeResponse(bridges[1]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:            "t6",
@@ -1060,7 +1060,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:    nil,
 			expectedCount:   len(bridges),
 			expectedBridges: []*BridgeResponse{},
-			expectedError:   db.ErrNotFound,
+			expectedError:   "provided page number is invalid for given page size",
 		},
 		{
 			name:          "t7",
@@ -1071,7 +1071,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedBridges: []*BridgeResponse{
 				NewBridgeResponse(bridges[0]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:         "t8",
@@ -1090,7 +1090,7 @@ func TestGetBridgesPaged(t *testing.T) {
 				NewBridgeResponse(bridges[1]),
 				NewBridgeResponse(bridges[0]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:         "t9",
@@ -1104,7 +1104,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			},
 			expectedCount:   0,
 			expectedBridges: []*BridgeResponse{},
-			expectedError:   nil,
+			expectedError:   "",
 		},
 	}
 
@@ -1117,8 +1117,8 @@ func TestGetBridgesPaged(t *testing.T) {
 			ctx := context.Background()
 			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount, tc.networkIDs)
 
-			if tc.expectedError != nil {
-				require.Equal(t, tc.expectedError, err)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedBridges, bridges)
@@ -1177,7 +1177,7 @@ func TestGetClaimsPaged(t *testing.T) {
 		networkIDs     []uint32
 		expectedCount  int
 		expectedClaims []*ClaimResponse
-		expectedError  error
+		expectedError  string
 	}{
 		{
 			name:           "pagination: page 2, size 1",
@@ -1185,7 +1185,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			page:           2,
 			expectedCount:  len(claims),
 			expectedClaims: []*ClaimResponse{NewClaimResponse(claims[4])},
-			expectedError:  nil,
+			expectedError:  "",
 		},
 		{
 			name:          "all results on the same page",
@@ -1200,7 +1200,7 @@ func TestGetClaimsPaged(t *testing.T) {
 				NewClaimResponse(claims[1]),
 				NewClaimResponse(claims[0]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:          "pagination: page 2, size 3",
@@ -1212,7 +1212,7 @@ func TestGetClaimsPaged(t *testing.T) {
 				NewClaimResponse(claims[1]),
 				NewClaimResponse(claims[0]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:           "invalid page size",
@@ -1220,7 +1220,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			page:           4,
 			expectedCount:  0,
 			expectedClaims: []*ClaimResponse{},
-			expectedError:  db.ErrNotFound,
+			expectedError:  "provided page number is invalid for given page size",
 		},
 		{
 			name:          "filter by network ids (all results within the same page)",
@@ -1233,7 +1233,7 @@ func TestGetClaimsPaged(t *testing.T) {
 				NewClaimResponse(claims[1]),
 				NewClaimResponse(claims[0]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 		{
 			name:          "filter by network ids (paginated results)",
@@ -1244,7 +1244,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			expectedClaims: []*ClaimResponse{
 				NewClaimResponse(claims[1]),
 			},
-			expectedError: nil,
+			expectedError: "",
 		},
 	}
 
@@ -1257,8 +1257,8 @@ func TestGetClaimsPaged(t *testing.T) {
 			ctx := context.Background()
 			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize, tc.networkIDs)
 
-			if tc.expectedError != nil {
-				require.Equal(t, tc.expectedError, err)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedClaims, claims)
@@ -1316,35 +1316,35 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 		pageNumber  uint32
 		pageSize    uint32
 		expectedLen int
-		expectedErr error
+		expectedErr string
 	}{
 		{
 			name:        "First page",
 			pageNumber:  1,
 			pageSize:    10,
 			expectedLen: 10,
-			expectedErr: nil,
+			expectedErr: "",
 		},
 		{
 			name:        "Second page",
 			pageNumber:  2,
 			pageSize:    5,
 			expectedLen: 5,
-			expectedErr: nil,
+			expectedErr: "",
 		},
 		{
 			name:        "Last page",
 			pageNumber:  5,
 			pageSize:    10,
 			expectedLen: 10,
-			expectedErr: nil,
+			expectedErr: "",
 		},
 		{
 			name:        "Page out of range",
 			pageNumber:  6,
 			pageSize:    10,
 			expectedLen: 0,
-			expectedErr: db.ErrNotFound,
+			expectedErr: "provided page number is invalid for given page size",
 		},
 	}
 
@@ -1354,8 +1354,8 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 			t.Parallel()
 
 			result, totalTokenMappings, err := p.GetTokenMappings(context.Background(), tt.pageNumber, tt.pageSize)
-			if tt.expectedErr != nil {
-				require.ErrorIs(t, err, tt.expectedErr)
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
 			} else {
 				require.NoError(t, err)
 				require.Len(t, result, tt.expectedLen)

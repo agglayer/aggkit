@@ -42,6 +42,7 @@ var (
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
 	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
+	zeroAddress                  = common.HexToAddress("0x0")
 )
 
 const (
@@ -71,10 +72,15 @@ func buildAppender(client aggkittypes.EthClienter,
 			bridgeAddr, err)
 	}
 
+	gasTokenAddress, err := bridgeContractV2.GasTokenAddress(nil)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing gas token address: %w", err)
+	}
+
 	appender := make(sync.LogAppenderMap)
 
 	// Add event handlers for the bridge contract
-	appender[bridgeEventSignature] = buildBridgeEventHandler(bridgeContractV2, client, bridgeAddr)
+	appender[bridgeEventSignature] = buildBridgeEventHandler(bridgeContractV2, client, bridgeAddr, gasTokenAddress)
 	appender[claimEventSignature] = buildClaimEventHandler(bridgeContractV2, client, bridgeAddr, syncFullClaims)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
 		bridgeContractV1, client,
@@ -90,7 +96,7 @@ func buildAppender(client aggkittypes.EthClienter,
 // buildBridgeEventHandler creates a handler for the Bridge event log.
 func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 	client aggkittypes.EthClienter,
-	bridgeAddr common.Address) func(*sync.EVMBlock, types.Log) error {
+	bridgeAddr common.Address, gasTokenAddress common.Address) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)
 		if err != nil {
@@ -101,6 +107,8 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
+
+		isNativeToken := bridgeEvent.OriginAddress == gasTokenAddress || bridgeEvent.OriginAddress == zeroAddress
 
 		b.Events = append(b.Events, Event{Bridge: &Bridge{
 			BlockNum:           b.Num,
@@ -117,6 +125,7 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 			Amount:             bridgeEvent.Amount,
 			Metadata:           bridgeEvent.Metadata,
 			DepositCount:       bridgeEvent.DepositCount,
+			IsNativeToken:      isNativeToken,
 		}})
 		return nil
 	}

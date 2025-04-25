@@ -10,6 +10,7 @@ import (
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggsender"
+	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/common"
@@ -143,6 +144,9 @@ type Config struct {
 
 	// Prometheus is the configuration of the prometheus service
 	Prometheus prometheus.Config
+
+	// AggchainProofGen is the configuration of the Aggchain Proof Generation Tool
+	AggchainProofGen prover.Config
 }
 
 // Load loads the configuration

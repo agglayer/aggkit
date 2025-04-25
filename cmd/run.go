@@ -14,10 +14,11 @@ import (
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	"github.com/agglayer/aggkit"
-	"github.com/agglayer/aggkit/agglayer"
+	agglayer "github.com/agglayer/aggkit/agglayer/grpc"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
+	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -108,6 +109,7 @@ func start(cliCtx *cli.Context) error {
 				l1Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				l2Client,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -115,6 +117,20 @@ func start(cliCtx *cli.Context) error {
 			rpcServices = append(rpcServices, aggsender.GetRPCServices()...)
 
 			go aggsender.Start(cliCtx.Context)
+		case aggkitcommon.AGGCHAINPROOFGEN:
+			aggchainProofGen, err := createAggchainProofGen(
+				cliCtx.Context,
+				cfg.AggchainProofGen,
+				l1Client,
+				l2Client,
+				l1InfoTreeSync,
+				l2BridgeSync,
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+
+			rpcServices = append(rpcServices, aggchainProofGen.GetRPCServices()...)
 		}
 	}
 	if len(rpcServices) > 0 {
@@ -137,23 +153,55 @@ func start(cliCtx *cli.Context) error {
 	return nil
 }
 
+func createAggchainProofGen(
+	ctx context.Context,
+	cfg prover.Config,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
+	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
+	l2Syncer *bridgesync.BridgeSync) (*prover.AggchainProofGenerationTool, error) {
+	logger := log.WithFields("module", aggkitcommon.AGGCHAINPROOFGEN)
+
+	aggchainProofGen, err := prover.NewAggchainProofGenerationTool(
+		ctx,
+		logger,
+		cfg,
+		l2Syncer,
+		l1InfoTreeSync,
+		l1Client,
+		l2Client,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggchainProofGenerationTool: %w", err)
+	}
+
+	return aggchainProofGen, nil
+}
+
 func createAggSender(
 	ctx context.Context,
 	cfg aggsender.Config,
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-	l2Syncer *bridgesync.BridgeSync) (*aggsender.AggSender, error) {
+	l2Syncer *bridgesync.BridgeSync,
+	l2Client aggkittypes.BaseEthereumClienter) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
-	agglayerClient := agglayer.NewAggLayerClient(cfg.AggLayerURL)
+
+	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AggLayerURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
+	}
+
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient, aggsender.ConfigBlockNotifierPolling{
 		BlockFinalityType:     etherman.NewBlockNumberFinality(cfg.BlockFinality),
 		CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 	}, logger, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize block notifier: %w", err)
 	}
 
-	notifierCfg, err := aggsender.NewConfigEpochNotifierPerBlock(agglayerClient, cfg.EpochNotificationPercentage)
+	notifierCfg, err := aggsender.NewConfigEpochNotifierPerBlock(ctx,
+		agglayerClient, cfg.EpochNotificationPercentage)
 	if err != nil {
 		return nil, fmt.Errorf("cant generate config for Epoch Notifier because: %w", err)
 	}
@@ -168,14 +216,15 @@ func createAggSender(
 	go blockNotifier.Start(ctx)
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
-	return aggsender.New(ctx, logger, cfg, agglayerClient, l1InfoTreeSync, l2Syncer, epochNotifier)
+	return aggsender.New(ctx, logger, cfg, agglayerClient,
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client)
 }
 
 func createAggoracle(
 	cfg config.Config,
 	l1Client,
 	l2Client aggkittypes.BaseEthereumClienter,
-	syncer *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
 	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config, cfg.Common)
@@ -229,7 +278,7 @@ func createAggoracle(
 		logger,
 		sender,
 		l1Client,
-		syncer,
+		l1InfoTreeSyncer,
 		etherman.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
@@ -303,7 +352,8 @@ func runL1InfoTreeSyncerIfNeeded(
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC}, components) {
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
 	l1InfoTreeSync, err := l1infotreesync.New(
@@ -337,6 +387,7 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) aggkittypes.EthCl
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.AGGCHAINPROOFGEN,
 	}, components) {
 		return nil
 	}
@@ -365,7 +416,11 @@ func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Con
 }
 
 func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
-	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE,
+		aggkitcommon.BRIDGE,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
 	l2CLient, err := etherman.NewRPCClient(urlRPCL2)
@@ -387,7 +442,8 @@ func runReorgDetectorL1IfNeeded(
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC},
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.AGGCHAINPROOFGEN},
 		components) {
 		return nil, nil
 	}
@@ -410,7 +466,11 @@ func runReorgDetectorL2IfNeeded(
 	l2Client aggkittypes.BaseEthereumClienter,
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
-	if !isNeeded([]string{aggkitcommon.AGGORACLE, aggkitcommon.BRIDGE, aggkitcommon.AGGSENDER}, components) {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE,
+		aggkitcommon.BRIDGE,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil, nil
 	}
 	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
@@ -490,10 +550,12 @@ func runLastGERSyncIfNeeded(
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
+		cfg.SyncMode,
 	)
 	if err != nil {
 		log.Fatalf("error creating lastGERSync: %s", err)
 	}
+
 	go func() {
 		if err := lastGERSync.Start(ctx); err != nil {
 			log.Fatalf("lastGERSync failed: %s", err)
@@ -547,7 +609,10 @@ func runBridgeSyncL2IfNeeded(
 	l2Client aggkittypes.EthClienter,
 	rollupID uint32,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.BRIDGE}, components) {
+	if !isNeeded([]string{
+		aggkitcommon.BRIDGE,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
 
@@ -608,6 +673,7 @@ func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {
 	logger := log.WithFields("module", "RPC")
 
 	healthHandler := healthcheck.NewHealthCheckHandler(logger)
+	logger.Infof("Starting RPC server at %s:%d", cfg.Host, cfg.Port)
 	return jRPC.NewServer(cfg, services,
 		jRPC.WithLogger(logger.GetSugaredLogger()),
 		jRPC.WithHealthHandler(healthHandler))

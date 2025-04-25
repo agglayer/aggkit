@@ -43,30 +43,36 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "blockNum": {
+                  "block_num": {
                     "$ref": "#/components/schemas/BlockNumber"
                   },
-                  "blockPos": {
+                  "block_pos": {
                     "$ref": "#/components/schemas/BlockPosition"
                   },
-                  "blockTimestamp": {
+                  "block_timestamp": {
                     "type": "integer",
                     "description": "The unix timestamp for when the block was collated"
                   },
-                  "txHash": {
+                  "tx_hash": {
                     "$ref": "#/components/schemas/Keccak"
                   },
-                  "originNetwork": {
+                  "origin_network": {
                     "$ref": "#/components/schemas/OriginNetwork"
                   },
-                  "originTokenAddress": {
+                  "origin_token_address": {
                     "$ref": "#/components/schemas/OriginTokenAddress"
                   },
-                  "wrappedTokenAddress": {
+                  "wrapped_token_address": {
                     "$ref": "#/components/schemas/Address"
                   },
                   "metadata": {
                     "$ref": "#/components/schemas/Bytes"
+                  },
+                  "calldata": {
+                    "$ref": "#/components/schemas/Bytes"
+                  },
+                  "token_type": {
+                    "$ref": "#/components/schemas/TokenType"
                   }
                 }
               }
@@ -126,25 +132,25 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "blockNum": {
+                  "block_num": {
                     "$ref": "#/components/schemas/BlockNumber"
                   },
-                  "blockPos": {
+                  "block_pos": {
                     "$ref": "#/components/schemas/BlockPosition"
                   },
-                  "leafType": {
+                  "leaf_type": {
                     "$ref": "#/components/schemas/LeafType"
                   },
-                  "originNetwork": {
+                  "origin_network": {
                     "$ref": "#/components/schemas/OriginNetwork"
                   },
-                  "originAddress": {
+                  "origin_address": {
                     "$ref": "#/components/schemas/OriginTokenAddress"
                   },
-                  "destinationNetwork": {
+                  "destination_network": {
                     "$ref": "#/components/schemas/DestinationNetwork"
                   },
-                  "destinationAddress": {
+                  "destination_address": {
                     "$ref": "#/components/schemas/DestinationAddress"
                   },
                   "amount": {
@@ -218,10 +224,10 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "globalIndex": {
+                  "global_index": {
                     "$ref": "#/components/schemas/GlobalIndex"
                   },
-                  "destinationNetwork": {
+                  "destination_network": {
                     "$ref": "#/components/schemas/DestinationNetwork"
                   },
                   "txHash": {
@@ -230,19 +236,19 @@
                   "amount": {
                     "$ref": "#/components/schemas/Amount"
                   },
-                  "blockNum": {
+                  "block_num": {
                     "$ref": "#/components/schemas/BlockNumber"
                   },
                   "fromAddress": {
                     "$ref": "#/components/schemas/Address"
                   },
-                  "destinationAddress": {
+                  "destination_address": {
                     "$ref": "#/components/schemas/DestinationAddress"
                   },
-                  "originAddress": {
+                  "origin_address": {
                     "$ref": "#/components/schemas/OriginTokenAddress"
                   },
-                  "originNetwork": {
+                  "origin_network": {
                     "$ref": "#/components/schemas/OriginNetwork"
                   },
                   "blockTimestamp": {
@@ -255,6 +261,83 @@
             "count": {
               "type": "integer",
               "description": "The total number of claims."
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "bridge_getLegacyTokenMigrations",
+      "summary": "Get Legacy Token Migrations",
+      "description": "Returns the legacy token migrations for the given network.",
+      "params": [
+        {
+          "$ref": "#/components/contentDescriptors/NetworkID"
+        },
+        {
+          "name": "page",
+          "description": "The page number for pagination.",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        },
+        {
+          "name": "pageSize",
+          "description": "The number of items per page for pagination.",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "format": "uint32"
+          }
+        }
+      ],
+      "result": {
+        "name": "result",
+        "description": "The legacy token migrations result.",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "legacyTokenMigrations": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "block_num": {
+                    "$ref": "#/components/schemas/BlockNumber"
+                  },
+                  "block_pos": {
+                    "$ref": "#/components/schemas/BlockPosition"
+                  },
+                  "block_timestamp": {
+                    "type": "integer",
+                    "description": "The unix timestamp for when the block was collated"
+                  },
+                  "tx_hash": {
+                    "$ref": "#/components/schemas/Keccak"
+                  },
+                  "sender": {
+                    "$ref": "#/components/schemas/Address"
+                  },
+                  "legacy_token_address": {
+                    "$ref": "#/components/schemas/Address"
+                  },
+                  "updated_token_address": {
+                    "$ref": "#/components/schemas/OriginTokenAddress"
+                  },
+                  "amount": {
+                    "$ref": "#/components/schemas/Integer"
+                  },
+                  "calldata": {
+                    "$ref": "#/components/schemas/Bytes"
+                  }
+                }
+              }
+            },
+            "totalTokenMigrations": {
+              "type": "integer",
+              "description": "The total number of legacy token migrations."
             }
           }
         }
@@ -364,10 +447,14 @@
               "description": "Ending block number of the reorg."
             }
           },
-          "required": ["detected_at", "from_block", "to_block"]
+          "required": [
+            "detected_at",
+            "from_block",
+            "to_block"
+          ]
         }
       }
-    },    
+    },
     {
       "name": "bridge_getSponsoredClaimStatus",
       "summary": "Gets the proof needed to perform a claim for a given bridge",
@@ -427,7 +514,7 @@
         }
       },
       "GlobalIndex": {
-        "name": "globalIndex",
+        "name": "global_index",
         "required": true,
         "schema": {
           "$ref": "#/components/schemas/GlobalIndex"
@@ -472,13 +559,13 @@
         "description": "The hex representation of the Keccak 256 of the RLP encoded block"
       },
       "BlockNumber": {
-        "title": "blockNumber",
+        "title": "block_number",
         "type": "string",
         "description": "The hex representation of the block's height",
         "$ref": "#/components/schemas/Integer"
       },
       "BlockPosition": {
-        "title": "blockPosition",
+        "title": "block_position",
         "type": "string",
         "description": "The hex representation of the position inside the block",
         "$ref": "#/components/schemas/Integer"
@@ -506,10 +593,10 @@
         "type": "object",
         "readOnly": true,
         "properties": {
-          "blockNumber": {
+          "block_number": {
             "$ref": "#/components/schemas/BlockNumber"
           },
-          "blockPosition": {
+          "block_position": {
             "$ref": "#/components/schemas/BlockPosition"
           },
           "previousBlockHash": {
@@ -523,10 +610,10 @@
           "l1InfoTreeIndex": {
             "$ref": "#/components/schemas/L1InfoTreeIndex"
           },
-          "mainnetExitRoot": {
+          "mainnet_exit_root": {
             "$ref": "#/components/schemas/Keccak"
           },
-          "rollupExitRoot": {
+          "rollup_exit_root": {
             "$ref": "#/components/schemas/Keccak"
           },
           "globalExitRoot": {
@@ -572,37 +659,37 @@
         }
       },
       "LeafType": {
-        "title": "leafType",
+        "title": "leaf_type",
         "type": "string",
         "description": "The hex representation of the leaf type",
         "$ref": "#/components/schemas/Integer"
       },
       "GlobalIndex": {
-        "title": "globalIndex",
+        "title": "global_index",
         "type": "string",
         "description": "The hex representation of the global index",
         "$ref": "#/components/schemas/Integer"
       },
       "OriginNetwork": {
-        "title": "originNetwork",
+        "title": "origin_network",
         "type": "string",
         "description": "The hex representation of the origin network ID of the token",
         "$ref": "#/components/schemas/Integer"
       },
       "OriginTokenAddress": {
-        "title": "originTokenAddress",
+        "title": "origin_token_address",
         "type": "string",
         "description": "address of the token on it's origin network",
         "$ref": "#/components/schemas/Address"
       },
       "DestinationNetwork": {
-        "title": "destinationNetwork",
+        "title": "destination_network",
         "type": "string",
         "description": "The hex representation of the destination network ID",
         "$ref": "#/components/schemas/Integer"
       },
       "DestinationAddress": {
-        "title": "destinationAddress",
+        "title": "destination_address",
         "type": "string",
         "description": "address of the receiver of the bridge",
         "$ref": "#/components/schemas/Address"
@@ -622,7 +709,7 @@
         "type": "object",
         "readOnly": true,
         "properties": {
-          "leafType": {
+          "leaf_type": {
             "$ref": "#/components/schemas/LeafType"
           },
           "proofLocalExitRoot": {
@@ -631,25 +718,25 @@
           "proofRollupExitRoot": {
             "$ref": "#/components/schemas/ProofRollupExitRoot"
           },
-          "globalIndex": {
+          "global_index": {
             "$ref": "#/components/schemas/GlobalIndex"
           },
-          "mainnetExitRoot": {
+          "mainnet_exit_root": {
             "$ref": "#/components/schemas/Keccak"
           },
-          "rollupExitRoot": {
+          "rollup_exit_root": {
             "$ref": "#/components/schemas/Keccak"
           },
-          "originNetwork": {
+          "origin_network": {
             "$ref": "#/components/schemas/OriginNetwork"
           },
-          "originTokenAddress": {
+          "origin_token_address": {
             "$ref": "#/components/schemas/OriginTokenAddress"
           },
-          "destinationNetwork": {
+          "destination_network": {
             "$ref": "#/components/schemas/DestinationNetwork"
           },
-          "destinationAddress": {
+          "destination_address": {
             "$ref": "#/components/schemas/DestinationAddress"
           },
           "amount": {
@@ -668,6 +755,18 @@
           "pending",
           "failed",
           "success"
+        ]
+      },
+      "TokenType": {
+        "type": "integer",
+        "description": "Token type: 0 = WrappedToken, 1 = SovereignToken",
+        "enum": [
+          0,
+          1
+        ],
+        "enumNames": [
+          "WrappedToken",
+          "SovereignToken"
         ]
       }
     }

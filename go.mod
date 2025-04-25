@@ -3,25 +3,30 @@ module github.com/agglayer/aggkit
 go 1.24.2
 
 require (
+	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250416180731-ff8952695828.2
+	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250416180731-ff8952695828.1
+	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250403073306-df9b770ff25d.1
+	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250414085509-fe25425e2577.2
+	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250414085509-fe25425e2577.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.3
 	github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229
-	github.com/0xPolygon/zkevm-ethtx-manager v0.2.9
+	github.com/0xPolygon/zkevm-ethtx-manager v0.2.10
 	github.com/agglayer/go_signer v0.0.5
 	github.com/ethereum/go-ethereum v1.15.5
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 	github.com/hermeznetwork/tracerr v0.3.2
 	github.com/iden3/go-iden3-crypto v0.0.17
 	github.com/invopop/jsonschema v0.13.0
-	github.com/knadh/koanf/parsers/json v0.1.0
+	github.com/knadh/koanf/parsers/json v1.0.0
 	github.com/knadh/koanf/parsers/toml v0.1.0
-	github.com/knadh/koanf/providers/rawbytes v0.1.0
+	github.com/knadh/koanf/providers/rawbytes v1.0.0
 	github.com/knadh/koanf/v2 v2.1.2
-	github.com/mattn/go-sqlite3 v1.14.24
+	github.com/mattn/go-sqlite3 v1.14.28
 	github.com/mitchellh/mapstructure v1.5.0
-	github.com/pelletier/go-toml/v2 v2.2.3
-	github.com/prometheus/client_golang v1.21.1
-	github.com/prometheus/client_model v0.6.1
-	github.com/rubenv/sql-migrate v1.7.1
+	github.com/pelletier/go-toml/v2 v2.2.4
+	github.com/prometheus/client_golang v1.22.0
+	github.com/prometheus/client_model v0.6.2
+	github.com/rubenv/sql-migrate v1.8.0
 	github.com/russross/meddler v1.0.1
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.10.0
@@ -30,9 +35,11 @@ require (
 	go.opentelemetry.io/otel v1.35.0
 	go.opentelemetry.io/otel/metric v1.35.0
 	go.uber.org/zap v1.27.0
-	golang.org/x/crypto v0.36.0
+	golang.org/x/crypto v0.37.0
 	golang.org/x/net v0.38.0
-	golang.org/x/sync v0.12.0
+	golang.org/x/sync v0.13.0
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8
+	google.golang.org/grpc v1.67.3
 	modernc.org/sqlite v1.37.0
 )
 
@@ -115,7 +122,7 @@ require (
 	github.com/huin/goupnp v1.3.0 // indirect
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jmoiron/sqlx v1.2.0 // indirect
-	github.com/klauspost/compress v1.17.11 // indirect
+	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/knadh/koanf/maps v0.1.1 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
@@ -174,16 +181,14 @@ require (
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/oauth2 v0.25.0 // indirect
-	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/text v0.23.0 // indirect
+	golang.org/x/sys v0.32.0 // indirect
+	golang.org/x/text v0.24.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
 	golang.org/x/tools v0.31.0 // indirect
 	google.golang.org/api v0.215.0 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241209162323-e6fa225c2576 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20241223144023-3abc09e42ca8 // indirect
-	google.golang.org/grpc v1.67.3 // indirect
-	google.golang.org/protobuf v1.36.5 // indirect
+	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.0.1-2020.1.4 // indirect

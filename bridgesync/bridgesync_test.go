@@ -10,7 +10,6 @@ import (
 	"time"
 
 	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
-	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
@@ -40,6 +39,14 @@ func TestNewLx(t *testing.T) {
 	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Times(2)
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
@@ -190,6 +197,14 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
@@ -264,7 +279,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageNum := uint32(5)
 
 		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
-		require.ErrorIs(t, err, db.ErrNotFound)
+		require.ErrorContains(t, err, "provided page number is invalid for given page size")
 		require.Equal(t, 0, totalTokenMappings)
 		require.Nil(t, tokenMappings)
 	})
@@ -314,6 +329,14 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
@@ -388,7 +411,8 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 		pageNum := uint32(5)
 
 		tokenMigrations, totalTokenMigrations, err := s.GetLegacyTokenMigrations(context.Background(), pageNum, pageSize)
-		require.ErrorIs(t, err, db.ErrNotFound)
+		require.ErrorContains(t, err,
+			"provided page number is invalid for given page size and total number of legacy token migrations")
 		require.Equal(t, 0, totalTokenMigrations)
 		require.Nil(t, tokenMigrations)
 	})

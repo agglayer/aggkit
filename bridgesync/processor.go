@@ -73,6 +73,7 @@ type Bridge struct {
 	Amount             *big.Int       `meddler:"amount,bigint" json:"amount"`
 	Metadata           []byte         `meddler:"metadata" json:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
+	IsNativeToken      bool           `meddler:"is_native_token" json:"is_native_token"`
 }
 
 // Hash returns the hash of the bridge event as expected by the exit tree
@@ -443,6 +444,10 @@ func (p *processor) GetBridges(
 	}()
 	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTableName)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
+			return []Bridge{}, nil
+		}
 		return nil, err
 	}
 	bridgePtrs := []*Bridge{}
@@ -472,6 +477,10 @@ func (p *processor) GetClaims(
 	}()
 	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTableName)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
+			return []Claim{}, nil
+		}
 		return nil, err
 	}
 	claimPtrs := []*Claim{}
@@ -500,7 +509,7 @@ func (p *processor) GetBridgesPaged(
 	}()
 	orderByClause := "deposit_count DESC"
 	whereClause := ""
-	count, err := p.GetTotalNumberOfRecords(bridgeTableName)
+	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -520,13 +529,19 @@ func (p *processor) GetBridgesPaged(
 	}
 
 	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(count) {
-		p.log.Debugf("offset is larger than total bridges (page number=%d, page size=%d, total bridges=%d)",
-			pageNumber, pageSize, count)
-		return nil, 0, db.ErrNotFound
+	if offset >= uint32(bridgesCount) {
+		p.log.Debugf("provided page number is invalid for given page size and total number of bridges"+
+			" (page number=%d, page size=%d, total bridges=%d)", pageNumber, pageSize, bridgesCount)
+		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of bridges"+
+			" (page number=%d, page size=%d, total bridges=%d)", pageNumber, pageSize, bridgesCount)
 	}
 	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no bridges were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
+				pageNumber, pageSize, whereClause)
+			return nil, bridgesCount, nil
+		}
 		return nil, 0, err
 	}
 	defer func() {
@@ -543,9 +558,9 @@ func (p *processor) GetBridgesPaged(
 		bridgeResponsePtrs[i] = NewBridgeResponse(bridgePtr)
 	}
 	if depositCount != nil {
-		count = len(bridgePtrs)
+		bridgesCount = len(bridgePtrs)
 	}
-	return bridgeResponsePtrs, count, nil
+	return bridgeResponsePtrs, bridgesCount, nil
 }
 
 func (p *processor) GetClaimsPaged(
@@ -560,16 +575,17 @@ func (p *processor) GetClaimsPaged(
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	count, err := p.GetTotalNumberOfRecords(claimTableName)
+	claimsCount, err := p.GetTotalNumberOfRecords(claimTableName)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(count) {
-		p.log.Debugf("offset is larger than total claims (page number=%d, page size=%d, total claims=%d)",
-			pageNumber, pageSize, count)
-		return nil, 0, db.ErrNotFound
+	if offset >= uint32(claimsCount) {
+		p.log.Debugf("provided page number is invalid for given page size and total number of claims"+
+			" (page number=%d, page size=%d, total claims=%d)", pageNumber, pageSize, claimsCount)
+		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of claims"+
+			" (page number=%d, page size=%d, total claims=%d)", pageNumber, pageSize, claimsCount)
 	}
 
 	orderByClause := "block_num DESC, block_pos DESC"
@@ -586,6 +602,11 @@ func (p *processor) GetClaimsPaged(
 
 	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, claimsCount, nil
+		}
 		return nil, 0, err
 	}
 	defer func() {
@@ -603,33 +624,40 @@ func (p *processor) GetClaimsPaged(
 		claimResponsePtrs[i] = NewClaimResponse(claimPtr)
 	}
 
-	return claimResponsePtrs, count, nil
+	return claimResponsePtrs, claimsCount, nil
 }
 
 // GetLegacyTokenMigrations returns the paged legacy token migrations from the database
 func (p *processor) GetLegacyTokenMigrations(
 	ctx context.Context, pageNumber, pageSize uint32) ([]*LegacyTokenMigration, int, error) {
-	totalTokenMigrations, err := p.GetTotalNumberOfRecords(legacyTokenMigrationTableName)
+	legacyTokenMigrationsCount, err := p.GetTotalNumberOfRecords(legacyTokenMigrationTableName)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", legacyTokenMigrationTableName, err)
 	}
 
-	if totalTokenMigrations == 0 {
-		return []*LegacyTokenMigration{}, 0, nil
+	if legacyTokenMigrationsCount == 0 {
+		return nil, 0, nil
 	}
 
 	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(totalTokenMigrations) {
-		p.log.Debugf(
-			"offset is larger than the total legacy token migrations (page number=%d, page size=%d, total legacy migrations=%d)",
-			pageNumber, pageSize, totalTokenMigrations)
-		return nil, 0, db.ErrNotFound
+	if offset >= uint32(legacyTokenMigrationsCount) {
+		p.log.Debugf("provided page number is invalid for given page size and total number of legacy token migrations"+
+			" (page number=%d, page size=%d, total count=%d)", pageNumber, pageSize, legacyTokenMigrationsCount)
+		return nil, 0,
+			fmt.Errorf("provided page number is invalid for given page size and total number of legacy token migrations"+
+				" (page number=%d, page size=%d, total token migrations=%d)",
+				pageNumber, pageSize, legacyTokenMigrationsCount)
 	}
 
 	orderByClause := "block_num, block_pos DESC"
 	whereClause := ""
 	rows, err := p.queryPaged(p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no legacy token migrations were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, legacyTokenMigrationsCount, nil
+		}
 		return nil, 0, err
 	}
 	defer func() {
@@ -642,7 +670,7 @@ func (p *processor) GetLegacyTokenMigrations(
 		return nil, 0, err
 	}
 
-	return tokenMigrations, totalTokenMigrations, nil
+	return tokenMigrations, legacyTokenMigrationsCount, nil
 }
 
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
@@ -701,13 +729,14 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 }
 
 func (p *processor) getLastProcessedBlockWithTx(tx db.Querier) (uint64, error) {
-	var lastProcessedBlock uint64
+	var lastProcessedBlockNum uint64
+
 	row := tx.QueryRow("SELECT num FROM block ORDER BY num DESC LIMIT 1;")
-	err := row.Scan(&lastProcessedBlock)
+	err := row.Scan(&lastProcessedBlockNum)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
-	return lastProcessedBlock, err
+	return lastProcessedBlockNum, err
 }
 
 // Reorg triggers a purge and reset process on the processor to leaf it on a state
@@ -764,7 +793,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO block (num) VALUES ($1)`, block.Num); err != nil {
+	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
 		return err
 	}
 	for _, e := range block.Events {
@@ -854,9 +883,10 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 
 	offset := (pageNumber - 1) * pageSize
 	if offset >= uint32(totalTokenMappings) {
-		p.log.Debugf("offset is larger than total token mappings (page number=%d, page size=%d, total token mappings=%d)",
-			pageNumber, pageSize, totalTokenMappings)
-		return nil, 0, db.ErrNotFound
+		p.log.Debugf("provided page number is invalid for given page size and total number of token mappings"+
+			" (page number=%d, page size=%d, total token mappings=%d)", pageNumber, pageSize, totalTokenMappings)
+		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of token mappings"+
+			" (page number=%d, page size=%d, total token mappings=%d)", pageNumber, pageSize, totalTokenMappings)
 	}
 
 	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
@@ -883,6 +913,13 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	orderByClause := "block_num DESC"
 	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			pageNumber := (offset / pageSize) + 1
+			p.log.Debugf("no token mappings were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, nil
+		}
+
 		p.log.Errorf("failed to fetch token mappings: %v", err)
 		return nil, err
 	}

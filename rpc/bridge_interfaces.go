@@ -28,7 +28,7 @@ type Bridger interface {
 type LastGERer interface {
 	GetFirstGERAfterL1InfoTreeIndex(
 		ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
-	) (lastgersync.Event, error)
+	) (lastgersync.GlobalExitRootInfo, error)
 }
 
 type L1InfoTreer interface {
