@@ -5,10 +5,11 @@
   "args": {
     "verbosity": "debug",
     "cdk_node_image": "aggkit:local",
-    "agglayer_image": "ghcr.io/agglayer/agglayer@sha256:5715855f2cc6834bd84a99a33937915164648547d21bfb55198948b0ae4e0fad",
+    "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.0-rc.16",
     "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.61.16-hotfix2",
     "zkevm_contracts_image": "leovct/zkevm-contracts:v9.0.0-rc.6-pp-fork.12",
     "additional_services": [],
+    "pp_vkey_hash": "0x00d6e4bdab9cac75a50d58262bb4e60b3107a6b61131ccdff649576c624b6fb7",
     "consensus_contract_type": "pessimistic",
     "sequencer_type": "erigon",
     "erigon_strict_mode": false,

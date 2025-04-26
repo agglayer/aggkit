@@ -60,14 +60,13 @@ jobs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@22665185bde0d441089c49ba68cd70ca369cc5d9
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@2faa072208cfbc6fee4b5bbfdba1e78e36106712
     secrets: inherit
     with:
       docker-tag: local
-      # TODO: we should use this one (0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f) or continue with the arpit/bridge-service after it is rebased 
       kurtosis-cdk-ref: arpit/bridge-service 
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: 22665185bde0d441089c49ba68cd70ca369cc5d9
+      agglayer-e2e-ref: 2faa072208cfbc6fee4b5bbfdba1e78e36106712
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
