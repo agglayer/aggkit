@@ -255,4 +255,9 @@ AggchainProofURL = "{{AggchainProofURL}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+
+[Profiling]
+ProfilingHost = "localhost"
+ProfilingPort = 6060
+ProfilingEnabled = false
 `
