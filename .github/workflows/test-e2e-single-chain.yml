@@ -1,13 +1,14 @@
 name: Test E2E (single chain)
 
-on: 
-  push:
-    branches:
-      - '**'
-  workflow_dispatch: {}
+on:
+  workflow_run:
+    workflows: ["Build Aggkit Image"]
+    types:
+      - completed
 
 jobs:
   test-e2e:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: amd-runner-2204
     timeout-minutes: 30
     strategy:
@@ -20,15 +21,13 @@ jobs:
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-    
+
     - name: Set kurtosis-cdk ref
       id: set-kurtosis-cdk-ref
       run: |
         if [[ "${{ matrix.e2e-group }}" == "fork12-pessimistic" ]]; then
-          # https://github.com/0xPolygon/kurtosis-cdk/tree/feat/aggsender-agglayer-grpc-integration
           echo "ref=0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f" >> $GITHUB_OUTPUT
         elif [[ "${{ matrix.e2e-group }}" == "fork12-op-succinct" ]]; then
-          # https://github.com/0xPolygon/kurtosis-cdk/tree/main
           echo "ref=4447745444f706e5ba2be6217f17e7434d95c5b0" >> $GITHUB_OUTPUT 
         else
           echo "Unknown e2e group ${{ matrix.e2e-group }}" >&2
@@ -44,7 +43,7 @@ jobs:
     
     - name: Install Kurtosis CDK tools
       uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
-    
+
     - name: Setup Bats and bats libs
       uses: bats-core/bats-action@2.0.0
 
@@ -58,7 +57,6 @@ jobs:
       run: |
         docker load --input /tmp/aggkit.tar
         docker image ls -a
-
     - name: Run E2E tests
       run: make test-e2e-${{ matrix.e2e-group }}
       working-directory: test
@@ -66,7 +64,7 @@ jobs:
         KURTOSIS_FOLDER: ${{ github.workspace }}/kurtosis-cdk
         BATS_LIB_PATH: /usr/lib/
         AGGLAYER_PROVER_SP1_KEY: ${{ secrets.SP1_PRIVATE_KEY }}
-    
+
     - name: Dump enclave logs
       if: failure()
       run: kurtosis dump ./dump
