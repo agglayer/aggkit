@@ -13,7 +13,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
-	migrationsBridge "github.com/agglayer/aggkit/bridgesync/migrations"
+	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -34,7 +34,7 @@ func TestBigIntString(t *testing.T) {
 
 	dbPath := path.Join(t.TempDir(), "bridgesyncTestBigIntString.sqlite")
 
-	err := migrationsBridge.RunMigrations(dbPath)
+	err := migrations.RunMigrations(dbPath)
 	require.NoError(t, err)
 	db, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
@@ -808,7 +808,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 func TestInsertAndGetClaim(t *testing.T) {
 	path := path.Join(t.TempDir(), "aggsenderTestInsertAndGetClaim.sqlite")
 	log.Debugf("sqlite path: %s", path)
-	err := migrationsBridge.RunMigrations(path)
+	err := migrations.RunMigrations(path)
 	require.NoError(t, err)
 	logger := log.WithFields("bridge-syncer", "foo")
 	p, err := newProcessor(path, "foo", logger)
@@ -894,7 +894,7 @@ func TestGetBridgesPublished(t *testing.T) {
 			t.Parallel()
 
 			path := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncTestGetBridgesPublished_%s.sqlite", tc.name))
-			require.NoError(t, migrationsBridge.RunMigrations(path))
+			require.NoError(t, migrations.RunMigrations(path))
 			logger := log.WithFields("bridge-syncer", "foo")
 			p, err := newProcessor(path, "foo", logger)
 			require.NoError(t, err)
@@ -947,23 +947,18 @@ func TestGetBridgesPaged(t *testing.T) {
 	t.Parallel()
 	fromBlock := uint64(1)
 	toBlock := uint64(10)
-	bridges :=
-		[]Bridge{
-			{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x1"), IsNativeToken: true},
-			{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false},
-			{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x3"), IsNativeToken: true},
-			{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x4"), IsNativeToken: true},
-			{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x5"), IsNativeToken: false},
-			{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x6"), IsNativeToken: true},
-			{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x7"), IsNativeToken: true},
-		}
-	bridgeHashMap := make(map[uint64]common.Hash)
-	for _, bridge := range bridges {
-		bridgeHashMap[uint64(bridge.DepositCount)] = bridge.Hash()
+	bridges := []*Bridge{
+		{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), DestinationNetwork: 10},
+		{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), DestinationNetwork: 10},
+		{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), DestinationNetwork: 20},
+		{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), DestinationNetwork: 30},
+		{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), DestinationNetwork: 30},
+		{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), DestinationNetwork: 30},
+		{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), DestinationNetwork: 50},
 	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetBridgesPaged.sqlite")
-	require.NoError(t, migrationsBridge.RunMigrations(path))
+	require.NoError(t, migrations.RunMigrations(path))
 	logger := log.WithFields("bridge-syncer", "foo")
 	p, err := newProcessor(path, "bridge-syncer", logger)
 	require.NoError(t, err)
@@ -977,20 +972,20 @@ func TestGetBridgesPaged(t *testing.T) {
 	}
 
 	for _, bridge := range bridges {
-		require.NoError(t, meddler.Insert(tx, "bridge", &bridge))
+		require.NoError(t, meddler.Insert(tx, "bridge", bridge))
 	}
+	require.NoError(t, tx.Commit())
 
 	depositCountPtr := func(i uint64) *uint64 {
 		return &i
 	}
-
-	require.NoError(t, tx.Commit())
 
 	testCases := []struct {
 		name            string
 		pageSize        uint32
 		page            uint32
 		depositCount    *uint64
+		networkIDs      []uint32
 		expectedCount   int
 		expectedBridges []*BridgeResponse
 		expectedError   string
@@ -1000,9 +995,9 @@ func TestGetBridgesPaged(t *testing.T) {
 			pageSize:      1,
 			page:          1,
 			depositCount:  nil,
-			expectedCount: 7,
+			expectedCount: len(bridges),
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x7"), IsNativeToken: true}, BridgeHash: bridgeHashMap[6]},
+				NewBridgeResponse(bridges[6]),
 			},
 			expectedError: "",
 		},
@@ -1011,15 +1006,15 @@ func TestGetBridgesPaged(t *testing.T) {
 			pageSize:      20,
 			page:          1,
 			depositCount:  nil,
-			expectedCount: 7,
+			expectedCount: len(bridges),
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x7"), IsNativeToken: true}, BridgeHash: bridgeHashMap[6]},
-				{Bridge: Bridge{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x6"), IsNativeToken: true}, BridgeHash: bridgeHashMap[5]},
-				{Bridge: Bridge{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x5"), IsNativeToken: false}, BridgeHash: bridgeHashMap[4]},
-				{Bridge: Bridge{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x4"), IsNativeToken: true}, BridgeHash: bridgeHashMap[3]},
-				{Bridge: Bridge{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x3"), IsNativeToken: true}, BridgeHash: bridgeHashMap[2]},
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false}, BridgeHash: bridgeHashMap[1]},
-				{Bridge: Bridge{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x1"), IsNativeToken: true}, BridgeHash: bridgeHashMap[0]},
+				NewBridgeResponse(bridges[6]),
+				NewBridgeResponse(bridges[5]),
+				NewBridgeResponse(bridges[4]),
+				NewBridgeResponse(bridges[3]),
+				NewBridgeResponse(bridges[2]),
+				NewBridgeResponse(bridges[1]),
+				NewBridgeResponse(bridges[0]),
 			},
 			expectedError: "",
 		},
@@ -1028,11 +1023,11 @@ func TestGetBridgesPaged(t *testing.T) {
 			pageSize:      3,
 			page:          2,
 			depositCount:  nil,
-			expectedCount: 7,
+			expectedCount: len(bridges),
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x4"), IsNativeToken: true}, BridgeHash: bridgeHashMap[3]},
-				{Bridge: Bridge{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x3"), IsNativeToken: true}, BridgeHash: bridgeHashMap[2]},
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false}, BridgeHash: bridgeHashMap[1]},
+				NewBridgeResponse(bridges[3]),
+				NewBridgeResponse(bridges[2]),
+				NewBridgeResponse(bridges[1]),
 			},
 			expectedError: "",
 		},
@@ -1043,7 +1038,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:  depositCountPtr(1),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false}, BridgeHash: bridgeHashMap[1]},
+				NewBridgeResponse(bridges[1]),
 			},
 			expectedError: "",
 		},
@@ -1054,7 +1049,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:  depositCountPtr(1),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x2"), IsNativeToken: false}, BridgeHash: bridgeHashMap[1]},
+				NewBridgeResponse(bridges[1]),
 			},
 			expectedError: "",
 		},
@@ -1063,7 +1058,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			pageSize:        2,
 			page:            20,
 			depositCount:    nil,
-			expectedCount:   7,
+			expectedCount:   len(bridges),
 			expectedBridges: []*BridgeResponse{},
 			expectedError:   "provided page number is invalid for given page size",
 		},
@@ -1074,9 +1069,42 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:  depositCountPtr(0),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
-				{Bridge: Bridge{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), OriginAddress: common.HexToAddress("0x1"), IsNativeToken: true}, BridgeHash: bridgeHashMap[0]},
+				NewBridgeResponse(bridges[0]),
 			},
 			expectedError: "",
+		},
+		{
+			name:         "t8",
+			pageSize:     6,
+			page:         1,
+			depositCount: nil,
+			networkIDs: []uint32{
+				bridges[0].DestinationNetwork,
+				bridges[2].DestinationNetwork,
+				bridges[6].DestinationNetwork,
+			},
+			expectedCount: len(bridges),
+			expectedBridges: []*BridgeResponse{
+				NewBridgeResponse(bridges[6]),
+				NewBridgeResponse(bridges[2]),
+				NewBridgeResponse(bridges[1]),
+				NewBridgeResponse(bridges[0]),
+			},
+			expectedError: "",
+		},
+		{
+			name:         "t9",
+			pageSize:     6,
+			page:         1,
+			depositCount: depositCountPtr(3),
+			networkIDs: []uint32{
+				bridges[0].DestinationNetwork,
+				bridges[2].DestinationNetwork,
+				bridges[6].DestinationNetwork,
+			},
+			expectedCount:   0,
+			expectedBridges: []*BridgeResponse{},
+			expectedError:   "",
 		},
 	}
 
@@ -1087,7 +1115,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount)
+			bridges, count, err := p.GetBridgesPaged(ctx, tc.page, tc.pageSize, tc.depositCount, tc.networkIDs)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
@@ -1114,18 +1142,17 @@ func TestGetClaimsPaged(t *testing.T) {
 	num2 := new(big.Int)
 	num2.SetString("18446744073709551618", 10)
 
-	claims :=
-		[]Claim{
-			{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1)},
-			{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-			{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
-			{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1)},
-			{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1)},
-			{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
-		}
+	claims := []*Claim{
+		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1},
+		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1},
+		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2},
+		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2},
+		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3},
+		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4},
+	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
-	require.NoError(t, migrationsBridge.RunMigrations(path))
+	require.NoError(t, migrations.RunMigrations(path))
 	logger := log.WithFields("module", "bridge-syncer")
 	p, err := newProcessor(path, "bridge-syncer", logger)
 	require.NoError(t, err)
@@ -1139,7 +1166,7 @@ func TestGetClaimsPaged(t *testing.T) {
 	}
 
 	for _, claim := range claims {
-		require.NoError(t, meddler.Insert(tx, "claim", &claim))
+		require.NoError(t, meddler.Insert(tx, "claim", claim))
 	}
 	require.NoError(t, tx.Commit())
 
@@ -1147,54 +1174,77 @@ func TestGetClaimsPaged(t *testing.T) {
 		name           string
 		pageSize       uint32
 		page           uint32
+		networkIDs     []uint32
 		expectedCount  int
 		expectedClaims []*ClaimResponse
 		expectedError  string
 	}{
 		{
-			name:          "t1",
-			pageSize:      1,
-			page:          2,
-			expectedCount: 6,
-			expectedClaims: []*ClaimResponse{
-				{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1)},
-			},
-			expectedError: "",
+			name:           "pagination: page 2, size 1",
+			pageSize:       1,
+			page:           2,
+			expectedCount:  len(claims),
+			expectedClaims: []*ClaimResponse{NewClaimResponse(claims[4])},
+			expectedError:  "",
 		},
 		{
-			name:          "t2",
+			name:          "all results on the same page",
 			pageSize:      20,
 			page:          1,
-			expectedCount: 6,
+			expectedCount: len(claims),
 			expectedClaims: []*ClaimResponse{
-				{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1)},
-				{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1)},
-				{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1)},
-				{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
-				{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-				{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1)},
+				NewClaimResponse(claims[5]),
+				NewClaimResponse(claims[4]),
+				NewClaimResponse(claims[3]),
+				NewClaimResponse(claims[2]),
+				NewClaimResponse(claims[1]),
+				NewClaimResponse(claims[0]),
 			},
 			expectedError: "",
 		},
 		{
-			name:          "t3",
+			name:          "pagination: page 2, size 3",
 			pageSize:      3,
 			page:          2,
-			expectedCount: 6,
+			expectedCount: len(claims),
 			expectedClaims: []*ClaimResponse{
-				{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1)},
-				{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1)},
-				{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1)},
+				NewClaimResponse(claims[2]),
+				NewClaimResponse(claims[1]),
+				NewClaimResponse(claims[0]),
 			},
 			expectedError: "",
 		},
 		{
-			name:           "t4: invalid page number",
+			name:           "invalid page size",
 			pageSize:       3,
 			page:           4,
 			expectedCount:  0,
 			expectedClaims: []*ClaimResponse{},
 			expectedError:  "provided page number is invalid for given page size",
+		},
+		{
+			name:          "filter by network ids (all results within the same page)",
+			pageSize:      3,
+			page:          1,
+			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
+			expectedCount: len(claims),
+			expectedClaims: []*ClaimResponse{
+				NewClaimResponse(claims[4]),
+				NewClaimResponse(claims[1]),
+				NewClaimResponse(claims[0]),
+			},
+			expectedError: "",
+		},
+		{
+			name:          "filter by network ids (paginated results)",
+			pageSize:      1,
+			page:          2,
+			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
+			expectedCount: len(claims),
+			expectedClaims: []*ClaimResponse{
+				NewClaimResponse(claims[1]),
+			},
+			expectedError: "",
 		},
 	}
 
@@ -1205,7 +1255,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			t.Parallel()
 
 			ctx := context.Background()
-			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize)
+			claims, count, err := p.GetClaimsPaged(ctx, tc.page, tc.pageSize, tc.networkIDs)
 
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
@@ -1224,7 +1274,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 	const tokenMappingsCount = 50
 
 	path := path.Join(t.TempDir(), "tokenMapping.db")
-	err := migrationsBridge.RunMigrations(path)
+	err := migrations.RunMigrations(path)
 	require.NoError(t, err)
 
 	logger := log.WithFields("module", "bridge-syncer")
@@ -1323,7 +1373,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 func TestProcessor_GetLegacyTokenMigrations(t *testing.T) {
 	t.Parallel()
 	path := path.Join(t.TempDir(), "tokenMigrations.db")
-	err := migrationsBridge.RunMigrations(path)
+	err := migrations.RunMigrations(path)
 	require.NoError(t, err)
 
 	logger := log.WithFields("module", "bridge-syncer")

@@ -720,7 +720,7 @@ func TestGetBridges(t *testing.T) {
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything).
 			Return(bridges, len(bridges), nil)
 
-		result, err := bridgeMocks.bridge.GetBridges(0, &page, &pageSize, nil)
+		result, err := bridgeMocks.bridge.GetBridges(0, &page, &pageSize, nil, nil)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
@@ -766,7 +766,7 @@ func TestGetBridges(t *testing.T) {
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything).
 			Return(bridges, len(bridges), nil)
 
-		result, err := bridgeMocks.bridge.GetBridges(10, &page, &pageSize, nil)
+		result, err := bridgeMocks.bridge.GetBridges(10, &page, &pageSize, nil, nil)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
@@ -781,7 +781,7 @@ func TestGetBridges(t *testing.T) {
 	t.Run("GetBridges with unsupported network", func(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
-		result, err := bridgeMocks.bridge.GetBridges(unsupportedNetworkID, nil, nil, nil)
+		result, err := bridgeMocks.bridge.GetBridges(unsupportedNetworkID, nil, nil, nil, nil)
 		require.NotNil(t, err)
 		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
@@ -793,7 +793,7 @@ func TestGetBridges(t *testing.T) {
 			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(fooErrMsg))
 
-		result, err := bridgeMocks.bridge.GetBridges(mainnetNetworkID, nil, nil, nil)
+		result, err := bridgeMocks.bridge.GetBridges(mainnetNetworkID, nil, nil, nil, nil)
 		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get bridges for the L1 network, error: %s", fooErrMsg))
@@ -805,7 +805,7 @@ func TestGetBridges(t *testing.T) {
 			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
-		result, err := bridgeMocks.bridge.GetBridges(l2NetworkID, nil, nil, nil)
+		result, err := bridgeMocks.bridge.GetBridges(l2NetworkID, nil, nil, nil, nil)
 		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get bridges for the L2 network (ID=%d), error: %s",
@@ -835,7 +835,7 @@ func TestGetClaims(t *testing.T) {
 		bridgeMocks.bridgeL1.EXPECT().GetClaimsPaged(mock.Anything, page, pageSize).
 			Return(claims, len(claims), nil)
 
-		result, err := bridgeMocks.bridge.GetClaims(0, &page, &pageSize)
+		result, err := bridgeMocks.bridge.GetClaims(0, &page, &pageSize, nil)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
@@ -867,7 +867,7 @@ func TestGetClaims(t *testing.T) {
 		bridgeMocks.bridgeL2.EXPECT().GetClaimsPaged(mock.Anything, page, pageSize).
 			Return(Claims, len(Claims), nil)
 
-		result, err := bridgeMocks.bridge.GetClaims(10, &page, &pageSize)
+		result, err := bridgeMocks.bridge.GetClaims(10, &page, &pageSize, nil)
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
@@ -882,7 +882,7 @@ func TestGetClaims(t *testing.T) {
 	t.Run("GetClaims with unsupported network", func(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
-		result, err := bridgeMocks.bridge.GetClaims(unsupportedNetworkID, nil, nil)
+		result, err := bridgeMocks.bridge.GetClaims(unsupportedNetworkID, nil, nil, nil)
 		require.NotNil(t, err)
 		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
@@ -892,7 +892,7 @@ func TestGetClaims(t *testing.T) {
 	t.Run("GetClaims for L1 network failed", func(t *testing.T) {
 		bridgeMocks.bridgeL1.EXPECT().GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(fooErrMsg))
 
-		result, err := bridgeMocks.bridge.GetClaims(mainnetNetworkID, nil, nil)
+		result, err := bridgeMocks.bridge.GetClaims(mainnetNetworkID, nil, nil, nil)
 		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get claims for the L1 network, error: %s", fooErrMsg))
@@ -902,7 +902,7 @@ func TestGetClaims(t *testing.T) {
 	t.Run("GetClaims for L2 network failed", func(t *testing.T) {
 		bridgeMocks.bridgeL2.EXPECT().GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(barErrMsg))
 
-		result, err := bridgeMocks.bridge.GetClaims(l2NetworkID, nil, nil)
+		result, err := bridgeMocks.bridge.GetClaims(l2NetworkID, nil, nil, nil)
 		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s",

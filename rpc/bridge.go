@@ -303,7 +303,7 @@ type BridgesResult struct {
 // If networkID is the same as the client, it returns the bridges for the L2 network.
 // The result is paginated.
 func (b *BridgeEndpoints) GetBridges(networkID uint32, pageNumber, pageSize *uint32,
-	depositCount *uint64) (interface{}, rpc.Error) {
+	depositCount *uint64, networkIDs []uint32) (interface{}, rpc.Error) {
 	b.logger.Debugf("GetBridges request received (network id=%d)", networkID)
 	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_bridges")
 	if setupErr != nil {
@@ -322,13 +322,13 @@ func (b *BridgeEndpoints) GetBridges(networkID uint32, pageNumber, pageSize *uin
 
 	switch {
 	case networkID == mainnetNetworkID:
-		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount)
+		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount, networkIDs)
 		if err != nil {
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
 				fmt.Sprintf("failed to get bridges for the L1 network, error: %s", err))
 		}
 	case networkID == b.networkID:
-		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount)
+		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount, networkIDs)
 		if err != nil {
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
 				fmt.Sprintf("failed to get bridges for the L2 network (ID=%d), error: %s", networkID, err))
@@ -354,7 +354,8 @@ type ClaimsResult struct {
 // If networkID is 0, it returns the claims for the L1 network.
 // If networkID is the same as the client, it returns the claims for the L2 network.
 // The result is paginated.
-func (b *BridgeEndpoints) GetClaims(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
+func (b *BridgeEndpoints) GetClaims(networkID uint32, pageNumber,
+	pageSize *uint32, networkIDs []uint32) (interface{}, rpc.Error) {
 	b.logger.Debugf("GetClaims request received (network id=%d)", networkID)
 	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_claims")
 	if setupErr != nil {
@@ -373,13 +374,13 @@ func (b *BridgeEndpoints) GetClaims(networkID uint32, pageNumber, pageSize *uint
 
 	switch {
 	case networkID == mainnetNetworkID:
-		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32)
+		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32, networkIDs)
 		if err != nil {
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
 				fmt.Sprintf("failed to get claims for the L1 network, error: %s", err))
 		}
 	case networkID == b.networkID:
-		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32)
+		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32, networkIDs)
 		if err != nil {
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
 				fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s", networkID, err))
