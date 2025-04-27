@@ -1,12 +1,13 @@
 name: Test E2E (multi chains)
 on: 
-  push:
-    branches:
-      - '**'
-  workflow_dispatch: {}
+  workflow_run:
+    workflows: ["Build Aggkit Image"]
+    types:
+      - completed
 
 jobs:
   test-e2e:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: amd-runner-2204
     timeout-minutes: 30
     strategy:
