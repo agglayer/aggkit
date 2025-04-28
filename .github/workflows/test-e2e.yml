@@ -86,7 +86,7 @@ jobs:
       kurtosis-cdk-ref: arpit/bridge-service
       docker-artifact-name: aggkit
       agglayer-e2e-ref: 39ca416f094e03ea7f22da7332b9ec5b3332bbaa
-      kurtosis-cdk-enclave-name: aggkit
+      kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
       test-name: "test-single-l2-network-fork12-op-succinct"
 
@@ -135,7 +135,7 @@ jobs:
       docker-tag: local
       kurtosis-cdk-ref: arpit/bridge-service 
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: 0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f
+      agglayer-e2e-ref: 39ca416f094e03ea7f22da7332b9ec5b3332bbaa
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
