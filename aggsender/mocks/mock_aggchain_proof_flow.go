@@ -27,9 +27,9 @@ func (_m *AggchainProofFlow) EXPECT() *AggchainProofFlow_Expecter {
 	return &AggchainProofFlow_Expecter{mock: &_m.Mock}
 }
 
-// GenerateAggchainProof provides a mock function with given fields: ctx, fromBlock, toBlock, claims
-func (_m *AggchainProofFlow) GenerateAggchainProof(ctx context.Context, fromBlock uint64, toBlock uint64, claims []bridgesync.Claim) (*types.AggchainProof, *treetypes.Root, error) {
-	ret := _m.Called(ctx, fromBlock, toBlock, claims)
+// GenerateAggchainProof provides a mock function with given fields: ctx, lastProvenBlock, toBlock, claims
+func (_m *AggchainProofFlow) GenerateAggchainProof(ctx context.Context, lastProvenBlock uint64, toBlock uint64, claims []bridgesync.Claim) (*types.AggchainProof, *treetypes.Root, error) {
+	ret := _m.Called(ctx, lastProvenBlock, toBlock, claims)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GenerateAggchainProof")
@@ -39,10 +39,10 @@ func (_m *AggchainProofFlow) GenerateAggchainProof(ctx context.Context, fromBloc
 	var r1 *treetypes.Root
 	var r2 error
 	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, []bridgesync.Claim) (*types.AggchainProof, *treetypes.Root, error)); ok {
-		return rf(ctx, fromBlock, toBlock, claims)
+		return rf(ctx, lastProvenBlock, toBlock, claims)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, []bridgesync.Claim) *types.AggchainProof); ok {
-		r0 = rf(ctx, fromBlock, toBlock, claims)
+		r0 = rf(ctx, lastProvenBlock, toBlock, claims)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.AggchainProof)
@@ -50,7 +50,7 @@ func (_m *AggchainProofFlow) GenerateAggchainProof(ctx context.Context, fromBloc
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64, []bridgesync.Claim) *treetypes.Root); ok {
-		r1 = rf(ctx, fromBlock, toBlock, claims)
+		r1 = rf(ctx, lastProvenBlock, toBlock, claims)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).(*treetypes.Root)
@@ -58,7 +58,7 @@ func (_m *AggchainProofFlow) GenerateAggchainProof(ctx context.Context, fromBloc
 	}
 
 	if rf, ok := ret.Get(2).(func(context.Context, uint64, uint64, []bridgesync.Claim) error); ok {
-		r2 = rf(ctx, fromBlock, toBlock, claims)
+		r2 = rf(ctx, lastProvenBlock, toBlock, claims)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -73,14 +73,14 @@ type AggchainProofFlow_GenerateAggchainProof_Call struct {
 
 // GenerateAggchainProof is a helper method to define mock.On call
 //   - ctx context.Context
-//   - fromBlock uint64
+//   - lastProvenBlock uint64
 //   - toBlock uint64
 //   - claims []bridgesync.Claim
-func (_e *AggchainProofFlow_Expecter) GenerateAggchainProof(ctx interface{}, fromBlock interface{}, toBlock interface{}, claims interface{}) *AggchainProofFlow_GenerateAggchainProof_Call {
-	return &AggchainProofFlow_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", ctx, fromBlock, toBlock, claims)}
+func (_e *AggchainProofFlow_Expecter) GenerateAggchainProof(ctx interface{}, lastProvenBlock interface{}, toBlock interface{}, claims interface{}) *AggchainProofFlow_GenerateAggchainProof_Call {
+	return &AggchainProofFlow_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", ctx, lastProvenBlock, toBlock, claims)}
 }
 
-func (_c *AggchainProofFlow_GenerateAggchainProof_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64, claims []bridgesync.Claim)) *AggchainProofFlow_GenerateAggchainProof_Call {
+func (_c *AggchainProofFlow_GenerateAggchainProof_Call) Run(run func(ctx context.Context, lastProvenBlock uint64, toBlock uint64, claims []bridgesync.Claim)) *AggchainProofFlow_GenerateAggchainProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64), args[3].([]bridgesync.Claim))
 	})

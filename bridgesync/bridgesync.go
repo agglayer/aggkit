@@ -243,12 +243,11 @@ func newBridgeSync(
 
 func (s *BridgeSync) GetClaimsPaged(
 	ctx context.Context,
-	page, pageSize uint32,
-) ([]*ClaimResponse, int, error) {
+	page, pageSize uint32, networkIDs []uint32) ([]*ClaimResponse, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}
-	return s.processor.GetClaimsPaged(ctx, page, pageSize)
+	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs)
 }
 
 // Start starts the synchronization process
@@ -259,12 +258,11 @@ func (s *BridgeSync) Start(ctx context.Context) {
 func (s *BridgeSync) GetBridgesPaged(
 	ctx context.Context,
 	page, pageSize uint32,
-	depositCount *uint64,
-) ([]*BridgeResponse, int, error) {
+	depositCount *uint64, networkIDs []uint32) ([]*BridgeResponse, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}
-	return s.processor.GetBridgesPaged(ctx, page, pageSize, depositCount)
+	return s.processor.GetBridgesPaged(ctx, page, pageSize, depositCount, networkIDs)
 }
 
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
@@ -293,13 +291,6 @@ func (s *BridgeSync) GetBridges(ctx context.Context, fromBlock, toBlock uint64) 
 		return nil, sync.ErrInconsistentState
 	}
 	return s.processor.GetBridges(ctx, fromBlock, toBlock)
-}
-
-func (s *BridgeSync) GetBridgesPublished(ctx context.Context, fromBlock, toBlock uint64) ([]Bridge, error) {
-	if s.processor.isHalted() {
-		return nil, sync.ErrInconsistentState
-	}
-	return s.processor.GetBridgesPublished(ctx, fromBlock, toBlock)
 }
 
 func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {

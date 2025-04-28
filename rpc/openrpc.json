@@ -119,6 +119,18 @@
             "type": "integer",
             "format": "uint64"
           }
+        },
+        {
+          "name": "networkIDs",
+          "description": "A list of destination network IDs to filter bridges by. If provided, only bridges matching one of the given network IDs will be returned.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint32"
+            }
+          }
         }
       ],
       "result": {
@@ -210,6 +222,18 @@
           "schema": {
             "type": "integer",
             "format": "uint32"
+          }
+        },
+        {
+          "name": "networkIDs",
+          "description": "A list of origin network IDs to filter claims by. If provided, only claims matching one of the given network IDs will be returned.",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "format": "uint32"
+            }
           }
         }
       ],

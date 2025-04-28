@@ -1,0 +1,152 @@
+name: Bats E2E Tests
+# This workflow runs the Bats E2E tests for aggkit.
+
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch: {}
+
+jobs:
+  build-aggkit-image:
+    uses: ./.github/workflows/build-aggkit-image.yml
+    with:
+      go-version: 1.24.x
+      docker-image-name: aggkit
+
+  read-aggkit-args:
+    name: Read aggkit args
+    runs-on: ubuntu-latest
+    outputs:
+      # single l2 network (fork 12, op-succinct)
+      kurtosis-cdk-args-single-fork12-op-succinct: ${{ steps.read-args.outputs.fork12_op_succinct_args }}
+      # single l2 network (fork 12, pessimistic)
+      kurtosis-cdk-args-single-fork12-pessimistic: ${{ steps.read-args.outputs.fork12_pessimistic_args }}
+      # multi l2 networks
+      kurtosis-cdk-args-1: ${{ steps.read-args.outputs.args-1 }}
+      kurtosis-cdk-args-2: ${{ steps.read-args.outputs.args-2 }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Read kurtosis-cdk-args from file
+        id: read-args
+        run: |
+          # single l2 network (fork 12, op-succinct)
+          CONTENT=$(cat ./.github/test_e2e_single_chain_fork12_op_succinct_args.json | jq -c .)
+          echo "fork12_op_succinct_args=${CONTENT}" >> $GITHUB_OUTPUT
+
+          # single l2 network (fork 12, pessimistic)
+          CONTENT=$(cat ./.github/test_e2e_single_chain_fork12_pessimistic_args.json | jq -c .)
+          echo "fork12_pessimistic_args=${CONTENT}" >> $GITHUB_OUTPUT
+
+          # multi l2 networks (l2 network 1)
+          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_1.json | jq -c .)
+          echo "args-1=${CONTENT}" >> $GITHUB_OUTPUT
+
+          # multi l2 networks (l2 network 2)
+          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_2.json | jq -c .)
+          echo "args-2=${CONTENT}" >> $GITHUB_OUTPUT
+
+  test-single-l2-network-fork12-pessimistic:
+    name: Single L2 chain tests (pessimistic)
+    needs:
+      - build-aggkit-image
+      - read-aggkit-args
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@39ca416f094e03ea7f22da7332b9ec5b3332bbaa
+    secrets: inherit
+    with:
+      docker-tag: local
+      kurtosis-cdk-ref: arpit/bridge-service
+      docker-artifact-name: aggkit
+      agglayer-e2e-ref: 39ca416f094e03ea7f22da7332b9ec5b3332bbaa
+      kurtosis-cdk-enclave-name: aggkit
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
+      test-name: "test-single-l2-network-fork12-pessimistic"
+
+  check-single-l2-network-fork12-pessimistic-tests-result:
+    name: Check results
+    needs:
+      - test-single-l2-network-fork12-pessimistic
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-pessimistic.result) }}
+
+  test-single-l2-network-fork12-op-succinct:
+    name: Single L2 chain tests (op-succinct)
+    needs:
+      - build-aggkit-image
+      - read-aggkit-args
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@39ca416f094e03ea7f22da7332b9ec5b3332bbaa
+    secrets: inherit
+    with:
+      docker-tag: local
+      kurtosis-cdk-ref: arpit/bridge-service
+      docker-artifact-name: aggkit
+      agglayer-e2e-ref: 39ca416f094e03ea7f22da7332b9ec5b3332bbaa
+      kurtosis-cdk-enclave-name: aggkit
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
+      test-name: "test-single-l2-network-fork12-op-succinct"
+
+  check-single-network-fork12-op-succinct-tests-result:
+    name: Check results
+    needs:
+      - test-single-l2-network-fork12-op-succinct
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-op-succinct.result) }}
+
+  build-tools:
+    name: Build aggsender find imported bridge tool
+    needs:
+      - build-aggkit-image
+    runs-on: amd-runner-2204
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: 1.24.x
+
+      - name: Build Aggsender Find Imported Bridge
+        run: make build-tools
+      
+      - name: Upload Binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: aggsender_find_imported_bridge
+          path: ./target/aggsender_find_imported_bridge
+
+  test-multi-l2-networks:
+    name: Multi chains E2E test
+    needs:
+      - build-aggkit-image
+      - build-tools
+      - read-aggkit-args
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@39ca416f094e03ea7f22da7332b9ec5b3332bbaa
+    secrets: inherit
+    with:
+      docker-tag: local
+      kurtosis-cdk-ref: arpit/bridge-service 
+      docker-artifact-name: aggkit
+      agglayer-e2e-ref: 0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f
+      kurtosis-cdk-enclave-name: aggkit
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
+      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
+
+  check-multi-l2-networks-tests-result:
+    name: Check results
+    needs:
+      - test-multi-l2-networks
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks.result) }}

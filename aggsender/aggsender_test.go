@@ -180,7 +180,7 @@ func TestAggSenderSendCertificates(t *testing.T) {
 			Epoch: 1,
 		}
 		bridgeL2SyncerMock.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(1), nil).Once()
-		bridgeL2SyncerMock.EXPECT().GetBridgesPublished(mock.Anything, mock.Anything, mock.Anything).Return([]bridgesync.Bridge{}, nil).Once()
+		bridgeL2SyncerMock.EXPECT().GetBridges(mock.Anything, mock.Anything, mock.Anything).Return([]bridgesync.Bridge{}, nil).Once()
 		aggSender.sendCertificates(ctx, 1)
 		bridgeL2SyncerMock.AssertExpectations(t)
 	})
@@ -474,7 +474,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	}, nil).Once()
 	mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 	mockL2Syncer.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(50), nil)
-	mockL2Syncer.EXPECT().GetBridgesPublished(mock.Anything, uint64(11), uint64(50)).Return([]bridgesync.Bridge{
+	mockL2Syncer.EXPECT().GetBridges(mock.Anything, uint64(11), uint64(50)).Return([]bridgesync.Bridge{
 		{
 			BlockNum:           30,
 			BlockPos:           0,
@@ -894,7 +894,7 @@ func TestLimitEpochPercent_Greater(t *testing.T) {
 		ToBlock:   20,
 		Status:    agglayertypes.Settled,
 	}, nil).Once()
-	testData.l2syncerMock.EXPECT().GetBridgesPublished(ctx, uint64(21), uint64(100)).Return(NewBridgesData(t, 0, []uint64{21, 21, 21, 22, 22, 22}), nil).Once()
+	testData.l2syncerMock.EXPECT().GetBridges(ctx, uint64(21), uint64(100)).Return(NewBridgesData(t, 0, []uint64{21, 21, 21, 22, 22, 22}), nil).Once()
 	testData.l2syncerMock.EXPECT().GetClaims(ctx, uint64(21), uint64(100)).Return(nil, nil).Once()
 	finalizedL1Block := &ethtypes.Header{Number: big.NewInt(50)}
 	testData.l1ClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(finalizedL1Block, nil).Once()

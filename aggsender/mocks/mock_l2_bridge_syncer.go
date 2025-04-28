@@ -130,12 +130,12 @@ func (_c *L2BridgeSyncer_GetBlockByLER_Call) RunAndReturn(run func(context.Conte
 	return _c
 }
 
-// GetBridgesPublished provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *L2BridgeSyncer) GetBridgesPublished(ctx context.Context, fromBlock uint64, toBlock uint64) ([]bridgesync.Bridge, error) {
+// GetBridges provides a mock function with given fields: ctx, fromBlock, toBlock
+func (_m *L2BridgeSyncer) GetBridges(ctx context.Context, fromBlock uint64, toBlock uint64) ([]bridgesync.Bridge, error) {
 	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetBridgesPublished")
+		panic("no return value specified for GetBridges")
 	}
 
 	var r0 []bridgesync.Bridge
@@ -160,32 +160,32 @@ func (_m *L2BridgeSyncer) GetBridgesPublished(ctx context.Context, fromBlock uin
 	return r0, r1
 }
 
-// L2BridgeSyncer_GetBridgesPublished_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBridgesPublished'
-type L2BridgeSyncer_GetBridgesPublished_Call struct {
+// L2BridgeSyncer_GetBridges_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetBridges'
+type L2BridgeSyncer_GetBridges_Call struct {
 	*mock.Call
 }
 
-// GetBridgesPublished is a helper method to define mock.On call
+// GetBridges is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fromBlock uint64
 //   - toBlock uint64
-func (_e *L2BridgeSyncer_Expecter) GetBridgesPublished(ctx interface{}, fromBlock interface{}, toBlock interface{}) *L2BridgeSyncer_GetBridgesPublished_Call {
-	return &L2BridgeSyncer_GetBridgesPublished_Call{Call: _e.mock.On("GetBridgesPublished", ctx, fromBlock, toBlock)}
+func (_e *L2BridgeSyncer_Expecter) GetBridges(ctx interface{}, fromBlock interface{}, toBlock interface{}) *L2BridgeSyncer_GetBridges_Call {
+	return &L2BridgeSyncer_GetBridges_Call{Call: _e.mock.On("GetBridges", ctx, fromBlock, toBlock)}
 }
 
-func (_c *L2BridgeSyncer_GetBridgesPublished_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *L2BridgeSyncer_GetBridgesPublished_Call {
+func (_c *L2BridgeSyncer_GetBridges_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *L2BridgeSyncer_GetBridges_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
 	})
 	return _c
 }
 
-func (_c *L2BridgeSyncer_GetBridgesPublished_Call) Return(_a0 []bridgesync.Bridge, _a1 error) *L2BridgeSyncer_GetBridgesPublished_Call {
+func (_c *L2BridgeSyncer_GetBridges_Call) Return(_a0 []bridgesync.Bridge, _a1 error) *L2BridgeSyncer_GetBridges_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L2BridgeSyncer_GetBridgesPublished_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]bridgesync.Bridge, error)) *L2BridgeSyncer_GetBridgesPublished_Call {
+func (_c *L2BridgeSyncer_GetBridges_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]bridgesync.Bridge, error)) *L2BridgeSyncer_GetBridges_Call {
 	_c.Call.Return(run)
 	return _c
 }

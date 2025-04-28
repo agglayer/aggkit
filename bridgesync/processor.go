@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"strings"
 	mutex "sync"
 
 	"github.com/agglayer/aggkit/bridgesync/migrations"
@@ -75,8 +76,8 @@ type Bridge struct {
 	IsNativeToken      bool           `meddler:"is_native_token" json:"is_native_token"`
 }
 
-// Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
 // Hash returns the hash of the bridge event as expected by the exit tree
+// Note: can't change the Hash() here after adding BlockTimestamp and TxHash. Might affect previous versions
 func (b *Bridge) Hash() common.Hash {
 	const (
 		uint32ByteSize = 4
@@ -90,7 +91,7 @@ func (b *Bridge) Hash() common.Hash {
 	metaHash := keccak256.Hash(b.Metadata)
 	var buf [bigIntSize]byte
 	if b.Amount == nil {
-		b.Amount = big.NewInt(0)
+		b.Amount = common.Big0
 	}
 
 	return common.BytesToHash(keccak256.Hash(
@@ -108,6 +109,14 @@ func (b *Bridge) Hash() common.Hash {
 type BridgeResponse struct {
 	BridgeHash common.Hash `json:"bridge_hash"`
 	Bridge
+}
+
+// NewBridgeResponse creates a new BridgeResponse instance out of the provided Bridge instance
+func NewBridgeResponse(bridge *Bridge) *BridgeResponse {
+	return &BridgeResponse{
+		Bridge:     *bridge,
+		BridgeHash: bridge.Hash(),
+	}
 }
 
 // MarshalJSON for hex-encoding Metadata field
@@ -292,6 +301,22 @@ type ClaimResponse struct {
 	FromAddress        common.Address `json:"from_address"`
 }
 
+// NewClaimResponse creates ClaimResponse instance out of the provided Claim
+func NewClaimResponse(claim *Claim) *ClaimResponse {
+	return &ClaimResponse{
+		GlobalIndex:        claim.GlobalIndex,
+		DestinationNetwork: claim.DestinationNetwork,
+		TxHash:             claim.TxHash,
+		Amount:             claim.Amount,
+		BlockNum:           claim.BlockNum,
+		FromAddress:        claim.FromAddress,
+		DestinationAddress: claim.DestinationAddress,
+		OriginAddress:      claim.OriginAddress,
+		OriginNetwork:      claim.OriginNetwork,
+		BlockTimestamp:     claim.BlockTimestamp,
+	}
+}
+
 type TokenMappingType uint8
 
 const (
@@ -398,12 +423,6 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 	}, nil
 }
 
-func (p *processor) GetBridgesPublished(
-	ctx context.Context, fromBlock, toBlock uint64,
-) ([]Bridge, error) {
-	return p.GetBridges(ctx, fromBlock, toBlock)
-}
-
 //nolint:dupl
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
@@ -471,7 +490,7 @@ func (p *processor) GetClaims(
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64,
+	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32,
 ) ([]*BridgeResponse, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -483,16 +502,17 @@ func (p *processor) GetBridgesPaged(
 		}
 	}()
 	orderByClause := "deposit_count DESC"
-	whereClause := ""
 	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName)
 	if err != nil {
 		return nil, 0, err
 	}
+
+	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs)
 	if depositCount != nil {
-		whereClause = fmt.Sprintf("WHERE deposit_count = %d", *depositCount)
 		pageNumber = 1
 		pageSize = 1
 	}
+
 	offset := (pageNumber - 1) * pageSize
 	if offset >= uint32(bridgesCount) {
 		p.log.Debugf("provided page number is invalid for given page size and total number of bridges"+
@@ -520,10 +540,7 @@ func (p *processor) GetBridgesPaged(
 	}
 	bridgeResponsePtrs := make([]*BridgeResponse, len(bridgePtrs))
 	for i, bridgePtr := range bridgePtrs {
-		bridgeResponsePtrs[i] = &BridgeResponse{
-			Bridge:     *bridgePtr,
-			BridgeHash: bridgePtr.Hash(),
-		}
+		bridgeResponsePtrs[i] = NewBridgeResponse(bridgePtr)
 	}
 	if depositCount != nil {
 		bridgesCount = len(bridgePtrs)
@@ -531,8 +548,27 @@ func (p *processor) GetBridgesPaged(
 	return bridgeResponsePtrs, bridgesCount, nil
 }
 
+// buildBridgesFilterClause builds the WHERE clause for the bridges table
+// based on the provided depositCount and networkIDs
+func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32) string {
+	const clauseCapacity = 2
+	clauses := make([]string, 0, clauseCapacity)
+	if depositCount != nil {
+		clauses = append(clauses, fmt.Sprintf("deposit_count = %d", *depositCount))
+	}
+
+	if len(networkIDs) > 0 {
+		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "destination_network"))
+	}
+
+	if len(clauses) > 0 {
+		return "WHERE " + strings.Join(clauses, " AND ")
+	}
+	return ""
+}
+
 func (p *processor) GetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32,
+	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32,
 ) ([]*ClaimResponse, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -558,6 +594,16 @@ func (p *processor) GetClaimsPaged(
 
 	orderByClause := "block_num DESC, block_pos DESC"
 	whereClause := ""
+
+	if len(networkIDs) > 0 {
+		networkIDsFilter := buildNetworkIDsFilter(networkIDs, "origin_network")
+		if len(whereClause) > 0 {
+			whereClause += " AND " + networkIDsFilter
+		} else {
+			whereClause = "WHERE " + networkIDsFilter
+		}
+	}
+
 	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -579,18 +625,7 @@ func (p *processor) GetClaimsPaged(
 
 	claimResponsePtrs := make([]*ClaimResponse, len(claimPtrs))
 	for i, claimPtr := range claimPtrs {
-		claimResponsePtrs[i] = &ClaimResponse{
-			GlobalIndex:        claimPtr.GlobalIndex,
-			DestinationNetwork: claimPtr.DestinationNetwork,
-			TxHash:             claimPtr.TxHash,
-			Amount:             claimPtr.Amount,
-			BlockNum:           claimPtr.BlockNum,
-			FromAddress:        claimPtr.FromAddress,
-			DestinationAddress: claimPtr.DestinationAddress,
-			OriginAddress:      claimPtr.OriginAddress,
-			OriginNetwork:      claimPtr.OriginNetwork,
-			BlockTimestamp:     claimPtr.BlockTimestamp,
-		}
+		claimResponsePtrs[i] = NewClaimResponse(claimPtr)
 	}
 
 	return claimResponsePtrs, claimsCount, nil
@@ -906,6 +941,15 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	}
 
 	return tokenMappings, nil
+}
+
+// buildNetworkIDsFilter builds SQL filter for the given network IDs
+func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
+	placeholders := make([]string, len(networkIDs))
+	for i, id := range networkIDs {
+		placeholders[i] = fmt.Sprintf("%d", id)
+	}
+	return fmt.Sprintf("%s IN (%s)", networkIDColumn, strings.Join(placeholders, ", "))
 }
 
 func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
