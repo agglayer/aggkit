@@ -49,7 +49,7 @@ jobs:
           echo "args-2=${CONTENT}" >> $GITHUB_OUTPUT
 
   test-single-l2-network-fork12-pessimistic:
-    name: Single L2 chain tests
+    name: Single L2 chain tests (pessimistic)
     needs:
       - build-aggkit-image
       - read-aggkit-args
@@ -75,7 +75,7 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-pessimistic.result) }}
 
   test-single-l2-network-fork12-op-succinct:
-    name: Single L2 chain tests
+    name: Single L2 chain tests (op-succinct)
     needs:
       - build-aggkit-image
       - read-aggkit-args
