@@ -112,7 +112,7 @@ Implements `ChainSender` using Ethereum clients and transaction management.
 - **Contract**: `GlobalExitRootManagerL2SovereignChain.sol`
 - **Function**: `insertGlobalExitRoot`
     - [Source Code](https://github.com/0xPolygonHermez/zkevm-contracts/blob/feature/audit-remediations/contracts/v2/sovereignChains/GlobalExitRootManagerL2SovereignChain.sol#L89-L103)
-- **Bindings**: Available in [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/l2-sovereign-chain).
+- **Bindings**: Available in [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/pp/l2-sovereign-chain).
 
 ---
 
