@@ -276,7 +276,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context
 		return 0, err
 	}
 
-	// Binary search between the first and last blcoks where L1 info tree was updated.
+	// Binary search between the first and last blocks where L1 info tree was updated.
 	// Find the smallest l1 info tree index that is greater than depositCount and matches with
 	// a MER that is included on the l1 info tree
 	bestResult := lastInfo
@@ -329,7 +329,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 		return 0, err
 	}
 
-	// Binary search between the first and last blcoks where batches were verified.
+	// Binary search between the first and last blocks where batches were verified.
 	// Find the smallest deposit count that is greater than depositCount and matches with
 	// a LER that is verified
 	bestResult := lastVerified
