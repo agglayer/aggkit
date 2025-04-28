@@ -1,0 +1,103 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+log_info() {
+    echo -e "${GREEN}[INFO]${NC} $*" | tee -a "$LOG_FILE"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $*" | tee -a "$LOG_FILE"
+}
+
+trap 'log_error "Script failed at line $LINENO"' ERR
+
+if [ "$#" -ne 3 ]; then
+    echo "Usage: $0 <test_type: single-chain-fork12-op-succinct | single-chain-fork12-pessimictic | multi-chain> <path_to_kurtosis_cdk_repo> <path_to_e2e_repo>"
+    exit 1
+fi
+
+TEST_TYPE=$1
+KURTOSIS_FOLDER=$2
+E2E_FOLDER=$3
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+ROOT_FOLDER="/tmp/aggkit-e2e-run"
+LOG_FOLDER="$ROOT_FOLDER/logs"
+LOG_FILE="$LOG_FOLDER/run-local-e2e.log"
+ENCLAVE_NAME="aggkit"
+
+rm -rf "$ROOT_FOLDER"
+mkdir -p "$LOG_FOLDER"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+log_info "Starting local E2E setup..."
+
+# Build aggkit Docker Image if it doesn't exist
+if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ]; then
+    log_info "Building aggkit:local docker image..."
+    pushd "$SCRIPT_DIR" > /dev/null
+    make build-docker
+    popd > /dev/null
+else
+    log_info "Docker image aggkit:local already exists."
+fi
+
+log_info "Using provided Kurtosis CDK repo at: $KURTOSIS_FOLDER"
+
+pushd "$KURTOSIS_FOLDER" > /dev/null
+log_info "Cleaning any existing Kurtosis enclaves..."
+kurtosis clean --all
+
+# Start Kurtosis Enclave 
+log_info "Starting Kurtosis enclave: $ENCLAVE_NAME"
+
+if [ "$TEST_TYPE" == "single-chain-fork12-op-succinct" ]; then
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
+elif [ "$TEST_TYPE" == "single-chain-fork12-pessimictic" ]; then
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_single_chain_fork12_pessimistic_args.json" .
+elif [ "$TEST_TYPE" == "multi-chain" ]; then
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_multi_chains_args_1.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_multi_chains_args_2.json" .
+
+    make build-tools
+    chmod +x "./target/aggsender_find_imported_bridge"
+    export AGGSENDER_IMPORTED_BRIDGE_PATH="./target/aggsender_find_imported_bridge"
+else
+    log_error "Unknown test type: $TEST_TYPE"
+    exit 1
+fi
+
+log_info "Aggkit enclave started successfully."
+popd > /dev/null
+
+log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
+
+pushd "$E2E_FOLDER" > /dev/null
+
+# Setup environment
+log_info "Setting up e2e environment..."
+set -a
+source ./tests/.env
+set +a
+
+export BATS_LIB_PATH="$PWD/core/helpers/lib"
+export PROJECT_ROOT="$PWD"
+export ENCLAVE="$ENCLAVE_NAME"
+
+log_info "Running BATS E2E tests..."
+if [ "$TEST_TYPE" == "single-chain-fork12-op-succinct" ]; then
+    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-msg.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-native-token-e2e.bats
+elif [ "$TEST_TYPE" == "single-chain-fork12-pessimictic" ]; then
+    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-msg.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-native-token-e2e.bats
+elif [ "$TEST_TYPE" == "multi-chain" ]; then
+    bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
+fi
+
+popd > /dev/null
+log_info "E2E tests executed. Logs saved to $LOG_FILE"
