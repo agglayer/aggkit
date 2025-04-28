@@ -30,7 +30,7 @@ func TestCheckCompatibilityData(t *testing.T) {
 	getterFunc := func(ctx context.Context) (testBindData, error) {
 		return testBindData{a: 1}, nil
 	}
-	sut := NewCompatibilityCheck[testBindData](true, getterFunc, storageMock)
+	sut := NewCompatibilityCheck(true, getterFunc, storageMock)
 	ctx := context.Background()
 
 	t.Run("Fails read from DB", func(t *testing.T) {

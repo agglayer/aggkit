@@ -914,7 +914,7 @@ func TestGetBridgesPublished(t *testing.T) {
 			require.NoError(t, tx.Commit())
 
 			ctx := context.Background()
-			bridges, err := p.GetBridgesPublished(ctx, tc.fromBlock, tc.toBlock)
+			bridges, err := p.GetBridges(ctx, tc.fromBlock, tc.toBlock)
 
 			if tc.expectedError != nil {
 				require.Equal(t, tc.expectedError, err)

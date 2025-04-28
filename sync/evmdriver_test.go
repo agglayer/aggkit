@@ -27,7 +27,7 @@ func TestSync(t *testing.T) {
 	}
 	rdm := NewReorgDetectorMock(t)
 	pm := NewProcessorMock(t)
-	dm := NewEVMDownloaderMock(t)
+	dm := NewDownloaderMock(t)
 	compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
 
 	firstReorgedBlock := make(chan uint64)
@@ -131,7 +131,7 @@ func TestHandleNewBlock(t *testing.T) {
 	}
 	rdm := NewReorgDetectorMock(t)
 	pm := NewProcessorMock(t)
-	dm := NewEVMDownloaderMock(t)
+	dm := NewDownloaderMock(t)
 	rdm.On("Subscribe", reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
 	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, true)
 	require.NoError(t, err)
@@ -211,7 +211,7 @@ func TestHandleReorg(t *testing.T) {
 	}
 	rdm := NewReorgDetectorMock(t)
 	pm := NewProcessorMock(t)
-	dm := NewEVMDownloaderMock(t)
+	dm := NewDownloaderMock(t)
 	reorgProcessed := make(chan bool)
 	rdm.On("Subscribe", reorgDetectorID).Return(&reorgdetector.Subscription{
 		ReorgProcessed: reorgProcessed,
@@ -242,7 +242,7 @@ func TestHandleReorg(t *testing.T) {
 func TestCheckCompatibility(t *testing.T) {
 	reorgDetectorMock := NewReorgDetectorMock(t)
 	processorMock := NewProcessorMock(t)
-	evmDownloaderMock := NewEVMDownloaderMock(t)
+	downloaderMock := NewDownloaderMock(t)
 	retryHandler := &RetryHandler{
 		MaxRetryAttemptsAfterError: 1,
 		RetryAfterErrorPeriod:      time.Millisecond * 1,
@@ -251,7 +251,7 @@ func TestCheckCompatibility(t *testing.T) {
 
 	reorgDetectorMock.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
 
-	driver, err := NewEVMDriver(reorgDetectorMock, processorMock, evmDownloaderMock, reorgDetectorID, 10, retryHandler, true)
+	driver, err := NewEVMDriver(reorgDetectorMock, processorMock, downloaderMock, reorgDetectorID, 10, retryHandler, true)
 	require.NoError(t, err)
 	driver.compatibilityChecker = compatibilityCheckerMock
 	t.Run("pass compatibility check", func(t *testing.T) {

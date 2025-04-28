@@ -42,7 +42,7 @@ func (f *baseFlow) getBridgesAndClaims(
 	fromBlock, toBlock uint64,
 	allowEmptyCert bool,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
-	bridges, err := f.l2Syncer.GetBridgesPublished(ctx, fromBlock, toBlock)
+	bridges, err := f.l2Syncer.GetBridges(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
 	}
@@ -453,6 +453,10 @@ func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.
 		}
 
 		retryCount = lastSentCertificateInfo.RetryCount + 1
+	} else if lastSentCertificateInfo.ToBlock < f.startL2Block {
+		// if the last sent block is less than the start L2 block read from the rollup contract
+		// we need to start from the start L2 block
+		lastSentBlock = f.startL2Block
 	}
 
 	return lastSentBlock, retryCount

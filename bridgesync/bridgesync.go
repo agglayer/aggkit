@@ -293,13 +293,6 @@ func (s *BridgeSync) GetBridges(ctx context.Context, fromBlock, toBlock uint64) 
 	return s.processor.GetBridges(ctx, fromBlock, toBlock)
 }
 
-func (s *BridgeSync) GetBridgesPublished(ctx context.Context, fromBlock, toBlock uint64) ([]Bridge, error) {
-	if s.processor.isHalted() {
-		return nil, sync.ErrInconsistentState
-	}
-	return s.processor.GetBridgesPublished(ctx, fromBlock, toBlock)
-}
-
 func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState

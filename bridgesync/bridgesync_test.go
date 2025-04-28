@@ -169,12 +169,6 @@ func TestGetClaims(t *testing.T) {
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
-func TestGetBridgesPublishedTopLevel(t *testing.T) {
-	s := BridgeSync{processor: &processor{halted: true}}
-	_, err := s.GetBridgesPublished(context.Background(), 0, 0)
-	require.ErrorIs(t, err, sync.ErrInconsistentState)
-}
-
 func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	const (
 		syncBlockChunkSize         = uint64(100)
