@@ -141,7 +141,7 @@ MaxRequestsPerIPAndSecond = 10
 
 [ClaimSponsor]
 DBPath = "{{PathRWData}}/claimsponsor.sqlite"
-Enabled = false
+Enabled = true
 SenderAddr = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 BridgeAddrL2 = "0xB7098a13a48EcE087d3DA15b2D28eCE0f89819B8"
 MaxGas = 200000
@@ -168,7 +168,9 @@ GasOffset = 0
 			[ClaimSponsor.EthTxManager.Etherman]
 				URL = "{{L2URL}}"
 				MultiGasProvider = false
-				L1ChainID = {{NetworkConfig.L1.L1ChainID}}
+				# L1ChainID = 0 indicates it will be set at runtime
+				# This field should be populated with L2ChainID 
+				L1ChainID = 0
 				HTTPHeaders = []
 
 [BridgeL1Sync]

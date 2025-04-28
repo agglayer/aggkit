@@ -139,7 +139,7 @@ func (c *ClaimSponsor) claim(ctx context.Context) error {
 		}
 		txID, err := c.sender.sendClaim(ctx, claim)
 		if err != nil {
-			return fmt.Errorf("error getting sending claim: %w", err)
+			return fmt.Errorf("error sending claim: %w", err)
 		}
 		if err := c.updateClaimTxID(claim.GlobalIndex, txID); err != nil {
 			return fmt.Errorf("error updating claim txID: %w", err)
