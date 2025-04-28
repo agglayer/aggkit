@@ -169,7 +169,7 @@ func (e *EpochNotifierPerBlock) step(status internalStatus,
 	if needNotify {
 		logFunc = e.logger.Infof
 	}
-	logFunc("New block seen [finality:%s]: %d. blockRate:%s Epoch:%d Percent:%.3f%% notify:%v config:%s",
+	logFunc("New block seen [finality:%s]: %d. blockRate:%s Epoch:%d Percent:%.2f%% notify:%v config:%s",
 		newBlock.BlockFinalityType, newBlock.BlockNumber, newBlock.BlockRate, closingEpoch,
 		percentEpoch*maxPercent, needNotify, e.Config.String())
 	if needNotify {

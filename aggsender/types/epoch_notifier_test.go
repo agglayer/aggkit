@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestXxx(t *testing.T) {
+func TestEpochStatus_String(t *testing.T) {
 	epochStatus := EpochStatus{
 		Epoch:        1,
 		PercentEpoch: 0.52143244564354354,
