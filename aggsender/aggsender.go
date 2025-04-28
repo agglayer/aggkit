@@ -117,7 +117,7 @@ func New(
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
 
-	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck[db.RuntimeData](
+	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck(
 		cfg.RequireStorageContentCompatibility,
 		func(ctx context.Context) (db.RuntimeData, error) {
 			return db.RuntimeData{NetworkID: l2Syncer.OriginNetwork()}, nil

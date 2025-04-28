@@ -42,7 +42,7 @@ func (f *baseFlow) getBridgesAndClaims(
 	fromBlock, toBlock uint64,
 	allowEmptyCert bool,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
-	bridges, err := f.l2Syncer.GetBridgesPublished(ctx, fromBlock, toBlock)
+	bridges, err := f.l2Syncer.GetBridges(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
 	}

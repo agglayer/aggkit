@@ -252,13 +252,6 @@ func (s *BridgeSync) GetBridges(ctx context.Context, fromBlock, toBlock uint64) 
 	return s.processor.GetBridges(ctx, fromBlock, toBlock)
 }
 
-func (s *BridgeSync) GetBridgesPublished(ctx context.Context, fromBlock, toBlock uint64) ([]Bridge, error) {
-	if s.processor.isHalted() {
-		return nil, sync.ErrInconsistentState
-	}
-	return s.processor.GetBridgesPublished(ctx, fromBlock, toBlock)
-}
-
 func (s *BridgeSync) GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error) {
 	if s.processor.isHalted() {
 		return tree.Proof{}, sync.ErrInconsistentState

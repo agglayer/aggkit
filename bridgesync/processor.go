@@ -131,11 +131,6 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 		),
 	}, nil
 }
-func (p *processor) GetBridgesPublished(
-	ctx context.Context, fromBlock, toBlock uint64,
-) ([]Bridge, error) {
-	return p.GetBridges(ctx, fromBlock, toBlock)
-}
 
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,

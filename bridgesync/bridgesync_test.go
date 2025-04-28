@@ -163,9 +163,3 @@ func TestGetClaims(t *testing.T) {
 	_, err := s.GetClaims(context.Background(), 0, 0)
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
-
-func TestGetBridgesPublishedTopLevel(t *testing.T) {
-	s := BridgeSync{processor: &processor{halted: true}}
-	_, err := s.GetBridgesPublished(context.Background(), 0, 0)
-	require.True(t, errors.Is(err, sync.ErrInconsistentState))
-}

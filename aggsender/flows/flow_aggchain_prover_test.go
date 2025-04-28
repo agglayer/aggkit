@@ -91,7 +91,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						EndBlock:        10,
 					},
 				}, nil)
-				mockL2Syncer.EXPECT().GetBridgesPublished(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
@@ -146,7 +146,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					ToBlock:   10,
 					Status:    agglayertypes.InError,
 				}, nil)
-				mockL2Syncer.EXPECT().GetBridgesPublished(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
@@ -218,7 +218,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockStorage.EXPECT().GetLastSentCertificate().Return(nil, nil).Twice()
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2Syncer.EXPECT().GetBridgesPublished(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
@@ -266,7 +266,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil).Twice()
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2Syncer.EXPECT().GetBridgesPublished(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{{
 					GlobalIndex:     big.NewInt(1),
 					GlobalExitRoot:  ger,
@@ -334,7 +334,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil).Twice()
 				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2Syncer.EXPECT().GetBridgesPublished(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{
+				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{
 					{BlockNum: 6}, {BlockNum: 10}}, nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
 					{BlockNum: 8, GlobalIndex: big.NewInt(1), GlobalExitRoot: ger, MainnetExitRoot: mer, RollupExitRoot: rer},
