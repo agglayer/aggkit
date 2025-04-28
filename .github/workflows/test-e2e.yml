@@ -1,4 +1,5 @@
-name: Test E2E (single + multi chains)
+name: Bats E2E Tests
+# This workflow runs the Bats E2E tests for aggkit.
 
 on:
   push:
@@ -13,7 +14,7 @@ jobs:
       go-version: 1.24.x
       docker-image-name: aggkit
 
-  test-e2e-single-chain:
+  single-l2-chain:
     needs: build-aggkit-image
     runs-on: amd-runner-2204
     timeout-minutes: 30
@@ -92,7 +93,7 @@ jobs:
           name: ${{ env.ARCHIVE_NAME }}
           path: ./dump
 
-  test-e2e-multi-chains:
+  multi-l2-chains:
     needs: build-aggkit-image
     runs-on: amd-runner-2204
     timeout-minutes: 30
