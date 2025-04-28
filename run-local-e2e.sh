@@ -17,7 +17,7 @@ log_error() {
 trap 'log_error "Script failed at line $LINENO"' ERR
 
 if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <test_type: single-chain | multi-chain> <path_to_kurtosis_cdk_repo> <path_to_e2e_repo>"
+    echo "Usage: $0 <test_type: single-chain-fork12-op-succinct | single-chain-fork12-pessimictic | multi-chain> <path_to_kurtosis_cdk_repo> <path_to_e2e_repo>"
     exit 1
 fi
 
@@ -57,8 +57,10 @@ kurtosis clean --all
 # Start Kurtosis Enclave 
 log_info "Starting Kurtosis enclave: $ENCLAVE_NAME"
 
-if [ "$TEST_TYPE" == "single-chain" ]; then
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_single_chain_args.json" .
+if [ "$TEST_TYPE" == "single-chain-fork12-op-succinct" ]; then
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
+elif [ "$TEST_TYPE" == "single-chain-fork12-pessimictic" ]; then
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_single_chain_fork12_pessimistic_args.json" .
 elif [ "$TEST_TYPE" == "multi-chain" ]; then
     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_multi_chains_args_1.json" .
     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_multi_chains_args_2.json" .
@@ -89,8 +91,10 @@ export PROJECT_ROOT="$PWD"
 export ENCLAVE="$ENCLAVE_NAME"
 
 log_info "Running BATS E2E tests..."
-if [ "$TEST_TYPE" == "single-chain" ]; then
-    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-msg.bats ./tests/aggkit/e2e-pp.bats
+if [ "$TEST_TYPE" == "single-chain-fork12-op-succinct" ]; then
+    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-msg.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-native-token-e2e.bats
+elif [ "$TEST_TYPE" == "single-chain-fork12-pessimictic" ]; then
+    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-msg.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-native-token-e2e.bats
 elif [ "$TEST_TYPE" == "multi-chain" ]; then
     bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
 fi
