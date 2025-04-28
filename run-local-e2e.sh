@@ -34,7 +34,7 @@ ENCLAVE_NAME="aggkit"
 rm -rf "$ROOT_FOLDER"
 mkdir -p "$LOG_FOLDER"
 
-exec > >(tee -a "$LOG_FILE") 2>&1
+# exec > >(tee -a "$LOG_FILE") 2>&1
 
 log_info "Starting local E2E setup..."
 
@@ -43,6 +43,9 @@ if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ]; then
     log_info "Building aggkit:local docker image..."
     pushd "$SCRIPT_DIR" > /dev/null
     make build-docker
+    make build-tools
+    chmod +x "./target/aggsender_find_imported_bridge"
+    export AGGSENDER_IMPORTED_BRIDGE_PATH="./target/aggsender_find_imported_bridge"
     popd > /dev/null
 else
     log_info "Docker image aggkit:local already exists."
@@ -65,9 +68,6 @@ elif [ "$TEST_TYPE" == "multi-chain" ]; then
     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_multi_chains_args_1.json" .
     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_multi_chains_args_2.json" .
 
-    make build-tools
-    chmod +x "./target/aggsender_find_imported_bridge"
-    export AGGSENDER_IMPORTED_BRIDGE_PATH="./target/aggsender_find_imported_bridge"
 else
     log_error "Unknown test type: $TEST_TYPE"
     exit 1
@@ -89,6 +89,7 @@ set +a
 export BATS_LIB_PATH="$PWD/core/helpers/lib"
 export PROJECT_ROOT="$PWD"
 export ENCLAVE="$ENCLAVE_NAME"
+export DISABLE_L2_FUND="true"
 
 log_info "Running BATS E2E tests..."
 if [ "$TEST_TYPE" == "single-chain-fork12-op-succinct" ]; then
