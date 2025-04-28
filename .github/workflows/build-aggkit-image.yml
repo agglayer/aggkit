@@ -1,4 +1,5 @@
 name: Build Aggkit Image
+
 on:
   workflow_call:
     inputs:
