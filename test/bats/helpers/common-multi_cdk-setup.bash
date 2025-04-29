@@ -17,9 +17,7 @@ _common_multi_setup() {
     readonly bridge_address=$(cat combined-001.json | jq -r .polygonZkEVMBridgeAddress)
     readonly pol_address=$(cat combined-001.json | jq -r .polTokenAddress)
     readonly rollup_params_file=/opt/zkevm/create_rollup_parameters.json
-    run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | kurtosis_filer_exec_method | jq -r '.gasTokenAddress'"
-    assert_success
-    readonly gas_token_addr=$output
+    readonly gas_token_addr=$($contracts_service_wrapper "cat $rollup_params_file" | kurtosis_filer_exec_method | jq -r '.gasTokenAddress')
     readonly l2_pp1b_url=$(kurtosis port print $enclave zkevm-bridge-service-001 rpc)
     readonly l2_pp2b_url=$(kurtosis port print $enclave zkevm-bridge-service-002 rpc)
     readonly l2_pp1_cdk_node_url=$(kurtosis port print $enclave cdk-node-001 rpc)

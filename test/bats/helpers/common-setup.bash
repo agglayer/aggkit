@@ -70,11 +70,13 @@ _common_setup() {
         local threshold=100000000000000000
 
         # Only fund if balance is less than or equal to 0.1 ether
-        if [[ $token_balance -le $threshold ]]; then
+        # it's a real big number that bash can handle, so we comapre the length 
+        # of both strings
+        if [[ ${#token_balance} -le ${#threshold} ]]; then
             local l2_coinbase_key="ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
             local amount="1000ether"
 
-            echo "💸 $test_account_addr L2 balance is low (≤ 0.1 ETH), funding with amount=$amount..." >&3
+            echo "💸 $test_account_addr L2 balance ($token_balance) is low (≤ 0.1 ETH), funding with amount=$amount..." >&3
             fund "$l2_coinbase_key" "$test_account_addr" "$amount" "$l2_rpc_url"
             if [ $? -ne 0 ]; then
                 echo "❌ Funding L2 receiver $test_account_addr failed" >&2
