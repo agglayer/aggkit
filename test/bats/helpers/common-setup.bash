@@ -70,7 +70,7 @@ _common_setup() {
         local threshold=100000000000000000
 
         # Only fund if balance is less than or equal to 0.1 ether
-        # it's a real big number that bash can handle, so we comapre the length 
+        # it's a real big number that bash can handle, so we compare the length 
         # of both strings
         if [[ ${#token_balance} -le ${#threshold} ]]; then
             local l2_coinbase_key="ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
