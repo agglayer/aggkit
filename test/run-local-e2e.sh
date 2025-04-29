@@ -96,7 +96,7 @@ log_info "Running BATS E2E tests..."
 if [ "$TEST_TYPE" == "single-l2-network-fork12-op-succinct" ]; then
     bats ./tests/aggkit/bridge-e2e.bats
 elif [ "$TEST_TYPE" == "single-l2-network-fork12-pessimistic" ]; then
-    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-custom-gas.bats
+    bats ./tests/aggkit/bridge-e2e-custom-gas.bats ./tests/aggkit/bridge-e2e.bats
 elif [ "$TEST_TYPE" == "multi-l2-networks" ]; then
     bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
 fi
