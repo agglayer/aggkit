@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 _common_setup() {
+    load '../helpers/common'
     bats_load_library 'bats-support'
     if [ $? -ne 0 ]; then return 1; fi
 
@@ -92,9 +93,11 @@ _common_setup() {
     if [[ -z "${L1_BRIDGE_ADDRESS}" || -z "${L2_BRIDGE_ADDRESS}" ]]; then
         local combined_json_file="/opt/zkevm/combined.json"
         echo "ℹ️ Some bridge addresses are missing, fetching from Kurtosis CDK artifact: $combined_json_file" >&3
-
-        combined_json_output="$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)"
-        if [ $? -ne 0 ]; then
+        kurtosis_download_file_exec_method $enclave "contracts-001" "/opt/zkevm/combined.json" > combined.json
+        local combined_json_output="$(cat combined.json)"
+        #combined_json_output="$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)"
+        echo "combined_json_output=$combined_json_output" >&2
+        if [[ $? -ne 0  ||  -z $combined_json_output ]] ; then
             echo "❌ Failed to read $combined_json_file from Kurtosis CDK" >&2
             return 1
         fi
@@ -154,7 +157,7 @@ function fund() {
 
         # Bump gas price by 50%
         local gas_price
-        gas_price=$(printf "%.0f" "$(echo "$raw_gas_price * 1.5" | bc -l)")
+        gas_price=$(echo "$raw_gas_price * 1.5" | bc -l | cut -f 1 -d '.')
         echo "Using bumped gas price: $gas_price [wei] (original: $raw_gas_price [wei])" >&2
 
         cast send --rpc-url "$rpc_url" \

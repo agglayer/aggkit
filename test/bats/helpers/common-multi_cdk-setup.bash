@@ -6,10 +6,12 @@ _common_multi_setup() {
     # generated with cast wallet new
     readonly target_address=0xbecE3a31343c6019CDE0D5a4dF2AF8Df17ebcB0f
     readonly target_private_key=0x51caa196504216b1730280feb63ddd8c5ae194d13e57e58d559f1f1dc3eda7c9
-
-    kurtosis service exec $enclave contracts-001 "cat /opt/zkevm/combined-001.json" | tail -n +2 | jq '.' >combined-001.json
-    kurtosis service exec $enclave contracts-002 "cat /opt/zkevm/combined-002.json" | tail -n +2 | jq '.' >combined-002.json
-
+    
+    #kurtosis service exec $enclave contracts-001 "cat /opt/zkevm/combined-001.json" | tail -n +2 | jq '.' >combined-001.json
+    #kurtosis service exec $enclave contracts-002 "cat /opt/zkevm/combined-002.json" | tail -n +2 | jq '.' >combined-002.json
+    kurtosis_download_file_exec_method $enclave "contracts-001" "/opt/zkevm/combined-001.json" | jq '.' >combined-001.json
+    kurtosis_download_file_exec_method $enclave "contracts-002" "/opt/zkevm/combined-001.json" | jq '.' >combined-002.json
+    
     readonly private_key="0x12d7de8621a77640c9241b2595ba78ce443d05e94090365ab3bb5e19df82c625"
     readonly eth_address=$(cast wallet address --private-key $private_key)
     readonly l1_rpc_url=http://$(kurtosis port print $enclave el-1-geth-lighthouse rpc)

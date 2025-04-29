@@ -413,3 +413,26 @@ function get_token_balance() {
 function log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" >&3
 }
+
+
+function kurtosis_download_file_exec_method() {
+    local _enclave="$1"
+    local _service="$2"
+    local _file_path="$3"
+    if [ -z $_file_path ]; then
+        echo "Error: file_path parameter is not set." >&2
+        return 1
+    fi
+   local _kurtosis_version=$(kurtosis version | cut -d ':'  -f 2 | head -n 1)
+    # Download the file using kurtosis
+    # versions previous 1.7.0 first line in stdout is
+    # "The command was successfully executed and returned '0'."
+    # After this version this line is output in stderr
+    dpkg --compare-versions "$_kurtosis_version" "ge" "1.7.0" && { 
+         echo "✅ kurtosis $_kurtosis_version > 1.7.0" >&2
+        kurtosis service exec "$_enclave" "$_service" "cat $_file_path" 
+        }   || {
+            echo "✅ kurtosis $_kurtosis_version < 1.7.0  removing first line" >&2
+        kurtosis service exec "$_enclave" "$_service" "cat $_file_path" | tail -n +2 
+        }
+}
