@@ -12,10 +12,10 @@ DROP COLUMN hash;
 
 -- +migrate Up
 ALTER TABLE token_mapping
-ADD COLUMN is_not_mintable BOOLEAN NOT NULL;
+ADD COLUMN is_not_mintable BOOLEAN NOT NULL DEFAULT 0;
 
 ALTER TABLE token_mapping
-ADD COLUMN token_type SMALLINT NOT NULL;
+ADD COLUMN token_type SMALLINT NOT NULL DEFAULT 0;
 
 CREATE TABLE
     legacy_token_migration (
