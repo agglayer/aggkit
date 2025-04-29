@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/rpc/types"
@@ -21,8 +22,8 @@ const (
 	BRIDGE    = "bridge"
 	meterName = "github.com/agglayer/aggkit/rpc"
 
-	zeroHex              = "0x0"
 	binnarySearchDivider = 2
+	mainnetNetworkID     = 0
 )
 
 var (
@@ -43,7 +44,7 @@ type BridgeEndpoints struct {
 	bridgeL2     Bridger
 }
 
-// NewBridgeEndpoints returns InteropEndpoints
+// NewBridgeEndpoints returns BridgeEndpoints
 func NewBridgeEndpoints(
 	logger *log.Logger,
 	writeTimeout time.Duration,
@@ -56,6 +57,7 @@ func NewBridgeEndpoints(
 	bridgeL2 Bridger,
 ) *BridgeEndpoints {
 	meter := otel.Meter(meterName)
+	logger.Infof("starting bridge service (L2 network id=%d)", networkID)
 	return &BridgeEndpoints{
 		logger:       logger,
 		meter:        meter,
@@ -68,6 +70,127 @@ func NewBridgeEndpoints(
 		bridgeL1:     bridgeL1,
 		bridgeL2:     bridgeL2,
 	}
+}
+
+// TokenMappingsResult contains the token mappings and the total count of token mappings
+type TokenMappingsResult struct {
+	TokenMappings []*bridgesync.TokenMapping `json:"tokenMappings"`
+	Count         int                        `json:"count"`
+}
+
+// GetTokenMappings returns the token mappings for the given network.
+// If networkID is 0, it returns the token mappings for the L1 network.
+// If networkID is the same as the client, it returns the token mappings for the L2 network.
+// The result is paginated.
+//
+//nolint:dupl
+func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
+	b.logger.Debugf("GetTokenMappings request received (network id=%d)", networkID)
+
+	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_token_mappings")
+	if setupErr != nil {
+		return nil, setupErr
+	}
+	defer cancel()
+
+	b.logger.Debugf("fetching token mappings (network id=%d, page number=%d, page size=%d)",
+		networkID, pageNumberU32, pageSizeU32)
+
+	var (
+		tokenMappings      []*bridgesync.TokenMapping
+		tokenMappingsCount int
+		err                error
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumberU32, pageSizeU32)
+		if err != nil {
+			return nil,
+				rpc.NewRPCError(rpc.DefaultErrorCode,
+					fmt.Sprintf("failed to get token mappings for the L1 network, error: %s", err))
+		}
+
+	case b.networkID == networkID:
+		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumberU32, pageSizeU32)
+		if err != nil {
+			return nil,
+				rpc.NewRPCError(rpc.DefaultErrorCode,
+					fmt.Sprintf("failed to get token mappings for the L2 network (ID=%d), error: %s", networkID, err))
+		}
+
+	default:
+		return nil,
+			rpc.NewRPCError(rpc.InvalidRequestErrorCode,
+				fmt.Sprintf("failed to get token mappings, unsupported network %d", networkID))
+	}
+
+	return &TokenMappingsResult{
+		TokenMappings: tokenMappings,
+		Count:         tokenMappingsCount,
+	}, nil
+}
+
+// LegacyTokenMigrationsResult contains the legacy token migrations and the total count of such migrations
+type LegacyTokenMigrationsResult struct {
+	TokenMigrations []*bridgesync.LegacyTokenMigration `json:"legacyTokenMigrations"`
+	Count           int                                `json:"count"`
+}
+
+// GetLegacyTokenMigrations returns the legacy token migrations for the given network.
+// If networkID is 0, it returns the legacy token migrations for the L1 network.
+// If networkID is the same as the client, it returns the legacy token migrations for the L2 network.
+// The result is paginated.
+//
+//nolint:dupl
+func (b *BridgeEndpoints) GetLegacyTokenMigrations(
+	networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
+	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%d)", networkID)
+
+	ctx, cancel,
+		pageNumberU32, pageSizeU32,
+		setupErr := b.setupRequest(pageNumber, pageSize, "get_legacy_token_migrations")
+	if setupErr != nil {
+		return nil, setupErr
+	}
+	defer cancel()
+
+	b.logger.Debugf("fetching legacy token migrations (network id=%d, page number=%d, page size=%d)",
+		networkID, pageNumberU32, pageSizeU32)
+
+	var (
+		tokenMigrations      []*bridgesync.LegacyTokenMigration
+		tokenMigrationsCount int
+		err                  error
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		tokenMigrations, tokenMigrationsCount, err = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumberU32, pageSizeU32)
+		if err != nil {
+			return nil,
+				rpc.NewRPCError(rpc.DefaultErrorCode,
+					fmt.Sprintf("failed to get legacy token migrations for the L1 network, error: %s", err))
+		}
+
+	case b.networkID == networkID:
+		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumberU32, pageSizeU32)
+		if err != nil {
+			return nil,
+				rpc.NewRPCError(rpc.DefaultErrorCode,
+					fmt.Sprintf("failed to get legacy token migrations for L2 network (ID=%d), error: %s", networkID, err))
+		}
+
+	default:
+		return nil,
+			rpc.NewRPCError(rpc.InvalidRequestErrorCode,
+				fmt.Sprintf("failed to get legacy token migrations, unsupported network %d", networkID))
+	}
+
+	return &LegacyTokenMigrationsResult{
+		TokenMigrations: tokenMigrations,
+		Count:           tokenMigrationsCount,
+	}, nil
 }
 
 // L1InfoTreeIndexForBridge returns the first L1 Info Tree index in which the bridge was included.
@@ -83,13 +206,13 @@ func (b *BridgeEndpoints) L1InfoTreeIndexForBridge(networkID uint32, depositCoun
 	}
 	c.Add(ctx, 1)
 
-	if networkID == 0 {
+	if networkID == mainnetNetworkID {
 		l1InfoTreeIndex, err := b.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
 		// TODO: special treatment of the error when not found,
 		// as it's expected that it will take some time for the L1 Info tree to be updated
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
-				"failed to get l1InfoTreeIndex for networkID %d and deposit count %d, error: %s", networkID, depositCount, err),
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
+				"failed to get l1 info tree index for L1 network and deposit count %d, error: %s", depositCount, err),
 			)
 		}
 		return l1InfoTreeIndex, nil
@@ -99,15 +222,14 @@ func (b *BridgeEndpoints) L1InfoTreeIndexForBridge(networkID uint32, depositCoun
 		// TODO: special treatment of the error when not found,
 		// as it's expected that it will take some time for the L1 Info tree to be updated
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
 				"failed to get l1InfoTreeIndex for networkID %d and deposit count %d, error: %s", networkID, depositCount, err),
 			)
 		}
 		return l1InfoTreeIndex, nil
 	}
-	return zeroHex, rpc.NewRPCError(
-		rpc.DefaultErrorCode,
-		fmt.Sprintf("this client does not support network %d", networkID),
+	return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
+		fmt.Sprintf("this client does not support network (ID=%d)", networkID),
 	)
 }
 
@@ -124,34 +246,160 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 	}
 	c.Add(ctx, 1)
 
-	if networkID == 0 {
+	if networkID == mainnetNetworkID {
 		info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get L1 info tree leaf for index %d, error: %s", l1InfoTreeIndex, err))
 		}
 		return info, nil
 	}
 	if networkID == b.networkID {
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get injected global exit root for L1 info tree index %d, error: %s", l1InfoTreeIndex, err))
 		}
 		info, err := b.l1InfoTree.GetInfoByIndex(ctx, e.L1InfoTreeIndex)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get global exit root, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get L1 info tree leaf for index %d na L2 network (ID=%d), error: %s",
+					e.L1InfoTreeIndex, networkID, err))
 		}
 		return info, nil
 	}
-	return zeroHex, rpc.NewRPCError(
-		rpc.DefaultErrorCode,
+	return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
 		fmt.Sprintf("this client does not support network %d", networkID),
 	)
 }
 
-// GetProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
+func (b *BridgeEndpoints) setupRequest(
+	pageNumber, pageSize *uint32,
+	counterName string,
+) (context.Context, context.CancelFunc, uint32, uint32, rpc.Error) {
+	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
+	if err != nil {
+		return nil, nil, 0, 0, rpc.NewRPCError(rpc.InvalidRequestErrorCode, err.Error())
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	c, merr := b.meter.Int64Counter(counterName)
+	if merr != nil {
+		b.logger.Warnf("failed to create %s counter: %s", counterName, merr)
+	}
+	c.Add(ctx, 1)
+
+	return ctx, cancel, pageNumberU32, pageSizeU32, nil
+}
+
+// BridgesResult contains the bridges and the total count of bridges
+type BridgesResult struct {
+	Bridges []*bridgesync.BridgeResponse `json:"bridges"`
+	Count   int                          `json:"count"`
+}
+
+// GetBridges returns the bridges for the given network and the total count of bridges.
+// If networkID is 0, it returns the bridges for the L1 network.
+// If networkID is the same as the client, it returns the bridges for the L2 network.
+// The result is paginated.
+func (b *BridgeEndpoints) GetBridges(networkID uint32, pageNumber, pageSize *uint32,
+	depositCount *uint64, networkIDs []uint32) (interface{}, rpc.Error) {
+	b.logger.Debugf("GetBridges request received (network id=%d)", networkID)
+	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_bridges")
+	if setupErr != nil {
+		return nil, setupErr
+	}
+	defer cancel()
+
+	b.logger.Debugf("fetching bridges (network id=%d, page number=%d, page size=%d)",
+		networkID, pageNumberU32, pageSizeU32)
+
+	var (
+		bridges []*bridgesync.BridgeResponse
+		count   int
+		err     error
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount, networkIDs)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get bridges for the L1 network, error: %s", err))
+		}
+	case networkID == b.networkID:
+		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumberU32, pageSizeU32, depositCount, networkIDs)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get bridges for the L2 network (ID=%d), error: %s", networkID, err))
+		}
+	default:
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
+			fmt.Sprintf("this client does not support network %d", networkID),
+		)
+	}
+	return BridgesResult{
+		Bridges: bridges,
+		Count:   count,
+	}, nil
+}
+
+// ClaimsResult contains the claims and the total count of claims
+type ClaimsResult struct {
+	Claims []*bridgesync.ClaimResponse `json:"claims"`
+	Count  int                         `json:"count"`
+}
+
+// GetClaims returns the claims for the given network.
+// If networkID is 0, it returns the claims for the L1 network.
+// If networkID is the same as the client, it returns the claims for the L2 network.
+// The result is paginated.
+func (b *BridgeEndpoints) GetClaims(networkID uint32, pageNumber,
+	pageSize *uint32, networkIDs []uint32) (interface{}, rpc.Error) {
+	b.logger.Debugf("GetClaims request received (network id=%d)", networkID)
+	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_claims")
+	if setupErr != nil {
+		return nil, setupErr
+	}
+	defer cancel()
+
+	b.logger.Debugf("fetching claims (network id=%d, page number=%d, page size=%d)",
+		networkID, pageNumberU32, pageSizeU32)
+
+	var (
+		claims []*bridgesync.ClaimResponse
+		count  int
+		err    error
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32, networkIDs)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get claims for the L1 network, error: %s", err))
+		}
+	case networkID == b.networkID:
+		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32, networkIDs)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s", networkID, err))
+		}
+	default:
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
+			fmt.Sprintf("this client does not support network %d", networkID),
+		)
+	}
+	return ClaimsResult{
+		Claims: claims,
+		Count:  count,
+	}, nil
+}
+
+// ClaimProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
 // while globalExitRoot should be already injected on the destination network.
 // This call needs to be done to a client of the same network were the bridge tx was sent
-func (b *BridgeEndpoints) GetProof(
+func (b *BridgeEndpoints) ClaimProof(
 	networkID uint32, depositCount uint32, l1InfoTreeIndex uint32,
 ) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
@@ -165,42 +413,43 @@ func (b *BridgeEndpoints) GetProof(
 
 	info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
 	if err != nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get info from the tree: %s", err))
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			fmt.Sprintf("failed to get l1 info tree leaf for index %d: %s", l1InfoTreeIndex, err))
 	}
-	proofRollupExitRoot, err := b.l1InfoTree.GetRollupExitTreeMerkleProof(ctx, networkID, info.GlobalExitRoot)
-	if err != nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get rollup exit proof, error: %s", err))
-	}
+
 	var proofLocalExitRoot tree.Proof
 	switch {
-	case networkID == 0:
+	case networkID == mainnetNetworkID:
 		proofLocalExitRoot, err = b.bridgeL1.GetProof(ctx, depositCount, info.MainnetExitRoot)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get local exit proof, error: %s", err))
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get local exit proof, error: %s", err))
 		}
 
 	case networkID == b.networkID:
 		localExitRoot, err := b.l1InfoTree.GetLocalExitRoot(ctx, networkID, info.RollupExitRoot)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(
-				rpc.DefaultErrorCode,
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
 				fmt.Sprintf("failed to get local exit root from rollup exit tree, error: %s", err),
 			)
 		}
 		proofLocalExitRoot, err = b.bridgeL2.GetProof(ctx, depositCount, localExitRoot)
 		if err != nil {
-			return zeroHex, rpc.NewRPCError(
-				rpc.DefaultErrorCode,
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
 				fmt.Sprintf("failed to get local exit proof, error: %s", err),
 			)
 		}
 
 	default:
-		return zeroHex, rpc.NewRPCError(
-			rpc.DefaultErrorCode,
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
 			fmt.Sprintf("this client does not support network %d", networkID),
 		)
 	}
+
+	proofRollupExitRoot, err := b.l1InfoTree.GetRollupExitTreeMerkleProof(ctx, networkID, info.RollupExitRoot)
+	if err != nil {
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get rollup exit proof, error: %s", err))
+	}
+
 	return types.ClaimProof{
 		ProofLocalExitRoot:  proofLocalExitRoot,
 		ProofRollupExitRoot: proofRollupExitRoot,
@@ -221,16 +470,15 @@ func (b *BridgeEndpoints) SponsorClaim(claim claimsponsor.Claim) (interface{}, r
 	c.Add(ctx, 1)
 
 	if b.sponsor == nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, "this client does not support claim sponsoring")
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode, "this client does not support claim sponsoring")
 	}
 	if claim.DestinationNetwork != b.networkID {
-		return zeroHex, rpc.NewRPCError(
-			rpc.DefaultErrorCode,
-			fmt.Sprintf("this client only sponsors claims for network %d", b.networkID),
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
+			fmt.Sprintf("this client only sponsors claims for destination network %d", b.networkID),
 		)
 	}
 	if err := b.sponsor.AddClaimToQueue(&claim); err != nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error adding claim to the queue %s", err))
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error adding claim to the queue %s", err))
 	}
 	return nil, nil
 }
@@ -248,11 +496,12 @@ func (b *BridgeEndpoints) GetSponsoredClaimStatus(globalIndex *big.Int) (interfa
 	c.Add(ctx, 1)
 
 	if b.sponsor == nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, "this client does not support claim sponsoring")
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode, "this client does not support claim sponsoring")
 	}
 	claim, err := b.sponsor.GetClaim(globalIndex)
 	if err != nil {
-		return zeroHex, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get claim status, error: %s", err))
+		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+			fmt.Sprintf("failed to get claim status for global index %d, error: %s", globalIndex, err))
 	}
 	return claim.Status, nil
 }
@@ -276,7 +525,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context
 		return 0, err
 	}
 
-	// Binary search between the first and last blcoks where L1 info tree was updated.
+	// Binary search between the first and last blocks where L1 info tree was updated.
 	// Find the smallest l1 info tree index that is greater than depositCount and matches with
 	// a MER that is included on the l1 info tree
 	bestResult := lastInfo
@@ -311,7 +560,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 	// (produced by the smart contract call verifyBatches / verifyBatchesTrustedAggregator)
 	// are included in the L1 info tree. As per the current implementation (smart contracts) of the protocol
 	// this is true. This could change in the future
-	lastVerified, err := b.l1InfoTree.GetLastVerifiedBatches(b.networkID - 1)
+	lastVerified, err := b.l1InfoTree.GetLastVerifiedBatches(b.networkID)
 	if err != nil {
 		return 0, err
 	}
@@ -324,7 +573,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 		return 0, ErrNotOnL1Info
 	}
 
-	firstVerified, err := b.l1InfoTree.GetFirstVerifiedBatches(b.networkID - 1)
+	firstVerified, err := b.l1InfoTree.GetFirstVerifiedBatches(b.networkID)
 	if err != nil {
 		return 0, err
 	}
@@ -337,7 +586,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 	upperLimit := lastVerified.BlockNumber
 	for lowerLimit <= upperLimit {
 		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binnarySearchDivider)
-		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID-1, targetBlock)
+		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
 		if err != nil {
 			return 0, err
 		}
@@ -361,4 +610,40 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 		return 0, err
 	}
 	return info.L1InfoTreeIndex, nil
+}
+
+func (b *BridgeEndpoints) GetLastReorgEvent(networkID uint32) (interface{}, rpc.Error) {
+	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
+	defer cancel()
+
+	c, merr := b.meter.Int64Counter("reorg_event")
+	if merr != nil {
+		b.logger.Warnf("failed to create reorg_event counter: %s", merr)
+	}
+	c.Add(ctx, 1)
+
+	var (
+		reorgEvent *bridgesync.LastReorg
+		err        error
+	)
+	switch {
+	case networkID == mainnetNetworkID:
+		reorgEvent, err = b.bridgeL1.GetLastReorgEvent(ctx)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", err))
+		}
+	case networkID == b.networkID:
+		reorgEvent, err = b.bridgeL2.GetLastReorgEvent(ctx)
+		if err != nil {
+			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
+				fmt.Sprintf("failed to get last reorg event for the L2 network (ID=%d), error: %s", networkID, err))
+		}
+	default:
+		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
+			fmt.Sprintf("this client does not support network %d", networkID),
+		)
+	}
+
+	return reorgEvent, nil
 }

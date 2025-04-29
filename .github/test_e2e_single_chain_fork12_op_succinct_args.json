@@ -1,0 +1,75 @@
+{
+  "deployment_stages": {
+    "deploy_optimism_rollup": true,
+    "deploy_op_succinct": true
+  },
+  "args": {
+    "aggkit_image": "aggkit:local",
+    "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.0-rc.16",
+    "aggkit_prover_image": "ghcr.io/agglayer/aggkit-prover:0.1.0-rc.20",
+    "op_succinct_contract_deployer_image": "atanmarko/op-succinct-contract-deployer:v1.2.11-agglayer",
+    "op_succinct_server_image": "ghcr.io/agglayer/op-succinct/succinct-proposer:v1.2.12-agglayer",
+    "op_succinct_proposer_image": "ghcr.io/agglayer/op-succinct/op-proposer:v1.2.12-agglayer",
+    "gas_token_enabled": false,
+    "agglayer_prover_primary_prover": "mock-prover",
+    "aggkit_prover_primary_prover": "mock-prover",
+    "sp1_prover_key": "0xbcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31",
+    "consensus_contract_type": "fep",
+    "pp_vkey_hash": "0x00d6e4bdab9cac75a50d58262bb4e60b3107a6b61131ccdff649576c624b6fb7",
+    "aggchain_vkey_hash": "0x1f3df68a258f9d6748b291dd35faf80065af7cc11ef8b5fc6db2a4d958ea62d2",
+    "op_succinct_mock": true,
+    "op_succinct_agglayer": true,
+    "op_succinct_agg_proof_mode": "compressed",
+    "op_succinct_proposer_span_proof": "60",
+    "op_succinct_submission_interval": "1",
+    "op_succinct_max_concurrent_proof_requests": "1",
+    "op_succinct_max_concurrent_witness_gen": "1",
+    "zkevm_rollup_chain_id": 2151908,
+    "deployment_suffix": "-001",
+    "zkevm_rollup_id": 1,
+    "l1_seconds_per_slot": 2,
+    "additional_services": [
+      "bridge_spammer"
+    ]
+  },
+  "optimism_package": {
+    "source": "github.com/xavier-romero/optimism-package/main.star@355b15efd61b603d2302478dd4b3ef74ccc6e462",
+    "predeployed_contracts": true,
+    "chains": [
+      {
+        "participants": [
+          {
+            "el_type": "op-geth",
+            "el_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-geth@sha256:8cad527a982e929f80fca539e612c59ccb503fc076b86ce1f4ebeefb112dee03",
+            "cl_type": "op-node",
+            "cl_image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-node@sha256:207943c6ca92a203e5c2f7908769023c76d2304060c8d8c4cfbd469b7fbaaf0d",
+            "count": 1
+          }
+        ],
+        "batcher_params": {
+          "image": "us-docker.pkg.dev/oplabs-tools-artifacts/images/op-batcher@sha256:a017bf0a1dbe88e770eb6979354a148534b36e58ea7bc2fd7ae01f5e90eb9ed3"
+        },
+        "proposer_params": {
+          "enabled": false
+        },
+        "challenger_params": {
+          "enabled": false
+        },
+        "network_params": {
+          "name": "001",
+          "network_id": "2151908",
+          "seconds_per_slot": 1
+        }
+      }
+    ],
+    "op_contract_deployer_params": {
+      "image": "xavierromero/op-deployer:20250314",
+      "l1_artifacts_locator": "https://storage.googleapis.com/oplabs-contract-artifacts/artifacts-v1-fffcbb0ebf7f83311791534a41e65ef90df47797f9ca8f86941452f597f7128c.tar.gz",
+      "l2_artifacts_locator": "https://storage.googleapis.com/oplabs-contract-artifacts/artifacts-v1-fffcbb0ebf7f83311791534a41e65ef90df47797f9ca8f86941452f597f7128c.tar.gz"
+    },
+    "observability": {
+      "enabled": true
+    }
+  }
+}
+  

@@ -21,7 +21,7 @@ import (
 func TestE2EL1toEVML2(t *testing.T) {
 	// start other needed components
 	ctx := context.Background()
-	setup := helpers.NewE2EEnvWithEVML2(t)
+	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
 
 	// start claim sponsor
 	dbPathClaimSponsor := path.Join(t.TempDir(), "claimsponsorTestE2EL1toEVML2_cs.sqlite")

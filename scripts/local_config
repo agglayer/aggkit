@@ -170,6 +170,10 @@ function export_values_of_cdk_node_config() {
     if [ $? -ne 0 ]; then
         export_key_from_toml_file_or_fatal zkevm_is_validium $_CDK_CONFIG_FILE "." IsValidiumMode
     fi
+    export_key_from_toml_file zkevm_rollup_id $_CDK_CONFIG_FILE Common NetworkID
+    if [ $? -ne 0 ]; then
+        export_key_from_toml_file_or_fatal zkevm_rollup_id $_CDK_CONFIG_FILE "." NetworkID
+    fi
     export_key_from_toml_file zkevm_contract_versions $_CDK_CONFIG_FILE Common ContractVersions
     if [ $? -ne 0 ]; then
         export_key_from_toml_file_or_fatal zkevm_contract_versions $_CDK_CONFIG_FILE "." ContractVersions

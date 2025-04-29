@@ -22,6 +22,10 @@ packages:
   github.com/agglayer/aggkit/aggsender/db:
     config:
       all: true
+  github.com/agglayer/aggkit/types:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true
   github.com/agglayer/aggkit/aggsender/prover:
     config:
       all: true
@@ -53,7 +57,6 @@ packages:
       dir: "{{ .InterfaceDir }}/mocks"
     interfaces:
       ReorgDetector:
-      EthClienter:
   github.com/agglayer/aggkit/l1infotreesync:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
@@ -95,7 +98,7 @@ packages:
       EVMDownloaderInterface:
         config:
           mockname: "EVMDownloaderMock"
-      downloaderInterface:
+      Downloader:
         config:
           mockname: "DownloaderMock"
       EthClienter:

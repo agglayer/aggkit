@@ -25,8 +25,8 @@ cloud.google.com/go/longrunning v0.6.2 h1:xjDfh1pQcWPEvnfjZmwjKQEcHnpz6lHjfy7Fo0
 cloud.google.com/go/longrunning v0.6.2/go.mod h1:k/vIs83RN4bE3YCswdXC5PFfWVILjm3hpEUlSko4PiI=
 github.com/0xPolygon/cdk-contracts-tooling v0.0.3 h1:G7H3UNyDOpoLqDvW9c4lgn2iMnteM1HqUpUAD1gk9VU=
 github.com/0xPolygon/cdk-contracts-tooling v0.0.3/go.mod h1:mFlcEjsm2YBBsu8atHJ3zyVnwM+Z/fMXpVmIJge+WVU=
-github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6 h1:FXL/rcO7/GtZ3kRFw+C7J6vmGnl8gcazg+Gh/NVmnas=
-github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6/go.mod h1:2scWqMMufrQXu7TikDgQ3BsyaKoX8qP26D6E262vSOg=
+github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229 h1:6YhqNQVcXkoxqs5zQVg1bREuoeKvwpffpfoL8QQT+u4=
+github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229/go.mod h1:2scWqMMufrQXu7TikDgQ3BsyaKoX8qP26D6E262vSOg=
 github.com/0xPolygon/zkevm-ethtx-manager v0.2.10 h1:RVvO1NgJ4GuDfWiC2QiiDA/C6fs0h8DvCMOZrhu4v/A=
 github.com/0xPolygon/zkevm-ethtx-manager v0.2.10/go.mod h1:1D9OdlaS466k40YmH3KuUnbnlOmKCXnD3mzORIgPuvY=
 github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.7 h1:KJM1QlNZdZjNRS+ajPauD4uG+uaYgItaL+96Om3f8aI=

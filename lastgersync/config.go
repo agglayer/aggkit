@@ -22,10 +22,14 @@ type Config struct {
 	MaxRetryAttemptsAfterError int `mapstructure:"MaxRetryAttemptsAfterError"`
 	// WaitForNewBlocksPeriod time that will be waited when the synchronizer has reached the latest block
 	WaitForNewBlocksPeriod types.Duration `mapstructure:"WaitForNewBlocksPeriod"`
-	// DownloadBufferSize buffer of events to be porcessed. When the buffer limit is reached,
+	// DownloadBufferSize buffer size of events to be processed. When the buffer limit is reached,
 	// downloading will stop until the processing catches up.
 	DownloadBufferSize int `mapstructure:"DownloadBufferSize"`
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
+	// SyncMode denotes should the latest global exit root be determined
+	// by querying the global exit root map (which is common way for FEP chains)
+	// or the events emitted by sovereign chains (which is a common way for PP chains)
+	SyncMode SyncMode `jsonschema:"enum=FEP, enum=PP" mapstructure:"SyncMode"`
 }

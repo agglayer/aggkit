@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/big"
 
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
@@ -14,12 +15,20 @@ import (
 type Bridger interface {
 	GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error)
 	GetRootByLER(ctx context.Context, ler common.Hash) (*tree.Root, error)
+	GetBridgesPaged(ctx context.Context, pageNumber, pageSize uint32,
+		depositCount *uint64, networkIDs []uint32) ([]*bridgesync.BridgeResponse, int, error)
+	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*bridgesync.TokenMapping, int, error)
+	GetLegacyTokenMigrations(ctx context.Context,
+		pageNumber, pageSize uint32) ([]*bridgesync.LegacyTokenMigration, int, error)
+	GetClaimsPaged(ctx context.Context, page, pageSize uint32,
+		networkIDs []uint32) ([]*bridgesync.ClaimResponse, int, error)
+	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 }
 
 type LastGERer interface {
 	GetFirstGERAfterL1InfoTreeIndex(
 		ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
-	) (lastgersync.Event, error)
+	) (lastgersync.GlobalExitRootInfo, error)
 }
 
 type L1InfoTreer interface {

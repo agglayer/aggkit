@@ -18,11 +18,14 @@ var (
 	ZeroHash = common.HexToHash("0x0")
 )
 
+const (
+	Uint32ByteSize = 4
+	Uint64ByteSize = 8
+)
+
 // Uint64ToBytes converts a uint64 to a byte slice
 func Uint64ToBytes(num uint64) []byte {
-	const uint64ByteSize = 8
-
-	bytes := make([]byte, uint64ByteSize)
+	bytes := make([]byte, Uint64ByteSize)
 	binary.BigEndian.PutUint64(bytes, num)
 
 	return bytes
@@ -30,22 +33,34 @@ func Uint64ToBytes(num uint64) []byte {
 
 // BytesToUint64 converts a byte slice to a uint64
 func BytesToUint64(bytes []byte) uint64 {
-	return binary.BigEndian.Uint64(bytes)
+	if len(bytes) > Uint64ByteSize {
+		panic("Uint64ByteSize: input byte slice is too long")
+	}
+
+	padded := make([]byte, Uint64ByteSize)
+	copy(padded[Uint64ByteSize-len(bytes):], bytes)
+	return binary.BigEndian.Uint64(padded)
 }
 
 // Uint32ToBytes converts a uint32 to a byte slice in big-endian order
 func Uint32ToBytes(num uint32) []byte {
-	const uint32ByteSize = 4
+	bytes := make([]byte, Uint32ByteSize)
+	binary.BigEndian.PutUint32(bytes, num)
 
-	key := make([]byte, uint32ByteSize)
-	binary.BigEndian.PutUint32(key, num)
-
-	return key
+	return bytes
 }
 
-// BytesToUint32 converts a byte slice to a uint32
+// BytesToUint32 converts a byte slice to a uint32.
+// If byte slice is shorter than 4 bytes, it is padded with 0s.
+// In case it is longer than 4 bytes, it panics.
 func BytesToUint32(bytes []byte) uint32 {
-	return binary.BigEndian.Uint32(bytes)
+	if len(bytes) > Uint32ByteSize {
+		panic("BytesToUint32: input byte slice is too long")
+	}
+
+	padded := make([]byte, Uint32ByteSize)
+	copy(padded[Uint32ByteSize-len(bytes):], bytes)
+	return binary.BigEndian.Uint32(padded)
 }
 
 // CalculateAccInputHash computes the hash of accumulated input data for a given batch.

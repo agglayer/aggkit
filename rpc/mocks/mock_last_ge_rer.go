@@ -23,22 +23,22 @@ func (_m *LastGERer) EXPECT() *LastGERer_Expecter {
 }
 
 // GetFirstGERAfterL1InfoTreeIndex provides a mock function with given fields: ctx, atOrAfterL1InfoTreeIndex
-func (_m *LastGERer) GetFirstGERAfterL1InfoTreeIndex(ctx context.Context, atOrAfterL1InfoTreeIndex uint32) (lastgersync.Event, error) {
+func (_m *LastGERer) GetFirstGERAfterL1InfoTreeIndex(ctx context.Context, atOrAfterL1InfoTreeIndex uint32) (lastgersync.GlobalExitRootInfo, error) {
 	ret := _m.Called(ctx, atOrAfterL1InfoTreeIndex)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetFirstGERAfterL1InfoTreeIndex")
 	}
 
-	var r0 lastgersync.Event
+	var r0 lastgersync.GlobalExitRootInfo
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32) (lastgersync.Event, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) (lastgersync.GlobalExitRootInfo, error)); ok {
 		return rf(ctx, atOrAfterL1InfoTreeIndex)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32) lastgersync.Event); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) lastgersync.GlobalExitRootInfo); ok {
 		r0 = rf(ctx, atOrAfterL1InfoTreeIndex)
 	} else {
-		r0 = ret.Get(0).(lastgersync.Event)
+		r0 = ret.Get(0).(lastgersync.GlobalExitRootInfo)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, uint32) error); ok {
@@ -69,12 +69,12 @@ func (_c *LastGERer_GetFirstGERAfterL1InfoTreeIndex_Call) Run(run func(ctx conte
 	return _c
 }
 
-func (_c *LastGERer_GetFirstGERAfterL1InfoTreeIndex_Call) Return(_a0 lastgersync.Event, _a1 error) *LastGERer_GetFirstGERAfterL1InfoTreeIndex_Call {
+func (_c *LastGERer_GetFirstGERAfterL1InfoTreeIndex_Call) Return(_a0 lastgersync.GlobalExitRootInfo, _a1 error) *LastGERer_GetFirstGERAfterL1InfoTreeIndex_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *LastGERer_GetFirstGERAfterL1InfoTreeIndex_Call) RunAndReturn(run func(context.Context, uint32) (lastgersync.Event, error)) *LastGERer_GetFirstGERAfterL1InfoTreeIndex_Call {
+func (_c *LastGERer_GetFirstGERAfterL1InfoTreeIndex_Call) RunAndReturn(run func(context.Context, uint32) (lastgersync.GlobalExitRootInfo, error)) *LastGERer_GetFirstGERAfterL1InfoTreeIndex_Call {
 	_c.Call.Return(run)
 	return _c
 }
