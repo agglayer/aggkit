@@ -7,8 +7,6 @@ _common_multi_setup() {
     readonly target_address=0xbecE3a31343c6019CDE0D5a4dF2AF8Df17ebcB0f
     readonly target_private_key=0x51caa196504216b1730280feb63ddd8c5ae194d13e57e58d559f1f1dc3eda7c9
     
-    #kurtosis service exec $enclave contracts-001 "cat /opt/zkevm/combined-001.json" | tail -n +2 | jq '.' >combined-001.json
-    #kurtosis service exec $enclave contracts-002 "cat /opt/zkevm/combined-002.json" | tail -n +2 | jq '.' >combined-002.json
     kurtosis_download_file_exec_method $enclave "contracts-001" "/opt/zkevm/combined-001.json" | jq '.' >combined-001.json
     kurtosis_download_file_exec_method $enclave "contracts-002" "/opt/zkevm/combined-001.json" | jq '.' >combined-002.json
     
