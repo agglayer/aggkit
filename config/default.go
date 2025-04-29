@@ -186,7 +186,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
-BlockFinality = "LatestBlock"
+BlockFinality = "FinalizedBlock"
 InitialBlockNum = 0
 BridgeAddr = "{{polygonBridgeAddr}}"
 SyncBlockChunkSize = 100

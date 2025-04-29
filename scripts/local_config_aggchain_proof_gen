@@ -210,10 +210,12 @@ function export_ports_from_kurtosis() {
     export_portnum_from_kurtosis_or_fail zkevm_rpc_http_port op-el-1-op-geth-op-node-001 rpc rpc
     export_portnum_from_kurtosis_or_fail agglayer_grpc_port agglayer aglr-grpc
     export_portnum_from_kurtosis_or_fail aggkit_prover_grpc_port aggkit-prover grpc
+    export_portnum_from_kurtosis_or_fail op_cl_rpc_port op-cl-1-op-node-op-geth-001 http
     export l1_rpc_url="http://localhost:${l1_rpc_port}"
     export l2_rpc_url="http://localhost:${zkevm_rpc_http_port}"
     export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
     export aggkit_prover_grpc_url="http://localhost:${aggkit_prover_grpc_port}"
+    export op_cl_rpc_url="http://localhost:${op_cl_rpc_port}"
 }
 
 ###############################################################################
