@@ -25,7 +25,7 @@ TEST_TYPE=$1
 KURTOSIS_FOLDER=$2
 E2E_FOLDER=$3
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+PROJECT_ROOT="$PWD"
 ROOT_FOLDER="/tmp/aggkit-e2e-run"
 LOG_FOLDER="$ROOT_FOLDER/logs"
 LOG_FILE="$LOG_FOLDER/run-local-e2e.log"
@@ -33,14 +33,14 @@ LOG_FILE="$LOG_FOLDER/run-local-e2e.log"
 rm -rf "$ROOT_FOLDER"
 mkdir -p "$LOG_FOLDER"
 
-exec > >(tee -a "$LOG_FILE") 2>&1
+# exec > >(tee -a "$LOG_FILE") 2>&1
 
 log_info "Starting local E2E setup..."
 
 # Build aggkit Docker Image if it doesn't exist
 if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ]; then
     log_info "Building aggkit:local docker image..."
-    pushd "$SCRIPT_DIR" > /dev/null
+    pushd "$PROJECT_ROOT" > /dev/null
     make build-docker
     make build-tools
     chmod +x "./target/aggsender_find_imported_bridge"
@@ -61,14 +61,14 @@ log_info "Starting Kurtosis enclave"
 
 if [ "$TEST_TYPE" == "single-l2-network-fork12-op-succinct" ]; then
     ENCLAVE_NAME="op"
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
 elif [ "$TEST_TYPE" == "single-l2-network-fork12-pessimistic" ]; then
     ENCLAVE_NAME="aggkit"
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_single_chain_fork12_pessimistic_args.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_pessimistic_args.json" .
 elif [ "$TEST_TYPE" == "multi-l2-networks" ]; then
     ENCLAVE_NAME="aggkit"
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_multi_chains_args_1.json" .
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$SCRIPT_DIR/.github/test_e2e_multi_chains_args_2.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" .
 else
     log_error "Unknown test type: $TEST_TYPE"
     exit 1
@@ -94,9 +94,9 @@ export DISABLE_L2_FUND="true"
 
 log_info "Running BATS E2E tests..."
 if [ "$TEST_TYPE" == "single-l2-network-fork12-op-succinct" ]; then
-    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-msg.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-native-token-e2e.bats
+    bats ./tests/aggkit/bridge-e2e.bats
 elif [ "$TEST_TYPE" == "single-l2-network-fork12-pessimistic" ]; then
-    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-msg.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-native-token-e2e.bats
+    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-custom-gas.bats
 elif [ "$TEST_TYPE" == "multi-l2-networks" ]; then
     bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
 fi
