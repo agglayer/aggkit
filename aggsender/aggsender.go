@@ -299,7 +299,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 			rateLimitSleepTime.String(), a.rateLimiter.String())
 		time.Sleep(*rateLimitSleepTime)
 	}
-	a.log.Infof("certificate ready to be send to AggLayer: %s start: %s , end: %s",
+	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s , end: %s",
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
