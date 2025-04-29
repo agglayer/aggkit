@@ -25,7 +25,7 @@
     "cdk_node_image": "aggkit:local",
     "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.61.16-hotfix2",
     "pp_vkey_hash": "0x00d6e4bdab9cac75a50d58262bb4e60b3107a6b61131ccdff649576c624b6fb7",
-    "zkevm_contracts_image": "leovct/zkevm-contracts:v9.0.0-rc.6-pp-fork.12",
+    "zkevm_contracts_image": "jhkimqd/zkevm-contracts:v10.0.0-rc.6-fork.12",
     "additional_services": [],
     "consensus_contract_type": "pessimistic",
     "sequencer_type": "erigon",

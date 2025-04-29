@@ -4,6 +4,7 @@
     "deploy_op_succinct": true
   },
   "args": {
+    "verbosity": "debug",
     "aggkit_image": "aggkit:local",
     "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.0-rc.16",
     "aggkit_prover_image": "ghcr.io/agglayer/aggkit-prover:0.1.0-rc.20",

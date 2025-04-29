@@ -90,14 +90,16 @@ set +a
 export BATS_LIB_PATH="$PWD/core/helpers/lib"
 export PROJECT_ROOT="$PWD"
 export ENCLAVE="$ENCLAVE_NAME"
-export DISABLE_L2_FUND="true"
 
 log_info "Running BATS E2E tests..."
 if [ "$TEST_TYPE" == "single-l2-network-fork12-op-succinct" ]; then
+    export DISABLE_L2_FUND="false"
     bats ./tests/aggkit/bridge-e2e.bats
 elif [ "$TEST_TYPE" == "single-l2-network-fork12-pessimistic" ]; then
+    export DISABLE_L2_FUND="true"
     bats ./tests/aggkit/bridge-e2e-custom-gas.bats ./tests/aggkit/bridge-e2e.bats
 elif [ "$TEST_TYPE" == "multi-l2-networks" ]; then
+    export DISABLE_L2_FUND="true"
     bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
 fi
 
