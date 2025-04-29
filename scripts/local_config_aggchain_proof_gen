@@ -137,11 +137,16 @@ function export_obj_key_from_toml_file() {
 
 ###############################################################################
 function export_values_from_combined_json() {
+    log_debug "export_values_from_combined_json"
     local _COMBINED_JSON_FILE=$1
+    if [ -z "$_COMBINED_JSON_FILE" ]; then
+        log_fatal "Error: export_values_from_combined_json: missing parameter (combined_json_file)"
+    fi
     export zkevm_L2_bridge_address=$(cat $_COMBINED_JSON_FILE | jq -r .polygonZkEVML2BridgeAddress)
     ok_or_fatal "Error getting polygonZkEVML2BridgeAddress from combined_json_file: $_COMBINED_JSON_FILE"
     export zkevm_global_exit_root_l2_address=$(cat $_COMBINED_JSON_FILE | jq -r .polygonZkEVMGlobalExitRootL2Address)
     ok_or_fatal "Error getting polygonZkEVMGlobalExitRootL2Address from combined_json_file: $_COMBINED_JSON_FILE"
+    log_debug "export_values_from_combined_json... finished"
 }
 
 ###############################################################################
@@ -265,15 +270,15 @@ function kurtosis_download_file_exec_method() {
     kurtosis service exec $KURTOSIS_ENCLAVE $_SERVICE  "cat $_FILE" > $_DEST_FILE
     # This is a workarround!, versions 0.1.
     local KURTOSIS_VERSION=$(kurtosis version | cut -d ':'  -f 2 | head -n 1)
-    dpkg --compre-versions "$KURTOSIS_VERSION" "ge" "1.7.0" >/dev/null
+    dpkg --compare-versions "$KURTOSIS_VERSION" "ge" "1.7.0" >/dev/null
     if [ $? -eq 0 ]; then
-        echo "detected kurtosis version >= 1.7.0. So the output of the file don't need adjustment"
+        echo "detected kurtosis version >= 1.7.0. So the output of the file don't need adjustment $(wc -l $_DEST_FILE)"
     else
-        echo "detected kurtosis version < 1.7.0. So the output of the file need to remove first line because it's debug"
+        echo "detected kurtosis version < 1.7.0. So the output of the file need to remove first line because it's debug $(wc -l $_DEST_FILE)"
         mv $_DEST_FILE $_DEST_FILE.original
         cat $_DEST_FILE.original | tail -n +2 > $_DEST_FILE
+        wc -l $_DEST_FILE
     fi
-
 }
 ###############################################################################
 function download_kurtosis_artifacts() {
@@ -334,9 +339,9 @@ rm -Rf tmp/aggkit/runtime/*
 check_requirements
 create_dest_folder
 
-download_kurtosis_artifacts
+download_kurtosis_artifacts 
 
-export_values_from_combined_json
+export_values_from_combined_json $combined_json_file
 export_ports_from_kurtosis
 export_values_of_cdk_node_config $DEST/config.toml
 export_forced_values
