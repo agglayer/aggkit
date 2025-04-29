@@ -2,6 +2,7 @@
 
 _common_multi_setup() {
     load '../helpers/common-setup'
+    load '../helpers/common'
     _common_setup
     # generated with cast wallet new
     readonly target_address=0xbecE3a31343c6019CDE0D5a4dF2AF8Df17ebcB0f
@@ -16,7 +17,7 @@ _common_multi_setup() {
     readonly bridge_address=$(cat combined-001.json | jq -r .polygonZkEVMBridgeAddress)
     readonly pol_address=$(cat combined-001.json | jq -r .polTokenAddress)
     readonly rollup_params_file=/opt/zkevm/create_rollup_parameters.json
-    run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | tail -n +2 | jq -r '.gasTokenAddress'"
+    run bash -c "$contracts_service_wrapper 'cat $rollup_params_file' | kurtosis_filer_exec_method | jq -r '.gasTokenAddress'"
     assert_success
     readonly gas_token_addr=$output
     readonly l2_pp1b_url=$(kurtosis port print $enclave zkevm-bridge-service-001 rpc)
@@ -46,7 +47,7 @@ _common_multi_setup() {
 
 add_network2_to_agglayer() {
     echo "=== Checking if network 2 is added to agglayer ===" >&3
-    local _prev=$(kurtosis service exec $enclave agglayer "grep \"2 = \" /etc/zkevm/agglayer-config.toml || true" | tail -n +2)
+    local _prev=$(kurtosis service exec $enclave agglayer "grep \"2 = \" /etc/zkevm/agglayer-config.toml || true" | kurtosis_filer_exec_method)
     if [ ! -z "$_prev" ]; then
         echo "Network 2 is already added to agglayer" >&3
         return

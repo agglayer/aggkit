@@ -93,7 +93,7 @@ _common_setup() {
     if [[ -z "${L1_BRIDGE_ADDRESS}" || -z "${L2_BRIDGE_ADDRESS}" ]]; then
         local combined_json_file="/opt/zkevm/combined.json"
         echo "ℹ️ Some bridge addresses are missing, fetching from Kurtosis CDK artifact: $combined_json_file" >&3
-        local combined_json_output="$(kurtosis_download_file_exec_method $enclave "contracts-001" "$combined_json_file")"
+        combined_json_output="$($contracts_service_wrapper "cat $combined_json_file" | kurtosis_filer_exec_method)"
         if [[ $? -ne 0  ||  -z $combined_json_output ]] ; then
             echo "❌ Failed to read $combined_json_file from Kurtosis CDK" >&2
             return 1
