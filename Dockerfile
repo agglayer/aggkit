@@ -1,5 +1,5 @@
 # CONTAINER FOR BUILDING BINARY
-FROM --platform=${BUILDPLATFORM} golang:1.23.7 AS build
+FROM --platform=${BUILDPLATFORM} golang:1.24.2 AS build
 
 WORKDIR /app
 
@@ -28,4 +28,4 @@ USER appuser
 
 EXPOSE 5576/tcp
 
-CMD ["/bin/sh", "-c", "aggkit"]
+ENTRYPOINT ["/usr/local/bin/aggkit"]

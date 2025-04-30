@@ -1,11 +1,11 @@
 name: Build Aggkit Image
+
 on:
   workflow_call:
     inputs:
       go-version:
         required: true
         type: string
-        default: "1.23.7"
       docker-image-name:
         required: true
         type: string

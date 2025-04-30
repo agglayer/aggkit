@@ -5,34 +5,29 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	zkevm "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/flows"
+	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/metrics"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/signer"
-	"github.com/agglayer/aggkit/tree"
+	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 const signatureSize = 65
 
-var (
-	errNoBridgesAndClaims   = errors.New("no bridges and claims to build certificate")
-	errInvalidSignatureSize = errors.New("invalid signature size")
-
-	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
-)
+var errInvalidSignatureSize = errors.New("invalid signature size")
 
 type RateLimiter interface {
 	Call(msg string, allowToSleep bool) *time.Duration
@@ -41,21 +36,21 @@ type RateLimiter interface {
 
 // AggSender is a component that will send certificates to the aggLayer
 type AggSender struct {
-	log types.Logger
+	log aggkitcommon.Logger
 
 	l2Syncer         types.L2BridgeSyncer
 	l1infoTreeSyncer types.L1InfoTreeSyncer
 	epochNotifier    types.EpochNotifier
 
-	storage        db.AggSenderStorage
-	aggLayerClient agglayer.AgglayerClientInterface
+	storage                      db.AggSenderStorage
+	aggLayerClient               agglayer.AgglayerClientInterface
+	compatibilityStoragedChecker compatibility.CompatibilityChecker
 
 	cfg Config
 
-	signer signer.Signer
-
 	status      types.AggsenderStatus
 	rateLimiter RateLimiter
+	flow        types.AggsenderFlow
 }
 
 // New returns a new AggSender instance
@@ -66,7 +61,9 @@ func New(
 	aggLayerClient agglayer.AgglayerClientInterface,
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 	l2Syncer types.L2BridgeSyncer,
-	epochNotifier types.EpochNotifier) (*AggSender, error) {
+	epochNotifier types.EpochNotifier,
+	l1Client types.EthClient,
+	l2Client types.EthClient) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
@@ -75,29 +72,71 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-	signer, err := signer.NewSigner(aggkitcommon.AGGSENDER, logger, ctx, cfg.AggsenderPrivateKey)
-	if err != nil {
-		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
-	}
-	err = signer.Initialize(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
-	}
+
 	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
+
+	var (
+		aggchainProofClient grpc.AggchainProofClientInterface
+		flowManager         types.AggsenderFlow
+	)
+
+	if types.AggsenderMode(cfg.Mode) == types.AggchainProofMode {
+		if cfg.AggchainProofURL == "" {
+			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
+		}
+
+		aggchainProofClient, err = grpc.NewAggchainProofClient(
+			cfg.AggchainProofURL,
+			cfg.GenerateAggchainProofTimeout.Duration)
+		if err != nil {
+			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
+		}
+
+		flowManager, err = flows.NewAggchainProverFlow(
+			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash,
+			cfg.GlobalExitRootL2Addr, cfg.SovereignRollupAddr,
+			aggchainProofClient, storage,
+			l1InfoTreeSyncer, l2Syncer, l1Client, l2Client)
+		if err != nil {
+			return nil, fmt.Errorf("error creating aggchain prover flow: %w", err)
+		}
+	} else {
+		signer, err := signer.NewSigner(ctx, 0, cfg.AggsenderPrivateKey, aggkitcommon.AGGSENDER, logger)
+		if err != nil {
+			return nil, fmt.Errorf("error NewSigner. Err: %w", err)
+		}
+		err = signer.Initialize(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
+		}
+
+		flowManager = flows.NewPPFlow(
+			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash,
+			storage, l1InfoTreeSyncer, l2Syncer, l1Client, signer)
+	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
 
+	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck(
+		cfg.RequireStorageContentCompatibility,
+		func(ctx context.Context) (db.RuntimeData, error) {
+			return db.RuntimeData{NetworkID: l2Syncer.OriginNetwork()}, nil
+		},
+		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
+	)
+
 	return &AggSender{
-		cfg:              cfg,
-		log:              logger,
-		storage:          storage,
-		l2Syncer:         l2Syncer,
-		aggLayerClient:   aggLayerClient,
-		l1infoTreeSyncer: l1InfoTreeSyncer,
-		signer:           signer,
-		epochNotifier:    epochNotifier,
-		status:           types.AggsenderStatus{Status: types.StatusNone},
-		rateLimiter:      rateLimit,
+		cfg:                          cfg,
+		log:                          logger,
+		storage:                      storage,
+		l2Syncer:                     l2Syncer,
+		aggLayerClient:               aggLayerClient,
+		l1infoTreeSyncer:             l1InfoTreeSyncer,
+		epochNotifier:                epochNotifier,
+		status:                       types.AggsenderStatus{Status: types.StatusNone},
+		flow:                         flowManager,
+		rateLimiter:                  rateLimit,
+		compatibilityStoragedChecker: compatibilityStoragedChecker,
 	}, nil
 }
 
@@ -131,8 +170,19 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.log.Info("AggSender started")
 	metrics.Register()
 	a.status.Start(time.Now().UTC())
+
+	a.checkDBCompatibility(ctx)
 	a.checkInitialStatus(ctx)
 	a.sendCertificates(ctx, 0)
+}
+func (a *AggSender) checkDBCompatibility(ctx context.Context) {
+	if a.compatibilityStoragedChecker == nil {
+		a.log.Warnf("compatibilityStoragedChecker is nil, so we are not going to check the compatibility")
+		return
+	}
+	if err := a.compatibilityStoragedChecker.Check(ctx, nil); err != nil {
+		a.log.Fatalf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
+	}
 }
 
 // checkInitialStatus check local status vs agglayer status
@@ -189,7 +239,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 						a.log.Error(err)
 					}
 				} else {
-					a.log.Infof("An InError cert exists but skipping send cert because RetryCertInmediatlyAfterInError is false")
+					a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
 				}
 			}
 			if returnAfterNIterations > 0 && iteration >= returnAfterNIterations {
@@ -223,78 +273,23 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 }
 
 // sendCertificate sends certificate for a network
-func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertificate, error) {
+func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certificate, error) {
 	a.log.Infof("trying to send a new certificate...")
 
-	shouldSend, err := a.shouldSendCertificate()
-	if err != nil {
-		return nil, err
-	}
-
-	if !shouldSend {
-		a.log.Infof("waiting for pending certificates to be settled")
-		return nil, nil
-	}
-
 	start := time.Now()
-	lastL2BlockSynced, err := a.l2Syncer.GetLastProcessedBlock(ctx)
+
+	certificateParams, err := a.flow.GetCertificateBuildParams(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
+		return nil, fmt.Errorf("error getting certificate build params: %w", err)
 	}
 
-	lastSentCertificateInfo, err := a.storage.GetLastSentCertificate()
-	if err != nil {
-		return nil, err
-	}
-
-	previousToBlock, retryCount := getLastSentBlockAndRetryCount(lastSentCertificateInfo)
-
-	if previousToBlock >= lastL2BlockSynced {
-		a.log.Infof("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
-			previousToBlock, lastL2BlockSynced)
+	if certificateParams == nil {
 		return nil, nil
 	}
 
-	fromBlock := previousToBlock + 1
-	toBlock := lastL2BlockSynced
-
-	bridges, err := a.l2Syncer.GetBridgesPublished(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, fmt.Errorf("error getting bridges: %w", err)
-	}
-
-	if len(bridges) == 0 {
-		a.log.Infof("no bridges consumed, no need to send a certificate from block: %d to block: %d", fromBlock, toBlock)
-		return nil, nil
-	}
-
-	claims, err := a.l2Syncer.GetClaims(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, fmt.Errorf("error getting claims: %w", err)
-	}
-	certificateParams := &types.CertificateBuildParams{
-		FromBlock: fromBlock,
-		ToBlock:   toBlock,
-		Bridges:   bridges,
-		Claims:    claims,
-		CreatedAt: uint32(time.Now().UTC().Unix()),
-	}
-
-	certificateParams, err = a.limitCertSize(certificateParams)
-	if err != nil {
-		return nil, fmt.Errorf("error limitCertSize: %w", err)
-	}
-	a.log.Infof("building certificate for %s estimatedSize=%d",
-		certificateParams.String(), certificateParams.EstimatedSize())
-
-	certificate, err := a.buildCertificate(ctx, certificateParams, lastSentCertificateInfo)
+	certificate, err := a.flow.BuildCertificate(ctx, certificateParams)
 	if err != nil {
 		return nil, fmt.Errorf("error building certificate: %w", err)
-	}
-
-	signedCertificate, err := a.signCertificate(certificate)
-	if err != nil {
-		return nil, fmt.Errorf("error signing certificate: %w", err)
 	}
 
 	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
@@ -307,39 +302,48 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 		return nil, fmt.Errorf("forbidden to send certificate due epoch percentage")
 	}
 
+	a.log.Infof("certificate ready to be send to AggLayer: %s", certificate.Brief())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
-	a.saveCertificateToFile(signedCertificate)
-	a.log.Infof("certificate ready to be sent to AggLayer: %s", signedCertificate.Brief())
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
-		return signedCertificate, nil
+		return certificate, nil
 	}
-	certificateHash, err := a.aggLayerClient.SendCertificate(signedCertificate)
+	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
+		raw, marshalErr := json.Marshal(certificate)
+		if marshalErr == nil {
+			// we ignore the marshal error, since marshaled certificate is only needed for logging
+			a.log.Errorf("error sending certificate. Err: %w. Certificate: %s", err, string(raw))
+		}
+
 		return nil, fmt.Errorf("error sending certificate: %w", err)
 	}
 
 	metrics.CertificateSent()
-	a.log.Debugf("certificate send: Height: %d cert: %s", signedCertificate.Height, signedCertificate.Brief())
+	a.log.Debugf("certificate send: Height: %d cert: %s", certificate.Height, certificate.Brief())
 
-	raw, err := json.Marshal(signedCertificate)
+	raw, err := json.Marshal(certificate)
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling signed certificate. Cert:%s. Err: %w", signedCertificate.Brief(), err)
+		return nil, fmt.Errorf("error marshalling signed certificate. Cert:%s. Err: %w", certificate.Brief(), err)
 	}
 
 	prevLER := common.BytesToHash(certificate.PrevLocalExitRoot[:])
+
 	certInfo := types.CertificateInfo{
-		Height:                certificate.Height,
-		RetryCount:            retryCount,
-		CertificateID:         certificateHash,
-		NewLocalExitRoot:      certificate.NewLocalExitRoot,
-		PreviousLocalExitRoot: &prevLER,
-		FromBlock:             fromBlock,
-		ToBlock:               toBlock,
-		CreatedAt:             certificateParams.CreatedAt,
-		UpdatedAt:             certificateParams.CreatedAt,
-		SignedCertificate:     string(raw),
+		Height:                  certificate.Height,
+		RetryCount:              certificateParams.RetryCount,
+		CertificateID:           certificateHash,
+		NewLocalExitRoot:        certificate.NewLocalExitRoot,
+		PreviousLocalExitRoot:   &prevLER,
+		FromBlock:               certificateParams.FromBlock,
+		ToBlock:                 certificateParams.ToBlock,
+		CreatedAt:               certificateParams.CreatedAt,
+		UpdatedAt:               certificateParams.CreatedAt,
+		AggchainProof:           certificateParams.AggchainProof,
+		FinalizedL1InfoTreeRoot: &certificateParams.L1InfoTreeRootFromWhichToProve,
+		L1InfoTreeLeafCount:     certificateParams.L1InfoTreeLeafCount,
+		SignedCertificate:       string(raw),
 	}
 	// TODO: Improve this case, if a cert is not save in the storage, we are going to settle a unknown certificate
 	err = a.saveCertificateToStorage(ctx, certInfo, a.cfg.MaxRetriesStoreCertificate)
@@ -349,10 +353,11 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayer.SignedCertif
 	}
 
 	a.log.Infof("certificate: %s sent successfully for range of l2 blocks (from block: %d, to block: %d) cert:%s",
-		certInfo.ID(), fromBlock, toBlock, signedCertificate.Brief())
+		certInfo.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
-	return signedCertificate, nil
+	return certificate, nil
 }
+
 func (a *AggSender) isAllowedSendCertificateEpochPercent() bool {
 	if a.cfg.MaxEpochPercentageAllowedToSendCertificate == 0 ||
 		a.cfg.MaxEpochPercentageAllowedToSendCertificate >= maxPercent {
@@ -386,354 +391,6 @@ func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Cer
 	return nil
 }
 
-func (a *AggSender) limitCertSize(fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
-	currentCert := fullCert
-	var previousCert *types.CertificateBuildParams
-	var err error
-	for {
-		if currentCert.NumberOfBridges() == 0 {
-			// We can't reduce more the certificate, so this is the minium size
-			a.log.Warnf("We reach the minium size of bridge.Certificate size: %d >max size: %d",
-				previousCert.EstimatedSize(), a.cfg.MaxCertSize)
-			return previousCert, nil
-		}
-
-		if a.cfg.MaxCertSize == 0 || currentCert.EstimatedSize() < a.cfg.MaxCertSize {
-			return currentCert, nil
-		}
-
-		// Minimum size of the certificate
-		if currentCert.NumberOfBlocks() <= 1 {
-			a.log.Warnf("reach the minium num blocks [%d to %d].Certificate size: %d >max size: %d",
-				currentCert.FromBlock, currentCert.ToBlock, currentCert.EstimatedSize(), a.cfg.MaxCertSize)
-			return currentCert, nil
-		}
-		previousCert = currentCert
-		currentCert, err = currentCert.Range(currentCert.FromBlock, currentCert.ToBlock-1)
-		if err != nil {
-			return nil, fmt.Errorf("error reducing certificate: %w", err)
-		}
-	}
-}
-
-// saveCertificate saves the certificate to a tmp file
-func (a *AggSender) saveCertificateToFile(signedCertificate *agglayer.SignedCertificate) {
-	if signedCertificate == nil || a.cfg.SaveCertificatesToFilesPath == "" {
-		return
-	}
-	fn := fmt.Sprintf("%s/certificate_%04d-%07d.json",
-		a.cfg.SaveCertificatesToFilesPath, signedCertificate.Height, time.Now().Unix())
-	a.log.Infof("saving certificate to file: %s", fn)
-	jsonData, err := json.MarshalIndent(signedCertificate, "", "  ")
-	if err != nil {
-		a.log.Errorf("error marshalling certificate: %w", err)
-	}
-
-	if err = os.WriteFile(fn, jsonData, 0644); err != nil { //nolint:gosec,mnd // we are writing to a tmp file
-		a.log.Errorf("error writing certificate to file: %w", err)
-	}
-}
-
-// getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
-func (a *AggSender) getNextHeightAndPreviousLER(
-	lastSentCertificateInfo *types.CertificateInfo) (uint64, common.Hash, error) {
-	if lastSentCertificateInfo == nil {
-		return 0, zeroLER, nil
-	}
-	if !lastSentCertificateInfo.Status.IsClosed() {
-		return 0, zeroLER, fmt.Errorf("last certificate %s is not closed (status: %s)",
-			lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
-	}
-	if lastSentCertificateInfo.Status.IsSettled() {
-		return lastSentCertificateInfo.Height + 1, lastSentCertificateInfo.NewLocalExitRoot, nil
-	}
-
-	if lastSentCertificateInfo.Status.IsInError() {
-		// We can reuse last one of lastCert?
-		if lastSentCertificateInfo.PreviousLocalExitRoot != nil {
-			return lastSentCertificateInfo.Height, *lastSentCertificateInfo.PreviousLocalExitRoot, nil
-		}
-		// Is the first one, so we can set the zeroLER
-		if lastSentCertificateInfo.Height == 0 {
-			return 0, zeroLER, nil
-		}
-		// We get previous certificate that must be settled
-		a.log.Debugf("last certificate %s is in error, getting previous settled certificate height:%d",
-			lastSentCertificateInfo.Height-1)
-		lastSettleCert, err := a.storage.GetCertificateByHeight(lastSentCertificateInfo.Height - 1)
-		if err != nil {
-			return 0, common.Hash{}, fmt.Errorf("error getting last settled certificate: %w", err)
-		}
-		if lastSettleCert == nil {
-			return 0, common.Hash{}, fmt.Errorf("none settled certificate: %w", err)
-		}
-		if !lastSettleCert.Status.IsSettled() {
-			return 0, common.Hash{}, fmt.Errorf("last settled certificate %s is not settled (status: %s)",
-				lastSettleCert.ID(), lastSettleCert.Status.String())
-		}
-
-		return lastSentCertificateInfo.Height, lastSettleCert.NewLocalExitRoot, nil
-	}
-	return 0, zeroLER, fmt.Errorf("last certificate %s has an unknown status: %s",
-		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
-}
-
-// buildCertificate builds a certificate from the bridge events
-func (a *AggSender) buildCertificate(ctx context.Context,
-	certParams *types.CertificateBuildParams,
-	lastSentCertificateInfo *types.CertificateInfo) (*agglayer.Certificate, error) {
-	if certParams.IsEmpty() {
-		return nil, errNoBridgesAndClaims
-	}
-
-	bridgeExits := a.getBridgeExits(certParams.Bridges)
-	importedBridgeExits, err := a.getImportedBridgeExits(ctx, certParams.Claims)
-	if err != nil {
-		return nil, fmt.Errorf("error getting imported bridge exits: %w", err)
-	}
-
-	depositCount := certParams.MaxDepositCount()
-
-	exitRoot, err := a.l2Syncer.GetExitRootByIndex(ctx, depositCount)
-	if err != nil {
-		return nil, fmt.Errorf("error getting exit root by index: %d. Error: %w", depositCount, err)
-	}
-
-	height, previousLER, err := a.getNextHeightAndPreviousLER(lastSentCertificateInfo)
-	if err != nil {
-		return nil, fmt.Errorf("error getting next height and previous LER: %w", err)
-	}
-
-	meta := types.NewCertificateMetadata(
-		certParams.FromBlock,
-		uint32(certParams.ToBlock-certParams.FromBlock),
-		certParams.CreatedAt,
-	)
-
-	return &agglayer.Certificate{
-		NetworkID:           a.l2Syncer.OriginNetwork(),
-		PrevLocalExitRoot:   previousLER,
-		NewLocalExitRoot:    exitRoot.Hash,
-		BridgeExits:         bridgeExits,
-		ImportedBridgeExits: importedBridgeExits,
-		Height:              height,
-		Metadata:            meta.ToHash(),
-	}, nil
-}
-
-// createCertificateMetadata creates the metadata for the certificate
-// it returns: newMetadata + bool if the metadata is hashed or not
-func convertBridgeMetadata(metadata []byte, importedBridgeMetadataAsHash bool) ([]byte, bool) {
-	var metaData []byte
-	var isMetadataHashed bool
-	if importedBridgeMetadataAsHash && len(metadata) > 0 {
-		metaData = crypto.Keccak256(metadata)
-		isMetadataHashed = true
-	} else {
-		metaData = metadata
-		isMetadataHashed = false
-	}
-	return metaData, isMetadataHashed
-}
-
-// convertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (a *AggSender) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayer.ImportedBridgeExit, error) {
-	leafType := agglayer.LeafTypeAsset
-	if claim.IsMessage {
-		leafType = agglayer.LeafTypeMessage
-	}
-	metaData, isMetadataIsHashed := convertBridgeMetadata(claim.Metadata, a.cfg.BridgeMetadataAsHash)
-
-	bridgeExit := &agglayer.BridgeExit{
-		LeafType: leafType,
-		TokenInfo: &agglayer.TokenInfo{
-			OriginNetwork:      claim.OriginNetwork,
-			OriginTokenAddress: claim.OriginAddress,
-		},
-		DestinationNetwork: claim.DestinationNetwork,
-		DestinationAddress: claim.DestinationAddress,
-		Amount:             claim.Amount,
-		IsMetadataHashed:   isMetadataIsHashed,
-		Metadata:           metaData,
-	}
-
-	mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding global index: %w", err)
-	}
-
-	return &agglayer.ImportedBridgeExit{
-		BridgeExit: bridgeExit,
-		GlobalIndex: &agglayer.GlobalIndex{
-			MainnetFlag: mainnetFlag,
-			RollupIndex: rollupIndex,
-			LeafIndex:   leafIndex,
-		},
-	}, nil
-}
-
-// getBridgeExits converts bridges to agglayer.BridgeExit objects
-func (a *AggSender) getBridgeExits(bridges []bridgesync.Bridge) []*agglayer.BridgeExit {
-	bridgeExits := make([]*agglayer.BridgeExit, 0, len(bridges))
-
-	for _, bridge := range bridges {
-		metaData, isMetadataHashed := convertBridgeMetadata(bridge.Metadata, a.cfg.BridgeMetadataAsHash)
-		bridgeExits = append(bridgeExits, &agglayer.BridgeExit{
-			LeafType: agglayer.LeafType(bridge.LeafType),
-			TokenInfo: &agglayer.TokenInfo{
-				OriginNetwork:      bridge.OriginNetwork,
-				OriginTokenAddress: bridge.OriginAddress,
-			},
-			DestinationNetwork: bridge.DestinationNetwork,
-			DestinationAddress: bridge.DestinationAddress,
-			Amount:             bridge.Amount,
-			IsMetadataHashed:   isMetadataHashed,
-			Metadata:           metaData,
-		})
-	}
-
-	return bridgeExits
-}
-
-// getImportedBridgeExits converts claims to agglayer.ImportedBridgeExit objects and calculates necessary proofs
-func (a *AggSender) getImportedBridgeExits(
-	ctx context.Context, claims []bridgesync.Claim,
-) ([]*agglayer.ImportedBridgeExit, error) {
-	if len(claims) == 0 {
-		// no claims to convert
-		return []*agglayer.ImportedBridgeExit{}, nil
-	}
-
-	var (
-		greatestL1InfoTreeIndexUsed uint32
-		importedBridgeExits         = make([]*agglayer.ImportedBridgeExit, 0, len(claims))
-		claimL1Info                 = make([]*l1infotreesync.L1InfoTreeLeaf, 0, len(claims))
-	)
-
-	for _, claim := range claims {
-		info, err := a.l1infoTreeSyncer.GetInfoByGlobalExitRoot(claim.GlobalExitRoot)
-		if err != nil {
-			return nil, fmt.Errorf("error getting info by global exit root: %w", err)
-		}
-
-		claimL1Info = append(claimL1Info, info)
-
-		if info.L1InfoTreeIndex > greatestL1InfoTreeIndexUsed {
-			greatestL1InfoTreeIndexUsed = info.L1InfoTreeIndex
-		}
-	}
-
-	rootToProve, err := a.l1infoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, greatestL1InfoTreeIndexUsed)
-	if err != nil {
-		return nil, fmt.Errorf("error getting L1 Info tree root by index: %d. Error: %w", greatestL1InfoTreeIndexUsed, err)
-	}
-
-	for i, claim := range claims {
-		l1Info := claimL1Info[i]
-
-		a.log.Debugf("claim[%d]: destAddr: %s GER: %s Block: %d Pos: %d GlobalIndex: 0x%x",
-			i, claim.DestinationAddress.String(), claim.GlobalExitRoot.String(),
-			claim.BlockNum, claim.BlockPos, claim.GlobalIndex)
-		ibe, err := a.convertClaimToImportedBridgeExit(claim)
-		if err != nil {
-			return nil, fmt.Errorf("error converting claim to imported bridge exit: %w", err)
-		}
-
-		importedBridgeExits = append(importedBridgeExits, ibe)
-
-		gerToL1Proof, err := a.l1infoTreeSyncer.GetL1InfoTreeMerkleProofFromIndexToRoot(
-			ctx, l1Info.L1InfoTreeIndex, rootToProve.Hash,
-		)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"error getting L1 Info tree merkle proof for leaf index: %d and root: %s. Error: %w",
-				l1Info.L1InfoTreeIndex, rootToProve.Hash, err,
-			)
-		}
-
-		claim := claims[i]
-		if ibe.GlobalIndex.MainnetFlag {
-			ibe.ClaimData = &agglayer.ClaimFromMainnnet{
-				L1Leaf: &agglayer.L1InfoTreeLeaf{
-					L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
-					RollupExitRoot:  claim.RollupExitRoot,
-					MainnetExitRoot: claim.MainnetExitRoot,
-					Inner: &agglayer.L1InfoTreeLeafInner{
-						GlobalExitRoot: l1Info.GlobalExitRoot,
-						Timestamp:      l1Info.Timestamp,
-						BlockHash:      l1Info.PreviousBlockHash,
-					},
-				},
-				ProofLeafMER: &agglayer.MerkleProof{
-					Root:  claim.MainnetExitRoot,
-					Proof: claim.ProofLocalExitRoot,
-				},
-				ProofGERToL1Root: &agglayer.MerkleProof{
-					Root:  rootToProve.Hash,
-					Proof: gerToL1Proof,
-				},
-			}
-		} else {
-			ibe.ClaimData = &agglayer.ClaimFromRollup{
-				L1Leaf: &agglayer.L1InfoTreeLeaf{
-					L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
-					RollupExitRoot:  claim.RollupExitRoot,
-					MainnetExitRoot: claim.MainnetExitRoot,
-					Inner: &agglayer.L1InfoTreeLeafInner{
-						GlobalExitRoot: l1Info.GlobalExitRoot,
-						Timestamp:      l1Info.Timestamp,
-						BlockHash:      l1Info.PreviousBlockHash,
-					},
-				},
-				ProofLeafLER: &agglayer.MerkleProof{
-					Root: tree.CalculateRoot(ibe.BridgeExit.Hash(),
-						claim.ProofLocalExitRoot, ibe.GlobalIndex.LeafIndex),
-					Proof: claim.ProofLocalExitRoot,
-				},
-				ProofLERToRER: &agglayer.MerkleProof{
-					Root:  claim.RollupExitRoot,
-					Proof: claim.ProofRollupExitRoot,
-				},
-				ProofGERToL1Root: &agglayer.MerkleProof{
-					Root:  rootToProve.Hash,
-					Proof: gerToL1Proof,
-				},
-			}
-		}
-	}
-
-	return importedBridgeExits, nil
-}
-
-// signCertificate signs a certificate with the sequencer key
-func (a *AggSender) signCertificate(certificate *agglayer.Certificate) (*agglayer.SignedCertificate, error) {
-	hashToSign := certificate.HashToSign()
-	sig, err := a.signer.SignHash(context.Background(), hashToSign)
-	if err != nil {
-		return nil, err
-	}
-
-	a.log.Infof("Signed certificate. sequencer address: %s. New local exit root: %s Hash signed: %s",
-		a.signer.PublicAddress().String(),
-		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
-		hashToSign.String(),
-	)
-
-	r, s, isOddParity, err := extractSignatureData(sig)
-	if err != nil {
-		return nil, err
-	}
-
-	return &agglayer.SignedCertificate{
-		Certificate: certificate,
-		Signature: &agglayer.Signature{
-			R:         r,
-			S:         s,
-			OddParity: isOddParity,
-		},
-	}, nil
-}
-
 type checkCertResult struct {
 	// existPendingCerts means that there are still pending certificates
 	existPendingCerts bool
@@ -746,7 +403,7 @@ type checkCertResult struct {
 // It returns:
 // bool -> if there are pending certificates
 func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCertResult {
-	pendingCertificates, err := a.storage.GetCertificatesByStatus(agglayer.NonSettledStatuses)
+	pendingCertificates, err := a.storage.GetCertificatesByStatus(agglayertypes.NonSettledStatuses)
 	if err != nil {
 		a.log.Errorf("error getting pending certificates: %w", err)
 		return checkCertResult{existPendingCerts: true, existNewInErrorCert: false}
@@ -756,7 +413,7 @@ func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCer
 	thereArePendingCerts := false
 	appearsNewInErrorCert := false
 	for _, certificateLocal := range pendingCertificates {
-		certificateHeader, err := a.aggLayerClient.GetCertificateHeader(certificateLocal.CertificateID)
+		certificateHeader, err := a.aggLayerClient.GetCertificateHeader(ctx, certificateLocal.CertificateID)
 		if err != nil {
 			a.log.Errorf("error getting certificate header of %s from agglayer: %w",
 				certificateLocal.ID(), err)
@@ -787,7 +444,7 @@ func (a *AggSender) checkPendingCertificatesStatus(ctx context.Context) checkCer
 // updateCertificate updates the certificate status in the storage
 func (a *AggSender) updateCertificateStatus(ctx context.Context,
 	localCert *types.CertificateInfo,
-	agglayerCert *agglayer.CertificateHeader) error {
+	agglayerCert *agglayertypes.CertificateHeader) error {
 	if localCert.Status == agglayerCert.Status {
 		return nil
 	}
@@ -796,9 +453,9 @@ func (a *AggSender) updateCertificateStatus(ctx context.Context,
 		agglayerCert.String())
 
 	switch agglayerCert.Status {
-	case agglayer.Settled:
+	case agglayertypes.Settled:
 		metrics.Settled()
-	case agglayer.InError:
+	case agglayertypes.InError:
 		metrics.InError()
 	}
 
@@ -817,21 +474,10 @@ func (a *AggSender) updateCertificateStatus(ctx context.Context,
 	return nil
 }
 
-// shouldSendCertificate checks if a certificate should be sent at given time
-// if we have pending certificates, then we wait until they are settled
-func (a *AggSender) shouldSendCertificate() (bool, error) {
-	pendingCertificates, err := a.storage.GetCertificatesByStatus(agglayer.NonSettledStatuses)
-	if err != nil {
-		return false, fmt.Errorf("error getting pending certificates: %w", err)
-	}
-
-	return len(pendingCertificates) == 0, nil
-}
-
 // checkLastCertificateFromAgglayer checks the last certificate from agglayer
 func (a *AggSender) checkLastCertificateFromAgglayer(ctx context.Context) error {
 	networkID := a.l2Syncer.OriginNetwork()
-	initialStatus, err := NewInitialStatus(a.log, networkID, a.storage, a.aggLayerClient)
+	initialStatus, err := NewInitialStatus(ctx, a.log, networkID, a.storage, a.aggLayerClient)
 	if err != nil {
 		return fmt.Errorf("recovery: error retrieving initial status: %w", err)
 	}
@@ -865,7 +511,7 @@ func (a *AggSender) executeInitialStatusAction(ctx context.Context,
 
 // updateLocalStorageWithAggLayerCert updates the local storage with the certificate from the AggLayer
 func (a *AggSender) updateLocalStorageWithAggLayerCert(ctx context.Context,
-	aggLayerCert *agglayer.CertificateHeader) (*types.CertificateInfo, error) {
+	aggLayerCert *agglayertypes.CertificateHeader) (*types.CertificateInfo, error) {
 	certInfo := NewCertificateInfoFromAgglayerCertHeader(aggLayerCert)
 	a.log.Infof("setting initial certificate from AggLayer: %s", certInfo.String())
 	return certInfo, a.storage.SaveLastSentCertificate(ctx, *certInfo)
@@ -885,7 +531,7 @@ func extractSignatureData(signature []byte) (r, s common.Hash, isOddParity bool,
 	return
 }
 
-func NewCertificateInfoFromAgglayerCertHeader(c *agglayer.CertificateHeader) *types.CertificateInfo {
+func NewCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader) *types.CertificateInfo {
 	if c == nil {
 		return nil
 	}
@@ -914,28 +560,4 @@ func NewCertificateInfoFromAgglayerCertHeader(c *agglayer.CertificateHeader) *ty
 		res.PreviousLocalExitRoot = c.PreviousLocalExitRoot
 	}
 	return res
-}
-
-// getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
-// if there is no previosly sent certificate, it returns 0 and 0
-func getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
-	if lastSentCertificateInfo == nil {
-		return 0, 0
-	}
-
-	retryCount := 0
-	lastSentBlock := lastSentCertificateInfo.ToBlock
-
-	if lastSentCertificateInfo.Status == agglayer.InError {
-		// if the last certificate was in error, we need to resend it
-		// from the block before the error
-		if lastSentCertificateInfo.FromBlock > 0 {
-			lastSentBlock = lastSentCertificateInfo.FromBlock - 1
-		}
-
-		retryCount = lastSentCertificateInfo.RetryCount + 1
-		metrics.SendingRetry()
-	}
-
-	return lastSentBlock, retryCount
 }

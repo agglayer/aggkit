@@ -3,8 +3,8 @@ package l1infotreesync
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonrollupmanager"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonrollupmanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/ethereum/go-ethereum"
@@ -30,6 +30,7 @@ type EthClienter interface {
 	ethereum.LogFilterer
 	ethereum.BlockNumberReader
 	ethereum.ChainReader
+	ethereum.ChainIDReader
 	bind.ContractBackend
 }
 
@@ -37,9 +38,9 @@ func checkSMCIsRollupManager(rollupManagerAddr common.Address,
 	rollupManagerContract *polygonrollupmanager.Polygonrollupmanager) error {
 	bridgeAddr, err := rollupManagerContract.BridgeAddress(nil)
 	if err != nil {
-		return fmt.Errorf("fail sanity check RollupManager(%s) Contract. Err: %w", rollupManagerAddr.String(), err)
+		return fmt.Errorf("failed sanity check for RollupManager(%s) SC. Err: %w", rollupManagerAddr.String(), err)
 	}
-	log.Infof("sanity check rollupManager(%s) OK. bridgeAddr: %s", rollupManagerAddr.String(), bridgeAddr.String())
+	log.Infof("sanity check RollupManager(%s) SC OK. Bridge address: %s", rollupManagerAddr.String(), bridgeAddr.String())
 	return nil
 }
 
@@ -47,9 +48,9 @@ func checkSMCIsGlobalExitRoot(globalExitRootAddr common.Address,
 	gerContract *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2) error {
 	depositCount, err := gerContract.DepositCount(nil)
 	if err != nil {
-		return fmt.Errorf("fail sanity check GlobalExitRoot(%s) Contract. Err: %w", globalExitRootAddr.String(), err)
+		return fmt.Errorf("failed sanity check for GlobalExitRoot(%s) SC. Err: %w", globalExitRootAddr.String(), err)
 	}
-	log.Infof("sanity check GlobalExitRoot(%s) OK. DepositCount: %v", globalExitRootAddr.String(), depositCount)
+	log.Infof("sanity check GlobalExitRoot (%s) SC OK. DepositCount: %v", globalExitRootAddr.String(), depositCount)
 	return nil
 }
 

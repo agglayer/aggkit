@@ -4,9 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -16,9 +17,19 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// BridgeSyncerType represents the type of bridge syncer
+type BridgeSyncerType int
+
 const (
-	l1BridgeSyncer     = "L1BridgeSyncer"
-	l2BridgeSyncer     = "L2BridgeSyncer"
+	L1BridgeSyncer BridgeSyncerType = iota
+	L2BridgeSyncer
+)
+
+func (b BridgeSyncerType) String() string {
+	return [...]string{"L1BridgeSyncer", "L2BridgeSyncer"}[b]
+}
+
+const (
 	downloadBufferSize = 1000
 )
 
@@ -61,6 +72,7 @@ func NewL1(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
+	requireStorageContentCompatibility bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -71,12 +83,13 @@ func NewL1(
 		rd,
 		ethClient,
 		initialBlock,
-		l1BridgeSyncer,
+		L1BridgeSyncer,
 		waitForNewBlocksPeriod,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
+		requireStorageContentCompatibility,
 	)
 }
 
@@ -95,6 +108,7 @@ func NewL2(
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
+	requireStorageContentCompatibility bool,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -105,12 +119,13 @@ func NewL2(
 		rd,
 		ethClient,
 		initialBlock,
-		l2BridgeSyncer,
+		L2BridgeSyncer,
 		waitForNewBlocksPeriod,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		syncFullClaims,
+		requireStorageContentCompatibility,
 	)
 }
 
@@ -123,14 +138,15 @@ func newBridgeSync(
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
-	syncerID string,
+	syncerID BridgeSyncerType,
 	waitForNewBlocksPeriod time.Duration,
 	retryAfterErrorPeriod time.Duration,
 	maxRetryAttemptsAfterError int,
 	originNetwork uint32,
 	syncFullClaims bool,
+	requireStorageContentCompatibility bool,
 ) (*BridgeSync, error) {
-	logger := log.WithFields("module", syncerID)
+	logger := log.WithFields("module", syncerID.String())
 
 	err := sanityCheckContract(logger, bridge, ethClient)
 	if err != nil {
@@ -138,7 +154,7 @@ func newBridgeSync(
 			bridge.String(), err)
 		return nil, err
 	}
-	processor, err := newProcessor(dbPath, logger)
+	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger)
 	if err != nil {
 		return nil, err
 	}
@@ -149,8 +165,14 @@ func newBridgeSync(
 	}
 
 	if lastProcessedBlock < initialBlock {
+		block, err := ethClient.BlockByNumber(ctx, new(big.Int).SetUint64(initialBlock))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get initial block %d: %w", initialBlock, err)
+		}
+
 		err = processor.ProcessBlock(ctx, sync.Block{
-			Num: initialBlock,
+			Num:  initialBlock,
+			Hash: block.Hash(),
 		})
 		if err != nil {
 			return nil, err
@@ -166,7 +188,7 @@ func newBridgeSync(
 		return nil, err
 	}
 	downloader, err := sync.NewEVMDownloader(
-		syncerID,
+		syncerID.String(),
 		ethClient,
 		syncBlockChunkSize,
 		blockFinalityType,
@@ -180,7 +202,8 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID, downloadBufferSize, rh)
+	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID.String(),
+		downloadBufferSize, rh, requireStorageContentCompatibility)
 	if err != nil {
 		return nil, err
 	}
@@ -220,12 +243,11 @@ func newBridgeSync(
 
 func (s *BridgeSync) GetClaimsPaged(
 	ctx context.Context,
-	page, pageSize uint32,
-) ([]*ClaimResponse, int, error) {
+	page, pageSize uint32, networkIDs []uint32) ([]*ClaimResponse, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}
-	return s.processor.GetClaimsPaged(ctx, page, pageSize)
+	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs)
 }
 
 // Start starts the synchronization process
@@ -236,12 +258,11 @@ func (s *BridgeSync) Start(ctx context.Context) {
 func (s *BridgeSync) GetBridgesPaged(
 	ctx context.Context,
 	page, pageSize uint32,
-	depositCount *uint64,
-) ([]*BridgeResponse, int, error) {
+	depositCount *uint64, networkIDs []uint32) ([]*BridgeResponse, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}
-	return s.processor.GetBridgesPaged(ctx, page, pageSize, depositCount)
+	return s.processor.GetBridgesPaged(ctx, page, pageSize, depositCount, networkIDs)
 }
 
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
@@ -272,13 +293,6 @@ func (s *BridgeSync) GetBridges(ctx context.Context, fromBlock, toBlock uint64) 
 	return s.processor.GetBridges(ctx, fromBlock, toBlock)
 }
 
-func (s *BridgeSync) GetBridgesPublished(ctx context.Context, fromBlock, toBlock uint64) ([]Bridge, error) {
-	if s.processor.isHalted() {
-		return nil, sync.ErrInconsistentState
-	}
-	return s.processor.GetBridgesPublished(ctx, fromBlock, toBlock)
-}
-
 func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
@@ -293,6 +307,23 @@ func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize 
 	}
 
 	return s.processor.GetTokenMappings(ctx, pageNumber, pageSize)
+}
+
+func (s *BridgeSync) GetLegacyTokenMigrations(
+	ctx context.Context, pageNumber, pageSize uint32) ([]*LegacyTokenMigration, int, error) {
+	if s.processor.isHalted() {
+		return nil, 0, sync.ErrInconsistentState
+	}
+
+	if pageNumber == 0 {
+		return nil, 0, ErrInvalidPageNumber
+	}
+
+	if pageSize == 0 {
+		return nil, 0, ErrInvalidPageSize
+	}
+
+	return s.processor.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 }
 
 func (s *BridgeSync) GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error) {

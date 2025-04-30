@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/lastgersync/migrations"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -14,115 +15,184 @@ import (
 	"github.com/russross/meddler"
 )
 
-type Event struct {
+const (
+	deleteGERSql = "DELETE FROM imported_global_exit_root WHERE global_exit_root = $1;"
+)
+
+type BlockNum struct {
+	Num uint64 `meddler:"num"`
+}
+
+type GlobalExitRootInfo struct {
 	GlobalExitRoot  ethCommon.Hash `meddler:"global_exit_root,hash"`
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 }
 
-type eventWithBlockNum struct {
+type gerInfoWithBlockNum struct {
 	GlobalExitRoot  ethCommon.Hash `meddler:"global_exit_root,hash"`
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 	BlockNum        uint64         `meddler:"block_num"`
 }
 
-type processor struct {
-	db  *sql.DB
-	log *log.Logger
+type GEREvent struct {
+	BlockNum        uint64
+	GlobalExitRoot  ethCommon.Hash
+	L1InfoTreeIndex uint32
+	IsRemove        bool
 }
 
-func newProcessor(dbPath string, loggerPrefix string) (*processor, error) {
+type processor struct {
+	database *sql.DB
+	log      *log.Logger
+	compatibility.CompatibilityDataStorager[sync.RuntimeData]
+}
+
+func newProcessor(dbPath string) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
 		return nil, err
 	}
-	db, err := db.NewSQLiteDB(dbPath)
+	database, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
-	logger := log.WithFields("lastger-syncer", loggerPrefix)
+	logger := log.WithFields("module", reorgDetectorID)
 	return &processor{
-		db:  db,
-		log: logger,
+		database: database,
+		log:      logger,
+		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+			db.NewKeyValueStorage(database),
+			reorgDetectorID,
+		),
 	}, nil
 }
 
-// GetLastProcessedBlock returns the last processed block by the processor, including blocks
-// that don't have events
-func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
-	var lastProcessedBlock uint64
-	row := p.db.QueryRow("SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
-	err := row.Scan(&lastProcessedBlock)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
-	}
-	return lastProcessedBlock, err
-}
-
-func (p *processor) getLastIndex() (uint32, error) {
-	var lastIndex uint32
-	row := p.db.QueryRow(`
-		SELECT l1_info_tree_index 
-		FROM imported_global_exit_root 
-		ORDER BY l1_info_tree_index DESC LIMIT 1;
-	`)
-	err := row.Scan(&lastIndex)
-	if errors.Is(err, sql.ErrNoRows) {
-		return 0, nil
-	}
-	return lastIndex, err
-}
-
+// ProcessBlock stores a block and its related events in the lastgersync database
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
-	tx, err := db.NewTx(ctx, p.db)
+	tx, err := db.NewTx(ctx, p.database)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to start transaction: %w", err)
 	}
-	shouldRollback := true
 	defer func() {
-		if shouldRollback {
+		if err != nil {
+			p.log.Errorf("transaction rollback due to error: %v", err)
 			if errRollback := tx.Rollback(); errRollback != nil {
 				log.Errorf("error while rolling back tx %v", errRollback)
 			}
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO block (num) VALUES ($1)`, block.Num); err != nil {
+	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
 		return err
 	}
-	for _, e := range block.Events {
-		event, ok := e.(Event)
+
+	for _, genericEvt := range block.Events {
+		event, ok := genericEvt.(*Event)
 		if !ok {
-			return errors.New("failed to convert sync.Block.Event to Event")
+			return fmt.Errorf("unexpected event type %T", genericEvt)
 		}
-		if err = meddler.Insert(tx, "imported_global_exit_root", &eventWithBlockNum{
-			GlobalExitRoot:  event.GlobalExitRoot,
-			L1InfoTreeIndex: event.L1InfoTreeIndex,
-			BlockNum:        block.Num,
-		}); err != nil {
-			return err
+
+		switch {
+		case event.GERInfo != nil:
+			gerEvent := &GEREvent{
+				BlockNum:        block.Num,
+				GlobalExitRoot:  event.GERInfo.GlobalExitRoot,
+				L1InfoTreeIndex: event.GERInfo.L1InfoTreeIndex,
+			}
+			if err := p.handleGERInsertion(tx, gerEvent); err != nil {
+				return err
+			}
+
+		case event.GEREvent != nil:
+			if err := p.handleGEREvent(tx, event.GEREvent); err != nil {
+				return err
+			}
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		return err
 	}
-	shouldRollback = false
 	p.log.Debugf("processed %d events until block %d", len(block.Events), block.Num)
 	return nil
 }
 
-func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
-	_, err := p.db.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
-	return fmt.Errorf("error processing reorg: %w", err)
+// handleGERInsertion inserts the given global exit root entry to `imported_global_exit_root`
+func (*processor) handleGERInsertion(tx db.Txer, gerInfo *GEREvent) error {
+	gerInfoWithBlockNum := &gerInfoWithBlockNum{
+		GlobalExitRoot:  gerInfo.GlobalExitRoot,
+		L1InfoTreeIndex: gerInfo.L1InfoTreeIndex,
+		BlockNum:        gerInfo.BlockNum,
+	}
+
+	if err := meddler.Insert(tx, "imported_global_exit_root", gerInfoWithBlockNum); err != nil {
+		return fmt.Errorf("failed to insert GER entry (value=%x, block=%d): %w",
+			gerInfo.GlobalExitRoot, gerInfo.BlockNum, err)
+	}
+	return nil
 }
 
-// GetFirstGERAfterL1InfoTreeIndex returns the first GER injected on the chain that is related to l1InfoTreeIndex
-// or greater
+// handleGEREvent either inserts or removes the global exit root entry from `imported_global_exit_root` table,
+func (p *processor) handleGEREvent(tx db.Txer, event *GEREvent) error {
+	if event.IsRemove {
+		_, err := tx.Exec(deleteGERSql, event.GlobalExitRoot.Hex())
+		if err != nil {
+			return fmt.Errorf("failed to remove global exit root %s: %w", event.GlobalExitRoot.Hex(), err)
+		}
+	} else {
+		err := p.handleGERInsertion(tx, event)
+		if err != nil {
+			return fmt.Errorf("failed to insert global exit root %s: %w", event.GlobalExitRoot.Hex(), err)
+		}
+	}
+
+	return nil
+}
+
+// GetLastProcessedBlock retrieves the most recent block processed by the processor,
+// including those without events.
+func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
+	var block BlockNum
+	if err := meddler.QueryRow(
+		p.database,
+		&block,
+		"SELECT num FROM block ORDER BY num DESC LIMIT 1;",
+	); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	return block.Num, nil
+}
+
+// getLatestL1InfoTreeIndex retrieves the highest L1InfoTreeIndex recorded in the imported_global_exit_root table
+func (p *processor) getLatestL1InfoTreeIndex() (uint32, error) {
+	var latestGERInfo GlobalExitRootInfo
+	err := meddler.QueryRow(p.database, &latestGERInfo,
+		`SELECT l1_info_tree_index FROM imported_global_exit_root 
+		ORDER BY l1_info_tree_index DESC LIMIT 1;`)
+	if err != nil {
+		return 0, db.ReturnErrNotFound(err)
+	}
+	return latestGERInfo.L1InfoTreeIndex, nil
+}
+
+// Reorg removes all blocks and associated data starting from a specific block number from lastgersync database
+func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
+	_, err := p.database.ExecContext(ctx, `DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
+	if err != nil {
+		return fmt.Errorf("error processing reorg: %w", err)
+	}
+	return nil
+}
+
+// GetFirstGERAfterL1InfoTreeIndex returns the first GER injected into the chain that is associated with
+// or greater than the specified l1InfoTreeIndex.
 func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
-	ctx context.Context, l1InfoTreeIndex uint32,
-) (Event, error) {
-	e := Event{}
-	err := meddler.QueryRow(p.db, &e, `
+	ctx context.Context, l1InfoTreeIndex uint32) (GlobalExitRootInfo, error) {
+	e := GlobalExitRootInfo{}
+	err := meddler.QueryRow(p.database, &e, `
 		SELECT l1_info_tree_index, global_exit_root
 		FROM imported_global_exit_root
 		WHERE l1_info_tree_index >= $1
@@ -132,7 +202,8 @@ func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 		if errors.Is(err, sql.ErrNoRows) {
 			return e, db.ErrNotFound
 		}
-		return e, err
+		return e, fmt.Errorf("failed to get first GER after index %d: %w", l1InfoTreeIndex, err)
 	}
+
 	return e, nil
 }

@@ -43,6 +43,7 @@ func TestBridgeEventE2E(t *testing.T) {
 			DestinationNetwork: uint32(i + 1),
 			DestinationAddress: common.HexToAddress("f00"),
 			Metadata:           []byte{},
+			IsNativeToken:      true,
 		}
 
 		lastDepositCount++
@@ -64,7 +65,6 @@ func TestBridgeEventE2E(t *testing.T) {
 		receipt, err := setup.L1Environment.SimBackend.Client().TransactionReceipt(ctx, tx.Hash())
 		require.NoError(t, err)
 		bridge.TxHash = receipt.TxHash
-		bridge.FromAddress = receipt.Logs[0].Address
 		block, err := simulatedClient.BlockByNumber(ctx, new(big.Int).SetUint64(bn))
 		require.NoError(t, err)
 		bridge.BlockTimestamp = block.Time()
@@ -104,7 +104,7 @@ func TestBridgeEventE2E(t *testing.T) {
 	root, err := setup.L1Environment.BridgeSync.GetExitRootByIndex(ctx, expectedBridges[len(expectedBridges)-1].DepositCount)
 	require.NoError(t, err)
 	log.Infof("expectedRoot: %s lastBlock: %d lastFinalized:%d DepositCount:%d ", common.Hash(expectedRoot).Hex(), lastBlock, lb, expectedBridges[len(expectedBridges)-1].DepositCount)
-	for i := 79; i >= 00; i-- {
+	for i := 79; i >= 0; i-- {
 		root, err := setup.L1Environment.BridgeSync.GetExitRootByIndex(ctx, uint32(i))
 		require.NoError(t, err, fmt.Sprintf("DepositCount:%d", i))
 		log.Infof("DepositCount:%d root: %s", i, root.Hash.Hex())

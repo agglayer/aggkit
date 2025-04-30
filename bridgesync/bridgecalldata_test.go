@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/etrog/polygonzkevmbridgev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridgev2"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -122,7 +122,7 @@ func TestBridgeCallData(t *testing.T) {
 	go reorgDetector.Start(ctx) //nolint:errcheck
 
 	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, etherman.LatestBlock, reorgDetector, ethClient,
-		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false)
+		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false, false)
 	require.NoError(t, err)
 	go bridgeSync.Start(ctx)
 
@@ -178,7 +178,7 @@ func TestBridgeCallData(t *testing.T) {
 
 	// wait for bridge event to get indexed
 	for attempt < maxAttempts {
-		bridgeResponse, totalCount, err := bridgeSync.GetBridgesPaged(ctx, page, pageSize, nil)
+		bridgeResponse, totalCount, err := bridgeSync.GetBridgesPaged(ctx, page, pageSize, nil, nil)
 		require.NoError(t, err)
 
 		if len(bridgeResponse) > 0 {

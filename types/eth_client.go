@@ -24,6 +24,7 @@ type BaseEthereumClienter interface {
 	ethereum.LogFilterer
 	ethereum.BlockNumberReader
 	ethereum.ChainReader
+	ethereum.ChainIDReader
 	bind.ContractBackend
 }
 

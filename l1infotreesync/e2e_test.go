@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
 	aggkittypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -71,7 +71,7 @@ func TestE2E(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 	syncer, err := l1infotreesync.New(ctx, dbPath, gerAddr, verifyAddr, 10, etherman.LatestBlock, rdm, client.Client(), time.Millisecond, 0, 100*time.Millisecond, 25,
-		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock)
+		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock, true)
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -159,7 +159,7 @@ func TestWithReorgs(t *testing.T) {
 	require.NoError(t, rd.Start(ctx))
 
 	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, etherman.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 25,
-		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock)
+		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock, true)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 
@@ -279,7 +279,7 @@ func TestStressAndReorgs(t *testing.T) {
 	require.NoError(t, rd.Start(ctx))
 
 	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, etherman.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 100,
-		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock)
+		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock, true)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 

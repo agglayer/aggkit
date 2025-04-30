@@ -42,7 +42,7 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 		name            string
 		addReturnTxID   common.Hash
 		addReturnErr    error
-		resultReturn    types.MonitoredTxResult
+		resultReturn    *types.MonitoredTxResult
 		resultReturnErr error
 		expectedErr     string
 	}{
@@ -50,7 +50,7 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 			name:            "successful injection",
 			addReturnTxID:   txID,
 			addReturnErr:    nil,
-			resultReturn:    types.MonitoredTxResult{Status: types.MonitoredTxStatusMined, MinedAtBlockNumber: big.NewInt(123)},
+			resultReturn:    &types.MonitoredTxResult{Status: types.MonitoredTxStatusMined, MinedAtBlockNumber: big.NewInt(123)},
 			resultReturnErr: nil,
 			expectedErr:     "",
 		},
@@ -58,23 +58,21 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 			name:            "injection fails due to transaction failure",
 			addReturnTxID:   txID,
 			addReturnErr:    nil,
-			resultReturn:    types.MonitoredTxResult{Status: types.MonitoredTxStatusFailed},
+			resultReturn:    &types.MonitoredTxResult{Status: types.MonitoredTxStatusFailed},
 			resultReturnErr: nil,
 			expectedErr:     "inject GER tx",
 		},
 		{
-			name:            "injection fails due to Add method error",
-			addReturnTxID:   common.Hash{},
-			addReturnErr:    errors.New("add error"),
-			resultReturn:    types.MonitoredTxResult{},
-			resultReturnErr: nil,
-			expectedErr:     "add error",
+			name:          "injection fails due to Add method error",
+			addReturnTxID: common.Hash{},
+			addReturnErr:  errors.New("add error"),
+			expectedErr:   "add error",
 		},
 		{
 			name:            "injection fails due to Result method error",
 			addReturnTxID:   txID,
 			addReturnErr:    nil,
-			resultReturn:    types.MonitoredTxResult{},
+			resultReturn:    &types.MonitoredTxResult{},
 			resultReturnErr: errors.New("result error"),
 			expectedErr:     "result error",
 		},
@@ -85,13 +83,15 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 			ctx, cancelFn := context.WithTimeout(context.Background(), time.Millisecond*500)
 			defer cancelFn()
 
-			ethTxMan := new(mocks.EthTxManagerMock)
+			ethTxMan := mocks.NewEthTxManager(t)
 			ethTxMan.
 				On("Add", ctx, &l2GERManagerAddr, common.Big0, mock.Anything, mock.Anything, mock.Anything).
 				Return(tt.addReturnTxID, tt.addReturnErr)
-			ethTxMan.
-				On("Result", ctx, tt.addReturnTxID).
-				Return(tt.resultReturn, tt.resultReturnErr)
+			if tt.resultReturn != nil || tt.resultReturnErr != nil {
+				ethTxMan.
+					On("Result", ctx, tt.addReturnTxID).
+					Return(*tt.resultReturn, tt.resultReturnErr)
+			}
 
 			sender := &EVMChainGERSender{
 				logger:              log.GetDefaultLogger(),
@@ -145,7 +145,7 @@ func TestEVMChainGERSender_IsGERInjected(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockL2GERManager := new(mocks.L2GERManagerMock)
+			mockL2GERManager := mocks.NewL2GERManagerContract(t)
 			mockL2GERManager.On("GlobalExitRootMap", mock.Anything, mock.Anything).
 				Return(tt.mockReturn, tt.mockError)
 

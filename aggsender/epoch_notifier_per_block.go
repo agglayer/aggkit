@@ -6,6 +6,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
 const (
@@ -39,12 +40,13 @@ func (c *ConfigEpochNotifierPerBlock) String() string {
 		c.StartingEpochBlock, c.NumBlockPerEpoch, c.EpochNotificationPercentage)
 }
 
-func NewConfigEpochNotifierPerBlock(aggLayer agglayer.AggLayerClientGetEpochConfiguration,
+func NewConfigEpochNotifierPerBlock(ctx context.Context,
+	aggLayer agglayer.AggLayerClientGetEpochConfiguration,
 	epochNotificationPercentage uint) (*ConfigEpochNotifierPerBlock, error) {
 	if aggLayer == nil {
 		return nil, fmt.Errorf("newConfigEpochNotifierPerBlock: aggLayerClient is required")
 	}
-	clockConfig, err := aggLayer.GetEpochConfiguration()
+	clockConfig, err := aggLayer.GetEpochConfiguration(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("newConfigEpochNotifierPerBlock: error getting clock configuration from AggLayer: %w", err)
 	}
@@ -67,7 +69,7 @@ func (c *ConfigEpochNotifierPerBlock) Validate() error {
 
 type EpochNotifierPerBlock struct {
 	blockNotifier types.BlockNotifier
-	logger        types.Logger
+	logger        aggkitcommon.Logger
 
 	lastStartingEpochBlock uint64
 
@@ -76,7 +78,7 @@ type EpochNotifierPerBlock struct {
 }
 
 func NewEpochNotifierPerBlock(blockNotifier types.BlockNotifier,
-	logger types.Logger,
+	logger aggkitcommon.Logger,
 	config ConfigEpochNotifierPerBlock,
 	subscriber types.GenericSubscriber[types.EpochEvent]) (*EpochNotifierPerBlock, error) {
 	if subscriber == nil {

@@ -10,11 +10,13 @@ import (
 	"fmt"
 	"math/big"
 	"regexp"
+	"strings"
 	mutex "sync"
 
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	aggkitCommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
@@ -38,6 +40,9 @@ const (
 
 	// tokenMappingTableName is the name of the table that stores token mapping events
 	tokenMappingTableName = "token_mapping"
+
+	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
+	legacyTokenMigrationTableName = "legacy_token_migration"
 )
 
 var (
@@ -46,12 +51,19 @@ var (
 
 	// tableNameRegex is the regex pattern to validate table names
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
+
+	// deleteLegacyTokenSQL is the SQL statement to delete legacy token migration event
+	// with specific legacy token address
+	deleteLegacyTokenSQL = fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1", legacyTokenMigrationTableName)
 )
 
 // Bridge is the representation of a bridge event
 type Bridge struct {
 	BlockNum           uint64         `meddler:"block_num" json:"block_num"`
 	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
+	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	Calldata           []byte         `meddler:"calldata" json:"calldata"`
 	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
 	LeafType           uint8          `meddler:"leaf_type" json:"leaf_type"`
 	OriginNetwork      uint32         `meddler:"origin_network" json:"origin_network"`
@@ -61,13 +73,11 @@ type Bridge struct {
 	Amount             *big.Int       `meddler:"amount,bigint" json:"amount"`
 	Metadata           []byte         `meddler:"metadata" json:"metadata"`
 	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
-	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
-	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
-	Calldata           []byte         `meddler:"calldata" json:"calldata"`
+	IsNativeToken      bool           `meddler:"is_native_token" json:"is_native_token"`
 }
 
-// Cant change the Hash() here after adding BlockTimestamp, TxHash. Might affect previous versions
 // Hash returns the hash of the bridge event as expected by the exit tree
+// Note: can't change the Hash() here after adding BlockTimestamp and TxHash. Might affect previous versions
 func (b *Bridge) Hash() common.Hash {
 	const (
 		uint32ByteSize = 4
@@ -81,7 +91,7 @@ func (b *Bridge) Hash() common.Hash {
 	metaHash := keccak256.Hash(b.Metadata)
 	var buf [bigIntSize]byte
 	if b.Amount == nil {
-		b.Amount = big.NewInt(0)
+		b.Amount = common.Big0
 	}
 
 	return common.BytesToHash(keccak256.Hash(
@@ -99,6 +109,14 @@ func (b *Bridge) Hash() common.Hash {
 type BridgeResponse struct {
 	BridgeHash common.Hash `json:"bridge_hash"`
 	Bridge
+}
+
+// NewBridgeResponse creates a new BridgeResponse instance out of the provided Bridge instance
+func NewBridgeResponse(bridge *Bridge) *BridgeResponse {
+	return &BridgeResponse{
+		Bridge:     *bridge,
+		BridgeHash: bridge.Hash(),
+	}
 }
 
 // MarshalJSON for hex-encoding Metadata field
@@ -119,6 +137,8 @@ func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
 type Claim struct {
 	BlockNum            uint64         `meddler:"block_num"`
 	BlockPos            uint64         `meddler:"block_pos"`
+	FromAddress         common.Address `meddler:"from_address,address"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
 	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
 	OriginNetwork       uint32         `meddler:"origin_network"`
 	OriginAddress       common.Address `meddler:"origin_address"`
@@ -133,12 +153,10 @@ type Claim struct {
 	Metadata            []byte         `meddler:"metadata"`
 	IsMessage           bool           `meddler:"is_message"`
 	BlockTimestamp      uint64         `meddler:"block_timestamp"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash"`
-	FromAddress         common.Address `meddler:"from_address,address"`
 }
 
 // decodeEtrogCalldata decodes claim calldata for Etrog fork
-func (c *Claim) decodeEtrogCalldata(data []any) (bool, error) {
+func (c *Claim) decodeEtrogCalldata(senderAddr common.Address, data []any) (bool, error) {
 	// Unpack method inputs. Note that both claimAsset and claimMessage have the same interface
 	// for the relevant parts
 	// claimAsset/claimMessage(
@@ -203,12 +221,13 @@ func (c *Claim) decodeEtrogCalldata(data []any) (bool, error) {
 	}
 
 	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
+	c.FromAddress = senderAddr
 
 	return true, nil
 }
 
 // decodePreEtrogCalldata decodes the claim calldata for pre-Etrog forks
-func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
+func (c *Claim) decodePreEtrogCalldata(senderAddr common.Address, data []any) (bool, error) {
 	// claimMessage/claimAsset(
 	// 	0: bytes32[32] smtProof,
 	// 	1: uint32 index,
@@ -263,6 +282,7 @@ func (c *Claim) decodePreEtrogCalldata(data []any) (bool, error) {
 	}
 
 	c.GlobalExitRoot = crypto.Keccak256Hash(c.MainnetExitRoot.Bytes(), c.RollupExitRoot.Bytes())
+	c.FromAddress = senderAddr
 
 	return true, nil
 }
@@ -281,17 +301,46 @@ type ClaimResponse struct {
 	FromAddress        common.Address `json:"from_address"`
 }
 
+// NewClaimResponse creates ClaimResponse instance out of the provided Claim
+func NewClaimResponse(claim *Claim) *ClaimResponse {
+	return &ClaimResponse{
+		GlobalIndex:        claim.GlobalIndex,
+		DestinationNetwork: claim.DestinationNetwork,
+		TxHash:             claim.TxHash,
+		Amount:             claim.Amount,
+		BlockNum:           claim.BlockNum,
+		FromAddress:        claim.FromAddress,
+		DestinationAddress: claim.DestinationAddress,
+		OriginAddress:      claim.OriginAddress,
+		OriginNetwork:      claim.OriginNetwork,
+		BlockTimestamp:     claim.BlockTimestamp,
+	}
+}
+
+type TokenMappingType uint8
+
+const (
+	WrappedToken = iota
+	SovereignToken
+)
+
+func (l TokenMappingType) String() string {
+	return [...]string{"WrappedToken", "SovereignToken"}[l]
+}
+
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
-	BlockNum            uint64         `meddler:"block_num" json:"block_num"`
-	BlockPos            uint64         `meddler:"block_pos" json:"block_pos"`
-	BlockTimestamp      uint64         `meddler:"block_timestamp" json:"block_timestamp"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
-	OriginNetwork       uint32         `meddler:"origin_network" json:"origin_network"`
-	OriginTokenAddress  common.Address `meddler:"origin_token_address,address" json:"origin_token_address"`
-	WrappedTokenAddress common.Address `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
-	Metadata            []byte         `meddler:"metadata" json:"metadata"`
-	Calldata            []byte         `meddler:"calldata" json:"calldata"`
+	BlockNum            uint64           `meddler:"block_num" json:"block_num"`
+	BlockPos            uint64           `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp      uint64           `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash              common.Hash      `meddler:"tx_hash,hash" json:"tx_hash"`
+	OriginNetwork       uint32           `meddler:"origin_network" json:"origin_network"`
+	OriginTokenAddress  common.Address   `meddler:"origin_token_address,address" json:"origin_token_address"`
+	WrappedTokenAddress common.Address   `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
+	Metadata            []byte           `meddler:"metadata" json:"metadata"`
+	IsNotMintable       bool             `meddler:"is_not_mintable" json:"is_not_mintable"`
+	Calldata            []byte           `meddler:"calldata" json:"calldata"`
+	Type                TokenMappingType `meddler:"token_type" json:"token_type"`
 }
 
 // MarshalJSON for hex-encoding Metadata and Calldata fields
@@ -308,12 +357,38 @@ func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// Event combination of bridge, claim and token mapping events
+// LegacyTokenMigration representation of a MigrateLegacyToken event,
+// that is emitted by the sovereign chain bridge contract.
+type LegacyTokenMigration struct {
+	BlockNum            uint64         `meddler:"block_num" json:"block_num"`
+	BlockPos            uint64         `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	Sender              common.Address `meddler:"sender,address" json:"sender"`
+	LegacyTokenAddress  common.Address `meddler:"legacy_token_address,address" json:"legacy_token_address"`
+	UpdatedTokenAddress common.Address `meddler:"updated_token_address,address" json:"updated_token_address"`
+	Amount              *big.Int       `meddler:"amount,bigint" json:"amount"`
+	Calldata            []byte         `meddler:"calldata" json:"calldata"`
+}
+
+// RemoveLegacyToken representation of a RemoveLegacySovereignTokenAddress event,
+// that is emitted by the sovereign chain bridge contract.
+type RemoveLegacyToken struct {
+	BlockNum           uint64         `meddler:"block_num" json:"block_num"`
+	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
+	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address" json:"legacy_token_address"`
+}
+
+// Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
-	Pos          uint64
-	Bridge       *Bridge
-	Claim        *Claim
-	TokenMapping *TokenMapping
+	Pos                  uint64
+	Bridge               *Bridge
+	Claim                *Claim
+	TokenMapping         *TokenMapping
+	LegacyTokenMigration *LegacyTokenMigration
+	RemoveLegacyToken    *RemoveLegacyToken
 }
 
 type processor struct {
@@ -323,30 +398,29 @@ type processor struct {
 	mu           mutex.RWMutex
 	halted       bool
 	haltedReason string
+	compatibility.CompatibilityDataStorager[sync.RuntimeData]
 }
 
-func newProcessor(dbPath string, logger *log.Logger) (*processor, error) {
+func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
 		return nil, err
 	}
-	db, err := db.NewSQLiteDB(dbPath)
+	database, err := db.NewSQLiteDB(dbPath)
 	if err != nil {
 		return nil, err
 	}
 
-	exitTree := tree.NewAppendOnlyTree(db, "")
+	exitTree := tree.NewAppendOnlyTree(database, "")
 	return &processor{
-		db:       db,
+		db:       database,
 		exitTree: exitTree,
 		log:      logger,
+		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+			db.NewKeyValueStorage(database),
+			name,
+		),
 	}, nil
-}
-
-func (p *processor) GetBridgesPublished(
-	ctx context.Context, fromBlock, toBlock uint64,
-) ([]Bridge, error) {
-	return p.GetBridges(ctx, fromBlock, toBlock)
 }
 
 //nolint:dupl
@@ -364,6 +438,10 @@ func (p *processor) GetBridges(
 	}()
 	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTableName)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
+			return []Bridge{}, nil
+		}
 		return nil, err
 	}
 	bridgePtrs := []*Bridge{}
@@ -393,6 +471,10 @@ func (p *processor) GetClaims(
 	}()
 	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTableName)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
+			return []Claim{}, nil
+		}
 		return nil, err
 	}
 	claimPtrs := []*Claim{}
@@ -408,7 +490,7 @@ func (p *processor) GetClaims(
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64,
+	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32,
 ) ([]*BridgeResponse, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -419,26 +501,32 @@ func (p *processor) GetBridgesPaged(
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	orderBy := "deposit_count"
-	order := "DESC"
-	whereClause := ""
-	count, err := p.GetTotalNumberOfRecords(bridgeTableName)
+	orderByClause := "deposit_count DESC"
+	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName)
 	if err != nil {
 		return nil, 0, err
 	}
+
+	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs)
 	if depositCount != nil {
-		whereClause = fmt.Sprintf("WHERE deposit_count = %d", *depositCount)
 		pageNumber = 1
 		pageSize = 1
 	}
+
 	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(count) {
-		p.log.Debugf("offset is larger than total bridges (page number=%d, page size=%d, total bridges=%d)",
-			pageNumber, pageSize, count)
-		return nil, 0, db.ErrNotFound
+	if offset >= uint32(bridgesCount) {
+		p.log.Debugf("provided page number is invalid for given page size and total number of bridges"+
+			" (page number=%d, page size=%d, total bridges=%d)", pageNumber, pageSize, bridgesCount)
+		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of bridges"+
+			" (page number=%d, page size=%d, total bridges=%d)", pageNumber, pageSize, bridgesCount)
 	}
-	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderBy, order, whereClause)
+	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no bridges were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
+				pageNumber, pageSize, whereClause)
+			return nil, bridgesCount, nil
+		}
 		return nil, 0, err
 	}
 	defer func() {
@@ -452,19 +540,35 @@ func (p *processor) GetBridgesPaged(
 	}
 	bridgeResponsePtrs := make([]*BridgeResponse, len(bridgePtrs))
 	for i, bridgePtr := range bridgePtrs {
-		bridgeResponsePtrs[i] = &BridgeResponse{
-			Bridge:     *bridgePtr,
-			BridgeHash: bridgePtr.Hash(),
-		}
+		bridgeResponsePtrs[i] = NewBridgeResponse(bridgePtr)
 	}
 	if depositCount != nil {
-		count = len(bridgePtrs)
+		bridgesCount = len(bridgePtrs)
 	}
-	return bridgeResponsePtrs, count, nil
+	return bridgeResponsePtrs, bridgesCount, nil
+}
+
+// buildBridgesFilterClause builds the WHERE clause for the bridges table
+// based on the provided depositCount and networkIDs
+func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32) string {
+	const clauseCapacity = 2
+	clauses := make([]string, 0, clauseCapacity)
+	if depositCount != nil {
+		clauses = append(clauses, fmt.Sprintf("deposit_count = %d", *depositCount))
+	}
+
+	if len(networkIDs) > 0 {
+		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "destination_network"))
+	}
+
+	if len(clauses) > 0 {
+		return "WHERE " + strings.Join(clauses, " AND ")
+	}
+	return ""
 }
 
 func (p *processor) GetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32,
+	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32,
 ) ([]*ClaimResponse, int, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -475,23 +579,38 @@ func (p *processor) GetClaimsPaged(
 			log.Warnf("error rolling back tx: %v", err)
 		}
 	}()
-	count, err := p.GetTotalNumberOfRecords(claimTableName)
+	claimsCount, err := p.GetTotalNumberOfRecords(claimTableName)
 	if err != nil {
 		return nil, 0, err
 	}
 
 	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(count) {
-		p.log.Debugf("offset is larger than total claims (page number=%d, page size=%d, total claims=%d)",
-			pageNumber, pageSize, count)
-		return nil, 0, db.ErrNotFound
+	if offset >= uint32(claimsCount) {
+		p.log.Debugf("provided page number is invalid for given page size and total number of claims"+
+			" (page number=%d, page size=%d, total claims=%d)", pageNumber, pageSize, claimsCount)
+		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of claims"+
+			" (page number=%d, page size=%d, total claims=%d)", pageNumber, pageSize, claimsCount)
 	}
 
-	orderBy := "block_num DESC, block_pos"
-	order := "DESC"
+	orderByClause := "block_num DESC, block_pos DESC"
 	whereClause := ""
-	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderBy, order, whereClause)
+
+	if len(networkIDs) > 0 {
+		networkIDsFilter := buildNetworkIDsFilter(networkIDs, "origin_network")
+		if len(whereClause) > 0 {
+			whereClause += " AND " + networkIDsFilter
+		} else {
+			whereClause = "WHERE " + networkIDsFilter
+		}
+	}
+
+	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, claimsCount, nil
+		}
 		return nil, 0, err
 	}
 	defer func() {
@@ -505,22 +624,57 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	claimResponsePtrs := make([]*ClaimResponse, len(claimPtrs))
-	for i, bridgePtr := range claimPtrs {
-		claimResponsePtrs[i] = &ClaimResponse{
-			GlobalIndex:        bridgePtr.GlobalIndex,
-			DestinationNetwork: bridgePtr.DestinationNetwork,
-			TxHash:             bridgePtr.TxHash,
-			Amount:             bridgePtr.Amount,
-			BlockNum:           bridgePtr.BlockNum,
-			FromAddress:        bridgePtr.FromAddress,
-			DestinationAddress: bridgePtr.DestinationAddress,
-			OriginAddress:      bridgePtr.OriginAddress,
-			OriginNetwork:      bridgePtr.OriginNetwork,
-			BlockTimestamp:     bridgePtr.BlockTimestamp,
-		}
+	for i, claimPtr := range claimPtrs {
+		claimResponsePtrs[i] = NewClaimResponse(claimPtr)
 	}
 
-	return claimResponsePtrs, count, nil
+	return claimResponsePtrs, claimsCount, nil
+}
+
+// GetLegacyTokenMigrations returns the paged legacy token migrations from the database
+func (p *processor) GetLegacyTokenMigrations(
+	ctx context.Context, pageNumber, pageSize uint32) ([]*LegacyTokenMigration, int, error) {
+	legacyTokenMigrationsCount, err := p.GetTotalNumberOfRecords(legacyTokenMigrationTableName)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", legacyTokenMigrationTableName, err)
+	}
+
+	if legacyTokenMigrationsCount == 0 {
+		return nil, 0, nil
+	}
+
+	offset := (pageNumber - 1) * pageSize
+	if offset >= uint32(legacyTokenMigrationsCount) {
+		p.log.Debugf("provided page number is invalid for given page size and total number of legacy token migrations"+
+			" (page number=%d, page size=%d, total count=%d)", pageNumber, pageSize, legacyTokenMigrationsCount)
+		return nil, 0,
+			fmt.Errorf("provided page number is invalid for given page size and total number of legacy token migrations"+
+				" (page number=%d, page size=%d, total token migrations=%d)",
+				pageNumber, pageSize, legacyTokenMigrationsCount)
+	}
+
+	orderByClause := "block_num, block_pos DESC"
+	whereClause := ""
+	rows, err := p.queryPaged(p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			p.log.Debugf("no legacy token migrations were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, legacyTokenMigrationsCount, nil
+		}
+		return nil, 0, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			p.log.Warnf("error closing rows: %v", err)
+		}
+	}()
+	tokenMigrations := []*LegacyTokenMigration{}
+	if err = meddler.ScanAll(rows, &tokenMigrations); err != nil {
+		return nil, 0, err
+	}
+
+	return tokenMigrations, legacyTokenMigrationsCount, nil
 }
 
 func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
@@ -543,15 +697,15 @@ func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, ta
 // queryPaged returns a paged result from the given table
 func (p *processor) queryPaged(tx db.Querier,
 	offset, pageSize uint32,
-	table, orderBy, order, whereClause string,
+	table, orderByClause, whereClause string,
 ) (*sql.Rows, error) {
 	rows, err := tx.Query(fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		%s
-		ORDER BY %s %s
+		ORDER BY %s
 		LIMIT $1 OFFSET $2;
-	`, table, whereClause, orderBy, order), pageSize, offset)
+	`, table, whereClause, orderByClause), pageSize, offset)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound
@@ -579,13 +733,14 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 }
 
 func (p *processor) getLastProcessedBlockWithTx(tx db.Querier) (uint64, error) {
-	var lastProcessedBlock uint64
+	var lastProcessedBlockNum uint64
+
 	row := tx.QueryRow("SELECT num FROM block ORDER BY num DESC LIMIT 1;")
-	err := row.Scan(&lastProcessedBlock)
+	err := row.Scan(&lastProcessedBlockNum)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
 	}
-	return lastProcessedBlock, err
+	return lastProcessedBlockNum, err
 }
 
 // Reorg triggers a purge and reset process on the processor to leaf it on a state
@@ -642,7 +797,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO block (num) VALUES ($1)`, block.Num); err != nil {
+	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
 		return err
 	}
 	for _, e := range block.Events {
@@ -680,6 +835,19 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		}
+
+		if event.LegacyTokenMigration != nil {
+			if err = meddler.Insert(tx, legacyTokenMigrationTableName, event.LegacyTokenMigration); err != nil {
+				return err
+			}
+		}
+
+		if event.RemoveLegacyToken != nil {
+			_, err := tx.Exec(deleteLegacyTokenSQL, event.RemoveLegacyToken.LegacyTokenAddress.Hex())
+			if err != nil {
+				return err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -706,7 +874,7 @@ func (p *processor) GetTotalNumberOfRecords(tableName string) (int, error) {
 	return count, nil
 }
 
-// GetTokenMappings returns the token mappings in the database
+// GetTokenMappings returns the paged token mappings from the database
 func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
 	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName)
 	if err != nil {
@@ -719,9 +887,10 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 
 	offset := (pageNumber - 1) * pageSize
 	if offset >= uint32(totalTokenMappings) {
-		p.log.Debugf("offset is larger than total token mappings (page number=%d, page size=%d, total token mappings=%d)",
-			pageNumber, pageSize, totalTokenMappings)
-		return nil, 0, db.ErrNotFound
+		p.log.Debugf("provided page number is invalid for given page size and total number of token mappings"+
+			" (page number=%d, page size=%d, total token mappings=%d)", pageNumber, pageSize, totalTokenMappings)
+		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of token mappings"+
+			" (page number=%d, page size=%d, total token mappings=%d)", pageNumber, pageSize, totalTokenMappings)
 	}
 
 	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
@@ -745,12 +914,16 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 		}
 	}()
 
-	const (
-		orderByColumn = "block_num"
-		order         = "DESC"
-	)
-	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByColumn, order, "")
+	orderByClause := "block_num DESC"
+	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			pageNumber := (offset / pageSize) + 1
+			p.log.Debugf("no token mappings were found for provided parameters (pageNumber=%d, pageSize=%d)",
+				pageNumber, pageSize)
+			return nil, nil
+		}
+
 		p.log.Errorf("failed to fetch token mappings: %v", err)
 		return nil, err
 	}
@@ -768,6 +941,15 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	}
 
 	return tokenMappings, nil
+}
+
+// buildNetworkIDsFilter builds SQL filter for the given network IDs
+func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
+	placeholders := make([]string, len(networkIDs))
+	for i, id := range networkIDs {
+		placeholders[i] = fmt.Sprintf("%d", id)
+	}
+	return fmt.Sprintf("%s IN (%s)", networkIDColumn, strings.Join(placeholders, ", "))
 }
 
 func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {

@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"path"
 	"testing"
 	"time"
 
 	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
-	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
@@ -39,6 +39,14 @@ func TestNewLx(t *testing.T) {
 	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Times(2)
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
@@ -58,6 +66,7 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
+		true,
 	)
 
 	require.NoError(t, err)
@@ -79,6 +88,7 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
+		true,
 	)
 
 	require.NoError(t, err)
@@ -104,6 +114,7 @@ func TestNewLx(t *testing.T) {
 		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
+		true,
 	)
 	t.Log(err)
 	require.Error(t, err)
@@ -158,12 +169,6 @@ func TestGetClaims(t *testing.T) {
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
-func TestGetBridgesPublishedTopLevel(t *testing.T) {
-	s := BridgeSync{processor: &processor{halted: true}}
-	_, err := s.GetBridgesPublished(context.Background(), 0, 0)
-	require.ErrorIs(t, err, sync.ErrInconsistentState)
-}
-
 func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	const (
 		syncBlockChunkSize         = uint64(100)
@@ -186,6 +191,14 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
@@ -205,6 +218,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
 		originNetwork,
+		false,
 		false,
 	)
 	require.NoError(t, err)
@@ -259,7 +273,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageNum := uint32(5)
 
 		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
-		require.ErrorIs(t, err, db.ErrNotFound)
+		require.ErrorContains(t, err, "provided page number is invalid for given page size")
 		require.Equal(t, 0, totalTokenMappings)
 		require.Nil(t, tokenMappings)
 	})
@@ -287,15 +301,148 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	})
 }
 
+func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
+	const (
+		syncBlockChunkSize         = uint64(100)
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+		tokenMigrationsCount       = 20
+		blockNum                   = uint64(1)
+	)
+
+	var (
+		blockFinalityType = etherman.SafeBlock
+		ctx               = context.Background()
+		dbPath            = path.Join(t.TempDir(), "TestGetTokenMigrations.sqlite")
+		bridge            = common.HexToAddress("0x123456")
+	)
+
+	mockEthClient := mocksethclient.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+
+	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	s, err := NewL2(
+		ctx,
+		dbPath,
+		bridge,
+		syncBlockChunkSize,
+		blockFinalityType,
+		mockReorgDetector,
+		mockEthClient,
+		initialBlock,
+		waitForNewBlocksPeriod,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
+		originNetwork,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+
+	allTokenMirgations := make([]*LegacyTokenMigration, 0, tokenMigrationsCount)
+	genericEvts := make([]any, 0, tokenMigrationsCount)
+
+	for i := tokenMigrationsCount - 1; i >= 0; i-- {
+		tokenMigrationEvt := &LegacyTokenMigration{
+			BlockNum:            blockNum,
+			BlockPos:            uint64(i),
+			LegacyTokenAddress:  common.HexToAddress(fmt.Sprintf("%d", i+1)),
+			UpdatedTokenAddress: common.HexToAddress(fmt.Sprintf("%d", i+2)),
+			Amount:              big.NewInt(int64(i * 10)),
+		}
+
+		allTokenMirgations = append(allTokenMirgations, tokenMigrationEvt)
+		genericEvts = append(genericEvts, Event{LegacyTokenMigration: tokenMigrationEvt})
+	}
+
+	block := sync.Block{
+		Num:    blockNum,
+		Events: genericEvts,
+	}
+
+	err = s.processor.ProcessBlock(context.Background(), block)
+	require.NoError(t, err)
+
+	t.Run("retrieve all token migrations", func(t *testing.T) {
+		tokenMigrations, totalTokenMigrations, err := s.GetLegacyTokenMigrations(context.Background(), 1, tokenMigrationsCount)
+		require.NoError(t, err)
+		require.Equal(t, tokenMigrationsCount, totalTokenMigrations)
+		require.Equal(t, allTokenMirgations, tokenMigrations)
+	})
+
+	t.Run("retrieve paginated token migrations", func(t *testing.T) {
+		pageSize := uint32(5)
+
+		for page := uint32(1); page <= 4; page++ {
+			tokenMigrations, totalTokenMigrations, err := s.GetLegacyTokenMigrations(context.Background(), page, pageSize)
+			require.NoError(t, err)
+			require.Equal(t, tokenMigrationsCount, totalTokenMigrations)
+
+			startIndex := (page - 1) * pageSize
+			endIndex := startIndex + pageSize
+			require.Equal(t, allTokenMirgations[startIndex:endIndex], tokenMigrations)
+		}
+	})
+
+	t.Run("retrieve non-existent page", func(t *testing.T) {
+		pageSize := uint32(5)
+		pageNum := uint32(5)
+
+		tokenMigrations, totalTokenMigrations, err := s.GetLegacyTokenMigrations(context.Background(), pageNum, pageSize)
+		require.ErrorContains(t, err,
+			"provided page number is invalid for given page size and total number of legacy token migrations")
+		require.Equal(t, 0, totalTokenMigrations)
+		require.Nil(t, tokenMigrations)
+	})
+
+	t.Run("provide invalid page number", func(t *testing.T) {
+		pageSize := uint32(0)
+		pageNum := uint32(0)
+
+		_, _, err := s.GetLegacyTokenMigrations(context.Background(), pageNum, pageSize)
+		require.ErrorIs(t, err, ErrInvalidPageNumber)
+	})
+
+	t.Run("provide invalid page size", func(t *testing.T) {
+		pageSize := uint32(0)
+		pageNum := uint32(4)
+
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		require.ErrorIs(t, err, ErrInvalidPageSize)
+	})
+
+	t.Run("inconsistent state", func(t *testing.T) {
+		s.processor.halted = true
+		_, _, err := s.GetTokenMappings(context.Background(), 0, 0)
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+	})
+}
+
 func TestGetBridgePaged(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
-	_, _, err := s.GetBridgesPaged(context.Background(), 0, 0, nil)
+	_, _, err := s.GetBridgesPaged(context.Background(), 0, 0, nil, nil)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
 func TestGetClaimPaged(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
-	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0)
+	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 

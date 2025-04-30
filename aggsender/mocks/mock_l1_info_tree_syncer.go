@@ -85,6 +85,65 @@ func (_c *L1InfoTreeSyncer_GetInfoByGlobalExitRoot_Call) RunAndReturn(run func(c
 	return _c
 }
 
+// GetInfoByIndex provides a mock function with given fields: ctx, index
+func (_m *L1InfoTreeSyncer) GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	ret := _m.Called(ctx, index)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetInfoByIndex")
+	}
+
+	var r0 *l1infotreesync.L1InfoTreeLeaf
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) (*l1infotreesync.L1InfoTreeLeaf, error)); ok {
+		return rf(ctx, index)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) *l1infotreesync.L1InfoTreeLeaf); ok {
+		r0 = rf(ctx, index)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*l1infotreesync.L1InfoTreeLeaf)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint32) error); ok {
+		r1 = rf(ctx, index)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L1InfoTreeSyncer_GetInfoByIndex_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInfoByIndex'
+type L1InfoTreeSyncer_GetInfoByIndex_Call struct {
+	*mock.Call
+}
+
+// GetInfoByIndex is a helper method to define mock.On call
+//   - ctx context.Context
+//   - index uint32
+func (_e *L1InfoTreeSyncer_Expecter) GetInfoByIndex(ctx interface{}, index interface{}) *L1InfoTreeSyncer_GetInfoByIndex_Call {
+	return &L1InfoTreeSyncer_GetInfoByIndex_Call{Call: _e.mock.On("GetInfoByIndex", ctx, index)}
+}
+
+func (_c *L1InfoTreeSyncer_GetInfoByIndex_Call) Run(run func(ctx context.Context, index uint32)) *L1InfoTreeSyncer_GetInfoByIndex_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint32))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetInfoByIndex_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetInfoByIndex_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetInfoByIndex_Call) RunAndReturn(run func(context.Context, uint32) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetInfoByIndex_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetL1InfoTreeMerkleProofFromIndexToRoot provides a mock function with given fields: ctx, index, root
 func (_m *L1InfoTreeSyncer) GetL1InfoTreeMerkleProofFromIndexToRoot(ctx context.Context, index uint32, root common.Hash) (treetypes.Proof, error) {
 	ret := _m.Called(ctx, index, root)
@@ -198,6 +257,131 @@ func (_c *L1InfoTreeSyncer_GetL1InfoTreeRootByIndex_Call) Return(_a0 treetypes.R
 }
 
 func (_c *L1InfoTreeSyncer_GetL1InfoTreeRootByIndex_Call) RunAndReturn(run func(context.Context, uint32) (treetypes.Root, error)) *L1InfoTreeSyncer_GetL1InfoTreeRootByIndex_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetLatestInfoUntilBlock provides a mock function with given fields: ctx, blockNum
+func (_m *L1InfoTreeSyncer) GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error) {
+	ret := _m.Called(ctx, blockNum)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLatestInfoUntilBlock")
+	}
+
+	var r0 *l1infotreesync.L1InfoTreeLeaf
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) (*l1infotreesync.L1InfoTreeLeaf, error)); ok {
+		return rf(ctx, blockNum)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) *l1infotreesync.L1InfoTreeLeaf); ok {
+		r0 = rf(ctx, blockNum)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*l1infotreesync.L1InfoTreeLeaf)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
+		r1 = rf(ctx, blockNum)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestInfoUntilBlock'
+type L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call struct {
+	*mock.Call
+}
+
+// GetLatestInfoUntilBlock is a helper method to define mock.On call
+//   - ctx context.Context
+//   - blockNum uint64
+func (_e *L1InfoTreeSyncer_Expecter) GetLatestInfoUntilBlock(ctx interface{}, blockNum interface{}) *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call {
+	return &L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call{Call: _e.mock.On("GetLatestInfoUntilBlock", ctx, blockNum)}
+}
+
+func (_c *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call) Run(run func(ctx context.Context, blockNum uint64)) *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call) RunAndReturn(run func(context.Context, uint64) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetProcessedBlockUntil provides a mock function with given fields: ctx, blockNumber
+func (_m *L1InfoTreeSyncer) GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error) {
+	ret := _m.Called(ctx, blockNumber)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetProcessedBlockUntil")
+	}
+
+	var r0 uint64
+	var r1 common.Hash
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) (uint64, common.Hash, error)); ok {
+		return rf(ctx, blockNumber)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) uint64); ok {
+		r0 = rf(ctx, blockNumber)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64) common.Hash); ok {
+		r1 = rf(ctx, blockNumber)
+	} else {
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(common.Hash)
+		}
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, uint64) error); ok {
+		r2 = rf(ctx, blockNumber)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// L1InfoTreeSyncer_GetProcessedBlockUntil_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetProcessedBlockUntil'
+type L1InfoTreeSyncer_GetProcessedBlockUntil_Call struct {
+	*mock.Call
+}
+
+// GetProcessedBlockUntil is a helper method to define mock.On call
+//   - ctx context.Context
+//   - blockNumber uint64
+func (_e *L1InfoTreeSyncer_Expecter) GetProcessedBlockUntil(ctx interface{}, blockNumber interface{}) *L1InfoTreeSyncer_GetProcessedBlockUntil_Call {
+	return &L1InfoTreeSyncer_GetProcessedBlockUntil_Call{Call: _e.mock.On("GetProcessedBlockUntil", ctx, blockNumber)}
+}
+
+func (_c *L1InfoTreeSyncer_GetProcessedBlockUntil_Call) Run(run func(ctx context.Context, blockNumber uint64)) *L1InfoTreeSyncer_GetProcessedBlockUntil_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetProcessedBlockUntil_Call) Return(_a0 uint64, _a1 common.Hash, _a2 error) *L1InfoTreeSyncer_GetProcessedBlockUntil_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetProcessedBlockUntil_Call) RunAndReturn(run func(context.Context, uint64) (uint64, common.Hash, error)) *L1InfoTreeSyncer_GetProcessedBlockUntil_Call {
 	_c.Call.Return(run)
 	return _c
 }
