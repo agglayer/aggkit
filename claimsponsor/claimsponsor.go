@@ -242,5 +242,8 @@ func (c *ClaimSponsor) GetClaim(globalIndex *big.Int) (*Claim, error) {
 	err := meddler.QueryRow(
 		c.db, claim, `SELECT * FROM claim WHERE global_index = $1`, globalIndex.String(),
 	)
-	return claim, db.ReturnErrNotFound(err)
+	if err != nil {
+		return nil, db.ReturnErrNotFound(err)
+	}
+	return claim, nil
 }

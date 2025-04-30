@@ -24,7 +24,7 @@ const (
 func TestAddClaimToQueue(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "claimsponsor_TestAddClaimToQueue.sqlite")
 	logger := log.GetDefaultLogger()
-	c, err := newClaimSponsor(logger, testDir, nil, TestRetryAfterErrorPeriod, TestMaxRetryAttemptsAfterError, TestWaitTxToBeMinedPeriod, TestWaitOnEmptyQueue)
+	c, err := newClaimSponsor(logger, testDir, nil, testRetryAfterErrorPeriod, testMaxRetryAttemptsAfterError, testWaitTxToBeMinedPeriod, testWaitOnEmptyQueue)
 	require.NoError(t, err)
 
 	claim := &Claim{
@@ -56,7 +56,7 @@ func TestAddClaimToQueue(t *testing.T) {
 func TestGetClaim(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "claimsponsor_TestGetClaim.sqlite")
 	logger := log.GetDefaultLogger()
-	c, err := newClaimSponsor(logger, testDir, nil, TestRetryAfterErrorPeriod, TestMaxRetryAttemptsAfterError, TestWaitTxToBeMinedPeriod, TestWaitOnEmptyQueue)
+	c, err := newClaimSponsor(logger, testDir, nil, testRetryAfterErrorPeriod, testMaxRetryAttemptsAfterError, testWaitTxToBeMinedPeriod, testWaitOnEmptyQueue)
 	require.NoError(t, err)
 
 	claim := Claim{
@@ -92,7 +92,7 @@ func TestGetClaim(t *testing.T) {
 func TestGetWIPClaim(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "claimsponsor_TestGetWIPClaim.sqlite")
 	logger := log.GetDefaultLogger()
-	c, err := newClaimSponsor(logger, testDir, nil, TestRetryAfterErrorPeriod, TestMaxRetryAttemptsAfterError, TestWaitTxToBeMinedPeriod, TestWaitOnEmptyQueue)
+	c, err := newClaimSponsor(logger, testDir, nil, testRetryAfterErrorPeriod, testMaxRetryAttemptsAfterError, testWaitTxToBeMinedPeriod, testWaitOnEmptyQueue)
 	require.NoError(t, err)
 
 	claim := Claim{
@@ -124,10 +124,9 @@ func TestGetWIPClaim(t *testing.T) {
 func TestGetFirstPendingClaim(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "claimsponsor_TestGetFirstPendingClaim.sqlite")
 	logger := log.GetDefaultLogger()
-	c, err := newClaimSponsor(logger, testDir, nil, TestRetryAfterErrorPeriod, TestMaxRetryAttemptsAfterError, TestWaitTxToBeMinedPeriod, TestWaitOnEmptyQueue)
+	c, err := newClaimSponsor(logger, testDir, nil, testRetryAfterErrorPeriod, testMaxRetryAttemptsAfterError, testWaitTxToBeMinedPeriod, testWaitOnEmptyQueue)
 	require.NoError(t, err)
 
-	claim := Claim{
 	claim := &Claim{
 		LeafType:            1,
 		ProofLocalExitRoot:  tree.Proof{},
@@ -150,11 +149,12 @@ func TestGetFirstPendingClaim(t *testing.T) {
 	claimResp, err := c.getFirstPendingClaim()
 	require.NoError(t, err)
 	require.Equal(t, claim, claimResp)
+}
 
 func Test_updateClaimTxID(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "claimsponsor_Test_updateClaimTxID.sqlite")
 	logger := log.GetDefaultLogger()
-	c, err := newClaimSponsor(logger, testDir, nil, TestRetryAfterErrorPeriod, TestMaxRetryAttemptsAfterError, TestWaitTxToBeMinedPeriod, TestWaitOnEmptyQueue)
+	c, err := newClaimSponsor(logger, testDir, nil, testRetryAfterErrorPeriod, testMaxRetryAttemptsAfterError, testWaitTxToBeMinedPeriod, testWaitOnEmptyQueue)
 	require.NoError(t, err)
 
 	claim := Claim{
@@ -189,7 +189,7 @@ func Test_updateClaimTxID(t *testing.T) {
 func Test_updateClaimStatus(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "claimsponsor_Test_updateClaimStatus.sqlite")
 	logger := log.GetDefaultLogger()
-	c, err := newClaimSponsor(logger, testDir, nil, TestRetryAfterErrorPeriod, TestMaxRetryAttemptsAfterError, TestWaitTxToBeMinedPeriod, TestWaitOnEmptyQueue)
+	c, err := newClaimSponsor(logger, testDir, nil, testRetryAfterErrorPeriod, testMaxRetryAttemptsAfterError, testWaitTxToBeMinedPeriod, testWaitOnEmptyQueue)
 	require.NoError(t, err)
 
 	claim := Claim{
