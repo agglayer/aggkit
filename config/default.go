@@ -156,7 +156,7 @@ GasOffset = 0
 		GetReceiptMaxTime = "250ms"
 		GetReceiptWaitInterval = "1s"
 		PrivateKeys = [
-			{Path = "/app/keystore/claimsponsor.keystore", Password = "testonly"},
+			{Path = "/etc/aggkit/claimtxmanager.keystore", Password = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"},
 		]
 		ForcedGas = 0
 		GasPriceMarginFactor = 1
