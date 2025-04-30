@@ -274,7 +274,8 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 
 // sendCertificate sends certificate for a network
 func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certificate, error) {
-	a.log.Infof("trying to send a new certificate...")
+	startEpochStatus := a.epochNotifier.GetEpochStatus()
+	a.log.Infof("trying to send a new certificate... %s", startEpochStatus.String())
 
 	start := time.Now()
 
@@ -298,11 +299,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 			rateLimitSleepTime.String(), a.rateLimiter.String())
 		time.Sleep(*rateLimitSleepTime)
 	}
-	if !a.isAllowedSendCertificateEpochPercent() {
-		return nil, fmt.Errorf("forbidden to send certificate due epoch percentage")
-	}
-
-	a.log.Infof("certificate ready to be send to AggLayer: %s", certificate.Brief())
+	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s , end: %s",
+		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
 	if a.cfg.DryRun {
@@ -356,19 +354,6 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		certInfo.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
 	return certificate, nil
-}
-
-func (a *AggSender) isAllowedSendCertificateEpochPercent() bool {
-	if a.cfg.MaxEpochPercentageAllowedToSendCertificate == 0 ||
-		a.cfg.MaxEpochPercentageAllowedToSendCertificate >= maxPercent {
-		return true
-	}
-	status := a.epochNotifier.GetEpochStatus()
-	if status.PercentEpoch >= float64(a.cfg.MaxEpochPercentageAllowedToSendCertificate)/100.0 {
-		a.log.Warnf("forbidden to send certificate after epoch percentage: %f", status.PercentEpoch)
-		return false
-	}
-	return true
 }
 
 // saveCertificateToStorage saves the certificate to the storage

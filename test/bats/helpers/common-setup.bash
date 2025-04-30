@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 
 _common_setup() {
+    load '../helpers/common'
     bats_load_library 'bats-support'
     if [ $? -ne 0 ]; then return 1; fi
 
@@ -69,11 +70,13 @@ _common_setup() {
         local threshold=100000000000000000
 
         # Only fund if balance is less than or equal to 0.1 ether
-        if [[ $token_balance -le $threshold ]]; then
+        # it's a real big number that bash can handle, so we compare the length 
+        # of both strings
+        if [[ ${#token_balance} -le ${#threshold} ]]; then
             local l2_coinbase_key="ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
             local amount="1000ether"
 
-            echo "💸 $test_account_addr L2 balance is low (≤ 0.1 ETH), funding with amount=$amount..." >&3
+            echo "💸 $test_account_addr L2 balance ($token_balance) is low (≤ 0.1 ETH), funding with amount=$amount..." >&3
             fund "$l2_coinbase_key" "$test_account_addr" "$amount" "$l2_rpc_url"
             if [ $? -ne 0 ]; then
                 echo "❌ Funding L2 receiver $test_account_addr failed" >&2
@@ -92,9 +95,8 @@ _common_setup() {
     if [[ -z "${L1_BRIDGE_ADDRESS}" || -z "${L2_BRIDGE_ADDRESS}" ]]; then
         local combined_json_file="/opt/zkevm/combined.json"
         echo "ℹ️ Some bridge addresses are missing, fetching from Kurtosis CDK artifact: $combined_json_file" >&3
-
-        combined_json_output="$($contracts_service_wrapper "cat $combined_json_file" | tail -n +2)"
-        if [ $? -ne 0 ]; then
+        combined_json_output="$($contracts_service_wrapper "cat $combined_json_file" | kurtosis_filer_exec_method)"
+        if [[ $? -ne 0  ||  -z $combined_json_output ]] ; then
             echo "❌ Failed to read $combined_json_file from Kurtosis CDK" >&2
             return 1
         fi
@@ -154,7 +156,7 @@ function fund() {
 
         # Bump gas price by 50%
         local gas_price
-        gas_price=$(printf "%.0f" "$(echo "$raw_gas_price * 1.5" | bc -l)")
+        gas_price=$(echo "$raw_gas_price * 1.5" | bc -l | cut -f 1 -d '.')
         echo "Using bumped gas price: $gas_price [wei] (original: $raw_gas_price [wei])" >&2
 
         cast send --rpc-url "$rpc_url" \
