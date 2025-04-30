@@ -1,6 +1,6 @@
-# Claimsponsor Component
+# Claim Sponsor Component
 
-ClaimSponsor is a service that automatically submits asset or message claims to the Layer 2 (L2) bridge contract on behalf of users.
+Claim Sponsor is a service that runs as a part of bridge service, and automatically submits asset or message claims to the Layer 2 (L2) bridge contract on behalf of users.
 
 ## ClaimSponsor Configuration 
 
@@ -20,6 +20,6 @@ ClaimSponsor is a service that automatically submits asset or message claims to 
 ---
 
 
-For detailed configuration of the Ethereum Transaction Manager (EthTxManager), refer to [EthTxManager Configuration](./ethtxmanager.md).
+For detailed configuration of the Ethereum Transaction Manager (`EthTxManager`), refer to [EthTxManager Configuration](./ethtxmanager.md).
 
 For detailed configuration of Etherman, refer to [Etherman Configuration](./etherman.md).

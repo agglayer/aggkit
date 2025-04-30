@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	TestRetryAfterErrorPeriod      = 2 * time.Second
-	TestMaxRetryAttemptsAfterError = 3
-	TestWaitTxToBeMinedPeriod      = 5 * time.Second
-	TestWaitOnEmptyQueue           = 10 * time.Second
+	testRetryAfterErrorPeriod      = 2 * time.Second
+	testMaxRetryAttemptsAfterError = 3
+	testWaitTxToBeMinedPeriod      = 5 * time.Second
+	testWaitOnEmptyQueue           = 10 * time.Second
 )
 
 func TestAddClaimToQueue(t *testing.T) {
@@ -27,7 +27,7 @@ func TestAddClaimToQueue(t *testing.T) {
 	c, err := newClaimSponsor(logger, testDir, nil, TestRetryAfterErrorPeriod, TestMaxRetryAttemptsAfterError, TestWaitTxToBeMinedPeriod, TestWaitOnEmptyQueue)
 	require.NoError(t, err)
 
-	claim := Claim{
+	claim := &Claim{
 		LeafType:            1,
 		ProofLocalExitRoot:  tree.Proof{},
 		ProofRollupExitRoot: tree.Proof{},
@@ -42,16 +42,15 @@ func TestAddClaimToQueue(t *testing.T) {
 		TxID:                "test-tx-id",
 	}
 
-	err = c.AddClaimToQueue(&claim)
-	fmt.Println(err)
+	err = c.AddClaimToQueue(claim)
+	require.NoError(t, err)
 
 	claimDB := &Claim{}
 	err = meddler.QueryRow(
 		c.db, claimDB, `SELECT * FROM claim`,
 	)
 	require.NoError(t, err)
-	require.Equal(t, uint8(1), claimDB.LeafType)
-	require.Equal(t, PendingClaimStatus, claimDB.Status)
+	require.Equal(t, claim, claimDB)
 }
 
 func TestGetClaim(t *testing.T) {
@@ -129,6 +128,7 @@ func TestGetFirstPendingClaim(t *testing.T) {
 	require.NoError(t, err)
 
 	claim := Claim{
+	claim := &Claim{
 		LeafType:            1,
 		ProofLocalExitRoot:  tree.Proof{},
 		ProofRollupExitRoot: tree.Proof{},
@@ -144,14 +144,12 @@ func TestGetFirstPendingClaim(t *testing.T) {
 		Status:              PendingClaimStatus,
 	}
 
-	err = meddler.Insert(c.db, "claim", &claim)
+	err = meddler.Insert(c.db, "claim", claim)
 	require.NoError(t, err)
 
 	claimResp, err := c.getFirstPendingClaim()
 	require.NoError(t, err)
-	require.Equal(t, claim.GlobalIndex, claimResp.GlobalIndex)
-	require.Equal(t, claim.Status, claimResp.Status)
-}
+	require.Equal(t, claim, claimResp)
 
 func Test_updateClaimTxID(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "claimsponsor_Test_updateClaimTxID.sqlite")
