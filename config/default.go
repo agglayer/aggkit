@@ -8,7 +8,8 @@ L2URL = "http://localhost:8123"
 
 
 AggLayerURL = "https://agglayer-dev.polygon.technology"
-
+AggchainProofURL = "http://localhost:5576"
+GenerateAggchainProofTimeout = "1h"
 
 ForkId = 9
 ContractVersions = "elderberry"
@@ -47,6 +48,7 @@ genesisBlockNumber = 0
 const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 L1URLSyncChunkSize = 100
+RequireStorageContentCompatibility = true
 L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
 `
 
@@ -99,6 +101,7 @@ WaitForNewBlocksPeriod="100ms"
 InitialBlock={{genesisBlockNumber}}
 RetryAfterErrorPeriod="1s"
 MaxRetryAttemptsAfterError=-1
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggOracle]
 TargetChainType="EVM"
@@ -141,7 +144,7 @@ MaxRequestsPerIPAndSecond = 10
 
 [ClaimSponsor]
 DBPath = "{{PathRWData}}/claimsponsor.sqlite"
-Enabled = true
+Enabled = false
 SenderAddr = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 BridgeAddrL2 = "0xB7098a13a48EcE087d3DA15b2D28eCE0f89819B8"
 MaxGas = 200000
@@ -182,6 +185,7 @@ SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -192,6 +196,7 @@ SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [LastGERSync]
 DBPath = "{{PathRWData}}/lastgersync.sqlite"
@@ -202,6 +207,8 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+SyncMode = "FEP"
 
 [NetworkConfig.L1]
 L1ChainID = {{L1Config.chainId}}
@@ -217,7 +224,6 @@ AggLayerURL = "{{AggLayerURL}}"
 AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
-SaveCertificatesToFilesPath = ""
 MaxRetriesStoreCertificate = 3
 DelayBeetweenRetries = "60s"
 KeepCertificatesHistory = true
@@ -226,15 +232,34 @@ MaxCertSize = 8388608
 BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
+AggchainProofURL = "{{AggchainProofURL}}"
+# PessimisticProof or AggchainProver
+Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
-RetryCertInmediatlyAfterInError = true
+RetryCertAfterInError = false
+GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 # Don't send certificate over 80% of the epoch
 MaxEpochPercentageAllowedToSendCertificate=80
+GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
+		
 [Prometheus]
 Enabled = true
 Host = "localhost"
 Port = 9091
+
+[AggchainProofGen]
+AggchainProofURL = "{{AggchainProofURL}}"
+SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
+GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+
+[Profiling]
+ProfilingHost = "localhost"
+ProfilingPort = 6060
+ProfilingEnabled = false
 `
