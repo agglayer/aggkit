@@ -29,6 +29,8 @@ const (
 // AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender
 // based on the different prover types
 type AggsenderFlow interface {
+	// CheckInitialStatus checks the initial status for the flow it's ok
+	CheckInitialStatus(ctx context.Context) error
 	// GetCertificateBuildParams returns the parameters to build a certificate
 	GetCertificateBuildParams(ctx context.Context) (*CertificateBuildParams, error)
 	// BuildCertificate builds a certificate based on the buildParams

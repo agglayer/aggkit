@@ -190,21 +190,29 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 	ticker := time.NewTicker(a.cfg.DelayBeetweenRetries.Duration)
 	defer ticker.Stop()
 	a.status.Status = types.StatusCheckingInitialStage
-	for {
+	for firstRun := true; ; firstRun = false {
+		// This is to avoid to wait on first interation
+		if !firstRun {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+			}
+		}
 		a.checkPendingCertificatesStatus(ctx)
-		err := a.checkLastCertificateFromAgglayer(ctx)
-		a.status.SetLastError(err)
-		if err != nil {
+		if err := a.checkLastCertificateFromAgglayer(ctx); err != nil {
+			a.status.SetLastError(err)
 			a.log.Errorf("error checking initial status: %w, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
-		} else {
-			a.log.Info("Initial status checked successfully")
-			return
+			continue
 		}
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
+		if err := a.flow.CheckInitialStatus(ctx); err != nil {
+			a.status.SetLastError(err)
+			a.log.Errorf("error checking flow Initial Status: %w, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
+			continue
 		}
+		a.status.SetLastError(nil)
+		a.log.Info("Initial status checked successfully")
+		return
 	}
 }
 

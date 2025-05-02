@@ -661,11 +661,10 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name                string
-		fromBlock           uint64
-		startL2Block        uint64
-		expectedResult      uint64
-		lastSentCertificate *types.CertificateInfo
+		name           string
+		fromBlock      uint64
+		startL2Block   uint64
+		expectedResult uint64
 	}{
 		{
 			name:           "fromBlock is 0, return startL2Block",
@@ -685,17 +684,6 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 			startL2Block:   1,
 			expectedResult: 9,
 		},
-		{
-			name:         "lastSentCertificate settled on PP",
-			fromBlock:    10,
-			startL2Block: 50,
-			lastSentCertificate: &types.CertificateInfo{
-				FromBlock: 10,
-				ToBlock:   20,
-				Status:    agglayertypes.Settled,
-			},
-			expectedResult: 50,
-		},
 	}
 
 	for _, tc := range testCases {
@@ -709,7 +697,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				},
 			}
 
-			result := flow.getLastProvenBlock(tc.fromBlock, tc.lastSentCertificate)
+			result := flow.getLastProvenBlock(tc.fromBlock)
 			require.Equal(t, tc.expectedResult, result)
 		})
 	}
