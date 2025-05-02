@@ -195,6 +195,7 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 		if !firstRun {
 			select {
 			case <-ctx.Done():
+				log.Fatalf("checkInitialStatus: context Done!")
 				return
 			case <-ticker.C:
 			}
@@ -207,7 +208,7 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 		}
 		if err := a.flow.CheckInitialStatus(ctx); err != nil {
 			a.status.SetLastError(err)
-			a.log.Errorf("error checking flow Initial Status: %w, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
+			a.log.Errorf("error checking flow Initial Status: %v, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
 			continue
 		}
 		a.status.SetLastError(nil)

@@ -3,6 +3,7 @@ package flows
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"testing"
 	"time"
@@ -808,4 +809,70 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
+	mockStorage := mocks.NewAggSenderStorage(t)
+	sut := &AggchainProverFlow{
+		baseFlow: &baseFlow{
+			log:          log.WithFields("flowManager", "Test_AggchainProverFlow_BuildCertificate"),
+			storage:      mockStorage,
+			startL2Block: 1234,
+		},
+	}
+	exampleError := fmt.Errorf("some error")
+	testCases := []struct {
+		name                        string
+		cert                        *types.CertificateInfo
+		getLastSentCertificateError error
+		expectedError               bool
+	}{
+		{
+			name:                        "error getting last sent certificate",
+			cert:                        nil,
+			getLastSentCertificateError: exampleError,
+			expectedError:               true,
+		},
+		{
+			name:          "no last sent certificate on storage",
+			cert:          nil,
+			expectedError: false,
+		},
+		{
+			name: "last cert after upgrade L2 block (startL2Block) that is OK",
+			cert: &types.CertificateInfo{
+				ToBlock: 4000,
+			},
+			expectedError: false,
+		},
+		{
+			name: "last cert is immediately before upgrade L2 block (startL2Block) that is OK",
+			cert: &types.CertificateInfo{
+				ToBlock: 1233,
+			},
+			expectedError: false,
+		},
+		{
+			name: "last cert is 2 block below upgrade L2 block (startL2Block) so it's a gap of block 1233. Error",
+			cert: &types.CertificateInfo{
+				ToBlock: 1232,
+			},
+			expectedError: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockStorage.EXPECT().GetLastSentCertificate().Return(tc.cert, tc.getLastSentCertificateError).Once()
+			err := sut.CheckInitialStatus(context.TODO())
+			if tc.expectedError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+			}
+			mockStorage.AssertExpectations(t)
+
+		})
+	}
+
 }

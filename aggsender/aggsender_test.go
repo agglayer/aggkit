@@ -744,6 +744,20 @@ func TestCheckLastCertificateFromAgglayer_Case4ErrorUpdateStatus(t *testing.T) {
 	require.Error(t, err)
 }
 
+// CheckInitialStatus with no data on storage, neither on agglayer
+func TestCheckInitialStatus(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow)
+	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil)
+	testData.storageMock.EXPECT().GetLastSentCertificate().Return(nil, nil)
+	testData.l2syncerMock.EXPECT().OriginNetwork().Return(networkIDTest)
+	testData.agglayerClientMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
+	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
+	err := fmt.Errorf("unittest error")
+	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(err).Once()
+	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(nil).Once()
+	testData.sut.checkInitialStatus(testData.ctx)
+}
+
 func TestSendCertificate(t *testing.T) {
 	t.Parallel()
 
@@ -909,6 +923,7 @@ type testDataFlags = int
 const (
 	testDataFlagNone        testDataFlags = 0
 	testDataFlagMockStorage testDataFlags = 1
+	testDataFlagMockFlow    testDataFlags = 2
 )
 
 type aggsenderTestData struct {
@@ -918,6 +933,7 @@ type aggsenderTestData struct {
 	l1InfoTreeSyncerMock *mocks.L1InfoTreeSyncer
 	storageMock          *mocks.AggSenderStorage
 	epochNotifierMock    *mocks.EpochNotifier
+	flowMock             *mocks.AggsenderFlow
 	sut                  *AggSender
 	testCerts            []aggsendertypes.CertificateInfo
 	l1ClientMock         *mocks.EthClient
@@ -1010,12 +1026,19 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		storage:          storage,
 		l1infoTreeSyncer: l1InfoTreeSyncerMock,
 		cfg: Config{
-			MaxCertSize: 1024 * 1024,
+			MaxCertSize:          1024 * 1024,
+			DelayBeetweenRetries: types.Duration{Duration: time.Millisecond},
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
 		flow:          flows.NewPPFlow(logger, 0, false, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
 	}
+	var flowMock *mocks.AggsenderFlow
+	if creationFlags&testDataFlagMockFlow != 0 {
+		flowMock = mocks.NewAggsenderFlow(t)
+		sut.flow = flowMock
+	}
+
 	testCerts := []aggsendertypes.CertificateInfo{
 		{
 			Height:           0,
@@ -1038,6 +1061,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		l1InfoTreeSyncerMock: l1InfoTreeSyncerMock,
 		storageMock:          storageMock,
 		epochNotifierMock:    epochNotifierMock,
+		flowMock:             flowMock,
 		sut:                  sut,
 		testCerts:            testCerts,
 		l1ClientMock:         l1ClientMock,
