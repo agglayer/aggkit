@@ -195,7 +195,7 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 		if !firstRun {
 			select {
 			case <-ctx.Done():
-				log.Fatalf("checkInitialStatus: context Done!")
+				log.Fatalf("checkInitialStatus: context Done!") //nolint:gocritic
 				return
 			case <-ticker.C:
 			}

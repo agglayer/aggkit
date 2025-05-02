@@ -871,8 +871,6 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 				require.NoError(t, err)
 			}
 			mockStorage.AssertExpectations(t)
-
 		})
 	}
-
 }
