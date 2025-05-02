@@ -34,7 +34,7 @@ func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClien
 
 	startL2Block, err := aggChainFEPContract.StartingBlockNumber(nil)
 	if err != nil {
-		return 0, fmt.Errorf("aggchainProverFlow - error getting starting block number from sovereign rollup contract (%s): %w",
+		return 0, fmt.Errorf("aggchainProverFlow - error ggChainFEPContract.StartingBlockNumber (%s): %w",
 			sovereignRollupAddr.String(), err)
 	}
 
@@ -85,13 +85,14 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
-	return a.sanityCheckNoBlockGapsForNextCertificate(lastSentCertificate)
+	return a.sanityCheckNoBlockGaps(lastSentCertificate)
 }
 
-func (a *AggchainProverFlow) sanityCheckNoBlockGapsForNextCertificate(lastSentCertificate *types.CertificateInfo) error {
-	// Sanity check: #436. Don't allow gaps updating from PP to FEP
+// sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate
+// #436. Don't allow gaps updating from PP to FEP
+func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.CertificateInfo) error {
 	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.startL2Block {
-		return fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block (upgrade block): %d",
+		return fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
 			lastSentCertificate.ToBlock, a.startL2Block)
 	}
 	return nil
@@ -170,7 +171,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	if err := a.verifyBuildParams(buildParams); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
-	if err := a.sanityCheckNoBlockGapsForNextCertificate(buildParams.LastSentCertificate); err != nil {
+	if err := a.sanityCheckNoBlockGaps(buildParams.LastSentCertificate); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error checking for block gaps: %w", err)
 	}
 
