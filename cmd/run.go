@@ -94,6 +94,7 @@ func start(cliCtx *cli.Context) error {
 
 		case aggkitcommon.BRIDGE:
 			err := runBridgeService(
+				cliCtx.Context,
 				cfg.RPC,
 				cfg.Common.NetworkID,
 				claimSponsor,
@@ -649,6 +650,7 @@ func runBridgeSyncL2IfNeeded(
 }
 
 func runBridgeService(
+	ctx context.Context,
 	cfg jRPC.Config,
 	l2NetworkID uint32,
 	sponsor *claimsponsor.ClaimSponsor,
@@ -658,7 +660,7 @@ func runBridgeService(
 	bridgeL2 *bridgesync.BridgeSync,
 ) error {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
-	bridgeService := bridgeservice.New(
+	b := bridgeservice.New(
 		logger,
 		cfg.WriteTimeout.Duration,
 		cfg.ReadTimeout.Duration,
@@ -670,7 +672,8 @@ func runBridgeService(
 		bridgeL2,
 	)
 
-	return bridgeService.Start(fmt.Sprintf("%s:%d", cfg.Host, cfg.Port))
+	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	return b.Start(ctx, addr)
 }
 
 func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {

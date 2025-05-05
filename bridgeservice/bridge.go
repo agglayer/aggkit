@@ -101,12 +101,37 @@ func (b *BridgeService) registerRoutes() {
 	b.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
-// Start starts the bridge service
-// address is the address to listen on
-// e.g. ":8080" or "localhost:8080"
-// It returns an error if the server fails to start
-func (b *BridgeService) Start(address string) error {
-	return b.router.Run(address)
+// Start starts the HTTP bridge service
+func (b *BridgeService) Start(ctx context.Context, address string) error {
+	srv := &http.Server{
+		Addr:         address,
+		Handler:      b.router,
+		ReadTimeout:  b.readTimeout,
+		WriteTimeout: b.writeTimeout,
+	}
+
+	go func() {
+		b.logger.Infof("Bridge service listening on %s", address)
+		err := srv.ListenAndServe()
+		if err != nil && err != http.ErrServerClosed {
+			b.logger.Fatalf("listen error: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+
+	b.logger.Info("Shutting down bridge service...")
+
+	ctx, cancel := context.WithTimeout(ctx, b.readTimeout)
+	defer cancel()
+
+	if err := srv.Shutdown(ctx); err != nil {
+		b.logger.Errorf("Server shutdown error: %v", err)
+		return err
+	}
+
+	b.logger.Info("Bridge service exited gracefully")
+	return nil
 }
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings
