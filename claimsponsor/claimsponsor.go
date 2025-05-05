@@ -33,20 +33,20 @@ var (
 
 // Claim representation of a claim event
 type Claim struct {
-	LeafType            uint8          `meddler:"leaf_type"`
-	ProofLocalExitRoot  tree.Proof     `meddler:"proof_local_exit_root,merkleproof"`
-	ProofRollupExitRoot tree.Proof     `meddler:"proof_rollup_exit_root,merkleproof"`
-	GlobalIndex         *big.Int       `meddler:"global_index,bigint"`
-	MainnetExitRoot     common.Hash    `meddler:"mainnet_exit_root,hash"`
-	RollupExitRoot      common.Hash    `meddler:"rollup_exit_root,hash"`
-	OriginNetwork       uint32         `meddler:"origin_network"`
-	OriginTokenAddress  common.Address `meddler:"origin_token_address,address"`
-	DestinationNetwork  uint32         `meddler:"destination_network"`
-	DestinationAddress  common.Address `meddler:"destination_address,address"`
-	Amount              *big.Int       `meddler:"amount,bigint"`
-	Metadata            []byte         `meddler:"metadata"`
-	Status              ClaimStatus    `meddler:"status"`
-	TxID                string         `meddler:"tx_id"`
+	LeafType            uint8          `meddler:"leaf_type"                         json:"leaf_type"`
+	ProofLocalExitRoot  tree.Proof     `meddler:"proof_local_exit_root,merkleproof" json:"proof_local_exit_root"`
+	ProofRollupExitRoot tree.Proof     `meddler:"proof_rollup_exit_root,merkleproof" json:"proof_rollup_exit_root"`
+	GlobalIndex         *big.Int       `meddler:"global_index,bigint"               json:"global_index,string"`
+	MainnetExitRoot     common.Hash    `meddler:"mainnet_exit_root,hash"            json:"mainnet_exit_root"`
+	RollupExitRoot      common.Hash    `meddler:"rollup_exit_root,hash"             json:"rollup_exit_root"`
+	OriginNetwork       uint32         `meddler:"origin_network"                    json:"origin_network"`
+	OriginTokenAddress  common.Address `meddler:"origin_token_address,address"      json:"origin_token_address"`
+	DestinationNetwork  uint32         `meddler:"destination_network"               json:"destination_network"`
+	DestinationAddress  common.Address `meddler:"destination_address,address"       json:"destination_address"`
+	Amount              *big.Int       `meddler:"amount,bigint"                     json:"amount,string"`
+	Metadata            []byte         `meddler:"metadata"                          json:"metadata"`
+	Status              ClaimStatus    `meddler:"status"                            json:"status"`
+	TxID                string         `meddler:"tx_id"                             json:"tx_id"`
 }
 
 func (c *Claim) Key() []byte {
@@ -139,7 +139,7 @@ func (c *ClaimSponsor) claim(ctx context.Context) error {
 		}
 		txID, err := c.sender.sendClaim(ctx, claim)
 		if err != nil {
-			return fmt.Errorf("error getting sending claim: %w", err)
+			return fmt.Errorf("error sending claim: %w", err)
 		}
 		if err := c.updateClaimTxID(claim.GlobalIndex, txID); err != nil {
 			return fmt.Errorf("error updating claim txID: %w", err)
@@ -242,5 +242,8 @@ func (c *ClaimSponsor) GetClaim(globalIndex *big.Int) (*Claim, error) {
 	err := meddler.QueryRow(
 		c.db, claim, `SELECT * FROM claim WHERE global_index = $1`, globalIndex.String(),
 	)
-	return claim, db.ReturnErrNotFound(err)
+	if err != nil {
+		return nil, db.ReturnErrNotFound(err)
+	}
+	return claim, nil
 }

@@ -159,7 +159,7 @@ GasOffset = 0
 		GetReceiptMaxTime = "250ms"
 		GetReceiptWaitInterval = "1s"
 		PrivateKeys = [
-			{Path = "/app/keystore/claimsponsor.keystore", Password = "testonly"},
+			{Path = "/etc/aggkit/claimtxmanager.keystore", Password = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"},
 		]
 		ForcedGas = 0
 		GasPriceMarginFactor = 1
@@ -171,7 +171,9 @@ GasOffset = 0
 			[ClaimSponsor.EthTxManager.Etherman]
 				URL = "{{L2URL}}"
 				MultiGasProvider = false
-				L1ChainID = {{NetworkConfig.L1.L1ChainID}}
+				# L1ChainID = 0 indicates it will be set at runtime
+				# This field should be populated with L2ChainID 
+				L1ChainID = 0
 				HTTPHeaders = []
 
 [BridgeL1Sync]
