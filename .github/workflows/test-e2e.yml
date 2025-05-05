@@ -53,13 +53,13 @@ jobs:
     needs:
       - build-aggkit-image
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f634b8bac5c05a5749276875e9a0f9826eedc06e
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@fc872625ad58dc6cf0cb165e96aecd07e2e3a87d
     secrets: inherit
     with:
       docker-tag: local
-      kurtosis-cdk-ref: arpit/bridge-service
+      kurtosis-cdk-ref: main
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: f634b8bac5c05a5749276875e9a0f9826eedc06e
+      agglayer-e2e-ref: fc872625ad58dc6cf0cb165e96aecd07e2e3a87d
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
       test-name: "test-single-l2-network-fork12-pessimistic"
@@ -79,13 +79,13 @@ jobs:
     needs:
       - build-aggkit-image
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f634b8bac5c05a5749276875e9a0f9826eedc06e
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@fc872625ad58dc6cf0cb165e96aecd07e2e3a87d
     secrets: inherit
     with:
       docker-tag: local
-      kurtosis-cdk-ref: arpit/bridge-service
+      kurtosis-cdk-ref: main
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: f634b8bac5c05a5749276875e9a0f9826eedc06e
+      agglayer-e2e-ref: fc872625ad58dc6cf0cb165e96aecd07e2e3a87d
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
       test-name: "test-single-l2-network-fork12-op-succinct"
@@ -129,13 +129,13 @@ jobs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@f634b8bac5c05a5749276875e9a0f9826eedc06e
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@fc872625ad58dc6cf0cb165e96aecd07e2e3a87d
     secrets: inherit
     with:
       docker-tag: local
-      kurtosis-cdk-ref: arpit/bridge-service 
+      kurtosis-cdk-ref: main 
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: f634b8bac5c05a5749276875e9a0f9826eedc06e
+      agglayer-e2e-ref: fc872625ad58dc6cf0cb165e96aecd07e2e3a87d
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
