@@ -874,3 +874,72 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 		})
 	}
 }
+
+func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
+	t.Parallel()
+
+	sovereignRollupAddr := common.HexToAddress("0x123")
+
+	testCases := []struct {
+		name          string
+		mockFn        func(t *testing.T, mockEthClient *mocks.EthClient)
+		expectedBlock uint64
+		expectedError string
+	}{
+		{
+			name: "error creating sovereign rollup caller",
+			mockFn: func(t *testing.T, mockEthClient *mocks.EthClient) {
+				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error"))
+			},
+			expectedError: "aggchainProverFlow",
+		},
+		{
+			name: "error fetching starting block number",
+			mockFn: func(t *testing.T, mockEthClient *mocks.EthClient) {
+				/*parsedABI, err := abi.JSON(strings.NewReader(aggchainfep.AggchainfepABI))
+				require.NoError(t, err)
+				startingBlockNumber := big.NewInt(100)
+				encodedReturnValue, err := parsedABI.Pack("StartingBlockNumber", startingBlockNumber)
+				require.NoError(t, err)
+				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+					encodedReturnValue, nil)
+				*/
+				encodedReturnValue := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
+
+				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+					encodedReturnValue, nil)
+			},
+			expectedError: "",
+		},
+		/*
+			{
+				name: "success fetching starting block number",
+				mockFn: func(mockEthClient *mocks.EthClient) {
+
+				},
+				expectedBlock: 12345,
+			},*/
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			//t.Parallel()
+
+			mockEthClient := mocks.NewEthClient(t)
+
+			tc.mockFn(t, mockEthClient)
+
+			block, err := getL2StartBlock(sovereignRollupAddr, mockEthClient)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedBlock, block)
+			}
+
+			mockEthClient.AssertExpectations(t)
+
+		})
+	}
+}
