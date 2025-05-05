@@ -1045,11 +1045,6 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
 	ctx := context.TODO()
 
-	var compatibilityCheckerMock *mocksdb.CompatibilityChecker
-	if testDataFlagMockCompatibilityChecker&testDataFlagMockCompatibilityChecker != 0 {
-		compatibilityCheckerMock = mocksdb.NewCompatibilityChecker(t)
-	}
-
 	sut := &AggSender{
 		log:              logger,
 		l2Syncer:         l2syncerMock,
@@ -1060,15 +1055,20 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 			MaxCertSize:          1024 * 1024,
 			DelayBeetweenRetries: types.Duration{Duration: time.Millisecond},
 		},
-		rateLimiter:                  aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
-		epochNotifier:                epochNotifierMock,
-		flow:                         flows.NewPPFlow(logger, 0, false, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
-		compatibilityStoragedChecker: compatibilityCheckerMock,
+		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
+		epochNotifier: epochNotifierMock,
+		flow:          flows.NewPPFlow(logger, 0, false, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
 	}
 	var flowMock *mocks.AggsenderFlow
 	if creationFlags&testDataFlagMockFlow != 0 {
 		flowMock = mocks.NewAggsenderFlow(t)
 		sut.flow = flowMock
+	}
+
+	var compatibilityCheckerMock *mocksdb.CompatibilityChecker
+	if creationFlags&testDataFlagMockCompatibilityChecker != 0 {
+		compatibilityCheckerMock = mocksdb.NewCompatibilityChecker(t)
+		sut.compatibilityStoragedChecker = compatibilityCheckerMock
 	}
 
 	testCerts := []aggsendertypes.CertificateInfo{
