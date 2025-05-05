@@ -1,4 +1,4 @@
-package rpc
+package bridgeservice
 
 import (
 	"context"
@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/rpc/types"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/gin-gonic/gin"
 	swaggerFiles "github.com/swaggo/files"
@@ -51,8 +51,8 @@ type BridgeService struct {
 	router *gin.Engine
 }
 
-// NewBridgeService returns instance of BridgeService
-func NewBridgeService(
+// New returns instance of BridgeService
+func New(
 	logger *log.Logger,
 	writeTimeout time.Duration,
 	readTimeout time.Duration,
