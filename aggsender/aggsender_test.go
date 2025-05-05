@@ -22,6 +22,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -915,7 +916,7 @@ func TestCheckDBCompatibility(t *testing.T) {
 	testData.sut.checkDBCompatibility(testData.ctx)
 }
 
-func TestAggSenderStartFatal(t *testing.T) {
+func TestAggSenderStartFailFlowCheckInitialStatus(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow)
 	testData.sut.cfg.RequireStorageContentCompatibility = false
 	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil)
@@ -930,25 +931,37 @@ func TestAggSenderStartFatal(t *testing.T) {
 	}, "Expected panic when starting AggSender")
 }
 
+func TestAggSenderStartFailsCompatibilityChecker(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockCompatibilityChecker)
+	testData.sut.cfg.RequireStorageContentCompatibility = true
+	testData.compatibilityChekerMock.EXPECT().Check(mock.Anything, mock.Anything).Return(fmt.Errorf("error")).Once()
+
+	require.Panics(t, func() {
+		testData.sut.Start(testData.ctx)
+	}, "Expected panic when starting AggSender")
+}
+
 type testDataFlags = int
 
 const (
-	testDataFlagNone        testDataFlags = 0
-	testDataFlagMockStorage testDataFlags = 1
-	testDataFlagMockFlow    testDataFlags = 2
+	testDataFlagNone                     testDataFlags = 0
+	testDataFlagMockStorage              testDataFlags = 1
+	testDataFlagMockFlow                 testDataFlags = 2
+	testDataFlagMockCompatibilityChecker testDataFlags = 4
 )
 
 type aggsenderTestData struct {
-	ctx                  context.Context
-	agglayerClientMock   *agglayer.AgglayerClientMock
-	l2syncerMock         *mocks.L2BridgeSyncer
-	l1InfoTreeSyncerMock *mocks.L1InfoTreeSyncer
-	storageMock          *mocks.AggSenderStorage
-	epochNotifierMock    *mocks.EpochNotifier
-	flowMock             *mocks.AggsenderFlow
-	sut                  *AggSender
-	testCerts            []aggsendertypes.CertificateInfo
-	l1ClientMock         *mocks.EthClient
+	ctx                     context.Context
+	agglayerClientMock      *agglayer.AgglayerClientMock
+	l2syncerMock            *mocks.L2BridgeSyncer
+	l1InfoTreeSyncerMock    *mocks.L1InfoTreeSyncer
+	storageMock             *mocks.AggSenderStorage
+	epochNotifierMock       *mocks.EpochNotifier
+	flowMock                *mocks.AggsenderFlow
+	compatibilityChekerMock *mocksdb.CompatibilityChecker
+	sut                     *AggSender
+	testCerts               []aggsendertypes.CertificateInfo
+	l1ClientMock            *mocks.EthClient
 }
 
 func NewBridgesData(t *testing.T, num int, blockNum []uint64) []bridgesync.Bridge {
@@ -1031,6 +1044,12 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	require.NoError(t, err)
 	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
 	ctx := context.TODO()
+
+	var compatibilityCheckerMock *mocksdb.CompatibilityChecker
+	if testDataFlagMockCompatibilityChecker&testDataFlagMockCompatibilityChecker != 0 {
+		compatibilityCheckerMock = mocksdb.NewCompatibilityChecker(t)
+	}
+
 	sut := &AggSender{
 		log:              logger,
 		l2Syncer:         l2syncerMock,
@@ -1041,9 +1060,10 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 			MaxCertSize:          1024 * 1024,
 			DelayBeetweenRetries: types.Duration{Duration: time.Millisecond},
 		},
-		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
-		epochNotifier: epochNotifierMock,
-		flow:          flows.NewPPFlow(logger, 0, false, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
+		rateLimiter:                  aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
+		epochNotifier:                epochNotifierMock,
+		flow:                         flows.NewPPFlow(logger, 0, false, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
+		compatibilityStoragedChecker: compatibilityCheckerMock,
 	}
 	var flowMock *mocks.AggsenderFlow
 	if creationFlags&testDataFlagMockFlow != 0 {
@@ -1067,15 +1087,16 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	}
 
 	return &aggsenderTestData{
-		ctx:                  ctx,
-		agglayerClientMock:   agglayerClientMock,
-		l2syncerMock:         l2syncerMock,
-		l1InfoTreeSyncerMock: l1InfoTreeSyncerMock,
-		storageMock:          storageMock,
-		epochNotifierMock:    epochNotifierMock,
-		flowMock:             flowMock,
-		sut:                  sut,
-		testCerts:            testCerts,
-		l1ClientMock:         l1ClientMock,
+		ctx:                     ctx,
+		agglayerClientMock:      agglayerClientMock,
+		l2syncerMock:            l2syncerMock,
+		l1InfoTreeSyncerMock:    l1InfoTreeSyncerMock,
+		storageMock:             storageMock,
+		epochNotifierMock:       epochNotifierMock,
+		flowMock:                flowMock,
+		compatibilityChekerMock: compatibilityCheckerMock,
+		sut:                     sut,
+		testCerts:               testCerts,
+		l1ClientMock:            l1ClientMock,
 	}
 }
