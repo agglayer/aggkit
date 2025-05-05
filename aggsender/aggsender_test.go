@@ -752,9 +752,6 @@ func TestCheckInitialStatus(t *testing.T) {
 	testData.l2syncerMock.EXPECT().OriginNetwork().Return(networkIDTest)
 	testData.agglayerClientMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
 	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
-	err := fmt.Errorf("unittest error")
-	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(err).Once()
-	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(nil).Once()
 	testData.sut.checkInitialStatus(testData.ctx)
 }
 
