@@ -27,6 +27,10 @@ const (
 	BRIDGE    = "bridge"
 	meterName = "github.com/agglayer/aggkit/rpc"
 
+	networkIDParam  = "network_id"
+	pageNumberParam = "pageNumber"
+	pageSizeParam   = "pageSize"
+
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
 )
@@ -122,7 +126,14 @@ func (b *BridgeService) Start(ctx context.Context, address string) error {
 
 	b.logger.Info("Shutting down bridge service...")
 
-	ctx, cancel := context.WithTimeout(ctx, b.readTimeout)
+	var parentCtx context.Context
+	if ctx.Err() == nil {
+		parentCtx = ctx
+	} else {
+		parentCtx = context.Background()
+	}
+
+	ctx, cancel := context.WithTimeout(parentCtx, b.readTimeout)
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
@@ -152,14 +163,14 @@ type TokenMappingsResult struct {
 // @Failure 500 {object} gin.H
 // @Router /token-mappings [get]
 func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
-	networkIDStr := c.Query("network_id")
+	networkIDStr := c.Query(networkIDParam)
 	if networkIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "network_id is required"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrNetworkIDMandatory})
 		return
 	}
 	networkID64, err := strconv.ParseUint(networkIDStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid network_id"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrInvalidNetworkID})
 		return
 	}
 	networkID := uint32(networkID64)
@@ -170,26 +181,26 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		pageSizePtr   *uint32
 	)
 
-	if pageStr := c.Query("page"); pageStr != "" {
+	if pageStr := c.Query(pageNumberParam); pageStr != "" {
 		pageNum64, err := strconv.ParseUint(pageStr, 10, 32)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrInvalidPageNumber})
 			return
 		}
 		p := uint32(pageNum64)
 		pageNumberPtr = &p
 	}
-	if sizeStr := c.Query("size"); sizeStr != "" {
+	if sizeStr := c.Query(pageSizeParam); sizeStr != "" {
 		pageSize64, err := strconv.ParseUint(sizeStr, 10, 32)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid size"})
+			c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrInvalidPageSize})
 			return
 		}
 		s := uint32(pageSize64)
 		pageSizePtr = &s
 	}
 
-	ctx, cancel, pageNumber, pageSize, err := b.setupRequestREST(c, pageNumberPtr, pageSizePtr, "get_token_mappings")
+	ctx, cancel, pageNumber, pageSize, err := b.parsePaginationParams(c, pageNumberPtr, pageSizePtr, "get_token_mappings")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -250,12 +261,15 @@ func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
 func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	panic("GetLastReorgEventHandler not implemented")
 }
+
 func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	panic("GetBridgesHandler not implemented")
 }
+
 func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	panic("GetClaimsHandler not implemented")
 }
+
 func (b *BridgeService) GetClaimProofHandler(c *gin.Context) {
 	panic("GetClaimProofHandler not implemented")
 }
@@ -456,7 +470,7 @@ func (b *BridgeService) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeIndex
 	)
 }
 
-func (b *BridgeService) setupRequestREST(
+func (b *BridgeService) parsePaginationParams(
 	c *gin.Context,
 	pageNumber, pageSize *uint32,
 	counterName string,

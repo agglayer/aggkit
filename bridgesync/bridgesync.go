@@ -39,6 +39,12 @@ var (
 
 	// ErrInvalidPageNumber indicates that the page number is invalid
 	ErrInvalidPageNumber = errors.New("page number must be greater than 0")
+
+	// ErrNetworkIDMandatory indicates that the network ID is mandatory
+	ErrNetworkIDMandatory = errors.New("network ID is mandatory")
+
+	// ErrInvalidNetworkID indicates that the network ID is invalid
+	ErrInvalidNetworkID = errors.New("invalid network ID")
 )
 
 type ReorgDetector interface {
