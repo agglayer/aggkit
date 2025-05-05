@@ -887,12 +887,12 @@ func getResponseContractCallStartingBlockNumber(returnValue int64) ([]byte, erro
 	expectedBlockNumber := big.NewInt(returnValue)
 	parsedABI, err := abi.JSON(strings.NewReader(aggchainfep.AggchainfepABI))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse ABI: %v", err)
+		return nil, fmt.Errorf("failed to parse ABI: %w", err)
 	}
 	method := parsedABI.Methods["startingBlockNumber"]
 	encodedReturnValue, err := method.Outputs.Pack(expectedBlockNumber)
 	if err != nil {
-		return nil, fmt.Errorf("failed to pack method: %v", err)
+		return nil, fmt.Errorf("failed to pack method: %w", err)
 	}
 	return encodedReturnValue, nil
 }
