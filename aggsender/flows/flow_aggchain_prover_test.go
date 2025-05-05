@@ -882,28 +882,20 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		mockFn        func(t *testing.T, mockEthClient *mocks.EthClient)
+		mockFn        func(mockEthClient *mocks.EthClient)
 		expectedBlock uint64
 		expectedError string
 	}{
 		{
 			name: "error creating sovereign rollup caller",
-			mockFn: func(t *testing.T, mockEthClient *mocks.EthClient) {
+			mockFn: func(mockEthClient *mocks.EthClient) {
 				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error"))
 			},
 			expectedError: "aggchainProverFlow",
 		},
 		{
 			name: "error fetching starting block number",
-			mockFn: func(t *testing.T, mockEthClient *mocks.EthClient) {
-				/*parsedABI, err := abi.JSON(strings.NewReader(aggchainfep.AggchainfepABI))
-				require.NoError(t, err)
-				startingBlockNumber := big.NewInt(100)
-				encodedReturnValue, err := parsedABI.Pack("StartingBlockNumber", startingBlockNumber)
-				require.NoError(t, err)
-				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
-					encodedReturnValue, nil)
-				*/
+			mockFn: func(mockEthClient *mocks.EthClient) {
 				encodedReturnValue := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
 				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
@@ -924,11 +916,11 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 	for _, tc := range testCases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			//t.Parallel()
+			t.Parallel()
 
 			mockEthClient := mocks.NewEthClient(t)
 
-			tc.mockFn(t, mockEthClient)
+			tc.mockFn(mockEthClient)
 
 			block, err := getL2StartBlock(sovereignRollupAddr, mockEthClient)
 			if tc.expectedError != "" {
@@ -939,7 +931,6 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 			}
 
 			mockEthClient.AssertExpectations(t)
-
 		})
 	}
 }
