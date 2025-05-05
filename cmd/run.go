@@ -93,7 +93,7 @@ func start(cliCtx *cli.Context) error {
 			go aggOracle.Start(cliCtx.Context)
 
 		case aggkitcommon.BRIDGE:
-			rpcBridge := createBridgeRPC(
+			err := runBridgeService(
 				cfg.RPC,
 				cfg.Common.NetworkID,
 				claimSponsor,
@@ -102,8 +102,10 @@ func start(cliCtx *cli.Context) error {
 				l1BridgeSync,
 				l2BridgeSync,
 			)
-			rpcServices = append(rpcServices, rpcBridge...)
 
+			if err != nil {
+				log.Fatalf("failed to start bridge service: %v", err)
+			}
 		case aggkitcommon.AGGSENDER:
 			aggsender, err := createAggSender(
 				cliCtx.Context,
@@ -646,7 +648,7 @@ func runBridgeSyncL2IfNeeded(
 	return bridgeSyncL2
 }
 
-func createBridgeRPC(
+func runBridgeService(
 	cfg jRPC.Config,
 	l2NetworkID uint32,
 	sponsor *claimsponsor.ClaimSponsor,
@@ -654,25 +656,21 @@ func createBridgeRPC(
 	injectedGERs *lastgersync.LastGERSync,
 	bridgeL1 *bridgesync.BridgeSync,
 	bridgeL2 *bridgesync.BridgeSync,
-) []jRPC.Service {
+) error {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
-	services := []jRPC.Service{
-		{
-			Name: rpc.BRIDGE,
-			Service: rpc.NewBridgeEndpoints(
-				logger,
-				cfg.WriteTimeout.Duration,
-				cfg.ReadTimeout.Duration,
-				l2NetworkID,
-				sponsor,
-				l1InfoTree,
-				injectedGERs,
-				bridgeL1,
-				bridgeL2,
-			),
-		},
-	}
-	return services
+	bridgeService := rpc.NewBridgeService(
+		logger,
+		cfg.WriteTimeout.Duration,
+		cfg.ReadTimeout.Duration,
+		l2NetworkID,
+		sponsor,
+		l1InfoTree,
+		injectedGERs,
+		bridgeL1,
+		bridgeL2,
+	)
+
+	return bridgeService.Start(fmt.Sprintf("%s:%d", cfg.Host, cfg.Port))
 }
 
 func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {

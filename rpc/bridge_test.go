@@ -32,7 +32,7 @@ const (
 )
 
 type bridgeWithMocks struct {
-	bridge       *BridgeEndpoints
+	bridge       *BridgeService
 	sponsor      *mocks.ClaimSponsorer
 	l1InfoTree   *mocks.L1InfoTreer
 	injectedGERs *mocks.LastGERer
@@ -50,7 +50,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		bridgeL2:     mocks.NewBridger(t),
 	}
 	logger := log.WithFields("module", "bridgerpc")
-	b.bridge = NewBridgeEndpoints(
+	b.bridge = NewBridgeService(
 		logger, 0, 0, networkID, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
 	)
 	return b
