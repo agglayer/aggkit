@@ -20,8 +20,6 @@
     "zkevm_use_real_verifier": false,
     "agglayer_prover_primary_prover": "mock-prover",
     "enable_normalcy": true,
-    "zkevm_rollup_id": 1,
-    "binary_name": "aggkit",
-    "components": "aggsender,bridge"
+    "zkevm_rollup_id": 1
   }
 }
