@@ -53,19 +53,19 @@ jobs:
     needs:
       - build-aggkit-image
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@39fb3daa4795c54e6ddd827b8017587de0db5018
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@02cfbc2adcd0809eb5780b0226e805e2e53f41cf
     secrets: inherit
     with:
       docker-tag: local
-      kurtosis-cdk-ref: 0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f # https://github.com/0xPolygon/kurtosis-cdk/tree/feat/aggsender-agglayer-grpc-integration
-      # kurtosis-cdk-ref: arpit/bridge-service
+      kurtosis-cdk-ref: c3caebc409c7f69354ae012f15cac76f3edf8503
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: 39fb3daa4795c54e6ddd827b8017587de0db5018
+      agglayer-e2e-ref: 02cfbc2adcd0809eb5780b0226e805e2e53f41cf
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
+      test-name: "test-single-l2-network-fork12-pessimistic"
 
   check-single-l2-network-fork12-pessimistic-tests-result:
-    name: Check results
+    name: Check results for single l2 network (pessimistic)
     needs:
       - test-single-l2-network-fork12-pessimistic
     if: always()
@@ -79,18 +79,19 @@ jobs:
     needs:
       - build-aggkit-image
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@39fb3daa4795c54e6ddd827b8017587de0db5018
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@02cfbc2adcd0809eb5780b0226e805e2e53f41cf
     secrets: inherit
     with:
       docker-tag: local
-      kurtosis-cdk-ref: arpit/bridge-service
+      kurtosis-cdk-ref: c3caebc409c7f69354ae012f15cac76f3edf8503
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: 39fb3daa4795c54e6ddd827b8017587de0db5018
-      kurtosis-cdk-enclave-name: aggkit
+      agglayer-e2e-ref: 02cfbc2adcd0809eb5780b0226e805e2e53f41cf
+      kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
+      test-name: "test-single-l2-network-fork12-op-succinct"
 
   check-single-network-fork12-op-succinct-tests-result:
-    name: Check results
+    name: Check results for single l2 network (op-succinct)
     needs:
       - test-single-l2-network-fork12-op-succinct
     if: always()
@@ -128,21 +129,20 @@ jobs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@22665185bde0d441089c49ba68cd70ca369cc5d9
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@02cfbc2adcd0809eb5780b0226e805e2e53f41cf
     secrets: inherit
     with:
       docker-tag: local
-      # TODO: we should use this one (0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f) or continue with the arpit/bridge-service after it is rebased 
-      kurtosis-cdk-ref: arpit/bridge-service 
+      kurtosis-cdk-ref: c3caebc409c7f69354ae012f15cac76f3edf8503 
       docker-artifact-name: aggkit
-      agglayer-e2e-ref: 0ce0bb0e100bb86c8e7d51d8d27b7b53b29fed1f
+      agglayer-e2e-ref: 02cfbc2adcd0809eb5780b0226e805e2e53f41cf
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
 
   check-multi-l2-networks-tests-result:
-    name: Check results
+    name: Check results for multi l2 networks
     needs:
       - test-multi-l2-networks
     if: always()
