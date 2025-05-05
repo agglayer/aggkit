@@ -20,6 +20,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
+	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -33,7 +34,6 @@ import (
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
-	"github.com/agglayer/aggkit/rpc"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -658,7 +658,7 @@ func runBridgeService(
 	bridgeL2 *bridgesync.BridgeSync,
 ) error {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
-	bridgeService := rpc.NewBridgeService(
+	bridgeService := bridgeservice.New(
 		logger,
 		cfg.WriteTimeout.Duration,
 		cfg.ReadTimeout.Duration,

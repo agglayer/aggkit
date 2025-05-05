@@ -1,4 +1,4 @@
-package rpc
+package bridgeservice
 
 import (
 	"context"
@@ -10,14 +10,14 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	mocks "github.com/agglayer/aggkit/bridgeservice/mocks"
+	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
-	mocks "github.com/agglayer/aggkit/rpc/mocks"
-	"github.com/agglayer/aggkit/rpc/types"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -50,7 +50,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		bridgeL2:     mocks.NewBridger(t),
 	}
 	logger := log.WithFields("module", "bridgerpc")
-	b.bridge = NewBridgeService(
+	b.bridge = New(
 		logger, 0, 0, networkID, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
 	)
 	return b
