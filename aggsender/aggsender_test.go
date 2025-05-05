@@ -915,6 +915,21 @@ func TestCheckDBCompatibility(t *testing.T) {
 	testData.sut.checkDBCompatibility(testData.ctx)
 }
 
+func TestAggSenderStartFatal(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow)
+	testData.sut.cfg.RequireStorageContentCompatibility = false
+	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil)
+	testData.storageMock.EXPECT().GetLastSentCertificate().Return(nil, nil)
+	testData.l2syncerMock.EXPECT().OriginNetwork().Return(networkIDTest)
+	testData.agglayerClientMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
+	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
+	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(fmt.Errorf("error")).Once()
+
+	require.Panics(t, func() {
+		testData.sut.Start(testData.ctx)
+	}, "Expected panic when starting AggSender")
+}
+
 type testDataFlags = int
 
 const (

@@ -174,8 +174,7 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.checkDBCompatibility(ctx)
 	a.checkInitialStatus(ctx)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
-		a.status.SetLastError(err)
-		a.log.Fatalf("error checking flow Initial Status: %v, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
+		a.log.Panicf("error checking flow Initial Status: %v, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
 	}
 	a.sendCertificates(ctx, 0)
 }
@@ -185,7 +184,7 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 		return
 	}
 	if err := a.compatibilityStoragedChecker.Check(ctx, nil); err != nil {
-		a.log.Fatalf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
+		a.log.Panicf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
 	}
 }
 

@@ -198,6 +198,11 @@ func (l *Logger) Fatalf(template string, args ...interface{}) {
 	l.x.Fatalf(template, args...)
 }
 
+// Panicf calls log.Panicf
+func (l *Logger) Panicf(template string, args ...interface{}) {
+	l.x.Panicf(template, args...)
+}
+
 // Errorf calls log.Errorf and stores the error message into the ErrorFile
 func (l *Logger) Errorf(template string, args ...interface{}) {
 	l.x.Errorf(template, args...)
