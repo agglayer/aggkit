@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/mocks"
@@ -16,6 +18,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
@@ -889,28 +892,29 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 		{
 			name: "error creating sovereign rollup caller",
 			mockFn: func(mockEthClient *mocks.EthClient) {
-				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error"))
+				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
 			},
 			expectedError: "aggchainProverFlow",
 		},
 		{
-			name: "error fetching starting block number",
+			name: "ok fetching starting block number",
 			mockFn: func(mockEthClient *mocks.EthClient) {
-				encodedReturnValue := []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
-
+				expectedBlockNumber := big.NewInt(12345)
+				parsedABI, err := abi.JSON(strings.NewReader(aggchainfep.AggchainfepABI))
+				if err != nil {
+					t.Fatalf("failed to parse ABI: %v", err)
+				}
+				method := parsedABI.Methods["startingBlockNumber"]
+				encodedReturnValue, err := method.Outputs.Pack(expectedBlockNumber)
+				if err != nil {
+					t.Fatalf("failed to pack method: %v", err)
+				}
 				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
 					encodedReturnValue, nil)
 			},
+			expectedBlock: 12345,
 			expectedError: "",
 		},
-		/*
-			{
-				name: "success fetching starting block number",
-				mockFn: func(mockEthClient *mocks.EthClient) {
-
-				},
-				expectedBlock: 12345,
-			},*/
 	}
 
 	for _, tc := range testCases {
