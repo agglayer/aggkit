@@ -85,6 +85,7 @@ func New(
 	return b
 }
 
+// registerRoutes registers the routes for the bridge service
 func (b *BridgeService) registerRoutes() {
 	b.router.GET("/token-mappings", b.GetTokenMappingsHandler)
 	b.router.GET("/legacy-token-migrations", b.GetLegacyTokenMigrationsHandler)
@@ -96,9 +97,14 @@ func (b *BridgeService) registerRoutes() {
 	b.router.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 	b.router.GET("/bridges", b.GetBridgesHandler)
 	b.router.GET("/claims", b.GetClaimsHandler)
+
 	b.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 
+// Start starts the bridge service
+// address is the address to listen on
+// e.g. ":8080" or "localhost:8080"
+// It returns an error if the server fails to start
 func (b *BridgeService) Start(address string) error {
 	return b.router.Run(address)
 }
