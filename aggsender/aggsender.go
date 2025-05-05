@@ -173,6 +173,10 @@ func (a *AggSender) Start(ctx context.Context) {
 
 	a.checkDBCompatibility(ctx)
 	a.checkInitialStatus(ctx)
+	if err := a.flow.CheckInitialStatus(ctx); err != nil {
+		a.status.SetLastError(err)
+		a.log.Fatalf("error checking flow Initial Status: %v, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
+	}
 	a.sendCertificates(ctx, 0)
 }
 func (a *AggSender) checkDBCompatibility(ctx context.Context) {
@@ -186,34 +190,26 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 }
 
 // checkInitialStatus check local status vs agglayer status
+// checkInitialStatus check local status vs agglayer status
 func (a *AggSender) checkInitialStatus(ctx context.Context) {
 	ticker := time.NewTicker(a.cfg.DelayBeetweenRetries.Duration)
 	defer ticker.Stop()
 	a.status.Status = types.StatusCheckingInitialStage
-	for firstRun := true; ; firstRun = false {
-		// This is to avoid to wait on first interation
-		if !firstRun {
-			select {
-			case <-ctx.Done():
-				log.Fatalf("checkInitialStatus: context Done!") //nolint:gocritic
-				return
-			case <-ticker.C:
-			}
-		}
+	for {
 		a.checkPendingCertificatesStatus(ctx)
-		if err := a.checkLastCertificateFromAgglayer(ctx); err != nil {
-			a.status.SetLastError(err)
+		err := a.checkLastCertificateFromAgglayer(ctx)
+		a.status.SetLastError(err)
+		if err != nil {
 			a.log.Errorf("error checking initial status: %w, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
-			continue
+		} else {
+			a.log.Info("Initial status checked successfully")
+			return
 		}
-		if err := a.flow.CheckInitialStatus(ctx); err != nil {
-			a.status.SetLastError(err)
-			a.log.Errorf("error checking flow Initial Status: %v, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
-			continue
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 		}
-		a.status.SetLastError(nil)
-		a.log.Info("Initial status checked successfully")
-		return
 	}
 }
 
