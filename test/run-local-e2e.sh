@@ -17,7 +17,7 @@ log_error() {
 trap 'log_error "Script failed at line $LINENO"' ERR
 
 if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <path_to_kurtosis_cdk_repo> <path_to_e2e_repo>"
+    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <path/to/kurtosis/cdk/repo> <path/to/e2e/repo>"
     exit 1
 fi
 
@@ -33,7 +33,7 @@ LOG_FILE="$LOG_FOLDER/run-local-e2e.log"
 rm -rf "$ROOT_FOLDER"
 mkdir -p "$LOG_FOLDER"
 
-# exec > >(tee -a "$LOG_FILE") 2>&1
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 log_info "Starting local E2E setup..."
 
