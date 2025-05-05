@@ -57,7 +57,7 @@ jobs:
     secrets: inherit
     with:
       docker-tag: local
-      kurtosis-cdk-ref: main
+      kurtosis-cdk-ref: c3caebc409c7f69354ae012f15cac76f3edf8503
       docker-artifact-name: aggkit
       agglayer-e2e-ref: fc872625ad58dc6cf0cb165e96aecd07e2e3a87d
       kurtosis-cdk-enclave-name: aggkit
@@ -83,7 +83,7 @@ jobs:
     secrets: inherit
     with:
       docker-tag: local
-      kurtosis-cdk-ref: main
+      kurtosis-cdk-ref: c3caebc409c7f69354ae012f15cac76f3edf8503
       docker-artifact-name: aggkit
       agglayer-e2e-ref: fc872625ad58dc6cf0cb165e96aecd07e2e3a87d
       kurtosis-cdk-enclave-name: op
@@ -133,7 +133,7 @@ jobs:
     secrets: inherit
     with:
       docker-tag: local
-      kurtosis-cdk-ref: main 
+      kurtosis-cdk-ref: c3caebc409c7f69354ae012f15cac76f3edf8503 
       docker-artifact-name: aggkit
       agglayer-e2e-ref: fc872625ad58dc6cf0cb165e96aecd07e2e3a87d
       kurtosis-cdk-enclave-name: aggkit
