@@ -12,6 +12,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
+	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -23,6 +24,10 @@ import (
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	errExampleUnitest = errors.New("some error")
 )
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
@@ -878,6 +883,19 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 	}
 }
 
+func getResponseContractCallStartingBlockNumber(returnValue int64) ([]byte, error) {
+	expectedBlockNumber := big.NewInt(returnValue)
+	parsedABI, err := abi.JSON(strings.NewReader(aggchainfep.AggchainfepABI))
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ABI: %v", err)
+	}
+	method := parsedABI.Methods["startingBlockNumber"]
+	encodedReturnValue, err := method.Outputs.Pack(expectedBlockNumber)
+	if err != nil {
+		return nil, fmt.Errorf("failed to pack method: %v", err)
+	}
+	return encodedReturnValue, nil
+}
 func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 	t.Parallel()
 
@@ -899,13 +917,7 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 		{
 			name: "ok fetching starting block number",
 			mockFn: func(mockEthClient *mocks.EthClient) {
-				expectedBlockNumber := big.NewInt(12345)
-				parsedABI, err := abi.JSON(strings.NewReader(aggchainfep.AggchainfepABI))
-				if err != nil {
-					t.Fatalf("failed to parse ABI: %v", err)
-				}
-				method := parsedABI.Methods["startingBlockNumber"]
-				encodedReturnValue, err := method.Outputs.Pack(expectedBlockNumber)
+				encodedReturnValue, err := getResponseContractCallStartingBlockNumber(12345)
 				if err != nil {
 					t.Fatalf("failed to pack method: %v", err)
 				}
@@ -935,6 +947,95 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 			}
 
 			mockEthClient.AssertExpectations(t)
+		})
+	}
+}
+
+func Test_AggchainProverFlow_NewAggchainProverFlow(t *testing.T) {
+	sovereignRollupAddr := common.HexToAddress("0x123")
+	gerL2Address := common.HexToAddress("0x456")
+
+	testCases := []struct {
+		name                      string
+		newEVMChainGERReaderError string
+		mockFn                    func(*mocks.EthClient, *mocks.EthClient, *mocks.L1InfoTreeSyncer, *mocks.L2BridgeSyncer, *mocks.AggSenderStorage)
+		expectedError             string
+	}{
+		{
+			name:                      "error creating EVMChainGERReader",
+			newEVMChainGERReaderError: "error creating EVMChainGERReader",
+			mockFn: func(mockL1Client *mocks.EthClient, mockL2Client *mocks.EthClient, mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL2Syncer *mocks.L2BridgeSyncer, mockStorage *mocks.AggSenderStorage) {
+			},
+			expectedError: "aggchainProverFlow - error creating EVMChainGERReader",
+		},
+		{
+			name: "error reading sovereign rollup",
+			mockFn: func(mockL1Client *mocks.EthClient, mockL2Client *mocks.EthClient, mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL2Syncer *mocks.L2BridgeSyncer, mockStorage *mocks.AggSenderStorage) {
+				mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, errExampleUnitest).Once()
+			},
+			expectedError: "aggchainProverFlow - error reading sovereign rollup",
+		},
+		{
+			name: "success",
+			mockFn: func(mockL1Client *mocks.EthClient, mockL2Client *mocks.EthClient, mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL2Syncer *mocks.L2BridgeSyncer, mockStorage *mocks.AggSenderStorage) {
+				encoded, err := getResponseContractCallStartingBlockNumber(123)
+				if err != nil {
+					t.Fatalf("failed to pack method: %v", err)
+				}
+				mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(encoded, nil)
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			mockL1Client := mocks.NewEthClient(t)
+			mockL2Client := mocks.NewEthClient(t)
+			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
+			mockStorage := mocks.NewAggSenderStorage(t)
+			mockAggchainProofClient := mocks.NewAggchainProofClientInterface(t)
+
+			tc.mockFn(mockL1Client, mockL2Client, mockL1InfoTreeSyncer, mockL2Syncer, mockStorage)
+
+			log := log.WithFields("module", "test")
+			if tc.newEVMChainGERReaderError != "" {
+				funcNewEVMChainGERReader = func(l2GERManagerAddr common.Address, l2Client aggoracletypes.EthClienter) (*chaingerreader.EVMChainGERReader, error) {
+					return nil, errors.New(tc.newEVMChainGERReaderError)
+				}
+			} else {
+				funcNewEVMChainGERReader = func(l2GERManagerAddr common.Address, l2Client aggoracletypes.EthClienter) (*chaingerreader.EVMChainGERReader, error) {
+					return &chaingerreader.EVMChainGERReader{}, nil
+				}
+			}
+
+			_, err := NewAggchainProverFlow(
+				log,
+				100,
+				true,
+				gerL2Address,
+				sovereignRollupAddr,
+				mockAggchainProofClient,
+				mockStorage,
+				mockL1InfoTreeSyncer,
+				mockL2Syncer,
+				mockL1Client,
+				mockL2Client,
+			)
+
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+
+			mockL1Client.AssertExpectations(t)
+			mockL2Client.AssertExpectations(t)
+			mockL1InfoTreeSyncer.AssertExpectations(t)
+			mockL2Syncer.AssertExpectations(t)
+			mockStorage.AssertExpectations(t)
 		})
 	}
 }

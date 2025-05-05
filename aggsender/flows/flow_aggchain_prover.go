@@ -41,6 +41,8 @@ func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClien
 	return startL2Block.Uint64(), nil
 }
 
+var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
+
 // NewAggchainProverFlow returns a new instance of the AggchainProverFlow
 func NewAggchainProverFlow(log types.Logger,
 	maxCertSize uint,
@@ -53,7 +55,7 @@ func NewAggchainProverFlow(log types.Logger,
 	l2Syncer types.L2BridgeSyncer,
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*AggchainProverFlow, error) {
-	gerReader, err := chaingerreader.NewEVMChainGERReader(gerL2Address, l2Client)
+	gerReader, err := funcNewEVMChainGERReader(gerL2Address, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error creating EVMChainGERReader: %w", err)
 	}
