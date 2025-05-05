@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
@@ -13,6 +15,9 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/rpc/types"
 	tree "github.com/agglayer/aggkit/tree/types"
+	"github.com/gin-gonic/gin"
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -22,16 +27,16 @@ const (
 	BRIDGE    = "bridge"
 	meterName = "github.com/agglayer/aggkit/rpc"
 
-	binnarySearchDivider = 2
-	mainnetNetworkID     = 0
+	binarySearchDivider = 2
+	mainnetNetworkID    = 0
 )
 
 var (
 	ErrNotOnL1Info = errors.New("this bridge has not been included on the L1 Info Tree yet")
 )
 
-// BridgeEndpoints contains implementations for the "bridge" RPC endpoints
-type BridgeEndpoints struct {
+// BridgeService contains implementations for the bridge service endpoints
+type BridgeService struct {
 	logger       *log.Logger
 	meter        metric.Meter
 	readTimeout  time.Duration
@@ -42,10 +47,12 @@ type BridgeEndpoints struct {
 	injectedGERs LastGERer
 	bridgeL1     Bridger
 	bridgeL2     Bridger
+
+	router *gin.Engine
 }
 
-// NewBridgeEndpoints returns BridgeEndpoints
-func NewBridgeEndpoints(
+// NewBridgeService returns instance of BridgeService
+func NewBridgeService(
 	logger *log.Logger,
 	writeTimeout time.Duration,
 	readTimeout time.Duration,
@@ -55,10 +62,11 @@ func NewBridgeEndpoints(
 	injectedGERs LastGERer,
 	bridgeL1 Bridger,
 	bridgeL2 Bridger,
-) *BridgeEndpoints {
+) *BridgeService {
 	meter := otel.Meter(meterName)
-	logger.Infof("starting bridge service (L2 network id=%d)", networkID)
-	return &BridgeEndpoints{
+	logger.Infof("starting bridge service (network id=%d)", networkID)
+
+	b := &BridgeService{
 		logger:       logger,
 		meter:        meter,
 		readTimeout:  readTimeout,
@@ -69,7 +77,30 @@ func NewBridgeEndpoints(
 		injectedGERs: injectedGERs,
 		bridgeL1:     bridgeL1,
 		bridgeL2:     bridgeL2,
+		router:       gin.Default(),
 	}
+
+	b.registerRoutes()
+
+	return b
+}
+
+func (b *BridgeService) registerRoutes() {
+	b.router.GET("/token-mappings", b.GetTokenMappingsHandler)
+	b.router.GET("/legacy-token-migrations", b.GetLegacyTokenMigrationsHandler)
+	b.router.GET("/l1-info-tree-index-for-bridge", b.L1InfoTreeIndexForBridgeHandler)
+	b.router.GET("/injected-info-after-index", b.InjectedInfoAfterIndexHandler)
+	b.router.GET("/claim-proof", b.ClaimProofHandler)
+	b.router.POST("/sponsor-claim", b.SponsorClaimHandler)
+	b.router.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
+	b.router.GET("/last-reorg-event", b.GetLastReorgEventHandler)
+	b.router.GET("/bridges", b.GetBridgesHandler)
+	b.router.GET("/claims", b.GetClaimsHandler)
+	b.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+}
+
+func (b *BridgeService) Start(address string) error {
+	return b.router.Run(address)
 }
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings
@@ -78,13 +109,134 @@ type TokenMappingsResult struct {
 	Count         int                        `json:"count"`
 }
 
+// @Summary Get token mappings
+// @Description Returns token mappings for the given network, paginated
+// @Tags token-mappings
+// @Param network_id query int true "Network ID"
+// @Param page query int false "Page number"
+// @Param size query int false "Page size"
+// @Produce json
+// @Success 200 {object} TokenMappingsResult
+// @Failure 400 {object} gin.H
+// @Failure 500 {object} gin.H
+// @Router /token-mappings [get]
+func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
+	networkIDStr := c.Query("network_id")
+	if networkIDStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "network_id is required"})
+		return
+	}
+	networkID64, err := strconv.ParseUint(networkIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid network_id"})
+		return
+	}
+	networkID := uint32(networkID64)
+
+	// Parse pagination params
+	var (
+		pageNumberPtr *uint32
+		pageSizePtr   *uint32
+	)
+
+	if pageStr := c.Query("page"); pageStr != "" {
+		pageNum64, err := strconv.ParseUint(pageStr, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid page"})
+			return
+		}
+		p := uint32(pageNum64)
+		pageNumberPtr = &p
+	}
+	if sizeStr := c.Query("size"); sizeStr != "" {
+		pageSize64, err := strconv.ParseUint(sizeStr, 10, 32)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid size"})
+			return
+		}
+		s := uint32(pageSize64)
+		pageSizePtr = &s
+	}
+
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequestREST(c, pageNumberPtr, pageSizePtr, "get_token_mappings")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	defer cancel()
+
+	var (
+		tokenMappings      []*bridgesync.TokenMapping
+		tokenMappingsCount int
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize)
+	case b.networkID == networkID:
+		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
+		return
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch token mappings: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK,
+		TokenMappingsResult{
+			TokenMappings: tokenMappings,
+			Count:         tokenMappingsCount,
+		})
+}
+
+func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
+	panic("GetLegacyTokenMigrationsHandler not implemented")
+}
+
+func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
+	panic("L1InfoTreeIndexForBridgeHandler not implemented")
+}
+
+func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
+	panic("InjectedInfoAfterIndexHandler not implemented")
+}
+
+func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
+	panic("ClaimProofHandler not implemented")
+}
+
+func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
+	panic("SponsorClaimHandler not implemented")
+}
+
+func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
+	panic("GetSponsoredClaimStatusHandler not implemented")
+}
+
+func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
+	panic("GetLastReorgEventHandler not implemented")
+}
+func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
+	panic("GetBridgesHandler not implemented")
+}
+func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
+	panic("GetClaimsHandler not implemented")
+}
+func (b *BridgeService) GetClaimProofHandler(c *gin.Context) {
+	panic("GetClaimProofHandler not implemented")
+}
+
+// TODO: @Stefan-Ethernal REMOVE
 // GetTokenMappings returns the token mappings for the given network.
 // If networkID is 0, it returns the token mappings for the L1 network.
 // If networkID is the same as the client, it returns the token mappings for the L2 network.
 // The result is paginated.
 //
 //nolint:dupl
-func (b *BridgeEndpoints) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
+func (b *BridgeService) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
 	b.logger.Debugf("GetTokenMappings request received (network id=%d)", networkID)
 
 	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_token_mappings")
@@ -143,7 +295,7 @@ type LegacyTokenMigrationsResult struct {
 // The result is paginated.
 //
 //nolint:dupl
-func (b *BridgeEndpoints) GetLegacyTokenMigrations(
+func (b *BridgeService) GetLegacyTokenMigrations(
 	networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
 	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%d)", networkID)
 
@@ -196,7 +348,7 @@ func (b *BridgeEndpoints) GetLegacyTokenMigrations(
 // L1InfoTreeIndexForBridge returns the first L1 Info Tree index in which the bridge was included.
 // networkID represents the origin network.
 // This call needs to be done to a client of the same network were the bridge tx was sent
-func (b *BridgeEndpoints) L1InfoTreeIndexForBridge(networkID uint32, depositCount uint32) (interface{}, rpc.Error) {
+func (b *BridgeService) L1InfoTreeIndexForBridge(networkID uint32, depositCount uint32) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 
@@ -236,7 +388,7 @@ func (b *BridgeEndpoints) L1InfoTreeIndexForBridge(networkID uint32, depositCoun
 // InjectedInfoAfterIndex return the first GER injected onto the network that is linked
 // to the given index or greater. This call is useful to understand when a bridge is ready to be claimed
 // on its destination network
-func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeIndex uint32) (interface{}, rpc.Error) {
+func (b *BridgeService) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeIndex uint32) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 
@@ -273,7 +425,28 @@ func (b *BridgeEndpoints) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeInd
 	)
 }
 
-func (b *BridgeEndpoints) setupRequest(
+func (b *BridgeService) setupRequestREST(
+	c *gin.Context,
+	pageNumber, pageSize *uint32,
+	counterName string,
+) (context.Context, context.CancelFunc, uint32, uint32, error) {
+	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
+	if err != nil {
+		return nil, nil, 0, 0, err
+	}
+
+	ctx, cancel := context.WithTimeout(c.Request.Context(), b.readTimeout)
+	counter, merr := b.meter.Int64Counter(counterName)
+	if merr != nil {
+		b.logger.Warnf("failed to create %s counter: %s", counterName, merr)
+	}
+	counter.Add(ctx, 1)
+
+	return ctx, cancel, pageNumberU32, pageSizeU32, nil
+}
+
+// TODO: @Stefan-Ethernal Remove this function and use the one above
+func (b *BridgeService) setupRequest(
 	pageNumber, pageSize *uint32,
 	counterName string,
 ) (context.Context, context.CancelFunc, uint32, uint32, rpc.Error) {
@@ -302,7 +475,7 @@ type BridgesResult struct {
 // If networkID is 0, it returns the bridges for the L1 network.
 // If networkID is the same as the client, it returns the bridges for the L2 network.
 // The result is paginated.
-func (b *BridgeEndpoints) GetBridges(networkID uint32, pageNumber, pageSize *uint32,
+func (b *BridgeService) GetBridges(networkID uint32, pageNumber, pageSize *uint32,
 	depositCount *uint64, networkIDs []uint32) (interface{}, rpc.Error) {
 	b.logger.Debugf("GetBridges request received (network id=%d)", networkID)
 	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_bridges")
@@ -354,7 +527,7 @@ type ClaimsResult struct {
 // If networkID is 0, it returns the claims for the L1 network.
 // If networkID is the same as the client, it returns the claims for the L2 network.
 // The result is paginated.
-func (b *BridgeEndpoints) GetClaims(networkID uint32, pageNumber,
+func (b *BridgeService) GetClaims(networkID uint32, pageNumber,
 	pageSize *uint32, networkIDs []uint32) (interface{}, rpc.Error) {
 	b.logger.Debugf("GetClaims request received (network id=%d)", networkID)
 	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_claims")
@@ -399,7 +572,7 @@ func (b *BridgeEndpoints) GetClaims(networkID uint32, pageNumber,
 // ClaimProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
 // while globalExitRoot should be already injected on the destination network.
 // This call needs to be done to a client of the same network were the bridge tx was sent
-func (b *BridgeEndpoints) ClaimProof(
+func (b *BridgeService) ClaimProof(
 	networkID uint32, depositCount uint32, l1InfoTreeIndex uint32,
 ) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
@@ -459,7 +632,7 @@ func (b *BridgeEndpoints) ClaimProof(
 
 // SponsorClaim sends a claim tx on behalf of the user.
 // This call needs to be done to a client of the same network were the claim is going to be sent (bridge destination)
-func (b *BridgeEndpoints) SponsorClaim(claim claimsponsor.Claim) (interface{}, rpc.Error) {
+func (b *BridgeService) SponsorClaim(claim claimsponsor.Claim) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.writeTimeout)
 	defer cancel()
 
@@ -485,7 +658,7 @@ func (b *BridgeEndpoints) SponsorClaim(claim claimsponsor.Claim) (interface{}, r
 
 // GetSponsoredClaimStatus returns the status of a claim that has been previously requested to be sponsored.
 // This call needs to be done to the same client were it was requested to be sponsored
-func (b *BridgeEndpoints) GetSponsoredClaimStatus(globalIndex *big.Int) (interface{}, rpc.Error) {
+func (b *BridgeService) GetSponsoredClaimStatus(globalIndex *big.Int) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 
@@ -506,7 +679,7 @@ func (b *BridgeEndpoints) GetSponsoredClaimStatus(globalIndex *big.Int) (interfa
 	return claim.Status, nil
 }
 
-func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, depositCount uint32) (uint32, error) {
+func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, depositCount uint32) (uint32, error) {
 	lastInfo, err := b.l1InfoTree.GetLastInfo()
 	if err != nil {
 		return 0, err
@@ -532,7 +705,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context
 	lowerLimit := firstInfo.BlockNumber
 	upperLimit := lastInfo.BlockNumber
 	for lowerLimit <= upperLimit {
-		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binnarySearchDivider)
+		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
 		targetInfo, err := b.l1InfoTree.GetFirstInfoAfterBlock(targetBlock)
 		if err != nil {
 			return 0, err
@@ -555,7 +728,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context
 	return bestResult.L1InfoTreeIndex, nil
 }
 
-func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, depositCount uint32) (uint32, error) {
+func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, depositCount uint32) (uint32, error) {
 	// NOTE: this code assumes that all the rollup exit roots
 	// (produced by the smart contract call verifyBatches / verifyBatchesTrustedAggregator)
 	// are included in the L1 info tree. As per the current implementation (smart contracts) of the protocol
@@ -585,7 +758,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 	lowerLimit := firstVerified.BlockNumber
 	upperLimit := lastVerified.BlockNumber
 	for lowerLimit <= upperLimit {
-		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binnarySearchDivider)
+		targetBlock := lowerLimit + ((upperLimit - lowerLimit) / binarySearchDivider)
 		targetVerified, err := b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, targetBlock)
 		if err != nil {
 			return 0, err
@@ -612,7 +785,7 @@ func (b *BridgeEndpoints) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context
 	return info.L1InfoTreeIndex, nil
 }
 
-func (b *BridgeEndpoints) GetLastReorgEvent(networkID uint32) (interface{}, rpc.Error) {
+func (b *BridgeService) GetLastReorgEvent(networkID uint32) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
 
