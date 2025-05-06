@@ -319,6 +319,50 @@ func (_c *Logger_Infof_Call) RunAndReturn(run func(string, ...interface{})) *Log
 	return _c
 }
 
+// Panicf provides a mock function with given fields: format, args
+func (_m *Logger) Panicf(format string, args ...interface{}) {
+	var _ca []interface{}
+	_ca = append(_ca, format)
+	_ca = append(_ca, args...)
+	_m.Called(_ca...)
+}
+
+// Logger_Panicf_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Panicf'
+type Logger_Panicf_Call struct {
+	*mock.Call
+}
+
+// Panicf is a helper method to define mock.On call
+//   - format string
+//   - args ...interface{}
+func (_e *Logger_Expecter) Panicf(format interface{}, args ...interface{}) *Logger_Panicf_Call {
+	return &Logger_Panicf_Call{Call: _e.mock.On("Panicf",
+		append([]interface{}{format}, args...)...)}
+}
+
+func (_c *Logger_Panicf_Call) Run(run func(format string, args ...interface{})) *Logger_Panicf_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]interface{}, len(args)-1)
+		for i, a := range args[1:] {
+			if a != nil {
+				variadicArgs[i] = a.(interface{})
+			}
+		}
+		run(args[0].(string), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *Logger_Panicf_Call) Return() *Logger_Panicf_Call {
+	_c.Call.Return()
+	return _c
+}
+
+func (_c *Logger_Panicf_Call) RunAndReturn(run func(string, ...interface{})) *Logger_Panicf_Call {
+	_c.Run(run)
+	return _c
+}
+
 // Warn provides a mock function with given fields: args
 func (_m *Logger) Warn(args ...interface{}) {
 	var _ca []interface{}

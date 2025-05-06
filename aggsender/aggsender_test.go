@@ -22,6 +22,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -744,6 +745,17 @@ func TestCheckLastCertificateFromAgglayer_Case4ErrorUpdateStatus(t *testing.T) {
 	require.Error(t, err)
 }
 
+// CheckInitialStatus with no data on storage, neither on agglayer
+func TestCheckInitialStatus(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow)
+	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil)
+	testData.storageMock.EXPECT().GetLastSentCertificate().Return(nil, nil)
+	testData.l2syncerMock.EXPECT().OriginNetwork().Return(networkIDTest)
+	testData.agglayerClientMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
+	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
+	testData.sut.checkInitialStatus(testData.ctx)
+}
+
 func TestSendCertificate(t *testing.T) {
 	t.Parallel()
 
@@ -904,23 +916,52 @@ func TestCheckDBCompatibility(t *testing.T) {
 	testData.sut.checkDBCompatibility(testData.ctx)
 }
 
+func TestAggSenderStartFailFlowCheckInitialStatus(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow)
+	testData.sut.cfg.RequireStorageContentCompatibility = false
+	testData.storageMock.EXPECT().GetCertificatesByStatus(mock.Anything).Return([]*aggsendertypes.CertificateInfo{}, nil)
+	testData.storageMock.EXPECT().GetLastSentCertificate().Return(nil, nil)
+	testData.l2syncerMock.EXPECT().OriginNetwork().Return(networkIDTest)
+	testData.agglayerClientMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
+	testData.agglayerClientMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, networkIDTest).Return(nil, nil).Maybe()
+	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(fmt.Errorf("error")).Once()
+
+	require.Panics(t, func() {
+		testData.sut.Start(testData.ctx)
+	}, "Expected panic when starting AggSender")
+}
+
+func TestAggSenderStartFailsCompatibilityChecker(t *testing.T) {
+	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockCompatibilityChecker)
+	testData.sut.cfg.RequireStorageContentCompatibility = true
+	testData.compatibilityChekerMock.EXPECT().Check(mock.Anything, mock.Anything).Return(fmt.Errorf("error")).Once()
+
+	require.Panics(t, func() {
+		testData.sut.Start(testData.ctx)
+	}, "Expected panic when starting AggSender")
+}
+
 type testDataFlags = int
 
 const (
-	testDataFlagNone        testDataFlags = 0
-	testDataFlagMockStorage testDataFlags = 1
+	testDataFlagNone                     testDataFlags = 0
+	testDataFlagMockStorage              testDataFlags = 1
+	testDataFlagMockFlow                 testDataFlags = 2
+	testDataFlagMockCompatibilityChecker testDataFlags = 4
 )
 
 type aggsenderTestData struct {
-	ctx                  context.Context
-	agglayerClientMock   *agglayer.AgglayerClientMock
-	l2syncerMock         *mocks.L2BridgeSyncer
-	l1InfoTreeSyncerMock *mocks.L1InfoTreeSyncer
-	storageMock          *mocks.AggSenderStorage
-	epochNotifierMock    *mocks.EpochNotifier
-	sut                  *AggSender
-	testCerts            []aggsendertypes.CertificateInfo
-	l1ClientMock         *mocks.EthClient
+	ctx                     context.Context
+	agglayerClientMock      *agglayer.AgglayerClientMock
+	l2syncerMock            *mocks.L2BridgeSyncer
+	l1InfoTreeSyncerMock    *mocks.L1InfoTreeSyncer
+	storageMock             *mocks.AggSenderStorage
+	epochNotifierMock       *mocks.EpochNotifier
+	flowMock                *mocks.AggsenderFlow
+	compatibilityChekerMock *mocksdb.CompatibilityChecker
+	sut                     *AggSender
+	testCerts               []aggsendertypes.CertificateInfo
+	l1ClientMock            *mocks.EthClient
 }
 
 func NewBridgesData(t *testing.T, num int, blockNum []uint64) []bridgesync.Bridge {
@@ -1003,6 +1044,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	require.NoError(t, err)
 	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
 	ctx := context.TODO()
+
 	sut := &AggSender{
 		log:              logger,
 		l2Syncer:         l2syncerMock,
@@ -1010,12 +1052,25 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		storage:          storage,
 		l1infoTreeSyncer: l1InfoTreeSyncerMock,
 		cfg: Config{
-			MaxCertSize: 1024 * 1024,
+			MaxCertSize:          1024 * 1024,
+			DelayBeetweenRetries: types.Duration{Duration: time.Millisecond},
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
 		flow:          flows.NewPPFlow(logger, 0, false, storage, l1InfoTreeSyncerMock, l2syncerMock, l1ClientMock, signer),
 	}
+	var flowMock *mocks.AggsenderFlow
+	if creationFlags&testDataFlagMockFlow != 0 {
+		flowMock = mocks.NewAggsenderFlow(t)
+		sut.flow = flowMock
+	}
+
+	var compatibilityCheckerMock *mocksdb.CompatibilityChecker
+	if creationFlags&testDataFlagMockCompatibilityChecker != 0 {
+		compatibilityCheckerMock = mocksdb.NewCompatibilityChecker(t)
+		sut.compatibilityStoragedChecker = compatibilityCheckerMock
+	}
+
 	testCerts := []aggsendertypes.CertificateInfo{
 		{
 			Height:           0,
@@ -1032,14 +1087,16 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	}
 
 	return &aggsenderTestData{
-		ctx:                  ctx,
-		agglayerClientMock:   agglayerClientMock,
-		l2syncerMock:         l2syncerMock,
-		l1InfoTreeSyncerMock: l1InfoTreeSyncerMock,
-		storageMock:          storageMock,
-		epochNotifierMock:    epochNotifierMock,
-		sut:                  sut,
-		testCerts:            testCerts,
-		l1ClientMock:         l1ClientMock,
+		ctx:                     ctx,
+		agglayerClientMock:      agglayerClientMock,
+		l2syncerMock:            l2syncerMock,
+		l1InfoTreeSyncerMock:    l1InfoTreeSyncerMock,
+		storageMock:             storageMock,
+		epochNotifierMock:       epochNotifierMock,
+		flowMock:                flowMock,
+		compatibilityChekerMock: compatibilityCheckerMock,
+		sut:                     sut,
+		testCerts:               testCerts,
+		l1ClientMock:            l1ClientMock,
 	}
 }
