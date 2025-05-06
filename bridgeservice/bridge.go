@@ -615,8 +615,80 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	panic("GetBridgesHandler not implemented")
 }
 
+// GetClaimsHandler retrieves paginated claims for a given network.
+//
+// @Summary Get claims
+// @Description Returns a paginated list of claims for the specified network.
+// @Tags claims
+// @Param network_id query uint32 true "Target network ID"
+// @Param page query uint32 false "Page number (default 1)"
+// @Param page_size query uint32 false "Page size (default 100)"
+// @Param network_ids query []uint32 false "Filter by one or more network IDs"
+// @Produce json
+// @Success 200 {object} types.ClaimsResult
+// @Failure 400 {object} gin.H "Invalid request parameters"
+// @Failure 500 {object} gin.H "Internal server error"
+// @Router /claims [get]
 func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
-	panic("GetClaimsHandler not implemented")
+	networkIDRaw := c.Query(networkIDParam)
+	networkID, err := b.parseUint32Param(c, networkIDParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	networkIDs, err := b.parseUint32SliceParam(c, "network_ids")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	pageNumberRaw := c.Query(pageNumberParam)
+	pageSizeRaw := c.Query(pageSizeParam)
+	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s)",
+		networkIDRaw, pageNumberRaw, pageSizeRaw)
+	ctx, cancel, pageNumberU32, pageSizeU32, setupErr :=
+		b.parsePaginationParams(c, pageNumberRaw, pageSizeRaw, "get_claims")
+	if setupErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
+		return
+	}
+	defer cancel()
+
+	b.logger.Debugf("fetching claims (network id=%d, page number=%d, page size=%d)",
+		networkID, pageNumberU32, pageSizeU32)
+
+	var (
+		claims []*bridgesync.ClaimResponse
+		count  int
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32, networkIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get claims for the L1 network, error: %s", err)})
+			return
+		}
+	case networkID == b.networkID:
+		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32, networkIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s", networkID, err)})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest,
+			gin.H{"error": fmt.Sprintf("failed to get claims, unsupported network %d", networkID)})
+		return
+	}
+
+	c.JSON(http.StatusOK,
+		types.ClaimsResult{
+			Claims: claims,
+			Count:  count,
+		})
 }
 
 // TODO: @Stefan-Ethernal REMOVE
@@ -814,18 +886,32 @@ func (b *BridgeService) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeIndex
 
 // parseUint32Param parses the mandatory uint32 parameter from the request context
 // If the parameter is not present or invalid, it returns an error.
-func (b *BridgeService) parseUint32Param(c *gin.Context, paramName string) (uint32, error) {
-	paramStr := c.Query(paramName)
+func (b *BridgeService) parseUint32Param(c *gin.Context, key string) (uint32, error) {
+	paramStr := c.Query(key)
 	if paramStr == "" {
-		return 0, fmt.Errorf("%s is mandatory", paramName)
+		return 0, fmt.Errorf("%s is mandatory", key)
 	}
 
 	param64, err := strconv.ParseUint(paramStr, 10, 32)
 	if err != nil {
-		return 0, fmt.Errorf("invalid %s parameter: %w", paramName, err)
+		return 0, fmt.Errorf("invalid %s parameter: %w", key, err)
 	}
 
 	return uint32(param64), nil
+}
+
+// parseUint32SliceParam parses a slice of uint32 parameters from the request context
+func (b *BridgeService) parseUint32SliceParam(c *gin.Context, key string) ([]uint32, error) {
+	vals := c.QueryArray(key)
+	result := make([]uint32, 0, len(vals))
+	for _, v := range vals {
+		n, err := strconv.ParseUint(v, 10, 32)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, uint32(n))
+	}
+	return result, nil
 }
 
 // parsePaginationParams parses the pagination parameters from the request context
@@ -935,6 +1021,7 @@ func (b *BridgeService) GetBridges(networkID uint32, pageNumber, pageSize *uint3
 	}, nil
 }
 
+// TODO: @Stefan-Ethernal REMOVE
 // GetClaims returns the claims for the given network.
 // If networkID is 0, it returns the claims for the L1 network.
 // If networkID is the same as the client, it returns the claims for the L2 network.
