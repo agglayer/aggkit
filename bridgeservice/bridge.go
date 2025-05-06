@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/gin-gonic/gin"
@@ -27,9 +28,11 @@ const (
 	BRIDGE    = "bridge"
 	meterName = "github.com/agglayer/aggkit/rpc"
 
-	networkIDParam  = "network_id"
-	pageNumberParam = "pageNumber"
-	pageSizeParam   = "pageSize"
+	networkIDParam       = "network_id"
+	pageNumberParam      = "pageNumber"
+	pageSizeParam        = "pageSize"
+	depositCountParam    = "deposit_count"
+	l1InfoTreeIndexParam = "l1_info_tree_index"
 
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
@@ -145,12 +148,6 @@ func (b *BridgeService) Start(ctx context.Context, address string) error {
 	return nil
 }
 
-// TokenMappingsResult contains the token mappings and the total count of token mappings
-type TokenMappingsResult struct {
-	TokenMappings []*bridgesync.TokenMapping `json:"tokenMappings"`
-	Count         int                        `json:"count"`
-}
-
 // @Summary Get token mappings
 // @Description Returns token mappings for the given network, paginated
 // @Tags token-mappings
@@ -162,45 +159,21 @@ type TokenMappingsResult struct {
 // @Failure 400 {object} gin.H
 // @Failure 500 {object} gin.H
 // @Router /token-mappings [get]
+//
+//nolint:dupl
 func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
-	networkIDStr := c.Query(networkIDParam)
-	if networkIDStr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrNetworkIDMandatory})
-		return
-	}
-	networkID64, err := strconv.ParseUint(networkIDStr, 10, 32)
+	b.logger.Debugf("GetTokenMappings request received (network id=%s)", c.Query(networkIDParam))
+
+	networkID, err := b.parseNetworkIDParameter(c)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrInvalidNetworkID})
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	networkID := uint32(networkID64)
 
-	// Parse pagination params
-	var (
-		pageNumberPtr *uint32
-		pageSizePtr   *uint32
-	)
+	pageNumberRaw := c.Query(pageNumberParam)
+	pageSizeRaw := c.Query(pageSizeParam)
 
-	if pageStr := c.Query(pageNumberParam); pageStr != "" {
-		pageNum64, err := strconv.ParseUint(pageStr, 10, 32)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrInvalidPageNumber})
-			return
-		}
-		p := uint32(pageNum64)
-		pageNumberPtr = &p
-	}
-	if sizeStr := c.Query(pageSizeParam); sizeStr != "" {
-		pageSize64, err := strconv.ParseUint(sizeStr, 10, 32)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrInvalidPageSize})
-			return
-		}
-		s := uint32(pageSize64)
-		pageSizePtr = &s
-	}
-
-	ctx, cancel, pageNumber, pageSize, err := b.parsePaginationParams(c, pageNumberPtr, pageSizePtr, "get_token_mappings")
+	ctx, cancel, pageNumber, pageSize, err := b.parsePaginationParams(c, pageNumberRaw, pageSizeRaw, "get_token_mappings")
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -223,27 +196,222 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 	}
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to fetch token mappings: " + err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to fetch token mappings: %s", err.Error())})
 		return
 	}
 
 	c.JSON(http.StatusOK,
-		TokenMappingsResult{
+		types.TokenMappingsResult{
 			TokenMappings: tokenMappings,
 			Count:         tokenMappingsCount,
 		})
 }
 
+// @Summary Get legacy token migrations
+// @Description Returns legacy token migrations for the given network, paginated
+// @Tags legacy-token-migrations
+// @Param network_id query int true "Network ID"
+// @Param page query int false "Page number"
+// @Param size query int false "Page size"
+// @Produce json
+// @Success 200 {object} types.LegacyTokenMigrationsResult
+// @Failure 400 {object} gin.H
+// @Failure 500 {object} gin.H
+// @Router /legacy-token-migrations [get]
+//
+//nolint:dupl
 func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
-	panic("GetLegacyTokenMigrationsHandler not implemented")
+	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%s)", c.Query(networkIDParam))
+
+	networkID, err := b.parseNetworkIDParameter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	pageNumberRaw := c.Query(pageNumberParam)
+	pageSizeRaw := c.Query(pageSizeParam)
+
+	ctx, cancel, pageNumber, pageSize, err :=
+		b.parsePaginationParams(c, pageNumberRaw, pageSizeRaw, "get_legacy_token_migrations")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	defer cancel()
+
+	var (
+		tokenMigrations      []*bridgesync.LegacyTokenMigration
+		tokenMigrationsCount int
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		tokenMigrations, tokenMigrationsCount, err = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
+	case b.networkID == networkID:
+		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
+		return
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to fetch legacy token migrations: %s", err.Error())})
+		return
+	}
+
+	c.JSON(http.StatusOK,
+		types.LegacyTokenMigrationsResult{
+			TokenMigrations: tokenMigrations,
+			Count:           tokenMigrationsCount,
+		})
 }
 
+// @Summary Get L1 Info Tree index for a bridge
+// @Description Returns the first L1 Info Tree index after a given deposit count for the specified network
+// @Tags l1-info-tree
+// @Param network_id query int true "Network ID"
+// @Param deposit_count query int true "Deposit count"
+// @Produce json
+// @Success 200 {object} uint32
+// @Failure 400 {object} gin.H
+// @Failure 500 {object} gin.H
+// @Router /l1-info-tree-index-for-bridge [get]
 func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
-	panic("L1InfoTreeIndexForBridgeHandler not implemented")
+	b.logger.Debugf("L1InfoTreeIndexForBridge request received (network id=%s, deposit count=%s)",
+		c.Query(networkIDParam), c.Query(depositCountParam))
+
+	networkID, err := b.parseNetworkIDParameter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	depositCountRaw := c.Query(depositCountParam)
+	if depositCountRaw == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrDepositCountMandatory})
+		return
+	}
+
+	depositCount64, err := strconv.ParseUint(depositCountRaw, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrInvalidDepositCount})
+		return
+	}
+
+	depositCount := uint32(depositCount64)
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	cnt, merr := b.meter.Int64Counter("l1_info_tree_index_for_bridge")
+	if merr != nil {
+		b.logger.Warnf("failed to create l1_info_tree_index_for_bridge counter: %s", merr)
+	}
+	cnt.Add(ctx, 1)
+
+	var l1InfoTreeIndex uint32
+
+	switch {
+	case networkID == mainnetNetworkID:
+		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
+	case b.networkID == networkID:
+		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL2Bridge(ctx, depositCount)
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
+		return
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get l1 info tree index for network id %d and deposit count %d, error: %s",
+				networkID, depositCount, err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, l1InfoTreeIndex)
 }
 
+// @Summary Get injected L1 info tree leaf after a given L1 info tree index
+// @Description Returns the L1 info tree leaf either at the given index (for L1)
+// or the first injected global exit root after the given index (for L2).
+// @Tags injected-info
+// @Param network_id query int true "Network ID"
+// @Param l1_info_tree_index query int true "L1 Info Tree Index"
+// @Produce json
+// @Success 200 {object} l1infotreesync.L1InfoTreeLeaf
+// @Failure 400 {object} gin.H
+// @Failure 500 {object} gin.H
+// @Router /injected-info-after-index [get]
 func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
-	panic("InjectedInfoAfterIndexHandler not implemented")
+	l1InfoTreeIdxRaw := c.Query(l1InfoTreeIndexParam)
+	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, deposit count=%s)",
+		c.Query(networkIDParam), l1InfoTreeIdxRaw)
+
+	if l1InfoTreeIdxRaw == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrL1InfoTreeIndexMandatory})
+		return
+	}
+
+	l1InfoTreeIdx64, err := strconv.ParseUint(l1InfoTreeIdxRaw, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": bridgesync.ErrInvalidL1InfoTreeIndex})
+		return
+	}
+	l1InfoTreeIndex := uint32(l1InfoTreeIdx64)
+
+	networkID, err := b.parseNetworkIDParameter(c)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	cnt, merr := b.meter.Int64Counter("injected_info_after_index")
+	if merr != nil {
+		b.logger.Warnf("failed to create injected_info_after_index counter: %s", merr)
+	}
+	cnt.Add(ctx, 1)
+
+	var (
+		l1InfoLeaf *l1infotreesync.L1InfoTreeLeaf
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		l1InfoLeaf, err = b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
+	case b.networkID == networkID:
+		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get injected global exit root for L1 info tree index %d, error: %s",
+					l1InfoTreeIndex, err)})
+			return
+		}
+
+		l1InfoLeaf, err = b.l1InfoTree.GetInfoByIndex(ctx, e.L1InfoTreeIndex)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get l1 info tree leaf L1 info tree index %d, error: %s",
+					e.L1InfoTreeIndex, err)})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
+		return
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get l1 info tree leaf for network id %d and L1 info tree index %d, error: %s",
+				networkID, l1InfoTreeIndex, err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, l1InfoLeaf)
 }
 
 func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
@@ -322,18 +490,13 @@ func (b *BridgeService) GetTokenMappings(networkID uint32, pageNumber, pageSize 
 				fmt.Sprintf("failed to get token mappings, unsupported network %d", networkID))
 	}
 
-	return &TokenMappingsResult{
+	return &types.TokenMappingsResult{
 		TokenMappings: tokenMappings,
 		Count:         tokenMappingsCount,
 	}, nil
 }
 
-// LegacyTokenMigrationsResult contains the legacy token migrations and the total count of such migrations
-type LegacyTokenMigrationsResult struct {
-	TokenMigrations []*bridgesync.LegacyTokenMigration `json:"legacyTokenMigrations"`
-	Count           int                                `json:"count"`
-}
-
+// TODO: @Stefan-Ethernal REMOVE
 // GetLegacyTokenMigrations returns the legacy token migrations for the given network.
 // If networkID is 0, it returns the legacy token migrations for the L1 network.
 // If networkID is the same as the client, it returns the legacy token migrations for the L2 network.
@@ -384,12 +547,13 @@ func (b *BridgeService) GetLegacyTokenMigrations(
 				fmt.Sprintf("failed to get legacy token migrations, unsupported network %d", networkID))
 	}
 
-	return &LegacyTokenMigrationsResult{
+	return &types.LegacyTokenMigrationsResult{
 		TokenMigrations: tokenMigrations,
 		Count:           tokenMigrationsCount,
 	}, nil
 }
 
+// TODO: @Stefan-Ethernal REMOVE
 // L1InfoTreeIndexForBridge returns the first L1 Info Tree index in which the bridge was included.
 // networkID represents the origin network.
 // This call needs to be done to a client of the same network were the bridge tx was sent
@@ -430,6 +594,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridge(networkID uint32, depositCount 
 	)
 }
 
+// TODO: @Stefan-Ethernal REMOVE
 // InjectedInfoAfterIndex return the first GER injected onto the network that is linked
 // to the given index or greater. This call is useful to understand when a bridge is ready to be claimed
 // on its destination network
@@ -470,24 +635,59 @@ func (b *BridgeService) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeIndex
 	)
 }
 
-func (b *BridgeService) parsePaginationParams(
-	c *gin.Context,
-	pageNumber, pageSize *uint32,
-	counterName string,
-) (context.Context, context.CancelFunc, uint32, uint32, error) {
-	pageNumberU32, pageSizeU32, err := validatePaginationParams(pageNumber, pageSize)
+// parseNetworkIDParameter parses the network ID parameter from the request context
+func (b *BridgeService) parseNetworkIDParameter(c *gin.Context) (uint32, error) {
+	networkIDStr := c.Query(networkIDParam)
+	if networkIDStr == "" {
+		return 0, bridgesync.ErrNetworkIDMandatory
+	}
+
+	networkID64, err := strconv.ParseUint(networkIDStr, 10, 32)
+	if err != nil {
+		return 0, bridgesync.ErrInvalidNetworkID
+	}
+	return uint32(networkID64), nil
+}
+
+// parsePaginationParams parses the pagination parameters from the request context
+func (b *BridgeService) parsePaginationParams(ctx context.Context, pageNumberRaw, pageSizeRaw string,
+	counterName string) (context.Context, context.CancelFunc, uint32, uint32, error) {
+	var (
+		pageNumberU32 *uint32
+		pageSizeU32   *uint32
+	)
+
+	if pageNumberRaw != "" {
+		pageNumber64, err := strconv.ParseUint(pageNumberRaw, 10, 32)
+		if err != nil {
+			return nil, nil, 0, 0, bridgesync.ErrInvalidPageNumber
+		}
+		p := uint32(pageNumber64)
+		pageNumberU32 = &p
+	}
+
+	if pageSizeRaw != "" {
+		pageSize64, err := strconv.ParseUint(pageSizeRaw, 10, 32)
+		if err != nil {
+			return nil, nil, 0, 0, bridgesync.ErrInvalidPageSize
+		}
+		p := uint32(pageSize64)
+		pageSizeU32 = &p
+	}
+
+	pageNumber, pageSize, err := validatePaginationParams(pageNumberU32, pageSizeU32)
 	if err != nil {
 		return nil, nil, 0, 0, err
 	}
 
-	ctx, cancel := context.WithTimeout(c.Request.Context(), b.readTimeout)
+	ctx, cancel := context.WithTimeout(ctx, b.readTimeout)
 	counter, merr := b.meter.Int64Counter(counterName)
 	if merr != nil {
 		b.logger.Warnf("failed to create %s counter: %s", counterName, merr)
 	}
 	counter.Add(ctx, 1)
 
-	return ctx, cancel, pageNumberU32, pageSizeU32, nil
+	return ctx, cancel, pageNumber, pageSize, nil
 }
 
 // TODO: @Stefan-Ethernal Remove this function and use the one above
@@ -508,12 +708,6 @@ func (b *BridgeService) setupRequest(
 	c.Add(ctx, 1)
 
 	return ctx, cancel, pageNumberU32, pageSizeU32, nil
-}
-
-// BridgesResult contains the bridges and the total count of bridges
-type BridgesResult struct {
-	Bridges []*bridgesync.BridgeResponse `json:"bridges"`
-	Count   int                          `json:"count"`
 }
 
 // GetBridges returns the bridges for the given network and the total count of bridges.
@@ -556,16 +750,10 @@ func (b *BridgeService) GetBridges(networkID uint32, pageNumber, pageSize *uint3
 			fmt.Sprintf("this client does not support network %d", networkID),
 		)
 	}
-	return BridgesResult{
+	return types.BridgesResult{
 		Bridges: bridges,
 		Count:   count,
 	}, nil
-}
-
-// ClaimsResult contains the claims and the total count of claims
-type ClaimsResult struct {
-	Claims []*bridgesync.ClaimResponse `json:"claims"`
-	Count  int                         `json:"count"`
 }
 
 // GetClaims returns the claims for the given network.
@@ -608,7 +796,7 @@ func (b *BridgeService) GetClaims(networkID uint32, pageNumber,
 			fmt.Sprintf("this client does not support network %d", networkID),
 		)
 	}
-	return ClaimsResult{
+	return types.ClaimsResult{
 		Claims: claims,
 		Count:  count,
 	}, nil
