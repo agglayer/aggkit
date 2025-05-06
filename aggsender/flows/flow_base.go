@@ -453,12 +453,7 @@ func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.
 		}
 
 		retryCount = lastSentCertificateInfo.RetryCount + 1
-	} else if lastSentCertificateInfo.ToBlock < f.startL2Block {
-		// if the last sent block is less than the start L2 block read from the rollup contract
-		// we need to start from the start L2 block
-		lastSentBlock = f.startL2Block
 	}
-
 	return lastSentBlock, retryCount
 }
 

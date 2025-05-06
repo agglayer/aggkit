@@ -26,18 +26,22 @@ type AggchainProverFlow struct {
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
-	a, err := aggchainfep.NewAggchainfepCaller(sovereignRollupAddr, l1Client)
+	aggChainFEPContract, err := aggchainfep.NewAggchainfepCaller(sovereignRollupAddr, l1Client)
 	if err != nil {
-		return 0, fmt.Errorf("aggchainProverFlow - error creating sovereign rollup caller: %w", err)
+		return 0, fmt.Errorf("aggchainProverFlow - error creating sovereign rollup caller (%s): %w",
+			sovereignRollupAddr.String(), err)
 	}
 
-	startL2Block, err := a.StartingBlockNumber(nil)
+	startL2Block, err := aggChainFEPContract.StartingBlockNumber(nil)
 	if err != nil {
-		return 0, fmt.Errorf("aggchainProverFlow - error getting starting block number: %w", err)
+		return 0, fmt.Errorf("aggchainProverFlow - error ggChainFEPContract.StartingBlockNumber (%s): %w",
+			sovereignRollupAddr.String(), err)
 	}
 
 	return startL2Block.Uint64(), nil
 }
+
+var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 
 // NewAggchainProverFlow returns a new instance of the AggchainProverFlow
 func NewAggchainProverFlow(log types.Logger,
@@ -51,16 +55,16 @@ func NewAggchainProverFlow(log types.Logger,
 	l2Syncer types.L2BridgeSyncer,
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*AggchainProverFlow, error) {
-	gerReader, err := chaingerreader.NewEVMChainGERReader(gerL2Address, l2Client)
+	gerReader, err := funcNewEVMChainGERReader(gerL2Address, l2Client)
 	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error creating L2Etherman: %w", err)
+		return nil, fmt.Errorf("aggchainProverFlow - error creating EVMChainGERReader: %w", err)
 	}
 
 	startL2Block, err := getL2StartBlock(sovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 	}
-
+	log.Infof("aggchainProverFlow - read from severeignRollup (L1) starting L2 block: %d", startL2Block)
 	return &AggchainProverFlow{
 		gerReader:           gerReader,
 		aggchainProofClient: aggkitProverClient,
@@ -74,6 +78,26 @@ func NewAggchainProverFlow(log types.Logger,
 			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},
 	}, nil
+}
+
+// CheckInitialStatus checks that initial status is correct.
+// For AggchainProverFlow checks that starting block and last certificate match
+func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
+	lastSentCertificate, err := a.storage.GetLastSentCertificate()
+	if err != nil {
+		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
+	}
+	return a.sanityCheckNoBlockGaps(lastSentCertificate)
+}
+
+// sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate
+// #436. Don't allow gaps updating from PP to FEP
+func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.CertificateInfo) error {
+	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.startL2Block {
+		return fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
+			lastSentCertificate.ToBlock, a.startL2Block)
+	}
+	return nil
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate
@@ -149,8 +173,11 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	if err := a.verifyBuildParams(buildParams); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
+	if err := a.sanityCheckNoBlockGaps(buildParams.LastSentCertificate); err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error checking for block gaps: %w", err)
+	}
 
-	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, buildParams.LastSentCertificate)
+	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock)
 
 	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
 		ctx, lastProvenBlock, buildParams.ToBlock, buildParams.Claims)
@@ -343,11 +370,9 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	return aggchainProof, root, nil
 }
 
-func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificate *types.CertificateInfo) uint64 {
-	if fromBlock == 0 || (lastCertificate != nil && lastCertificate.ToBlock < a.startL2Block) {
+func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64) uint64 {
+	if fromBlock == 0 {
 		// if this is the first certificate, we need to start from the starting L2 block
-		// that we got from the sovereign rollup
-		// if the last certificate is settled on PP, the last proven block is the starting L2 block
 		// that we got from the sovereign rollup
 		return a.startL2Block
 	}
