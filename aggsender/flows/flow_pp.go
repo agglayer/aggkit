@@ -42,7 +42,7 @@ func NewPPFlow(log types.Logger,
 	}
 }
 
-// CheckInitialStatus checks that initial status it's ok.
+// CheckInitialStatus checks that initial status is correct.
 // For PPFlow  there are no special checks to do, so it just returns nil
 func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 	return nil

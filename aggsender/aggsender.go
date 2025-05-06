@@ -174,7 +174,7 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.checkDBCompatibility(ctx)
 	a.checkInitialStatus(ctx)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
-		a.log.Panicf("error checking flow Initial Status: %v, retrying in %s", err, a.cfg.DelayBeetweenRetries.String())
+		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
 	a.sendCertificates(ctx, 0)
 }
@@ -188,7 +188,6 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 	}
 }
 
-// checkInitialStatus check local status vs agglayer status
 // checkInitialStatus check local status vs agglayer status
 func (a *AggSender) checkInitialStatus(ctx context.Context) {
 	ticker := time.NewTicker(a.cfg.DelayBeetweenRetries.Duration)
@@ -206,7 +205,7 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 		}
 		select {
 		case <-ctx.Done():
-			log.Fatalf("checkInitialStatus: context Done!") //nolint:gocritic
+			a.log.Panicf("checkInitialStatus: context Done!")
 			return
 		case <-ticker.C:
 		}

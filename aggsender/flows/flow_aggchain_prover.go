@@ -64,7 +64,7 @@ func NewAggchainProverFlow(log types.Logger,
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 	}
-	log.Infof("aggchainProverFlow -read from severeignRollup(L1) starting L2 block: %d", startL2Block)
+	log.Infof("aggchainProverFlow - read from severeignRollup (L1) starting L2 block: %d", startL2Block)
 	return &AggchainProverFlow{
 		gerReader:           gerReader,
 		aggchainProofClient: aggkitProverClient,
@@ -80,7 +80,7 @@ func NewAggchainProverFlow(log types.Logger,
 	}, nil
 }
 
-// CheckInitialStatus checks that initial status it's ok.
+// CheckInitialStatus checks that initial status is correct.
 // For AggchainProverFlow checks that starting block and last certificate match
 func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 	lastSentCertificate, err := a.storage.GetLastSentCertificate()
