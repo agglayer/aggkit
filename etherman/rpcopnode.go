@@ -68,5 +68,5 @@ func (f *RPCOpNodeDecorator) HeaderByNumber(ctx context.Context, number *big.Int
 }
 
 func (f *RPCOpNodeDecorator) Client() *rpc.Client {
-	return f.Client()
+	return f.ethRealClient.Client()
 }
