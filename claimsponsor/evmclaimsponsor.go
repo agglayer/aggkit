@@ -93,11 +93,12 @@ func NewEVMClaimSponsor(
 	return baseSponsor, nil
 }
 
-func (c *EVMClaimSponsor) checkClaim(ctx context.Context, claim *Claim) error {
-	data, err := c.buildClaimTxData(claim)
-	if err != nil {
-		return err
+func (c *EVMClaimSponsor) checkClaim(ctx context.Context, claim *Claim, data []byte) error {
+	// if maxGas is zero, that means “no limit”
+	if c.maxGas == 0 {
+		return nil
 	}
+
 	gas, err := c.l2Client.EstimateGas(ctx, ethereum.CallMsg{
 		From: c.sender,
 		To:   &c.bridgeAddr,
@@ -118,6 +119,11 @@ func (c *EVMClaimSponsor) sendClaim(ctx context.Context, claim *Claim) (string, 
 	if err != nil {
 		return "", err
 	}
+
+	if err := c.checkClaim(ctx, claim, data); err != nil {
+		return "", fmt.Errorf("error checking claim %s: %w", claim.GlobalIndex, err)
+	}
+
 	id, err := c.ethTxManager.Add(ctx, &c.bridgeAddr, common.Big0, data, c.gasOffset, nil)
 	if err != nil {
 		return "", err
