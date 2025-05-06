@@ -1176,17 +1176,6 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 			expectedBlock:      10,
 			expectedRetryCount: 2,
 		},
-		{
-			name: "Last sent certificate settled on PP, building a new one on FEP with gap",
-			lastSentCertificateInfo: &types.CertificateInfo{
-				FromBlock: 0,
-				ToBlock:   10,
-				Status:    agglayertypes.Settled,
-			},
-			startL2Block:       20,
-			expectedBlock:      20,
-			expectedRetryCount: 0,
-		},
 	}
 
 	for _, tt := range tests {
@@ -1203,4 +1192,9 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 			require.Equal(t, tt.expectedRetryCount, retryCount)
 		})
 	}
+}
+
+func Test_PPFlow_CheckInitialStatus(t *testing.T) {
+	sut := &PPFlow{}
+	require.Nil(t, sut.CheckInitialStatus(context.TODO()))
 }

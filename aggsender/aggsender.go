@@ -173,6 +173,9 @@ func (a *AggSender) Start(ctx context.Context) {
 
 	a.checkDBCompatibility(ctx)
 	a.checkInitialStatus(ctx)
+	if err := a.flow.CheckInitialStatus(ctx); err != nil {
+		a.log.Panicf("error checking flow Initial Status: %v", err)
+	}
 	a.sendCertificates(ctx, 0)
 }
 func (a *AggSender) checkDBCompatibility(ctx context.Context) {
@@ -181,7 +184,7 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 		return
 	}
 	if err := a.compatibilityStoragedChecker.Check(ctx, nil); err != nil {
-		a.log.Fatalf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
+		a.log.Panicf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
 	}
 }
 
@@ -202,6 +205,7 @@ func (a *AggSender) checkInitialStatus(ctx context.Context) {
 		}
 		select {
 		case <-ctx.Done():
+			a.log.Panicf("checkInitialStatus: context Done!")
 			return
 		case <-ticker.C:
 		}
