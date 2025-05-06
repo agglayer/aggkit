@@ -497,7 +497,7 @@ func TestGetTokenMappings(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		tokenMappingsResult, ok := result.(*TokenMappingsResult)
+		tokenMappingsResult, ok := result.(*types.TokenMappingsResult)
 		require.True(t, ok)
 		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
 		require.Equal(t, len(tokenMappingsResult.TokenMappings), tokenMappingsResult.Count)
@@ -539,7 +539,7 @@ func TestGetTokenMappings(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		tokenMappingsResult, ok := result.(*TokenMappingsResult)
+		tokenMappingsResult, ok := result.(*types.TokenMappingsResult)
 		require.True(t, ok)
 		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
 		require.Equal(t, len(tokenMappings), tokenMappingsResult.Count)
@@ -606,7 +606,7 @@ func TestGetLegacyTokenMigrations(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		tokenMigrationsRes, ok := result.(*LegacyTokenMigrationsResult)
+		tokenMigrationsRes, ok := result.(*types.LegacyTokenMigrationsResult)
 		require.True(t, ok)
 		require.Equal(t, tokenMigrations, tokenMigrationsRes.TokenMigrations)
 		require.Equal(t, len(tokenMigrationsRes.TokenMigrations), tokenMigrationsRes.Count)
@@ -646,7 +646,7 @@ func TestGetLegacyTokenMigrations(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		tokenMigrationsRes, ok := result.(*LegacyTokenMigrationsResult)
+		tokenMigrationsRes, ok := result.(*types.LegacyTokenMigrationsResult)
 		require.True(t, ok)
 		require.Equal(t, tokenMigrations, tokenMigrationsRes.TokenMigrations)
 		require.Equal(t, len(tokenMigrations), tokenMigrationsRes.Count)
@@ -724,7 +724,7 @@ func TestGetBridges(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		bridgesResult, ok := result.(BridgesResult)
+		bridgesResult, ok := result.(types.BridgesResult)
 		require.True(t, ok)
 		require.Equal(t, bridges, bridgesResult.Bridges)
 		require.Equal(t, len(bridgesResult.Bridges), bridgesResult.Count)
@@ -770,7 +770,7 @@ func TestGetBridges(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		bridgesResult, ok := result.(BridgesResult)
+		bridgesResult, ok := result.(types.BridgesResult)
 		require.True(t, ok)
 		require.Equal(t, bridges, bridgesResult.Bridges)
 		require.Equal(t, len(bridgesResult.Bridges), bridgesResult.Count)
@@ -840,7 +840,7 @@ func TestGetClaims(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		claimsResult, ok := result.(ClaimsResult)
+		claimsResult, ok := result.(types.ClaimsResult)
 		require.True(t, ok)
 		require.Equal(t, claims, claimsResult.Claims)
 		require.Equal(t, len(claimsResult.Claims), claimsResult.Count)
@@ -873,7 +873,7 @@ func TestGetClaims(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, result)
 
-		claimsResult, ok := result.(ClaimsResult)
+		claimsResult, ok := result.(types.ClaimsResult)
 		require.True(t, ok)
 		require.Equal(t, Claims, claimsResult.Claims)
 		require.Equal(t, len(claimsResult.Claims), claimsResult.Count)
