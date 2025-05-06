@@ -611,8 +611,90 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, reorgEvent)
 }
 
+// GetBridgesHandler retrieves paginated bridge data for the specified network.
+//
+// @Summary Get bridges
+// @Description Returns a paginated list of bridge events for the specified network.
+// @Tags bridges
+// @Param network_id query uint32 true "Target network ID"
+// @Param page query uint32 false "Page number (default 1)"
+// @Param page_size query uint32 false "Page size (default 100)"
+// @Param deposit_count query uint64 false "Filter by deposit count"
+// @Param network_ids query []uint32 false "Filter by one or more network IDs"
+// @Produce json
+// @Success 200 {object} types.BridgesResult
+// @Failure 400 {object} gin.H "Invalid request parameters"
+// @Failure 500 {object} gin.H "Internal server error"
+// @Router /bridges [get]
 func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
-	panic("GetBridgesHandler not implemented")
+	networkID, err := b.parseUint32Param(c, networkIDParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	pageNumber := b.parseOptionalUint32Query(c, "page", DefaultPage)
+	pageSize := b.parseOptionalUint32Query(c, "page_size", DefaultPageSize)
+
+	var depositCount *uint64
+	if depositStr := c.Query("deposit_count"); depositStr != "" {
+		d, err := strconv.ParseUint(depositStr, 10, 64)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid deposit_count"})
+			return
+		}
+		depositCount = &d
+	}
+
+	networkIDs, err := b.parseUint32SliceParam(c, "network_ids")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid network_ids: %s", err)})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	cnt, merr := b.meter.Int64Counter("get_bridges")
+	if merr != nil {
+		b.logger.Warnf("failed to create get_bridges counter: %s", merr)
+	}
+	cnt.Add(ctx, 1)
+
+	b.logger.Debugf("fetching bridges (network id=%d, page=%d, size=%d, deposit_count=%v, network_ids=%v)",
+		networkID, pageNumber, pageSize, depositCount, networkIDs)
+
+	var (
+		bridges []*bridgesync.BridgeResponse
+		count   int
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		bridges, count, err = b.bridgeL1.GetBridgesPaged(ctx, pageNumber, pageSize, depositCount, networkIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get bridges for the L1 network, error: %s", err)})
+			return
+		}
+	case networkID == b.networkID:
+		bridges, count, err = b.bridgeL2.GetBridgesPaged(ctx, pageNumber, pageSize, depositCount, networkIDs)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get bridges for the L2 network (ID=%d), error: %s", networkID, err)})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest,
+			gin.H{"error": fmt.Sprintf("failed to get bridges unsupported network %d", networkID)})
+		return
+	}
+
+	c.JSON(http.StatusOK,
+		types.BridgesResult{
+			Bridges: bridges,
+			Count:   count,
+		})
 }
 
 // GetClaimsHandler retrieves paginated claims for a given network.
@@ -953,6 +1035,20 @@ func (b *BridgeService) parsePaginationParams(ctx context.Context, pageNumberRaw
 	counter.Add(ctx, 1)
 
 	return ctx, cancel, pageNumber, pageSize, nil
+}
+
+// parseOptionalUint32Query parses an optional uint32 query parameter from the request context.
+// If the parameter is not present or invalid, it returns the default value.
+func (b *BridgeService) parseOptionalUint32Query(c *gin.Context, key string, defaultVal uint32) uint32 {
+	valStr := c.Query(key)
+	if valStr == "" {
+		return defaultVal
+	}
+	val, err := strconv.ParseUint(valStr, 10, 32)
+	if err != nil {
+		return defaultVal
+	}
+	return uint32(val)
 }
 
 // TODO: @Stefan-Ethernal Remove this function and use the one above
