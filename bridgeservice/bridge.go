@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/0xPolygon/zkevm-ethtx-manager/common"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
@@ -26,7 +27,7 @@ import (
 const (
 	// BRIDGE is the namespace of the bridge service
 	BRIDGE    = "bridge"
-	meterName = "github.com/agglayer/aggkit/rpc"
+	meterName = "github.com/agglayer/aggkit/bridgeservice"
 
 	networkIDParam       = "network_id"
 	pageNumberParam      = "pageNumber"
@@ -164,7 +165,7 @@ func (b *BridgeService) Start(ctx context.Context, address string) error {
 func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 	b.logger.Debugf("GetTokenMappings request received (network id=%s)", c.Query(networkIDParam))
 
-	networkID, err := b.parseNetworkIDParameter(c)
+	networkID, err := b.parseUint32Param(c, networkIDParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -223,7 +224,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%s)", c.Query(networkIDParam))
 
-	networkID, err := b.parseNetworkIDParameter(c)
+	networkID, err := b.parseUint32Param(c, networkIDParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -282,7 +283,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	b.logger.Debugf("L1InfoTreeIndexForBridge request received (network id=%s, deposit count=%s)",
 		c.Query(networkIDParam), c.Query(depositCountParam))
 
-	networkID, err := b.parseNetworkIDParameter(c)
+	networkID, err := b.parseUint32Param(c, networkIDParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -361,7 +362,7 @@ func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
 	}
 	l1InfoTreeIndex := uint32(l1InfoTreeIdx64)
 
-	networkID, err := b.parseNetworkIDParameter(c)
+	networkID, err := b.parseUint32Param(c, networkIDParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -414,20 +415,200 @@ func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, l1InfoLeaf)
 }
 
+// ClaimProofHandler returns the Merkle proofs required to verify a claim on the target network.
+//
+// @Summary Get claim proof
+// @Description Returns the Merkle proofs (local and rollup exit root) and
+// the corresponding L1 info tree leaf needed to verify a claim.
+// @Tags claims
+// @Param network_id query uint32 true "Target network ID"
+// @Param l1_info_tree_index query uint32 true "Index in the L1 info tree"
+// @Param deposit_count query uint32 true "Number of deposits in the bridge"
+// @Produce json
+// @Success 200 {object} types.ClaimProof "Merkle proofs and L1 info tree leaf"
+// @Failure 400 {object} gin.H "Missing or invalid parameters"
+// @Failure 500 {object} gin.H "Internal server error retrieving claim proof"
+// @Router /claim-proof [get]
 func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
-	panic("ClaimProofHandler not implemented")
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	cnt, merr := b.meter.Int64Counter("claim_proof")
+	if merr != nil {
+		b.logger.Warnf("failed to create claim_proof counter: %s", merr)
+	}
+	cnt.Add(ctx, 1)
+
+	networkID, err := b.parseUint32Param(c, networkIDParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	l1InfoTreeIndex, err := b.parseUint32Param(c, l1InfoTreeIndexParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	depositCount, err := b.parseUint32Param(c, depositCountParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get l1 info tree leaf for index %d: %s", l1InfoTreeIndex, err)})
+		return
+	}
+
+	var proofLocalExitRoot tree.Proof
+	switch {
+	case networkID == mainnetNetworkID:
+		proofLocalExitRoot, err = b.bridgeL1.GetProof(ctx, depositCount, info.MainnetExitRoot)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get local exit proof, error: %s", err)})
+			return
+		}
+
+	case networkID == b.networkID:
+		localExitRoot, err := b.l1InfoTree.GetLocalExitRoot(ctx, networkID, info.RollupExitRoot)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get local exit root from rollup exit tree, error: %s", err)})
+			return
+		}
+		proofLocalExitRoot, err = b.bridgeL2.GetProof(ctx, depositCount, localExitRoot)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get local exit proof, error: %s", err)})
+			return
+		}
+
+	default:
+		c.JSON(http.StatusBadRequest,
+			gin.H{"error": fmt.Sprintf("failed to get claim proof, unsupported network %d", networkID)})
+		return
+	}
+
+	proofRollupExitRoot, err := b.l1InfoTree.GetRollupExitTreeMerkleProof(ctx, networkID, info.RollupExitRoot)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get rollup exit proof for network id %d, error: %s", networkID, err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, types.ClaimProof{
+		ProofLocalExitRoot:  proofLocalExitRoot,
+		ProofRollupExitRoot: proofRollupExitRoot,
+		L1InfoTreeLeaf:      *info,
+	})
 }
 
 func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 	panic("SponsorClaimHandler not implemented")
 }
 
+// GetSponsoredClaimStatusHandler returns the sponsorship status of a claim by its global index.
+//
+// @Summary Get sponsored claim status
+// @Description Returns the sponsorship status of a claim identified by the given global index.
+// Only available if claim sponsoring is enabled.
+// @Tags claims
+// @Param global_index query string true "Global index of the claim (big.Int format)"
+// @Produce json
+// @Success 200 {object} string "Claim sponsorship status"
+// @Failure 400 {object} gin.H "Missing or invalid input, or sponsorship not supported"
+// @Failure 500 {object} gin.H "Internal server error retrieving claim status"
+// @Router /sponsored-claim-status [get]
 func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
-	panic("GetSponsoredClaimStatusHandler not implemented")
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	cnt, merr := b.meter.Int64Counter("get_sponsored_claim_status")
+	if merr != nil {
+		b.logger.Warnf("failed to create get_sponsored_claim_status counter: %s", merr)
+	}
+	cnt.Add(ctx, 1)
+
+	if b.sponsor == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this client does not support claim sponsoring"})
+		return
+	}
+
+	globalIndexRaw := c.Query("global_index")
+	if globalIndexRaw == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "global_index is mandatory"})
+		return
+	}
+
+	globalIndex, _ := new(big.Int).SetString(globalIndexRaw, common.Base10)
+	claim, err := b.sponsor.GetClaim(globalIndex)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get claim status for global index %d, error: %s", globalIndex, err)})
+		return
+	}
+
+	c.JSON(http.StatusOK, claim.Status)
 }
 
+// GetLastReorgEventHandler returns the most recent reorganization event for the specified network.
+//
+// @Summary Get last reorg event
+// @Description Retrieves the last known reorg event for either L1 or L2, based on the provided network ID.
+// @Tags reorgs
+// @Param network_id query int true "Network ID (e.g., 0 for L1, or the ID of the L2 network)"
+// @Produce json
+// @Success 200 {object} bridgesync.LastReorg "Details of the last reorg event"
+// @Failure 400 {object} gin.H "Bad request due to missing or invalid parameters"
+// @Failure 500 {object} gin.H "Internal server error retrieving reorg data"
+// @Router /last-reorg-event [get]
 func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
-	panic("GetLastReorgEventHandler not implemented")
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	cnt, merr := b.meter.Int64Counter("last_reorg_event")
+	if merr != nil {
+		b.logger.Warnf("failed to create last_reorg_event counter: %s", merr)
+	}
+	cnt.Add(ctx, 1)
+
+	networkID, err := b.parseUint32Param(c, networkIDParam)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var (
+		reorgEvent *bridgesync.LastReorg
+	)
+
+	switch {
+	case networkID == mainnetNetworkID:
+		reorgEvent, err = b.bridgeL1.GetLastReorgEvent(ctx)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", err)})
+			return
+		}
+	case networkID == b.networkID:
+		reorgEvent, err = b.bridgeL2.GetLastReorgEvent(ctx)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get last reorg event for the L2 network (ID=%d), error: %s", networkID, err)})
+			return
+		}
+	default:
+		c.JSON(http.StatusBadRequest,
+			gin.H{"error": fmt.Sprintf("failed to get last reorg event, unsupported network %d", networkID)})
+		return
+	}
+
+	c.JSON(http.StatusOK, reorgEvent)
 }
 
 func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
@@ -436,10 +617,6 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	panic("GetClaimsHandler not implemented")
-}
-
-func (b *BridgeService) GetClaimProofHandler(c *gin.Context) {
-	panic("GetClaimProofHandler not implemented")
 }
 
 // TODO: @Stefan-Ethernal REMOVE
@@ -635,18 +812,20 @@ func (b *BridgeService) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeIndex
 	)
 }
 
-// parseNetworkIDParameter parses the network ID parameter from the request context
-func (b *BridgeService) parseNetworkIDParameter(c *gin.Context) (uint32, error) {
-	networkIDStr := c.Query(networkIDParam)
-	if networkIDStr == "" {
-		return 0, bridgesync.ErrNetworkIDMandatory
+// parseUint32Param parses the mandatory uint32 parameter from the request context
+// If the parameter is not present or invalid, it returns an error.
+func (b *BridgeService) parseUint32Param(c *gin.Context, paramName string) (uint32, error) {
+	paramStr := c.Query(paramName)
+	if paramStr == "" {
+		return 0, fmt.Errorf("%s is mandatory", paramName)
 	}
 
-	networkID64, err := strconv.ParseUint(networkIDStr, 10, 32)
+	param64, err := strconv.ParseUint(paramStr, 10, 32)
 	if err != nil {
-		return 0, bridgesync.ErrInvalidNetworkID
+		return 0, fmt.Errorf("invalid %s parameter: %w", paramName, err)
 	}
-	return uint32(networkID64), nil
+
+	return uint32(param64), nil
 }
 
 // parsePaginationParams parses the pagination parameters from the request context
@@ -802,6 +981,7 @@ func (b *BridgeService) GetClaims(networkID uint32, pageNumber,
 	}, nil
 }
 
+// TODO: @Stefan-Ethernal REMOVE
 // ClaimProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
 // while globalExitRoot should be already injected on the destination network.
 // This call needs to be done to a client of the same network were the bridge tx was sent
@@ -889,6 +1069,7 @@ func (b *BridgeService) SponsorClaim(claim claimsponsor.Claim) (interface{}, rpc
 	return nil, nil
 }
 
+// TODO: @Stefan-Ethernal REMOVE
 // GetSponsoredClaimStatus returns the status of a claim that has been previously requested to be sponsored.
 // This call needs to be done to the same client were it was requested to be sponsored
 func (b *BridgeService) GetSponsoredClaimStatus(globalIndex *big.Int) (interface{}, rpc.Error) {
@@ -1018,6 +1199,7 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 	return info.L1InfoTreeIndex, nil
 }
 
+// TODO: @Stefan-Ethernal REMOVE
 func (b *BridgeService) GetLastReorgEvent(networkID uint32) (interface{}, rpc.Error) {
 	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
 	defer cancel()
