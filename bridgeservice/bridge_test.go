@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -49,7 +51,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		bridgeL1:     mocks.NewBridger(t),
 		bridgeL2:     mocks.NewBridger(t),
 	}
-	logger := log.WithFields("module", "bridgerpc")
+	logger := log.WithFields("module", "test bridge service")
 	b.bridge = New(
 		logger, 0, 0, networkID, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
 	)
@@ -690,127 +692,141 @@ func TestGetLegacyTokenMigrations(t *testing.T) {
 	})
 }
 
-func TestGetBridges(t *testing.T) {
-	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
+func TestGetBridgesHandler(t *testing.T) {
 	t.Run("GetBridges for L1 network", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
-		bridges := []*bridgesync.BridgeResponse{
-			{
-				Bridge: bridgesync.Bridge{
-					BlockNum:           1,
-					BlockPos:           1,
-					LeafType:           1,
-					OriginNetwork:      0,
-					OriginAddress:      common.HexToAddress("0x1"),
-					DestinationNetwork: 10,
-					DestinationAddress: common.HexToAddress("0x2"),
-					Amount:             common.Big0,
-					DepositCount:       0,
-					Metadata:           common.Hex2Bytes("deadbeef"),
-					Calldata:           common.Hex2Bytes("abcd"),
-					IsNativeToken:      true,
-				},
-				BridgeHash: common.HexToHash("0x1"),
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedBridges := []*bridgesync.BridgeResponse{{
+			Bridge: bridgesync.Bridge{
+				BlockNum:           1,
+				BlockPos:           1,
+				LeafType:           1,
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 10,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				DepositCount:       0,
+				Metadata:           []byte("metadata"),
+				Calldata:           common.Hex2Bytes("efabcd"),
+				IsNativeToken:      true,
 			},
-		}
+			BridgeHash: common.HexToHash("0x1"),
+		}}
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
-			Return(bridges, len(bridges), nil)
+			Return(expectedBridges, len(expectedBridges), nil)
 
-		result, err := bridgeMocks.bridge.GetBridges(0, &page, &pageSize, nil, nil)
+		w := httptest.NewRecorder()
+		req, err := http.NewRequest(http.MethodGet, "/bridges?network_id=0&page_number=1&page_size=10", nil)
 		require.NoError(t, err)
-		require.NotNil(t, result)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
 
-		bridgesResult, ok := result.(types.BridgesResult)
-		require.True(t, ok)
-		require.Equal(t, bridges, bridgesResult.Bridges)
-		require.Equal(t, len(bridgesResult.Bridges), bridgesResult.Count)
+		require.Equal(t, http.StatusOK, w.Code)
 
-		actualJSON, marshalErr := json.Marshal(bridgesResult.Bridges)
-		require.NoError(t, marshalErr)
+		var response types.BridgesResult
+		err = json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
 
-		expectedJSON, marshalErr := json.Marshal(bridges)
-		require.NoError(t, marshalErr)
+		require.Equal(t, expectedBridges, response.Bridges)
+		require.Equal(t, len(expectedBridges), response.Count)
+	})
 
-		require.JSONEq(t, string(expectedJSON), string(actualJSON))
+	t.Run("GetBridges for L1 network error", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, 0, fmt.Errorf("L1 network error"))
 
-		bridgeMocks.bridgeL1.AssertExpectations(t)
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/bridges?network_id=0&page=1&page_size=10", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), "failed to get bridges for the L1 network")
+	})
+
+	t.Run("GetBridges for L2 network error", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, 0, fmt.Errorf("L2 network error"))
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/bridges?network_id=10&page=1&page_size=10", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), "failed to get bridges for the L2 network")
 	})
 
 	t.Run("GetBridges for L2 network", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
-		bridges := []*bridgesync.BridgeResponse{
-			{
-				Bridge: bridgesync.Bridge{
-					BlockNum:           1,
-					BlockPos:           1,
-					LeafType:           1,
-					OriginNetwork:      0,
-					OriginAddress:      common.HexToAddress("0x1"),
-					DestinationNetwork: 10,
-					DestinationAddress: common.HexToAddress("0x2"),
-					Amount:             common.Big0,
-					DepositCount:       0,
-					Metadata:           []byte("metadata"),
-					IsNativeToken:      true,
-				},
-				BridgeHash: common.HexToHash("0x1"),
+
+		expectedBridges := []*bridgesync.BridgeResponse{{
+			Bridge: bridgesync.Bridge{
+				BlockNum:           1,
+				BlockPos:           1,
+				LeafType:           1,
+				OriginNetwork:      10,
+				OriginAddress:      common.HexToAddress("0x2"),
+				DestinationNetwork: 20,
+				DestinationAddress: common.HexToAddress("0x3"),
+				Amount:             common.Big0,
+				DepositCount:       0,
+				Metadata:           []byte("metadata"),
+				Calldata:           []byte{},
+				IsNativeToken:      true,
 			},
-		}
+			BridgeHash: common.HexToHash("0x2"),
+		}}
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		bridgeMocks.bridgeL2.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
-			Return(bridges, len(bridges), nil)
+			Return(expectedBridges, len(expectedBridges), nil)
 
-		result, err := bridgeMocks.bridge.GetBridges(10, &page, &pageSize, nil, nil)
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/bridges?network_id=10&page=1&page_size=10", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response types.BridgesResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
-		require.NotNil(t, result)
 
-		bridgesResult, ok := result.(types.BridgesResult)
-		require.True(t, ok)
-		require.Equal(t, bridges, bridgesResult.Bridges)
-		require.Equal(t, len(bridgesResult.Bridges), bridgesResult.Count)
-
-		bridgeMocks.bridgeL2.AssertExpectations(t)
+		require.Equal(t, expectedBridges, response.Bridges)
+		require.Equal(t, len(expectedBridges), response.Count)
 	})
 
 	t.Run("GetBridges with unsupported network", func(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
-		result, err := bridgeMocks.bridge.GetBridges(unsupportedNetworkID, nil, nil, nil, nil)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
-		require.Nil(t, result)
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/bridges?network_id=%d", unsupportedNetworkID), nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to get bridges unsupported network %d", unsupportedNetworkID))
 	})
 
-	t.Run("GetBridges for L1 network failed", func(t *testing.T) {
-		bridgeMocks.bridgeL1.EXPECT().
-			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return(nil, 0, errors.New(fooErrMsg))
+	t.Run("GetBridges invalid network id", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		result, err := bridgeMocks.bridge.GetBridges(mainnetNetworkID, nil, nil, nil, nil)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("failed to get bridges for the L1 network, error: %s", fooErrMsg))
-		require.Nil(t, result)
-	})
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/bridges?network_id=foo", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
 
-	t.Run("GetBridges for L2 network failed", func(t *testing.T) {
-		bridgeMocks.bridgeL2.EXPECT().
-			GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-			Return(nil, 0, errors.New(barErrMsg))
-
-		result, err := bridgeMocks.bridge.GetBridges(l2NetworkID, nil, nil, nil, nil)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("failed to get bridges for the L2 network (ID=%d), error: %s",
-			l2NetworkID, barErrMsg))
-		require.Nil(t, result)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
 }
 
