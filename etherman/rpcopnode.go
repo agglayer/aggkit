@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	ExtraParamFieldName = "OpNodeURL"
+	ExtraParamFieldName = "opnodeurl"
 )
 
 type OpNodeClienter interface {
