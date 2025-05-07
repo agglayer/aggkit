@@ -39,24 +39,6 @@ var (
 
 	// ErrInvalidPageNumber indicates that the page number is invalid
 	ErrInvalidPageNumber = errors.New("page number must be greater than 0")
-
-	// ErrNetworkIDMandatory indicates that the network ID is mandatory
-	ErrNetworkIDMandatory = errors.New("network ID is mandatory")
-
-	// ErrInvalidNetworkID indicates that the network ID is invalid
-	ErrInvalidNetworkID = errors.New("invalid network ID")
-
-	// ErrDepositCountMandatory indicates that the deposit count is mandatory
-	ErrDepositCountMandatory = errors.New("deposit count is mandatory")
-
-	// ErrInvalidDepositCount indicates that the deposit count is invalid
-	ErrInvalidDepositCount = errors.New("invalid deposit count")
-
-	// ErrL1InfoTreeIndexMandatory indicates that the l1 info tree index is mandatory
-	ErrL1InfoTreeIndexMandatory = errors.New("l1 info tree index is mandatory")
-
-	// ErrInvalidDepositCount indicates that the l1 info tree index is invalid
-	ErrInvalidL1InfoTreeIndex = errors.New("invalid l1 info tree index")
 )
 
 type ReorgDetector interface {

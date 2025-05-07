@@ -119,7 +119,7 @@ func NewBridgeResponse(bridge *Bridge) *BridgeResponse {
 	}
 }
 
-// MarshalJSON for hex-encoding Metadata field
+// MarshalJSON for hex-encoded fields
 func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
 	type Alias BridgeResponse // Prevent recursion
 	return json.Marshal(&struct {
@@ -131,6 +131,40 @@ func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
 		CallData: fmt.Sprintf("0x%s", hex.EncodeToString(b.Calldata)),
 		Alias:    (*Alias)(b),
 	})
+}
+
+// UnmarshalJSON for hex-decoding fields
+func (b *BridgeResponse) UnmarshalJSON(data []byte) error {
+	type Alias BridgeResponse
+	tmp := &struct {
+		Metadata string `json:"metadata"`
+		CallData string `json:"calldata"`
+		*Alias
+	}{
+		Alias: (*Alias)(b),
+	}
+
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	}
+
+	if tmp.Metadata != "" {
+		decodedMetadata, err := hex.DecodeString(strings.TrimPrefix(tmp.Metadata, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode metadata: %w", err)
+		}
+		b.Metadata = decodedMetadata
+	}
+
+	if tmp.CallData != "" {
+		decodedCalldata, err := hex.DecodeString(strings.TrimPrefix(tmp.CallData, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode calldata: %w", err)
+		}
+		b.Calldata = decodedCalldata
+	}
+
+	return nil
 }
 
 // Claim representation of a claim event
