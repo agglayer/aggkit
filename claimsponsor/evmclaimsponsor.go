@@ -121,7 +121,7 @@ func (c *EVMClaimSponsor) sendClaim(ctx context.Context, claim *Claim) (string, 
 	}
 
 	if err := c.checkClaim(ctx, claim, data); err != nil {
-		return "", fmt.Errorf("error checking claim %s: %w", claim.GlobalIndex, err)
+		return "", err
 	}
 
 	id, err := c.ethTxManager.Add(ctx, &c.bridgeAddr, common.Big0, data, c.gasOffset, nil)
