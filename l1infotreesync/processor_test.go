@@ -2,16 +2,11 @@ package l1infotreesync
 
 import (
 	"database/sql"
-	"fmt"
 	"path"
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/l1infotree"
-	"github.com/agglayer/aggkit/l1infotreesync/migrations"
-	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
-	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -51,8 +46,8 @@ func TestGetInfo(t *testing.T) {
 		MainnetExitRoot:   info1.MainnetExitRoot,
 		RollupExitRoot:    info1.RollupExitRoot,
 	}
-	expected1.GlobalExitRoot = expected1.globalExitRoot()
-	expected1.Hash = expected1.hash()
+	expected1.GlobalExitRoot = expected1.GetGlobalExitRoot()
+	expected1.Hash = expected1.GetHash()
 	err = p.ProcessBlock(ctx, sync.Block{
 		Num: 1,
 		Events: []interface{}{
@@ -91,8 +86,8 @@ func TestGetInfo(t *testing.T) {
 		MainnetExitRoot:   info2.MainnetExitRoot,
 		RollupExitRoot:    info2.RollupExitRoot,
 	}
-	expected2.GlobalExitRoot = expected2.globalExitRoot()
-	expected2.Hash = expected2.hash()
+	expected2.GlobalExitRoot = expected2.GetGlobalExitRoot()
+	expected2.Hash = expected2.GetHash()
 	err = p.ProcessBlock(ctx, sync.Block{
 		Num: 2,
 		Events: []interface{}{
@@ -269,96 +264,6 @@ func Test_processor_Reorg(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestProofsFromDifferentTrees(t *testing.T) {
-	fmt.Println("aggregator L1InfoTree ===============================================")
-
-	l1Tree, err := l1infotree.NewL1InfoTree(log.WithFields("test"), types.DefaultHeight, [][32]byte{})
-	require.NoError(t, err)
-
-	leaves := createTestLeaves(t, 2)
-
-	aLeaves := make([][32]byte, len(leaves))
-	for i, leaf := range leaves {
-		aLeaves[i] = l1infotree.HashLeafData(
-			leaf.GlobalExitRoot,
-			leaf.PreviousBlockHash,
-			leaf.Timestamp)
-	}
-
-	aggregatorL1InfoTree, aggregatorRoot, err := l1Tree.ComputeMerkleProof(leaves[0].L1InfoTreeIndex, aLeaves)
-	require.NoError(t, err)
-
-	aggregatorProof := types.Proof{}
-	for i, p := range aggregatorL1InfoTree {
-		aggregatorProof[i] = common.BytesToHash(p[:])
-	}
-
-	fmt.Println(aggregatorRoot)
-	fmt.Println(aggregatorProof)
-	fmt.Println("l1 info tree syncer L1InfoTree ===============================================")
-
-	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestProofsFromDifferentTrees.sqlite")
-	require.NoError(t, migrations.RunMigrations(dbPath))
-
-	dbe, err := db.NewSQLiteDB(dbPath)
-	require.NoError(t, err)
-
-	l1InfoTree := tree.NewAppendOnlyTree(dbe, migrations.L1InfoTreePrefix)
-
-	tx, err := db.NewTx(context.Background(), dbe)
-	require.NoError(t, err)
-
-	for _, leaf := range leaves {
-		err = l1InfoTree.AddLeaf(tx, leaf.BlockNumber, leaf.BlockPosition, types.Leaf{
-			Index: leaf.L1InfoTreeIndex,
-			Hash:  leaf.Hash,
-		})
-
-		require.NoError(t, err)
-	}
-
-	require.NoError(t, tx.Commit())
-
-	l1InfoTreeSyncerRoot, err := l1InfoTree.GetRootByIndex(context.Background(), leaves[1].L1InfoTreeIndex)
-	require.NoError(t, err)
-	l1InfoTreeSyncerProof, err := l1InfoTree.GetProof(context.Background(), leaves[0].L1InfoTreeIndex, l1InfoTreeSyncerRoot.Hash)
-	require.NoError(t, err)
-	for i, l := range aggregatorL1InfoTree {
-		require.Equal(t, common.Hash(l), l1InfoTreeSyncerProof[i])
-	}
-
-	fmt.Println(leaves[0].GlobalExitRoot)
-	fmt.Println(l1InfoTreeSyncerProof)
-
-	require.Equal(t, aggregatorRoot, l1InfoTreeSyncerRoot.Hash)
-	require.Equal(t, aggregatorProof, l1InfoTreeSyncerProof)
-}
-
-func createTestLeaves(t *testing.T, numOfLeaves int) []*L1InfoTreeLeaf {
-	t.Helper()
-
-	leaves := make([]*L1InfoTreeLeaf, 0, numOfLeaves)
-
-	for i := 0; i < numOfLeaves; i++ {
-		leaf := &L1InfoTreeLeaf{
-			L1InfoTreeIndex:   uint32(i),
-			Timestamp:         uint64(i),
-			BlockNumber:       uint64(i),
-			BlockPosition:     uint64(i),
-			PreviousBlockHash: common.HexToHash(fmt.Sprintf("0x%x", i)),
-			MainnetExitRoot:   common.HexToHash(fmt.Sprintf("0x%x", i)),
-			RollupExitRoot:    common.HexToHash(fmt.Sprintf("0x%x", i)),
-		}
-
-		leaf.GlobalExitRoot = leaf.globalExitRoot()
-		leaf.Hash = leaf.hash()
-
-		leaves = append(leaves, leaf)
-	}
-
-	return leaves
 }
 
 func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
