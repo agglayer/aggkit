@@ -508,8 +508,51 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	})
 }
 
+// @Summary Sponsor a claim
+// @Description Sponsors a claim to be processed by the bridge service.
+// @Tags claims
+// @Accept json
+// @Produce json
+// @Param Claim body claimsponsor.Claim true "Claim Request"
+// @Success 200 {object} gin.H{"status": "claim sponsored"}
+// @Failure 400 {object} gin.H{"error": "bad request"}
+// @Failure 500 {object} gin.H{"error": "internal server error"}
+// @Router /sponsor-claim [post]
 func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
-	panic("SponsorClaimHandler not implemented")
+	var claim claimsponsor.Claim
+
+	if err := c.ShouldBindJSON(&claim); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(c, b.writeTimeout)
+	defer cancel()
+
+	cnt, merr := b.meter.Int64Counter("sponsor_claim")
+	if merr != nil {
+		b.logger.Warnf("failed to create sponsor_claim counter: %s", merr)
+	}
+	cnt.Add(ctx, 1)
+
+	if b.sponsor == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this client does not support claim sponsoring"})
+		return
+	}
+
+	if claim.DestinationNetwork != b.networkID {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("this client only sponsors claims for destination network %d", b.networkID),
+		})
+		return
+	}
+
+	if err := b.sponsor.AddClaimToQueue(&claim); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to add claim to queue: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "claim sponsored"})
 }
 
 // GetSponsoredClaimStatusHandler returns the sponsorship status of a claim by its global index.
@@ -1226,6 +1269,7 @@ func (b *BridgeService) ClaimProof(
 	}, nil
 }
 
+// TODO: @Stefan-Ethernal REMOVE
 // SponsorClaim sends a claim tx on behalf of the user.
 // This call needs to be done to a client of the same network were the claim is going to be sent (bridge destination)
 func (b *BridgeService) SponsorClaim(claim claimsponsor.Claim) (interface{}, rpc.Error) {
