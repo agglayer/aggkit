@@ -952,66 +952,10 @@ func (b *BridgeService) setupRequest(
 }
 
 // TODO: @Stefan-Ethernal REMOVE
-// GetTokenMappings returns the token mappings for the given network.
-// If networkID is 0, it returns the token mappings for the L1 network.
-// If networkID is the same as the client, it returns the token mappings for the L2 network.
-// The result is paginated.
-//
-//nolint:dupl
-func (b *BridgeService) GetTokenMappings(networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
-	b.logger.Debugf("GetTokenMappings request received (network id=%d)", networkID)
-
-	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_token_mappings")
-	if setupErr != nil {
-		return nil, setupErr
-	}
-	defer cancel()
-
-	b.logger.Debugf("fetching token mappings (network id=%d, page number=%d, page size=%d)",
-		networkID, pageNumberU32, pageSizeU32)
-
-	var (
-		tokenMappings      []*bridgesync.TokenMapping
-		tokenMappingsCount int
-		err                error
-	)
-
-	switch {
-	case networkID == mainnetNetworkID:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumberU32, pageSizeU32)
-		if err != nil {
-			return nil,
-				rpc.NewRPCError(rpc.DefaultErrorCode,
-					fmt.Sprintf("failed to get token mappings for the L1 network, error: %s", err))
-		}
-
-	case b.networkID == networkID:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumberU32, pageSizeU32)
-		if err != nil {
-			return nil,
-				rpc.NewRPCError(rpc.DefaultErrorCode,
-					fmt.Sprintf("failed to get token mappings for the L2 network (ID=%d), error: %s", networkID, err))
-		}
-
-	default:
-		return nil,
-			rpc.NewRPCError(rpc.InvalidRequestErrorCode,
-				fmt.Sprintf("failed to get token mappings, unsupported network %d", networkID))
-	}
-
-	return &types.TokenMappingsResult{
-		TokenMappings: tokenMappings,
-		Count:         tokenMappingsCount,
-	}, nil
-}
-
-// TODO: @Stefan-Ethernal REMOVE
 // GetLegacyTokenMigrations returns the legacy token migrations for the given network.
 // If networkID is 0, it returns the legacy token migrations for the L1 network.
 // If networkID is the same as the client, it returns the legacy token migrations for the L2 network.
 // The result is paginated.
-//
-//nolint:dupl
 func (b *BridgeService) GetLegacyTokenMigrations(
 	networkID uint32, pageNumber, pageSize *uint32) (interface{}, rpc.Error) {
 	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%d)", networkID)

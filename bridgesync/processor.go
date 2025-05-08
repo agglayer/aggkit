@@ -391,6 +391,40 @@ func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// UnmarshalJSON for hex-decoding fields
+func (t *TokenMapping) UnmarshalJSON(data []byte) error {
+	type Alias TokenMapping
+	tmp := &struct {
+		Metadata string `json:"metadata"`
+		CallData string `json:"calldata"`
+		*Alias
+	}{
+		Alias: (*Alias)(t),
+	}
+
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	}
+
+	if tmp.Metadata != "" {
+		decodedMetadata, err := hex.DecodeString(strings.TrimPrefix(tmp.Metadata, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode metadata: %w", err)
+		}
+		t.Metadata = decodedMetadata
+	}
+
+	if tmp.CallData != "" {
+		decodedCalldata, err := hex.DecodeString(strings.TrimPrefix(tmp.CallData, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode calldata: %w", err)
+		}
+		t.Calldata = decodedCalldata
+	}
+
+	return nil
+}
+
 // LegacyTokenMigration representation of a MigrateLegacyToken event,
 // that is emitted by the sovereign chain bridge contract.
 type LegacyTokenMigration struct {
