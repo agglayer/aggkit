@@ -262,14 +262,14 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		{
 			name: "error fetching aggchain proof for new certificate - no proofs built yet",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2BridgeQuerier *mocks.BridgeDataQuerier,
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockProverClient *mocks.AggchainProofClientInterface,
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockGERQuerier *mocks.GERQuerier) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockStorage.EXPECT().GetLastSentCertificate().Return(nil, nil).Twice()
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
 				mockL1InfoDataQuery.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
 					treetypes.Proof{},
 					&l1infotreesync.L1InfoTreeLeaf{
