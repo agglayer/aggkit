@@ -952,53 +952,6 @@ func (b *BridgeService) setupRequest(
 }
 
 // TODO: @Stefan-Ethernal REMOVE
-// GetClaims returns the claims for the given network.
-// If networkID is 0, it returns the claims for the L1 network.
-// If networkID is the same as the client, it returns the claims for the L2 network.
-// The result is paginated.
-func (b *BridgeService) GetClaims(networkID uint32, pageNumber,
-	pageSize *uint32, networkIDs []uint32) (interface{}, rpc.Error) {
-	b.logger.Debugf("GetClaims request received (network id=%d)", networkID)
-	ctx, cancel, pageNumberU32, pageSizeU32, setupErr := b.setupRequest(pageNumber, pageSize, "get_claims")
-	if setupErr != nil {
-		return nil, setupErr
-	}
-	defer cancel()
-
-	b.logger.Debugf("fetching claims (network id=%d, page number=%d, page size=%d)",
-		networkID, pageNumberU32, pageSizeU32)
-
-	var (
-		claims []*bridgesync.ClaimResponse
-		count  int
-		err    error
-	)
-
-	switch {
-	case networkID == mainnetNetworkID:
-		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32, networkIDs)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-				fmt.Sprintf("failed to get claims for the L1 network, error: %s", err))
-		}
-	case networkID == b.networkID:
-		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumberU32, pageSizeU32, networkIDs)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-				fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s", networkID, err))
-		}
-	default:
-		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
-			fmt.Sprintf("this client does not support network %d", networkID),
-		)
-	}
-	return types.ClaimsResult{
-		Claims: claims,
-		Count:  count,
-	}, nil
-}
-
-// TODO: @Stefan-Ethernal REMOVE
 // GetTokenMappings returns the token mappings for the given network.
 // If networkID is 0, it returns the token mappings for the L1 network.
 // If networkID is the same as the client, it returns the token mappings for the L2 network.
