@@ -260,6 +260,48 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			expectedError: "error fetching aggchain proof for lastProvenBlock: 0, maxEndBlock: 10: some error",
 		},
 		{
+			name: "error fetching aggchain proof for new certificate - no proofs built yet",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2BridgeQuerier *mocks.BridgeDataQuerier,
+				mockProverClient *mocks.AggchainProofClientInterface,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
+				mockGERQuerier *mocks.GERQuerier) {
+				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
+				mockStorage.EXPECT().GetLastSentCertificate().Return(nil, nil).Twice()
+				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
+				mockL1InfoDataQuery.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
+					treetypes.Proof{},
+					&l1infotreesync.L1InfoTreeLeaf{
+						BlockNumber: l1Header.Number.Uint64(),
+						Hash:        common.HexToHash("0x2"),
+					},
+					&treetypes.Root{
+						Hash:  common.HexToHash("0x1"),
+						Index: 10,
+					},
+					nil,
+				)
+				mockL1InfoDataQuery.EXPECT().CheckIfClaimsArePartOfFinalizedL1InfoTree(mock.Anything, mock.Anything).Return(nil)
+				mockGERQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{
+					Hash:  common.HexToHash("0x1"),
+					Index: 10,
+				}, uint64(1), uint64(10)).Return(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{}, nil)
+				mockProverClient.EXPECT().GenerateAggchainProof(uint64(0), uint64(10),
+					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
+						BlockNumber: l1Header.Number.Uint64(),
+						Hash:        common.HexToHash("0x2"),
+					},
+					agglayertypes.MerkleProof{
+						Root:  common.HexToHash("0x1"),
+						Proof: treetypes.Proof{},
+					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
+					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{}).Return(nil, *errNoProofBuiltYet)
+			},
+			expectedError:  "",
+			expectedParams: nil, // expecting no params to be returned since no proof was built
+		},
+		{
 			name: "success fetching aggchain proof for new certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
