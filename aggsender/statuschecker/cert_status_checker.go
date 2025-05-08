@@ -99,7 +99,7 @@ func (c *certStatusChecker) CheckInitialStatus(
 // It returns:
 // bool -> if there are pending certificates
 func (c *certStatusChecker) CheckPendingCertificatesStatus(ctx context.Context) types.CertStatus {
-	pendingCertificates, err := c.storage.GetCertificatesByStatus(agglayertypes.NonSettledStatuses)
+	pendingCertificates, err := c.storage.GetCertificatesByStatus(agglayertypes.NonSettledStatuses, true)
 	if err != nil {
 		c.log.Errorf("error getting pending certificates: %w", err)
 		return types.CertStatus{ExistPendingCerts: true, ExistNewInErrorCert: false}
@@ -166,7 +166,7 @@ func (c *certStatusChecker) updateCertificateStatus(ctx context.Context,
 
 	localCert.Status = agglayerCert.Status
 	localCert.UpdatedAt = uint32(time.Now().UTC().Unix())
-	if err := c.storage.UpdateCertificate(ctx, *localCert); err != nil {
+	if err := c.storage.UpdateCertificateStatus(ctx, *localCert); err != nil {
 		c.log.Errorf("error updating certificate %s status in storage: %w", agglayerCert.ID(), err)
 		return fmt.Errorf("error updating certificate. Err: %w", err)
 	}
