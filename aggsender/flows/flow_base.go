@@ -25,7 +25,7 @@ var (
 
 // baseFlow is a struct that holds the common logic for the different prover types
 type baseFlow struct {
-	l2BridgeQuerier       types.BridgeDataQuerier
+	l2BridgeQuerier       types.BridgeQuerier
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 
@@ -34,26 +34,6 @@ type baseFlow struct {
 	maxCertSize          uint
 	bridgeMetaDataAsHash bool
 	startL2Block         uint64
-}
-
-// getBridgesAndClaims returns the bridges and claims consumed from the L2 fromBlock to toBlock
-func (f *baseFlow) getBridgesAndClaims(
-	ctx context.Context,
-	fromBlock, toBlock uint64,
-	allowEmptyCert bool,
-) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
-	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, nil, fmt.Errorf("error getting bridges and claims: %w", err)
-	}
-
-	if len(bridges) == 0 && !allowEmptyCert {
-		f.log.Infof("no bridges consumed, no need to send a certificate from block: %d to block: %d",
-			fromBlock, toBlock)
-		return nil, nil, nil
-	}
-
-	return bridges, claims, nil
 }
 
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
@@ -80,7 +60,7 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 	fromBlock := previousToBlock + 1
 	toBlock := lastL2BlockSynced
 
-	bridges, claims, err := f.getBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
+	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
 	if err != nil {
 		return nil, err
 	}
@@ -93,11 +73,6 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 		Bridges:             bridges,
 		Claims:              claims,
 		CreatedAt:           uint32(time.Now().UTC().Unix()),
-	}
-
-	if !allowEmptyCert && buildParams.NumberOfBridges() == 0 {
-		// no bridges so no need to build the certificate
-		return nil, nil
 	}
 
 	buildParams, err = f.limitCertSize(buildParams, allowEmptyCert)

@@ -185,7 +185,6 @@ func TestAggSenderSendCertificates(t *testing.T) {
 		}
 		bridgeL2SyncerMock.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(1), nil).Once()
 		bridgeL2SyncerMock.EXPECT().GetBridges(mock.Anything, mock.Anything, mock.Anything).Return([]bridgesync.Bridge{}, nil).Once()
-		bridgeL2SyncerMock.EXPECT().GetClaims(mock.Anything, mock.Anything, mock.Anything).Return([]bridgesync.Claim{}, nil).Once()
 		epochNotifierMock.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{}).Once()
 		aggSender.sendCertificates(ctx, 1)
 		bridgeL2SyncerMock.AssertExpectations(t)
@@ -454,7 +453,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 
 	ctx := context.Background()
 	mockStorage := mocks.NewAggSenderStorage(t)
-	mockL2BridgeQuerier := mocks.NewBridgeDataQuerier(t)
+	mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 	mockL1Querier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
 	mockEpochNotifier := mocks.NewEpochNotifier(t)
@@ -480,7 +479,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	}, nil).Once()
 	mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(50), nil)
-	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50)).Return([]bridgesync.Bridge{
+	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50), false).Return([]bridgesync.Bridge{
 		{
 			BlockNum:           30,
 			BlockPos:           0,
@@ -927,7 +926,7 @@ type aggsenderTestData struct {
 	ctx                     context.Context
 	agglayerClientMock      *agglayer.AgglayerClientMock
 	l1InfoQuerier           *mocks.L1InfoTreeDataQuerier
-	l2BridgeQuerier         *mocks.BridgeDataQuerier
+	l2BridgeQuerier         *mocks.BridgeQuerier
 	storageMock             *mocks.AggSenderStorage
 	epochNotifierMock       *mocks.EpochNotifier
 	flowMock                *mocks.AggsenderFlow
@@ -991,7 +990,7 @@ func certInfoToCertHeader(t *testing.T,
 
 func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderTestData {
 	t.Helper()
-	l2BridgeQuerier := mocks.NewBridgeDataQuerier(t)
+	l2BridgeQuerier := mocks.NewBridgeQuerier(t)
 	agglayerClientMock := agglayer.NewAgglayerClientMock(t)
 	l1InfoTreeQuerierMock := mocks.NewL1InfoTreeDataQuerier(t)
 	epochNotifierMock := mocks.NewEpochNotifier(t)

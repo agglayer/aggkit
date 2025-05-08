@@ -145,7 +145,7 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 	tests := []struct {
 		name            string
 		certParams      *types.CertificateBuildParams
-		mockFn          func(mockL2BridgeQuerier *mocks.BridgeDataQuerier)
+		mockFn          func(mockL2BridgeQuerier *mocks.BridgeQuerier)
 		previousLER     common.Hash
 		expectedLER     common.Hash
 		expectedError   string
@@ -167,7 +167,7 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			},
 			previousLER: common.HexToHash("0x123"),
 			expectedLER: common.HexToHash("0x456"),
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeDataQuerier) {
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
 					Return(common.HexToHash("0x456"), nil)
 			},
@@ -181,7 +181,7 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			previousLER:   common.HexToHash("0x123"),
 			expectedLER:   common.HexToHash("0x123"),
 			expectedError: "not found",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeDataQuerier) {
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
 					Return(common.Hash{}, db.ErrNotFound)
 			},
@@ -195,7 +195,7 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			previousLER:   common.HexToHash("0x123"),
 			expectedLER:   common.Hash{},
 			expectedError: "error getting exit root by index: 0. Error: unexpected error",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeDataQuerier) {
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
 					Return(common.Hash{}, errors.New("unexpected error"))
 			},
@@ -208,7 +208,7 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockL2BridgeQuerier := mocks.NewBridgeDataQuerier(t)
+			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			if tt.mockFn != nil {
 				tt.mockFn(mockL2BridgeQuerier)
 			}

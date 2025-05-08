@@ -88,7 +88,7 @@ func NewAggchainProofGenerationTool(
 		nil,
 		l1InfoTreeQuerier,
 		query.NewBridgeDataQuerier(l2Syncer),
-		query.NewGERQuerier(l1InfoTreeQuerier, chainGERReader),
+		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
 		l1Client,
 	)
 

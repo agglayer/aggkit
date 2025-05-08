@@ -10,19 +10,19 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var _ types.GERQuerier = (*gerQuerier)(nil)
+var _ types.GERQuerier = (*gerDataQuerier)(nil)
 
-// gerQuerier is a struct that holds the logic to query the GER (Global Exit Root) data
-type gerQuerier struct {
+// gerDataQuerier is a struct that holds the logic to query the GER (Global Exit Root) data
+type gerDataQuerier struct {
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier
 	chainGERReader    types.ChainGERReader
 }
 
-// NewGERQuerier returns a new instance of the GERQuerier
-func NewGERQuerier(
+// NewGERDataQuerier returns a new instance of the GERQuerier
+func NewGERDataQuerier(
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	chainGERReader types.ChainGERReader) types.GERQuerier {
-	return &gerQuerier{
+	return &gerDataQuerier{
 		l1InfoTreeQuerier: l1InfoTreeQuerier,
 		chainGERReader:    chainGERReader,
 	}
@@ -45,7 +45,7 @@ func NewGERQuerier(
 // Errors:
 //   - Returns an error if there is an issue querying the chain for injected GERs.
 //   - Returns an error if there is an issue generating proofs for any GER.
-func (g *gerQuerier) GetInjectedGERsProofs(
+func (g *gerDataQuerier) GetInjectedGERsProofs(
 	ctx context.Context,
 	finalizedL1InfoTreeRoot *treetypes.Root,
 	fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error) {

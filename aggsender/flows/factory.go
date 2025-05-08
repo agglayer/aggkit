@@ -23,7 +23,7 @@ func NewFlow(
 	l1Client types.EthClient,
 	l2Client types.EthClient,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	l2BridgeSyncer types.L2BridgeSyncer,
+	l2Syncer types.L2BridgeSyncer,
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
@@ -42,7 +42,7 @@ func NewFlow(
 			cfg.BridgeMetadataAsHash,
 			storage,
 			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
-			query.NewBridgeDataQuerier(l2BridgeSyncer),
+			query.NewBridgeDataQuerier(l2Syncer),
 			signer,
 		), nil
 	case types.AggchainProofMode:
@@ -77,8 +77,8 @@ func NewFlow(
 			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,
-			query.NewBridgeDataQuerier(l2BridgeSyncer),
-			query.NewGERQuerier(l1InfoTreeQuerier, gerReader),
+			query.NewBridgeDataQuerier(l2Syncer),
+			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 			l1Client,
 		), nil
 

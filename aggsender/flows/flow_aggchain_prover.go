@@ -50,7 +50,7 @@ func NewAggchainProverFlow(log types.Logger,
 	aggkitProverClient grpc.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
-	l2BridgeQuerier types.BridgeDataQuerier,
+	l2BridgeQuerier types.BridgeQuerier,
 	gerQuerier types.GERQuerier,
 	l1Client types.EthClient) *AggchainProverFlow {
 	return &AggchainProverFlow{
@@ -103,7 +103,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		// if the last certificate was in error, we need to resend it
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
 
-		bridges, claims, err := a.getBridgesAndClaims(
+		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
 			ctx, lastSentCertificateInfo.FromBlock,
 			lastSentCertificateInfo.ToBlock,
 			true,
