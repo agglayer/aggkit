@@ -559,7 +559,7 @@ func TestSendCertificates(t *testing.T) {
 			defer cancel()
 
 			go func() {
-				time.Sleep(100 * time.Millisecond)
+				time.Sleep(300 * time.Millisecond)
 				cancel()
 			}()
 
