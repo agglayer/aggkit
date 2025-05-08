@@ -28,12 +28,12 @@ const (
 	BRIDGE    = "bridge"
 	meterName = "github.com/agglayer/aggkit/bridgeservice"
 
-	networkIDParam       = "network_id"
-	networkIDsParam      = "network_ids"
-	pageNumberParam      = "page_number"
-	pageSizeParam        = "page_size"
-	depositCountParam    = "deposit_count"
-	l1InfoTreeIndexParam = "l1_info_tree_index"
+	networkIDParam    = "network_id"
+	networkIDsParam   = "network_ids"
+	pageNumberParam   = "page_number"
+	pageSizeParam     = "page_size"
+	depositCountParam = "deposit_count"
+	leafIndexParam    = "leaf_index"
 
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
@@ -492,10 +492,10 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Failure 500 {object} gin.H
 // @Router /injected-info-after-index [get]
 func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
-	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, deposit count=%s)",
-		c.Query(networkIDParam), c.Query(l1InfoTreeIndexParam))
+	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, leaf index=%s)",
+		c.Query(networkIDParam), c.Query(leafIndexParam))
 
-	l1InfoTreeIndex, err := parseUintQuery(c, l1InfoTreeIndexParam, true, uint32(0))
+	l1InfoTreeIndex, err := parseUintQuery(c, leafIndexParam, true, uint32(0))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -525,7 +525,7 @@ func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get injected global exit root for L1 info tree index %d, error: %s",
+				gin.H{"error": fmt.Sprintf("failed to get injected global exit root for leaf index=%d, error: %s",
 					l1InfoTreeIndex, err)})
 			return
 		}
@@ -533,7 +533,7 @@ func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
 		l1InfoLeaf, err = b.l1InfoTree.GetInfoByIndex(ctx, e.L1InfoTreeIndex)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get l1 info tree leaf L1 info tree index %d, error: %s",
+				gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (leaf index=%d), error: %s",
 					e.L1InfoTreeIndex, err)})
 			return
 		}
@@ -544,7 +544,7 @@ func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get l1 info tree leaf for network id %d and L1 info tree index %d, error: %s",
+			gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
 				networkID, l1InfoTreeIndex, err)})
 		return
 	}
@@ -568,7 +568,7 @@ func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
 // @Router /claim-proof [get]
 func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	b.logger.Debugf("ClaimProof request received (network id=%s, l1 info tree index=%s, deposit count=%s)",
-		c.Query(networkIDParam), c.Query(l1InfoTreeIndexParam), c.Query(depositCountParam))
+		c.Query(networkIDParam), c.Query(leafIndexParam), c.Query(depositCountParam))
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
@@ -584,7 +584,7 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 		return
 	}
 
-	l1InfoTreeIndex, err := parseUintQuery(c, l1InfoTreeIndexParam, true, uint32(0))
+	l1InfoTreeIndex, err := parseUintQuery(c, leafIndexParam, true, uint32(0))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -929,47 +929,6 @@ func (b *BridgeService) setupRequest(
 	counter.Add(ctx, 1)
 
 	return ctx, cancel, pageNumber, pageSize, nil
-}
-
-// TODO: @Stefan-Ethernal REMOVE
-// InjectedInfoAfterIndex return the first GER injected onto the network that is linked
-// to the given index or greater. This call is useful to understand when a bridge is ready to be claimed
-// on its destination network
-func (b *BridgeService) InjectedInfoAfterIndex(networkID uint32, l1InfoTreeIndex uint32) (interface{}, rpc.Error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
-	defer cancel()
-
-	c, merr := b.meter.Int64Counter("injected_info_after_index")
-	if merr != nil {
-		b.logger.Warnf("failed to create injected_info_after_index counter: %s", merr)
-	}
-	c.Add(ctx, 1)
-
-	if networkID == mainnetNetworkID {
-		info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-				fmt.Sprintf("failed to get L1 info tree leaf for index %d, error: %s", l1InfoTreeIndex, err))
-		}
-		return info, nil
-	}
-	if networkID == b.networkID {
-		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-				fmt.Sprintf("failed to get injected global exit root for L1 info tree index %d, error: %s", l1InfoTreeIndex, err))
-		}
-		info, err := b.l1InfoTree.GetInfoByIndex(ctx, e.L1InfoTreeIndex)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-				fmt.Sprintf("failed to get L1 info tree leaf for index %d na L2 network (ID=%d), error: %s",
-					e.L1InfoTreeIndex, networkID, err))
-		}
-		return info, nil
-	}
-	return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
-		fmt.Sprintf("this client does not support network %d", networkID),
-	)
 }
 
 // TODO: @Stefan-Ethernal REMOVE
