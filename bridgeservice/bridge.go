@@ -191,7 +191,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequestREST(c, "get_bridges")
+	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequest(c, "get_bridges")
 	if setupErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
 		return
@@ -264,7 +264,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequestREST(c, "get_claims")
+	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequest(c, "get_claims")
 	if setupErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
 		return
@@ -330,7 +330,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequestREST(c, "get_token_mappings")
+	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequest(c, "get_token_mappings")
 	if setupErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
 		return
@@ -388,7 +388,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequestREST(c, "get_legacy_token_migrations")
+	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequest(c, "get_legacy_token_migrations")
 	if setupErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
 		return
@@ -902,8 +902,8 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 	return info.L1InfoTreeIndex, nil
 }
 
-// setupRequestREST parses the pagination parameters from the request context
-func (b *BridgeService) setupRequestREST(
+// setupRequest parses the pagination parameters from the request context
+func (b *BridgeService) setupRequest(
 	c *gin.Context,
 	counterName string) (context.Context, context.CancelFunc, uint32, uint32, error) {
 	pageNumber, err := parseUintQuery(c, pageNumberParam, false, DefaultPage)
