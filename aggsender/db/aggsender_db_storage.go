@@ -45,9 +45,9 @@ type AggSenderStorage interface {
 	// DeleteCertificate deletes a certificate from the storage
 	DeleteCertificate(ctx context.Context, certificateID common.Hash) error
 	// GetCertificatesByStatus returns a list of certificates by their status
-	GetCertificatesByStatus(status []agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error)
-	// UpdateCertificate updates certificate in db
-	UpdateCertificate(ctx context.Context, certificate types.CertificateInfo) error
+	GetCertificatesByStatus(status []agglayertypes.CertificateStatus, lightQuery bool) ([]*types.CertificateInfo, error)
+	// UpdateCertificateStatus updates certificate status in db
+	UpdateCertificateStatus(ctx context.Context, certificate types.CertificateInfo) error
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -84,10 +84,16 @@ func NewAggSenderSQLStorage(logger *log.Logger, cfg AggSenderSQLStorageConfig) (
 	}, nil
 }
 
+// GetCertificatesByStatus returns a list of certificates by their status
 func (a *AggSenderSQLStorage) GetCertificatesByStatus(
-	statuses []agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error) {
+	statuses []agglayertypes.CertificateStatus, lightQuery bool) ([]*types.CertificateInfo, error) {
 	query := "SELECT * FROM certificate_info"
-	args := make([]interface{}, len(statuses))
+	if lightQuery {
+		query = "SELECT height, retry_count, certificate_id, status, created_at, updated_at, " +
+			"from_block, to_block FROM certificate_info"
+	}
+
+	args := make([]any, len(statuses))
 
 	if len(statuses) > 0 {
 		placeholders := make([]string, len(statuses))
@@ -233,8 +239,8 @@ func deleteCertificate(tx db.Querier, certificateID common.Hash) error {
 	return nil
 }
 
-// UpdateCertificate updates a certificate
-func (a *AggSenderSQLStorage) UpdateCertificate(ctx context.Context, certificate types.CertificateInfo) error {
+// UpdateCertificateStatus updates a certificate status in the storage
+func (a *AggSenderSQLStorage) UpdateCertificateStatus(ctx context.Context, certificate types.CertificateInfo) error {
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
 		return err

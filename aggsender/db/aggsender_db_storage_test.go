@@ -130,37 +130,64 @@ func Test_Storage(t *testing.T) {
 	})
 
 	t.Run("GetCertificatesByStatus", func(t *testing.T) {
+		prevLER := common.HexToHash("0x9")
+		finalizedL1InfoRoot := common.HexToHash("0xa")
 		// Insert some certificates with different statuses
 		certificates := []*types.CertificateInfo{
 			{
-				Height:           7,
-				CertificateID:    common.HexToHash("0x7"),
-				NewLocalExitRoot: common.HexToHash("0x8"),
-				FromBlock:        7,
-				ToBlock:          8,
-				Status:           agglayertypes.Settled,
-				CreatedAt:        updateTime,
-				UpdatedAt:        updateTime,
+				Height:                  7,
+				CertificateID:           common.HexToHash("0x7"),
+				NewLocalExitRoot:        common.HexToHash("0x8"),
+				FromBlock:               7,
+				ToBlock:                 8,
+				Status:                  agglayertypes.Settled,
+				CreatedAt:               updateTime,
+				UpdatedAt:               updateTime,
+				PreviousLocalExitRoot:   &prevLER,
+				FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
 			},
 			{
-				Height:           9,
-				CertificateID:    common.HexToHash("0x9"),
-				NewLocalExitRoot: common.HexToHash("0xA"),
-				FromBlock:        9,
-				ToBlock:          10,
-				Status:           agglayertypes.Pending,
-				CreatedAt:        updateTime,
-				UpdatedAt:        updateTime,
+				Height:                  9,
+				CertificateID:           common.HexToHash("0x9"),
+				NewLocalExitRoot:        common.HexToHash("0xA"),
+				FromBlock:               9,
+				ToBlock:                 10,
+				Status:                  agglayertypes.Pending,
+				CreatedAt:               updateTime,
+				UpdatedAt:               updateTime,
+				PreviousLocalExitRoot:   &prevLER,
+				FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
+				RetryCount:              1,
+				L1InfoTreeLeafCount:     10,
 			},
 			{
-				Height:           11,
-				CertificateID:    common.HexToHash("0xB"),
-				NewLocalExitRoot: common.HexToHash("0xC"),
-				FromBlock:        11,
-				ToBlock:          12,
-				Status:           agglayertypes.InError,
-				CreatedAt:        updateTime,
-				UpdatedAt:        updateTime,
+				Height:                  11,
+				CertificateID:           common.HexToHash("0xB"),
+				NewLocalExitRoot:        common.HexToHash("0xC"),
+				FromBlock:               11,
+				ToBlock:                 12,
+				Status:                  agglayertypes.InError,
+				CreatedAt:               updateTime,
+				UpdatedAt:               updateTime,
+				PreviousLocalExitRoot:   &prevLER,
+				FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
+				L1InfoTreeLeafCount:     15,
+				RetryCount:              2,
+				AggchainProof: &types.AggchainProof{
+					LastProvenBlock: 10,
+					EndBlock:        12,
+					CustomChainData: []byte{0x1, 0x2, 0x3},
+					LocalExitRoot:   common.HexToHash("0x123"),
+					AggchainParams:  common.HexToHash("0x456"),
+					Context: map[string][]byte{
+						"key1": {0x1, 0x2},
+					},
+					SP1StarkProof: &types.SP1StarkProof{
+						Version: "0.1",
+						Proof:   []byte{0x1, 0x2, 0x3},
+						Vkey:    []byte{0x4, 0x5, 0x6},
+					},
+				},
 			},
 		}
 
@@ -170,31 +197,46 @@ func Test_Storage(t *testing.T) {
 
 		// Test fetching certificates with status Settled
 		statuses := []agglayertypes.CertificateStatus{agglayertypes.Settled}
-		certificatesFromDB, err := storage.GetCertificatesByStatus(statuses)
+		certificatesFromDB, err := storage.GetCertificatesByStatus(statuses, false)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 1)
 		require.ElementsMatch(t, []*types.CertificateInfo{certificates[0]}, certificatesFromDB)
 
 		// Test fetching certificates with status Pending
 		statuses = []agglayertypes.CertificateStatus{agglayertypes.Pending}
-		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses)
+		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses, false)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 1)
 		require.ElementsMatch(t, []*types.CertificateInfo{certificates[1]}, certificatesFromDB)
 
 		// Test fetching certificates with status InError
 		statuses = []agglayertypes.CertificateStatus{agglayertypes.InError}
-		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses)
+		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses, false)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 1)
 		require.ElementsMatch(t, []*types.CertificateInfo{certificates[2]}, certificatesFromDB)
 
 		// Test fetching certificates with status InError and Pending
 		statuses = []agglayertypes.CertificateStatus{agglayertypes.InError, agglayertypes.Pending}
-		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses)
+		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses, false)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 2)
 		require.ElementsMatch(t, []*types.CertificateInfo{certificates[1], certificates[2]}, certificatesFromDB)
+
+		// Test fetching certificates with status InError, but with light query
+		statuses = []agglayertypes.CertificateStatus{agglayertypes.InError}
+		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses, true)
+		require.NoError(t, err)
+		require.Len(t, certificatesFromDB, 1)
+		require.Equal(t, certificates[2].Height, certificatesFromDB[0].Height)
+		require.Equal(t, certificates[2].RetryCount, certificatesFromDB[0].RetryCount)
+		require.Equal(t, certificates[2].CertificateID, certificatesFromDB[0].CertificateID)
+		require.Equal(t, certificates[2].Status, certificatesFromDB[0].Status)
+		require.Equal(t, certificates[2].CreatedAt, certificatesFromDB[0].CreatedAt)
+		require.Equal(t, certificates[2].UpdatedAt, certificatesFromDB[0].UpdatedAt)
+		require.Equal(t, certificates[2].FromBlock, certificatesFromDB[0].FromBlock)
+		require.Equal(t, certificates[2].ToBlock, certificatesFromDB[0].ToBlock)
+		require.Nil(t, certificatesFromDB[0].AggchainProof)
 
 		require.NoError(t, storage.clean())
 	})
@@ -217,7 +259,7 @@ func Test_Storage(t *testing.T) {
 		// Update the status of the certificate
 		certificate.Status = agglayertypes.Settled
 		certificate.UpdatedAt = updateTime + 1
-		require.NoError(t, storage.UpdateCertificate(ctx, certificate))
+		require.NoError(t, storage.UpdateCertificateStatus(ctx, certificate))
 
 		// Fetch the certificate and verify the status has been updated
 		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Height)
