@@ -830,13 +830,14 @@ func TestGetBridgesHandler(t *testing.T) {
 	})
 }
 
-func TestGetClaims(t *testing.T) {
-	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
+func TestGetClaimsHandler(t *testing.T) {
 	t.Run("GetClaims for L1 network", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
-		claims := []*bridgesync.ClaimResponse{
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedClaims := []*bridgesync.ClaimResponse{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(1),
@@ -850,24 +851,28 @@ func TestGetClaims(t *testing.T) {
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
-			Return(claims, len(claims), nil)
+			Return(expectedClaims, len(expectedClaims), nil)
 
-		result, err := bridgeMocks.bridge.GetClaims(0, &page, &pageSize, nil)
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=0&page=1&page_size=10", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response types.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		claimsResult, ok := result.(types.ClaimsResult)
-		require.True(t, ok)
-		require.Equal(t, claims, claimsResult.Claims)
-		require.Equal(t, len(claimsResult.Claims), claimsResult.Count)
-
-		bridgeMocks.bridgeL1.AssertExpectations(t)
+		require.Equal(t, expectedClaims, response.Claims)
+		require.Equal(t, len(expectedClaims), response.Count)
 	})
 
 	t.Run("GetClaims for L2 network", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
-		Claims := []*bridgesync.ClaimResponse{
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedClaims := []*bridgesync.ClaimResponse{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(1),
@@ -880,54 +885,70 @@ func TestGetClaims(t *testing.T) {
 		}
 
 		bridgeMocks.bridge.networkID = 10
-
 		bridgeMocks.bridgeL2.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
-			Return(Claims, len(Claims), nil)
+			Return(expectedClaims, len(expectedClaims), nil)
 
-		result, err := bridgeMocks.bridge.GetClaims(10, &page, &pageSize, nil)
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=10&page=1&page_size=10", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response types.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		claimsResult, ok := result.(types.ClaimsResult)
-		require.True(t, ok)
-		require.Equal(t, Claims, claimsResult.Claims)
-		require.Equal(t, len(claimsResult.Claims), claimsResult.Count)
-
-		bridgeMocks.bridgeL2.AssertExpectations(t)
+		require.Equal(t, expectedClaims, response.Claims)
+		require.Equal(t, len(expectedClaims), response.Count)
 	})
 
 	t.Run("GetClaims with unsupported network", func(t *testing.T) {
-		unsupportedNetworkID := uint32(999)
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=999", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
 
-		result, err := bridgeMocks.bridge.GetClaims(unsupportedNetworkID, nil, nil, nil)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
-		require.Nil(t, result)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), "unsupported network 999")
 	})
 
 	t.Run("GetClaims for L1 network failed", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL1.EXPECT().
-			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(fooErrMsg))
+			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, 0, errors.New(fooErrMsg))
 
-		result, err := bridgeMocks.bridge.GetClaims(mainnetNetworkID, nil, nil, nil)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("failed to get claims for the L1 network, error: %s", fooErrMsg))
-		require.Nil(t, result)
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=0&page=1&page_size=10", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), "failed to get claims for the L1 network")
 	})
 
 	t.Run("GetClaims for L2 network failed", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL2.EXPECT().
-			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(barErrMsg))
+			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, 0, errors.New(barErrMsg))
 
-		result, err := bridgeMocks.bridge.GetClaims(l2NetworkID, nil, nil, nil)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s",
-			l2NetworkID, barErrMsg))
-		require.Nil(t, result)
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=10&page=1&page_size=10", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), "failed to get claims for the L2 network")
+	})
+
+	t.Run("GetClaims for L2 network failed invalid network id", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		w := httptest.NewRecorder()
+		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=foo&page=1&page_size=10", nil)
+		bridgeMocks.bridge.router.ServeHTTP(w, req)
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
 }
 
