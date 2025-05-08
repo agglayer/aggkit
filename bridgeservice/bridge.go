@@ -443,7 +443,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 		return
 	}
 
-	depositCount, err := parseUintQuery(c, networkIDParam, true, uint32(0))
+	depositCount, err := parseUintQuery(c, depositCountParam, true, uint32(0))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -929,47 +929,6 @@ func (b *BridgeService) setupRequest(
 	counter.Add(ctx, 1)
 
 	return ctx, cancel, pageNumber, pageSize, nil
-}
-
-// TODO: @Stefan-Ethernal REMOVE
-// L1InfoTreeIndexForBridge returns the first L1 Info Tree index in which the bridge was included.
-// networkID represents the origin network.
-// This call needs to be done to a client of the same network were the bridge tx was sent
-func (b *BridgeService) L1InfoTreeIndexForBridge(networkID uint32, depositCount uint32) (interface{}, rpc.Error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
-	defer cancel()
-
-	c, merr := b.meter.Int64Counter("l1_info_tree_index_for_bridge")
-	if merr != nil {
-		b.logger.Warnf("failed to create l1_info_tree_index_for_bridge counter: %s", merr)
-	}
-	c.Add(ctx, 1)
-
-	if networkID == mainnetNetworkID {
-		l1InfoTreeIndex, err := b.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
-		// TODO: special treatment of the error when not found,
-		// as it's expected that it will take some time for the L1 Info tree to be updated
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
-				"failed to get l1 info tree index for L1 network and deposit count %d, error: %s", depositCount, err),
-			)
-		}
-		return l1InfoTreeIndex, nil
-	}
-	if networkID == b.networkID {
-		l1InfoTreeIndex, err := b.getFirstL1InfoTreeIndexForL2Bridge(ctx, depositCount)
-		// TODO: special treatment of the error when not found,
-		// as it's expected that it will take some time for the L1 Info tree to be updated
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf(
-				"failed to get l1InfoTreeIndex for networkID %d and deposit count %d, error: %s", networkID, depositCount, err),
-			)
-		}
-		return l1InfoTreeIndex, nil
-	}
-	return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
-		fmt.Sprintf("this client does not support network (ID=%d)", networkID),
-	)
 }
 
 // TODO: @Stefan-Ethernal REMOVE

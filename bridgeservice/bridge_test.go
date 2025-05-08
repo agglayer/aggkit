@@ -942,6 +942,177 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 	})
 }
 
+func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
+	depositCount := uint32(10)
+	expectedIndex := uint32(42)
+	blockNum := uint64(50)
+
+	t.Run("Success L1 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetLastInfo().
+			Return(
+				&l1infotreesync.L1InfoTreeLeaf{
+					MainnetExitRoot: common.HexToHash("0xabc"),
+					L1InfoTreeIndex: expectedIndex,
+					BlockNumber:     blockNum,
+				},
+				nil)
+		bridgeMocks.l1InfoTree.EXPECT().GetFirstInfo().Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: 0}, nil)
+		bridgeMocks.l1InfoTree.EXPECT().GetFirstInfoAfterBlock(mock.Anything).
+			Return(
+				&l1infotreesync.L1InfoTreeLeaf{
+					MainnetExitRoot: common.HexToHash("0xabc"),
+					L1InfoTreeIndex: expectedIndex,
+				}, nil)
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetRootByLER(mock.Anything, mock.Anything).
+			Return(&tree.Root{
+				Index:    depositCount,
+				BlockNum: blockNum,
+			}, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set("network_id", "0")
+		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/l1-info-tree-index-for-bridge?"+queryParams.Encode(), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response uint32
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, expectedIndex, response)
+
+		bridgeMocks.l1InfoTree.AssertExpectations(t)
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("Success L2 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetLastVerifiedBatches(mock.Anything).
+			Return(&l1infotreesync.VerifyBatches{}, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetFirstVerifiedBatches(mock.Anything).
+			Return(&l1infotreesync.VerifyBatches{}, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetFirstVerifiedBatchesAfterBlock(mock.Anything, mock.Anything).
+			Return(&l1infotreesync.VerifyBatches{}, nil)
+
+		bridgeMocks.bridgeL2.EXPECT().GetRootByLER(mock.Anything, mock.Anything).Return(
+			&tree.Root{
+				Index:    depositCount,
+				BlockNum: blockNum,
+			}, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetFirstL1InfoWithRollupExitRoot(mock.Anything).
+			Return(
+				&l1infotreesync.L1InfoTreeLeaf{
+					L1InfoTreeIndex: expectedIndex,
+					BlockNumber:     blockNum,
+				}, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set("network_id", fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/l1-info-tree-index-for-bridge?"+queryParams.Encode(), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response uint32
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, expectedIndex, response)
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
+		bridgeMocks.l1InfoTree.AssertExpectations(t)
+	})
+
+	t.Run("Invalid network ID", func(t *testing.T) {
+		invalidNetworkID := uint32(999)
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set("network_id", fmt.Sprintf("%d", invalidNetworkID))
+		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/l1-info-tree-index-for-bridge?"+queryParams.Encode(), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id %d", invalidNetworkID))
+	})
+
+	t.Run("Error from GetLastInfo", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetLastInfo().
+			Return(nil, fmt.Errorf(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set("network_id", "0")
+		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/l1-info-tree-index-for-bridge?"+queryParams.Encode(), nil)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), fooErrMsg)
+	})
+
+	t.Run("Error from GetRootByLER", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetLastInfo().
+			Return(
+				&l1infotreesync.L1InfoTreeLeaf{
+					MainnetExitRoot: common.HexToHash("0xabc"),
+					L1InfoTreeIndex: expectedIndex,
+					BlockNumber:     blockNum,
+				},
+				nil)
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetRootByLER(mock.Anything, mock.Anything).
+			Return(nil, fmt.Errorf(barErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set("network_id", "0")
+		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/l1-info-tree-index-for-bridge?"+queryParams.Encode(), nil)
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), barErrMsg)
+	})
+
+	t.Run("Invalid network ID parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set("network_id", "invalid")
+		queryParams.Set("deposit_count", "10")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/l1-info-tree-index-for-bridge?"+queryParams.Encode(), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("Invalid deposit count parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set("network_id", "10")
+		queryParams.Set("deposit_count", "test")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/l1-info-tree-index-for-bridge?"+queryParams.Encode(), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", depositCountParam))
+	})
+}
+
 func TestGetLastReorgEvent(t *testing.T) {
 	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -1122,98 +1293,6 @@ func TestInjectedInfoAfterIndex(t *testing.T) {
 			fmt.Sprintf("failed to get L1 info tree leaf for index %d na L2 network (ID=%d), error: %s",
 				l1InfoTreeLeaf.L1InfoTreeIndex, l2NetworkID, fooErrMsg))
 		require.Nil(t, result)
-	})
-}
-
-func TestL1InfoTreeIndexForBridge(t *testing.T) {
-	depositCount := uint32(10)
-	expectedIndex := uint32(42)
-	blockNum := uint64(50)
-
-	t.Run("Success L1 network", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetLastInfo().
-			Return(
-				&l1infotreesync.L1InfoTreeLeaf{
-					MainnetExitRoot: common.HexToHash("0xabc"),
-					L1InfoTreeIndex: expectedIndex,
-					BlockNumber:     blockNum,
-				},
-				nil)
-		bridgeMocks.l1InfoTree.EXPECT().GetFirstInfo().Return(&l1infotreesync.L1InfoTreeLeaf{BlockNumber: 0}, nil)
-		bridgeMocks.l1InfoTree.EXPECT().GetFirstInfoAfterBlock(mock.Anything).
-			Return(
-				&l1infotreesync.L1InfoTreeLeaf{
-					MainnetExitRoot: common.HexToHash("0xabc"),
-					L1InfoTreeIndex: expectedIndex,
-				}, nil)
-
-		bridgeMocks.bridgeL1.EXPECT().
-			GetRootByLER(mock.Anything, mock.Anything).
-			Return(&tree.Root{
-				Index:    depositCount,
-				BlockNum: blockNum,
-			}, nil)
-
-		result, err := bridgeMocks.bridge.L1InfoTreeIndexForBridge(mainnetNetworkID, depositCount)
-		require.Nil(t, err)
-		require.Equal(t, expectedIndex, result)
-	})
-
-	t.Run("Success L2 network path", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetLastVerifiedBatches(mock.Anything).
-			Return(&l1infotreesync.VerifyBatches{}, nil)
-
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetFirstVerifiedBatches(mock.Anything).
-			Return(&l1infotreesync.VerifyBatches{}, nil)
-
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetFirstVerifiedBatchesAfterBlock(mock.Anything, mock.Anything).
-			Return(&l1infotreesync.VerifyBatches{}, nil)
-
-		bridgeMocks.bridgeL2.EXPECT().GetRootByLER(mock.Anything, mock.Anything).Return(
-			&tree.Root{
-				Index:    depositCount,
-				BlockNum: blockNum,
-			}, nil)
-
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetFirstL1InfoWithRollupExitRoot(mock.Anything).
-			Return(
-				&l1infotreesync.L1InfoTreeLeaf{
-					L1InfoTreeIndex: expectedIndex,
-					BlockNumber:     blockNum,
-				}, nil)
-
-		result, err := bridgeMocks.bridge.L1InfoTreeIndexForBridge(l2NetworkID, depositCount)
-		require.Nil(t, err)
-		require.Equal(t, expectedIndex, result)
-	})
-
-	t.Run("Unsupported networkID", func(t *testing.T) {
-		invalidNetworkID := uint32(999)
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		result, err := bridgeMocks.bridge.L1InfoTreeIndexForBridge(invalidNetworkID, depositCount)
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network (ID=%d)", invalidNetworkID))
-	})
-
-	t.Run("Error from GetLastInfo", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().GetLastInfo().Return(nil, errors.New(fooErrMsg))
-
-		result, err := bridgeMocks.bridge.L1InfoTreeIndexForBridge(mainnetNetworkID, depositCount)
-		require.Nil(t, result)
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get l1 info tree index for L1 network and deposit count %d, error: %s", depositCount, fooErrMsg))
 	})
 }
 
