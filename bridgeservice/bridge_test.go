@@ -1113,6 +1113,165 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 	})
 }
 
+func TestInjectedInfoAfterIndexHandler(t *testing.T) {
+	l1InfoTreeLeaf := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:       uint64(3),
+		BlockPosition:     uint64(0),
+		L1InfoTreeIndex:   uint32(1),
+		PreviousBlockHash: common.HexToHash("0x1"),
+		Timestamp:         uint64(time.Now().Unix()),
+		MainnetExitRoot:   common.HexToHash("0x2"),
+		RollupExitRoot:    common.HexToHash("0x3"),
+		Hash:              common.HexToHash("0x4"),
+	}
+	l1InfoTreeLeaf.GlobalExitRoot = crypto.Keccak256Hash(
+		append(l1InfoTreeLeaf.MainnetExitRoot.Bytes(), l1InfoTreeLeaf.RollupExitRoot.Bytes()...))
+
+	t.Run("InjectedInfoAfterIndex for L1 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(l1InfoTreeLeaf, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "0")
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/injected-info-after-index?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, response.Code)
+
+		var result l1infotreesync.L1InfoTreeLeaf
+		err := json.Unmarshal(response.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Equal(t, *l1InfoTreeLeaf, result)
+	})
+
+	t.Run("InjectedInfoAfterIndex for L2 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(lastgersync.GlobalExitRootInfo{
+				GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
+				L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
+			}, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(l1InfoTreeLeaf, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "10")
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/injected-info-after-index?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, response.Code)
+
+		var result l1infotreesync.L1InfoTreeLeaf
+		err := json.Unmarshal(response.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Equal(t, *l1InfoTreeLeaf, result)
+	})
+
+	t.Run("InjectedInfoAfterIndex with unsupported network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		unsupportedNetworkID := uint32(999)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", unsupportedNetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/injected-info-after-index?%s", queryParams.Encode()), nil)
+
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("unsupported network id %d", unsupportedNetworkID))
+	})
+
+	t.Run("InjectedInfoAfterIndex for L1 network error", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(nil, fmt.Errorf(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/injected-info-after-index?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(),
+			fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
+				mainnetNetworkID, l1InfoTreeLeaf.L1InfoTreeIndex, fooErrMsg))
+	})
+
+	t.Run("InjectedInfoAfterIndex for L2 network - GetFirstGERAfterL1InfoTreeIndex error", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(lastgersync.GlobalExitRootInfo{}, fmt.Errorf(barErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/injected-info-after-index?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get injected global exit root for leaf index=%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+	})
+
+	t.Run("InjectedInfoAfterIndex for L2 network - GetInfoByIndex error", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.injectedGERs.EXPECT().
+			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(lastgersync.GlobalExitRootInfo{
+				GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
+				L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
+			}, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
+			Return(nil, fmt.Errorf(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/injected-info-after-index?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(),
+			fmt.Sprintf("failed to get L1 info tree leaf (leaf index=%d), error: %s", l1InfoTreeLeaf.L1InfoTreeIndex, fooErrMsg))
+	})
+
+	t.Run("InjectedInfoAfterIndex invalid network id param", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "invalid")
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeLeaf.L1InfoTreeIndex))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/injected-info-after-index?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("InjectedInfoAfterIndex invalid leaf index param", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "invalid")
+		queryParams.Set(leafIndexParam, "invalid")
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/injected-info-after-index?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", leafIndexParam))
+	})
+}
+
 func TestGetLastReorgEvent(t *testing.T) {
 	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -1185,113 +1344,6 @@ func TestGetLastReorgEvent(t *testing.T) {
 		require.NotNil(t, err)
 		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
 		require.ErrorContains(t, err, fmt.Sprintf("failed to get last reorg event for the L2 network (ID=%d), error: %s", l2NetworkID, barErrMsg))
-		require.Nil(t, result)
-	})
-}
-
-func TestInjectedInfoAfterIndex(t *testing.T) {
-	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-	l1InfoTreeLeaf := &l1infotreesync.L1InfoTreeLeaf{
-		BlockNumber:       uint64(3),
-		BlockPosition:     uint64(0),
-		L1InfoTreeIndex:   uint32(1),
-		PreviousBlockHash: common.HexToHash("0x1"),
-		Timestamp:         uint64(time.Now().Unix()),
-		MainnetExitRoot:   common.HexToHash("0x2"),
-		RollupExitRoot:    common.HexToHash("0x3"),
-		Hash:              common.HexToHash("0x4"),
-	}
-
-	l1InfoTreeLeaf.GlobalExitRoot = crypto.Keccak256Hash(
-		append(l1InfoTreeLeaf.MainnetExitRoot.Bytes(),
-			l1InfoTreeLeaf.RollupExitRoot.Bytes()...))
-
-	t.Run("InjectedInfoAfterIndex for L1 network", func(t *testing.T) {
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(l1InfoTreeLeaf, nil)
-
-		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(mainnetNetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
-		require.NoError(t, err)
-		require.Equal(t, l1InfoTreeLeaf, result)
-	})
-
-	t.Run("InjectedInfoAfterIndex for L2 network", func(t *testing.T) {
-		bridgeMocks.injectedGERs.EXPECT().
-			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(
-				lastgersync.GlobalExitRootInfo{
-					GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
-					L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
-				}, nil)
-
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(l1InfoTreeLeaf, nil)
-
-		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(l2NetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
-		require.NoError(t, err)
-		require.Equal(t, l1InfoTreeLeaf, result)
-	})
-
-	t.Run("InjectedInfoAfterIndex for unsupported network", func(t *testing.T) {
-		unsupportedNetworkID := uint32(100)
-
-		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(unsupportedNetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
-		require.Nil(t, result)
-	})
-
-	t.Run("InjectedInfoAfterIndex for L1 network failed", func(t *testing.T) {
-		bridgeMocks = newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, mock.Anything).
-			Return(nil, errors.New(fooErrMsg))
-
-		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(mainnetNetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get L1 info tree leaf for index %d, error: %s", l1InfoTreeLeaf.L1InfoTreeIndex, fooErrMsg))
-		require.Nil(t, result)
-	})
-
-	t.Run("InjectedInfoAfterIndex for L2 network failed (GetFirstGERAfterL1InfoTreeIndex failure)", func(t *testing.T) {
-		bridgeMocks = newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.injectedGERs.EXPECT().
-			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(lastgersync.GlobalExitRootInfo{}, errors.New(barErrMsg))
-
-		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(l2NetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get injected global exit root for L1 info tree index %d, error: %s", l1InfoTreeLeaf.L1InfoTreeIndex, barErrMsg))
-		require.Nil(t, result)
-	})
-
-	t.Run("InjectedInfoAfterIndex for L2 network failed (GetInfoByIndex failure)", func(t *testing.T) {
-		bridgeMocks = newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, mock.Anything).
-			Return(nil, errors.New(fooErrMsg))
-
-		bridgeMocks.injectedGERs.EXPECT().
-			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(lastgersync.GlobalExitRootInfo{
-				GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
-				L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
-			}, nil)
-
-		result, err := bridgeMocks.bridge.InjectedInfoAfterIndex(l2NetworkID, l1InfoTreeLeaf.L1InfoTreeIndex)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get L1 info tree leaf for index %d na L2 network (ID=%d), error: %s",
-				l1InfoTreeLeaf.L1InfoTreeIndex, l2NetworkID, fooErrMsg))
 		require.Nil(t, result)
 	})
 }
