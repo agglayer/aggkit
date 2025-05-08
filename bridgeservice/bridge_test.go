@@ -1,10 +1,12 @@
 package bridgeservice
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -23,6 +25,7 @@ import (
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -472,115 +475,6 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 	}
 }
 
-func TestGetTokenMappings(t *testing.T) {
-	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-	t.Run("GetTokenMappings for L1 network", func(t *testing.T) {
-		page := uint32(1)
-		pageSize := uint32(10)
-		tokenMappings := []*bridgesync.TokenMapping{
-			{
-				BlockNum:            1,
-				BlockPos:            1,
-				BlockTimestamp:      1617184800,
-				TxHash:              common.HexToHash("0x1"),
-				OriginNetwork:       1,
-				OriginTokenAddress:  common.HexToAddress("0x1"),
-				WrappedTokenAddress: common.HexToAddress("0x2"),
-				Metadata:            common.Hex2Bytes("abcd"),
-				Calldata:            common.Hex2Bytes("efabcd"),
-			},
-		}
-
-		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
-			Return(tokenMappings, len(tokenMappings), nil)
-
-		result, err := bridgeMocks.bridge.GetTokenMappings(0, &page, &pageSize)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		tokenMappingsResult, ok := result.(*types.TokenMappingsResult)
-		require.True(t, ok)
-		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
-		require.Equal(t, len(tokenMappingsResult.TokenMappings), tokenMappingsResult.Count)
-
-		actualJSON, marshalErr := json.Marshal(tokenMappingsResult.TokenMappings)
-		require.NoError(t, marshalErr)
-
-		expectedJSON, marshalErr := json.Marshal(tokenMappings)
-		require.NoError(t, marshalErr)
-
-		require.JSONEq(t, string(expectedJSON), string(actualJSON))
-
-		bridgeMocks.bridgeL1.AssertExpectations(t)
-	})
-
-	t.Run("GetTokenMappings for L2 network", func(t *testing.T) {
-		page := uint32(1)
-		pageSize := uint32(10)
-
-		tokenMappings := []*bridgesync.TokenMapping{
-			{
-				BlockNum:            1,
-				BlockPos:            1,
-				BlockTimestamp:      1617184800,
-				TxHash:              common.HexToHash("0x1"),
-				OriginNetwork:       1,
-				OriginTokenAddress:  common.HexToAddress("0x1"),
-				WrappedTokenAddress: common.HexToAddress("0x2"),
-				Type:                bridgesync.SovereignToken,
-				IsNotMintable:       true,
-				Metadata:            []byte("metadata"),
-			},
-		}
-
-		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
-			Return(tokenMappings, len(tokenMappings), nil)
-
-		result, err := bridgeMocks.bridge.GetTokenMappings(l2NetworkID, &page, &pageSize)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		tokenMappingsResult, ok := result.(*types.TokenMappingsResult)
-		require.True(t, ok)
-		require.Equal(t, tokenMappings, tokenMappingsResult.TokenMappings)
-		require.Equal(t, len(tokenMappings), tokenMappingsResult.Count)
-
-		bridgeMocks.bridgeL2.AssertExpectations(t)
-	})
-
-	t.Run("GetTokenMappings with unsupported network", func(t *testing.T) {
-		unsupportedNetworkID := uint32(999)
-
-		result, err := bridgeMocks.bridge.GetTokenMappings(unsupportedNetworkID, nil, nil)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("failed to get token mappings, unsupported network %d", unsupportedNetworkID))
-		require.Nil(t, result)
-	})
-
-	t.Run("GetTokenMappings for L1 network failed", func(t *testing.T) {
-		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(fooErrMsg))
-
-		result, err := bridgeMocks.bridge.GetTokenMappings(mainnetNetworkID, nil, nil)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("failed to get token mappings for the L1 network, error: %s", fooErrMsg))
-		require.Nil(t, result)
-	})
-
-	t.Run("GetTokenMappings for L2 network failed", func(t *testing.T) {
-		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).Return(nil, 0, errors.New(barErrMsg))
-
-		result, err := bridgeMocks.bridge.GetTokenMappings(l2NetworkID, nil, nil)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("failed to get token mappings for the L2 network (ID=%d), error: %s",
-			l2NetworkID, barErrMsg))
-		require.Nil(t, result)
-	})
-}
-
 func TestGetLegacyTokenMigrations(t *testing.T) {
 	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -721,15 +615,11 @@ func TestGetBridgesHandler(t *testing.T) {
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
 
-		w := httptest.NewRecorder()
-		req, err := http.NewRequest(http.MethodGet, "/bridges?network_id=0&page_number=1&page_size=10", nil)
-		require.NoError(t, err)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/bridges?network_id=0&page_number=1&page_size=10", nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response types.BridgesResult
-		err = json.Unmarshal(w.Body.Bytes(), &response)
+		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedBridges, response.Bridges)
@@ -741,10 +631,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		bridgeMocks.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, fmt.Errorf("L1 network error"))
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/bridges?network_id=0&page=1&page_size=10", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/bridges?network_id=0&page_number=1&page_size=10", nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get bridges for the L1 network")
 	})
@@ -755,9 +642,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		bridgeMocks.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, fmt.Errorf("L2 network error"))
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/bridges?network_id=10&page=1&page_size=10", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/bridges?network_id=10&page=1&page_size=10", nil)
 
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get bridges for the L2 network")
@@ -791,10 +676,7 @@ func TestGetBridgesHandler(t *testing.T) {
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/bridges?network_id=10&page=1&page_size=10", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/bridges?network_id=10&page=1&page_size=10", nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response types.BridgesResult
@@ -810,10 +692,7 @@ func TestGetBridgesHandler(t *testing.T) {
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, fmt.Sprintf("/bridges?network_id=%d", unsupportedNetworkID), nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/bridges?network_id=%d", unsupportedNetworkID), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to get bridges unsupported network %d", unsupportedNetworkID))
 	})
@@ -821,10 +700,7 @@ func TestGetBridgesHandler(t *testing.T) {
 	t.Run("GetBridges invalid network id", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/bridges?network_id=foo", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/bridges?network_id=foo", nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
@@ -853,10 +729,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=0&page=1&page_size=10", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/claims?network_id=0&page=1&page_size=10", nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response types.ClaimsResult
@@ -889,10 +762,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=10&page=1&page_size=10", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/claims?network_id=10&page=1&page_size=10", nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
 		var response types.ClaimsResult
@@ -904,10 +774,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 	t.Run("GetClaims with unsupported network", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=999", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/claims?network_id=999", nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), "unsupported network 999")
 	})
@@ -918,10 +785,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(fooErrMsg))
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=0&page=1&page_size=10", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/claims?network_id=0&page=1&page_size=10", nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get claims for the L1 network")
 	})
@@ -932,10 +796,7 @@ func TestGetClaimsHandler(t *testing.T) {
 			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=10&page=1&page_size=10", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
-
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/claims?network_id=10&page=1&page_size=10", nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
 		require.Contains(t, w.Body.String(), "failed to get claims for the L2 network")
 	})
@@ -943,10 +804,115 @@ func TestGetClaimsHandler(t *testing.T) {
 	t.Run("GetClaims for L2 network failed invalid network id", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		w := httptest.NewRecorder()
-		req, _ := http.NewRequest(http.MethodGet, "/claims?network_id=foo&page=1&page_size=10", nil)
-		bridgeMocks.bridge.router.ServeHTTP(w, req)
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/claims?network_id=foo&page=1&page_size=10", nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+}
 
+func TestGetTokenMappingsHandler(t *testing.T) {
+	t.Run("GetTokenMappingsHandler for L1 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		tokenMappings := []*bridgesync.TokenMapping{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x1"),
+				OriginNetwork:       1,
+				OriginTokenAddress:  common.HexToAddress("0x1"),
+				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Metadata:            common.Hex2Bytes("abcd"),
+				Calldata:            common.Hex2Bytes("efabcd"),
+			},
+		}
+
+		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
+			Return(tokenMappings, len(tokenMappings), nil)
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/token-mappings?network_id=0&page_number=1&page_size=10", nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response types.TokenMappingsResult
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, len(tokenMappings), response.Count)
+		require.Equal(t, tokenMappings, response.TokenMappings)
+
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetTokenMappingsHandler for L2 network", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		tokenMappings := []*bridgesync.TokenMapping{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x1"),
+				OriginNetwork:       1,
+				OriginTokenAddress:  common.HexToAddress("0x1"),
+				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Metadata:            []byte("metadata"),
+				Calldata:            []byte{},
+				Type:                bridgesync.SovereignToken,
+				IsNotMintable:       true,
+			},
+		}
+
+		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
+			Return(tokenMappings, len(tokenMappings), nil)
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/token-mappings?network_id=10&page_number=1&page_size=10", nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response types.TokenMappingsResult
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, len(tokenMappings), response.Count)
+		require.Equal(t, tokenMappings, response.TokenMappings)
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
+	})
+
+	t.Run("GetTokenMappingsHandler with unsupported network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/token-mappings?network_id=999", nil)
+
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), "unsupported network id 999")
+	})
+
+	t.Run("GetTokenMappingsHandler for L1 network failed", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, 0, errors.New(fooErrMsg))
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/token-mappings?network_id=0", nil)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to fetch token mappings: %s", fooErrMsg))
+	})
+
+	t.Run("GetTokenMappingsHandler for L2 network failed", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).
+			Return(nil, 0, errors.New(barErrMsg))
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/token-mappings?network_id=10", nil)
+
+		require.Equal(t, http.StatusInternalServerError, w.Code)
+		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to fetch token mappings: %s", barErrMsg))
+	})
+
+	t.Run("GetTokenMappingsHandler for L2 network failed invalid network id", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/token-mappings?network_id=foo&page=1&page_size=10", nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
@@ -1472,4 +1438,23 @@ func TestClaimProof(t *testing.T) {
 		require.NotNil(t, result)
 		require.Equal(t, expectedClaimProof, result)
 	})
+}
+
+// performRequest is a helper function to perform HTTP requests in tests.
+func performRequest(t *testing.T, router *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
+	t.Helper()
+
+	var reqBody io.Reader
+	if body != nil {
+		jsonBytes, err := json.Marshal(body)
+		require.NoError(t, err)
+		reqBody = bytes.NewBuffer(jsonBytes)
+	}
+
+	req := httptest.NewRequest(method, path, reqBody)
+	// req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	return w
 }
