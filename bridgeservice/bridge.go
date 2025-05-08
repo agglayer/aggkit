@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/0xPolygon/zkevm-ethtx-manager/common"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
@@ -30,6 +29,7 @@ const (
 	meterName = "github.com/agglayer/aggkit/bridgeservice"
 
 	networkIDParam       = "network_id"
+	networkIDsParam      = "network_ids"
 	pageNumberParam      = "page_number"
 	pageSizeParam        = "page_size"
 	depositCountParam    = "deposit_count"
@@ -155,7 +155,7 @@ func (b *BridgeService) Start(ctx context.Context, address string) error {
 // @Description Returns a paginated list of bridge events for the specified network.
 // @Tags bridges
 // @Param network_id query uint32 true "Target network ID"
-// @Param page query uint32 false "Page number (default 1)"
+// @Param page_number query uint32 false "Page number (default 1)"
 // @Param page_size query uint32 false "Page size (default 100)"
 // @Param deposit_count query uint64 false "Filter by deposit count"
 // @Param network_ids query []uint32 false "Filter by one or more network IDs"
@@ -165,6 +165,9 @@ func (b *BridgeService) Start(ctx context.Context, address string) error {
 // @Failure 500 {object} gin.H "Internal server error"
 // @Router /bridges [get]
 func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
+	b.logger.Debugf("GetBridges request received (network id=%s, page number=%s, page size=%s)",
+		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
+
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -182,13 +185,13 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		depositCountPtr = &depositCount
 	}
 
-	networkIDs, err := parseUint32SliceParam(c, "network_ids")
+	networkIDs, err := parseUint32SliceParam(c, networkIDsParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("invalid network_ids: %s", err)})
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, setupErr := b.parsePaginationParams(c, "get_bridges")
+	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequestREST(c, "get_bridges")
 	if setupErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
 		return
@@ -237,7 +240,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Description Returns a paginated list of claims for the specified network.
 // @Tags claims
 // @Param network_id query uint32 true "Target network ID"
-// @Param page query uint32 false "Page number (default 1)"
+// @Param page_number query uint32 false "Page number (default 1)"
 // @Param page_size query uint32 false "Page size (default 100)"
 // @Param network_ids query []uint32 false "Filter by one or more network IDs"
 // @Produce json
@@ -246,31 +249,30 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Failure 500 {object} gin.H "Internal server error"
 // @Router /claims [get]
 func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
+	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s)",
+		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
+
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	networkIDs, err := parseUint32SliceParam(c, "network_ids")
+	networkIDs, err := parseUint32SliceParam(c, networkIDsParam)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	pageNumberRaw := c.Query(pageNumberParam)
-	pageSizeRaw := c.Query(pageSizeParam)
-	b.logger.Debugf("GetClaims request received (network id=%d, page number=%s, page size=%s)",
-		networkID, pageNumberRaw, pageSizeRaw)
-	ctx, cancel, pageNumber, pageSize, setupErr := b.parsePaginationParams(c, "get_claims")
+	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequestREST(c, "get_claims")
 	if setupErr != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
 		return
 	}
 	defer cancel()
 
-	b.logger.Debugf("fetching claims (network id=%d, page number=%d, page size=%d)",
-		networkID, pageNumber, pageSize)
+	b.logger.Debugf("fetching claims (network id=%d, page=%d, size=%d, network_ids=%v)",
+		networkID, pageNumber, pageSize, networkIDs)
 
 	var (
 		claims []*bridgesync.ClaimResponse
@@ -309,8 +311,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 // @Description Returns token mappings for the given network, paginated
 // @Tags token-mappings
 // @Param network_id query int true "Network ID"
-// @Param page query int false "Page number"
-// @Param size query int false "Page size"
+// @Param page_number query int false "Page number"
+// @Param page_size query int false "Page size"
 // @Produce json
 // @Success 200 {object} TokenMappingsResult
 // @Failure 400 {object} gin.H
@@ -319,7 +321,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 //
 //nolint:dupl
 func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
-	b.logger.Debugf("GetTokenMappings request received (network id=%s)", c.Query(networkIDParam))
+	b.logger.Debugf("GetTokenMappings request received (network id=%s, page number=%s, page size=%s)",
+		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -327,9 +330,9 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, err := b.parsePaginationParams(c, "get_token_mappings")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequestREST(c, "get_token_mappings")
+	if setupErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
 		return
 	}
 	defer cancel()
@@ -341,16 +344,17 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 
 	switch {
 	case networkID == mainnetNetworkID:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize)
+		tokenMappings, tokenMappingsCount, setupErr = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize)
 	case b.networkID == networkID:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
+		tokenMappings, tokenMappingsCount, setupErr = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
 		return
 	}
 
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("failed to fetch token mappings: %s", err.Error())})
+	if setupErr != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to fetch token mappings: %s", setupErr.Error())})
 		return
 	}
 
@@ -365,8 +369,8 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 // @Description Returns legacy token migrations for the given network, paginated
 // @Tags legacy-token-migrations
 // @Param network_id query int true "Network ID"
-// @Param page query int false "Page number"
-// @Param size query int false "Page size"
+// @Param page_number query int false "Page number"
+// @Param page_size query int false "Page size"
 // @Produce json
 // @Success 200 {object} types.LegacyTokenMigrationsResult
 // @Failure 400 {object} gin.H
@@ -375,7 +379,8 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 //
 //nolint:dupl
 func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
-	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%s)", c.Query(networkIDParam))
+	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%s, page number=%s, page size=%s)",
+		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -383,10 +388,9 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, err :=
-		b.parsePaginationParams(c, "get_legacy_token_migrations")
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequestREST(c, "get_legacy_token_migrations")
+	if setupErr != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
 		return
 	}
 	defer cancel()
@@ -398,17 +402,17 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 
 	switch {
 	case networkID == mainnetNetworkID:
-		tokenMigrations, tokenMigrationsCount, err = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
+		tokenMigrations, tokenMigrationsCount, setupErr = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	case b.networkID == networkID:
-		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
+		tokenMigrations, tokenMigrationsCount, setupErr = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
 		return
 	}
 
-	if err != nil {
+	if setupErr != nil {
 		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to fetch legacy token migrations: %s", err.Error())})
+			gin.H{"error": fmt.Sprintf("failed to fetch legacy token migrations: %s", setupErr.Error())})
 		return
 	}
 
@@ -488,9 +492,8 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Failure 500 {object} gin.H
 // @Router /injected-info-after-index [get]
 func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
-	l1InfoTreeIdxRaw := c.Query(l1InfoTreeIndexParam)
 	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, deposit count=%s)",
-		c.Query(networkIDParam), l1InfoTreeIdxRaw)
+		c.Query(networkIDParam), c.Query(l1InfoTreeIndexParam))
 
 	l1InfoTreeIndex, err := parseUintQuery(c, l1InfoTreeIndexParam, true, uint32(0))
 	if err != nil {
@@ -513,9 +516,7 @@ func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
 	}
 	cnt.Add(ctx, 1)
 
-	var (
-		l1InfoLeaf *l1infotreesync.L1InfoTreeLeaf
-	)
+	var l1InfoLeaf *l1infotreesync.L1InfoTreeLeaf
 
 	switch {
 	case networkID == mainnetNetworkID:
@@ -566,6 +567,8 @@ func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
 // @Failure 500 {object} gin.H "Internal server error retrieving claim proof"
 // @Router /claim-proof [get]
 func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
+	b.logger.Debugf("ClaimProof request received (network id=%s, l1 info tree index=%s, deposit count=%s)",
+		c.Query(networkIDParam), c.Query(l1InfoTreeIndexParam), c.Query(depositCountParam))
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
@@ -662,6 +665,8 @@ func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 		return
 	}
 
+	b.logger.Debugf("SponsorClaim request received (claim global index=%d)", claim.GlobalIndex)
+
 	ctx, cancel := context.WithTimeout(c, b.writeTimeout)
 	defer cancel()
 
@@ -704,6 +709,9 @@ func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 // @Failure 500 {object} gin.H "Internal server error retrieving claim status"
 // @Router /sponsored-claim-status [get]
 func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
+	globalIndexRaw := c.Query("global_index")
+
+	b.logger.Debugf("GetSponsoredClaimStatus request received (claim global index=%s)", globalIndexRaw)
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
@@ -718,13 +726,12 @@ func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
 		return
 	}
 
-	globalIndexRaw := c.Query("global_index")
 	if globalIndexRaw == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "global_index is mandatory"})
 		return
 	}
 
-	globalIndex, _ := new(big.Int).SetString(globalIndexRaw, common.Base10)
+	globalIndex, _ := new(big.Int).SetString(globalIndexRaw, 0)
 	claim, err := b.sponsor.GetClaim(globalIndex)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError,
@@ -747,6 +754,7 @@ func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
 // @Failure 500 {object} gin.H "Internal server error retrieving reorg data"
 // @Router /last-reorg-event [get]
 func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
+	b.logger.Debugf("GetLastReorgEvent request received (network id=%s)", c.Query(networkIDParam))
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
 	defer cancel()
 
@@ -762,9 +770,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 		return
 	}
 
-	var (
-		reorgEvent *bridgesync.LastReorg
-	)
+	var reorgEvent *bridgesync.LastReorg
 
 	switch {
 	case networkID == mainnetNetworkID:
@@ -896,8 +902,8 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 	return info.L1InfoTreeIndex, nil
 }
 
-// parsePaginationParams parses the pagination parameters from the request context
-func (b *BridgeService) parsePaginationParams(
+// setupRequestREST parses the pagination parameters from the request context
+func (b *BridgeService) setupRequestREST(
 	c *gin.Context,
 	counterName string) (context.Context, context.CancelFunc, uint32, uint32, error) {
 	pageNumber, err := parseUintQuery(c, pageNumberParam, false, DefaultPage)
