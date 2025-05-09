@@ -34,6 +34,7 @@ const (
 	pageSizeParam     = "page_size"
 	depositCountParam = "deposit_count"
 	leafIndexParam    = "leaf_index"
+	globalIndexParam  = "global_index"
 
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
@@ -711,7 +712,7 @@ func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 // @Failure 500 {object} gin.H "Internal server error retrieving claim status"
 // @Router /sponsored-claim-status [get]
 func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
-	globalIndexRaw := c.Query("global_index")
+	globalIndexRaw := c.Query(globalIndexParam)
 
 	b.logger.Debugf("GetSponsoredClaimStatus request received (claim global index=%s)", globalIndexRaw)
 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
@@ -729,7 +730,7 @@ func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
 	}
 
 	if globalIndexRaw == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "global_index is mandatory"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is mandatory", globalIndexParam)})
 		return
 	}
 
@@ -958,28 +959,4 @@ func (b *BridgeService) SponsorClaim(claim claimsponsor.Claim) (interface{}, rpc
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error adding claim to the queue %s", err))
 	}
 	return nil, nil
-}
-
-// TODO: @Stefan-Ethernal REMOVE
-// GetSponsoredClaimStatus returns the status of a claim that has been previously requested to be sponsored.
-// This call needs to be done to the same client were it was requested to be sponsored
-func (b *BridgeService) GetSponsoredClaimStatus(globalIndex *big.Int) (interface{}, rpc.Error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
-	defer cancel()
-
-	c, merr := b.meter.Int64Counter("get_sponsored_claim_status")
-	if merr != nil {
-		b.logger.Warnf("failed to create get_sponsored_claim_status counter: %s", merr)
-	}
-	c.Add(ctx, 1)
-
-	if b.sponsor == nil {
-		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode, "this client does not support claim sponsoring")
-	}
-	claim, err := b.sponsor.GetClaim(globalIndex)
-	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-			fmt.Sprintf("failed to get claim status for global index %d, error: %s", globalIndex, err))
-	}
-	return claim.Status, nil
 }
