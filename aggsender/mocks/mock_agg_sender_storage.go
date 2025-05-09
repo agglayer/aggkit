@@ -131,9 +131,9 @@ func (_c *AggSenderStorage_GetCertificateByHeight_Call) RunAndReturn(run func(ui
 	return _c
 }
 
-// GetCertificatesByStatus provides a mock function with given fields: status
-func (_m *AggSenderStorage) GetCertificatesByStatus(status []agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error) {
-	ret := _m.Called(status)
+// GetCertificatesByStatus provides a mock function with given fields: status, lightQuery
+func (_m *AggSenderStorage) GetCertificatesByStatus(status []agglayertypes.CertificateStatus, lightQuery bool) ([]*types.CertificateInfo, error) {
+	ret := _m.Called(status, lightQuery)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetCertificatesByStatus")
@@ -141,19 +141,19 @@ func (_m *AggSenderStorage) GetCertificatesByStatus(status []agglayertypes.Certi
 
 	var r0 []*types.CertificateInfo
 	var r1 error
-	if rf, ok := ret.Get(0).(func([]agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error)); ok {
-		return rf(status)
+	if rf, ok := ret.Get(0).(func([]agglayertypes.CertificateStatus, bool) ([]*types.CertificateInfo, error)); ok {
+		return rf(status, lightQuery)
 	}
-	if rf, ok := ret.Get(0).(func([]agglayertypes.CertificateStatus) []*types.CertificateInfo); ok {
-		r0 = rf(status)
+	if rf, ok := ret.Get(0).(func([]agglayertypes.CertificateStatus, bool) []*types.CertificateInfo); ok {
+		r0 = rf(status, lightQuery)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*types.CertificateInfo)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func([]agglayertypes.CertificateStatus) error); ok {
-		r1 = rf(status)
+	if rf, ok := ret.Get(1).(func([]agglayertypes.CertificateStatus, bool) error); ok {
+		r1 = rf(status, lightQuery)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -168,13 +168,14 @@ type AggSenderStorage_GetCertificatesByStatus_Call struct {
 
 // GetCertificatesByStatus is a helper method to define mock.On call
 //   - status []agglayertypes.CertificateStatus
-func (_e *AggSenderStorage_Expecter) GetCertificatesByStatus(status interface{}) *AggSenderStorage_GetCertificatesByStatus_Call {
-	return &AggSenderStorage_GetCertificatesByStatus_Call{Call: _e.mock.On("GetCertificatesByStatus", status)}
+//   - lightQuery bool
+func (_e *AggSenderStorage_Expecter) GetCertificatesByStatus(status interface{}, lightQuery interface{}) *AggSenderStorage_GetCertificatesByStatus_Call {
+	return &AggSenderStorage_GetCertificatesByStatus_Call{Call: _e.mock.On("GetCertificatesByStatus", status, lightQuery)}
 }
 
-func (_c *AggSenderStorage_GetCertificatesByStatus_Call) Run(run func(status []agglayertypes.CertificateStatus)) *AggSenderStorage_GetCertificatesByStatus_Call {
+func (_c *AggSenderStorage_GetCertificatesByStatus_Call) Run(run func(status []agglayertypes.CertificateStatus, lightQuery bool)) *AggSenderStorage_GetCertificatesByStatus_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].([]agglayertypes.CertificateStatus))
+		run(args[0].([]agglayertypes.CertificateStatus), args[1].(bool))
 	})
 	return _c
 }
@@ -184,7 +185,7 @@ func (_c *AggSenderStorage_GetCertificatesByStatus_Call) Return(_a0 []*types.Cer
 	return _c
 }
 
-func (_c *AggSenderStorage_GetCertificatesByStatus_Call) RunAndReturn(run func([]agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error)) *AggSenderStorage_GetCertificatesByStatus_Call {
+func (_c *AggSenderStorage_GetCertificatesByStatus_Call) RunAndReturn(run func([]agglayertypes.CertificateStatus, bool) ([]*types.CertificateInfo, error)) *AggSenderStorage_GetCertificatesByStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -293,12 +294,12 @@ func (_c *AggSenderStorage_SaveLastSentCertificate_Call) RunAndReturn(run func(c
 	return _c
 }
 
-// UpdateCertificate provides a mock function with given fields: ctx, certificate
-func (_m *AggSenderStorage) UpdateCertificate(ctx context.Context, certificate types.CertificateInfo) error {
+// UpdateCertificateStatus provides a mock function with given fields: ctx, certificate
+func (_m *AggSenderStorage) UpdateCertificateStatus(ctx context.Context, certificate types.CertificateInfo) error {
 	ret := _m.Called(ctx, certificate)
 
 	if len(ret) == 0 {
-		panic("no return value specified for UpdateCertificate")
+		panic("no return value specified for UpdateCertificateStatus")
 	}
 
 	var r0 error
@@ -311,31 +312,31 @@ func (_m *AggSenderStorage) UpdateCertificate(ctx context.Context, certificate t
 	return r0
 }
 
-// AggSenderStorage_UpdateCertificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateCertificate'
-type AggSenderStorage_UpdateCertificate_Call struct {
+// AggSenderStorage_UpdateCertificateStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateCertificateStatus'
+type AggSenderStorage_UpdateCertificateStatus_Call struct {
 	*mock.Call
 }
 
-// UpdateCertificate is a helper method to define mock.On call
+// UpdateCertificateStatus is a helper method to define mock.On call
 //   - ctx context.Context
 //   - certificate types.CertificateInfo
-func (_e *AggSenderStorage_Expecter) UpdateCertificate(ctx interface{}, certificate interface{}) *AggSenderStorage_UpdateCertificate_Call {
-	return &AggSenderStorage_UpdateCertificate_Call{Call: _e.mock.On("UpdateCertificate", ctx, certificate)}
+func (_e *AggSenderStorage_Expecter) UpdateCertificateStatus(ctx interface{}, certificate interface{}) *AggSenderStorage_UpdateCertificateStatus_Call {
+	return &AggSenderStorage_UpdateCertificateStatus_Call{Call: _e.mock.On("UpdateCertificateStatus", ctx, certificate)}
 }
 
-func (_c *AggSenderStorage_UpdateCertificate_Call) Run(run func(ctx context.Context, certificate types.CertificateInfo)) *AggSenderStorage_UpdateCertificate_Call {
+func (_c *AggSenderStorage_UpdateCertificateStatus_Call) Run(run func(ctx context.Context, certificate types.CertificateInfo)) *AggSenderStorage_UpdateCertificateStatus_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(types.CertificateInfo))
 	})
 	return _c
 }
 
-func (_c *AggSenderStorage_UpdateCertificate_Call) Return(_a0 error) *AggSenderStorage_UpdateCertificate_Call {
+func (_c *AggSenderStorage_UpdateCertificateStatus_Call) Return(_a0 error) *AggSenderStorage_UpdateCertificateStatus_Call {
 	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *AggSenderStorage_UpdateCertificate_Call) RunAndReturn(run func(context.Context, types.CertificateInfo) error) *AggSenderStorage_UpdateCertificate_Call {
+func (_c *AggSenderStorage_UpdateCertificateStatus_Call) RunAndReturn(run func(context.Context, types.CertificateInfo) error) *AggSenderStorage_UpdateCertificateStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }
