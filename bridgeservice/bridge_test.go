@@ -1573,42 +1573,52 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 	})
 }
 
-func TestGetSponsoredClaimStatus(t *testing.T) {
+func TestGetSponsoredClaimStatusHandler(t *testing.T) {
 	t.Run("Client does not support sponsored claims", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridge.sponsor = nil
 
-		result, err := bridgeMocks.bridge.GetSponsoredClaimStatus(common.Big1)
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, "this client does not support claim sponsoring")
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status?global_index=1", nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), "this client does not support claim sponsoring")
+	})
+
+	t.Run("Global index is missing", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status", nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), "global_index is mandatory")
 	})
 
 	t.Run("Failed to get claim status", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.sponsor.EXPECT().GetClaim(mock.Anything).
-			Return(nil, errors.New(fooErrMsg))
 
-		result, err := bridgeMocks.bridge.GetSponsoredClaimStatus(common.Big1)
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get claim status for global index %d, error: %s", common.Big1, fooErrMsg))
+		bridgeMocks.sponsor.EXPECT().GetClaim(mock.Anything).
+			Return(nil, fmt.Errorf(fooErrMsg))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status?global_index=1", nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get claim status for global index 1, error: %s", fooErrMsg))
 	})
 
 	t.Run("Claim status retrieval successful", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		expectedStatus := claimsponsor.PendingClaimStatus
 		bridgeMocks.sponsor.EXPECT().GetClaim(mock.Anything).
 			Return(&claimsponsor.Claim{
-				GlobalIndex: common.Big2,
-				Status:      claimsponsor.PendingClaimStatus,
+				GlobalIndex: big.NewInt(1),
+				Status:      expectedStatus,
 			}, nil)
 
-		result, err := bridgeMocks.bridge.GetSponsoredClaimStatus(common.Big1)
-		require.Nil(t, err)
-		require.Equal(t, result, claimsponsor.PendingClaimStatus)
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status?global_index=1", nil)
+		require.Equal(t, http.StatusOK, response.Code)
+
+		var status claimsponsor.ClaimStatus
+		err := json.Unmarshal(response.Body.Bytes(), &status)
+		require.NoError(t, err)
+		require.Equal(t, expectedStatus, status)
 	})
 }
 
