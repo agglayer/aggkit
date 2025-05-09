@@ -2,6 +2,7 @@ package claimsponsor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
@@ -21,9 +22,10 @@ const (
 	LeafTypeAsset uint8 = 0
 	// LeafTypeMessage represents a bridge message
 	LeafTypeMessage uint8 = 1
+)
 
-	gasTooHighErrTemplate = "Claim tx estimated to consume more gas than the maximum allowed by the service. " +
-		"Estimated %d, maximum allowed: %d"
+var ErrGasEstimateTooHigh = errors.New(
+	"claim gas estimate exceeds maximum allowed by claimsponsor service",
 )
 
 type EthClienter interface {
@@ -108,7 +110,10 @@ func (c *EVMClaimSponsor) checkClaim(ctx context.Context, claim *Claim, data []b
 		return err
 	}
 	if gas > c.maxGas {
-		return fmt.Errorf(gasTooHighErrTemplate, gas, c.maxGas)
+		return fmt.Errorf(
+			"%w: estimated %d, maximum allowed: %d",
+			ErrGasEstimateTooHigh, gas, c.maxGas,
+		)
 	}
 
 	return nil

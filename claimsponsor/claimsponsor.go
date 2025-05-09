@@ -149,6 +149,12 @@ func (c *ClaimSponsor) claim(ctx context.Context) error {
 					return fmt.Errorf("cleanup delete after AlreadyClaimed: %w", err)
 				}
 				return nil
+			} else if errors.Is(err, ErrGasEstimateTooHigh) {
+				c.logger.Infof("Trx GlobalIndex: %s evicting from db, %s", claim.GlobalIndex, err.Error())
+				if err := c.deleteClaim(claim.GlobalIndex); err != nil {
+					return fmt.Errorf("cleanup delete after gas too high: %w", err)
+				}
+				return nil
 			}
 			return fmt.Errorf("error sending claim: %w", err)
 		}
@@ -265,7 +271,7 @@ func (c *ClaimSponsor) GetClaim(globalIndex *big.Int) (*Claim, error) {
 
 func (c *ClaimSponsor) deleteClaim(globalIndex *big.Int) error {
 	res, err := c.db.Exec(
-		`DELETE FROM claim WHERE global_index=$1`,
+		`DELETE FROM claim WHERE global_index = $1`,
 		globalIndex.String(),
 	)
 	if err != nil {
