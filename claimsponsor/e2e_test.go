@@ -2,6 +2,7 @@ package claimsponsor_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"path"
@@ -10,10 +11,12 @@ import (
 
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/helpers"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,10 +25,13 @@ func TestE2EL1toEVML2(t *testing.T) {
 		name          string
 		maxGas        uint64
 		expectSuccess bool
+		mockAddErr    error
 	}
 	tests := []tc{
-		{"sufficient gas", 200_000, true},
-		{"no-limit (maxGas=0)", 0, true},
+		{"sufficient gas", 200_000, true, nil},
+		{"no-limit (maxGas=0)", 0, true, nil},
+		{"insufficient gas", 1, false, nil},
+		{"tx already claimed", 0, false, errors.New("execution reverted (0x646cf558)")},
 	}
 
 	for _, tt := range tests {
@@ -33,6 +39,13 @@ func TestE2EL1toEVML2(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx := context.Background()
 			setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
+
+			txMgrMock := setup.EthTxManagerMock
+			if tt.mockAddErr != nil {
+				txMgrMock = helpers.NewEthTxManagerMock(t)
+				txMgrMock.On("Add", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+					Return(common.Hash{}, tt.mockAddErr)
+			}
 
 			dbPath := path.Join(t.TempDir(), fmt.Sprintf("cs_%s.sqlite", tt.name))
 			claimer, err := claimsponsor.NewEVMClaimSponsor(
@@ -43,7 +56,7 @@ func TestE2EL1toEVML2(t *testing.T) {
 				setup.L2Environment.Auth.From,
 				tt.maxGas,
 				0,
-				setup.EthTxManagerMock,
+				txMgrMock,
 				0, 0, // retry periods
 				10*time.Millisecond, // waitTxToBeMinedPeriod
 				10*time.Millisecond, // waitOnEmptyQueue
@@ -109,9 +122,11 @@ func TestE2EL1toEVML2(t *testing.T) {
 				require.NoError(t, err)
 				require.True(t, isClaimed)
 			} else {
-				claim, err := claimer.GetClaim(globalIndex)
-				require.NoError(t, err)
-				require.Equal(t, claimsponsor.WIPClaimStatus, claim.Status)
+				require.Eventually(t, func() bool {
+					claim, err := claimer.GetClaim(globalIndex)
+					return errors.Is(err, db.ErrNotFound) && claim == nil
+				}, 5*time.Second, 100*time.Millisecond,
+					"claim should be deleted when gas is too low")
 			}
 		})
 	}
