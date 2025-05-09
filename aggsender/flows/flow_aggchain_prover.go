@@ -12,9 +12,16 @@ import (
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"google.golang.org/grpc/codes"
 )
+
+var errNoProofBuiltYet = &aggkitcommon.GRPCError{
+	Code:    codes.Unavailable,
+	Message: "Proposer service has not built any proof yet",
+}
 
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type AggchainProverFlow struct {
@@ -170,6 +177,12 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
 		ctx, lastProvenBlock, buildParams.ToBlock, buildParams.Claims)
 	if err != nil {
+		if errors.As(err, errNoProofBuiltYet) {
+			a.log.Infof("aggchainProverFlow - no proof built yet for lastProvenBlock: %d, maxEndBlock: %d",
+				lastProvenBlock, buildParams.ToBlock)
+			return nil, nil
+		}
+
 		return nil, fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
 	}
 

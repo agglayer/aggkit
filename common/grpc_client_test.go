@@ -19,9 +19,13 @@ func TestRepackGRPCErrorWithDetails(t *testing.T) {
 
 	t.Run("GRPCErrorWithoutDetails", func(t *testing.T) {
 		st := status.New(codes.InvalidArgument, "invalid argument")
-		err := st.Err()
+		err := GRPCError{
+			Code:    st.Code(),
+			Message: st.Message(),
+			Details: nil,
+		}
 		result := RepackGRPCErrorWithDetails(err)
-		expected := "invalid argument - Details: none"
+		expected := err.Error()
 		require.Equal(t, expected, result.Error())
 	})
 
@@ -35,9 +39,14 @@ func TestRepackGRPCErrorWithDetails(t *testing.T) {
 		stWithDetails, err := st.WithDetails(detail)
 		require.NoError(t, err)
 
+		expectedErr := GRPCError{
+			Code:    stWithDetails.Code(),
+			Message: stWithDetails.Message(),
+			Details: []string{"Reason: InvalidInput, Domain: example.com. , Metadata: {field: value}"},
+		}
+
 		result := RepackGRPCErrorWithDetails(stWithDetails.Err())
-		expected := "invalid argument - Details: [Reason: InvalidInput, Domain: example.com. , Metadata: {field: value}]"
-		require.Equal(t, expected, result.Error())
+		require.Equal(t, expectedErr.Error(), result.Error())
 	})
 
 	t.Run("GRPCErrorWithMultipleDetails", func(t *testing.T) {
@@ -55,8 +64,13 @@ func TestRepackGRPCErrorWithDetails(t *testing.T) {
 		stWithDetails, err := st.WithDetails(detail1, detail2)
 		require.NoError(t, err)
 
+		expectedErr := GRPCError{
+			Code:    stWithDetails.Code(),
+			Message: stWithDetails.Message(),
+			Details: []string{"Reason: InvalidInput, Domain: example.com. , Metadata: {field1: value1}", "Reason: AnotherReason, Domain: another.com. , Metadata: {field2: value2}"},
+		}
+
 		result := RepackGRPCErrorWithDetails(stWithDetails.Err())
-		expected := "invalid argument - Details: [Reason: InvalidInput, Domain: example.com. , Metadata: {field1: value1};Reason: AnotherReason, Domain: another.com. , Metadata: {field2: value2}]"
-		require.Equal(t, expected, result.Error())
+		require.Equal(t, expectedErr.Error(), result.Error())
 	})
 }

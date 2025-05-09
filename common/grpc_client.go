@@ -6,6 +6,7 @@ import (
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -38,6 +39,22 @@ func (c *Client) Close() error {
 	return c.conn.Close()
 }
 
+// GRPCError represents an error structure used in gRPC communication.
+// It contains the error code, a descriptive message, and optional details
+// providing additional context about the error.
+type GRPCError struct {
+	Code    codes.Code
+	Message string
+	Details []string
+}
+
+// Error returns a formatted string representation of the GRPCError,
+// including the error code, message, and details. The details are
+// joined into a single string for readability.
+func (e GRPCError) Error() string {
+	return fmt.Sprintf("Code: %s, Message: %s, Details: %s", e.Code.String(), e.Message, joinDetails(e.Details))
+}
+
 // RepackGRPCErrorWithDetails extracts *status.Status and formats ErrorInfo details into a single error
 func RepackGRPCErrorWithDetails(err error) error {
 	st, ok := status.FromError(err)
@@ -64,7 +81,11 @@ func RepackGRPCErrorWithDetails(err error) error {
 		}
 	}
 
-	return fmt.Errorf("%s - Details: %s", st.Message(), joinDetails(detailStrs))
+	return GRPCError{
+		Code:    st.Code(),
+		Message: st.Message(),
+		Details: detailStrs,
+	}
 }
 
 // joinDetails joins detail strings with a separator
