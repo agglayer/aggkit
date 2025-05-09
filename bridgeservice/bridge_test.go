@@ -12,10 +12,10 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-rpc/rpc"
 	mocks "github.com/agglayer/aggkit/bridgeservice/mocks"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -1622,67 +1622,140 @@ func TestGetSponsoredClaimStatusHandler(t *testing.T) {
 	})
 }
 
-func TestSponsorClaim(t *testing.T) {
+func TestSponsorClaimHandler(t *testing.T) {
 	t.Run("Client does not support sponsored claims", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridge.sponsor = nil
 
-		result, err := bridgeMocks.bridge.SponsorClaim(claimsponsor.Claim{})
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, "this client does not support claim sponsoring")
+		claim := claimsponsor.Claim{
+			GlobalIndex:        common.Big1,
+			DestinationNetwork: l2NetworkID,
+		}
+
+		body, err := json.Marshal(claim)
+		require.NoError(t, err)
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, "/sponsor-claim", body)
+
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), "this client does not support claim sponsoring")
 	})
 
 	t.Run("Unsupported network id", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		claim := claimsponsor.Claim{
+			GlobalIndex:        common.Big1,
+			DestinationNetwork: 999,
+		}
 
-		result, err := bridgeMocks.bridge.SponsorClaim(claimsponsor.Claim{DestinationNetwork: 999})
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("this client only sponsors claims for destination network %d", l2NetworkID))
+		body, err := json.Marshal(claim)
+		require.NoError(t, err)
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, "/sponsor-claim", body)
+
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("this client only sponsors claims for destination network %d", l2NetworkID))
 	})
 
 	t.Run("Failed to add claim to the queue", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.sponsor.EXPECT().
-			AddClaimToQueue(mock.Anything).
-			Return(errors.New(fooErrMsg))
 
-		result, err := bridgeMocks.bridge.SponsorClaim(claimsponsor.Claim{DestinationNetwork: l2NetworkID})
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("error adding claim to the queue %s", fooErrMsg))
+		claim := claimsponsor.Claim{
+			GlobalIndex:        common.Big1,
+			DestinationNetwork: l2NetworkID,
+		}
+
+		bridgeMocks.sponsor.EXPECT().AddClaimToQueue(mock.Anything).Return(fmt.Errorf(fooErrMsg))
+
+		body, err := json.Marshal(claim)
+		require.NoError(t, err)
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, "/sponsor-claim", body)
+
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to add claim to queue: %s", fooErrMsg))
 	})
 
 	t.Run("Claim is added to the queue", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.sponsor.EXPECT().
-			AddClaimToQueue(mock.Anything).
-			Return(nil)
 
-		result, err := bridgeMocks.bridge.SponsorClaim(claimsponsor.Claim{DestinationNetwork: l2NetworkID})
-		require.Nil(t, result)
-		require.Nil(t, err)
+		claim := claimsponsor.Claim{
+			GlobalIndex:        common.Big1,
+			DestinationNetwork: l2NetworkID,
+		}
+
+		bridgeMocks.sponsor.EXPECT().AddClaimToQueue(mock.Anything).Return(nil)
+
+		body, err := json.Marshal(claim)
+		require.NoError(t, err)
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, "/sponsor-claim", body)
+
+		require.Equal(t, http.StatusOK, response.Code)
+
+		var respBody map[string]string
+		err = json.Unmarshal(response.Body.Bytes(), &respBody)
+		require.NoError(t, err)
+		require.Equal(t, "claim sponsored", respBody["status"])
+	})
+
+	t.Run("Invalid request body - not JSON", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Invalid JSON (plain text, not JSON at all)
+		invalidBody := `foo`
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, "/sponsor-claim", invalidBody)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), "invalid request body")
+	})
+
+	t.Run("Invalid request body - malformed JSON", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Malformed JSON
+		invalidBody := `{"global_index": "123", "destination_network": }`
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, "/sponsor-claim", invalidBody)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), "invalid request body")
+	})
+
+	t.Run("Invalid request body - empty JSON", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		emptyBody := `{}`
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, "/sponsor-claim", emptyBody)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), "global_index is mandatory")
 	})
 }
 
 // performRequest is a helper function to perform HTTP requests in tests.
-func performRequest(t *testing.T, router *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
+func performRequest(t *testing.T, router *gin.Engine, method, path string, body interface{}) *httptest.ResponseRecorder {
 	t.Helper()
 
-	var reqBody io.Reader
-	if body != nil {
-		jsonBytes, err := json.Marshal(body)
-		require.NoError(t, err)
-		reqBody = bytes.NewBuffer(jsonBytes)
+	var bodyReader io.Reader
+
+	switch v := body.(type) {
+	case string:
+		// If the body is a raw string, use it directly.
+		bodyReader = strings.NewReader(v)
+	case []byte:
+		// If the body is a raw byte array, use it directly.
+		bodyReader = bytes.NewBuffer(v)
+	default:
+		if body != nil {
+			jsonBytes, err := json.Marshal(body)
+			require.NoError(t, err)
+
+			// Check if the marshaled JSON is an empty object (i.e., `{}`)
+			if string(jsonBytes) == "{}" {
+				t.Errorf("Marshaled JSON is empty. Input: %+v", body)
+			}
+
+			bodyReader = bytes.NewBuffer(jsonBytes)
+		}
 	}
 
-	req := httptest.NewRequest(method, path, reqBody)
+	req := httptest.NewRequest(method, path, bodyReader)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 

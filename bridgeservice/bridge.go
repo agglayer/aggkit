@@ -2,14 +2,15 @@ package bridgeservice
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/big"
 	"net/http"
 	"time"
 
-	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
@@ -661,14 +662,30 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 // @Failure 500 {object} gin.H{"error": "internal server error"}
 // @Router /sponsor-claim [post]
 func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
-	var claim claimsponsor.Claim
-
-	if err := c.ShouldBindJSON(&claim); err != nil {
+	rawBody, err := io.ReadAll(c.Request.Body)
+	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
 		return
 	}
 
-	b.logger.Debugf("SponsorClaim request received (claim global index=%d)", claim.GlobalIndex)
+	if len(rawBody) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
+		return
+	}
+
+	var claim claimsponsor.Claim
+	if err := json.Unmarshal(rawBody, &claim); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+		return
+	}
+
+	// Validate required fields
+	if claim.GlobalIndex == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "global_index is mandatory"})
+		return
+	}
+
+	b.logger.Debugf("SponsorClaim request received (claim global index=%s)", claim.GlobalIndex.String())
 
 	ctx, cancel := context.WithTimeout(c, b.writeTimeout)
 	defer cancel()
@@ -932,31 +949,4 @@ func (b *BridgeService) setupRequest(
 	counter.Add(ctx, 1)
 
 	return ctx, cancel, pageNumber, pageSize, nil
-}
-
-// TODO: @Stefan-Ethernal REMOVE
-// SponsorClaim sends a claim tx on behalf of the user.
-// This call needs to be done to a client of the same network were the claim is going to be sent (bridge destination)
-func (b *BridgeService) SponsorClaim(claim claimsponsor.Claim) (interface{}, rpc.Error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.writeTimeout)
-	defer cancel()
-
-	c, merr := b.meter.Int64Counter("sponsor_claim")
-	if merr != nil {
-		b.logger.Warnf("failed to create sponsor_claim counter: %s", merr)
-	}
-	c.Add(ctx, 1)
-
-	if b.sponsor == nil {
-		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode, "this client does not support claim sponsoring")
-	}
-	if claim.DestinationNetwork != b.networkID {
-		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
-			fmt.Sprintf("this client only sponsors claims for destination network %d", b.networkID),
-		)
-	}
-	if err := b.sponsor.AddClaimToQueue(&claim); err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error adding claim to the queue %s", err))
-	}
-	return nil, nil
 }
