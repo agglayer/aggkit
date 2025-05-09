@@ -101,8 +101,8 @@ func (b *BridgeService) registerRoutes() {
 	b.router.GET("/claims", b.GetClaimsHandler)
 	b.router.GET("/token-mappings", b.GetTokenMappingsHandler)
 	b.router.GET("/legacy-token-migrations", b.GetLegacyTokenMigrationsHandler)
-	b.router.GET("/l1-info-tree-index-for-bridge", b.L1InfoTreeIndexForBridgeHandler)
-	b.router.GET("/injected-info-after-index", b.InjectedInfoAfterIndexHandler)
+	b.router.GET("/l1-info-tree-index", b.L1InfoTreeIndexForBridgeHandler)
+	b.router.GET("/injected-l1-info-leaf", b.InjectedL1InfoLeafHandler)
 	b.router.GET("/claim-proof", b.ClaimProofHandler)
 	b.router.POST("/sponsor-claim", b.SponsorClaimHandler)
 	b.router.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
@@ -434,7 +434,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 // @Success 200 {object} uint32
 // @Failure 400 {object} gin.H
 // @Failure 500 {object} gin.H
-// @Router /l1-info-tree-index-for-bridge [get]
+// @Router /l1-info-tree-index [get]
 func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	b.logger.Debugf("L1InfoTreeIndexForBridge request received (network id=%s, deposit count=%s)",
 		c.Query(networkIDParam), c.Query(depositCountParam))
@@ -492,18 +492,18 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Success 200 {object} l1infotreesync.L1InfoTreeLeaf
 // @Failure 400 {object} gin.H
 // @Failure 500 {object} gin.H
-// @Router /injected-info-after-index [get]
-func (b *BridgeService) InjectedInfoAfterIndexHandler(c *gin.Context) {
+// @Router /injected-l1-info-leaf [get]
+func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, leaf index=%s)",
 		c.Query(networkIDParam), c.Query(leafIndexParam))
 
-	l1InfoTreeIndex, err := parseUintQuery(c, leafIndexParam, true, uint32(0))
+	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 
-	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
+	l1InfoTreeIndex, err := parseUintQuery(c, leafIndexParam, true, uint32(0))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
