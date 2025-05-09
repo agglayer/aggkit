@@ -572,13 +572,17 @@ func (p *processor) GetBridgesPaged(
 	orderByClause := "deposit_count DESC"
 	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName)
 	if err != nil {
-		return nil, 0, err
+		return []*BridgeResponse{}, 0, err
 	}
 
 	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs)
 	if depositCount != nil {
 		pageNumber = 1
 		pageSize = 1
+	}
+
+	if bridgesCount == 0 {
+		return []*BridgeResponse{}, 0, nil
 	}
 
 	offset := (pageNumber - 1) * pageSize
@@ -652,6 +656,10 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 
+	if claimsCount == 0 {
+		return []*ClaimResponse{}, 0, nil
+	}
+
 	offset := (pageNumber - 1) * pageSize
 	if offset >= uint32(claimsCount) {
 		p.log.Debugf("provided page number is invalid for given page size and total number of claims"+
@@ -708,7 +716,7 @@ func (p *processor) GetLegacyTokenMigrations(
 	}
 
 	if legacyTokenMigrationsCount == 0 {
-		return nil, 0, nil
+		return []*LegacyTokenMigration{}, 0, nil
 	}
 
 	offset := (pageNumber - 1) * pageSize
