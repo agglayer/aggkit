@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strconv"
 	"testing"
 	"time"
 
@@ -1272,6 +1273,231 @@ func TestInjectedInfoAfterIndexHandler(t *testing.T) {
 	})
 }
 
+func TestClaimProofHandler(t *testing.T) {
+	l1InfoTreeIndex := uint32(1)
+	depositCount := uint32(1)
+
+	l1InfoTreeLeaf := &l1infotreesync.L1InfoTreeLeaf{
+		MainnetExitRoot: common.HexToHash("0x1"),
+		RollupExitRoot:  common.HexToHash("0x2"),
+	}
+
+	t.Run("Failed to get L1 info tree leaf", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeIndex).
+			Return(nil, fmt.Errorf(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get l1 info tree leaf for index %d", l1InfoTreeIndex))
+	})
+
+	t.Run("Unsupported network id", func(t *testing.T) {
+		unsupportedNetworkID := uint32(999)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeIndex).
+			Return(l1InfoTreeLeaf, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", unsupportedNetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get claim proof, unsupported network %d", unsupportedNetworkID))
+	})
+
+	//nolint:dupl
+	t.Run("Failed to get LER for L1 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeIndex).
+			Return(l1InfoTreeLeaf, nil)
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetProof(mock.Anything, depositCount, l1InfoTreeLeaf.MainnetExitRoot).
+			Return(tree.Proof{}, fmt.Errorf(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), "failed to get local exit proof")
+	})
+
+	t.Run("Failed to get RER proof for L1 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, mock.Anything).
+			Return(l1InfoTreeLeaf, nil)
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetProof(mock.Anything, mock.Anything, mock.Anything).
+			Return(tree.Proof{}, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetRollupExitTreeMerkleProof(mock.Anything, mock.Anything, mock.Anything).
+			Return(tree.Proof{}, errors.New(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get rollup exit proof (network id=%d, leaf index=%d, deposit count=%d), error: %s",
+			mainnetNetworkID, l1InfoTreeIndex, depositCount, fooErrMsg))
+	})
+
+	//nolint:dupl
+	t.Run("Failed to get LER for L2 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, l1InfoTreeIndex).
+			Return(l1InfoTreeLeaf, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetLocalExitRoot(mock.Anything, l2NetworkID, l1InfoTreeLeaf.RollupExitRoot).
+			Return(common.Hash{}, fmt.Errorf(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), "failed to get local exit root")
+	})
+
+	t.Run("Failed to get LER proof for L2 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, mock.Anything).
+			Return(l1InfoTreeLeaf, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetLocalExitRoot(mock.Anything, mock.Anything, mock.Anything).
+			Return(common.HexToHash("0x3"), nil)
+
+		bridgeMocks.bridgeL2.EXPECT().
+			GetProof(mock.Anything, mock.Anything, mock.Anything).
+			Return(tree.Proof{}, errors.New(fooErrMsg))
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get local exit proof, error: %s", fooErrMsg))
+	})
+
+	t.Run("Retrieve claim proof for L1 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		localExitTreeProof := tree.Proof{
+			common.HexToHash("0xf"),
+			common.HexToHash("0xd"),
+			common.HexToHash("0xc"),
+			common.HexToHash("0xb"),
+		}
+		rollupExitTreeProof := tree.Proof{
+			common.HexToHash("0x1"),
+			common.HexToHash("0x2"),
+		}
+
+		expectedClaimProof := types.ClaimProof{
+			ProofLocalExitRoot:  localExitTreeProof,
+			ProofRollupExitRoot: rollupExitTreeProof,
+			L1InfoTreeLeaf:      *l1InfoTreeLeaf,
+		}
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetInfoByIndex(mock.Anything, mock.Anything).
+			Return(l1InfoTreeLeaf, nil)
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetProof(mock.Anything, depositCount, l1InfoTreeLeaf.MainnetExitRoot).
+			Return(localExitTreeProof, nil)
+
+		bridgeMocks.l1InfoTree.EXPECT().
+			GetRollupExitTreeMerkleProof(mock.Anything, mock.Anything, mock.Anything).
+			Return(rollupExitTreeProof, nil)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, response.Code)
+
+		var result types.ClaimProof
+		err := json.Unmarshal(response.Body.Bytes(), &result)
+		require.NoError(t, err)
+		require.Equal(t, expectedClaimProof, result)
+	})
+
+	t.Run("Invalid network id param", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "invalid")
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("Invalid leaf index param", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
+		queryParams.Set(leafIndexParam, "invalid")
+		queryParams.Set(depositCountParam, fmt.Sprintf("%d", depositCount))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", leafIndexParam))
+	})
+
+	t.Run("Invalid deposit count param", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
+		queryParams.Set(leafIndexParam, fmt.Sprintf("%d", l1InfoTreeIndex))
+		queryParams.Set(depositCountParam, "invalid")
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/claim-proof?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("invalid %s parameter", depositCountParam))
+	})
+}
+
 func TestGetLastReorgEvent(t *testing.T) {
 	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -1436,165 +1662,6 @@ func TestSponsorClaim(t *testing.T) {
 	})
 }
 
-func TestClaimProof(t *testing.T) {
-	l1InfoTreeIndex := uint32(1)
-	depositCount := uint32(1)
-	l1InfoTreeLeaf := &l1infotreesync.L1InfoTreeLeaf{
-		MainnetExitRoot: common.HexToHash("0x1"),
-		RollupExitRoot:  common.HexToHash("0x2"),
-	}
-
-	t.Run("Failed to get L1 info tree leaf", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, mock.Anything).
-			Return(nil, errors.New(fooErrMsg))
-
-		result, err := bridgeMocks.bridge.ClaimProof(mainnetNetworkID, depositCount, l1InfoTreeIndex)
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get l1 info tree leaf for index %d: %s", l1InfoTreeIndex, fooErrMsg))
-	})
-
-	t.Run("Unsupported network id", func(t *testing.T) {
-		unsupportedNetworkID := uint32(999)
-
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, mock.Anything).
-			Return(&l1infotreesync.L1InfoTreeLeaf{}, nil)
-
-		result, err := bridgeMocks.bridge.ClaimProof(unsupportedNetworkID, depositCount, l1InfoTreeIndex)
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
-	})
-
-	t.Run("Failed to get local exit proof for L1 network", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, mock.Anything).
-			Return(l1InfoTreeLeaf, nil)
-
-		bridgeMocks.bridgeL1.EXPECT().
-			GetProof(mock.Anything, mock.Anything, mock.Anything).
-			Return(tree.Proof{}, errors.New(fooErrMsg))
-
-		result, err := bridgeMocks.bridge.ClaimProof(mainnetNetworkID, depositCount, l1InfoTreeIndex)
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get local exit proof, error: %s", fooErrMsg))
-	})
-
-	t.Run("Failed to get local exit root for L2 network", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, mock.Anything).
-			Return(l1InfoTreeLeaf, nil)
-
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetLocalExitRoot(mock.Anything, mock.Anything, mock.Anything).
-			Return(common.Hash{}, errors.New(fooErrMsg))
-
-		result, err := bridgeMocks.bridge.ClaimProof(l2NetworkID, depositCount, l1InfoTreeIndex)
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get local exit root from rollup exit tree, error: %s", fooErrMsg))
-	})
-
-	t.Run("Failed to get local exit proof for L2 network", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, mock.Anything).
-			Return(l1InfoTreeLeaf, nil)
-
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetLocalExitRoot(mock.Anything, mock.Anything, mock.Anything).
-			Return(common.HexToHash("0x3"), nil)
-
-		bridgeMocks.bridgeL2.EXPECT().
-			GetProof(mock.Anything, mock.Anything, mock.Anything).
-			Return(tree.Proof{}, errors.New(fooErrMsg))
-
-		result, err := bridgeMocks.bridge.ClaimProof(l2NetworkID, depositCount, l1InfoTreeIndex)
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get local exit proof, error: %s", fooErrMsg))
-	})
-
-	t.Run("Failed to get rollup exit proof for L1 network", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, mock.Anything).
-			Return(l1InfoTreeLeaf, nil)
-
-		bridgeMocks.bridgeL1.EXPECT().
-			GetProof(mock.Anything, mock.Anything, mock.Anything).
-			Return(tree.Proof{}, nil)
-
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetRollupExitTreeMerkleProof(mock.Anything, mock.Anything, mock.Anything).
-			Return(tree.Proof{}, errors.New(fooErrMsg))
-
-		result, err := bridgeMocks.bridge.ClaimProof(mainnetNetworkID, depositCount, l1InfoTreeIndex)
-		require.Nil(t, result)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err,
-			fmt.Sprintf("failed to get rollup exit proof, error: %s", fooErrMsg))
-	})
-
-	t.Run("Retrieve claim proof for L1 network", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetInfoByIndex(mock.Anything, mock.Anything).
-			Return(l1InfoTreeLeaf, nil)
-
-		localExitTreeProof := tree.Proof{
-			common.HexToHash("0xf"),
-			common.HexToHash("0xd"),
-			common.HexToHash("0xc"),
-			common.HexToHash("0xb"),
-		}
-
-		rollupExitTreeProof := tree.Proof{
-			common.HexToHash("0x1"),
-			common.HexToHash("0x2"),
-			common.HexToHash("0x3"),
-			common.HexToHash("0x4"),
-		}
-
-		expectedClaimProof := types.ClaimProof{
-			ProofLocalExitRoot:  localExitTreeProof,
-			ProofRollupExitRoot: rollupExitTreeProof,
-			L1InfoTreeLeaf:      *l1InfoTreeLeaf,
-		}
-
-		bridgeMocks.bridgeL1.EXPECT().
-			GetProof(mock.Anything, mock.Anything, mock.Anything).
-			Return(localExitTreeProof, nil)
-
-		bridgeMocks.l1InfoTree.EXPECT().
-			GetRollupExitTreeMerkleProof(mock.Anything, mock.Anything, mock.Anything).
-			Return(rollupExitTreeProof, nil)
-
-		result, err := bridgeMocks.bridge.ClaimProof(mainnetNetworkID, depositCount, l1InfoTreeIndex)
-		require.Nil(t, err)
-		require.NotNil(t, result)
-		require.Equal(t, expectedClaimProof, result)
-	})
-}
-
 // performRequest is a helper function to perform HTTP requests in tests.
 func performRequest(t *testing.T, router *gin.Engine, method, path string, body any) *httptest.ResponseRecorder {
 	t.Helper()
@@ -1607,7 +1674,6 @@ func performRequest(t *testing.T, router *gin.Engine, method, path string, body 
 	}
 
 	req := httptest.NewRequest(method, path, reqBody)
-	// req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
