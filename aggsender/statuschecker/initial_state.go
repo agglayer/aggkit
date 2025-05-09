@@ -1,4 +1,4 @@
-package aggsender
+package statuschecker
 
 import (
 	"context"
@@ -12,53 +12,55 @@ import (
 	"github.com/agglayer/aggkit/common"
 )
 
+var newInitialStatusFn = newInitialStatus
+
 const (
-	InitialStatusActionNone InitialStatusAction = iota
+	InitialStatusActionNone initialStatusAction = iota
 	InitialStatusActionUpdateCurrentCert
 	InitialStatusActionInsertNewCert
 )
 
 var ErrAgglayerInconsistence = errors.New("recovery: agglayer inconsistence")
 
-type InitialStatus struct {
+type initialStatus struct {
 	SettledCert *agglayertypes.CertificateHeader
 	PendingCert *agglayertypes.CertificateHeader
 	LocalCert   *types.CertificateInfo
 	log         common.Logger
 }
 
-type InitialStatusAction int
+type initialStatusAction int
 
 // String representation of the enum
-func (i InitialStatusAction) String() string {
+func (i initialStatusAction) String() string {
 	return [...]string{"None", "Update", "InsertNew"}[i]
 }
 
-type InitialStatusResult struct {
-	Action  InitialStatusAction
-	Message string
-	Cert    *agglayertypes.CertificateHeader
+type initialStatusResult struct {
+	action  initialStatusAction
+	message string
+	cert    *agglayertypes.CertificateHeader
 }
 
-func (i *InitialStatusResult) String() string {
+func (i *initialStatusResult) String() string {
 	if i == nil {
 		return types.NilStr
 	}
-	res := fmt.Sprintf("Action: %d, Message: %s", i.Action, i.Message)
+	res := fmt.Sprintf("Action: %d, Message: %s", i.action, i.message)
 
-	if i.Cert != nil {
-		res += fmt.Sprintf(", Cert: %s", i.Cert.ID())
+	if i.cert != nil {
+		res += fmt.Sprintf(", Cert: %s", i.cert.ID())
 	} else {
 		res += ", Cert: " + types.NilStr
 	}
 	return res
 }
 
-// NewInitialStatus creates a new InitialStatus object, get the data from AggLayer and local storage
-func NewInitialStatus(ctx context.Context,
+// newInitialStatus creates a new initialStatus object, get the data from AggLayer and local storage
+func newInitialStatus(ctx context.Context,
 	log types.Logger, networkID uint32,
 	storage db.AggSenderStorage,
-	aggLayerClient agglayer.AggLayerClientRecoveryQuerier) (*InitialStatus, error) {
+	aggLayerClient agglayer.AggLayerClientRecoveryQuerier) (*initialStatus, error) {
 	log.Infof("recovery: checking last settled certificate from AggLayer for network %d", networkID)
 	aggLayerLastSettledCert, err := aggLayerClient.GetLatestSettledCertificateHeader(ctx, networkID)
 	if err != nil {
@@ -75,7 +77,7 @@ func NewInitialStatus(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting last sent certificate from local storage: %w", err)
 	}
-	return &InitialStatus{
+	return &initialStatus{
 		SettledCert: aggLayerLastSettledCert, // from Agglayer
 		PendingCert: aggLayerLastPendingCert, // from Agglayer
 		LocalCert:   localLastCert,
@@ -83,8 +85,8 @@ func NewInitialStatus(ctx context.Context,
 	}, nil
 }
 
-// LogData logs the data from the InitialStatus object
-func (i *InitialStatus) LogData() {
+// logData logs the data from the initialStatus object
+func (i *initialStatus) logData() {
 	i.log.Infof("recovery: settled certificate from AggLayer: %s", i.SettledCert.ID())
 	i.log.Infof("recovery: pending certificate from AggLayer: %s / status: %s",
 		i.PendingCert.ID(), i.PendingCert.StatusString())
@@ -92,17 +94,17 @@ func (i *InitialStatus) LogData() {
 		i.LocalCert.ID(), i.LocalCert.StatusString())
 }
 
-// Process checks the last certificates from agglayer vs local certificates and returns the action to take
-func (i *InitialStatus) Process() (*InitialStatusResult, error) {
+// process checks the last certificates from agglayer vs local certificates and returns the action to take
+func (i *initialStatus) process() (*initialStatusResult, error) {
 	// Check that agglayer data is consistent.
 	if err := i.checkAgglayerConsistenceCerts(); err != nil {
 		return nil, err
 	}
 	if i.LocalCert == nil && i.SettledCert == nil && i.PendingCert != nil {
 		if i.PendingCert.Height == 0 {
-			return &InitialStatusResult{Action: InitialStatusActionInsertNewCert,
-				Message: "no settled cert yet, and the pending cert have the correct height (0) so we use it",
-				Cert:    i.PendingCert}, nil
+			return &initialStatusResult{action: InitialStatusActionInsertNewCert,
+				message: "no settled cert yet, and the pending cert have the correct height (0) so we use it",
+				cert:    i.PendingCert}, nil
 		}
 
 		// We don't known if pendingCert is going to be Settled or InError.
@@ -112,9 +114,9 @@ func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 				i.PendingCert.ID(), i.PendingCert.StatusString())
 		}
 		if i.PendingCert.Status.IsInError() && i.PendingCert.Height > 0 {
-			return &InitialStatusResult{Action: InitialStatusActionNone,
-				Message: "the pending cert have wrong height and it's InError. We ignore it",
-				Cert:    nil}, nil
+			return &initialStatusResult{action: InitialStatusActionNone,
+				message: "the pending cert have wrong height and it's InError. We ignore it",
+				cert:    nil}, nil
 		}
 	}
 	aggLayerLastCert := i.getLatestAggLayerCert()
@@ -123,15 +125,15 @@ func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 
 	// CASE 1: No certificates in local storage and agglayer
 	if localLastCert == nil && aggLayerLastCert == nil {
-		return &InitialStatusResult{Action: InitialStatusActionNone,
-			Message: "no certificates in local storage and agglayer: initial state",
-			Cert:    nil}, nil
+		return &initialStatusResult{action: InitialStatusActionNone,
+			message: "no certificates in local storage and agglayer: initial state",
+			cert:    nil}, nil
 	}
 	// CASE 2: No certificates in local storage but agglayer has one
 	if localLastCert == nil && aggLayerLastCert != nil {
-		return &InitialStatusResult{Action: InitialStatusActionInsertNewCert,
-			Message: "no certificates in local storage but agglayer have one (no InError)",
-			Cert:    aggLayerLastCert}, nil
+		return &initialStatusResult{action: InitialStatusActionInsertNewCert,
+			message: "no certificates in local storage but agglayer have one (no InError)",
+			cert:    aggLayerLastCert}, nil
 	}
 	// CASE 2.1: certificate in storage but not in agglayer
 	// this is a non-sense, so throw an error
@@ -146,10 +148,10 @@ func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 	// CASE 3.2: aggsender stopped between sending to agglayer and storing to the local storage
 	if aggLayerLastCert.Height == localLastCert.Height+1 {
 		// we need to store the certificate in the local storage.
-		return &InitialStatusResult{Action: InitialStatusActionInsertNewCert,
-			Message: fmt.Sprintf("agglayer have next cert, storing cert: %s",
+		return &initialStatusResult{action: InitialStatusActionInsertNewCert,
+			message: fmt.Sprintf("agglayer have next cert, storing cert: %s",
 				aggLayerLastCert.ID()),
-			Cert: aggLayerLastCert}, nil
+			cert: aggLayerLastCert}, nil
 	}
 	// CASE 4: AggSender and AggLayer are not on the same page
 	// note: we don't need to check individual fields of the certificate
@@ -160,13 +162,13 @@ func (i *InitialStatus) Process() (*InitialStatusResult, error) {
 	}
 	// CASE 5: AggSender and AggLayer are at same page
 	// just update status
-	return &InitialStatusResult{Action: InitialStatusActionUpdateCurrentCert,
-		Message: fmt.Sprintf("aggsender same cert, updating state: %s",
+	return &initialStatusResult{action: InitialStatusActionUpdateCurrentCert,
+		message: fmt.Sprintf("aggsender same cert, updating state: %s",
 			aggLayerLastCert.ID()),
-		Cert: aggLayerLastCert}, nil
+		cert: aggLayerLastCert}, nil
 }
 
-func (i *InitialStatus) checkAgglayerConsistenceCerts() error {
+func (i *initialStatus) checkAgglayerConsistenceCerts() error {
 	if i.PendingCert == nil {
 		return nil
 	}
@@ -198,7 +200,7 @@ func (i *InitialStatus) checkAgglayerConsistenceCerts() error {
 	return nil
 }
 
-func (i *InitialStatus) getLatestAggLayerCert() *agglayertypes.CertificateHeader {
+func (i *initialStatus) getLatestAggLayerCert() *agglayertypes.CertificateHeader {
 	if i.PendingCert == nil {
 		return i.SettledCert
 	}
