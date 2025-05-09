@@ -110,7 +110,6 @@ func TestBridgeEventE2E(t *testing.T) {
 		log.Infof("DepositCount:%d root: %s", i, root.Hash.Hex())
 	}
 	require.Equal(t, common.Hash(expectedRoot).Hex(), root.Hash.Hex())
-	t.Log(t, len(actualBridges))
 	require.Equal(t, expectedBridges, actualBridges)
 }
 
