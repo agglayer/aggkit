@@ -636,7 +636,9 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	proofRollupExitRoot, err := b.l1InfoTree.GetRollupExitTreeMerkleProof(ctx, networkID, info.RollupExitRoot)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get rollup exit proof for network id %d, error: %s", networkID, err)})
+			gin.H{
+				"error": fmt.Sprintf("failed to get rollup exit proof (network id=%d, leaf index=%d, deposit count=%d), error: %s",
+					networkID, l1InfoTreeIndex, depositCount, err)})
 		return
 	}
 
@@ -929,68 +931,6 @@ func (b *BridgeService) setupRequest(
 	counter.Add(ctx, 1)
 
 	return ctx, cancel, pageNumber, pageSize, nil
-}
-
-// TODO: @Stefan-Ethernal REMOVE
-// ClaimProof returns the proofs needed to claim a bridge. NetworkID and depositCount refere to the bridge origin
-// while globalExitRoot should be already injected on the destination network.
-// This call needs to be done to a client of the same network were the bridge tx was sent
-func (b *BridgeService) ClaimProof(
-	networkID uint32, depositCount uint32, l1InfoTreeIndex uint32,
-) (interface{}, rpc.Error) {
-	ctx, cancel := context.WithTimeout(context.Background(), b.readTimeout)
-	defer cancel()
-
-	c, merr := b.meter.Int64Counter("claim_proof")
-	if merr != nil {
-		b.logger.Warnf("failed to create claim_proof counter: %s", merr)
-	}
-	c.Add(ctx, 1)
-
-	info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
-	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-			fmt.Sprintf("failed to get l1 info tree leaf for index %d: %s", l1InfoTreeIndex, err))
-	}
-
-	var proofLocalExitRoot tree.Proof
-	switch {
-	case networkID == mainnetNetworkID:
-		proofLocalExitRoot, err = b.bridgeL1.GetProof(ctx, depositCount, info.MainnetExitRoot)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get local exit proof, error: %s", err))
-		}
-
-	case networkID == b.networkID:
-		localExitRoot, err := b.l1InfoTree.GetLocalExitRoot(ctx, networkID, info.RollupExitRoot)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-				fmt.Sprintf("failed to get local exit root from rollup exit tree, error: %s", err),
-			)
-		}
-		proofLocalExitRoot, err = b.bridgeL2.GetProof(ctx, depositCount, localExitRoot)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode,
-				fmt.Sprintf("failed to get local exit proof, error: %s", err),
-			)
-		}
-
-	default:
-		return nil, rpc.NewRPCError(rpc.InvalidRequestErrorCode,
-			fmt.Sprintf("this client does not support network %d", networkID),
-		)
-	}
-
-	proofRollupExitRoot, err := b.l1InfoTree.GetRollupExitTreeMerkleProof(ctx, networkID, info.RollupExitRoot)
-	if err != nil {
-		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("failed to get rollup exit proof, error: %s", err))
-	}
-
-	return types.ClaimProof{
-		ProofLocalExitRoot:  proofLocalExitRoot,
-		ProofRollupExitRoot: proofRollupExitRoot,
-		L1InfoTreeLeaf:      *info,
-	}, nil
 }
 
 // TODO: @Stefan-Ethernal REMOVE
