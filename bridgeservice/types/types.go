@@ -14,13 +14,13 @@ type ClaimProof struct {
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings
 type TokenMappingsResult struct {
-	TokenMappings []*bridgesync.TokenMapping `json:"tokenMappings"`
+	TokenMappings []*bridgesync.TokenMapping `json:"token_mappings"`
 	Count         int                        `json:"count"`
 }
 
 // LegacyTokenMigrationsResult contains the legacy token migrations and the total count of such migrations
 type LegacyTokenMigrationsResult struct {
-	TokenMigrations []*bridgesync.LegacyTokenMigration `json:"legacyTokenMigrations"`
+	TokenMigrations []*bridgesync.LegacyTokenMigration `json:"legacy_token_migrations"`
 	Count           int                                `json:"count"`
 }
 
