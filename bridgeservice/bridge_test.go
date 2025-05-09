@@ -63,16 +63,6 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	return b
 }
 
-func (b *bridgeWithMocks) setBridgeL1(l1Bridger *mocks.Bridger) {
-	b.bridgeL1 = l1Bridger
-	b.bridge.bridgeL1 = l1Bridger
-}
-
-func (b *bridgeWithMocks) setBridgeL2(l2Bridger *mocks.Bridger) {
-	b.bridgeL2 = l2Bridger
-	b.bridge.bridgeL2 = l2Bridger
-}
-
 func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 	type testCase struct {
 		description   string
@@ -1498,10 +1488,10 @@ func TestClaimProofHandler(t *testing.T) {
 	})
 }
 
-func TestGetLastReorgEvent(t *testing.T) {
-	bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
+func TestGetLastReorgEventHandler(t *testing.T) {
 	t.Run("GetLastReorgEvent for L1 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
 		reorgEvent := &bridgesync.LastReorg{
 			DetectedAt: 1710000000,
 			FromBlock:  100,
@@ -1510,18 +1500,18 @@ func TestGetLastReorgEvent(t *testing.T) {
 
 		bridgeMocks.bridgeL1.EXPECT().GetLastReorgEvent(mock.Anything).Return(reorgEvent, nil)
 
-		result, err := bridgeMocks.bridge.GetLastReorgEvent(0)
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/last-reorg-event?network_id=%d", mainnetNetworkID), nil)
+		require.Equal(t, http.StatusOK, response.Code)
+
+		var result bridgesync.LastReorg
+		err := json.Unmarshal(response.Body.Bytes(), &result)
 		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		actualReorgEvent, ok := result.(*bridgesync.LastReorg)
-		require.True(t, ok)
-		require.Equal(t, reorgEvent, actualReorgEvent)
-
-		bridgeMocks.bridgeL1.AssertExpectations(t)
+		require.Equal(t, *reorgEvent, result)
 	})
 
 	t.Run("GetLastReorgEvent for L2 network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
 		reorgEvent := &bridgesync.LastReorg{
 			DetectedAt: 1710000001,
 			FromBlock:  200,
@@ -1530,47 +1520,56 @@ func TestGetLastReorgEvent(t *testing.T) {
 
 		bridgeMocks.bridgeL2.EXPECT().GetLastReorgEvent(mock.Anything).Return(reorgEvent, nil)
 
-		result, err := bridgeMocks.bridge.GetLastReorgEvent(10)
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/last-reorg-event?network_id=%d", l2NetworkID), nil)
+		require.Equal(t, http.StatusOK, response.Code)
+
+		var result bridgesync.LastReorg
+		err := json.Unmarshal(response.Body.Bytes(), &result)
 		require.NoError(t, err)
-		require.NotNil(t, result)
-
-		actualReorgEvent, ok := result.(*bridgesync.LastReorg)
-		require.True(t, ok)
-		require.Equal(t, reorgEvent, actualReorgEvent)
-
-		bridgeMocks.bridgeL2.AssertExpectations(t)
+		require.Equal(t, *reorgEvent, result)
 	})
 
 	t.Run("GetLastReorgEvent with unsupported network", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
 		unsupportedNetworkID := uint32(999)
 
-		result, err := bridgeMocks.bridge.GetLastReorgEvent(unsupportedNetworkID)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.InvalidRequestErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("this client does not support network %d", unsupportedNetworkID))
-		require.Nil(t, result)
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/last-reorg-event?network_id=%d", unsupportedNetworkID), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get last reorg event, unsupported network %d", unsupportedNetworkID))
 	})
 
 	t.Run("GetLastReorgEvent for L1 network failed", func(t *testing.T) {
-		bridgeMocks.setBridgeL1(mocks.NewBridger(t))
-		bridgeMocks.bridgeL1.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, errors.New(fooErrMsg))
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		result, err := bridgeMocks.bridge.GetLastReorgEvent(mainnetNetworkID)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", fooErrMsg))
-		require.Nil(t, result)
+		bridgeMocks.bridgeL1.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, fmt.Errorf(fooErrMsg))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/last-reorg-event?network_id=%d", mainnetNetworkID), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", fooErrMsg))
 	})
 
 	t.Run("GetLastReorgEvent for L2 network failed", func(t *testing.T) {
-		bridgeMocks.setBridgeL2(mocks.NewBridger(t))
-		bridgeMocks.bridgeL2.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, errors.New(barErrMsg))
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		result, err := bridgeMocks.bridge.GetLastReorgEvent(l2NetworkID)
-		require.NotNil(t, err)
-		require.Equal(t, rpc.DefaultErrorCode, err.ErrorCode())
-		require.ErrorContains(t, err, fmt.Sprintf("failed to get last reorg event for the L2 network (ID=%d), error: %s", l2NetworkID, barErrMsg))
-		require.Nil(t, result)
+		bridgeMocks.bridgeL2.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, fmt.Errorf(barErrMsg))
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/last-reorg-event?network_id=%d", l2NetworkID), nil)
+		require.Equal(t, http.StatusInternalServerError, response.Code)
+		require.Contains(t, response.Body.String(),
+			fmt.Sprintf("failed to get last reorg event for the L2 network (ID=%d), error: %s", l2NetworkID, barErrMsg))
+	})
+
+	t.Run("Invalid network id parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		queryParams := url.Values{}
+		queryParams.Set(networkIDParam, "invalid")
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("/last-reorg-event?%s", queryParams.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, response.Code)
+		require.Contains(t, response.Body.String(),
+			fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
 }
 
