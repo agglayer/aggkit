@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
-	"github.com/agglayer/aggkit/aggsender/l1infotreequery"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -22,7 +21,7 @@ type AggchainProverFlow struct {
 	*baseFlow
 
 	aggchainProofClient grpc.AggchainProofClientInterface
-	gerReader           types.ChainGERReader
+	gerQuerier          types.GERQuerier
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
@@ -47,37 +46,26 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 func NewAggchainProverFlow(log types.Logger,
 	maxCertSize uint,
 	bridgeMetaDataAsHash bool,
-	gerL2Address common.Address,
-	sovereignRollupAddr common.Address,
+	startL2Block uint64,
 	aggkitProverClient grpc.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
-	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	l2Syncer types.L2BridgeSyncer,
-	l1Client types.EthClient,
-	l2Client types.EthClient) (*AggchainProverFlow, error) {
-	gerReader, err := funcNewEVMChainGERReader(gerL2Address, l2Client)
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error creating EVMChainGERReader: %w", err)
-	}
-
-	startL2Block, err := getL2StartBlock(sovereignRollupAddr, l1Client)
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
-	}
-	log.Infof("aggchainProverFlow - read from severeignRollup (L1) starting L2 block: %d", startL2Block)
+	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
+	l2BridgeQuerier types.BridgeQuerier,
+	gerQuerier types.GERQuerier,
+	l1Client types.EthClient) *AggchainProverFlow {
 	return &AggchainProverFlow{
-		gerReader:           gerReader,
 		aggchainProofClient: aggkitProverClient,
+		gerQuerier:          gerQuerier,
 		baseFlow: &baseFlow{
 			log:                   log,
-			l2Syncer:              l2Syncer,
+			l2BridgeQuerier:       l2BridgeQuerier,
 			storage:               storage,
-			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 			maxCertSize:           maxCertSize,
 			startL2Block:          startL2Block,
 			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},
-	}, nil
+	}
 }
 
 // CheckInitialStatus checks that initial status is correct.
@@ -115,7 +103,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		// if the last certificate was in error, we need to resend it
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
 
-		bridges, claims, err := a.getBridgesAndClaims(
+		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
 			ctx, lastSentCertificateInfo.FromBlock,
 			lastSentCertificateInfo.ToBlock,
 			true,
@@ -220,48 +208,6 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	return cert, nil
 }
 
-// getInjectedGERsProofs returns the proofs for the injected GERs in the given block range
-// created from the last finalized L1 Info tree root
-func (a *AggchainProverFlow) getInjectedGERsProofs(
-	ctx context.Context,
-	finalizedL1InfoTreeRoot *treetypes.Root,
-	fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error) {
-	injectedGERs, err := a.gerReader.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs for range %d : %d: %w",
-			fromBlock, toBlock, err)
-	}
-
-	proofs := make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, len(injectedGERs))
-
-	for ger, injectedGER := range injectedGERs {
-		info, proof, err := a.l1InfoTreeDataQuerier.GetProofForGER(ctx, ger, finalizedL1InfoTreeRoot.Hash)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error getting proof for GER: %s: %w", ger.String(), err)
-		}
-
-		proofs[ger] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
-			BlockNumber: injectedGER.BlockNumber,
-			BlockIndex:  injectedGER.BlockIndex,
-			ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
-				ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
-				L1Leaf: &agglayertypes.L1InfoTreeLeaf{
-					L1InfoTreeIndex: info.L1InfoTreeIndex,
-					RollupExitRoot:  info.RollupExitRoot,
-					MainnetExitRoot: info.MainnetExitRoot,
-					Inner: &agglayertypes.L1InfoTreeLeafInner{
-						GlobalExitRoot: info.GlobalExitRoot,
-						BlockHash:      info.PreviousBlockHash,
-						Timestamp:      info.Timestamp,
-					},
-				},
-			},
-		}
-	}
-
-	return proofs, nil
-}
-
 // getImportedBridgeExitsForProver converts the claims to imported bridge exits
 // so that the aggchain prover can use them to generate the aggchain proof
 func (a *AggchainProverFlow) getImportedBridgeExitsForProver(
@@ -319,7 +265,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	}
 
 	fromBlock := lastProvenBlock + 1
-	injectedGERsProofs, err := a.getInjectedGERsProofs(ctx, root, fromBlock, toBlock)
+	injectedGERsProofs, err := a.gerQuerier.GetInjectedGERsProofs(ctx, root, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
 	}

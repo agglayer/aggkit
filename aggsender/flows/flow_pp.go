@@ -7,7 +7,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
-	"github.com/agglayer/aggkit/aggsender/l1infotreequery"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -25,17 +25,16 @@ func NewPPFlow(log types.Logger,
 	maxCertSize uint,
 	bridgeMetaDataAsHash bool,
 	storage db.AggSenderStorage,
-	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	l2Syncer types.L2BridgeSyncer,
-	l1Client types.EthClient,
+	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
+	l2BridgeQuerier types.BridgeQuerier,
 	signer signertypes.Signer) *PPFlow {
 	return &PPFlow{
 		signer: signer,
 		baseFlow: &baseFlow{
 			log:                   log,
-			l2Syncer:              l2Syncer,
+			l2BridgeQuerier:       l2BridgeQuerier,
 			storage:               storage,
-			l1InfoTreeDataQuerier: l1infotreequery.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 			maxCertSize:           maxCertSize,
 			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},
@@ -53,18 +52,13 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	buildParams, err := p.getCertificateBuildParamsInternal(ctx, false)
 	if err != nil {
-		if errors.Is(err, errNoNewBlocks) {
-			// no new blocks to send a certificate
+		if errors.Is(err, errNoNewBlocks) || errors.Is(err, query.ErrNoBridgeExits) {
+			// no new blocks to send a certificate, or no bridge exits consumed
 			// this is a valid case, so just return nil without error
 			return nil, nil
 		}
 
 		return nil, err
-	}
-
-	if buildParams == nil {
-		// no new blocks to send a certificate or no bridges
-		return nil, nil
 	}
 
 	if err := p.verifyBuildParams(buildParams); err != nil {
