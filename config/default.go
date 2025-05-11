@@ -238,8 +238,6 @@ Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
-# Don't send certificate over 80% of the epoch
-MaxEpochPercentageAllowedToSendCertificate=80
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}

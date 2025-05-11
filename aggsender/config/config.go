@@ -1,4 +1,4 @@
-package aggsender
+package config
 
 import (
 	"fmt"
@@ -53,13 +53,6 @@ type Config struct {
 	// RetryCertAfterInError when a cert pass to 'InError'
 	// state the AggSender will try to resend it immediately
 	RetryCertAfterInError bool `mapstructure:"RetryCertAfterInError"`
-	// MaxEpochPercentageAllowedToSendCertificate is the percentage of the epoch
-	// after which the AggSender is forbidden to send the certificate.
-	// If value==0  || value >= 100 the check is disabled
-	// 0 -> Begin
-	// 50 -> Middle
-	// 100 -> End
-	MaxEpochPercentageAllowedToSendCertificate uint `mapstructure:"MaxEpochPercentageAllowedToSendCertificate"`
 	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
 	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
@@ -92,8 +85,6 @@ func (c Config) String() string {
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
-		"MaxEpochPercentageAllowedToSendCertificate: " +
-		fmt.Sprintf("%d", c.MaxEpochPercentageAllowedToSendCertificate) + "\n" +
 		"GenerateAggchainProofTimeout: " + c.GenerateAggchainProofTimeout.String() + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n"
 }

@@ -1,6 +1,10 @@
 PathRWData = "{{.zkevm_path_rw_data}}/"
 L1URL="{{.l1_rpc_url}}"
 L2URL="{{.l2_rpc_url}}"
+# Uncomment this line to resolve finalized block using op_node
+# you have to set BridgeL2Sync.BlockFinality = "FinalizedBlock"
+L2RPC = "{ Mode= \"op\", URL= \"{{.l2_rpc_url}}\", OpNodeURL= \"{{.op_cl_rpc_url}}\" }"
+
 AggLayerURL="{{.agglayer_grpc_url}}"
 
 # This values can be override directly from genesis.json
@@ -26,6 +30,7 @@ Outputs = ["stderr"]
 
 [BridgeL2Sync]
 BridgeAddr = "{{.zkevm_L2_bridge_address}}"
+BlockFinality = "FinalizedBlock"
        
 [AggSender]
 AggchainProofURL="{{.aggkit_prover_grpc_url}}"

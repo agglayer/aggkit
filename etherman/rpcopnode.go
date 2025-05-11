@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"strings"
 
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
@@ -33,7 +34,10 @@ type RPCOpNodeDecorator struct {
 func NewRPCClientModeOp(cfg ethermanconfig.RPCClientConfig) (EthClienter, error) {
 	opNodeURL, err := cfg.GetString(ExtraParamFieldName)
 	if err != nil {
-		return nil, fmt.Errorf("field %s not found in extra params. Err: %w", ExtraParamFieldName, err)
+		opNodeURL, err = cfg.GetString(strings.ToLower(ExtraParamFieldName))
+	}
+	if err != nil {
+		return nil, fmt.Errorf("field %s not found in extra params (%+v). Err: %w", ExtraParamFieldName, cfg, err)
 	}
 	log.Debugf("Creating OPNode RPC client with URL %s %s:%s", cfg.URL, ExtraParamFieldName, opNodeURL)
 	basicClient, err := ethclient.Dial(cfg.URL)
@@ -64,5 +68,5 @@ func (f *RPCOpNodeDecorator) HeaderByNumber(ctx context.Context, number *big.Int
 }
 
 func (f *RPCOpNodeDecorator) Client() *rpc.Client {
-	return f.Client()
+	return f.ethRealClient.Client()
 }

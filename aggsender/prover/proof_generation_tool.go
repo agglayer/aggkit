@@ -5,8 +5,10 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
+	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/grpc"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	configtypes "github.com/agglayer/aggkit/config/types"
@@ -71,20 +73,24 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}
 
-	aggchainProverFlow, err := flows.NewAggchainProverFlow(
+	chainGERReader, err := chaingerreader.NewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
+	if err != nil {
+		return nil, fmt.Errorf("error creating chain GER reader: %w", err)
+	}
+
+	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
+
+	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,
 		0, false,
-		cfg.GlobalExitRootL2Addr, cfg.SovereignRollupAddr,
+		0,
 		aggchainProofClient,
 		nil,
-		l1InfoTreeSyncer,
-		l2Syncer,
+		l1InfoTreeQuerier,
+		query.NewBridgeDataQuerier(l2Syncer),
+		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
 		l1Client,
-		l2Client,
 	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create the AggchainProverFlow: %w", err)
-	}
 
 	return &AggchainProofGenerationTool{
 		cfg:                 cfg,

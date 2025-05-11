@@ -168,7 +168,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | Mode                          | string             | Defines the mode of the AggSender (regular PessimisticProof mode or the AggchainProof mode)          |
 | CheckStatusCertificateInterval| Duration           | Interval at which the AggSender will check the certificate status in Agglayer                        |
 | RetryCertAfterInError         | bool               | Indicates if Aggsender should re-send InError certificates immediatelly after it notices their status change                                                                                                                                                      |
-| MaxEpochPercentageAllowedToSendCertificate | uint  | Percentage of the epoch after which Aggsender is forbidden to send certificates to the Agglayer      |
 | MaxSubmitCertificateRate      | RateLimitConfig    | Maximum allowed rate of submission of certificates in a given time                                   |
 | GlobalExitRootL2Addr          | Address            | Address of the GlobalExitRootManager contract on l2 sovereign chain. This address is needed for the AggchainProof mode of the AggSender                                                                                                                         |
 

@@ -5,6 +5,8 @@ import (
 	"fmt"
 )
 
+const perCent = 100.0
+
 // EpochEvent is the event that notifies the neear end epoch
 type EpochEvent struct {
 	Epoch uint64
@@ -15,6 +17,10 @@ type EpochEvent struct {
 type EpochStatus struct {
 	Epoch        uint64
 	PercentEpoch float64
+}
+
+func (e EpochStatus) String() string {
+	return fmt.Sprintf("EpochStatus: [%d, %.2f%%]", e.Epoch, e.PercentEpoch*perCent)
 }
 
 func (e EpochEvent) String() string {

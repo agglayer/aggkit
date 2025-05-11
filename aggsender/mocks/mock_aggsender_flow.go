@@ -84,6 +84,52 @@ func (_c *AggsenderFlow_BuildCertificate_Call) RunAndReturn(run func(context.Con
 	return _c
 }
 
+// CheckInitialStatus provides a mock function with given fields: ctx
+func (_m *AggsenderFlow) CheckInitialStatus(ctx context.Context) error {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CheckInitialStatus")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// AggsenderFlow_CheckInitialStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CheckInitialStatus'
+type AggsenderFlow_CheckInitialStatus_Call struct {
+	*mock.Call
+}
+
+// CheckInitialStatus is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *AggsenderFlow_Expecter) CheckInitialStatus(ctx interface{}) *AggsenderFlow_CheckInitialStatus_Call {
+	return &AggsenderFlow_CheckInitialStatus_Call{Call: _e.mock.On("CheckInitialStatus", ctx)}
+}
+
+func (_c *AggsenderFlow_CheckInitialStatus_Call) Run(run func(ctx context.Context)) *AggsenderFlow_CheckInitialStatus_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *AggsenderFlow_CheckInitialStatus_Call) Return(_a0 error) *AggsenderFlow_CheckInitialStatus_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *AggsenderFlow_CheckInitialStatus_Call) RunAndReturn(run func(context.Context) error) *AggsenderFlow_CheckInitialStatus_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetCertificateBuildParams provides a mock function with given fields: ctx
 func (_m *AggsenderFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	ret := _m.Called(ctx)

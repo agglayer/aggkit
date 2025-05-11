@@ -472,8 +472,8 @@ func TestGetImportedBridgeExits(t *testing.T) {
 }
 
 func TestBuildCertificate(t *testing.T) {
-	mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
-	mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
+	mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
+	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockProof := generateTestProof(t)
 
 	tests := []struct {
@@ -590,9 +590,9 @@ func TestBuildCertificate(t *testing.T) {
 				Height: 2,
 			},
 			mockFn: func() {
-				mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1))
-				mockL2BridgeSyncer.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).Return(treetypes.Root{Hash: common.HexToHash("0x789")}, nil)
-				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
+				mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
+				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).Return(common.HexToHash("0x789"), nil)
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
 					L1InfoTreeIndex:   1,
 					Timestamp:         123456789,
 					PreviousBlockHash: common.HexToHash("0xabc"),
@@ -647,7 +647,7 @@ func TestBuildCertificate(t *testing.T) {
 				Height:           1,
 			},
 			mockFn: func() {
-				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
+				mockL1InfoTreeQuerier.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(&l1infotreesync.L1InfoTreeLeaf{
 					L1InfoTreeIndex:   1,
 					Timestamp:         123456789,
 					PreviousBlockHash: common.HexToHash("0xabc"),
@@ -663,16 +663,16 @@ func TestBuildCertificate(t *testing.T) {
 		tt := tt
 
 		t.Run(tt.name, func(t *testing.T) {
-			mockL1InfoTreeQuery.ExpectedCalls = nil
-			mockL2BridgeSyncer.ExpectedCalls = nil
+			mockL1InfoTreeQuerier.ExpectedCalls = nil
+			mockL2BridgeQuerier.ExpectedCalls = nil
 
 			if tt.mockFn != nil {
 				tt.mockFn()
 			}
 
 			flow := &baseFlow{
-				l2Syncer:              mockL2BridgeSyncer,
-				l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
+				l2BridgeQuerier:       mockL2BridgeQuerier,
+				l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
 				log:                   log.WithFields("test", "unittest"),
 			}
 
@@ -858,111 +858,6 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 	}
 }
 
-func TestGetBridgesAndClaims(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	testCases := []struct {
-		name            string
-		fromBlock       uint64
-		toBlock         uint64
-		allowEmptyCert  bool
-		mockFn          func(*mocks.L2BridgeSyncer)
-		expectedBridges []bridgesync.Bridge
-		expectedClaims  []bridgesync.Claim
-		expectedError   string
-	}{
-		{
-			name:      "error getting bridges",
-			fromBlock: 1,
-			toBlock:   10,
-			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
-			},
-			expectedError: "some error",
-		},
-		{
-			name:      "no bridges consumed",
-			fromBlock: 1,
-			toBlock:   10,
-			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
-			},
-			expectedBridges: nil,
-			expectedClaims:  nil,
-		},
-		{
-			name:      "error getting claims",
-			fromBlock: 1,
-			toBlock:   10,
-			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return(nil, errors.New("some error"))
-			},
-			expectedError: "some error",
-		},
-		{
-			name:      "no claims consumed",
-			fromBlock: 1,
-			toBlock:   10,
-			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-			},
-			expectedBridges: []bridgesync.Bridge{{}},
-			expectedClaims:  []bridgesync.Claim{},
-		},
-		{
-			name: "allow empty cert",
-			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-			},
-			fromBlock:       1,
-			toBlock:         10,
-			allowEmptyCert:  true,
-			expectedBridges: []bridgesync.Bridge{},
-			expectedClaims:  []bridgesync.Claim{},
-		},
-		{
-			name:      "success",
-			fromBlock: 1,
-			toBlock:   10,
-			mockFn: func(mockL2Syncer *mocks.L2BridgeSyncer) {
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{{}}, nil)
-			},
-			expectedBridges: []bridgesync.Bridge{{}},
-			expectedClaims:  []bridgesync.Claim{{}},
-		},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-			fm := &baseFlow{
-				l2Syncer: mockL2Syncer,
-				log:      log.WithFields("flowManager", "TestGetBridgesAndClaims"),
-			}
-
-			tc.mockFn(mockL2Syncer)
-
-			bridges, claims, err := fm.getBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock, tc.allowEmptyCert)
-			if tc.expectedError != "" {
-				require.ErrorContains(t, err, tc.expectedError)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.expectedBridges, bridges)
-				require.Equal(t, tc.expectedClaims, claims)
-			}
-		})
-	}
-}
-
 func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 	t.Parallel()
 
@@ -970,101 +865,98 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		mockFn         func(*mocks.AggSenderStorage, *mocks.L2BridgeSyncer, *mocks.L1InfoTreeDataQuerier)
+		mockFn         func(*mocks.AggSenderStorage, *mocks.BridgeQuerier, *mocks.L1InfoTreeDataQuerier)
 		expectedParams *types.CertificateBuildParams
 		expectedError  string
 	}{
 		{
 			name: "error getting last processed block",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
-				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(0), errors.New("some error"))
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), errors.New("some error"))
 			},
 			expectedError: "error getting last processed block from l2: some error",
 		},
 		{
 			name: "error getting last sent certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
-				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockStorage.On("GetLastSentCertificate").Return(nil, errors.New("some error"))
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
+				mockStorage.EXPECT().GetLastSentCertificate().Return(nil, errors.New("some error"))
 			},
 			expectedError: "some error",
 		},
 		{
 			name: "no new blocks to send a certificate",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
-				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 10}, nil)
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
+				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 10}, nil)
 			},
 			expectedParams: nil,
 		},
 		{
 			name: "error getting bridges and claims",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
-				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return(nil, errors.New("some error"))
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
+				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return(nil, nil, errors.New("some error"))
 			},
 			expectedError: "some error",
 		},
 		{
 			name: "error claim GER invalid",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
-				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
+				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
+				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
 			},
 			expectedError: "GER mismatch",
 		},
 		{
 			name: "error GetLatestFinalizedL1InfoRoot",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
-				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
+				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalExitRoot:  ger,
 						RollupExitRoot:  rer,
 						MainnetExitRoot: mer,
 					}}, nil)
-				mockL1InfoTreeQuery.On("GetLatestFinalizedL1InfoRoot", ctx).Return(nil, nil, errors.New("some error"))
+				mockL1InfoTreeQuerier.On("GetLatestFinalizedL1InfoRoot", ctx).Return(nil, nil, errors.New("some error"))
 			},
 			expectedError: "ppFlow - error getting latest finalized L1 info root: some error",
 		},
 		{
 			name: "success",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
-				mockL2Syncer *mocks.L2BridgeSyncer,
-				mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
-				mockL2Syncer.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockStorage.On("GetLastSentCertificate").Return(&types.CertificateInfo{ToBlock: 5}, nil)
-				mockL2Syncer.EXPECT().GetBridges(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, nil)
-				mockL2Syncer.On("GetClaims", ctx, uint64(6), uint64(10)).Return([]bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
+				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalExitRoot:  ger,
 						RollupExitRoot:  rer,
 						MainnetExitRoot: mer,
 					}}, nil)
-				mockL1InfoTreeQuery.On("GetLatestFinalizedL1InfoRoot", ctx).Return(
+				mockL1InfoTreeQuerier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
@@ -1096,19 +988,19 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 
 			signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 			mockStorage := mocks.NewAggSenderStorage(t)
-			mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
+			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
+			mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 			ppFlow := &PPFlow{
 				signer: signer,
 				baseFlow: &baseFlow{
 					log:                   log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams"),
 					storage:               mockStorage,
-					l2Syncer:              mockL2Syncer,
-					l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
+					l2BridgeQuerier:       mockL2BridgeQuerier,
+					l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
 				},
 			}
 
-			tc.mockFn(mockStorage, mockL2Syncer, mockL1InfoTreeQuery)
+			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockL1InfoTreeQuerier)
 
 			params, err := ppFlow.GetCertificateBuildParams(ctx)
 			if tc.expectedError != "" {
@@ -1176,17 +1068,6 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 			expectedBlock:      10,
 			expectedRetryCount: 2,
 		},
-		{
-			name: "Last sent certificate settled on PP, building a new one on FEP with gap",
-			lastSentCertificateInfo: &types.CertificateInfo{
-				FromBlock: 0,
-				ToBlock:   10,
-				Status:    agglayertypes.Settled,
-			},
-			startL2Block:       20,
-			expectedBlock:      20,
-			expectedRetryCount: 0,
-		},
 	}
 
 	for _, tt := range tests {
@@ -1201,6 +1082,82 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 
 			require.Equal(t, tt.expectedBlock, block)
 			require.Equal(t, tt.expectedRetryCount, retryCount)
+		})
+	}
+}
+
+func Test_PPFlow_CheckInitialStatus(t *testing.T) {
+	sut := &PPFlow{}
+	require.Nil(t, sut.CheckInitialStatus(context.TODO()))
+}
+
+func Test_PPFlow_SignCertificate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		mockSignerFn  func(*mocks.Signer)
+		certificate   *agglayertypes.Certificate
+		expectedCert  *agglayertypes.Certificate
+		expectedError string
+	}{
+		{
+			name: "successfully signs certificate",
+			mockSignerFn: func(mockSigner *mocks.Signer) {
+				mockSigner.EXPECT().SignHash(ctx, mock.Anything).Return([]byte("mock_signature"), nil)
+				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0x123"))
+			},
+			certificate: &agglayertypes.Certificate{
+				NewLocalExitRoot: common.HexToHash("0x456"),
+			},
+			expectedCert: &agglayertypes.Certificate{
+				NewLocalExitRoot: common.HexToHash("0x456"),
+				AggchainData: &agglayertypes.AggchainDataSignature{
+					Signature: []byte("mock_signature"),
+				},
+			},
+		},
+		{
+			name: "error signing certificate",
+			mockSignerFn: func(mockSigner *mocks.Signer) {
+				mockSigner.EXPECT().SignHash(ctx, mock.Anything).Return(nil, errors.New("signing error"))
+			},
+			certificate: &agglayertypes.Certificate{
+				NewLocalExitRoot: common.HexToHash("0x456"),
+			},
+			expectedError: "signing error",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockSigner := mocks.NewSigner(t)
+			if tt.mockSignerFn != nil {
+				tt.mockSignerFn(mockSigner)
+			}
+
+			ppFlow := &PPFlow{
+				signer: mockSigner,
+				baseFlow: &baseFlow{
+					log: log.WithFields("test", "Test_PPFlow_SignCertificate"),
+				},
+			}
+
+			signedCert, err := ppFlow.signCertificate(ctx, tt.certificate)
+
+			if tt.expectedError != "" {
+				require.ErrorContains(t, err, tt.expectedError)
+				require.Nil(t, signedCert)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedCert, signedCert)
+			}
 		})
 	}
 }

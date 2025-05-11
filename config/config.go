@@ -9,7 +9,7 @@ import (
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle"
-	"github.com/agglayer/aggkit/aggsender"
+	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
@@ -141,7 +141,7 @@ type Config struct {
 	LastGERSync lastgersync.Config
 
 	// AggSender is the configuration of the agg sender service
-	AggSender aggsender.Config
+	AggSender aggsendercfg.Config
 
 	// Prometheus is the configuration of the prometheus service
 	Prometheus prometheus.Config

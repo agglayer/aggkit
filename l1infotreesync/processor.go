@@ -123,16 +123,16 @@ func (l *L1InfoTreeInitial) String() string {
 }
 
 // Hash as expected by the tree
-func (l *L1InfoTreeLeaf) hash() common.Hash {
+func (l *L1InfoTreeLeaf) GetHash() common.Hash {
 	var res [treeTypes.DefaultHeight]byte
 	t := make([]byte, 8) //nolint:mnd
 	binary.BigEndian.PutUint64(t, l.Timestamp)
-	copy(res[:], keccak256.Hash(l.globalExitRoot().Bytes(), l.PreviousBlockHash.Bytes(), t))
+	copy(res[:], keccak256.Hash(l.GetGlobalExitRoot().Bytes(), l.PreviousBlockHash.Bytes(), t))
 	return res
 }
 
 // GlobalExitRoot returns the GER
-func (l *L1InfoTreeLeaf) globalExitRoot() common.Hash {
+func (l *L1InfoTreeLeaf) GetGlobalExitRoot() common.Hash {
 	var gerBytes [treeTypes.DefaultHeight]byte
 	hasher := sha3.NewLegacyKeccak256()
 	hasher.Write(l.MainnetExitRoot[:])
@@ -368,8 +368,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				MainnetExitRoot:   event.UpdateL1InfoTree.MainnetExitRoot,
 				RollupExitRoot:    event.UpdateL1InfoTree.RollupExitRoot,
 			}
-			info.GlobalExitRoot = info.globalExitRoot()
-			info.Hash = info.hash()
+			info.GlobalExitRoot = info.GetGlobalExitRoot()
+			info.Hash = info.GetHash()
 			if err = meddler.Insert(tx, "l1info_leaf", info); err != nil {
 				return fmt.Errorf("insert l1info_leaf %s. err: %w", info.String(), err)
 			}
