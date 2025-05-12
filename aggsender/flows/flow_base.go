@@ -184,8 +184,9 @@ func (f *baseFlow) getNewLocalExitRoot(
 	return exitRoot, nil
 }
 
-// convertBridgeMetadata converts the bridge metadata to a hash
-// if the metadata is empty, it returns an empty byte slice
+// convertBridgeMetadata converts the bridge metadata to a hash using crypto.Keccak256.
+// If the metadata is empty, it returns nil (the zero value for a slice in Go).
+// Note: The "previous flag" is no longer returned by this function.
 func convertBridgeMetadata(metadata []byte) []byte {
 	var metaData []byte
 
