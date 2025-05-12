@@ -47,8 +47,8 @@ const (
 
 	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of " +
 		"config file as polygonBridgeAddr."
-	specificL2URLDeprecated          = "Use L2URL instead"
-	bridgeMetadaDataAsHashDepracated = "BridgeMetaDataAsHash is deprecated, bridge metadata is always stored as hash."
+	specificL2URLDeprecated        = "Use L2URL instead"
+	bridgeMetadataAsHashDeprecated = "BridgeMetaDataAsHash is deprecated, bridge metadata is always stored as hash."
 )
 
 type DeprecatedFieldsError struct {
@@ -101,7 +101,7 @@ var (
 		},
 		{
 			FieldNamePattern: "AggSender.BridgeMetadataAsHash",
-			Reason:           bridgeMetadaDataAsHashDepracated,
+			Reason:           bridgeMetadataAsHashDeprecated,
 		},
 	}
 )

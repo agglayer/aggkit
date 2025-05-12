@@ -97,6 +97,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
 	_, err = Load(ctx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), bridgeMetadaDataAsHashDepracated)
+	require.Contains(t, err.Error(), bridgeMetadataAsHashDeprecated)
 	require.Contains(t, err.Error(), bridgeAddrSetOnWrongSection)
 }
