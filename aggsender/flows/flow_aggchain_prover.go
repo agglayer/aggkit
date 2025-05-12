@@ -52,7 +52,6 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 // NewAggchainProverFlow returns a new instance of the AggchainProverFlow
 func NewAggchainProverFlow(log types.Logger,
 	maxCertSize uint,
-	bridgeMetaDataAsHash bool,
 	startL2Block uint64,
 	aggkitProverClient grpc.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
@@ -70,7 +69,6 @@ func NewAggchainProverFlow(log types.Logger,
 			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 			maxCertSize:           maxCertSize,
 			startL2Block:          startL2Block,
-			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},
 	}
 }

@@ -225,7 +225,6 @@ DelayBeetweenRetries = "60s"
 KeepCertificatesHistory = true
 # MaxSize of the certificate to 8Mb
 MaxCertSize = 8388608
-BridgeMetadataAsHash = true
 DryRun = false
 EnableRPC = true
 AggchainProofURL = "{{AggchainProofURL}}"

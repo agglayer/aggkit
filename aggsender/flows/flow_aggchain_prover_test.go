@@ -20,6 +20,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -460,7 +461,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 			aggchainFlow := NewAggchainProverFlow(
 				log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
-				0, true, 0,
+				0, 0,
 				mockAggchainProofClient,
 				mockStorage,
 				mockL1InfoTreeDataQuerier,
@@ -551,7 +552,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 							DestinationNetwork: 2,
 							DestinationAddress: common.HexToAddress("0x456"),
 							Amount:             big.NewInt(100),
-							Metadata:           []byte("metadata"),
+							Metadata:           crypto.Keccak256([]byte("metadata")),
 						},
 						GlobalIndex: &agglayertypes.GlobalIndex{
 							MainnetFlag: false,
@@ -572,7 +573,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 							DestinationNetwork: 2,
 							DestinationAddress: common.HexToAddress("0x456"),
 							Amount:             big.NewInt(100),
-							Metadata:           []byte("metadata"),
+							Metadata:           crypto.Keccak256([]byte("metadata")),
 						},
 						GlobalIndex: &agglayertypes.GlobalIndex{
 							MainnetFlag: false,

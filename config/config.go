@@ -45,8 +45,10 @@ const (
 
 	DefaultCreationFilePermissions = os.FileMode(0600)
 
-	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of config file as polygonBridgeAddr."
-	specificL2URLDeprecated     = "Use L2URL instead"
+	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of " +
+		"config file as polygonBridgeAddr."
+	specificL2URLDeprecated          = "Use L2URL instead"
+	bridgeMetadaDataAsHashDepracated = "BridgeMetaDataAsHash is deprecated, bridge metadata is always stored as hash."
 )
 
 type DeprecatedFieldsError struct {
@@ -96,6 +98,10 @@ var (
 		{
 			FieldNamePattern: "AggSender.URLRPCL2",
 			Reason:           specificL2URLDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.BridgeMetadataAsHash",
+			Reason:           bridgeMetadaDataAsHashDepracated,
 		},
 	}
 )

@@ -25,10 +25,9 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "success with PessimisticProofMode",
 			cfg: config.Config{
-				Mode:                 string(types.PessimisticProofMode),
-				AggsenderPrivateKey:  signertypes.SignerConfig{Method: signertypes.MethodNone},
-				MaxCertSize:          100,
-				BridgeMetadataAsHash: true,
+				Mode:                string(types.PessimisticProofMode),
+				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
+				MaxCertSize:         100,
 			},
 		},
 		{

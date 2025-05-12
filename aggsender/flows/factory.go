@@ -39,7 +39,6 @@ func NewFlow(
 		return NewPPFlow(
 			logger,
 			cfg.MaxCertSize,
-			cfg.BridgeMetadataAsHash,
 			storage,
 			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
 			query.NewBridgeDataQuerier(l2Syncer),
@@ -72,7 +71,6 @@ func NewFlow(
 		return NewAggchainProverFlow(
 			logger,
 			cfg.MaxCertSize,
-			cfg.BridgeMetadataAsHash,
 			startL2Block,
 			aggchainProofClient,
 			storage,
