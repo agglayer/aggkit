@@ -112,9 +112,9 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 				mockAggLayerClient.EXPECT().GetCertificateHeader(mock.Anything, certID).Return(header, tt.clientError)
 			}
 			if tt.updateDBError != nil {
-				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything, mock.Anything).Return(tt.updateDBError)
+				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(tt.updateDBError)
 			} else if tt.clientError == nil && tt.getFromDBError == nil {
-				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything, mock.Anything).Return(nil)
+				mockStorage.EXPECT().UpdateCertificateStatus(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 			}
 
 			certStatusChecker := NewCertStatusChecker(mockLogger, mockStorage, mockAggLayerClient, 1)
@@ -327,7 +327,7 @@ func TestExecuteInitialStatusAction(t *testing.T) {
 			},
 			localCert: &types.CertificateInfo{CertificateID: common.HexToHash("0x1")},
 			mockFn: func(m *mocks.AggSenderStorage) {
-				m.EXPECT().UpdateCertificateStatus(ctx, mock.Anything).Return(fmt.Errorf("update error"))
+				m.EXPECT().UpdateCertificateStatus(ctx, common.HexToHash("0x1"), agglayertypes.InError, mock.Anything).Return(fmt.Errorf("update error"))
 			},
 			expectedError: "recovery: error updating local storage with agglayer certificate",
 		},
@@ -418,7 +418,7 @@ func TestCheckLastCertificateFromAgglayer(t *testing.T) {
 			localCert:    &types.CertificateInfo{CertificateID: common.HexToHash("0x1")},
 			agglayerCert: &agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x1"), Status: agglayertypes.Settled},
 			mockFn: func(m *mocks.AggSenderStorage) {
-				m.EXPECT().UpdateCertificateStatus(ctx, mock.Anything).Return(nil)
+				m.EXPECT().UpdateCertificateStatus(ctx, common.HexToHash("0x1"), agglayertypes.Settled, mock.Anything).Return(nil)
 			},
 		},
 		{
@@ -430,7 +430,7 @@ func TestCheckLastCertificateFromAgglayer(t *testing.T) {
 			localCert:    &types.CertificateInfo{CertificateID: common.HexToHash("0x1")},
 			agglayerCert: &agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x1"), Status: agglayertypes.InError},
 			mockFn: func(m *mocks.AggSenderStorage) {
-				m.EXPECT().UpdateCertificateStatus(ctx, mock.Anything).Return(fmt.Errorf("update error"))
+				m.EXPECT().UpdateCertificateStatus(ctx, common.HexToHash("0x1"), agglayertypes.InError, mock.Anything).Return(fmt.Errorf("update error"))
 			},
 			expectedError: "recovery: error updating local storage with agglayer certificate",
 		},

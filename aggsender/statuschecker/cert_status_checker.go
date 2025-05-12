@@ -166,7 +166,11 @@ func (c *certStatusChecker) updateCertificateStatus(ctx context.Context,
 
 	localCert.Status = agglayerCert.Status
 	localCert.UpdatedAt = uint32(time.Now().UTC().Unix())
-	if err := c.storage.UpdateCertificateStatus(ctx, *localCert); err != nil {
+	if err := c.storage.UpdateCertificateStatus(
+		ctx,
+		localCert.CertificateID,
+		localCert.Status,
+		localCert.UpdatedAt); err != nil {
 		c.log.Errorf("error updating certificate %s status in storage: %w", agglayerCert.ID(), err)
 		return fmt.Errorf("error updating certificate. Err: %w", err)
 	}

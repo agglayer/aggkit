@@ -259,7 +259,7 @@ func Test_Storage(t *testing.T) {
 		// Update the status of the certificate
 		certificate.Status = agglayertypes.Settled
 		certificate.UpdatedAt = updateTime + 1
-		require.NoError(t, storage.UpdateCertificateStatus(ctx, certificate))
+		require.NoError(t, storage.UpdateCertificateStatus(ctx, certificate.CertificateID, certificate.Status, certificate.UpdatedAt))
 
 		// Fetch the certificate and verify the status has been updated
 		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Height)

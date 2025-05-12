@@ -47,7 +47,11 @@ type AggSenderStorage interface {
 	// GetCertificatesByStatus returns a list of certificates by their status
 	GetCertificatesByStatus(status []agglayertypes.CertificateStatus, lightQuery bool) ([]*types.CertificateInfo, error)
 	// UpdateCertificateStatus updates certificate status in db
-	UpdateCertificateStatus(ctx context.Context, certificate types.CertificateInfo) error
+	UpdateCertificateStatus(
+		ctx context.Context,
+		certificateID common.Hash,
+		newStatus agglayertypes.CertificateStatus,
+		updatedAt uint32) error
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -240,7 +244,11 @@ func deleteCertificate(tx db.Querier, certificateID common.Hash) error {
 }
 
 // UpdateCertificateStatus updates a certificate status in the storage
-func (a *AggSenderSQLStorage) UpdateCertificateStatus(ctx context.Context, certificate types.CertificateInfo) error {
+func (a *AggSenderSQLStorage) UpdateCertificateStatus(
+	ctx context.Context,
+	certificateID common.Hash,
+	newStatus agglayertypes.CertificateStatus,
+	updatedAt uint32) error {
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
 		return err
@@ -255,7 +263,7 @@ func (a *AggSenderSQLStorage) UpdateCertificateStatus(ctx context.Context, certi
 	}()
 
 	if _, err = tx.Exec(`UPDATE certificate_info SET status = $1, updated_at = $2 WHERE certificate_id = $3;`,
-		certificate.Status, certificate.UpdatedAt, certificate.CertificateID.String()); err != nil {
+		newStatus, updatedAt, certificateID.String()); err != nil {
 		return fmt.Errorf("error updating certificate info: %w", err)
 	}
 	if err = tx.Commit(); err != nil {
@@ -263,7 +271,7 @@ func (a *AggSenderSQLStorage) UpdateCertificateStatus(ctx context.Context, certi
 	}
 	shouldRollback = false
 
-	a.logger.Debugf("updated certificate status - CertificateID: %s", certificate.CertificateID)
+	a.logger.Debugf("updated certificate status - CertificateID: %s", certificateID)
 
 	return nil
 }
