@@ -108,6 +108,7 @@ func (b *BridgeService) registerRoutes() {
 	b.router.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
 	b.router.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 
+	// Swagger docs endpoint
 	b.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 }
 

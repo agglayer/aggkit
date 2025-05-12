@@ -1651,7 +1651,11 @@ func TestGetSponsoredClaimStatusHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridge.sponsor = nil
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status?global_index=1", nil)
+		queryParams := url.Values{
+			globalIndexParam: []string{"1"},
+		}
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status?"+queryParams.Encode(), nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(), "this client does not support claim sponsoring")
 	})
@@ -1661,16 +1665,21 @@ func TestGetSponsoredClaimStatusHandler(t *testing.T) {
 
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status", nil)
 		require.Equal(t, http.StatusBadRequest, response.Code)
-		require.Contains(t, response.Body.String(), "global_index is mandatory")
+		require.Contains(t, response.Body.String(), fmt.Sprintf("%s is mandatory", globalIndexParam))
 	})
 
 	t.Run("Failed to get claim status", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		bridgeMocks.sponsor.EXPECT().GetClaim(mock.Anything).
+		bridgeMocks.sponsor.EXPECT().
+			GetClaim(mock.Anything).
 			Return(nil, fmt.Errorf(fooErrMsg))
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status?global_index=1", nil)
+		queryParams := url.Values{
+			globalIndexParam: []string{"1"},
+		}
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status?"+queryParams.Encode(), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get claim status for global index 1, error: %s", fooErrMsg))
 	})
@@ -1685,7 +1694,11 @@ func TestGetSponsoredClaimStatusHandler(t *testing.T) {
 				Status:      expectedStatus,
 			}, nil)
 
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status?global_index=1", nil)
+		queryParams := url.Values{
+			globalIndexParam: []string{"1"},
+		}
+
+		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, "/sponsored-claim-status?"+queryParams.Encode(), nil)
 		require.Equal(t, http.StatusOK, response.Code)
 
 		var status claimsponsor.ClaimStatus
