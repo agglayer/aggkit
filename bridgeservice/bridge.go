@@ -39,6 +39,8 @@ const (
 
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
+
+	unsupportedNetworkErrTmpl = "unsupported network id %d"
 )
 
 var (
@@ -355,7 +357,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 	case b.networkID == networkID:
 		tokenMappings, tokenMappingsCount, setupErr = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
 		return
 	}
 
@@ -413,7 +415,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 	case b.networkID == networkID:
 		tokenMigrations, tokenMigrationsCount, setupErr = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
 		return
 	}
 
@@ -473,7 +475,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	case b.networkID == networkID:
 		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL2Bridge(ctx, depositCount)
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
 		return
 	}
 
@@ -545,7 +547,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 			return
 		}
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("unsupported network id %d", networkID)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
 		return
 	}
 

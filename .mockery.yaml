@@ -73,6 +73,7 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+      exclude: "^UintParam$"
   github.com/agglayer/aggkit/sync:
     config:
       dir: "{{ .InterfaceDir }}"
