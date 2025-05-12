@@ -57,9 +57,13 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		bridgeL2:     mocks.NewBridger(t),
 	}
 	logger := log.WithFields("module", "test bridge service")
-	b.bridge = New(
-		logger, 0, 0, networkID, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2,
-	)
+	cfg := &Config{
+		Logger:       logger,
+		ReadTimeout:  0,
+		WriteTimeout: 0,
+		NetworkID:    networkID,
+	}
+	b.bridge = New(cfg, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
 	return b
 }
 

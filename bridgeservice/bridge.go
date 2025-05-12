@@ -45,6 +45,13 @@ var (
 	ErrNotOnL1Info = errors.New("this bridge has not been included on the L1 Info Tree yet")
 )
 
+type Config struct {
+	Logger       *log.Logger
+	WriteTimeout time.Duration
+	ReadTimeout  time.Duration
+	NetworkID    uint32
+}
+
 // BridgeService contains implementations for the bridge service endpoints
 type BridgeService struct {
 	logger       *log.Logger
@@ -63,10 +70,7 @@ type BridgeService struct {
 
 // New returns instance of BridgeService
 func New(
-	logger *log.Logger,
-	writeTimeout time.Duration,
-	readTimeout time.Duration,
-	networkID uint32,
+	cfg *Config,
 	sponsor ClaimSponsorer,
 	l1InfoTree L1InfoTreer,
 	injectedGERs LastGERer,
@@ -74,14 +78,14 @@ func New(
 	bridgeL2 Bridger,
 ) *BridgeService {
 	meter := otel.Meter(meterName)
-	logger.Infof("starting bridge service (network id=%d)", networkID)
+	cfg.Logger.Infof("starting bridge service (network id=%d)", cfg.NetworkID)
 
 	b := &BridgeService{
-		logger:       logger,
+		logger:       cfg.Logger,
 		meter:        meter,
-		readTimeout:  readTimeout,
-		writeTimeout: writeTimeout,
-		networkID:    networkID,
+		readTimeout:  cfg.ReadTimeout,
+		writeTimeout: cfg.WriteTimeout,
+		networkID:    cfg.NetworkID,
 		sponsor:      sponsor,
 		l1InfoTree:   l1InfoTree,
 		injectedGERs: injectedGERs,

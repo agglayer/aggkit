@@ -660,11 +660,16 @@ func runBridgeService(
 	bridgeL2 *bridgesync.BridgeSync,
 ) error {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
+
+	bridgeCfg := &bridgeservice.Config{
+		Logger:       logger,
+		ReadTimeout:  cfg.ReadTimeout.Duration,
+		WriteTimeout: cfg.WriteTimeout.Duration,
+		NetworkID:    l2NetworkID,
+	}
+
 	b := bridgeservice.New(
-		logger,
-		cfg.WriteTimeout.Duration,
-		cfg.ReadTimeout.Duration,
-		l2NetworkID,
+		bridgeCfg,
 		sponsor,
 		l1InfoTree,
 		injectedGERs,
