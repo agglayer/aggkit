@@ -278,6 +278,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error marshalling signed certificate. Cert:%s. Err: %w", certificate.Brief(), err)
 	}
 
+	jsonCert := string(raw)
 	prevLER := common.BytesToHash(certificate.PrevLocalExitRoot[:])
 
 	certInfo := types.CertificateInfo{
@@ -293,7 +294,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		AggchainProof:           certificateParams.AggchainProof,
 		FinalizedL1InfoTreeRoot: &certificateParams.L1InfoTreeRootFromWhichToProve,
 		L1InfoTreeLeafCount:     certificateParams.L1InfoTreeLeafCount,
-		SignedCertificate:       string(raw),
+		SignedCertificate:       &jsonCert,
 	}
 	// TODO: Improve this case, if a cert is not save in the storage, we are going to settle a unknown certificate
 	err = a.saveCertificateToStorage(ctx, certInfo, a.cfg.MaxRetriesStoreCertificate)
@@ -310,11 +311,12 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 
 // saveCertificateToStorage saves the certificate to the storage
 // it retries if it fails. if param retries == 0 it retries indefinitely
-func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.CertificateInfo, maxRetries int) error {
+func (a *AggSender) saveCertificateToStorage(ctx context.Context, certInfo types.CertificateInfo, maxRetries int) error {
 	retries := 1
 	err := fmt.Errorf("initial_error")
+	cert := certInfo.ToCertificate()
 	for err != nil {
-		if err = a.storage.SaveLastSentCertificate(ctx, cert); err != nil {
+		if err = a.storage.SaveLastSentCertificate(ctx, *cert); err != nil {
 			// If this happens we can't work as normal, because local DB is outdated, we have to retry
 			a.log.Errorf("error saving last sent certificate %s in db: %w", cert.String(), err)
 			if retries == maxRetries {

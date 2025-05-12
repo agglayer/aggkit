@@ -213,7 +213,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		rateLimiter:     aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
-	mockStorage.EXPECT().GetLastSentCertificate().Return(&aggsendertypes.CertificateInfo{
+	mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&aggsendertypes.CertificateHeader{
 		NewLocalExitRoot: common.HexToHash("0x123"),
 		Height:           1,
 		FromBlock:        0,

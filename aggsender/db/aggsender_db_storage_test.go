@@ -30,43 +30,71 @@ func Test_Storage(t *testing.T) {
 	require.NoError(t, err)
 
 	updateTime := uint32(time.Now().UTC().UnixMilli())
+	signedCert := "signed certificate"
 
 	t.Run("SaveLastSentCertificate", func(t *testing.T) {
-		certificate := types.CertificateInfo{
-			Height:           1,
-			CertificateID:    common.HexToHash("0x1"),
-			NewLocalExitRoot: common.HexToHash("0x2"),
-			FromBlock:        1,
-			ToBlock:          2,
-			Status:           agglayertypes.Settled,
-			CreatedAt:        updateTime,
-			UpdatedAt:        updateTime,
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    common.HexToHash("0x1"),
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          2,
+				Status:           agglayertypes.Settled,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
+			AggchainProof: &types.AggchainProof{
+				LastProvenBlock: 0,
+				EndBlock:        2,
+				CustomChainData: []byte{0x1, 0x2},
+				LocalExitRoot:   common.HexToHash("0x3"),
+				AggchainParams:  common.HexToHash("0x4"),
+				Context: map[string][]byte{
+					"key1": {0x1, 0x2},
+				},
+				SP1StarkProof: &types.SP1StarkProof{
+					Version: "0.1",
+					Proof:   []byte{0x1, 0x2, 0x3},
+					Vkey:    []byte{0x4, 0x5, 0x6},
+				},
+			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Height)
+		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.NoError(t, err)
-
 		require.Equal(t, certificate, *certificateFromDB)
+
+		// try to save a certificate without certificate header
+		certificateWithoutHeader := types.Certificate{
+			Header: nil,
+		}
+
+		err = storage.SaveLastSentCertificate(ctx, certificateWithoutHeader)
+		require.ErrorContains(t, err, "error converting certificate to certificate info: missing certificate header")
+
 		require.NoError(t, storage.clean())
 	})
 
 	t.Run("DeleteCertificate", func(t *testing.T) {
-		certificate := types.CertificateInfo{
-			Height:           2,
-			CertificateID:    common.HexToHash("0x3"),
-			NewLocalExitRoot: common.HexToHash("0x4"),
-			FromBlock:        3,
-			ToBlock:          4,
-			Status:           agglayertypes.Settled,
-			CreatedAt:        updateTime,
-			UpdatedAt:        updateTime,
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           2,
+				CertificateID:    common.HexToHash("0x3"),
+				NewLocalExitRoot: common.HexToHash("0x4"),
+				FromBlock:        3,
+				ToBlock:          4,
+				Status:           agglayertypes.Settled,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		require.NoError(t, storage.DeleteCertificate(ctx, certificate.CertificateID))
+		require.NoError(t, storage.DeleteCertificate(ctx, certificate.Header.CertificateID))
 
-		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Height)
+		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.ErrorIs(t, err, db.ErrNotFound)
 		require.Nil(t, certificateFromDB)
 		require.NoError(t, storage.clean())
@@ -78,16 +106,23 @@ func Test_Storage(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, certificateFromDB)
 
+		// try getting a certificate header that doesn't exist
+		certificateHeaderFromDB, err := storage.GetLastSentCertificateHeader()
+		require.NoError(t, err)
+		require.Nil(t, certificateHeaderFromDB)
+
 		// try getting a certificate that exists
-		certificate := types.CertificateInfo{
-			Height:           3,
-			CertificateID:    common.HexToHash("0x5"),
-			NewLocalExitRoot: common.HexToHash("0x6"),
-			FromBlock:        5,
-			ToBlock:          6,
-			Status:           agglayertypes.Pending,
-			CreatedAt:        updateTime,
-			UpdatedAt:        updateTime,
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           3,
+				CertificateID:    common.HexToHash("0x5"),
+				NewLocalExitRoot: common.HexToHash("0x6"),
+				FromBlock:        5,
+				ToBlock:          6,
+				Status:           agglayertypes.Pending,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
@@ -95,6 +130,13 @@ func Test_Storage(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, certificateFromDB)
 		require.Equal(t, certificate, *certificateFromDB)
+
+		// try getting a certificate header that exists
+		certificateHeaderFromDB, err = storage.GetLastSentCertificateHeader()
+		require.NoError(t, err)
+		require.NotNil(t, certificateHeaderFromDB)
+		require.Equal(t, certificate.Header, certificateHeaderFromDB)
+
 		require.NoError(t, storage.clean())
 	})
 
@@ -104,28 +146,42 @@ func Test_Storage(t *testing.T) {
 		require.NoError(t, err)
 		require.Nil(t, certificateFromDB)
 
+		// try getting a certificate header that doesn't exist
+		certificateHeaderFromDB, err := storage.GetCertificateHeaderByHeight(0)
+		require.NoError(t, err)
+		require.Nil(t, certificateHeaderFromDB)
+
 		// try getting a certificate that doesn't exist
 		certificateFromDB, err = storage.GetCertificateByHeight(4)
 		require.ErrorIs(t, err, db.ErrNotFound)
 		require.Nil(t, certificateFromDB)
 
 		// try getting a certificate that exists
-		certificate := types.CertificateInfo{
-			Height:           11,
-			CertificateID:    common.HexToHash("0x17"),
-			NewLocalExitRoot: common.HexToHash("0x18"),
-			FromBlock:        17,
-			ToBlock:          18,
-			Status:           agglayertypes.Pending,
-			CreatedAt:        updateTime,
-			UpdatedAt:        updateTime,
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           11,
+				CertificateID:    common.HexToHash("0x17"),
+				NewLocalExitRoot: common.HexToHash("0x18"),
+				FromBlock:        17,
+				ToBlock:          18,
+				Status:           agglayertypes.Pending,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		certificateFromDB, err = storage.GetCertificateByHeight(certificate.Height)
+		certificateFromDB, err = storage.GetCertificateByHeight(certificate.Header.Height)
 		require.NoError(t, err)
 		require.NotNil(t, certificateFromDB)
 		require.Equal(t, certificate, *certificateFromDB)
+
+		// try getting a certificate header that exists
+		certificateHeaderFromDB, err = storage.GetCertificateHeaderByHeight(certificate.Header.Height)
+		require.NoError(t, err)
+		require.NotNil(t, certificateHeaderFromDB)
+		require.Equal(t, certificate.Header, certificateHeaderFromDB)
+
 		require.NoError(t, storage.clean())
 	})
 
@@ -133,52 +189,59 @@ func Test_Storage(t *testing.T) {
 		prevLER := common.HexToHash("0x9")
 		finalizedL1InfoRoot := common.HexToHash("0xa")
 		// Insert some certificates with different statuses
-		certificates := []*types.CertificateInfo{
+		certificates := []*types.Certificate{
 			{
-				Height:                  7,
-				CertificateID:           common.HexToHash("0x7"),
-				NewLocalExitRoot:        common.HexToHash("0x8"),
-				FromBlock:               7,
-				ToBlock:                 8,
-				Status:                  agglayertypes.Settled,
-				CreatedAt:               updateTime,
-				UpdatedAt:               updateTime,
-				PreviousLocalExitRoot:   &prevLER,
-				FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
+				Header: &types.CertificateHeader{
+					Height:                  7,
+					CertificateID:           common.HexToHash("0x7"),
+					NewLocalExitRoot:        common.HexToHash("0x8"),
+					FromBlock:               7,
+					ToBlock:                 8,
+					Status:                  agglayertypes.Settled,
+					CreatedAt:               updateTime,
+					UpdatedAt:               updateTime,
+					PreviousLocalExitRoot:   &prevLER,
+					FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
+				},
 			},
 			{
-				Height:                  9,
-				CertificateID:           common.HexToHash("0x9"),
-				NewLocalExitRoot:        common.HexToHash("0xA"),
-				FromBlock:               9,
-				ToBlock:                 10,
-				Status:                  agglayertypes.Pending,
-				CreatedAt:               updateTime,
-				UpdatedAt:               updateTime,
-				PreviousLocalExitRoot:   &prevLER,
-				FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
-				RetryCount:              1,
-				L1InfoTreeLeafCount:     10,
+				Header: &types.CertificateHeader{
+					Height:                  9,
+					CertificateID:           common.HexToHash("0x9"),
+					NewLocalExitRoot:        common.HexToHash("0xA"),
+					FromBlock:               9,
+					ToBlock:                 10,
+					Status:                  agglayertypes.Pending,
+					CreatedAt:               updateTime,
+					UpdatedAt:               updateTime,
+					PreviousLocalExitRoot:   &prevLER,
+					FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
+					RetryCount:              1,
+					L1InfoTreeLeafCount:     10,
+				},
 			},
 			{
-				Height:                  11,
-				CertificateID:           common.HexToHash("0xB"),
-				NewLocalExitRoot:        common.HexToHash("0xC"),
-				FromBlock:               11,
-				ToBlock:                 12,
-				Status:                  agglayertypes.InError,
-				CreatedAt:               updateTime,
-				UpdatedAt:               updateTime,
-				PreviousLocalExitRoot:   &prevLER,
-				FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
-				L1InfoTreeLeafCount:     15,
-				RetryCount:              2,
+				Header: &types.CertificateHeader{
+					Height:                  11,
+					CertificateID:           common.HexToHash("0xB"),
+					NewLocalExitRoot:        common.HexToHash("0xC"),
+					FromBlock:               11,
+					ToBlock:                 12,
+					Status:                  agglayertypes.InError,
+					CreatedAt:               updateTime,
+					UpdatedAt:               updateTime,
+					PreviousLocalExitRoot:   &prevLER,
+					FinalizedL1InfoTreeRoot: &finalizedL1InfoRoot,
+					L1InfoTreeLeafCount:     15,
+					RetryCount:              2,
+				},
+				SignedCertificate: &signedCert,
 				AggchainProof: &types.AggchainProof{
 					LastProvenBlock: 10,
 					EndBlock:        12,
-					CustomChainData: []byte{0x1, 0x2, 0x3},
-					LocalExitRoot:   common.HexToHash("0x123"),
-					AggchainParams:  common.HexToHash("0x456"),
+					CustomChainData: []byte{0x1, 0x2},
+					LocalExitRoot:   common.HexToHash("0x3"),
+					AggchainParams:  common.HexToHash("0x4"),
 					Context: map[string][]byte{
 						"key1": {0x1, 0x2},
 					},
@@ -197,75 +260,63 @@ func Test_Storage(t *testing.T) {
 
 		// Test fetching certificates with status Settled
 		statuses := []agglayertypes.CertificateStatus{agglayertypes.Settled}
-		certificatesFromDB, err := storage.GetCertificatesByStatus(statuses, false)
+		certificatesFromDB, err := storage.GetCertificateHeadersByStatus(statuses)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 1)
-		require.ElementsMatch(t, []*types.CertificateInfo{certificates[0]}, certificatesFromDB)
+		require.ElementsMatch(t, []*types.CertificateHeader{certificates[0].Header}, certificatesFromDB)
 
 		// Test fetching certificates with status Pending
 		statuses = []agglayertypes.CertificateStatus{agglayertypes.Pending}
-		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses, false)
+		certificatesFromDB, err = storage.GetCertificateHeadersByStatus(statuses)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 1)
-		require.ElementsMatch(t, []*types.CertificateInfo{certificates[1]}, certificatesFromDB)
+		require.ElementsMatch(t, []*types.CertificateHeader{certificates[1].Header}, certificatesFromDB)
 
 		// Test fetching certificates with status InError
 		statuses = []agglayertypes.CertificateStatus{agglayertypes.InError}
-		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses, false)
+		certificatesFromDB, err = storage.GetCertificateHeadersByStatus(statuses)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 1)
-		require.ElementsMatch(t, []*types.CertificateInfo{certificates[2]}, certificatesFromDB)
+		require.ElementsMatch(t, []*types.CertificateHeader{certificates[2].Header}, certificatesFromDB)
 
 		// Test fetching certificates with status InError and Pending
 		statuses = []agglayertypes.CertificateStatus{agglayertypes.InError, agglayertypes.Pending}
-		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses, false)
+		certificatesFromDB, err = storage.GetCertificateHeadersByStatus(statuses)
 		require.NoError(t, err)
 		require.Len(t, certificatesFromDB, 2)
-		require.ElementsMatch(t, []*types.CertificateInfo{certificates[1], certificates[2]}, certificatesFromDB)
-
-		// Test fetching certificates with status InError, but with light query
-		statuses = []agglayertypes.CertificateStatus{agglayertypes.InError}
-		certificatesFromDB, err = storage.GetCertificatesByStatus(statuses, true)
-		require.NoError(t, err)
-		require.Len(t, certificatesFromDB, 1)
-		require.Equal(t, certificates[2].Height, certificatesFromDB[0].Height)
-		require.Equal(t, certificates[2].RetryCount, certificatesFromDB[0].RetryCount)
-		require.Equal(t, certificates[2].CertificateID, certificatesFromDB[0].CertificateID)
-		require.Equal(t, certificates[2].Status, certificatesFromDB[0].Status)
-		require.Equal(t, certificates[2].CreatedAt, certificatesFromDB[0].CreatedAt)
-		require.Equal(t, certificates[2].UpdatedAt, certificatesFromDB[0].UpdatedAt)
-		require.Equal(t, certificates[2].FromBlock, certificatesFromDB[0].FromBlock)
-		require.Equal(t, certificates[2].ToBlock, certificatesFromDB[0].ToBlock)
-		require.Nil(t, certificatesFromDB[0].AggchainProof)
+		require.ElementsMatch(t, []*types.CertificateHeader{certificates[1].Header, certificates[2].Header}, certificatesFromDB)
 
 		require.NoError(t, storage.clean())
 	})
 
 	t.Run("UpdateCertificateStatus", func(t *testing.T) {
 		// Insert a certificate
-		certificate := types.CertificateInfo{
-			Height:           13,
-			RetryCount:       1234,
-			CertificateID:    common.HexToHash("0xD"),
-			NewLocalExitRoot: common.HexToHash("0xE"),
-			FromBlock:        13,
-			ToBlock:          14,
-			Status:           agglayertypes.Pending,
-			CreatedAt:        updateTime,
-			UpdatedAt:        updateTime,
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           13,
+				RetryCount:       1234,
+				CertificateID:    common.HexToHash("0xD"),
+				NewLocalExitRoot: common.HexToHash("0xE"),
+				FromBlock:        13,
+				ToBlock:          14,
+				Status:           agglayertypes.Pending,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
+			SignedCertificate: &signedCert,
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
 		// Update the status of the certificate
-		certificate.Status = agglayertypes.Settled
-		certificate.UpdatedAt = updateTime + 1
-		require.NoError(t, storage.UpdateCertificateStatus(ctx, certificate.CertificateID, certificate.Status, certificate.UpdatedAt))
+		certificate.Header.Status = agglayertypes.Settled
+		certificate.Header.UpdatedAt = updateTime + 1
+		require.NoError(t, storage.UpdateCertificateStatus(ctx, certificate.Header.CertificateID, certificate.Header.Status, certificate.Header.UpdatedAt))
 
 		// Fetch the certificate and verify the status has been updated
-		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Height)
+		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.NoError(t, err)
-		require.Equal(t, certificate.Status, certificateFromDB.Status, "equal status")
-		require.Equal(t, certificate.UpdatedAt, certificateFromDB.UpdatedAt, "equal updated at")
+		require.Equal(t, certificate.Header.Status, certificateFromDB.Header.Status, "equal status")
+		require.Equal(t, certificate.Header.UpdatedAt, certificateFromDB.Header.UpdatedAt, "equal updated at")
 
 		require.NoError(t, storage.clean())
 	})
@@ -287,49 +338,55 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 	updateTime := uint32(time.Now().UTC().UnixMilli())
 
 	t.Run("SaveNewCertificate", func(t *testing.T) {
-		certificate := types.CertificateInfo{
-			Height:           1,
-			CertificateID:    common.HexToHash("0x1"),
-			NewLocalExitRoot: common.HexToHash("0x2"),
-			FromBlock:        1,
-			ToBlock:          2,
-			Status:           agglayertypes.Settled,
-			CreatedAt:        updateTime,
-			UpdatedAt:        updateTime,
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    common.HexToHash("0x1"),
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          2,
+				Status:           agglayertypes.Settled,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Height)
+		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.NoError(t, err)
 		require.Equal(t, certificate, *certificateFromDB)
 		require.NoError(t, storage.clean())
 	})
 
 	t.Run("UpdateExistingCertificate", func(t *testing.T) {
-		certificate := types.CertificateInfo{
-			Height:           2,
-			CertificateID:    common.HexToHash("0x3"),
-			NewLocalExitRoot: common.HexToHash("0x4"),
-			FromBlock:        3,
-			ToBlock:          4,
-			Status:           agglayertypes.InError,
-			CreatedAt:        updateTime,
-			UpdatedAt:        updateTime,
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           2,
+				CertificateID:    common.HexToHash("0x3"),
+				NewLocalExitRoot: common.HexToHash("0x4"),
+				FromBlock:        3,
+				ToBlock:          4,
+				Status:           agglayertypes.InError,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
 		// Update the certificate with the same height
-		updatedCertificate := types.CertificateInfo{
-			Height:           2,
-			CertificateID:    common.HexToHash("0x5"),
-			NewLocalExitRoot: common.HexToHash("0x6"),
-			FromBlock:        3,
-			ToBlock:          6,
-			Status:           agglayertypes.Pending,
+		updatedCertificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           2,
+				CertificateID:    common.HexToHash("0x5"),
+				NewLocalExitRoot: common.HexToHash("0x6"),
+				FromBlock:        3,
+				ToBlock:          6,
+				Status:           agglayertypes.Pending,
+			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, updatedCertificate))
 
-		certificateFromDB, err := storage.GetCertificateByHeight(updatedCertificate.Height)
+		certificateFromDB, err := storage.GetCertificateByHeight(updatedCertificate.Header.Height)
 		require.NoError(t, err)
 		require.Equal(t, updatedCertificate, *certificateFromDB)
 		require.NoError(t, storage.clean())
@@ -337,15 +394,17 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 
 	t.Run("SaveCertificateWithRollback", func(t *testing.T) {
 		// Simulate an error during the transaction to trigger a rollback
-		certificate := types.CertificateInfo{
-			Height:           3,
-			CertificateID:    common.HexToHash("0x7"),
-			NewLocalExitRoot: common.HexToHash("0x8"),
-			FromBlock:        7,
-			ToBlock:          8,
-			Status:           agglayertypes.Settled,
-			CreatedAt:        updateTime,
-			UpdatedAt:        updateTime,
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           3,
+				CertificateID:    common.HexToHash("0x7"),
+				NewLocalExitRoot: common.HexToHash("0x8"),
+				FromBlock:        7,
+				ToBlock:          8,
+				Status:           agglayertypes.Settled,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
 		}
 
 		// Close the database to force an error
@@ -358,14 +417,14 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 		storage.db, err = db.NewSQLiteDB(path)
 		require.NoError(t, err)
 
-		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Height)
+		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.ErrorIs(t, err, db.ErrNotFound)
 		require.Nil(t, certificateFromDB)
 		require.NoError(t, storage.clean())
 	})
 
 	t.Run("SaveCertificate with raw data", func(t *testing.T) {
-		certfiicate := &agglayertypes.Certificate{
+		agglayerCertificate := &agglayertypes.Certificate{
 			NetworkID:         1,
 			Height:            1,
 			PrevLocalExitRoot: common.HexToHash("0x1"),
@@ -387,26 +446,30 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 			ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
 		}
 
-		raw, err := json.Marshal(certfiicate)
+		raw, err := json.Marshal(agglayerCertificate)
 		require.NoError(t, err)
 
-		certificate := types.CertificateInfo{
-			Height:            1,
-			CertificateID:     common.HexToHash("0x9"),
-			NewLocalExitRoot:  common.HexToHash("0x2"),
-			FromBlock:         1,
-			ToBlock:           10,
-			Status:            agglayertypes.Pending,
-			CreatedAt:         updateTime,
-			UpdatedAt:         updateTime,
-			SignedCertificate: string(raw),
+		jsonCert := string(raw)
+
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    common.HexToHash("0x9"),
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          10,
+				Status:           agglayertypes.Pending,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
+			SignedCertificate: &jsonCert,
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Height)
+		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.NoError(t, err)
 		require.Equal(t, certificate, *certificateFromDB)
-		require.Equal(t, raw, []byte(certificateFromDB.SignedCertificate))
+		require.Equal(t, raw, []byte(*certificateFromDB.SignedCertificate))
 
 		require.NoError(t, storage.clean())
 	})
@@ -431,11 +494,13 @@ func Test_StoragePreviousLER(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, storage)
 
-	certNoLER := types.CertificateInfo{
-		Height:           0,
-		CertificateID:    common.HexToHash("0x1"),
-		Status:           agglayertypes.InError,
-		NewLocalExitRoot: common.HexToHash("0x2"),
+	certNoLER := types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:           0,
+			CertificateID:    common.HexToHash("0x1"),
+			Status:           agglayertypes.InError,
+			NewLocalExitRoot: common.HexToHash("0x2"),
+		},
 	}
 	err = storage.SaveLastSentCertificate(ctx, certNoLER)
 	require.NoError(t, err)
@@ -445,12 +510,14 @@ func Test_StoragePreviousLER(t *testing.T) {
 	require.NotNil(t, readCertNoLER)
 	require.Equal(t, certNoLER, *readCertNoLER)
 
-	certLER := types.CertificateInfo{
-		Height:                1,
-		CertificateID:         common.HexToHash("0x2"),
-		Status:                agglayertypes.InError,
-		NewLocalExitRoot:      common.HexToHash("0x2"),
-		PreviousLocalExitRoot: &common.Hash{},
+	certLER := types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:                1,
+			CertificateID:         common.HexToHash("0x2"),
+			Status:                agglayertypes.InError,
+			NewLocalExitRoot:      common.HexToHash("0x2"),
+			PreviousLocalExitRoot: &common.Hash{},
+		},
 	}
 	err = storage.SaveLastSentCertificate(ctx, certLER)
 	require.NoError(t, err)
@@ -472,11 +539,13 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, storage)
 
-	certNoL1Root := types.CertificateInfo{
-		Height:           0,
-		CertificateID:    common.HexToHash("0x11"),
-		Status:           agglayertypes.Settled,
-		NewLocalExitRoot: common.HexToHash("0x22"),
+	certNoL1Root := types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:           0,
+			CertificateID:    common.HexToHash("0x11"),
+			Status:           agglayertypes.Settled,
+			NewLocalExitRoot: common.HexToHash("0x22"),
+		},
 	}
 	require.NoError(t, storage.SaveLastSentCertificate(ctx, certNoL1Root))
 
@@ -485,13 +554,15 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 	require.NotNil(t, readCertNoLER)
 	require.Equal(t, certNoL1Root, *readCertNoLER)
 
-	certWithL1Root := types.CertificateInfo{
-		Height:                  1,
-		CertificateID:           common.HexToHash("0x22"),
-		Status:                  agglayertypes.Settled,
-		NewLocalExitRoot:        common.HexToHash("0x23"),
-		FinalizedL1InfoTreeRoot: &common.Hash{},
-		L1InfoTreeLeafCount:     100,
+	certWithL1Root := types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:                  1,
+			CertificateID:           common.HexToHash("0x22"),
+			Status:                  agglayertypes.Settled,
+			NewLocalExitRoot:        common.HexToHash("0x23"),
+			FinalizedL1InfoTreeRoot: &common.Hash{},
+			L1InfoTreeLeafCount:     100,
+		},
 	}
 	require.NoError(t, storage.SaveLastSentCertificate(ctx, certWithL1Root))
 
@@ -499,7 +570,7 @@ func Test_StorageFinalizedL1InfoRoot(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, readCertWithL1Root)
 	require.Equal(t, certWithL1Root, *readCertWithL1Root)
-	require.Equal(t, certWithL1Root.L1InfoTreeLeafCount, readCertWithL1Root.L1InfoTreeLeafCount)
+	require.Equal(t, certWithL1Root.Header.L1InfoTreeLeafCount, readCertWithL1Root.Header.L1InfoTreeLeafCount)
 }
 
 func Test_StorageAggchainProof(t *testing.T) {
@@ -516,11 +587,13 @@ func Test_StorageAggchainProof(t *testing.T) {
 	require.NotNil(t, storage)
 
 	// no aggchain proof in cert
-	certNoAggchainProof := types.CertificateInfo{
-		Height:           0,
-		CertificateID:    common.HexToHash("0x111"),
-		Status:           agglayertypes.Pending,
-		NewLocalExitRoot: common.HexToHash("0x222"),
+	certNoAggchainProof := types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:           0,
+			CertificateID:    common.HexToHash("0x111"),
+			Status:           agglayertypes.Pending,
+			NewLocalExitRoot: common.HexToHash("0x222"),
+		},
 	}
 	require.NoError(t, storage.SaveLastSentCertificate(ctx, certNoAggchainProof))
 
@@ -528,6 +601,11 @@ func Test_StorageAggchainProof(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, readCertNoAggchainProof)
 	require.Equal(t, certNoAggchainProof, *readCertNoAggchainProof)
+
+	aggchainProofFromDB, err := storage.GetCertificateAggchainProof(
+		certNoAggchainProof.Header.Height, certNoAggchainProof.Header.CertificateID)
+	require.NoError(t, err)
+	require.Nil(t, aggchainProofFromDB)
 
 	// aggchain proof in cert
 	aggchainProof := &types.AggchainProof{
@@ -546,12 +624,14 @@ func Test_StorageAggchainProof(t *testing.T) {
 		},
 	}
 
-	certWithAggchainProof := types.CertificateInfo{
-		Height:           1,
-		CertificateID:    common.HexToHash("0x222"),
-		Status:           agglayertypes.Settled,
-		NewLocalExitRoot: common.HexToHash("0x223"),
-		AggchainProof:    aggchainProof,
+	certWithAggchainProof := types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:           1,
+			CertificateID:    common.HexToHash("0x222"),
+			Status:           agglayertypes.Settled,
+			NewLocalExitRoot: common.HexToHash("0x223"),
+		},
+		AggchainProof: aggchainProof,
 	}
 	require.NoError(t, storage.SaveLastSentCertificate(ctx, certWithAggchainProof))
 
@@ -559,4 +639,10 @@ func Test_StorageAggchainProof(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, readCertWithAggchainProof)
 	require.Equal(t, certWithAggchainProof, *readCertWithAggchainProof)
+
+	aggchainProofFromDB, err = storage.GetCertificateAggchainProof(
+		certWithAggchainProof.Header.Height, certWithAggchainProof.Header.CertificateID)
+	require.NoError(t, err)
+	require.NotNil(t, aggchainProofFromDB)
+	require.Equal(t, aggchainProof, aggchainProofFromDB)
 }

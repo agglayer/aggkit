@@ -3,6 +3,7 @@ package types
 import (
 	"fmt"
 	"math/big"
+	"reflect"
 	"testing"
 	"time"
 
@@ -97,4 +98,40 @@ func TestCertificateInfo_String(t *testing.T) {
 
 		require.Equal(t, expected, certInfo.String())
 	})
+}
+
+func TestCertificateFieldsMatchCertificateInfo(t *testing.T) {
+	// Check that all fields in CertificateInfo are present in Certificate
+	certificateInfoType := reflect.TypeOf(CertificateInfo{})
+
+	for i := range certificateInfoType.NumField() {
+		field := certificateInfoType.Field(i)
+		_, found := reflect.TypeOf(CertificateHeader{}).FieldByName(field.Name)
+		if !found {
+			_, found = reflect.TypeOf(Certificate{}).FieldByName(field.Name)
+		}
+		require.True(t, found, "Field %s is missing in Certificate", field.Name)
+	}
+
+	// Check that all fields in Certificate are present in CertificateInfo
+	certificateHeaderType := reflect.TypeOf(CertificateHeader{})
+
+	// Check that all fields in CertificateHeader are present in CertificateInfo
+	for i := range certificateHeaderType.NumField() {
+		field := certificateHeaderType.Field(i)
+		_, found := certificateInfoType.FieldByName(field.Name)
+		require.True(t, found, "Field %s from CertificateHeader is missing in CertificateInfo", field.Name)
+	}
+
+	// Check that all fields in Certificate are present in CertificateInfo
+	certificateType := reflect.TypeOf(Certificate{})
+
+	for i := range certificateType.NumField() {
+		field := certificateType.Field(i)
+		if field.Name == "Header" {
+			continue
+		}
+		_, found := certificateInfoType.FieldByName(field.Name)
+		require.True(t, found, "Field %s from Certificate is missing in CertificateInfo", field.Name)
+	}
 }
