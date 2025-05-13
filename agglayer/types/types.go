@@ -33,6 +33,8 @@ const (
 var (
 	NonSettledStatuses = []CertificateStatus{Pending, Candidate, Proven}
 	ClosedStatuses     = []CertificateStatus{Settled, InError}
+
+	emptyBytesHash = crypto.Keccak256(nil)
 )
 
 // String representation of the enum
@@ -446,7 +448,6 @@ type BridgeExit struct {
 	DestinationNetwork uint32         `json:"dest_network"`
 	DestinationAddress common.Address `json:"dest_address"`
 	Amount             *big.Int       `json:"amount"`
-	IsMetadataHashed   bool           `json:"-"`
 	Metadata           []byte         `json:"metadata"`
 }
 
@@ -469,11 +470,10 @@ func (b *BridgeExit) Hash() common.Hash {
 	if b.Amount == nil {
 		b.Amount = big.NewInt(0)
 	}
-	var metaDataHash []byte
-	if b.IsMetadataHashed {
-		metaDataHash = b.Metadata
-	} else {
-		metaDataHash = crypto.Keccak256(b.Metadata)
+
+	metaDataHash := b.Metadata
+	if len(metaDataHash) == 0 {
+		metaDataHash = emptyBytesHash
 	}
 
 	return crypto.Keccak256Hash(
@@ -490,10 +490,9 @@ func (b *BridgeExit) Hash() common.Hash {
 // MarshalJSON is the implementation of the json.Marshaler interface
 func (b *BridgeExit) MarshalJSON() ([]byte, error) {
 	var metadataString interface{}
-	if b.IsMetadataHashed {
+
+	if len(b.Metadata) > 0 {
 		metadataString = common.Bytes2Hex(b.Metadata)
-	} else if len(b.Metadata) > 0 {
-		metadataString = bytesToUints(b.Metadata)
 	} else {
 		metadataString = nil
 	}
@@ -539,32 +538,13 @@ func (b *BridgeExit) UnmarshalJSON(data []byte) error {
 			return fmt.Errorf("failed to convert amount to big.Int: %s", aux.Amount)
 		}
 	}
+
 	if s, ok := aux.Metadata.(string); ok {
-		b.IsMetadataHashed = true
 		b.Metadata = common.Hex2Bytes(s)
-	} else if uints, ok := aux.Metadata.([]interface{}); ok {
-		b.IsMetadataHashed = false
-		b.Metadata = make([]byte, len(uints))
-		for k, v := range uints {
-			value, ok := v.(float64)
-			if !ok {
-				return fmt.Errorf("failed to convert metadata to byte: %v", v)
-			}
-			b.Metadata[k] = byte(value)
-		}
 	} else {
 		b.Metadata = nil
 	}
 	return nil
-}
-
-// bytesToUints converts a byte slice to a slice of uints
-func bytesToUints(data []byte) []uint {
-	uints := make([]uint, len(data))
-	for i, b := range data {
-		uints[i] = uint(b)
-	}
-	return uints
 }
 
 // MerkleProof represents an inclusion proof of a leaf in a Merkle tree

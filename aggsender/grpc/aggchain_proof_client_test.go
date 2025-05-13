@@ -115,7 +115,6 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 						DestinationAddress: common.HexToAddress("0x1"),
 						Amount:             common.Big1,
 						Metadata:           []byte("metadata"),
-						IsMetadataHashed:   false,
 						TokenInfo: &agglayer.TokenInfo{
 							OriginNetwork:      1,
 							OriginTokenAddress: common.HexToAddress("0x2"),
@@ -157,7 +156,6 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 						DestinationAddress: common.HexToAddress("0x11"),
 						Amount:             common.Big2,
 						Metadata:           []byte("metadata2"),
-						IsMetadataHashed:   false,
 						TokenInfo: &agglayer.TokenInfo{
 							OriginNetwork:      1,
 							OriginTokenAddress: common.HexToAddress("0x22"),

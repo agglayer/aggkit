@@ -161,7 +161,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | DelayBeetweenRetries          | Duration           | Initial status check delay between retries <br> Store certificate on DB delay between retries        |
 | KeepCertificatesHistory       | bool               | Instead of deleting them, discarded certificates are moved to the `certificate_info_history` table   |
 | MaxCertSize                   | uint               | The maximum size of the certificate. <br> `0` means infinite size.                                   |
-| BridgeMetadataAsHash          | bool               | Flag indicating to import the bridge metadata as a hash                                              |
 | DryRun                        | bool               | Flag to enable the dry-run mode. <br> In this mode, the AggSender will not send certificates to the Agglayer. Useful when debugging the certficates build process on Aggsender.                                                                                 |
 | EnableRPC                     | bool               | Flag to enable the Aggsender's RPC layer                                                             |
 | AggchainProofURL              | string             | URL to the Aggchain Prover                                                                           |

@@ -37,8 +37,6 @@ type Config struct {
 	// MaxCertSize is the maximum size of the certificate (the emitted certificate cannot be bigger that this size)
 	// 0 is infinite
 	MaxCertSize uint `mapstructure:"MaxCertSize"`
-	// BridgeMetadataAsHash is a flag to import the bridge metadata as hash
-	BridgeMetadataAsHash bool `mapstructure:"BridgeMetadataAsHash"`
 	// DryRun is a flag to enable the dry run mode
 	// in this mode the AggSender will not send the certificates to Agglayer
 	DryRun bool `mapstructure:"DryRun"`
