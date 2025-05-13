@@ -95,7 +95,7 @@ func start(cliCtx *cli.Context) error {
 		case aggkitcommon.BRIDGE:
 			err := runBridgeService(
 				cliCtx.Context,
-				cfg.RPC,
+				cfg.REST,
 				cfg.Common.NetworkID,
 				claimSponsor,
 				l1InfoTreeSync,
@@ -651,7 +651,7 @@ func runBridgeSyncL2IfNeeded(
 
 func runBridgeService(
 	ctx context.Context,
-	cfg jRPC.Config,
+	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
 	sponsor *claimsponsor.ClaimSponsor,
 	l1InfoTree *l1infotreesync.L1InfoTreeSync,
