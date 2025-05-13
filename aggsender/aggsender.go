@@ -281,20 +281,22 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	jsonCert := string(raw)
 	prevLER := common.BytesToHash(certificate.PrevLocalExitRoot[:])
 
-	certInfo := types.CertificateInfo{
-		Height:                  certificate.Height,
-		RetryCount:              certificateParams.RetryCount,
-		CertificateID:           certificateHash,
-		NewLocalExitRoot:        certificate.NewLocalExitRoot,
-		PreviousLocalExitRoot:   &prevLER,
-		FromBlock:               certificateParams.FromBlock,
-		ToBlock:                 certificateParams.ToBlock,
-		CreatedAt:               certificateParams.CreatedAt,
-		UpdatedAt:               certificateParams.CreatedAt,
-		AggchainProof:           certificateParams.AggchainProof,
-		FinalizedL1InfoTreeRoot: &certificateParams.L1InfoTreeRootFromWhichToProve,
-		L1InfoTreeLeafCount:     certificateParams.L1InfoTreeLeafCount,
-		SignedCertificate:       &jsonCert,
+	certInfo := types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:                  certificate.Height,
+			RetryCount:              certificateParams.RetryCount,
+			CertificateID:           certificateHash,
+			NewLocalExitRoot:        certificate.NewLocalExitRoot,
+			PreviousLocalExitRoot:   &prevLER,
+			FromBlock:               certificateParams.FromBlock,
+			ToBlock:                 certificateParams.ToBlock,
+			CreatedAt:               certificateParams.CreatedAt,
+			UpdatedAt:               certificateParams.CreatedAt,
+			FinalizedL1InfoTreeRoot: &certificateParams.L1InfoTreeRootFromWhichToProve,
+			L1InfoTreeLeafCount:     certificateParams.L1InfoTreeLeafCount,
+		},
+		SignedCertificate: &jsonCert,
+		AggchainProof:     certificateParams.AggchainProof,
 	}
 	// TODO: Improve this case, if a cert is not save in the storage, we are going to settle a unknown certificate
 	err = a.saveCertificateToStorage(ctx, certInfo, a.cfg.MaxRetriesStoreCertificate)
@@ -304,19 +306,18 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	a.log.Infof("certificate: %s sent successfully for range of l2 blocks (from block: %d, to block: %d) cert:%s",
-		certInfo.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
+		certInfo.Header.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
 	return certificate, nil
 }
 
 // saveCertificateToStorage saves the certificate to the storage
 // it retries if it fails. if param retries == 0 it retries indefinitely
-func (a *AggSender) saveCertificateToStorage(ctx context.Context, certInfo types.CertificateInfo, maxRetries int) error {
+func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Certificate, maxRetries int) error {
 	retries := 1
 	err := fmt.Errorf("initial_error")
-	cert := certInfo.ToCertificate()
 	for err != nil {
-		if err = a.storage.SaveLastSentCertificate(ctx, *cert); err != nil {
+		if err = a.storage.SaveLastSentCertificate(ctx, cert); err != nil {
 			// If this happens we can't work as normal, because local DB is outdated, we have to retry
 			a.log.Errorf("error saving last sent certificate %s in db: %w", cert.String(), err)
 			if retries == maxRetries {
