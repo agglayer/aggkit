@@ -1,6 +1,7 @@
 {
   "deployment_stages": {
-    "deploy_l2_contracts": true
+    "deploy_l2_contracts": true,
+    "deploy_cdk_bridge_infra": false
   },
   "args": {
     "verbosity": "debug",

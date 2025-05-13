@@ -1,7 +1,8 @@
 {
   "deployment_stages": {
     "deploy_optimism_rollup": true,
-    "deploy_op_succinct": true
+    "deploy_op_succinct": true,
+    "deploy_cdk_bridge_infra": false
   },
   "args": {
     "verbosity": "debug",
