@@ -253,81 +253,12 @@ func (c *CertificateInfo) ToCertificate() *Certificate {
 	}
 }
 
-func (c *CertificateInfo) String() string {
-	if c == nil {
-		return NilStr
-	}
-	previousLocalExitRoot := NilStr
-	if c.PreviousLocalExitRoot != nil {
-		previousLocalExitRoot = c.PreviousLocalExitRoot.String()
-	}
-	finalizedL1InfoTreeRoot := NilStr
-	if c.FinalizedL1InfoTreeRoot != nil {
-		finalizedL1InfoTreeRoot = c.FinalizedL1InfoTreeRoot.String()
-	}
-	aggchainProof := NilStr
-	if c.AggchainProof != nil {
-		aggchainProof = c.AggchainProof.String()
-	}
-
-	return fmt.Sprintf("aggsender.CertificateInfo: \n"+
-		"Height: %d \n"+
-		"RetryCount: %d \n"+
-		"CertificateID: %s \n"+
-		"PreviousLocalExitRoot: %s \n"+
-		"NewLocalExitRoot: %s \n"+
-		"Status: %s \n"+
-		"FromBlock: %d \n"+
-		"ToBlock: %d \n"+
-		"CreatedAt: %s \n"+
-		"UpdatedAt: %s \n"+
-		"AggchainProof: %s \n"+
-		"FinalizedL1InfoTreeRoot: %s \n",
-		c.Height,
-		c.RetryCount,
-		c.CertificateID.String(),
-		previousLocalExitRoot,
-		c.NewLocalExitRoot.String(),
-		c.Status.String(),
-		c.FromBlock,
-		c.ToBlock,
-		time.Unix(int64(c.CreatedAt), 0),
-		time.Unix(int64(c.UpdatedAt), 0),
-		aggchainProof,
-		finalizedL1InfoTreeRoot,
-	)
-}
-
 // ID returns a string with the unique identifier of the cerificate (height+certificateID)
 func (c *CertificateInfo) ID() string {
 	if c == nil {
 		return NilStr
 	}
 	return fmt.Sprintf("%d/%s (retry %d)", c.Height, c.CertificateID.String(), c.RetryCount)
-}
-
-// StatusString returns the string representation of the status
-func (c *CertificateInfo) StatusString() string {
-	if c == nil {
-		return "???"
-	}
-	return c.Status.String()
-}
-
-// IsClosed returns true if the certificate is closed (settled or inError)
-func (c *CertificateInfo) IsClosed() bool {
-	if c == nil {
-		return false
-	}
-	return c.Status.IsClosed()
-}
-
-// ElapsedTimeSinceCreation returns the time elapsed since the certificate was created
-func (c *CertificateInfo) ElapsedTimeSinceCreation() time.Duration {
-	if c == nil {
-		return 0
-	}
-	return time.Now().UTC().Sub(time.Unix(int64(c.CreatedAt), 0))
 }
 
 type CertificateMetadata struct {
