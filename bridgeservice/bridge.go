@@ -25,9 +25,9 @@ import (
 )
 
 const (
-	// BRIDGE is the namespace of the bridge service
-	BRIDGE    = "bridge"
-	meterName = "github.com/agglayer/aggkit/bridgeservice"
+	// BridgeV1Prefix is the url prefix for the bridge service
+	BridgeV1Prefix = "/bridge/v1"
+	meterName      = "github.com/agglayer/aggkit/bridgeservice"
 
 	networkIDParam    = "network_id"
 	networkIDsParam   = "network_ids"
@@ -103,16 +103,19 @@ func New(
 
 // registerRoutes registers the routes for the bridge service
 func (b *BridgeService) registerRoutes() {
-	b.router.GET("/bridges", b.GetBridgesHandler)
-	b.router.GET("/claims", b.GetClaimsHandler)
-	b.router.GET("/token-mappings", b.GetTokenMappingsHandler)
-	b.router.GET("/legacy-token-migrations", b.GetLegacyTokenMigrationsHandler)
-	b.router.GET("/l1-info-tree-index", b.L1InfoTreeIndexForBridgeHandler)
-	b.router.GET("/injected-l1-info-leaf", b.InjectedL1InfoLeafHandler)
-	b.router.GET("/claim-proof", b.ClaimProofHandler)
-	b.router.POST("/sponsor-claim", b.SponsorClaimHandler)
-	b.router.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
-	b.router.GET("/last-reorg-event", b.GetLastReorgEventHandler)
+	bridgeGroup := b.router.Group(BridgeV1Prefix)
+	{
+		bridgeGroup.GET("/bridges", b.GetBridgesHandler)
+		bridgeGroup.GET("/claims", b.GetClaimsHandler)
+		bridgeGroup.GET("/token-mappings", b.GetTokenMappingsHandler)
+		bridgeGroup.GET("/legacy-token-migrations", b.GetLegacyTokenMigrationsHandler)
+		bridgeGroup.GET("/l1-info-tree-index", b.L1InfoTreeIndexForBridgeHandler)
+		bridgeGroup.GET("/injected-l1-info-leaf", b.InjectedL1InfoLeafHandler)
+		bridgeGroup.GET("/claim-proof", b.ClaimProofHandler)
+		bridgeGroup.POST("/sponsor-claim", b.SponsorClaimHandler)
+		bridgeGroup.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
+		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
+	}
 
 	// Swagger docs endpoint
 	b.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
