@@ -135,7 +135,7 @@ func (a *AggSenderSQLStorage) GetCertificateByHeight(height uint64) (*types.Cert
 		return nil, nil
 	}
 
-	return certInfo.ToCertificate(), nil
+	return certInfo.toCertificate(), nil
 }
 
 // GetCertificateHeaderByHeight returns a certificate by its height
@@ -150,8 +150,8 @@ func (a *AggSenderSQLStorage) GetCertificateHeaderByHeight(height uint64) (*type
 
 // getCertificateByHeight returns a certificate by its height using the provided db
 func getCertificateByHeight(db db.Querier,
-	height uint64) (*types.CertificateInfo, error) {
-	var certificateInfo types.CertificateInfo
+	height uint64) (*certificateInfo, error) {
+	var certificateInfo certificateInfo
 	if err := meddler.QueryRow(db, &certificateInfo,
 		"SELECT * FROM certificate_info WHERE height = $1;", height); err != nil {
 		return nil, getSelectQueryError(height, err)
@@ -162,13 +162,13 @@ func getCertificateByHeight(db db.Querier,
 
 // GetLastSentCertificate returns the last certificate sent to the aggLayer
 func (a *AggSenderSQLStorage) GetLastSentCertificate() (*types.Certificate, error) {
-	var certificateInfo types.CertificateInfo
+	var certificateInfo certificateInfo
 	if err := meddler.QueryRow(a.db, &certificateInfo,
 		"SELECT * FROM certificate_info ORDER BY height DESC LIMIT 1;"); err != nil {
 		return nil, getSelectQueryError(0, err)
 	}
 
-	return certificateInfo.ToCertificate(), nil
+	return certificateInfo.toCertificate(), nil
 }
 
 // GetLastSentCertificateHeader returns the last certificate header sent to the aggLayer
@@ -196,7 +196,7 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 		}
 	}()
 
-	certificateInfo, err := certificate.ToCertificateInfo()
+	certificateInfo, err := convertCertificateToCertificateInfo(&certificate)
 	if err != nil {
 		return fmt.Errorf("error converting certificate to certificate info: %w", err)
 	}
@@ -230,7 +230,7 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 }
 
 func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx db.Querier,
-	certificate *types.CertificateInfo) error {
+	certificate *certificateInfo) error {
 	if a.cfg.KeepCertificatesHistory {
 		a.logger.Debugf("moving certificate to history - new CertificateID: %s", certificate.ID())
 		if _, err := tx.Exec(`INSERT INTO certificate_info_history SELECT * FROM certificate_info WHERE height = $1;`,

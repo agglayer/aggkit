@@ -9,8 +9,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var errNoCertificateHeader = fmt.Errorf("missing certificate header")
-
 const NilStr = "nil"
 
 type AggsenderMode string
@@ -189,76 +187,6 @@ func (c *Certificate) String() string {
 		c.Header.String(),
 		aggchainProof,
 	)
-}
-
-func (c *Certificate) ToCertificateInfo() (*CertificateInfo, error) {
-	if c.Header == nil {
-		return nil, errNoCertificateHeader
-	}
-
-	return &CertificateInfo{
-		CertificateID:           c.Header.CertificateID,
-		Height:                  c.Header.Height,
-		RetryCount:              c.Header.RetryCount,
-		PreviousLocalExitRoot:   c.Header.PreviousLocalExitRoot,
-		NewLocalExitRoot:        c.Header.NewLocalExitRoot,
-		FromBlock:               c.Header.FromBlock,
-		ToBlock:                 c.Header.ToBlock,
-		Status:                  c.Header.Status,
-		CreatedAt:               c.Header.CreatedAt,
-		UpdatedAt:               c.Header.UpdatedAt,
-		FinalizedL1InfoTreeRoot: c.Header.FinalizedL1InfoTreeRoot,
-		L1InfoTreeLeafCount:     c.Header.L1InfoTreeLeafCount,
-		SignedCertificate:       c.SignedCertificate,
-		AggchainProof:           c.AggchainProof,
-	}, nil
-}
-
-type CertificateInfo struct {
-	Height        uint64      `meddler:"height"`
-	RetryCount    int         `meddler:"retry_count"`
-	CertificateID common.Hash `meddler:"certificate_id,hash"`
-	// PreviousLocalExitRoot if it's nil means no reported
-	PreviousLocalExitRoot   *common.Hash                    `meddler:"previous_local_exit_root,hash"`
-	NewLocalExitRoot        common.Hash                     `meddler:"new_local_exit_root,hash"`
-	FromBlock               uint64                          `meddler:"from_block"`
-	ToBlock                 uint64                          `meddler:"to_block"`
-	Status                  agglayertypes.CertificateStatus `meddler:"status"`
-	CreatedAt               uint32                          `meddler:"created_at"`
-	UpdatedAt               uint32                          `meddler:"updated_at"`
-	SignedCertificate       *string                         `meddler:"signed_certificate"`
-	AggchainProof           *AggchainProof                  `meddler:"aggchain_proof,aggchainproof"`
-	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
-	L1InfoTreeLeafCount     uint32                          `meddler:"l1_info_tree_leaf_count"`
-}
-
-func (c *CertificateInfo) ToCertificate() *Certificate {
-	return &Certificate{
-		Header: &CertificateHeader{
-			Height:                  c.Height,
-			RetryCount:              c.RetryCount,
-			CertificateID:           c.CertificateID,
-			PreviousLocalExitRoot:   c.PreviousLocalExitRoot,
-			NewLocalExitRoot:        c.NewLocalExitRoot,
-			FromBlock:               c.FromBlock,
-			ToBlock:                 c.ToBlock,
-			Status:                  c.Status,
-			CreatedAt:               c.CreatedAt,
-			UpdatedAt:               c.UpdatedAt,
-			FinalizedL1InfoTreeRoot: c.FinalizedL1InfoTreeRoot,
-			L1InfoTreeLeafCount:     c.L1InfoTreeLeafCount,
-		},
-		SignedCertificate: c.SignedCertificate,
-		AggchainProof:     c.AggchainProof,
-	}
-}
-
-// ID returns a string with the unique identifier of the cerificate (height+certificateID)
-func (c *CertificateInfo) ID() string {
-	if c == nil {
-		return NilStr
-	}
-	return fmt.Sprintf("%d/%s (retry %d)", c.Height, c.CertificateID.String(), c.RetryCount)
 }
 
 type CertificateMetadata struct {

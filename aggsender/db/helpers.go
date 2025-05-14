@@ -8,7 +8,10 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 )
 
-var selectQueryCertificateHeader string
+var (
+	selectQueryCertificateHeader string
+	errNoCertificateHeader       = fmt.Errorf("missing certificate header")
+)
 
 func init() {
 	selectQueryCertificateHeader = SelectQuery("certificate_info")
@@ -45,4 +48,36 @@ func getCertificateHeaderDBFieldNames() []string {
 	}
 
 	return fields
+}
+
+// convertCertificateToCertificateInfo converts a Certificate object from the types package
+// into a certificateInfo object. It extracts relevant fields from the Certificate's Header
+// and other properties to populate the certificateInfo structure.
+// Returns:
+//   - A pointer to a certificateInfo object containing the extracted data.
+//   - An error if the Certificate's Header is nil.
+//
+// Errors:
+//   - Returns errNoCertificateHeader if the provided Certificate has a nil Header.
+func convertCertificateToCertificateInfo(c *types.Certificate) (*certificateInfo, error) {
+	if c.Header == nil {
+		return nil, errNoCertificateHeader
+	}
+
+	return &certificateInfo{
+		CertificateID:           c.Header.CertificateID,
+		Height:                  c.Header.Height,
+		RetryCount:              c.Header.RetryCount,
+		PreviousLocalExitRoot:   c.Header.PreviousLocalExitRoot,
+		NewLocalExitRoot:        c.Header.NewLocalExitRoot,
+		FromBlock:               c.Header.FromBlock,
+		ToBlock:                 c.Header.ToBlock,
+		Status:                  c.Header.Status,
+		CreatedAt:               c.Header.CreatedAt,
+		UpdatedAt:               c.Header.UpdatedAt,
+		FinalizedL1InfoTreeRoot: c.Header.FinalizedL1InfoTreeRoot,
+		L1InfoTreeLeafCount:     c.Header.L1InfoTreeLeafCount,
+		SignedCertificate:       c.SignedCertificate,
+		AggchainProof:           c.AggchainProof,
+	}, nil
 }

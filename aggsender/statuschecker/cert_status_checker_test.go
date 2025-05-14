@@ -136,7 +136,7 @@ func TestNewCertificateInfoFromAgglayerCertHeader(t *testing.T) {
 	tests := []struct {
 		name           string
 		inputHeader    *agglayertypes.CertificateHeader
-		expectedResult *types.CertificateInfo
+		expectedResult *types.Certificate
 	}{
 		{
 			name:           "Nil input header",
@@ -153,16 +153,18 @@ func TestNewCertificateInfoFromAgglayerCertHeader(t *testing.T) {
 				Status:                agglayertypes.Settled,
 				PreviousLocalExitRoot: &previousLER,
 			},
-			expectedResult: &types.CertificateInfo{
-				Height:                100,
-				CertificateID:         common.HexToHash("0x1"),
-				NewLocalExitRoot:      common.HexToHash("0xabc"),
-				FromBlock:             10,
-				ToBlock:               15,
-				Status:                agglayertypes.Settled,
-				CreatedAt:             1234567890,
-				SignedCertificate:     &naAgglayerHeader,
-				PreviousLocalExitRoot: &previousLER,
+			expectedResult: &types.Certificate{
+				Header: &types.CertificateHeader{
+					Height:                100,
+					CertificateID:         common.HexToHash("0x1"),
+					NewLocalExitRoot:      common.HexToHash("0xabc"),
+					FromBlock:             10,
+					ToBlock:               15,
+					Status:                agglayertypes.Settled,
+					CreatedAt:             1234567890,
+					PreviousLocalExitRoot: &previousLER,
+				},
+				SignedCertificate: &naAgglayerHeader,
 			},
 		},
 		{
@@ -174,13 +176,15 @@ func TestNewCertificateInfoFromAgglayerCertHeader(t *testing.T) {
 				Metadata:         common.BigToHash(big.NewInt(25)),
 				Status:           agglayertypes.InError,
 			},
-			expectedResult: &types.CertificateInfo{
-				Height:            200,
-				CertificateID:     common.HexToHash("0x2"),
-				NewLocalExitRoot:  common.HexToHash("0x123"),
-				FromBlock:         0,
-				ToBlock:           25,
-				Status:            agglayertypes.InError,
+			expectedResult: &types.Certificate{
+				Header: &types.CertificateHeader{
+					Height:           200,
+					CertificateID:    common.HexToHash("0x2"),
+					NewLocalExitRoot: common.HexToHash("0x123"),
+					FromBlock:        0,
+					ToBlock:          25,
+					Status:           agglayertypes.InError,
+				},
 				SignedCertificate: &naAgglayerHeader,
 			},
 		},
@@ -196,14 +200,14 @@ func TestNewCertificateInfoFromAgglayerCertHeader(t *testing.T) {
 				require.Nil(t, result)
 			} else {
 				require.NotNil(t, result)
-				require.Equal(t, tt.expectedResult.Height, result.Header.Height)
-				require.Equal(t, tt.expectedResult.CertificateID, result.Header.CertificateID)
-				require.Equal(t, tt.expectedResult.NewLocalExitRoot, result.Header.NewLocalExitRoot)
-				require.Equal(t, tt.expectedResult.FromBlock, result.Header.FromBlock)
-				require.Equal(t, tt.expectedResult.ToBlock, result.Header.ToBlock)
-				require.Equal(t, tt.expectedResult.Status, result.Header.Status)
+				require.Equal(t, tt.expectedResult.Header.Height, result.Header.Height)
+				require.Equal(t, tt.expectedResult.Header.CertificateID, result.Header.CertificateID)
+				require.Equal(t, tt.expectedResult.Header.NewLocalExitRoot, result.Header.NewLocalExitRoot)
+				require.Equal(t, tt.expectedResult.Header.FromBlock, result.Header.FromBlock)
+				require.Equal(t, tt.expectedResult.Header.ToBlock, result.Header.ToBlock)
+				require.Equal(t, tt.expectedResult.Header.Status, result.Header.Status)
+				require.Equal(t, tt.expectedResult.Header.PreviousLocalExitRoot, result.Header.PreviousLocalExitRoot)
 				require.Equal(t, tt.expectedResult.SignedCertificate, result.SignedCertificate)
-				require.Equal(t, tt.expectedResult.PreviousLocalExitRoot, result.Header.PreviousLocalExitRoot)
 			}
 		})
 	}
