@@ -97,7 +97,7 @@ func NewAggSenderSQLStorage(logger *log.Logger, cfg AggSenderSQLStorageConfig) (
 // GetCertificateHeadersByStatus returns a list of certificate headers by their status
 func (a *AggSenderSQLStorage) GetCertificateHeadersByStatus(
 	statuses []agglayertypes.CertificateStatus) ([]*types.CertificateHeader, error) {
-	query := "SELECT * FROM certificate_info"
+	query := selectQueryCertificateHeader
 
 	args := make([]any, len(statuses))
 
@@ -142,7 +142,7 @@ func (a *AggSenderSQLStorage) GetCertificateByHeight(height uint64) (*types.Cert
 func (a *AggSenderSQLStorage) GetCertificateHeaderByHeight(height uint64) (*types.CertificateHeader, error) {
 	var certificateHeader types.CertificateHeader
 	if err := meddler.QueryRow(a.db, &certificateHeader,
-		"SELECT * FROM certificate_info WHERE height = $1;", height); err != nil {
+		fmt.Sprintf("%s WHERE height = $1;", selectQueryCertificateHeader), height); err != nil {
 		return nil, getSelectQueryError(height, err)
 	}
 	return &certificateHeader, nil
@@ -175,7 +175,7 @@ func (a *AggSenderSQLStorage) GetLastSentCertificate() (*types.Certificate, erro
 func (a *AggSenderSQLStorage) GetLastSentCertificateHeader() (*types.CertificateHeader, error) {
 	var certificateHeader types.CertificateHeader
 	if err := meddler.QueryRow(a.db, &certificateHeader,
-		"SELECT * FROM certificate_info ORDER BY height DESC LIMIT 1;"); err != nil {
+		fmt.Sprintf("%s ORDER BY height DESC LIMIT 1;", selectQueryCertificateHeader)); err != nil {
 		return nil, getSelectQueryError(0, err)
 	}
 	return &certificateHeader, nil
