@@ -56,7 +56,7 @@ jobs:
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f7264a7e96b796128b4424e1c9114ecff6e2cf5b
     secrets: inherit
     with:
-      kurtosis-cdk-ref: 7327b6621246df989ff267105ded4ab8f5b78d79
+      kurtosis-cdk-ref: 8cc82d7545d40d362ca243f5f9ff0f8f7a45568d
       agglayer-e2e-ref: f7264a7e96b796128b4424e1c9114ecff6e2cf5b
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
@@ -80,7 +80,7 @@ jobs:
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f7264a7e96b796128b4424e1c9114ecff6e2cf5b
     secrets: inherit
     with:
-      kurtosis-cdk-ref: 7327b6621246df989ff267105ded4ab8f5b78d79
+      kurtosis-cdk-ref: 8cc82d7545d40d362ca243f5f9ff0f8f7a45568d
       agglayer-e2e-ref: f7264a7e96b796128b4424e1c9114ecff6e2cf5b
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
@@ -128,7 +128,7 @@ jobs:
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@f7264a7e96b796128b4424e1c9114ecff6e2cf5b
     secrets: inherit
     with:
-      kurtosis-cdk-ref: 7327b6621246df989ff267105ded4ab8f5b78d79 
+      kurtosis-cdk-ref: 8cc82d7545d40d362ca243f5f9ff0f8f7a45568d 
       agglayer-e2e-ref: f7264a7e96b796128b4424e1c9114ecff6e2cf5b
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
