@@ -21,23 +21,23 @@ func (_m *AggsenderStorer) EXPECT() *AggsenderStorer_Expecter {
 }
 
 // GetCertificateByHeight provides a mock function with given fields: height
-func (_m *AggsenderStorer) GetCertificateByHeight(height uint64) (*types.CertificateInfo, error) {
+func (_m *AggsenderStorer) GetCertificateByHeight(height uint64) (*types.Certificate, error) {
 	ret := _m.Called(height)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetCertificateByHeight")
 	}
 
-	var r0 *types.CertificateInfo
+	var r0 *types.Certificate
 	var r1 error
-	if rf, ok := ret.Get(0).(func(uint64) (*types.CertificateInfo, error)); ok {
+	if rf, ok := ret.Get(0).(func(uint64) (*types.Certificate, error)); ok {
 		return rf(height)
 	}
-	if rf, ok := ret.Get(0).(func(uint64) *types.CertificateInfo); ok {
+	if rf, ok := ret.Get(0).(func(uint64) *types.Certificate); ok {
 		r0 = rf(height)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.CertificateInfo)
+			r0 = ret.Get(0).(*types.Certificate)
 		}
 	}
 
@@ -68,34 +68,34 @@ func (_c *AggsenderStorer_GetCertificateByHeight_Call) Run(run func(height uint6
 	return _c
 }
 
-func (_c *AggsenderStorer_GetCertificateByHeight_Call) Return(_a0 *types.CertificateInfo, _a1 error) *AggsenderStorer_GetCertificateByHeight_Call {
+func (_c *AggsenderStorer_GetCertificateByHeight_Call) Return(_a0 *types.Certificate, _a1 error) *AggsenderStorer_GetCertificateByHeight_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggsenderStorer_GetCertificateByHeight_Call) RunAndReturn(run func(uint64) (*types.CertificateInfo, error)) *AggsenderStorer_GetCertificateByHeight_Call {
+func (_c *AggsenderStorer_GetCertificateByHeight_Call) RunAndReturn(run func(uint64) (*types.Certificate, error)) *AggsenderStorer_GetCertificateByHeight_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // GetLastSentCertificate provides a mock function with no fields
-func (_m *AggsenderStorer) GetLastSentCertificate() (*types.CertificateInfo, error) {
+func (_m *AggsenderStorer) GetLastSentCertificate() (*types.Certificate, error) {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetLastSentCertificate")
 	}
 
-	var r0 *types.CertificateInfo
+	var r0 *types.Certificate
 	var r1 error
-	if rf, ok := ret.Get(0).(func() (*types.CertificateInfo, error)); ok {
+	if rf, ok := ret.Get(0).(func() (*types.Certificate, error)); ok {
 		return rf()
 	}
-	if rf, ok := ret.Get(0).(func() *types.CertificateInfo); ok {
+	if rf, ok := ret.Get(0).(func() *types.Certificate); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.CertificateInfo)
+			r0 = ret.Get(0).(*types.Certificate)
 		}
 	}
 
@@ -125,12 +125,12 @@ func (_c *AggsenderStorer_GetLastSentCertificate_Call) Run(run func()) *Aggsende
 	return _c
 }
 
-func (_c *AggsenderStorer_GetLastSentCertificate_Call) Return(_a0 *types.CertificateInfo, _a1 error) *AggsenderStorer_GetLastSentCertificate_Call {
+func (_c *AggsenderStorer_GetLastSentCertificate_Call) Return(_a0 *types.Certificate, _a1 error) *AggsenderStorer_GetLastSentCertificate_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggsenderStorer_GetLastSentCertificate_Call) RunAndReturn(run func() (*types.CertificateInfo, error)) *AggsenderStorer_GetLastSentCertificate_Call {
+func (_c *AggsenderStorer_GetLastSentCertificate_Call) RunAndReturn(run func() (*types.Certificate, error)) *AggsenderStorer_GetLastSentCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }

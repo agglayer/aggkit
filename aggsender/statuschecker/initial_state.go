@@ -25,7 +25,7 @@ var ErrAgglayerInconsistence = errors.New("recovery: agglayer inconsistence")
 type initialStatus struct {
 	SettledCert *agglayertypes.CertificateHeader
 	PendingCert *agglayertypes.CertificateHeader
-	LocalCert   *types.CertificateInfo
+	LocalCert   *types.CertificateHeader
 	log         common.Logger
 }
 
@@ -73,7 +73,7 @@ func newInitialStatus(ctx context.Context,
 		return nil, fmt.Errorf("recovery: error getting GetLatestPendingCertificateHeader from agglayer: %w", err)
 	}
 
-	localLastCert, err := storage.GetLastSentCertificate()
+	localLastCert, err := storage.GetLastSentCertificateHeader()
 	if err != nil {
 		return nil, fmt.Errorf("recovery: error getting last sent certificate from local storage: %w", err)
 	}

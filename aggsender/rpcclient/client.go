@@ -39,7 +39,7 @@ func (c *Client) GetStatus() (*types.AggsenderInfo, error) {
 	return &result, nil
 }
 
-func (c *Client) GetCertificateHeaderPerHeight(height *uint64) (*types.CertificateInfo, error) {
+func (c *Client) GetCertificateHeaderPerHeight(height *uint64) (*types.Certificate, error) {
 	response, err := jSONRPCCall(c.url, "aggsender_getCertificateHeaderPerHeight", height)
 	if err != nil {
 		return nil, err
@@ -49,7 +49,7 @@ func (c *Client) GetCertificateHeaderPerHeight(height *uint64) (*types.Certifica
 	if response.Error != nil {
 		return nil, fmt.Errorf("error in the response calling aggsender_getCertificateHeaderPerHeight: %v", response.Error)
 	}
-	cert := types.CertificateInfo{}
+	cert := types.Certificate{}
 	err = json.Unmarshal(response.Result, &cert)
 	if err != nil {
 		return nil, err
