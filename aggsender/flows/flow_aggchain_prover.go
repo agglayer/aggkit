@@ -99,23 +99,17 @@ func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.C
 // if the last sent certificate is in error, we need to resend the exact same certificate
 // also, it calls the aggchain prover to get the aggchain proof
 func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	isLastSentCertificateInError, err := a.storage.IsLastSentCertificateInError()
+	lastSentCert, proof, err := a.storage.GetLastSentCertificateHeaderWithProofIfInError(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error checking if last sent certificate is InError: %w", err)
 	}
 
-	if isLastSentCertificateInError {
-		// if the last certificate was in error, we need to resend it
-		lastSentCert, err := a.storage.GetLastSentCertificate()
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
-		}
-
+	if lastSentCert != nil && lastSentCert.Status.IsInError() {
 		a.log.Infof("resending the same InError certificate: %s", lastSentCert.String())
 
 		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
-			ctx, lastSentCert.Header.FromBlock,
-			lastSentCert.Header.ToBlock,
+			ctx, lastSentCert.FromBlock,
+			lastSentCert.ToBlock,
 			true,
 		)
 		if err != nil {
@@ -123,16 +117,16 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		}
 
 		buildParams := &types.CertificateBuildParams{
-			FromBlock:           lastSentCert.Header.FromBlock,
-			ToBlock:             lastSentCert.Header.ToBlock,
-			RetryCount:          lastSentCert.Header.RetryCount + 1,
+			FromBlock:           lastSentCert.FromBlock,
+			ToBlock:             lastSentCert.ToBlock,
+			RetryCount:          lastSentCert.RetryCount + 1,
 			Bridges:             bridges,
 			Claims:              claims,
-			LastSentCertificate: lastSentCert.Header,
-			CreatedAt:           lastSentCert.Header.CreatedAt,
+			LastSentCertificate: lastSentCert,
+			CreatedAt:           lastSentCert.CreatedAt,
 		}
 
-		if lastSentCert.AggchainProof == nil {
+		if proof == nil {
 			// this can happen if the aggsender db was deleted, so the aggsender
 			// got the last sent certificate from agglayer, but in that data we do not have
 			// the aggchain proof that was generated before, so we need to call the prover again
@@ -143,9 +137,9 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		// if we have the aggchain proof, we need to set it in the build params
 		// and set the root from which to prove the imported bridge exits
 		// no need to call the prover again
-		buildParams.AggchainProof = lastSentCert.AggchainProof
-		buildParams.L1InfoTreeRootFromWhichToProve = *lastSentCert.Header.FinalizedL1InfoTreeRoot
-		buildParams.L1InfoTreeLeafCount = lastSentCert.Header.L1InfoTreeLeafCount
+		buildParams.AggchainProof = proof
+		buildParams.L1InfoTreeRootFromWhichToProve = *lastSentCert.FinalizedL1InfoTreeRoot
+		buildParams.L1InfoTreeLeafCount = lastSentCert.L1InfoTreeLeafCount
 
 		return buildParams, nil
 	}

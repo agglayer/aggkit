@@ -361,57 +361,69 @@ func (_c *AggSenderStorage_GetLastSentCertificateHeader_Call) RunAndReturn(run f
 	return _c
 }
 
-// IsLastSentCertificateInError provides a mock function with no fields
-func (_m *AggSenderStorage) IsLastSentCertificateInError() (bool, error) {
-	ret := _m.Called()
+// GetLastSentCertificateHeaderWithProofIfInError provides a mock function with given fields: ctx
+func (_m *AggSenderStorage) GetLastSentCertificateHeaderWithProofIfInError(ctx context.Context) (*types.CertificateHeader, *types.AggchainProof, error) {
+	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
-		panic("no return value specified for IsLastSentCertificateInError")
+		panic("no return value specified for GetLastSentCertificateHeaderWithProofIfInError")
 	}
 
-	var r0 bool
-	var r1 error
-	if rf, ok := ret.Get(0).(func() (bool, error)); ok {
-		return rf()
+	var r0 *types.CertificateHeader
+	var r1 *types.AggchainProof
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context) (*types.CertificateHeader, *types.AggchainProof, error)); ok {
+		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func() bool); ok {
-		r0 = rf()
+	if rf, ok := ret.Get(0).(func(context.Context) *types.CertificateHeader); ok {
+		r0 = rf(ctx)
 	} else {
-		r0 = ret.Get(0).(bool)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.CertificateHeader)
+		}
 	}
 
-	if rf, ok := ret.Get(1).(func() error); ok {
-		r1 = rf()
+	if rf, ok := ret.Get(1).(func(context.Context) *types.AggchainProof); ok {
+		r1 = rf(ctx)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(*types.AggchainProof)
+		}
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(context.Context) error); ok {
+		r2 = rf(ctx)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
-// AggSenderStorage_IsLastSentCertificateInError_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsLastSentCertificateInError'
-type AggSenderStorage_IsLastSentCertificateInError_Call struct {
+// AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastSentCertificateHeaderWithProofIfInError'
+type AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call struct {
 	*mock.Call
 }
 
-// IsLastSentCertificateInError is a helper method to define mock.On call
-func (_e *AggSenderStorage_Expecter) IsLastSentCertificateInError() *AggSenderStorage_IsLastSentCertificateInError_Call {
-	return &AggSenderStorage_IsLastSentCertificateInError_Call{Call: _e.mock.On("IsLastSentCertificateInError")}
+// GetLastSentCertificateHeaderWithProofIfInError is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *AggSenderStorage_Expecter) GetLastSentCertificateHeaderWithProofIfInError(ctx interface{}) *AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call {
+	return &AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call{Call: _e.mock.On("GetLastSentCertificateHeaderWithProofIfInError", ctx)}
 }
 
-func (_c *AggSenderStorage_IsLastSentCertificateInError_Call) Run(run func()) *AggSenderStorage_IsLastSentCertificateInError_Call {
+func (_c *AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call) Run(run func(ctx context.Context)) *AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run()
+		run(args[0].(context.Context))
 	})
 	return _c
 }
 
-func (_c *AggSenderStorage_IsLastSentCertificateInError_Call) Return(_a0 bool, _a1 error) *AggSenderStorage_IsLastSentCertificateInError_Call {
-	_c.Call.Return(_a0, _a1)
+func (_c *AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call) Return(_a0 *types.CertificateHeader, _a1 *types.AggchainProof, _a2 error) *AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call {
+	_c.Call.Return(_a0, _a1, _a2)
 	return _c
 }
 
-func (_c *AggSenderStorage_IsLastSentCertificateInError_Call) RunAndReturn(run func() (bool, error)) *AggSenderStorage_IsLastSentCertificateInError_Call {
+func (_c *AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call) RunAndReturn(run func(context.Context) (*types.CertificateHeader, *types.AggchainProof, error)) *AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call {
 	_c.Call.Return(run)
 	return _c
 }
