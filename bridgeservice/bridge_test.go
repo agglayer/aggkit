@@ -604,7 +604,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		queryParams := url.Values{networkIDParam: []string{fmt.Sprintf("%d", unsupportedNetworkID)}}
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), fmt.Sprintf("failed to get bridges unsupported network %d", unsupportedNetworkID))
+		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id %d", unsupportedNetworkID))
 	})
 
 	t.Run("GetBridges invalid network id", func(t *testing.T) {
@@ -695,14 +695,15 @@ func TestGetClaimsHandler(t *testing.T) {
 	})
 
 	t.Run("GetClaims with unsupported network", func(t *testing.T) {
+		unsupportedNetworkID := 999
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		query := url.Values{}
-		query.Set(networkIDParam, "999")
+		query.Set(networkIDParam, strconv.Itoa(unsupportedNetworkID))
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), "unsupported network 999")
+		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id %d", unsupportedNetworkID))
 	})
 
 	t.Run("GetClaims for L1 network failed", func(t *testing.T) {

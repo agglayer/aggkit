@@ -135,10 +135,36 @@ func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON for hex-decoding fields
 func (b *BridgeResponse) UnmarshalJSON(data []byte) error {
-	return unmarshalJSONInternal(data,
-		func(data []byte) { b.Metadata = data },
-		func(data []byte) { b.Calldata = data },
-	)
+	type Alias BridgeResponse
+	tmp := &struct {
+		Metadata string `json:"metadata"`
+		CallData string `json:"calldata"`
+		*Alias
+	}{
+		Alias: (*Alias)(b),
+	}
+
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	}
+
+	if tmp.Metadata != "" {
+		decodedMetadata, err := hex.DecodeString(strings.TrimPrefix(tmp.Metadata, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode metadata: %w", err)
+		}
+		b.Metadata = decodedMetadata
+	}
+
+	if tmp.CallData != "" {
+		decodedCalldata, err := hex.DecodeString(strings.TrimPrefix(tmp.CallData, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode calldata: %w", err)
+		}
+		b.Calldata = decodedCalldata
+	}
+
+	return nil
 }
 
 // Claim representation of a claim event
@@ -367,28 +393,14 @@ func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 
 // UnmarshalJSON for hex-decoding fields
 func (t *TokenMapping) UnmarshalJSON(data []byte) error {
-	return unmarshalJSONInternal(data,
-		func(data []byte) { t.Metadata = data },
-		func(data []byte) { t.Calldata = data },
-	)
-}
-
-// unmarshalJSONInternal unmarshals the JSON-encoded data, extracting the "metadata" and "calldata" fields,
-// and applies the provided setter functions to handle the decoded byte slices. The "metadata" and "calldata"
-// fields are expected to be hex-encoded strings with an optional "0x" prefix. If decoding fails, an error is returned.
-//
-// Parameters:
-//   - data: JSON-encoded input data.
-//   - metadataSetter: Function to handle the decoded "metadata" byte slice.
-//   - calldataSetter: Function to handle the decoded "calldata" byte slice.
-//
-// Returns:
-//   - An error if JSON unmarshalling or hex decoding fails; otherwise, nil.
-func unmarshalJSONInternal(data []byte, metadataSetter func([]byte), calldataSetter func([]byte)) error {
-	tmp := struct {
+	type Alias TokenMapping
+	tmp := &struct {
 		Metadata string `json:"metadata"`
 		CallData string `json:"calldata"`
-	}{}
+		*Alias
+	}{
+		Alias: (*Alias)(t),
+	}
 
 	if err := json.Unmarshal(data, &tmp); err != nil {
 		return err
@@ -399,7 +411,7 @@ func unmarshalJSONInternal(data []byte, metadataSetter func([]byte), calldataSet
 		if err != nil {
 			return fmt.Errorf("failed to decode metadata: %w", err)
 		}
-		metadataSetter(decodedMetadata)
+		t.Metadata = decodedMetadata
 	}
 
 	if tmp.CallData != "" {
@@ -407,7 +419,7 @@ func unmarshalJSONInternal(data []byte, metadataSetter func([]byte), calldataSet
 		if err != nil {
 			return fmt.Errorf("failed to decode calldata: %w", err)
 		}
-		calldataSetter(decodedCalldata)
+		t.Calldata = decodedCalldata
 	}
 
 	return nil
