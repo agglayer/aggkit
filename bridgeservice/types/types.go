@@ -6,6 +6,8 @@ import (
 	tree "github.com/agglayer/aggkit/tree/types"
 )
 
+// ClaimProof represents the Merkle proofs (local and rollup exit roots) and the L1 info tree leaf
+// required to verify a claim in the bridge.
 type ClaimProof struct {
 	ProofLocalExitRoot  tree.Proof                    `json:"proof_local_exit_root"`
 	ProofRollupExitRoot tree.Proof                    `json:"proof_rollup_exit_root"`

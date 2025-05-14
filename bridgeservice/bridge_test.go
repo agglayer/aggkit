@@ -59,6 +59,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	logger := log.WithFields("module", "test bridge service")
 	cfg := &Config{
 		Logger:       logger,
+		Address:      "localhost",
 		ReadTimeout:  0,
 		WriteTimeout: 0,
 		NetworkID:    networkID,

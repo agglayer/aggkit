@@ -49,6 +49,7 @@ var (
 
 type Config struct {
 	Logger       *log.Logger
+	Address      string
 	WriteTimeout time.Duration
 	ReadTimeout  time.Duration
 	NetworkID    uint32
@@ -57,6 +58,7 @@ type Config struct {
 // BridgeService contains implementations for the bridge service endpoints
 type BridgeService struct {
 	logger       *log.Logger
+	address      string
 	meter        metric.Meter
 	readTimeout  time.Duration
 	writeTimeout time.Duration
@@ -84,6 +86,7 @@ func New(
 
 	b := &BridgeService{
 		logger:       cfg.Logger,
+		address:      cfg.Address,
 		meter:        meter,
 		readTimeout:  cfg.ReadTimeout,
 		writeTimeout: cfg.WriteTimeout,
@@ -122,21 +125,19 @@ func (b *BridgeService) registerRoutes() {
 }
 
 // Start starts the HTTP bridge service
-func (b *BridgeService) Start(ctx context.Context, address string) error {
+func (b *BridgeService) Start(ctx context.Context) {
 	srv := &http.Server{
-		Addr:         address,
+		Addr:         b.address,
 		Handler:      b.router,
 		ReadTimeout:  b.readTimeout,
 		WriteTimeout: b.writeTimeout,
 	}
 
-	go func() {
-		b.logger.Infof("Bridge service listening on %s", address)
-		err := srv.ListenAndServe()
-		if err != nil && err != http.ErrServerClosed {
-			b.logger.Fatalf("listen error: %v", err)
-		}
-	}()
+	b.logger.Infof("Bridge service listening on %s...", srv.Addr)
+	err := srv.ListenAndServe()
+	if err != nil && err != http.ErrServerClosed {
+		b.logger.Panicf("listen error: %v", err)
+	}
 
 	<-ctx.Done()
 
@@ -153,12 +154,10 @@ func (b *BridgeService) Start(ctx context.Context, address string) error {
 	defer cancel()
 
 	if err := srv.Shutdown(ctx); err != nil {
-		b.logger.Errorf("Server shutdown error: %v", err)
-		return err
+		b.logger.Panicf("Server shutdown error: %v", err)
 	}
 
 	b.logger.Info("Bridge service exited gracefully")
-	return nil
 }
 
 // GetBridgesHandler retrieves paginated bridge data for the specified network.
@@ -234,8 +233,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 			return
 		}
 	default:
-		c.JSON(http.StatusBadRequest,
-			gin.H{"error": fmt.Sprintf("failed to get bridges unsupported network %d", networkID)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
 		return
 	}
 
@@ -307,8 +305,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 			return
 		}
 	default:
-		c.JSON(http.StatusBadRequest,
-			gin.H{"error": fmt.Sprintf("failed to get claims, unsupported network %d", networkID)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
 		return
 	}
 

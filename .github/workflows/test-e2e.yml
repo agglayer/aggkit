@@ -57,7 +57,6 @@ jobs:
     secrets: inherit
     with:
       kurtosis-cdk-ref: 4c816785db7181e2a5970956d1bee59f0d4ee700
-      docker-artifact-name: aggkit
       agglayer-e2e-ref: ce66a38ef09b2a141e6605c2ba120b4cae4d03ca
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
@@ -82,7 +81,6 @@ jobs:
     secrets: inherit
     with:
       kurtosis-cdk-ref: 4c816785db7181e2a5970956d1bee59f0d4ee700
-      docker-artifact-name: aggkit
       agglayer-e2e-ref: ce66a38ef09b2a141e6605c2ba120b4cae4d03ca
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
@@ -131,7 +129,6 @@ jobs:
     secrets: inherit
     with:
       kurtosis-cdk-ref: 4c816785db7181e2a5970956d1bee59f0d4ee700 
-      docker-artifact-name: aggkit
       agglayer-e2e-ref: ce66a38ef09b2a141e6605c2ba120b4cae4d03ca
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge

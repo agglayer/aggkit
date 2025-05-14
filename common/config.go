@@ -1,6 +1,8 @@
 package common
 
 import (
+	"fmt"
+
 	"github.com/agglayer/aggkit/config/types"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/translator"
@@ -35,7 +37,12 @@ type RESTConfig struct {
 	// check net/http.server.WriteTimeout
 	WriteTimeout types.Duration `mapstructure:"WriteTimeout"`
 
-	// MaxRequestsPerIPAndSecond defines how much requests a single IP can
+	// MaxRequestsPerIPAndSecond defines how many requests a single IP can
 	// send within a single second
 	MaxRequestsPerIPAndSecond float64 `mapstructure:"MaxRequestsPerIPAndSecond"`
+}
+
+// Address constructs and returns the address as a string in the format "host:port".
+func (c *RESTConfig) Address() string {
+	return fmt.Sprintf("%s:%d", c.Host, c.Port)
 }
