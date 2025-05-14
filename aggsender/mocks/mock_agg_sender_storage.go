@@ -73,65 +73,6 @@ func (_c *AggSenderStorage_DeleteCertificate_Call) RunAndReturn(run func(context
 	return _c
 }
 
-// GetCertificateAggchainProof provides a mock function with given fields: height, certificateID
-func (_m *AggSenderStorage) GetCertificateAggchainProof(height uint64, certificateID common.Hash) (*types.AggchainProof, error) {
-	ret := _m.Called(height, certificateID)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetCertificateAggchainProof")
-	}
-
-	var r0 *types.AggchainProof
-	var r1 error
-	if rf, ok := ret.Get(0).(func(uint64, common.Hash) (*types.AggchainProof, error)); ok {
-		return rf(height, certificateID)
-	}
-	if rf, ok := ret.Get(0).(func(uint64, common.Hash) *types.AggchainProof); ok {
-		r0 = rf(height, certificateID)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.AggchainProof)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(uint64, common.Hash) error); ok {
-		r1 = rf(height, certificateID)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AggSenderStorage_GetCertificateAggchainProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCertificateAggchainProof'
-type AggSenderStorage_GetCertificateAggchainProof_Call struct {
-	*mock.Call
-}
-
-// GetCertificateAggchainProof is a helper method to define mock.On call
-//   - height uint64
-//   - certificateID common.Hash
-func (_e *AggSenderStorage_Expecter) GetCertificateAggchainProof(height interface{}, certificateID interface{}) *AggSenderStorage_GetCertificateAggchainProof_Call {
-	return &AggSenderStorage_GetCertificateAggchainProof_Call{Call: _e.mock.On("GetCertificateAggchainProof", height, certificateID)}
-}
-
-func (_c *AggSenderStorage_GetCertificateAggchainProof_Call) Run(run func(height uint64, certificateID common.Hash)) *AggSenderStorage_GetCertificateAggchainProof_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(uint64), args[1].(common.Hash))
-	})
-	return _c
-}
-
-func (_c *AggSenderStorage_GetCertificateAggchainProof_Call) Return(_a0 *types.AggchainProof, _a1 error) *AggSenderStorage_GetCertificateAggchainProof_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AggSenderStorage_GetCertificateAggchainProof_Call) RunAndReturn(run func(uint64, common.Hash) (*types.AggchainProof, error)) *AggSenderStorage_GetCertificateAggchainProof_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // GetCertificateByHeight provides a mock function with given fields: height
 func (_m *AggSenderStorage) GetCertificateByHeight(height uint64) (*types.Certificate, error) {
 	ret := _m.Called(height)
@@ -416,6 +357,61 @@ func (_c *AggSenderStorage_GetLastSentCertificateHeader_Call) Return(_a0 *types.
 }
 
 func (_c *AggSenderStorage_GetLastSentCertificateHeader_Call) RunAndReturn(run func() (*types.CertificateHeader, error)) *AggSenderStorage_GetLastSentCertificateHeader_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// IsLastSentCertificateInError provides a mock function with no fields
+func (_m *AggSenderStorage) IsLastSentCertificateInError() (bool, error) {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsLastSentCertificateInError")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (bool, error)); ok {
+		return rf()
+	}
+	if rf, ok := ret.Get(0).(func() bool); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggSenderStorage_IsLastSentCertificateInError_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsLastSentCertificateInError'
+type AggSenderStorage_IsLastSentCertificateInError_Call struct {
+	*mock.Call
+}
+
+// IsLastSentCertificateInError is a helper method to define mock.On call
+func (_e *AggSenderStorage_Expecter) IsLastSentCertificateInError() *AggSenderStorage_IsLastSentCertificateInError_Call {
+	return &AggSenderStorage_IsLastSentCertificateInError_Call{Call: _e.mock.On("IsLastSentCertificateInError")}
+}
+
+func (_c *AggSenderStorage_IsLastSentCertificateInError_Call) Run(run func()) *AggSenderStorage_IsLastSentCertificateInError_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *AggSenderStorage_IsLastSentCertificateInError_Call) Return(_a0 bool, _a1 error) *AggSenderStorage_IsLastSentCertificateInError_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggSenderStorage_IsLastSentCertificateInError_Call) RunAndReturn(run func() (bool, error)) *AggSenderStorage_IsLastSentCertificateInError_Call {
 	_c.Call.Return(run)
 	return _c
 }

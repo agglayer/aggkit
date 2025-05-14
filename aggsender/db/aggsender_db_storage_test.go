@@ -602,11 +602,6 @@ func Test_StorageAggchainProof(t *testing.T) {
 	require.NotNil(t, readCertNoAggchainProof)
 	require.Equal(t, certNoAggchainProof, *readCertNoAggchainProof)
 
-	aggchainProofFromDB, err := storage.GetCertificateAggchainProof(
-		certNoAggchainProof.Header.Height, certNoAggchainProof.Header.CertificateID)
-	require.NoError(t, err)
-	require.Nil(t, aggchainProofFromDB)
-
 	// aggchain proof in cert
 	aggchainProof := &types.AggchainProof{
 		LastProvenBlock: 10,
@@ -639,10 +634,62 @@ func Test_StorageAggchainProof(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, readCertWithAggchainProof)
 	require.Equal(t, certWithAggchainProof, *readCertWithAggchainProof)
+}
 
-	aggchainProofFromDB, err = storage.GetCertificateAggchainProof(
-		certWithAggchainProof.Header.Height, certWithAggchainProof.Header.CertificateID)
+func Test_IsLastSentCertificateInError(t *testing.T) {
+	ctx := context.TODO()
+	dbPath := path.Join(t.TempDir(), "Test_IsLastSentCertificateInError.sqlite")
+	cfg := AggSenderSQLStorageConfig{
+		DBPath:                  dbPath,
+		KeepCertificatesHistory: true,
+	}
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)
-	require.NotNil(t, aggchainProofFromDB)
-	require.Equal(t, aggchainProof, aggchainProofFromDB)
+	require.NotNil(t, storage)
+
+	t.Run("NoCertificates", func(t *testing.T) {
+		inError, err := storage.IsLastSentCertificateInError()
+		require.NoError(t, err)
+		require.False(t, inError)
+	})
+
+	t.Run("CertificateNotInError", func(t *testing.T) {
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    common.HexToHash("0x1"),
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          2,
+				Status:           agglayertypes.Settled,
+				CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				UpdatedAt:        uint32(time.Now().UTC().UnixMilli()),
+			},
+		}
+		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
+
+		inError, err := storage.IsLastSentCertificateInError()
+		require.NoError(t, err)
+		require.False(t, inError)
+	})
+
+	t.Run("CertificateInError", func(t *testing.T) {
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           2,
+				CertificateID:    common.HexToHash("0x3"),
+				NewLocalExitRoot: common.HexToHash("0x4"),
+				FromBlock:        3,
+				ToBlock:          4,
+				Status:           agglayertypes.InError,
+				CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				UpdatedAt:        uint32(time.Now().UTC().UnixMilli()),
+			},
+		}
+		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
+
+		inError, err := storage.IsLastSentCertificateInError()
+		require.NoError(t, err)
+		require.True(t, inError)
+	})
 }

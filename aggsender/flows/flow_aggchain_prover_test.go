@@ -64,13 +64,25 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		expectedError  string
 	}{
 		{
-			name: "error getting last sent certificate",
+			name: "error checking if last sent certificate in error",
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockProverClient *mocks.AggchainProofClientInterface,
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockGERQuerier *mocks.GERQuerier) {
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, errors.New("some error"))
+				mockStorage.EXPECT().IsLastSentCertificateInError().Return(false, errors.New("some error"))
+			},
+			expectedError: "some error",
+		},
+		{
+			name: "error getting last sent certificate when in error",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockL2BridgeQuerier *mocks.BridgeQuerier,
+				mockProverClient *mocks.AggchainProofClientInterface,
+				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
+				mockGERQuerier *mocks.GERQuerier) {
+				mockStorage.EXPECT().IsLastSentCertificateInError().Return(true, nil).Once()
+				mockStorage.EXPECT().GetLastSentCertificate().Return(nil, errors.New("some error"))
 			},
 			expectedError: "some error",
 		},
@@ -84,19 +96,22 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{
-					Height:                  0,
-					FromBlock:               1,
-					ToBlock:                 10,
-					Status:                  agglayertypes.InError,
-					FinalizedL1InfoTreeRoot: &finalizedL1Root,
-					CertificateID:           common.HexToHash("0x1"),
+				mockStorage.EXPECT().IsLastSentCertificateInError().Return(true, nil).Once()
+				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.Certificate{
+					Header: &types.CertificateHeader{
+						Height:                  0,
+						FromBlock:               1,
+						ToBlock:                 10,
+						Status:                  agglayertypes.InError,
+						FinalizedL1InfoTreeRoot: &finalizedL1Root,
+						CertificateID:           common.HexToHash("0x1"),
+					},
+					AggchainProof: &types.AggchainProof{
+						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
+						LastProvenBlock: 1,
+						EndBlock:        10,
+					},
 				}, nil).Once()
-				mockStorage.EXPECT().GetCertificateAggchainProof(uint64(0), common.HexToHash("0x1")).Return(&types.AggchainProof{
-					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
-					LastProvenBlock: 1,
-					EndBlock:        10,
-				}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
@@ -142,14 +157,16 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{
-					Height:        0,
-					FromBlock:     1,
-					ToBlock:       10,
-					Status:        agglayertypes.InError,
-					CertificateID: common.HexToHash("0x1"),
-				}, nil)
-				mockStorage.EXPECT().GetCertificateAggchainProof(uint64(0), common.HexToHash("0x1")).Return(nil, nil)
+				mockStorage.EXPECT().IsLastSentCertificateInError().Return(true, nil).Once()
+				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.Certificate{
+					Header: &types.CertificateHeader{
+						Height:        0,
+						FromBlock:     1,
+						ToBlock:       10,
+						Status:        agglayertypes.InError,
+						CertificateID: common.HexToHash("0x1"),
+					},
+				}, nil).Once()
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
@@ -223,7 +240,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Twice()
+				mockStorage.EXPECT().IsLastSentCertificateInError().Return(false, nil).Once()
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
@@ -270,7 +288,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
 				mockGERQuerier *mocks.GERQuerier) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Twice()
+				mockStorage.EXPECT().IsLastSentCertificateInError().Return(false, nil).Once()
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
 				mockL1InfoDataQuery.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
@@ -315,7 +334,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Twice()
+				mockStorage.EXPECT().IsLastSentCertificateInError().Return(false, nil).Once()
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{{
 					GlobalIndex:     big.NewInt(1),
@@ -387,7 +407,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Twice()
+				mockStorage.EXPECT().IsLastSentCertificateInError().Return(false, nil).Once()
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return(
 					[]bridgesync.Bridge{{BlockNum: 6}, {BlockNum: 10}},
