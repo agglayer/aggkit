@@ -20,6 +20,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
+	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -33,7 +34,6 @@ import (
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
-	"github.com/agglayer/aggkit/rpc"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -93,8 +93,8 @@ func start(cliCtx *cli.Context) error {
 			go aggOracle.Start(cliCtx.Context)
 
 		case aggkitcommon.BRIDGE:
-			rpcBridge := createBridgeRPC(
-				cfg.RPC,
+			b := createBridgeService(
+				cfg.REST,
 				cfg.Common.NetworkID,
 				claimSponsor,
 				l1InfoTreeSync,
@@ -102,8 +102,8 @@ func start(cliCtx *cli.Context) error {
 				l1BridgeSync,
 				l2BridgeSync,
 			)
-			rpcServices = append(rpcServices, rpcBridge...)
 
+			go b.Start(cliCtx.Context)
 		case aggkitcommon.AGGSENDER:
 			aggsender, err := createAggSender(
 				cliCtx.Context,
@@ -646,33 +646,33 @@ func runBridgeSyncL2IfNeeded(
 	return bridgeSyncL2
 }
 
-func createBridgeRPC(
-	cfg jRPC.Config,
+func createBridgeService(
+	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
 	sponsor *claimsponsor.ClaimSponsor,
 	l1InfoTree *l1infotreesync.L1InfoTreeSync,
 	injectedGERs *lastgersync.LastGERSync,
 	bridgeL1 *bridgesync.BridgeSync,
 	bridgeL2 *bridgesync.BridgeSync,
-) []jRPC.Service {
+) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
-	services := []jRPC.Service{
-		{
-			Name: rpc.BRIDGE,
-			Service: rpc.NewBridgeEndpoints(
-				logger,
-				cfg.WriteTimeout.Duration,
-				cfg.ReadTimeout.Duration,
-				l2NetworkID,
-				sponsor,
-				l1InfoTree,
-				injectedGERs,
-				bridgeL1,
-				bridgeL2,
-			),
-		},
+
+	bridgeCfg := &bridgeservice.Config{
+		Logger:       logger,
+		Address:      cfg.Address(),
+		ReadTimeout:  cfg.ReadTimeout.Duration,
+		WriteTimeout: cfg.WriteTimeout.Duration,
+		NetworkID:    l2NetworkID,
 	}
-	return services
+
+	return bridgeservice.New(
+		bridgeCfg,
+		sponsor,
+		l1InfoTree,
+		injectedGERs,
+		bridgeL1,
+		bridgeL2,
+	)
 }
 
 func createRPC(cfg jRPC.Config, services []jRPC.Service) *jRPC.Server {

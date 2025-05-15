@@ -81,7 +81,6 @@ IsValidiumMode = {{IsValidiumMode}}
 ContractVersions = "{{ContractVersions}}"
 L2RPC = {{L2RPC}}
 
-
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
 FinalizedBlock="FinalizedBlock"
@@ -138,6 +137,13 @@ WaitPeriodNextGER="100ms"
 [RPC]
 Host = "0.0.0.0"
 Port = 5576
+ReadTimeout = "2s"
+WriteTimeout = "2s"
+MaxRequestsPerIPAndSecond = 10
+
+[REST]
+Host = "0.0.0.0"
+Port = 5577
 ReadTimeout = "2s"
 WriteTimeout = "2s"
 MaxRequestsPerIPAndSecond = 10
