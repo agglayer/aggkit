@@ -119,7 +119,7 @@ func NewBridgeResponse(bridge *Bridge) *BridgeResponse {
 	}
 }
 
-// MarshalJSON for hex-encoding Metadata field
+// MarshalJSON for hex-encoded fields
 func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
 	type Alias BridgeResponse // Prevent recursion
 	return json.Marshal(&struct {
@@ -131,6 +131,40 @@ func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
 		CallData: fmt.Sprintf("0x%s", hex.EncodeToString(b.Calldata)),
 		Alias:    (*Alias)(b),
 	})
+}
+
+// UnmarshalJSON for hex-decoding fields
+func (b *BridgeResponse) UnmarshalJSON(data []byte) error {
+	type Alias BridgeResponse
+	tmp := &struct {
+		Metadata string `json:"metadata"`
+		CallData string `json:"calldata"`
+		*Alias
+	}{
+		Alias: (*Alias)(b),
+	}
+
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	}
+
+	if tmp.Metadata != "" {
+		decodedMetadata, err := hex.DecodeString(strings.TrimPrefix(tmp.Metadata, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode metadata: %w", err)
+		}
+		b.Metadata = decodedMetadata
+	}
+
+	if tmp.CallData != "" {
+		decodedCalldata, err := hex.DecodeString(strings.TrimPrefix(tmp.CallData, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode calldata: %w", err)
+		}
+		b.Calldata = decodedCalldata
+	}
+
+	return nil
 }
 
 // Claim representation of a claim event
@@ -357,6 +391,40 @@ func (t *TokenMapping) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// UnmarshalJSON for hex-decoding fields
+func (t *TokenMapping) UnmarshalJSON(data []byte) error {
+	type Alias TokenMapping
+	tmp := &struct {
+		Metadata string `json:"metadata"`
+		CallData string `json:"calldata"`
+		*Alias
+	}{
+		Alias: (*Alias)(t),
+	}
+
+	if err := json.Unmarshal(data, &tmp); err != nil {
+		return err
+	}
+
+	if tmp.Metadata != "" {
+		decodedMetadata, err := hex.DecodeString(strings.TrimPrefix(tmp.Metadata, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode metadata: %w", err)
+		}
+		t.Metadata = decodedMetadata
+	}
+
+	if tmp.CallData != "" {
+		decodedCalldata, err := hex.DecodeString(strings.TrimPrefix(tmp.CallData, "0x"))
+		if err != nil {
+			return fmt.Errorf("failed to decode calldata: %w", err)
+		}
+		t.Calldata = decodedCalldata
+	}
+
+	return nil
+}
+
 // LegacyTokenMigration representation of a MigrateLegacyToken event,
 // that is emitted by the sovereign chain bridge contract.
 type LegacyTokenMigration struct {
@@ -423,19 +491,15 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 	}, nil
 }
 
-//nolint:dupl
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
-	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			log.Warnf("error rolling back tx: %v", err)
-		}
-	}()
+	defer p.rollbackTransaction(tx)
+
 	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTableName)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -456,19 +520,13 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-//nolint:dupl
-func (p *processor) GetClaims(
-	ctx context.Context, fromBlock, toBlock uint64,
-) ([]Claim, error) {
-	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
+	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
 		return nil, err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			log.Warnf("error rolling back tx: %v", err)
-		}
-	}()
+	defer p.rollbackTransaction(tx)
+
 	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTableName)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -492,19 +550,16 @@ func (p *processor) GetClaims(
 func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32,
 ) ([]*BridgeResponse, int, error) {
-	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil {
-			log.Warnf("error rolling back tx: %v", err)
-		}
-	}()
+	defer p.rollbackTransaction(tx)
+
 	orderByClause := "deposit_count DESC"
 	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName)
 	if err != nil {
-		return nil, 0, err
+		return []*BridgeResponse{}, 0, err
 	}
 
 	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs)
@@ -513,13 +568,15 @@ func (p *processor) GetBridgesPaged(
 		pageSize = 1
 	}
 
-	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(bridgesCount) {
-		p.log.Debugf("provided page number is invalid for given page size and total number of bridges"+
-			" (page number=%d, page size=%d, total bridges=%d)", pageNumber, pageSize, bridgesCount)
-		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of bridges"+
-			" (page number=%d, page size=%d, total bridges=%d)", pageNumber, pageSize, bridgesCount)
+	if bridgesCount == 0 {
+		return []*BridgeResponse{}, 0, nil
 	}
+
+	offset, err := p.calculateOffset(pageNumber, pageSize, bridgesCount, "bridges")
+	if err != nil {
+		return nil, 0, err
+	}
+
 	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -570,26 +627,24 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 func (p *processor) GetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32,
 ) ([]*ClaimResponse, int, error) {
-	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
 		return nil, 0, err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil {
-			log.Warnf("error rolling back tx: %v", err)
-		}
-	}()
+	defer p.rollbackTransaction(tx)
+
 	claimsCount, err := p.GetTotalNumberOfRecords(claimTableName)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(claimsCount) {
-		p.log.Debugf("provided page number is invalid for given page size and total number of claims"+
-			" (page number=%d, page size=%d, total claims=%d)", pageNumber, pageSize, claimsCount)
-		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of claims"+
-			" (page number=%d, page size=%d, total claims=%d)", pageNumber, pageSize, claimsCount)
+	if claimsCount == 0 {
+		return []*ClaimResponse{}, 0, nil
+	}
+
+	offset, err := p.calculateOffset(pageNumber, pageSize, claimsCount, "claims")
+	if err != nil {
+		return nil, 0, err
 	}
 
 	orderByClause := "block_num DESC, block_pos DESC"
@@ -640,17 +695,12 @@ func (p *processor) GetLegacyTokenMigrations(
 	}
 
 	if legacyTokenMigrationsCount == 0 {
-		return nil, 0, nil
+		return []*LegacyTokenMigration{}, 0, nil
 	}
 
-	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(legacyTokenMigrationsCount) {
-		p.log.Debugf("provided page number is invalid for given page size and total number of legacy token migrations"+
-			" (page number=%d, page size=%d, total count=%d)", pageNumber, pageSize, legacyTokenMigrationsCount)
-		return nil, 0,
-			fmt.Errorf("provided page number is invalid for given page size and total number of legacy token migrations"+
-				" (page number=%d, page size=%d, total token migrations=%d)",
-				pageNumber, pageSize, legacyTokenMigrationsCount)
+	offset, err := p.calculateOffset(pageNumber, pageSize, legacyTokenMigrationsCount, "legacy token migrations")
+	if err != nil {
+		return nil, 0, err
 	}
 
 	orderByClause := "block_num, block_pos DESC"
@@ -885,12 +935,9 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 		return []*TokenMapping{}, 0, nil
 	}
 
-	offset := (pageNumber - 1) * pageSize
-	if offset >= uint32(totalTokenMappings) {
-		p.log.Debugf("provided page number is invalid for given page size and total number of token mappings"+
-			" (page number=%d, page size=%d, total token mappings=%d)", pageNumber, pageSize, totalTokenMappings)
-		return nil, 0, fmt.Errorf("provided page number is invalid for given page size and total number of token mappings"+
-			" (page number=%d, page size=%d, total token mappings=%d)", pageNumber, pageSize, totalTokenMappings)
+	offset, err := p.calculateOffset(pageNumber, pageSize, totalTokenMappings, "token mappings")
+	if err != nil {
+		return nil, 0, err
 	}
 
 	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
@@ -903,16 +950,11 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 
 // fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
 func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
-	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
-		p.log.Errorf("failed to create the db transaction: %v", err)
 		return nil, err
 	}
-	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			p.log.Warnf("error rolling back tx: %v", err)
-		}
-	}()
+	defer p.rollbackTransaction(tx)
 
 	orderByClause := "block_num DESC"
 	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByClause, "")
@@ -959,16 +1001,16 @@ func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootInde
 	)
 	if mainnetFlag {
 		globalIndexBytes = append(globalIndexBytes, big.NewInt(1).Bytes()...)
-		ri := big.NewInt(0).FillBytes(buf[:])
+		ri := new(big.Int).FillBytes(buf[:])
 		globalIndexBytes = append(globalIndexBytes, ri...)
 	} else {
-		ri := big.NewInt(0).SetUint64(uint64(rollupIndex)).FillBytes(buf[:])
+		ri := new(big.Int).SetUint64(uint64(rollupIndex)).FillBytes(buf[:])
 		globalIndexBytes = append(globalIndexBytes, ri...)
 	}
-	leri := big.NewInt(0).SetUint64(uint64(localExitRootIndex)).FillBytes(buf[:])
+	leri := new(big.Int).SetUint64(uint64(localExitRootIndex)).FillBytes(buf[:])
 	globalIndexBytes = append(globalIndexBytes, leri...)
 
-	result := big.NewInt(0).SetBytes(globalIndexBytes)
+	result := new(big.Int).SetBytes(globalIndexBytes)
 
 	return result
 }
@@ -998,20 +1040,40 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 		mainnetFlag = true
 	}
 
-	localExitRootFromIdx := l - globalIndexPartSize
-	if localExitRootFromIdx < 0 {
-		localExitRootFromIdx = 0
-	}
-
-	rollupIndexFromIdx := localExitRootFromIdx - globalIndexPartSize
-	if rollupIndexFromIdx < 0 {
-		rollupIndexFromIdx = 0
-	}
+	localExitRootFromIdx := max(l-globalIndexPartSize, 0)
+	rollupIndexFromIdx := max(localExitRootFromIdx-globalIndexPartSize, 0)
 
 	rollupIndex = aggkitCommon.BytesToUint32(globalIndexBytes[rollupIndexFromIdx:localExitRootFromIdx])
 	localExitRootIndex = aggkitCommon.BytesToUint32(globalIndexBytes[localExitRootFromIdx:])
 
 	return
+}
+
+//nolint:unparam
+func (p *processor) startTransaction(ctx context.Context, isReadOnly bool) (*sql.Tx, error) {
+	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: isReadOnly})
+	if err != nil {
+		return nil, err
+	}
+	return tx, nil
+}
+
+func (p *processor) rollbackTransaction(tx *sql.Tx) {
+	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+		log.Warnf("error rolling back tx: %v", err)
+	}
+}
+
+func (p *processor) calculateOffset(pageNumber, pageSize uint32,
+	recordsCount int, tableName string) (uint32, error) {
+	offset := (pageNumber - 1) * pageSize
+	if offset >= uint32(recordsCount) {
+		msg := fmt.Sprintf("invalid page number for given page size and total number of %s (page=%d, size=%d, total=%d)",
+			tableName, pageNumber, pageSize, recordsCount)
+		p.log.Debugf(msg)
+		return 0, errors.New(msg)
+	}
+	return offset, nil
 }
 
 func (p *processor) isHalted() bool {

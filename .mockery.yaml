@@ -69,13 +69,11 @@ packages:
       mockname: "{{ .InterfaceName }}Mock"
     interfaces:
       EthClient:
-  github.com/agglayer/aggkit/rpc/client:
-    config:
-      all: true
-  github.com/agglayer/aggkit/rpc:
+  github.com/agglayer/aggkit/bridgeservice:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+      exclude: "^UintParam$"
   github.com/agglayer/aggkit/sync:
     config:
       dir: "{{ .InterfaceDir }}"
