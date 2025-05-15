@@ -25,7 +25,7 @@ const (
 )
 
 var ErrGasEstimateTooHigh = errors.New(
-	"claim gas estimate exceeds maximum allowed by claimsponsor service",
+	"claim gas estimate exceeds maximum gas allowed by claim sponsor service",
 )
 
 type EthClienter interface {

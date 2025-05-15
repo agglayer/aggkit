@@ -27,6 +27,9 @@ const (
 	FailedClaimStatus  ClaimStatus = "failed"
 )
 
+// AlreadyClaimed(): 0x646cf558
+const alreadyClaimedRevertCode = "0x646cf558"
+
 var (
 	ErrInvalidClaim     = errors.New("invalid claim")
 	ErrClaimDoesntExist = errors.New("the claim requested to be updated does not exist")
@@ -142,8 +145,7 @@ func (c *ClaimSponsor) claim(ctx context.Context) error {
 
 		claim.TxID, err = c.sender.sendClaim(ctx, claim)
 		if err != nil {
-			// AlreadyClaimed(): execution reverted (0x646cf558)
-			if strings.Contains(err.Error(), "execution reverted (0x646cf558)") {
+			if strings.Contains(err.Error(), alreadyClaimedRevertCode) {
 				c.logger.Infof("Trx GlobalIndex: %s already claimed; deleting", claim.GlobalIndex)
 				if err := c.deleteClaim(claim.GlobalIndex); err != nil {
 					return fmt.Errorf("cleanup delete after AlreadyClaimed: %w", err)
