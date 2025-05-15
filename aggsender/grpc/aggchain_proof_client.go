@@ -31,6 +31,25 @@ type AggchainProofRequest struct {
 	ImportedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber
 }
 
+func NewAggchainProofRequest(
+	lastProvenBlock, requestedEndBlock uint64,
+	l1InfoTreeRootHash common.Hash,
+	l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
+	l1InfoTreeMerkleProof agglayer.MerkleProof,
+	gerLeavesWithBlockNumber map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber,
+	importedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber,
+) *AggchainProofRequest {
+	return &AggchainProofRequest{
+		LastProvenBlock:                    lastProvenBlock,
+		RequestedEndBlock:                  requestedEndBlock,
+		L1InfoTreeRootHash:                 l1InfoTreeRootHash,
+		L1InfoTreeLeaf:                     l1InfoTreeLeaf,
+		L1InfoTreeMerkleProof:              l1InfoTreeMerkleProof,
+		GERLeavesWithBlockNumber:           gerLeavesWithBlockNumber,
+		ImportedBridgeExitsWithBlockNumber: importedBridgeExitsWithBlockNumber,
+	}
+}
+
 func (r *AggchainProofRequest) String() string {
 	return fmt.Sprintf(`AggchainProofRequest{
 	lastProvenBlock: %d,
@@ -53,6 +72,10 @@ func (r *AggchainProofRequest) String() string {
 		r.GERLeavesWithBlockNumber,
 		r.ImportedBridgeExitsWithBlockNumber,
 	)
+}
+
+func (r *AggchainProofRequest) Hash() common.Hash {
+	return common.BytesToHash(r.L1InfoTreeRootHash[:])
 }
 
 // AggchainProofClientInterface defines an interface for aggchain proof client
