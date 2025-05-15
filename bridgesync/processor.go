@@ -548,7 +548,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32,
+	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAdress string,
 ) ([]*BridgeResponse, int, error) {
 	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
@@ -562,7 +562,7 @@ func (p *processor) GetBridgesPaged(
 		return []*BridgeResponse{}, 0, err
 	}
 
-	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs)
+	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAdress)
 	if depositCount != nil {
 		pageNumber = 1
 		pageSize = 1
@@ -607,8 +607,8 @@ func (p *processor) GetBridgesPaged(
 
 // buildBridgesFilterClause builds the WHERE clause for the bridges table
 // based on the provided depositCount and networkIDs
-func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32) string {
-	const clauseCapacity = 2
+func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32, fromAddress string) string {
+	const clauseCapacity = 3
 	clauses := make([]string, 0, clauseCapacity)
 	if depositCount != nil {
 		clauses = append(clauses, fmt.Sprintf("deposit_count = %d", *depositCount))
@@ -618,6 +618,10 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "destination_network"))
 	}
 
+	if fromAddress != "" {
+		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) = UPPER('%s')", fromAddress))
+	}
+
 	if len(clauses) > 0 {
 		return "WHERE " + strings.Join(clauses, " AND ")
 	}
@@ -625,7 +629,7 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 }
 
 func (p *processor) GetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32,
+	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32, fromAddress string,
 ) ([]*ClaimResponse, int, error) {
 	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
@@ -648,16 +652,8 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	orderByClause := "block_num DESC, block_pos DESC"
-	whereClause := ""
 
-	if len(networkIDs) > 0 {
-		networkIDsFilter := buildNetworkIDsFilter(networkIDs, "origin_network")
-		if len(whereClause) > 0 {
-			whereClause += " AND " + networkIDsFilter
-		} else {
-			whereClause = "WHERE " + networkIDsFilter
-		}
-	}
+	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress)
 
 	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
@@ -684,6 +680,25 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	return claimResponsePtrs, claimsCount, nil
+}
+
+// buildClaimsFilterClause builds the WHERE clause for the claims table
+// based on the provided networkIDs and fromAddress
+func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress string) string {
+	const clauseCapacity = 2
+	clauses := make([]string, 0, clauseCapacity)
+	if len(networkIDs) > 0 {
+		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "origin_network"))
+	}
+
+	if fromAddress != "" {
+		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) = UPPER('%s')", fromAddress))
+	}
+
+	if len(clauses) > 0 {
+		return "WHERE " + strings.Join(clauses, " AND ")
+	}
+	return ""
 }
 
 // GetLegacyTokenMigrations returns the paged legacy token migrations from the database
