@@ -190,7 +190,7 @@ func createAggSender(
 	l2Client etherman.EthClienter) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
-	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AggLayerURL)
+	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AggLayerURL, cfg.UseAgglayerTLS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}

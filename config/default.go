@@ -238,6 +238,8 @@ GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = true
+UseAgglayerTLS = false
+UseAggkitProverTLS = false
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
@@ -252,6 +254,7 @@ AggchainProofURL = "{{AggchainProofURL}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+UseAggkitProverTLS = false
 
 [Profiling]
 ProfilingHost = "localhost"

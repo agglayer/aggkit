@@ -69,7 +69,9 @@ func TestConfigString(t *testing.T) {
 		"RetryCertAfterInError: false\n" +
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
 		"GenerateAggchainProofTimeout: 1s\n" +
-		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"
+		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n" +
+		"UseAgglayerTLS: false\n" +
+		"UseAggkitProverTLS: false\n"
 
 	require.Equal(t, expected, config.String())
 }
