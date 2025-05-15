@@ -345,7 +345,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf(`error fetching aggchain proof (opMode: %t) for lastProvenBlock: %d, maxEndBlock: %d: %w. 
+		return nil, nil, fmt.Errorf(`error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, maxEndBlock: %d: %w. 
 		Message sent: %s`, optimisticMode, lastProvenBlock, toBlock, err, request.String(),
 		)
 	}

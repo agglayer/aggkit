@@ -61,6 +61,12 @@ type AggchainProofGenerationTool struct {
 	flow                AggchainProofFlow
 }
 
+type OptimisticModeQuerierAlwaysOff struct{}
+
+func (o *OptimisticModeQuerierAlwaysOff) IsOptimisticModeOn() (bool, error) {
+	return false, nil
+}
+
 // NewAggchainProofGenerationTool creates a new AggchainProofGenerationTool
 func NewAggchainProofGenerationTool(
 	ctx context.Context,
@@ -92,6 +98,7 @@ func NewAggchainProofGenerationTool(
 		l1InfoTreeQuerier,
 		query.NewBridgeDataQuerier(l2Syncer),
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
+		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode
 		l1Client,
 		false,
 	)
