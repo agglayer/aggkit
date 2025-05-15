@@ -67,6 +67,10 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 		}
+		optimisticModeQuerier, err := query.NewOptimisticModeQuerierFromContract(cfg.SovereignRollupAddr, l1Client)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
+		}
 
 		return NewAggchainProverFlow(
 			logger,
@@ -77,6 +81,7 @@ func NewFlow(
 			l1InfoTreeQuerier,
 			query.NewBridgeDataQuerier(l2Syncer),
 			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
+			optimisticModeQuerier,
 			l1Client,
 			cfg.RequireNoFEPBlockGap,
 		), nil
