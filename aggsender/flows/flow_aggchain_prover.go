@@ -21,8 +21,9 @@ import (
 type AggchainProverFlow struct {
 	*baseFlow
 
-	aggchainProofClient grpc.AggchainProofClientInterface
-	gerReader           types.ChainGERReader
+	aggchainProofClient  grpc.AggchainProofClientInterface
+	gerReader            types.ChainGERReader
+	requireNoFEPBlockGap bool
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
@@ -87,7 +88,15 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
-	return a.sanityCheckNoBlockGaps(lastSentCertificate)
+	err = a.sanityCheckNoBlockGaps(lastSentCertificate)
+	if a.requireNoFEPBlockGap {
+		return err
+	}
+	// The sanity check is disabled
+	if err != nil {
+		a.log.Warnf("aggchainProverFlow - (disabled error due RequireNoFEPBlockGap) checking for block gaps: %s", err.Error())
+	}
+	return nil
 }
 
 // sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate
