@@ -615,7 +615,7 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 	}
 
 	if len(clauses) > 0 {
-		return "WHERE " + strings.Join(clauses, " AND ")
+		return " WHERE " + strings.Join(clauses, " AND ")
 	}
 	return ""
 }
@@ -687,7 +687,7 @@ func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress str
 	}
 
 	if len(clauses) > 0 {
-		return "WHERE " + strings.Join(clauses, " AND ")
+		return " WHERE " + strings.Join(clauses, " AND ")
 	}
 	return ""
 }
@@ -922,7 +922,7 @@ func (p *processor) GetTotalNumberOfRecords(tableName, whereClause string) (int,
 	}
 
 	count := 0
-	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s %s;`, tableName, whereClause)).Scan(&count)
+	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s%s;`, tableName, whereClause)).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
