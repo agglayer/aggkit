@@ -36,8 +36,8 @@ jobs:
           path: kurtosis-cdk
           ref: v0.2.25
 
-      - name: Install Kurtosis CDK tools
-        uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
+      - name: Pre kurtosis run
+        uses: ./kurtosis-cdk/.github/actions/kurtosis-pre-run
 
       - name: Install polycli
         run: |

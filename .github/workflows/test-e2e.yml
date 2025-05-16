@@ -50,8 +50,8 @@ jobs:
           path: kurtosis-cdk
           ref: ${{ steps.set-kurtosis-cdk-ref.outputs.ref }}
 
-      - name: Install Kurtosis CDK tools
-        uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
+      - name: Pre kurtosis run
+        uses: ./kurtosis-cdk/.github/actions/kurtosis-pre-run
 
       - name: Setup Bats and bats libs
         uses: bats-core/bats-action@2.0.0
@@ -117,8 +117,8 @@ jobs:
           path: kurtosis-cdk
           ref: a2c9dee54f60063b45727ecfefbe186649987eab
 
-      - name: Install Kurtosis CDK tools
-        uses: ./kurtosis-cdk/.github/actions/setup-kurtosis-cdk
+      - name: Pre kurtosis run
+        uses: ./kurtosis-cdk/.github/actions/kurtosis-pre-run
 
       - name: Setup Bats and bats libs
         uses: bats-core/bats-action@2.0.0
