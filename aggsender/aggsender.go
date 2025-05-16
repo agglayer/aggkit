@@ -96,7 +96,7 @@ func New(
 			logger, cfg.MaxCertSize, cfg.BridgeMetadataAsHash,
 			cfg.GlobalExitRootL2Addr, cfg.SovereignRollupAddr,
 			aggchainProofClient, storage,
-			l1InfoTreeSyncer, l2Syncer, l1Client, l2Client)
+			l1InfoTreeSyncer, l2Syncer, l1Client, l2Client, cfg.RequireNoFEPBlockGap)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggchain prover flow: %w", err)
 		}

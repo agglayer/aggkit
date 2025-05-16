@@ -237,6 +237,7 @@ GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+RequireNoFEPBlockGap = true
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"

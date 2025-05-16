@@ -21,8 +21,9 @@ import (
 type AggchainProverFlow struct {
 	*baseFlow
 
-	aggchainProofClient grpc.AggchainProofClientInterface
-	gerReader           types.ChainGERReader
+	aggchainProofClient  grpc.AggchainProofClientInterface
+	gerReader            types.ChainGERReader
+	requireNoFEPBlockGap bool
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
@@ -54,7 +55,8 @@ func NewAggchainProverFlow(log types.Logger,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	l1Client types.EthClient,
-	l2Client types.EthClient) (*AggchainProverFlow, error) {
+	l2Client types.EthClient,
+	requireNoFEPBlockGap bool) (*AggchainProverFlow, error) {
 	gerReader, err := funcNewEVMChainGERReader(gerL2Address, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error creating EVMChainGERReader: %w", err)
@@ -66,8 +68,9 @@ func NewAggchainProverFlow(log types.Logger,
 	}
 	log.Infof("aggchainProverFlow - read from severeignRollup (L1) starting L2 block: %d", startL2Block)
 	return &AggchainProverFlow{
-		gerReader:           gerReader,
-		aggchainProofClient: aggkitProverClient,
+		gerReader:            gerReader,
+		aggchainProofClient:  aggkitProverClient,
+		requireNoFEPBlockGap: requireNoFEPBlockGap,
 		baseFlow: &baseFlow{
 			log:                   log,
 			l2Syncer:              l2Syncer,
@@ -87,7 +90,14 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
-	return a.sanityCheckNoBlockGaps(lastSentCertificate)
+	if err = a.sanityCheckNoBlockGaps(lastSentCertificate); err != nil {
+		if a.requireNoFEPBlockGap {
+			return fmt.Errorf("aggchainProverFlow -CheckInitialStatus fails. Err: %w", err)
+		}
+		// The sanity check is disabled
+		a.log.Warnf("aggchainProverFlow - ignoring block gaps due to RequireNoFEPBlockGap. Err: %w", err)
+	}
+	return nil
 }
 
 // sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate

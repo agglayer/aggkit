@@ -65,6 +65,9 @@ type Config struct {
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
+	// RequireNoFEPBlockGap is true if the AggSender should not accept a gap between
+	// lastBlock from lastCertificate and first block of FEP
+	RequireNoFEPBlockGap bool `mapstructure:"RequireNoFEPBlockGap"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
