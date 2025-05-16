@@ -610,7 +610,7 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "destination_network"))
 	}
 
-	if fromAddress != "" {
+	if fromAddress != "" && common.IsHexAddress(fromAddress) {
 		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
 	}
 
@@ -682,7 +682,7 @@ func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress str
 		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "origin_network"))
 	}
 
-	if fromAddress != "" {
+	if fromAddress != "" && common.IsHexAddress(fromAddress) {
 		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
 	}
 
