@@ -548,7 +548,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAdress string,
+	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*BridgeResponse, int, error) {
 	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
@@ -556,7 +556,7 @@ func (p *processor) GetBridgesPaged(
 	}
 	defer p.rollbackTransaction(tx)
 
-	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAdress)
+	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
 	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName, whereClause)
 	if err != nil {
