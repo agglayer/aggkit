@@ -94,12 +94,12 @@ export ENCLAVE="$ENCLAVE_NAME"
 log_info "Running BATS E2E tests..."
 if [ "$TEST_TYPE" == "single-l2-network-fork12-op-succinct" ]; then
     export DISABLE_L2_FUND="false"
-    bats ./tests/aggkit/bridge-e2e.bats
+    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
 elif [ "$TEST_TYPE" == "single-l2-network-fork12-pessimistic" ]; then
-    export DISABLE_L2_FUND="true"
+    export DISABLE_L2_FUND="false"
     bats ./tests/aggkit/bridge-e2e-custom-gas.bats ./tests/aggkit/bridge-e2e.bats
 elif [ "$TEST_TYPE" == "multi-l2-networks" ]; then
-    export DISABLE_L2_FUND="true"
+    export DISABLE_L2_FUND="false"
     bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
 fi
 
