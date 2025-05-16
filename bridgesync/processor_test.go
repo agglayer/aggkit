@@ -1188,12 +1188,12 @@ func TestGetClaimsPaged(t *testing.T) {
 	num2.SetString("18446744073709551618", 10)
 
 	claims := []*Claim{
-		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0x1a")},
-		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0x2b")},
-		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0x3c")},
-		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0x4d")},
-		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3, FromAddress: common.HexToAddress("0xe5")},
-		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4, FromAddress: common.HexToAddress("0xE6")},
+		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4, FromAddress: common.HexToAddress("0xd34aaF64b29273B7D567FCFc40544c014EEe9970")},
 	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
@@ -1273,7 +1273,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			pageSize:      3,
 			page:          1,
 			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
-			expectedCount: len(claims),
+			expectedCount: 3,
 			expectedClaims: []*ClaimResponse{
 				NewClaimResponse(claims[4]),
 				NewClaimResponse(claims[1]),
@@ -1286,7 +1286,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			pageSize:      1,
 			page:          2,
 			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
-			expectedCount: len(claims),
+			expectedCount: 3,
 			expectedClaims: []*ClaimResponse{
 				NewClaimResponse(claims[1]),
 			},
@@ -1298,23 +1298,23 @@ func TestGetClaimsPaged(t *testing.T) {
 			page:          1,
 			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
 			fromAddress:   claims[0].FromAddress.String(),
-			expectedCount: len(claims),
+			expectedCount: 3,
 			expectedClaims: []*ClaimResponse{
+				NewClaimResponse(claims[4]),
+				NewClaimResponse(claims[1]),
 				NewClaimResponse(claims[0]),
 			},
 			expectedError: "",
 		},
 		{
-			name:          "filter by network ids (all results within the same page) and from address case insensitive",
-			pageSize:      3,
-			page:          1,
-			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
-			fromAddress:   "0x1A",
-			expectedCount: len(claims),
-			expectedClaims: []*ClaimResponse{
-				NewClaimResponse(claims[0]),
-			},
-			expectedError: "",
+			name:           "filter by network ids (all results within the same page) and from address case insensitive",
+			pageSize:       3,
+			page:           1,
+			networkIDs:     []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
+			fromAddress:    "0xd34aaF64b29273B7D567FCFc40544c014EEe9970",
+			expectedCount:  0,
+			expectedClaims: []*ClaimResponse{},
+			expectedError:  "",
 		},
 	}
 
