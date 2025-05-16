@@ -80,8 +80,8 @@ jobs:
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@f3b4b1afdb684ef68f2149f849b2cc84d73261c9
     secrets: inherit
     with:
-      kurtosis-cdk-ref: 04c5388815d4bf9a8534eb495949392366e8c4f3
-      agglayer-e2e-ref: f3b4b1afdb684ef68f2149f849b2cc84d73261c9
+      kurtosis-cdk-ref: 4c816785db7181e2a5970956d1bee59f0d4ee700
+      agglayer-e2e-ref: c1a3ded878031a5b64488732064865d0644a5b4c
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
       test-name: "test-single-l2-network-fork12-op-succinct"
