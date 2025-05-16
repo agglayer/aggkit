@@ -832,46 +832,61 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 	testCases := []struct {
 		name                        string
 		cert                        *types.CertificateInfo
+		requireNoFEPBlockGap        bool
 		getLastSentCertificateError error
 		expectedError               bool
 	}{
 		{
 			name:                        "error getting last sent certificate",
 			cert:                        nil,
+			requireNoFEPBlockGap:        true,
 			getLastSentCertificateError: exampleError,
 			expectedError:               true,
 		},
 		{
-			name:          "no last sent certificate on storage",
-			cert:          nil,
-			expectedError: false,
+			name:                 "no last sent certificate on storage",
+			cert:                 nil,
+			requireNoFEPBlockGap: true,
+			expectedError:        false,
 		},
 		{
 			name: "last cert after upgrade L2 block (startL2Block) that is OK",
 			cert: &types.CertificateInfo{
 				ToBlock: 4000,
 			},
-			expectedError: false,
+			requireNoFEPBlockGap: true,
+			expectedError:        false,
 		},
 		{
 			name: "last cert is immediately before upgrade L2 block (startL2Block) that is OK",
 			cert: &types.CertificateInfo{
 				ToBlock: 1233,
 			},
-			expectedError: false,
+			requireNoFEPBlockGap: true,
+			expectedError:        false,
 		},
 		{
 			name: "last cert is 2 block below upgrade L2 block (startL2Block) so it's a gap of block 1233. Error",
 			cert: &types.CertificateInfo{
 				ToBlock: 1232,
 			},
-			expectedError: true,
+			requireNoFEPBlockGap: true,
+			expectedError:        true,
+		},
+		{
+			name: "there are a gap, but bypass error because requireNoFEPBlockGap is false",
+			cert: &types.CertificateInfo{
+				ToBlock: 1232,
+			},
+			requireNoFEPBlockGap: false,
+			expectedError:        false,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockStorage.EXPECT().GetLastSentCertificate().Return(tc.cert, tc.getLastSentCertificateError).Once()
+			sut.requireNoFEPBlockGap = tc.requireNoFEPBlockGap
 			err := sut.CheckInitialStatus(context.TODO())
 			if tc.expectedError {
 				require.Error(t, err)
