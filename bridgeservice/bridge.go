@@ -213,7 +213,8 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	}
 	defer cancel()
 
-	b.logger.Debugf("fetching bridges (network id=%d, page=%d, size=%d, deposit_count=%v, network_ids=%v, from_address=%s)",
+	b.logger.Debugf(
+		"fetching bridges (network id=%d, page=%d, size=%d, deposit_count=%v, network_ids=%v, from_address=%s)",
 		networkID, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
 
 	var (

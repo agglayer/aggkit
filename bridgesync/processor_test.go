@@ -657,7 +657,7 @@ func (a *getTotalRecordsAction) desc() string {
 func (a *getTotalRecordsAction) execute(t *testing.T) {
 	t.Helper()
 
-	recordsNum, err := a.p.GetTotalNumberOfRecords(a.tableName)
+	recordsNum, err := a.p.GetTotalNumberOfRecords(a.tableName, "")
 	require.NoError(t, err)
 	require.Equal(t, a.expectedRecordsNum, recordsNum)
 }
@@ -948,13 +948,13 @@ func TestGetBridgesPaged(t *testing.T) {
 	fromBlock := uint64(1)
 	toBlock := uint64(10)
 	bridges := []*Bridge{
-		{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), DestinationNetwork: 10, FromAddress: common.HexToAddress("0xaa")},
-		{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), DestinationNetwork: 10, FromAddress: common.HexToAddress("0xcd")},
-		{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), DestinationNetwork: 20, FromAddress: common.HexToAddress("0x1A")},
-		{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: common.HexToAddress("0xBC")},
-		{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: common.HexToAddress("0xaa")},
-		{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: common.HexToAddress("0xaa")},
-		{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), DestinationNetwork: 50, FromAddress: common.HexToAddress("0xaa")},
+		{DepositCount: 0, BlockNum: 1, Amount: big.NewInt(1), DestinationNetwork: 10, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{DepositCount: 1, BlockNum: 2, Amount: big.NewInt(1), DestinationNetwork: 10, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{DepositCount: 2, BlockNum: 3, Amount: big.NewInt(1), DestinationNetwork: 20, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{DepositCount: 3, BlockNum: 4, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{DepositCount: 4, BlockNum: 5, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{DepositCount: 5, BlockNum: 6, Amount: big.NewInt(1), DestinationNetwork: 30, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{DepositCount: 6, BlockNum: 7, Amount: big.NewInt(1), DestinationNetwork: 50, FromAddress: common.HexToAddress("0xd34aaF64b29273B7D567FCFc40544c014EEe9970")},
 	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetBridgesPaged.sqlite")
@@ -1034,8 +1034,8 @@ func TestGetBridgesPaged(t *testing.T) {
 		},
 		{
 			name:          "t4",
-			pageSize:      3,
-			page:          2,
+			pageSize:      1,
+			page:          1,
 			depositCount:  depositCountPtr(1),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
@@ -1044,15 +1044,13 @@ func TestGetBridgesPaged(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name:          "t5",
-			pageSize:      3,
-			page:          2,
-			depositCount:  depositCountPtr(1),
-			expectedCount: 1,
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[1]),
-			},
-			expectedError: "",
+			name:            "t5",
+			pageSize:        3,
+			page:            2,
+			depositCount:    depositCountPtr(1),
+			expectedCount:   0,
+			expectedBridges: []*BridgeResponse{},
+			expectedError:   "invalid page number for given page size and total number of bridges",
 		},
 		{
 			name:            "t6",
@@ -1084,7 +1082,7 @@ func TestGetBridgesPaged(t *testing.T) {
 				bridges[2].DestinationNetwork,
 				bridges[6].DestinationNetwork,
 			},
-			expectedCount: len(bridges),
+			expectedCount: 4,
 			expectedBridges: []*BridgeResponse{
 				NewBridgeResponse(bridges[6]),
 				NewBridgeResponse(bridges[2]),
@@ -1111,7 +1109,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:          "t10",
 			pageSize:      1,
 			page:          1,
-			fromAddress:   "0xaa",
+			fromAddress:   "0xE34aaF64b29273B7D567FCFc40544c014EEe9970",
 			depositCount:  depositCountPtr(0),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
@@ -1123,7 +1121,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:          "t11",
 			pageSize:      1,
 			page:          1,
-			fromAddress:   "0xAA",
+			fromAddress:   "0xe34aaF64b29273B7D567FCFc40544c014EEe9970",
 			depositCount:  depositCountPtr(0),
 			expectedCount: 1,
 			expectedBridges: []*BridgeResponse{
@@ -1135,11 +1133,23 @@ func TestGetBridgesPaged(t *testing.T) {
 			name:            "t12",
 			pageSize:        1,
 			page:            1,
-			fromAddress:     "0xBA",
-			depositCount:    depositCountPtr(0),
+			fromAddress:     "0xf34aad64b29273B7D567FCFc40544c014EEe9970",
+			depositCount:    nil,
 			expectedCount:   0,
 			expectedBridges: []*BridgeResponse{},
 			expectedError:   "",
+		},
+		{
+			name:          "t13",
+			pageSize:      10,
+			page:          1,
+			fromAddress:   "0xD34AAF64b29273B7D567FCFc40544c014EEe9970",
+			depositCount:  nil,
+			expectedCount: 1,
+			expectedBridges: []*BridgeResponse{
+				NewBridgeResponse(bridges[6]),
+			},
+			expectedError: "",
 		},
 	}
 
