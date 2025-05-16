@@ -90,22 +90,20 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
-	if err = a.sanityCheckNoBlockGaps(lastSentCertificate); err != nil {
-		if a.requireNoFEPBlockGap {
-			return fmt.Errorf("aggchainProverFlow -CheckInitialStatus fails. Err: %w", err)
-		}
-		// The sanity check is disabled
-		a.log.Warnf("aggchainProverFlow - ignoring block gaps due to RequireNoFEPBlockGap. Err: %w", err)
-	}
-	return nil
+	return a.sanityCheckNoBlockGaps(lastSentCertificate)
 }
 
 // sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate
 // #436. Don't allow gaps updating from PP to FEP
 func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.CertificateInfo) error {
 	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.startL2Block {
-		return fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
+		err := fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
 			lastSentCertificate.ToBlock, a.startL2Block)
+		if a.requireNoFEPBlockGap {
+			return err
+		}
+		// The sanity check is disabled
+		a.log.Warnf("aggchainProverFlow - ignoring block gaps due to RequireNoFEPBlockGap. Err: %w", err)
 	}
 	return nil
 }
