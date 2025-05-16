@@ -548,7 +548,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 }
 
 func (p *processor) GetBridgesPaged(
-	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32,
+	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*BridgeResponse, int, error) {
 	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
@@ -556,16 +556,11 @@ func (p *processor) GetBridgesPaged(
 	}
 	defer p.rollbackTransaction(tx)
 
+	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
-	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName)
+	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName, whereClause)
 	if err != nil {
 		return []*BridgeResponse{}, 0, err
-	}
-
-	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs)
-	if depositCount != nil {
-		pageNumber = 1
-		pageSize = 1
 	}
 
 	if bridgesCount == 0 {
@@ -599,16 +594,13 @@ func (p *processor) GetBridgesPaged(
 	for i, bridgePtr := range bridgePtrs {
 		bridgeResponsePtrs[i] = NewBridgeResponse(bridgePtr)
 	}
-	if depositCount != nil {
-		bridgesCount = len(bridgePtrs)
-	}
 	return bridgeResponsePtrs, bridgesCount, nil
 }
 
 // buildBridgesFilterClause builds the WHERE clause for the bridges table
 // based on the provided depositCount and networkIDs
-func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32) string {
-	const clauseCapacity = 2
+func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []uint32, fromAddress string) string {
+	const clauseCapacity = 3
 	clauses := make([]string, 0, clauseCapacity)
 	if depositCount != nil {
 		clauses = append(clauses, fmt.Sprintf("deposit_count = %d", *depositCount))
@@ -618,14 +610,18 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "destination_network"))
 	}
 
+	if fromAddress != "" && common.IsHexAddress(fromAddress) {
+		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
+	}
+
 	if len(clauses) > 0 {
-		return "WHERE " + strings.Join(clauses, " AND ")
+		return " WHERE " + strings.Join(clauses, " AND ")
 	}
 	return ""
 }
 
 func (p *processor) GetClaimsPaged(
-	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32,
+	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32, fromAddress string,
 ) ([]*ClaimResponse, int, error) {
 	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
@@ -633,7 +629,8 @@ func (p *processor) GetClaimsPaged(
 	}
 	defer p.rollbackTransaction(tx)
 
-	claimsCount, err := p.GetTotalNumberOfRecords(claimTableName)
+	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress)
+	claimsCount, err := p.GetTotalNumberOfRecords(claimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -648,16 +645,6 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	orderByClause := "block_num DESC, block_pos DESC"
-	whereClause := ""
-
-	if len(networkIDs) > 0 {
-		networkIDsFilter := buildNetworkIDsFilter(networkIDs, "origin_network")
-		if len(whereClause) > 0 {
-			whereClause += " AND " + networkIDsFilter
-		} else {
-			whereClause = "WHERE " + networkIDsFilter
-		}
-	}
 
 	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
@@ -686,10 +673,30 @@ func (p *processor) GetClaimsPaged(
 	return claimResponsePtrs, claimsCount, nil
 }
 
+// buildClaimsFilterClause builds the WHERE clause for the claims table
+// based on the provided networkIDs and fromAddress
+func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress string) string {
+	const clauseCapacity = 2
+	clauses := make([]string, 0, clauseCapacity)
+	if len(networkIDs) > 0 {
+		clauses = append(clauses, buildNetworkIDsFilter(networkIDs, "origin_network"))
+	}
+
+	if fromAddress != "" && common.IsHexAddress(fromAddress) {
+		clauses = append(clauses, fmt.Sprintf("UPPER(from_address) LIKE '%s'", fromAddress))
+	}
+
+	if len(clauses) > 0 {
+		return " WHERE " + strings.Join(clauses, " AND ")
+	}
+	return ""
+}
+
 // GetLegacyTokenMigrations returns the paged legacy token migrations from the database
 func (p *processor) GetLegacyTokenMigrations(
 	ctx context.Context, pageNumber, pageSize uint32) ([]*LegacyTokenMigration, int, error) {
-	legacyTokenMigrationsCount, err := p.GetTotalNumberOfRecords(legacyTokenMigrationTableName)
+	whereClause := ""
+	legacyTokenMigrationsCount, err := p.GetTotalNumberOfRecords(legacyTokenMigrationTableName, whereClause)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", legacyTokenMigrationTableName, err)
 	}
@@ -704,7 +711,6 @@ func (p *processor) GetLegacyTokenMigrations(
 	}
 
 	orderByClause := "block_num DESC, block_pos DESC"
-	whereClause := ""
 	rows, err := p.queryPaged(p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -910,13 +916,13 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 }
 
 // GetTotalNumberOfRecords returns the total number of records in the given table
-func (p *processor) GetTotalNumberOfRecords(tableName string) (int, error) {
+func (p *processor) GetTotalNumberOfRecords(tableName, whereClause string) (int, error) {
 	if !tableNameRegex.MatchString(tableName) {
 		return 0, fmt.Errorf("invalid table name '%s' provided", tableName)
 	}
 
 	count := 0
-	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s;`, tableName)).Scan(&count)
+	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s%s;`, tableName, whereClause)).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
@@ -926,7 +932,7 @@ func (p *processor) GetTotalNumberOfRecords(tableName string) (int, error) {
 
 // GetTokenMappings returns the paged token mappings from the database
 func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
-	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName)
+	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
 	}

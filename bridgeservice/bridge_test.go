@@ -498,7 +498,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		}}
 
 		bridgeMocks.bridgeL1.EXPECT().
-			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
 
 		queryParams := url.Values{}
@@ -520,7 +520,7 @@ func TestGetBridgesHandler(t *testing.T) {
 
 	t.Run("GetBridges for L1 network error", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		bridgeMocks.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, fmt.Errorf("L1 network error"))
 
 		queryParams := url.Values{}
@@ -537,7 +537,7 @@ func TestGetBridgesHandler(t *testing.T) {
 	t.Run("GetBridges for L2 network error", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		bridgeMocks.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		bridgeMocks.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, fmt.Errorf("L2 network error"))
 
 		queryParams := url.Values{}
@@ -576,7 +576,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		bridgeMocks.bridgeL2.EXPECT().
-			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
 			Return(expectedBridges, len(expectedBridges), nil)
 
 		queryParams := url.Values{}
@@ -637,7 +637,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		}
 
 		bridgeMocks.bridgeL1.EXPECT().
-			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		queryParams := url.Values{
@@ -676,7 +676,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		bridgeMocks.bridge.networkID = 10
 		bridgeMocks.bridgeL2.EXPECT().
-			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything).
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		query := url.Values{}
@@ -709,7 +709,7 @@ func TestGetClaimsHandler(t *testing.T) {
 	t.Run("GetClaims for L1 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL1.EXPECT().
-			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(fooErrMsg))
 
 		query := url.Values{}
@@ -725,7 +725,7 @@ func TestGetClaimsHandler(t *testing.T) {
 	t.Run("GetClaims for L2 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL2.EXPECT().
-			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+			GetClaimsPaged(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
 		query := url.Values{}
