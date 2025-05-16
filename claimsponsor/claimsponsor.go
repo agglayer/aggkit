@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit/claimsponsor/migrations"
@@ -25,6 +26,9 @@ const (
 	SuccessClaimStatus ClaimStatus = "success"
 	FailedClaimStatus  ClaimStatus = "failed"
 )
+
+// AlreadyClaimed(): 0x646cf558
+const alreadyClaimedRevertCode = "0x646cf558"
 
 var (
 	ErrInvalidClaim     = errors.New("invalid claim")
@@ -54,7 +58,7 @@ func (c *Claim) Key() []byte {
 }
 
 type ClaimSender interface {
-	checkClaim(ctx context.Context, claim *Claim) error
+	checkClaim(ctx context.Context, claim *Claim, data []byte) error
 	sendClaim(ctx context.Context, claim *Claim) (string, error)
 	claimStatus(ctx context.Context, id string) (ClaimStatus, error)
 }
@@ -126,6 +130,7 @@ func (c *ClaimSponsor) claim(ctx context.Context) error {
 	if err != nil && !errors.Is(err, db.ErrNotFound) {
 		return fmt.Errorf("error getting WIP claim: %w", err)
 	}
+
 	if errors.Is(err, db.ErrNotFound) || claim == nil {
 		// there is no WIP claim, go for the next pending claim
 		claim, err = c.getFirstPendingClaim()
@@ -135,13 +140,31 @@ func (c *ClaimSponsor) claim(ctx context.Context) error {
 				time.Sleep(c.waitOnEmptyQueue)
 				return nil
 			}
-			return fmt.Errorf("error calling getClaim with globalIndex %s: %w", claim.GlobalIndex.String(), err)
+			return fmt.Errorf("getFirstPendingClaim failed: %w", err)
 		}
-		txID, err := c.sender.sendClaim(ctx, claim)
+
+		claim.TxID, err = c.sender.sendClaim(ctx, claim)
 		if err != nil {
+			if strings.Contains(err.Error(), alreadyClaimedRevertCode) {
+				c.logger.Infof("Trx GlobalIndex: %s already claimed; deleting", claim.GlobalIndex)
+				if err := c.deleteClaim(claim.GlobalIndex); err != nil {
+					return fmt.Errorf("cleanup delete after AlreadyClaimed: %w", err)
+				}
+				return nil
+			} else if errors.Is(err, ErrGasEstimateTooHigh) {
+				c.logger.Infof("Trx GlobalIndex: %s evicting from db, %s", claim.GlobalIndex, err.Error())
+				if err := c.deleteClaim(claim.GlobalIndex); err != nil {
+					return fmt.Errorf("cleanup delete after gas too high: %w", err)
+				}
+				return nil
+			}
 			return fmt.Errorf("error sending claim: %w", err)
 		}
-		if err := c.updateClaimTxID(claim.GlobalIndex, txID); err != nil {
+
+		if err := c.updateClaimStatus(claim.GlobalIndex, WIPClaimStatus); err != nil {
+			return fmt.Errorf("error setting claim %s → WIP: %w", claim.GlobalIndex, err)
+		}
+		if err := c.updateClaimTxID(claim.GlobalIndex, claim.TxID); err != nil {
 			return fmt.Errorf("error updating claim txID: %w", err)
 		}
 	}
@@ -246,4 +269,18 @@ func (c *ClaimSponsor) GetClaim(globalIndex *big.Int) (*Claim, error) {
 		return nil, db.ReturnErrNotFound(err)
 	}
 	return claim, nil
+}
+
+func (c *ClaimSponsor) deleteClaim(globalIndex *big.Int) error {
+	res, err := c.db.Exec(
+		`DELETE FROM claim WHERE global_index = $1`,
+		globalIndex.String(),
+	)
+	if err != nil {
+		return err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return ErrClaimDoesntExist
+	}
+	return nil
 }
