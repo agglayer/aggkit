@@ -55,7 +55,8 @@ func NewAggchainProverFlow(log types.Logger,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	l1Client types.EthClient,
-	l2Client types.EthClient) (*AggchainProverFlow, error) {
+	l2Client types.EthClient,
+	requireNoFEPBlockGap bool) (*AggchainProverFlow, error) {
 	gerReader, err := funcNewEVMChainGERReader(gerL2Address, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error creating EVMChainGERReader: %w", err)
@@ -67,8 +68,9 @@ func NewAggchainProverFlow(log types.Logger,
 	}
 	log.Infof("aggchainProverFlow - read from severeignRollup (L1) starting L2 block: %d", startL2Block)
 	return &AggchainProverFlow{
-		gerReader:           gerReader,
-		aggchainProofClient: aggkitProverClient,
+		gerReader:            gerReader,
+		aggchainProofClient:  aggkitProverClient,
+		requireNoFEPBlockGap: requireNoFEPBlockGap,
 		baseFlow: &baseFlow{
 			log:                   log,
 			l2Syncer:              l2Syncer,

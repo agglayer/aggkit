@@ -81,6 +81,7 @@ func NewAggchainProofGenerationTool(
 		l2Syncer,
 		l1Client,
 		l2Client,
+		false,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create the AggchainProverFlow: %w", err)

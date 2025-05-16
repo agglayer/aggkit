@@ -1023,6 +1023,7 @@ func Test_AggchainProverFlow_NewAggchainProverFlow(t *testing.T) {
 				mockL2Syncer,
 				mockL1Client,
 				mockL2Client,
+				true,
 			)
 
 			if tc.expectedError != "" {
