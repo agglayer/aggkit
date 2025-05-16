@@ -72,9 +72,8 @@ packages:
   github.com/agglayer/aggkit/bridgeservice:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
-      all: true
-      exclude:
-        - "^UintParam$"
+      include-regex: "\\w+er\\b"
+      exclude-regex: "^UintParam$"
   github.com/agglayer/aggkit/sync:
     config:
       dir: "{{ .InterfaceDir }}"
