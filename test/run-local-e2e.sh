@@ -16,14 +16,15 @@ log_error() {
 
 trap 'log_error "Script failed at line $LINENO"' ERR
 
-if [ "$#" -ne 3 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <path/to/kurtosis/cdk/repo> <path/to/e2e/repo>"
+if [ "$#" -ne 4 ]; then
+    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <path/to/kurtosis/cdk/repo> <path/to/e2e/repo> <run_tests: true | false>"
     exit 1
 fi
 
 TEST_TYPE=$1
 KURTOSIS_FOLDER=$2
 E2E_FOLDER=$3
+RUN_TESTS=$4
 
 PROJECT_ROOT="$PWD"
 ROOT_FOLDER="/tmp/aggkit-e2e-run"
@@ -33,7 +34,7 @@ LOG_FILE="$LOG_FOLDER/run-local-e2e.log"
 rm -rf "$ROOT_FOLDER"
 mkdir -p "$LOG_FOLDER"
 
-exec > >(tee -a "$LOG_FILE") 2>&1
+# exec > >(tee -a "$LOG_FILE") 2>&1
 
 log_info "Starting local E2E setup..."
 
@@ -77,31 +78,36 @@ fi
 log_info "$ENCLAVE_NAME enclave started successfully."
 popd > /dev/null
 
-log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
+if [ "$RUN_TESTS" == "true" ]; then
+    log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
 
-pushd "$E2E_FOLDER" > /dev/null
+    pushd "$E2E_FOLDER" > /dev/null
 
-# Setup environment
-log_info "Setting up e2e environment..."
-set -a
-source ./tests/.env
-set +a
+    # Setup environment
+    log_info "Setting up e2e environment..."
+    set -a
+    source ./tests/.env
+    set +a
 
-export BATS_LIB_PATH="$PWD/core/helpers/lib"
-export PROJECT_ROOT="$PWD"
-export ENCLAVE="$ENCLAVE_NAME"
+    export BATS_LIB_PATH="$PWD/core/helpers/lib"
+    export PROJECT_ROOT="$PWD"
+    export ENCLAVE="$ENCLAVE_NAME"
 
-log_info "Running BATS E2E tests..."
-if [ "$TEST_TYPE" == "single-l2-network-fork12-op-succinct" ]; then
-    export DISABLE_L2_FUND="false"
-    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
-elif [ "$TEST_TYPE" == "single-l2-network-fork12-pessimistic" ]; then
-    export DISABLE_L2_FUND="true"
-    bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/bridge-e2e-custom-gas.bats 
-elif [ "$TEST_TYPE" == "multi-l2-networks" ]; then
-    export DISABLE_L2_FUND="true"
-    bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
+    log_info "Running BATS E2E tests..."
+    if [ "$TEST_TYPE" == "single-l2-network-fork12-op-succinct" ]; then
+        export DISABLE_L2_FUND="false"
+        bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
+    elif [ "$TEST_TYPE" == "single-l2-network-fork12-pessimistic" ]; then
+        export DISABLE_L2_FUND="true"
+        bats ./tests/aggkit/bridge-e2e-custom-gas.bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/e2e-pp.bats
+    elif [ "$TEST_TYPE" == "multi-l2-networks" ]; then
+        export DISABLE_L2_FUND="true"
+        bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
+    fi
+
+    popd > /dev/null
+    log_info "E2E tests executed. Logs saved to $LOG_FILE"
+else
+    log_info "Skipping tests as per user request."
+    exit 0
 fi
-
-popd > /dev/null
-log_info "E2E tests executed. Logs saved to $LOG_FILE"
