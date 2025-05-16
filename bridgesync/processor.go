@@ -710,7 +710,7 @@ func (p *processor) GetLegacyTokenMigrations(
 		return nil, 0, err
 	}
 
-	orderByClause := "block_num, block_pos DESC"
+	orderByClause := "block_num DESC, block_pos DESC"
 	rows, err := p.queryPaged(p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
