@@ -1,5 +1,5 @@
-name: Bats E2E Tests
 # This workflow runs the Bats E2E tests for aggkit.
+name: Bats E2E Tests
 
 on:
   push:
