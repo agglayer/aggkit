@@ -148,5 +148,4 @@ func TestNewAggchainProofGenerationTool(t *testing.T) {
 	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
 		Config{}, mockL2Syncer, nil, mockL1Client, mockL2Client)
 	require.Error(t, err)
-
 }
