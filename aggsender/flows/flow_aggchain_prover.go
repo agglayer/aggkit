@@ -90,13 +90,12 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
-	err = a.sanityCheckNoBlockGaps(lastSentCertificate)
-	if a.requireNoFEPBlockGap {
-		return err
-	}
-	// The sanity check is disabled
-	if err != nil {
-		a.log.Warnf("aggchainProverFlow - (disabled error due RequireNoFEPBlockGap) checking for block gaps: %s", err.Error())
+	if err = a.sanityCheckNoBlockGaps(lastSentCertificate); err != nil {
+		if a.requireNoFEPBlockGap {
+			return fmt.Errorf("aggchainProverFlow -CheckInitialStatus fails. Err: %w", err)
+		}
+		// The sanity check is disabled
+		a.log.Warnf("aggchainProverFlow - ignoring block gaps due to RequireNoFEPBlockGap. Err: %w", err)
 	}
 	return nil
 }
