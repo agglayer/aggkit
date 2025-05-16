@@ -27,8 +27,9 @@ var errNoProofBuiltYet = &aggkitcommon.GRPCError{
 type AggchainProverFlow struct {
 	*baseFlow
 
-	aggchainProofClient grpc.AggchainProofClientInterface
-	gerQuerier          types.GERQuerier
+	aggchainProofClient  grpc.AggchainProofClientInterface
+	gerQuerier           types.GERQuerier
+	requireNoFEPBlockGap bool
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
@@ -58,10 +59,12 @@ func NewAggchainProverFlow(log types.Logger,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
 	gerQuerier types.GERQuerier,
-	l1Client types.EthClient) *AggchainProverFlow {
+	l1Client types.EthClient,
+	requireNoFEPBlockGap bool) *AggchainProverFlow {
 	return &AggchainProverFlow{
-		aggchainProofClient: aggkitProverClient,
-		gerQuerier:          gerQuerier,
+		aggchainProofClient:  aggkitProverClient,
+		gerQuerier:           gerQuerier,
+		requireNoFEPBlockGap: requireNoFEPBlockGap,
 		baseFlow: &baseFlow{
 			log:                   log,
 			l2BridgeQuerier:       l2BridgeQuerier,
@@ -80,7 +83,14 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
-	return a.sanityCheckNoBlockGaps(lastSentCertificate)
+	if err = a.sanityCheckNoBlockGaps(lastSentCertificate); err != nil {
+		if a.requireNoFEPBlockGap {
+			return fmt.Errorf("aggchainProverFlow -CheckInitialStatus fails. Err: %w", err)
+		}
+		// The sanity check is disabled
+		a.log.Warnf("aggchainProverFlow - ignoring block gaps due to RequireNoFEPBlockGap. Err: %w", err)
+	}
+	return nil
 }
 
 // sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate

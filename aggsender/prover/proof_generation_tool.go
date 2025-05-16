@@ -93,6 +93,7 @@ func NewAggchainProofGenerationTool(
 		query.NewBridgeDataQuerier(l2Syncer),
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
 		l1Client,
+		false,
 	)
 
 	return &AggchainProofGenerationTool{

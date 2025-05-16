@@ -66,7 +66,8 @@ func TestConfigString(t *testing.T) {
 		"GenerateAggchainProofTimeout: 1s\n" +
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n" +
 		"UseAgglayerTLS: false\n" +
-		"UseAggkitProverTLS: false\n"
+		"UseAggkitProverTLS: false\n" +
+		"RequireNoFEPBlockGap: false\n"
 
 	require.Equal(t, expected, config.String())
 }
