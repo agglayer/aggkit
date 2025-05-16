@@ -87,7 +87,7 @@ func New(
 
 		aggchainProofClient, err = grpc.NewAggchainProofClient(
 			cfg.AggchainProofURL,
-			cfg.GenerateAggchainProofTimeout.Duration)
+			cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}

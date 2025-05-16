@@ -42,9 +42,9 @@ type AggchainProofClient struct {
 
 // NewAggchainProofClient initializes a new AggchainProof instance
 func NewAggchainProofClient(serverAddr string,
-	generateProofTimeout time.Duration) (*AggchainProofClient, error) {
+	generateProofTimeout time.Duration, useTLS bool) (*AggchainProofClient, error) {
 	addr := strings.TrimPrefix(serverAddr, "http://")
-	grpcClient, err := aggkitcommon.NewClient(addr)
+	grpcClient, err := aggkitcommon.NewClient(addr, useTLS)
 	if err != nil {
 		return nil, err
 	}
