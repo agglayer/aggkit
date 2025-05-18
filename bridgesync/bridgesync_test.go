@@ -273,7 +273,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageNum := uint32(5)
 
 		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
-		require.ErrorContains(t, err, "provided page number is invalid for given page size")
+		require.ErrorContains(t, err, "invalid page number for given page size and total number of token mappings")
 		require.Equal(t, 0, totalTokenMappings)
 		require.Nil(t, tokenMappings)
 	})
@@ -406,7 +406,7 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 
 		tokenMigrations, totalTokenMigrations, err := s.GetLegacyTokenMigrations(context.Background(), pageNum, pageSize)
 		require.ErrorContains(t, err,
-			"provided page number is invalid for given page size and total number of legacy token migrations")
+			"invalid page number for given page size and total number of legacy token migrations")
 		require.Equal(t, 0, totalTokenMigrations)
 		require.Nil(t, tokenMigrations)
 	})

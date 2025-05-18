@@ -6,6 +6,7 @@ import (
 	big "math/big"
 
 	claimsponsor "github.com/agglayer/aggkit/claimsponsor"
+
 	mock "github.com/stretchr/testify/mock"
 )
 

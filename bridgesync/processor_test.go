@@ -1060,7 +1060,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			depositCount:    nil,
 			expectedCount:   len(bridges),
 			expectedBridges: []*BridgeResponse{},
-			expectedError:   "provided page number is invalid for given page size",
+			expectedError:   "invalid page number for given page size and total number of bridges",
 		},
 		{
 			name:          "t7",
@@ -1220,7 +1220,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			page:           4,
 			expectedCount:  0,
 			expectedClaims: []*ClaimResponse{},
-			expectedError:  "provided page number is invalid for given page size",
+			expectedError:  "invalid page number for given page size and total number of claims",
 		},
 		{
 			name:          "filter by network ids (all results within the same page)",
@@ -1344,7 +1344,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 			pageNumber:  6,
 			pageSize:    10,
 			expectedLen: 0,
-			expectedErr: "provided page number is invalid for given page size",
+			expectedErr: "invalid page number for given page size and total number of token mappings",
 		},
 	}
 
