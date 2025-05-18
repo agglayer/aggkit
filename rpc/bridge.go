@@ -480,7 +480,7 @@ func (b *BridgeEndpoints) SponsorClaim(claim claimsponsor.Claim) (interface{}, r
 	if err := b.sponsor.AddClaimToQueue(&claim); err != nil {
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error adding claim to the queue %s", err))
 	}
-	return nil, nil
+	return struct{}{}, nil
 }
 
 // GetSponsoredClaimStatus returns the status of a claim that has been previously requested to be sponsored.
