@@ -185,7 +185,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 		return nil, fmt.Errorf("aggchainProverFlow - error checking for block gaps: %w", err)
 	}
 
-	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock)
+	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, buildParams.LastSentCertificate)
 
 	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
 		ctx, lastProvenBlock, buildParams.ToBlock, buildParams.Claims)
