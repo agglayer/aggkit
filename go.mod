@@ -12,7 +12,7 @@ require (
 	github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.11
 	github.com/agglayer/go_signer v0.0.6
-	github.com/ethereum/go-ethereum v1.15.5
+	github.com/ethereum/go-ethereum v1.15.11
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 	github.com/hermeznetwork/tracerr v0.3.2
@@ -91,15 +91,15 @@ require (
 	github.com/consensys/bavard v0.1.27 // indirect
 	github.com/consensys/gnark-crypto v0.16.0 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.5 // indirect
+	github.com/crate-crypto/go-eth-kzg v1.3.0 // indirect
 	github.com/crate-crypto/go-ipa v0.0.0-20240724233137-53bbb0ceb27a // indirect
-	github.com/crate-crypto/go-kzg-4844 v1.1.0 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/deckarep/golang-set/v2 v2.6.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
 	github.com/didip/tollbooth/v6 v6.1.2 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ethereum-optimism/infra/op-signer v1.4.1 // indirect
-	github.com/ethereum/c-kzg-4844 v1.0.3 // indirect
+	github.com/ethereum/c-kzg-4844/v2 v2.1.0 // indirect
 	github.com/ethereum/go-verkle v0.2.2 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
