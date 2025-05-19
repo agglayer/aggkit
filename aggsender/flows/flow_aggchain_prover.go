@@ -100,7 +100,8 @@ func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.C
 	if lastSentCertificate != nil {
 		lastSentCertficateStr = fmt.Sprintf("cert from:%d, to:%d", lastSentCertificate.FromBlock, lastSentCertificate.ToBlock)
 	}
-	msg := fmt.Sprintf("aggchainProverFlow - sanityCheckNoBlockGaps - last sent certificate: %s, startL2Block:%d", lastSentCertficateStr, a.startL2Block)
+	msg := fmt.Sprintf("aggchainProverFlow - sanityCheckNoBlockGaps - last sent certificate: %s, startL2Block:%d",
+		lastSentCertficateStr, a.startL2Block)
 	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.startL2Block {
 		err := fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
 			lastSentCertificate.ToBlock, a.startL2Block)
