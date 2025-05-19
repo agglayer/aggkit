@@ -1126,19 +1126,21 @@ func TestAggchainDataProof_MarshalUnmarshalJSON(t *testing.T) {
 				Context:        map[string][]byte{},
 				Version:        "0.1",
 				Vkey:           common.FromHex("0x123456"),
+				Signature:      []byte{0x01, 0x02, 0x03},
 			},
-			expected: `{"proof":"123456","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000abcdef","context":{},"version":"0.1","vkey":"123456"}`,
+			expected: `{"aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000abcdef", "context":{}, "proof":"123456", "signature":"010203", "version":"0.1", "vkey":"123456"}`,
 		},
 		{
-			name: "Empty AggchainDataProof",
+			name: "Empty AggchainDataProof, Context and Signature",
 			input: &AggchainDataProof{
 				Proof:          []byte{},
 				AggchainParams: common.Hash{},
 				Context:        map[string][]byte{},
+				Signature:      []byte{},
 				Version:        "",
 				Vkey:           []byte{},
 			},
-			expected: `{"proof":"","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000000000","context":{},"version":"","vkey":""}`,
+			expected: `{"proof":"","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000000000","context":{},"version":"","vkey":"","signature":""}`,
 		},
 	}
 

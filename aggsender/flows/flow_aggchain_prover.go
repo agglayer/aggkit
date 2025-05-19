@@ -242,6 +242,7 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 		Vkey:           buildParams.AggchainProof.SP1StarkProof.Vkey,
 		AggchainParams: buildParams.AggchainProof.AggchainParams,
 		Context:        buildParams.AggchainProof.Context,
+		Signature:      buildParams.AggchainProof.Signature,
 	}
 
 	cert.CustomChainData = buildParams.AggchainProof.CustomChainData
