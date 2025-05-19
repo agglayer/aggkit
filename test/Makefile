@@ -4,10 +4,6 @@ COMMON_MOCKERY_PARAMS=--disable-version-string --with-expecter --exported
 generate-mocks:	
 	mockery ${COMMON_MOCKERY_PARAMS}
 
-.PHONY: stop
-stop:
-	kurtosis clean --all
-
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted
 ## display with the commands and their usage information.

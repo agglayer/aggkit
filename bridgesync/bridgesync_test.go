@@ -436,13 +436,13 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 
 func TestGetBridgePaged(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
-	_, _, err := s.GetBridgesPaged(context.Background(), 0, 0, nil, nil)
+	_, _, err := s.GetBridgesPaged(context.Background(), 0, 0, nil, nil, "")
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
 func TestGetClaimPaged(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
-	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil)
+	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil, "")
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
