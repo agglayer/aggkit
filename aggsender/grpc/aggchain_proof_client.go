@@ -162,6 +162,11 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		return nil, errProofNotSP1Stark
 	}
 
+	var signature []byte
+	if resp.AggchainProof.Signature != nil {
+		signature = resp.AggchainProof.Signature.Value
+	}
+
 	return &types.AggchainProof{
 		SP1StarkProof: &types.SP1StarkProof{
 			Proof:   proof.Sp1Stark.Proof,
@@ -174,5 +179,6 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		CustomChainData: resp.CustomChainData,
 		AggchainParams:  common.BytesToHash(resp.AggchainProof.AggchainParams.Value),
 		Context:         resp.AggchainProof.Context,
+		Signature:       signature,
 	}, nil
 }
