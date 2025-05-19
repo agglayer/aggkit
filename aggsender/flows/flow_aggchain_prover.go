@@ -113,7 +113,7 @@ func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.C
 		a.log.Warnf("%s. Ignoring block gaps due to RequireNoFEPBlockGap. Err: %w", msg, err)
 		return nil
 	}
-	a.log.Infof("%s. pass", msg)
+	a.log.Infof("%s. Passed check.", msg)
 
 	return nil
 }
