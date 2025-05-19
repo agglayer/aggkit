@@ -4,8 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -13,8 +11,9 @@ import (
 	"strings"
 	mutex "sync"
 
+	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
-	aggkitCommon "github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
@@ -56,6 +55,76 @@ var (
 	// with specific legacy token address
 	deleteLegacyTokenSQL = fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1", legacyTokenMigrationTableName)
 )
+
+// NewBridgeResponse creates a new BridgeResponse instance out of the provided Bridge instance
+func NewBridgeResponse(bridge *Bridge) *bridgetypes.BridgeResponse {
+	return &bridgetypes.BridgeResponse{
+		BlockNum:           bridge.BlockNum,
+		BlockPos:           bridge.BlockPos,
+		FromAddress:        bridgetypes.Address(bridge.FromAddress),
+		TxHash:             bridgetypes.Hash(bridge.TxHash),
+		Calldata:           bridge.Calldata,
+		BlockTimestamp:     bridge.BlockTimestamp,
+		LeafType:           bridge.LeafType,
+		OriginNetwork:      bridge.OriginNetwork,
+		OriginAddress:      bridgetypes.Address(bridge.OriginAddress),
+		DestinationNetwork: bridge.DestinationNetwork,
+		DestinationAddress: bridgetypes.Address(bridge.DestinationAddress),
+		Amount:             bridge.Amount,
+		Metadata:           bridge.Metadata,
+		DepositCount:       bridge.DepositCount,
+		IsNativeToken:      bridge.IsNativeToken,
+		BridgeHash:         bridgetypes.Hash(bridge.Hash()),
+	}
+}
+
+// NewClaimResponse creates ClaimResponse instance out of the provided Claim
+func NewClaimResponse(claim *Claim) *bridgetypes.ClaimResponse {
+	return &bridgetypes.ClaimResponse{
+		GlobalIndex:        claim.GlobalIndex,
+		DestinationNetwork: claim.DestinationNetwork,
+		TxHash:             bridgetypes.Hash(claim.TxHash),
+		Amount:             claim.Amount,
+		BlockNum:           claim.BlockNum,
+		FromAddress:        bridgetypes.Address(claim.FromAddress),
+		DestinationAddress: bridgetypes.Address(claim.DestinationAddress),
+		OriginAddress:      bridgetypes.Address(claim.OriginAddress),
+		OriginNetwork:      claim.OriginNetwork,
+		BlockTimestamp:     claim.BlockTimestamp,
+	}
+}
+
+// NewTokenMappingResponse creates TokenMappingResponse instance out of the provided TokenMapping
+func NewTokenMappingResponse(tokenMapping *TokenMapping) *bridgetypes.TokenMappingResponse {
+	return &bridgetypes.TokenMappingResponse{
+		BlockNum:            tokenMapping.BlockNum,
+		BlockPos:            tokenMapping.BlockPos,
+		BlockTimestamp:      tokenMapping.BlockTimestamp,
+		TxHash:              bridgetypes.Hash(tokenMapping.TxHash),
+		OriginNetwork:       tokenMapping.OriginNetwork,
+		OriginTokenAddress:  bridgetypes.Address(tokenMapping.OriginTokenAddress),
+		WrappedTokenAddress: bridgetypes.Address(tokenMapping.WrappedTokenAddress),
+		Metadata:            tokenMapping.Metadata,
+		IsNotMintable:       tokenMapping.IsNotMintable,
+		Calldata:            tokenMapping.Calldata,
+		Type:                tokenMapping.Type,
+	}
+}
+
+// NewTokenMigrationResponse creates LegacyTokenMigrationResponse instance out of the provided LegacyTokenMigration
+func NewTokenMigrationResponse(tokenMigration *LegacyTokenMigration) *bridgetypes.LegacyTokenMigrationResponse {
+	return &bridgetypes.LegacyTokenMigrationResponse{
+		BlockNum:            tokenMigration.BlockNum,
+		BlockPos:            tokenMigration.BlockPos,
+		BlockTimestamp:      tokenMigration.BlockTimestamp,
+		TxHash:              bridgetypes.Hash(tokenMigration.TxHash),
+		Sender:              bridgetypes.Address(tokenMigration.Sender),
+		LegacyTokenAddress:  bridgetypes.Address(tokenMigration.LegacyTokenAddress),
+		UpdatedTokenAddress: bridgetypes.Address(tokenMigration.UpdatedTokenAddress),
+		Amount:              tokenMigration.Amount,
+		Calldata:            tokenMigration.Calldata,
+	}
+}
 
 // Bridge is the representation of a bridge event
 type Bridge struct {
@@ -103,68 +172,6 @@ func (b *Bridge) Hash() common.Hash {
 		b.Amount.FillBytes(buf[:]),
 		metaHash,
 	))
-}
-
-// BridgeResponse is the representation of a bridge event with additional fields
-type BridgeResponse struct {
-	BridgeHash common.Hash `json:"bridge_hash"`
-	Bridge
-}
-
-// NewBridgeResponse creates a new BridgeResponse instance out of the provided Bridge instance
-func NewBridgeResponse(bridge *Bridge) *BridgeResponse {
-	return &BridgeResponse{
-		Bridge:     *bridge,
-		BridgeHash: bridge.Hash(),
-	}
-}
-
-// MarshalJSON for hex-encoded fields
-func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
-	type Alias BridgeResponse // Prevent recursion
-	return json.Marshal(&struct {
-		Metadata string `json:"metadata"`
-		CallData string `json:"calldata"`
-		*Alias
-	}{
-		Metadata: fmt.Sprintf("0x%s", hex.EncodeToString(b.Metadata)),
-		CallData: fmt.Sprintf("0x%s", hex.EncodeToString(b.Calldata)),
-		Alias:    (*Alias)(b),
-	})
-}
-
-// UnmarshalJSON for hex-decoding fields
-func (b *BridgeResponse) UnmarshalJSON(data []byte) error {
-	type Alias BridgeResponse
-	tmp := &struct {
-		Metadata string `json:"metadata"`
-		CallData string `json:"calldata"`
-		*Alias
-	}{
-		Alias: (*Alias)(b),
-	}
-
-	if err := json.Unmarshal(data, &tmp); err != nil {
-		return err
-	}
-
-	if tmp.Metadata != "" {
-		decodedMetadata, err := hex.DecodeString(strings.TrimPrefix(tmp.Metadata, "0x"))
-		if err != nil {
-			return fmt.Errorf("failed to decode metadata: %w", err)
-		}
-		b.Metadata = decodedMetadata
-	}
-
-	if tmp.CallData != "" {
-		decodedCalldata, err := hex.DecodeString(strings.TrimPrefix(tmp.CallData, "0x"))
-		if err != nil {
-			return fmt.Errorf("failed to decode calldata: %w", err)
-		}
-		b.Calldata = decodedCalldata
-	}
-
-	return nil
 }
 
 // Claim representation of a claim event
@@ -321,108 +328,19 @@ func (c *Claim) decodePreEtrogCalldata(senderAddr common.Address, data []any) (b
 	return true, nil
 }
 
-// ClaimResponse is the representation of a claim event with trimmed fields
-type ClaimResponse struct {
-	BlockNum           uint64         `json:"block_num"`
-	BlockTimestamp     uint64         `json:"block_timestamp"`
-	TxHash             common.Hash    `json:"tx_hash"`
-	GlobalIndex        *big.Int       `json:"global_index"`
-	OriginAddress      common.Address `json:"origin_address"`
-	OriginNetwork      uint32         `json:"origin_network"`
-	DestinationAddress common.Address `json:"destination_address"`
-	DestinationNetwork uint32         `json:"destination_network"`
-	Amount             *big.Int       `json:"amount"`
-	FromAddress        common.Address `json:"from_address"`
-}
-
-// NewClaimResponse creates ClaimResponse instance out of the provided Claim
-func NewClaimResponse(claim *Claim) *ClaimResponse {
-	return &ClaimResponse{
-		GlobalIndex:        claim.GlobalIndex,
-		DestinationNetwork: claim.DestinationNetwork,
-		TxHash:             claim.TxHash,
-		Amount:             claim.Amount,
-		BlockNum:           claim.BlockNum,
-		FromAddress:        claim.FromAddress,
-		DestinationAddress: claim.DestinationAddress,
-		OriginAddress:      claim.OriginAddress,
-		OriginNetwork:      claim.OriginNetwork,
-		BlockTimestamp:     claim.BlockTimestamp,
-	}
-}
-
-type TokenMappingType uint8
-
-const (
-	WrappedToken = iota
-	SovereignToken
-)
-
-func (l TokenMappingType) String() string {
-	return [...]string{"WrappedToken", "SovereignToken"}[l]
-}
-
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
-	BlockNum            uint64           `meddler:"block_num" json:"block_num"`
-	BlockPos            uint64           `meddler:"block_pos" json:"block_pos"`
-	BlockTimestamp      uint64           `meddler:"block_timestamp" json:"block_timestamp"`
-	TxHash              common.Hash      `meddler:"tx_hash,hash" json:"tx_hash"`
-	OriginNetwork       uint32           `meddler:"origin_network" json:"origin_network"`
-	OriginTokenAddress  common.Address   `meddler:"origin_token_address,address" json:"origin_token_address"`
-	WrappedTokenAddress common.Address   `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
-	Metadata            []byte           `meddler:"metadata" json:"metadata"`
-	IsNotMintable       bool             `meddler:"is_not_mintable" json:"is_not_mintable"`
-	Calldata            []byte           `meddler:"calldata" json:"calldata"`
-	Type                TokenMappingType `meddler:"token_type" json:"token_type"`
-}
-
-// MarshalJSON for hex-encoding Metadata and Calldata fields
-func (t *TokenMapping) MarshalJSON() ([]byte, error) {
-	type Alias TokenMapping // Prevent recursion
-	return json.Marshal(&struct {
-		Metadata string `json:"metadata"`
-		Calldata string `json:"calldata"`
-		*Alias
-	}{
-		Metadata: fmt.Sprintf("0x%s", hex.EncodeToString(t.Metadata)),
-		Calldata: fmt.Sprintf("0x%s", hex.EncodeToString(t.Calldata)),
-		Alias:    (*Alias)(t),
-	})
-}
-
-// UnmarshalJSON for hex-decoding fields
-func (t *TokenMapping) UnmarshalJSON(data []byte) error {
-	type Alias TokenMapping
-	tmp := &struct {
-		Metadata string `json:"metadata"`
-		CallData string `json:"calldata"`
-		*Alias
-	}{
-		Alias: (*Alias)(t),
-	}
-
-	if err := json.Unmarshal(data, &tmp); err != nil {
-		return err
-	}
-
-	if tmp.Metadata != "" {
-		decodedMetadata, err := hex.DecodeString(strings.TrimPrefix(tmp.Metadata, "0x"))
-		if err != nil {
-			return fmt.Errorf("failed to decode metadata: %w", err)
-		}
-		t.Metadata = decodedMetadata
-	}
-
-	if tmp.CallData != "" {
-		decodedCalldata, err := hex.DecodeString(strings.TrimPrefix(tmp.CallData, "0x"))
-		if err != nil {
-			return fmt.Errorf("failed to decode calldata: %w", err)
-		}
-		t.Calldata = decodedCalldata
-	}
-
-	return nil
+	BlockNum            uint64                       `meddler:"block_num" json:"block_num"`
+	BlockPos            uint64                       `meddler:"block_pos" json:"block_pos"`
+	BlockTimestamp      uint64                       `meddler:"block_timestamp" json:"block_timestamp"`
+	TxHash              common.Hash                  `meddler:"tx_hash,hash" json:"tx_hash"`
+	OriginNetwork       uint32                       `meddler:"origin_network" json:"origin_network"`
+	OriginTokenAddress  common.Address               `meddler:"origin_token_address,address" json:"origin_token_address"`
+	WrappedTokenAddress common.Address               `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
+	Metadata            []byte                       `meddler:"metadata" json:"metadata"`
+	IsNotMintable       bool                         `meddler:"is_not_mintable" json:"is_not_mintable"`
+	Calldata            []byte                       `meddler:"calldata" json:"calldata"`
+	Type                bridgetypes.TokenMappingType `meddler:"token_type" json:"token_type"`
 }
 
 // LegacyTokenMigration representation of a MigrateLegacyToken event,
@@ -549,7 +467,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 
 func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string,
-) ([]*BridgeResponse, int, error) {
+) ([]*Bridge, int, error) {
 	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
 		return nil, 0, err
@@ -560,11 +478,11 @@ func (p *processor) GetBridgesPaged(
 	orderByClause := "deposit_count DESC"
 	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName, whereClause)
 	if err != nil {
-		return []*BridgeResponse{}, 0, err
+		return []*Bridge{}, 0, err
 	}
 
 	if bridgesCount == 0 {
-		return []*BridgeResponse{}, 0, nil
+		return []*Bridge{}, 0, nil
 	}
 
 	offset, err := p.calculateOffset(pageNumber, pageSize, bridgesCount, "bridges")
@@ -586,15 +504,13 @@ func (p *processor) GetBridgesPaged(
 			p.log.Warnf("error closing rows: %v", err)
 		}
 	}()
-	bridgePtrs := []*Bridge{}
-	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
+
+	bridges := []*Bridge{}
+	if err = meddler.ScanAll(rows, &bridges); err != nil {
 		return nil, 0, err
 	}
-	bridgeResponsePtrs := make([]*BridgeResponse, len(bridgePtrs))
-	for i, bridgePtr := range bridgePtrs {
-		bridgeResponsePtrs[i] = NewBridgeResponse(bridgePtr)
-	}
-	return bridgeResponsePtrs, bridgesCount, nil
+
+	return bridges, bridgesCount, nil
 }
 
 // buildBridgesFilterClause builds the WHERE clause for the bridges table
@@ -622,7 +538,7 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 
 func (p *processor) GetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32, fromAddress string,
-) ([]*ClaimResponse, int, error) {
+) ([]*Claim, int, error) {
 	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
 		return nil, 0, err
@@ -636,7 +552,7 @@ func (p *processor) GetClaimsPaged(
 	}
 
 	if claimsCount == 0 {
-		return []*ClaimResponse{}, 0, nil
+		return []*Claim{}, 0, nil
 	}
 
 	offset, err := p.calculateOffset(pageNumber, pageSize, claimsCount, "claims")
@@ -660,17 +576,13 @@ func (p *processor) GetClaimsPaged(
 			p.log.Warnf("error closing rows: %v", err)
 		}
 	}()
-	claimPtrs := []*Claim{}
-	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
+
+	claims := []*Claim{}
+	if err = meddler.ScanAll(rows, &claims); err != nil {
 		return nil, 0, err
 	}
 
-	claimResponsePtrs := make([]*ClaimResponse, len(claimPtrs))
-	for i, claimPtr := range claimPtrs {
-		claimResponsePtrs[i] = NewClaimResponse(claimPtr)
-	}
-
-	return claimResponsePtrs, claimsCount, nil
+	return claims, claimsCount, nil
 }
 
 // buildClaimsFilterClause builds the WHERE clause for the claims table
@@ -1049,8 +961,8 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 	localExitRootFromIdx := max(l-globalIndexPartSize, 0)
 	rollupIndexFromIdx := max(localExitRootFromIdx-globalIndexPartSize, 0)
 
-	rollupIndex = aggkitCommon.BytesToUint32(globalIndexBytes[rollupIndexFromIdx:localExitRootFromIdx])
-	localExitRootIndex = aggkitCommon.BytesToUint32(globalIndexBytes[localExitRootFromIdx:])
+	rollupIndex = aggkitcommon.BytesToUint32(globalIndexBytes[rollupIndexFromIdx:localExitRootFromIdx])
+	localExitRootIndex = aggkitcommon.BytesToUint32(globalIndexBytes[localExitRootFromIdx:])
 
 	return
 }

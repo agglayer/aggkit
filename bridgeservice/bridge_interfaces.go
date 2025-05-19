@@ -16,12 +16,12 @@ type Bridger interface {
 	GetProof(ctx context.Context, depositCount uint32, localExitRoot common.Hash) (tree.Proof, error)
 	GetRootByLER(ctx context.Context, ler common.Hash) (*tree.Root, error)
 	GetBridgesPaged(ctx context.Context, pageNumber, pageSize uint32,
-		depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*bridgesync.BridgeResponse, int, error)
+		depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*bridgesync.Bridge, int, error)
 	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*bridgesync.TokenMapping, int, error)
 	GetLegacyTokenMigrations(ctx context.Context,
 		pageNumber, pageSize uint32) ([]*bridgesync.LegacyTokenMigration, int, error)
 	GetClaimsPaged(ctx context.Context, page, pageSize uint32,
-		networkIDs []uint32, fromAddress string) ([]*bridgesync.ClaimResponse, int, error)
+		networkIDs []uint32, fromAddress string) ([]*bridgesync.Claim, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 }
 

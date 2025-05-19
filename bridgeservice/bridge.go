@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"time"
 
+	_ "github.com/agglayer/aggkit/bridgeservice/docs"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
@@ -18,8 +19,8 @@ import (
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/gin-gonic/gin"
-	swaggerFiles "github.com/swaggo/files"
-	ginSwagger "github.com/swaggo/gin-swagger"
+	swaggerfiles "github.com/swaggo/files"
+	ginswagger "github.com/swaggo/gin-swagger"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/metric"
 )
@@ -122,7 +123,7 @@ func (b *BridgeService) registerRoutes() {
 	}
 
 	// Swagger docs endpoint
-	b.router.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	b.router.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 }
 
 // Start starts the HTTP bridge service
@@ -134,7 +135,7 @@ func (b *BridgeService) Start(ctx context.Context) {
 		WriteTimeout: b.writeTimeout,
 	}
 
-	b.logger.Infof("Bridge service listening on %s...", srv.Addr)
+	b.logger.Infof("Bridge service listening on %s...", b.address)
 	err := srv.ListenAndServe()
 	if err != nil && err != http.ErrServerClosed {
 		b.logger.Panicf("listen error: %v", err)
@@ -218,7 +219,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		networkID, pageNumber, pageSize, depositCountPtr, networkIDs, fromAddress)
 
 	var (
-		bridges []*bridgesync.BridgeResponse
+		bridges []*bridgesync.Bridge
 		count   int
 	)
 
@@ -242,9 +243,14 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		return
 	}
 
+	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
+	for _, bridge := range bridges {
+		bridgeResponses = append(bridgeResponses, bridgesync.NewBridgeResponse(bridge))
+	}
+
 	c.JSON(http.StatusOK,
 		types.BridgesResult{
-			Bridges: bridges,
+			Bridges: bridgeResponses,
 			Count:   count,
 		})
 }
@@ -293,7 +299,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		networkID, pageNumber, pageSize, networkIDs, fromAddress)
 
 	var (
-		claims []*bridgesync.ClaimResponse
+		claims []*bridgesync.Claim
 		count  int
 	)
 
@@ -317,9 +323,14 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		return
 	}
 
+	claimResponses := make([]*types.ClaimResponse, 0, len(claims))
+	for _, claim := range claims {
+		claimResponses = append(claimResponses, bridgesync.NewClaimResponse(claim))
+	}
+
 	c.JSON(http.StatusOK,
 		types.ClaimsResult{
-			Claims: claims,
+			Claims: claimResponses,
 			Count:  count,
 		})
 }
@@ -375,9 +386,14 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		return
 	}
 
+	tokenMappingResponses := make([]*types.TokenMappingResponse, 0, len(tokenMappings))
+	for _, tokenMapping := range tokenMappings {
+		tokenMappingResponses = append(tokenMappingResponses, bridgesync.NewTokenMappingResponse(tokenMapping))
+	}
+
 	c.JSON(http.StatusOK,
 		types.TokenMappingsResult{
-			TokenMappings: tokenMappings,
+			TokenMappings: tokenMappingResponses,
 			Count:         tokenMappingsCount,
 		})
 }
@@ -433,9 +449,14 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		return
 	}
 
+	tokenMappingResponses := make([]*types.LegacyTokenMigrationResponse, 0, len(tokenMigrations))
+	for _, tokenMapping := range tokenMigrations {
+		tokenMappingResponses = append(tokenMappingResponses, bridgesync.NewTokenMigrationResponse(tokenMapping))
+	}
+
 	c.JSON(http.StatusOK,
 		types.LegacyTokenMigrationsResult{
-			TokenMigrations: tokenMigrations,
+			TokenMigrations: tokenMappingResponses,
 			Count:           tokenMigrationsCount,
 		})
 }

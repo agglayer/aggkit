@@ -17,7 +17,7 @@ import (
 	"time"
 
 	mocks "github.com/agglayer/aggkit/bridgeservice/mocks"
-	"github.com/agglayer/aggkit/bridgeservice/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -479,8 +479,8 @@ func TestGetBridgesHandler(t *testing.T) {
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		expectedBridges := []*bridgesync.BridgeResponse{{
-			Bridge: bridgesync.Bridge{
+		expectedBridges := []*bridgesync.Bridge{
+			{
 				BlockNum:           1,
 				BlockPos:           1,
 				LeafType:           1,
@@ -494,8 +494,7 @@ func TestGetBridgesHandler(t *testing.T) {
 				Calldata:           common.Hex2Bytes("efabcd"),
 				IsNativeToken:      true,
 			},
-			BridgeHash: common.HexToHash("0x1"),
-		}}
+		}
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
@@ -510,7 +509,7 @@ func TestGetBridgesHandler(t *testing.T) {
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
-		var response types.BridgesResult
+		var response bridgetypes.BridgesResult
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 
@@ -555,8 +554,8 @@ func TestGetBridgesHandler(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
 
-		expectedBridges := []*bridgesync.BridgeResponse{{
-			Bridge: bridgesync.Bridge{
+		expectedBridges := []*bridgesync.Bridge{
+			{
 				BlockNum:           1,
 				BlockPos:           1,
 				LeafType:           1,
@@ -570,8 +569,7 @@ func TestGetBridgesHandler(t *testing.T) {
 				Calldata:           []byte{},
 				IsNativeToken:      true,
 			},
-			BridgeHash: common.HexToHash("0x2"),
-		}}
+		}
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -588,7 +586,7 @@ func TestGetBridgesHandler(t *testing.T) {
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
-		var response types.BridgesResult
+		var response bridgetypes.BridgesResult
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 
@@ -624,7 +622,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		expectedClaims := []*bridgesync.ClaimResponse{
+		expectedClaims := []*bridgesync.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(1),
@@ -649,7 +647,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
-		var response types.ClaimsResult
+		var response bridgetypes.ClaimsResult
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 		require.Equal(t, expectedClaims, response.Claims)
@@ -662,7 +660,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		expectedClaims := []*bridgesync.ClaimResponse{
+		expectedClaims := []*bridgesync.Claim{
 			{
 				BlockNum:           1,
 				GlobalIndex:        big.NewInt(1),
@@ -687,7 +685,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
-		var response types.ClaimsResult
+		var response bridgetypes.ClaimsResult
 		err := json.Unmarshal(w.Body.Bytes(), &response)
 		require.NoError(t, err)
 		require.Equal(t, expectedClaims, response.Claims)
@@ -783,7 +781,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
-		var response types.TokenMappingsResult
+		var response bridgetypes.TokenMappingsResult
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 		require.Equal(t, len(tokenMappings), response.Count)
 		require.Equal(t, tokenMappings, response.TokenMappings)
@@ -807,7 +805,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				WrappedTokenAddress: common.HexToAddress("0x2"),
 				Metadata:            []byte("metadata"),
 				Calldata:            []byte{},
-				Type:                bridgesync.SovereignToken,
+				Type:                bridgetypes.SovereignToken,
 				IsNotMintable:       true,
 			},
 		}
@@ -823,7 +821,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
-		var response types.TokenMappingsResult
+		var response bridgetypes.TokenMappingsResult
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 		require.Equal(t, len(tokenMappings), response.Count)
 		require.Equal(t, tokenMappings, response.TokenMappings)
@@ -916,7 +914,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 
 		require.Equal(t, http.StatusOK, w.Code)
 
-		var response types.LegacyTokenMigrationsResult
+		var response bridgetypes.LegacyTokenMigrationsResult
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 		require.Equal(t, len(tokenMigrations), response.Count)
 		require.Equal(t, tokenMigrations, response.TokenMigrations)
@@ -955,7 +953,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
 
-		var response types.LegacyTokenMigrationsResult
+		var response bridgetypes.LegacyTokenMigrationsResult
 		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
 		require.Equal(t, len(tokenMigrations), response.Count)
 		require.Equal(t, tokenMigrations, response.TokenMigrations)
@@ -1505,7 +1503,7 @@ func TestClaimProofHandler(t *testing.T) {
 			common.HexToHash("0x2"),
 		}
 
-		expectedClaimProof := types.ClaimProof{
+		expectedClaimProof := bridgetypes.ClaimProof{
 			ProofLocalExitRoot:  localExitTreeProof,
 			ProofRollupExitRoot: rollupExitTreeProof,
 			L1InfoTreeLeaf:      *l1InfoTreeLeaf,
@@ -1531,7 +1529,7 @@ func TestClaimProofHandler(t *testing.T) {
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claim-proof?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusOK, response.Code)
 
-		var result types.ClaimProof
+		var result bridgetypes.ClaimProof
 		err := json.Unmarshal(response.Body.Bytes(), &result)
 		require.NoError(t, err)
 		require.Equal(t, expectedClaimProof, result)
