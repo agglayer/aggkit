@@ -3,11 +3,11 @@ module github.com/agglayer/aggkit
 go 1.24.2
 
 require (
-	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250416180731-ff8952695828.2
-	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250416180731-ff8952695828.1
+	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250520190516-57743a879f16.2
+	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250520190516-57743a879f16.1
 	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250519093743-85e8a3d9f59c.1
-	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250513203944-34fb056139e8.2
-	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250513203944-34fb056139e8.1
+	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2
+	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250520163122-7efa0a2f81a8.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.3
 	github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.11
