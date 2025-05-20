@@ -389,10 +389,17 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 }
 
 func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificate *types.CertificateInfo) uint64 {
-	if fromBlock == 0 || (lastCertificate != nil && lastCertificate.ToBlock < a.startL2Block) {
+	if fromBlock == 0 {
 		// if this is the first certificate, we need to start from the starting L2 block
 		// that we got from the sovereign rollup
+		a.log.Infof("aggchainProverFlow - getLastProvenBlock - fromBlock is 0, returns startL2Block: %d",
+			a.startL2Block)
+		return a.startL2Block
+	}
+	if lastCertificate != nil && lastCertificate.ToBlock < a.startL2Block {
 		// if the last certificate is settled on PP, the last proven block is the starting L2 block
+		a.log.Infof("aggchainProverFlow - getLastProvenBlock. Last certificate block: %d < startL2Block: %d",
+			lastCertificate.ToBlock, a.startL2Block)
 		return a.startL2Block
 	}
 
