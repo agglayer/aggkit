@@ -1359,6 +1359,8 @@ func TestClaimProofHandler(t *testing.T) {
 		RollupExitRoot:  common.HexToHash("0x2"),
 	}
 
+	infoTreeLeafResponse := bridgesync.NewL1InfoTreeLeafResponse(l1InfoTreeLeaf)
+
 	t.Run("Failed to get L1 info tree leaf", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -1504,9 +1506,9 @@ func TestClaimProofHandler(t *testing.T) {
 		}
 
 		expectedClaimProof := bridgetypes.ClaimProof{
-			ProofLocalExitRoot:  localExitTreeProof,
-			ProofRollupExitRoot: rollupExitTreeProof,
-			L1InfoTreeLeaf:      *l1InfoTreeLeaf,
+			ProofLocalExitRoot:  bridgetypes.ConvertToProofResponse(localExitTreeProof),
+			ProofRollupExitRoot: bridgetypes.ConvertToProofResponse(rollupExitTreeProof),
+			L1InfoTreeLeaf:      *infoTreeLeafResponse,
 		}
 
 		bridgeMocks.l1InfoTree.EXPECT().

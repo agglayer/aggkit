@@ -1,26 +1,29 @@
 package types
 
 import (
-	"encoding/hex"
-	"encoding/json"
-	"fmt"
-	"math/big"
-	"strings"
-
-	"github.com/agglayer/aggkit/l1infotreesync"
 	tree "github.com/agglayer/aggkit/tree/types"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 // Hash represents an Ethereum hash
 // @Description A 32-byte Ethereum hash
 // @example "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"
-type Hash common.Hash
+type Hash string
 
 // Address represents an Ethereum address
 // @Description A 20-byte Ethereum address
 // @example "0xabcdef1234567890abcdef1234567890abcdef12"
-type Address common.Address
+type Address string
+
+// BigIntString is a wrapper type for big.Int for Swagger compatibility
+// @Description Big integer represented as a decimal string
+type BigIntString string
+
+// ErrorResponse defines a generic error structure.
+// @Description Generic error response structure
+// @example {"error": "Invalid request parameters"}
+type ErrorResponse struct {
+	Error string `json:"error" example:"Invalid request parameters"`
+}
 
 // TokenMappingType defines the type of token mapping
 // @Description Enum for token mapping types
@@ -36,12 +39,29 @@ func (l TokenMappingType) String() string {
 	return [...]string{"WrappedToken", "SovereignToken"}[l]
 }
 
+// ProofResponse represents a Merkle proof for a tree of a given height
+// @Description Merkle proof structure for a tree of a given height
+type ProofResponse [tree.DefaultHeight]Hash
+
+// ConvertToProofResponse converts a Merkle proof to a ProofResponse
+// @Description Converts a Merkle proof to a ProofResponse
+func ConvertToProofResponse(proof tree.Proof) ProofResponse {
+	var p ProofResponse
+	for i, h := range proof {
+		if i >= len(p) {
+			break
+		}
+		p[i] = Hash(h.Hex())
+	}
+	return p
+}
+
 // ClaimProof represents the Merkle proofs (local and rollup exit roots) and the L1 info tree leaf
 // required to verify a claim in the bridge.
 type ClaimProof struct {
-	ProofLocalExitRoot  tree.Proof                    `json:"proof_local_exit_root"`
-	ProofRollupExitRoot tree.Proof                    `json:"proof_rollup_exit_root"`
-	L1InfoTreeLeaf      l1infotreesync.L1InfoTreeLeaf `json:"l1_info_tree_leaf"`
+	ProofLocalExitRoot  ProofResponse          `json:"proof_local_exit_root"`
+	ProofRollupExitRoot ProofResponse          `json:"proof_rollup_exit_root"`
+	L1InfoTreeLeaf      L1InfoTreeLeafResponse `json:"l1_info_tree_leaf"`
 }
 
 // BridgesResult contains the bridges and the total count of bridges
@@ -70,7 +90,7 @@ type BridgeResponse struct {
 	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
 
 	// Raw calldata submitted in the transaction
-	Calldata []byte `json:"calldata" example:"0xdeadbeef"`
+	Calldata string `json:"calldata" example:"deadbeef"`
 
 	// Timestamp of the block containing the bridge event
 	BlockTimestamp uint64 `json:"block_timestamp" example:"1684500000"`
@@ -91,10 +111,10 @@ type BridgeResponse struct {
 	DestinationAddress Address `json:"destination_address" example:"0xdef4567890abcdef1234567890abcdef12345678"`
 
 	// Amount of tokens being bridged
-	Amount *big.Int `json:"amount" example:"1000000000000000000"`
+	Amount BigIntString `json:"amount" example:"1000000000000000000"`
 
 	// Optional metadata attached to the bridge event
-	Metadata []byte `json:"metadata" example:"0x1234abcd"`
+	Metadata string `json:"metadata" example:"0xdeadbeef"`
 
 	// Count of total deposits processed so far for the given token/address
 	DepositCount uint32 `json:"deposit_count" example:"10"`
@@ -106,59 +126,11 @@ type BridgeResponse struct {
 	BridgeHash Hash `json:"bridge_hash" example:"0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"`
 }
 
-// MarshalJSON for hex-encoded fields
-func (b *BridgeResponse) MarshalJSON() ([]byte, error) {
-	type Alias BridgeResponse // Prevent recursion
-	return json.Marshal(&struct {
-		Metadata string `json:"metadata"`
-		CallData string `json:"calldata"`
-		*Alias
-	}{
-		Metadata: fmt.Sprintf("0x%s", hex.EncodeToString(b.Metadata)),
-		CallData: fmt.Sprintf("0x%s", hex.EncodeToString(b.Calldata)),
-		Alias:    (*Alias)(b),
-	})
-}
-
-// UnmarshalJSON for hex-decoding fields
-func (b *BridgeResponse) UnmarshalJSON(data []byte) error {
-	type Alias BridgeResponse
-	tmp := &struct {
-		Metadata string `json:"metadata"`
-		CallData string `json:"calldata"`
-		*Alias
-	}{
-		Alias: (*Alias)(b),
-	}
-
-	if err := json.Unmarshal(data, &tmp); err != nil {
-		return err
-	}
-
-	if tmp.Metadata != "" {
-		decodedMetadata, err := hex.DecodeString(strings.TrimPrefix(tmp.Metadata, "0x"))
-		if err != nil {
-			return fmt.Errorf("failed to decode metadata: %w", err)
-		}
-		b.Metadata = decodedMetadata
-	}
-
-	if tmp.CallData != "" {
-		decodedCalldata, err := hex.DecodeString(strings.TrimPrefix(tmp.CallData, "0x"))
-		if err != nil {
-			return fmt.Errorf("failed to decode calldata: %w", err)
-		}
-		b.Calldata = decodedCalldata
-	}
-
-	return nil
-}
-
 // ClaimsResult contains the list of claim records and the total count
 // @Description Paginated response containing claim events and total count
 type ClaimsResult struct {
 	// List of claims matching the query
-	Claims []*ClaimResponse `json:"claims" example:"[{...}]"`
+	Claims []*ClaimResponse `json:"claims"`
 
 	// Total number of matching claims
 	Count int `json:"count" example:"42"`
@@ -177,7 +149,7 @@ type ClaimResponse struct {
 	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
 
 	// Global index of the claim
-	GlobalIndex *big.Int `json:"global_index" example:"1000000000000000000"`
+	GlobalIndex BigIntString `json:"global_index" example:"1000000000000000000"`
 
 	// Address initiating the claim on the origin network
 	OriginAddress Address `json:"origin_address" example:"0xabc1234567890abcdef1234567890abcdef1234"`
@@ -192,7 +164,7 @@ type ClaimResponse struct {
 	DestinationNetwork uint32 `json:"destination_network" example:"42161"`
 
 	// Amount claimed
-	Amount *big.Int `json:"amount" example:"1000000000000000000"`
+	Amount BigIntString `json:"amount" example:"1000000000000000000"`
 
 	// Address from which the claim originated
 	FromAddress Address `json:"from_address" example:"0xabc1234567890abcdef1234567890abcdef1234"`
@@ -202,7 +174,7 @@ type ClaimResponse struct {
 // @Description Paginated response of token mapping records
 type TokenMappingsResult struct {
 	// List of token mapping entries
-	TokenMappings []*TokenMappingResponse `json:"token_mappings" example:"[{...}]"`
+	TokenMappings []*TokenMappingResponse `json:"token_mappings"`
 
 	// Total number of token mapping records
 	Count int `json:"count" example:"27"`
@@ -233,64 +205,16 @@ type TokenMappingResponse struct {
 	WrappedTokenAddress Address `json:"wrapped_token_address" example:"0xabcdef1234567890abcdef1234567890abcdef12"`
 
 	// Optional metadata associated with the token mapping
-	Metadata []byte `json:"metadata" example:"0xdeadbeef"`
+	Metadata string `json:"metadata" example:"0xdeadbeef"`
 
 	// Indicates whether the wrapped token is not mintable (true = not mintable)
 	IsNotMintable bool `json:"is_not_mintable" example:"false"`
 
 	// Raw calldata submitted during the mapping
-	Calldata []byte `json:"calldata" example:"0xfeedface"`
+	Calldata string `json:"calldata" example:"0xfeedface"`
 
 	// Type of the token mapping: 0 = WrappedToken, 1 = SovereignToken
-	Type TokenMappingType `json:"token_type" example:"WrappedToken"`
-}
-
-// MarshalJSON for hex-encoding Metadata and Calldata fields
-func (t *TokenMappingResponse) MarshalJSON() ([]byte, error) {
-	type Alias TokenMappingResponse // Prevent recursion
-	return json.Marshal(&struct {
-		Metadata string `json:"metadata"`
-		Calldata string `json:"calldata"`
-		*Alias
-	}{
-		Metadata: fmt.Sprintf("0x%s", hex.EncodeToString(t.Metadata)),
-		Calldata: fmt.Sprintf("0x%s", hex.EncodeToString(t.Calldata)),
-		Alias:    (*Alias)(t),
-	})
-}
-
-// UnmarshalJSON for hex-decoding fields
-func (t *TokenMappingResponse) UnmarshalJSON(data []byte) error {
-	type Alias TokenMappingResponse
-	tmp := &struct {
-		Metadata string `json:"metadata"`
-		CallData string `json:"calldata"`
-		*Alias
-	}{
-		Alias: (*Alias)(t),
-	}
-
-	if err := json.Unmarshal(data, &tmp); err != nil {
-		return err
-	}
-
-	if tmp.Metadata != "" {
-		decodedMetadata, err := hex.DecodeString(strings.TrimPrefix(tmp.Metadata, "0x"))
-		if err != nil {
-			return fmt.Errorf("failed to decode metadata: %w", err)
-		}
-		t.Metadata = decodedMetadata
-	}
-
-	if tmp.CallData != "" {
-		decodedCalldata, err := hex.DecodeString(strings.TrimPrefix(tmp.CallData, "0x"))
-		if err != nil {
-			return fmt.Errorf("failed to decode calldata: %w", err)
-		}
-		t.Calldata = decodedCalldata
-	}
-
-	return nil
+	Type TokenMappingType `json:"token_type" example:"0"`
 }
 
 // LegacyTokenMigrationsResult contains the legacy token migrations and the total count of such migrations
@@ -328,8 +252,44 @@ type LegacyTokenMigrationResponse struct {
 	UpdatedTokenAddress Address `json:"updated_token_address" example:"0xfeed789..."`
 
 	// Amount of tokens migrated
-	Amount *big.Int `json:"amount" example:"1000000000000000000"`
+	Amount BigIntString `json:"amount" example:"1000000000000000000"`
 
 	// Raw calldata included in the migration transaction
-	Calldata []byte `json:"calldata" example:"0x..."`
+	Calldata string `json:"calldata" example:"0xdeadbeef"`
+}
+
+// L1InfoTreeLeafResponse represents a leaf node in the L1 info tree used for bridge state verification.
+//
+// This includes references to the block and exit roots relevant to L1 and rollup state.
+type L1InfoTreeLeafResponse struct {
+	// Block number where the leaf was recorded
+	BlockNumber uint64 `json:"block_num" example:"123456"`
+
+	// Position of the leaf in the block (used for ordering)
+	BlockPosition uint64 `json:"block_pos" example:"5"`
+
+	// Index of this leaf in the L1 info tree
+	L1InfoTreeIndex uint32 `json:"l1_info_tree_index" example:"42"`
+
+	// Hash of the previous block in the tree
+	// @example "0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"
+	PreviousBlockHash Hash `json:"previous_block_hash"`
+
+	// Timestamp of the block in seconds since the Unix epoch
+	Timestamp uint64 `json:"timestamp" example:"1684500000"`
+
+	// Mainnet exit root at this leaf
+	// @example "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+	MainnetExitRoot Hash `json:"mainnet_exit_root"`
+
+	// Rollup exit root at this leaf
+	// @example "0x7890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123456"
+	RollupExitRoot Hash `json:"rollup_exit_root"`
+
+	// Global exit root computed from mainnet and rollup roots
+	// @example "0x4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123"
+	GlobalExitRoot Hash `json:"global_exit_root"`
+
+	// Unique hash identifying this leaf node
+	Hash Hash `json:"hash" example:"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
 }
