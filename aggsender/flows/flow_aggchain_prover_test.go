@@ -705,6 +705,17 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 			},
 			expectedResult: 50,
 		},
+		{
+			name:         "lastSentCertificate settled on PP on the fence",
+			fromBlock:    10,
+			startL2Block: 50,
+			lastSentCertificate: &types.CertificateInfo{
+				FromBlock: 10,
+				ToBlock:   50,
+				Status:    agglayertypes.Settled,
+			},
+			expectedResult: 50,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -714,6 +725,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 
 			flow := &AggchainProverFlow{
 				baseFlow: &baseFlow{
+					log:          log.WithFields("module", "ut"),
 					startL2Block: tc.startL2Block,
 				},
 			}
