@@ -215,8 +215,8 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	}
 
 	a.log.Infof("aggchainProverFlow - fetched auth proof for lastProvenBlock: %d, maxEndBlock: %d "+
-		"from aggchain prover. End block gotten from the prover: %d",
-		lastProvenBlock, buildParams.ToBlock, aggchainProof.EndBlock)
+		"from aggchain prover. End block gotten from the prover: %d. Proof length: %d",
+		lastProvenBlock, buildParams.ToBlock, aggchainProof.EndBlock, len(aggchainProof.SP1StarkProof.Proof))
 
 	// set the root from which to generate merkle proofs for each claim
 	// this is crucial since Aggchain Prover will use this root to generate the proofs as well
