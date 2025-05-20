@@ -82,7 +82,7 @@ func NewAggchainProofGenerationTool(
 
 	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,
-		0, false,
+		0,
 		0,
 		aggchainProofClient,
 		nil,

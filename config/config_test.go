@@ -89,9 +89,14 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	_, err = tmpFile.Write([]byte(`
 	[L1Config]
 	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
+
+	[AggSender]
+	BridgeMetaDataAsHash = true
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
 	_, err = Load(ctx)
 	require.Error(t, err)
+	require.Contains(t, err.Error(), bridgeMetadataAsHashDeprecated)
+	require.Contains(t, err.Error(), bridgeAddrSetOnWrongSection)
 }
