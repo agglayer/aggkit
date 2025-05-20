@@ -716,6 +716,27 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 			},
 			expectedResult: 50,
 		},
+		{
+			name:                "lastSentCertificate settled on PP on the fence. Case 2",
+			fromBlock:           50,
+			startL2Block:        50,
+			lastSentCertificate: nil,
+			expectedResult:      50,
+		},
+		{
+			name:                "lastSentCertificate settled on PP on the fence. Case 3",
+			fromBlock:           51,
+			startL2Block:        50,
+			lastSentCertificate: nil,
+			expectedResult:      50,
+		},
+		{
+			name:                "lastSentCertificate settled on PP on the fence. Case 4",
+			fromBlock:           52,
+			startL2Block:        50,
+			lastSentCertificate: nil,
+			expectedResult:      51,
+		},
 	}
 
 	for _, tc := range testCases {
