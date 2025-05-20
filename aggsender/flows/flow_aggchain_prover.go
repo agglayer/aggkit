@@ -412,6 +412,12 @@ func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificat
 			lastCertificate.ToBlock, a.startL2Block)
 		return a.startL2Block
 	}
+	if fromBlock+1 < a.startL2Block {
+		// if the fromBlock is less than the starting L2 block, we need to start from the starting L2 block
+		a.log.Infof("aggchainProverFlow - getLastProvenBlock. FromBlock: %d < startL2Block: %d",
+			fromBlock, a.startL2Block)
+		return a.startL2Block
+	}
 
 	return fromBlock - 1
 }
