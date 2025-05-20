@@ -1,12 +1,14 @@
 package common
 
 import (
+	"crypto/tls"
 	"fmt"
 	"strings"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -17,10 +19,16 @@ type Client struct {
 }
 
 // NewClient initializes and returns a new gRPC client
-func NewClient(serverAddr string) (*Client, error) {
-	// TODO - Check if we need to use this
+func NewClient(serverAddr string, useTLS bool) (*Client, error) {
 	var opts []grpc.DialOption
-	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	if useTLS {
+		creds := credentials.NewTLS(&tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12})
+		opts = append(opts, grpc.WithTransportCredentials(creds))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	}
+
 	conn, err := grpc.NewClient(serverAddr, opts...)
 	if err != nil {
 		return nil, err

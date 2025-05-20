@@ -45,6 +45,9 @@ type Config struct {
 
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`
+
+	// UseAggkitProverTLS is a flag to enable the AggkitProver TLS handshake in the AggSender-AggkitProver gRPC connection
+	UseAggkitProverTLS bool `mapstructure:"UseAggkitProverTLS"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs
@@ -68,7 +71,7 @@ func NewAggchainProofGenerationTool(
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*AggchainProofGenerationTool, error) {
 	aggchainProofClient, err := grpc.NewAggchainProofClient(
-		cfg.AggchainProofURL, cfg.GenerateAggchainProofTimeout.Duration)
+		cfg.AggchainProofURL, cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}
