@@ -407,3 +407,43 @@ func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
 		bridgeAddr.String(), lastUpdatedDespositCount)
 	return nil
 }
+
+// GetContractDepositCount returns the last deposit count from the bridge contract
+func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error) {
+	if s.processor.isHalted() {
+		return 0, sync.ErrInconsistentState
+	}
+
+	runtimeData, err := s.downloader.RuntimeData(ctx)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get runtime data: %w", err)
+	}
+
+	if len(runtimeData.Addresses) == 0 {
+		return 0, fmt.Errorf("no bridge addresses available")
+	}
+
+	if (runtimeData.Addresses[0] == common.Address{}) {
+		return 0, fmt.Errorf("invalid bridge address: zero address")
+	}
+
+	// Get the underlying eth client from the downloader
+	ethClient, ok := s.downloader.EVMDownloaderInterface.(interface {
+		GetEthClient() aggkittypes.BaseEthereumClienter
+	})
+	if !ok {
+		return 0, fmt.Errorf("downloader does not implement GetEthClient() method")
+	}
+
+	bridge, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(runtimeData.Addresses[0], ethClient.GetEthClient())
+	if err != nil {
+		return 0, fmt.Errorf("failed to create bridge contract instance: %w", err)
+	}
+
+	depositCount, err := bridge.DepositCount(nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get deposit count: %w", err)
+	}
+
+	return uint32(depositCount.Int64()), nil
+}

@@ -23,6 +23,7 @@ type Bridger interface {
 	GetClaimsPaged(ctx context.Context, page, pageSize uint32,
 		networkIDs []uint32, fromAddress string) ([]*bridgesync.ClaimResponse, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
+	GetContractDepositCount(ctx context.Context) (uint32, error)
 }
 
 type LastGERer interface {

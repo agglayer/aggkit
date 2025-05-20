@@ -37,3 +37,17 @@ type ClaimsResult struct {
 	Claims []*bridgesync.ClaimResponse `json:"claims"`
 	Count  int                         `json:"count"`
 }
+
+// SyncStatus represents the synchronization status of the bridge service
+type SyncStatus struct {
+	L1 struct {
+		ContractDepositCount uint32 `json:"contract_deposit_count"`
+		BridgeDepositCount   uint32 `json:"bridge_deposit_count"`
+		IsSynced             bool   `json:"is_synced"`
+	} `json:"l1"`
+	L2 struct {
+		ContractDepositCount uint32 `json:"contract_deposit_count"`
+		BridgeDepositCount   uint32 `json:"bridge_deposit_count"`
+		IsSynced             bool   `json:"is_synced"`
+	} `json:"l2"`
+}
