@@ -134,7 +134,8 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
 		lastProvenBlock := a.getLastProvenBlock(lastSentCertificateInfo.FromBlock, lastSentCertificateInfo)
 		if lastSentCertificateInfo.FromBlock != lastProvenBlock+1 {
-			a.log.Warnf("aggchainProverFlow - last sent certificate inError fromBlock: %d doesn't match lastProvenBlock: %d. check update process 😅",
+			a.log.Warnf("aggchainProverFlow - last sent certificate inError fromBlock: %d doesn't match lastProvenBlock: %d."+
+				" check update process 😅",
 				lastSentCertificateInfo.FromBlock, lastProvenBlock)
 		}
 		bridges, claims, err := a.getBridgesAndClaims(
@@ -184,7 +185,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 		return nil, err
 	}
-	lastProvenBlock := a.getLastProvenBlock(lastSentCertificateInfo.FromBlock, lastSentCertificateInfo)
+	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, lastSentCertificateInfo)
 	if buildParams.FromBlock != lastProvenBlock+1 {
 		a.log.Infof("aggchainProverFlow - getCertificateBuildParams - setting fromBlock to %d instead of %d",
 			lastProvenBlock+1, buildParams.FromBlock)

@@ -725,7 +725,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 
 			flow := &AggchainProverFlow{
 				baseFlow: &baseFlow{
-					log:          log.WithFields("module", "ut"),
+					log:          log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
 					startL2Block: tc.startL2Block,
 				},
 			}
