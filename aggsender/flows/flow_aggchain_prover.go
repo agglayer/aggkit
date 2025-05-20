@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
 )
@@ -30,6 +31,7 @@ type AggchainProverFlow struct {
 	aggchainProofClient   grpc.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
 	optimisticModeQuerier types.OptimisticModeQuerier
+	signer                signertypes.Signer
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
@@ -60,7 +62,8 @@ func NewAggchainProverFlow(log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
 	gerQuerier types.GERQuerier,
 	optimisticModeQuerier types.OptimisticModeQuerier,
-	l1Client types.EthClient) *AggchainProverFlow {
+	l1Client types.EthClient,
+	signer signertypes.Signer) *AggchainProverFlow {
 	return &AggchainProverFlow{
 		aggchainProofClient:   aggkitProverClient,
 		gerQuerier:            gerQuerier,
@@ -73,6 +76,7 @@ func NewAggchainProverFlow(log types.Logger,
 			maxCertSize:           maxCertSize,
 			startL2Block:          startL2Block,
 		},
+		signer: signer,
 	}
 }
 
@@ -309,9 +313,14 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		lastProvenBlock, toBlock, optimisticMode)
 	if !optimisticMode {
 		aggchainProof, err = a.aggchainProofClient.GenerateAggchainProof(request)
-
 	} else {
-		var sign []byte
+		if a.signer == nil {
+			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request, signer is nil")
+		}
+		sign, err := a.signer.SignHash(ctx, request.HashToSign())
+		if err != nil {
+			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request: %w", err)
+		}
 		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
 	}
 	if err != nil {
