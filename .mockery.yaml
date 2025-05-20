@@ -1,7 +1,6 @@
 issue-845-fix: true
 with-expecter: true
 resolve-type-alias: false
-disable-version-string: true
 dir: "{{ .InterfaceDir }}/../mocks"
 outpkg: "mocks"
 filename: "mock_{{ .InterfaceName | snakecase | lower }}.go"
