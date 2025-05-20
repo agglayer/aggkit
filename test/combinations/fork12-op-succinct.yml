@@ -5,8 +5,8 @@ deployment_stages:
 
 args:
   aggkit_image: aggkit:local
-  agglayer_image: ghcr.io/agglayer/agglayer:0.3.0-rc.16
-  aggkit_prover_image: ghcr.io/agglayer/aggkit-prover:0.1.0-rc.20
+  agglayer_image: ghcr.io/agglayer/agglayer:0.3.0-rc.18
+  aggkit_prover_image: ghcr.io/agglayer/aggkit-prover:0.1.0-rc.24
   op_succinct_contract_deployer_image: atanmarko/op-succinct-contract-deployer:v1.2.11-agglayer
   op_succinct_server_image: ghcr.io/agglayer/op-succinct/succinct-proposer:v1.2.12-agglayer
   op_succinct_proposer_image: ghcr.io/agglayer/op-succinct/op-proposer:v1.2.12-agglayer
@@ -20,8 +20,8 @@ args:
   aggkit_prover_primary_prover: "mock-prover"
   sp1_prover_key: "0xbcdf20249abf0ed6d944c0288fad489e33f66b3960d9e6229c1cd214ed3bbe31"
   consensus_contract_type: fep
-  pp_vkey_hash: "0x00d6e4bdab9cac75a50d58262bb4e60b3107a6b61131ccdff649576c624b6fb7"
-  aggchain_vkey_hash: "0x1f3df68a258f9d6748b291dd35faf80065af7cc11ef8b5fc6db2a4d958ea62d2"
+  pp_vkey_hash: "0x003e44ba3ba836221300b43d5bfbdec28d51cbc405c6f4358be60bfded389bc7"
+  aggchain_vkey_hash: "0x0x4b7898a6472e298b19bee7254bc684525bce910466fc339c76d65af11e332e69"
   # true = mock
   # false = network
   # Using the network provers will use the real SP1 verifier contract which is also deployed together in the Kurtosis devnet.
