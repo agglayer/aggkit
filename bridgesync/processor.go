@@ -128,21 +128,21 @@ func NewTokenMigrationResponse(tokenMigration *LegacyTokenMigration) *bridgetype
 
 // Bridge is the representation of a bridge event
 type Bridge struct {
-	BlockNum           uint64         `meddler:"block_num" json:"block_num"`
-	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
-	FromAddress        common.Address `meddler:"from_address,address" json:"from_address"`
-	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
-	Calldata           []byte         `meddler:"calldata" json:"calldata"`
-	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
-	LeafType           uint8          `meddler:"leaf_type" json:"leaf_type"`
-	OriginNetwork      uint32         `meddler:"origin_network" json:"origin_network"`
-	OriginAddress      common.Address `meddler:"origin_address" json:"origin_address"`
-	DestinationNetwork uint32         `meddler:"destination_network" json:"destination_network"`
-	DestinationAddress common.Address `meddler:"destination_address" json:"destination_address"`
-	Amount             *big.Int       `meddler:"amount,bigint" json:"amount"`
-	Metadata           []byte         `meddler:"metadata" json:"metadata"`
-	DepositCount       uint32         `meddler:"deposit_count" json:"deposit_count"`
-	IsNativeToken      bool           `meddler:"is_native_token" json:"is_native_token"`
+	BlockNum           uint64         `meddler:"block_num"`
+	BlockPos           uint64         `meddler:"block_pos"`
+	FromAddress        common.Address `meddler:"from_address,address"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash"`
+	Calldata           []byte         `meddler:"calldata"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp"`
+	LeafType           uint8          `meddler:"leaf_type"`
+	OriginNetwork      uint32         `meddler:"origin_network"`
+	OriginAddress      common.Address `meddler:"origin_address"`
+	DestinationNetwork uint32         `meddler:"destination_network"`
+	DestinationAddress common.Address `meddler:"destination_address"`
+	Amount             *big.Int       `meddler:"amount,bigint"`
+	Metadata           []byte         `meddler:"metadata"`
+	DepositCount       uint32         `meddler:"deposit_count"`
+	IsNativeToken      bool           `meddler:"is_native_token"`
 }
 
 // Hash returns the hash of the bridge event as expected by the exit tree
@@ -330,41 +330,41 @@ func (c *Claim) decodePreEtrogCalldata(senderAddr common.Address, data []any) (b
 
 // TokenMapping representation of a NewWrappedToken event, that is emitted by the bridge contract
 type TokenMapping struct {
-	BlockNum            uint64                       `meddler:"block_num" json:"block_num"`
-	BlockPos            uint64                       `meddler:"block_pos" json:"block_pos"`
-	BlockTimestamp      uint64                       `meddler:"block_timestamp" json:"block_timestamp"`
-	TxHash              common.Hash                  `meddler:"tx_hash,hash" json:"tx_hash"`
-	OriginNetwork       uint32                       `meddler:"origin_network" json:"origin_network"`
-	OriginTokenAddress  common.Address               `meddler:"origin_token_address,address" json:"origin_token_address"`
-	WrappedTokenAddress common.Address               `meddler:"wrapped_token_address,address" json:"wrapped_token_address"`
-	Metadata            []byte                       `meddler:"metadata" json:"metadata"`
-	IsNotMintable       bool                         `meddler:"is_not_mintable" json:"is_not_mintable"`
-	Calldata            []byte                       `meddler:"calldata" json:"calldata"`
-	Type                bridgetypes.TokenMappingType `meddler:"token_type" json:"token_type"`
+	BlockNum            uint64                       `meddler:"block_num"`
+	BlockPos            uint64                       `meddler:"block_pos"`
+	BlockTimestamp      uint64                       `meddler:"block_timestamp"`
+	TxHash              common.Hash                  `meddler:"tx_hash,hash"`
+	OriginNetwork       uint32                       `meddler:"origin_network"`
+	OriginTokenAddress  common.Address               `meddler:"origin_token_address,address"`
+	WrappedTokenAddress common.Address               `meddler:"wrapped_token_address,address"`
+	Metadata            []byte                       `meddler:"metadata"`
+	IsNotMintable       bool                         `meddler:"is_not_mintable"`
+	Calldata            []byte                       `meddler:"calldata"`
+	Type                bridgetypes.TokenMappingType `meddler:"token_type"`
 }
 
 // LegacyTokenMigration representation of a MigrateLegacyToken event,
 // that is emitted by the sovereign chain bridge contract.
 type LegacyTokenMigration struct {
-	BlockNum            uint64         `meddler:"block_num" json:"block_num"`
-	BlockPos            uint64         `meddler:"block_pos" json:"block_pos"`
-	BlockTimestamp      uint64         `meddler:"block_timestamp" json:"block_timestamp"`
-	TxHash              common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
-	Sender              common.Address `meddler:"sender,address" json:"sender"`
-	LegacyTokenAddress  common.Address `meddler:"legacy_token_address,address" json:"legacy_token_address"`
-	UpdatedTokenAddress common.Address `meddler:"updated_token_address,address" json:"updated_token_address"`
-	Amount              *big.Int       `meddler:"amount,bigint" json:"amount"`
-	Calldata            []byte         `meddler:"calldata" json:"calldata"`
+	BlockNum            uint64         `meddler:"block_num"`
+	BlockPos            uint64         `meddler:"block_pos"`
+	BlockTimestamp      uint64         `meddler:"block_timestamp"`
+	TxHash              common.Hash    `meddler:"tx_hash,hash"`
+	Sender              common.Address `meddler:"sender,address"`
+	LegacyTokenAddress  common.Address `meddler:"legacy_token_address,address"`
+	UpdatedTokenAddress common.Address `meddler:"updated_token_address,address"`
+	Amount              *big.Int       `meddler:"amount,bigint"`
+	Calldata            []byte         `meddler:"calldata"`
 }
 
 // RemoveLegacyToken representation of a RemoveLegacySovereignTokenAddress event,
 // that is emitted by the sovereign chain bridge contract.
 type RemoveLegacyToken struct {
-	BlockNum           uint64         `meddler:"block_num" json:"block_num"`
-	BlockPos           uint64         `meddler:"block_pos" json:"block_pos"`
-	BlockTimestamp     uint64         `meddler:"block_timestamp" json:"block_timestamp"`
-	TxHash             common.Hash    `meddler:"tx_hash,hash" json:"tx_hash"`
-	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address" json:"legacy_token_address"`
+	BlockNum           uint64         `meddler:"block_num"`
+	BlockPos           uint64         `meddler:"block_pos"`
+	BlockTimestamp     uint64         `meddler:"block_timestamp"`
+	TxHash             common.Hash    `meddler:"tx_hash,hash"`
+	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address"`
 }
 
 // Event combination of bridge, claim, token mapping and legacy token migration events
