@@ -17,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var errProofNotSP1Stark = errors.New("aggchain proof is not SP1Stark")
@@ -74,8 +75,9 @@ func (r *AggchainProofRequest) String() string {
 	)
 }
 
-func (r *AggchainProofRequest) Hash() common.Hash {
-	return common.BytesToHash(r.L1InfoTreeRootHash[:])
+// TODO: HashToSign function
+func (r *AggchainProofRequest) HashToSign() common.Hash {
+	return crypto.Keccak256Hash(r.L1InfoTreeRootHash[:])
 }
 
 // AggchainProofClientInterface defines an interface for aggchain proof client
