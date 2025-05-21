@@ -27,6 +27,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
@@ -260,10 +261,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		return
 	}
 
-	bridgeResponses := make([]*types.BridgeResponse, 0, len(bridges))
-	for _, bridge := range bridges {
-		bridgeResponses = append(bridgeResponses, bridgesync.NewBridgeResponse(bridge))
-	}
+	bridgeResponses := aggkitcommon.Map(bridges, bridgesync.NewBridgeResponse)
 
 	c.JSON(http.StatusOK,
 		types.BridgesResult{
@@ -340,10 +338,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	claimResponses := make([]*types.ClaimResponse, 0, len(claims))
-	for _, claim := range claims {
-		claimResponses = append(claimResponses, bridgesync.NewClaimResponse(claim))
-	}
+	claimResponses := aggkitcommon.Map(claims, bridgesync.NewClaimResponse)
 
 	c.JSON(http.StatusOK,
 		types.ClaimsResult{
@@ -403,10 +398,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		return
 	}
 
-	tokenMappingResponses := make([]*types.TokenMappingResponse, 0, len(tokenMappings))
-	for _, tokenMapping := range tokenMappings {
-		tokenMappingResponses = append(tokenMappingResponses, bridgesync.NewTokenMappingResponse(tokenMapping))
-	}
+	tokenMappingResponses := aggkitcommon.Map(tokenMappings, bridgesync.NewTokenMappingResponse)
 
 	c.JSON(http.StatusOK,
 		types.TokenMappingsResult{
@@ -466,14 +458,11 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		return
 	}
 
-	tokenMappingResponses := make([]*types.LegacyTokenMigrationResponse, 0, len(tokenMigrations))
-	for _, tokenMapping := range tokenMigrations {
-		tokenMappingResponses = append(tokenMappingResponses, bridgesync.NewTokenMigrationResponse(tokenMapping))
-	}
+	tokenMigrationResponses := aggkitcommon.Map(tokenMigrations, bridgesync.NewTokenMigrationResponse)
 
 	c.JSON(http.StatusOK,
 		types.LegacyTokenMigrationsResult{
-			TokenMigrations: tokenMappingResponses,
+			TokenMigrations: tokenMigrationResponses,
 			Count:           tokenMigrationsCount,
 		})
 }
@@ -770,7 +759,7 @@ func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{
-		"status": fmt.Sprintf("claim with global id=%d is sponsored", claim.GlobalIndex)})
+		"status": fmt.Sprintf("claim is sponsored (global index=%d)", claim.GlobalIndex)})
 }
 
 // GetSponsoredClaimStatusHandler returns the sponsorship status of a claim by its global index.
