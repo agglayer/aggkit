@@ -76,6 +76,12 @@ test-unit:
 lint: ## Runs the linter
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m
 
+.PHONY: generate-swagger-docs
+generate-swagger-docs: ## Generates the swagger docs
+	@command -v swag >/dev/null 2>&1 || { echo >&2 "swag not installed. Please install swaggo/swag: https://github.com/swaggo/swag"; exit 1; }
+	@echo "Generating swagger docs"
+	@swag init -g bridgeservice/bridge.go -o bridgeservice/docs
+
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted
 ## display with the commands and their usage information.

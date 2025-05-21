@@ -1,3 +1,15 @@
+// @title Bridge Service API
+// @version 1.0
+// @description API documentation for the bridge service
+
+// @contact.name API Support
+// @contact.url https://polygon.technology/
+
+// @license.name MIT
+// @license.url https://opensource.org/licenses/MIT
+
+// @BasePath /bridge/v1
+
 package bridgeservice
 
 import (
@@ -121,6 +133,11 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 	}
+
+	// Swagger UI
+	b.router.GET("/swagger", func(c *gin.Context) {
+		c.Redirect(http.StatusFound, "/swagger/index.html")
+	})
 
 	// Swagger docs endpoint
 	b.router.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -463,7 +480,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 
 // @Summary Get L1 Info Tree index for a bridge
 // @Description Returns the first L1 Info Tree index after a given deposit count for the specified network
-// @Tags l1-info-tree
+// @Tags l1-info-tree-leaf
 // @Param network_id query int true "Network ID"
 // @Param deposit_count query int true "Deposit count"
 // @Produce json
@@ -521,7 +538,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Summary Get injected L1 info tree leaf after a given L1 info tree index
 // @Description Returns the L1 info tree leaf either at the given index (for L1)
 // or the first injected global exit root after the given index (for L2).
-// @Tags injected-info
+// @Tags l1-info-tree-leaf
 // @Param network_id query int true "Network ID"
 // @Param l1_info_tree_index query int true "L1 Info Tree Index"
 // @Produce json
@@ -692,13 +709,13 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 
 // @Summary Sponsor a claim
 // @Description Sponsors a claim to be processed by the bridge service.
-// @Tags claims
+// @Tags claim-sponsoring
 // @Accept json
 // @Produce json
-// @Param Claim body claimsponsor.Claim true "Claim Request"
-// @Success 200 {object} types.ErrorResponse{"status": "claim sponsored"}
-// @Failure 400 {object} types.ErrorResponse{"error": "bad request"}
-// @Failure 500 {object} types.ErrorResponse{"error": "internal server error"}
+// @Param Claim body types.ClaimRequest true "Claim request"
+// @Success 200 {object} string "Claim is sponsored"
+// @Failure 400 {object} types.ErrorResponse "Invalid request parameters"
+// @Failure 500 {object} types.ErrorResponse "Internal server error"
 // @Router /sponsor-claim [post]
 func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 	rawBody, err := io.ReadAll(c.Request.Body)
@@ -720,11 +737,11 @@ func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 
 	// Validate required fields
 	if claim.GlobalIndex == nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "global_index is mandatory"})
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is mandatory", globalIndexParam)})
 		return
 	}
 
-	b.logger.Debugf("SponsorClaim request received (claim global index=%s)", claim.GlobalIndex.String())
+	b.logger.Debugf("SponsorClaim request received (claim global index=%d)", claim.GlobalIndex)
 
 	ctx, cancel := context.WithTimeout(c, b.writeTimeout)
 	defer cancel()
@@ -752,7 +769,8 @@ func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "claim sponsored"})
+	c.JSON(http.StatusOK, gin.H{
+		"status": fmt.Sprintf("claim with global id=%d is sponsored", claim.GlobalIndex)})
 }
 
 // GetSponsoredClaimStatusHandler returns the sponsorship status of a claim by its global index.
@@ -760,7 +778,7 @@ func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 // @Summary Get sponsored claim status
 // @Description Returns the sponsorship status of a claim identified by the given global index.
 // Only available if claim sponsoring is enabled.
-// @Tags claims
+// @Tags claim-sponsoring
 // @Param global_index query string true "Global index of the claim (big.Int format)"
 // @Produce json
 // @Success 200 {object} string "Claim sponsorship status"

@@ -1,6 +1,8 @@
 package types
 
 import (
+	"math/big"
+
 	tree "github.com/agglayer/aggkit/tree/types"
 )
 
@@ -17,6 +19,13 @@ type Address string
 // BigIntString is a wrapper type for big.Int for Swagger compatibility
 // @Description Big integer represented as a decimal string
 type BigIntString string
+
+// ToBigInt converts the BigIntString to a big.Int
+func (b BigIntString) ToBigInt() *big.Int {
+	result := new(big.Int)
+	result.SetString(string(b), 0)
+	return result
+}
 
 // ErrorResponse defines a generic error structure.
 // @Description Generic error response structure
@@ -39,14 +48,14 @@ func (l TokenMappingType) String() string {
 	return [...]string{"WrappedToken", "SovereignToken"}[l]
 }
 
-// ProofResponse represents a Merkle proof for a tree of a given height
+// Proof represents a Merkle proof for a tree of a given height
 // @Description Merkle proof structure for a tree of a given height
-type ProofResponse [tree.DefaultHeight]Hash
+type Proof [tree.DefaultHeight]Hash
 
 // ConvertToProofResponse converts a Merkle proof to a ProofResponse
 // @Description Converts a Merkle proof to a ProofResponse
-func ConvertToProofResponse(proof tree.Proof) ProofResponse {
-	var p ProofResponse
+func ConvertToProofResponse(proof tree.Proof) Proof {
+	var p Proof
 	for i, h := range proof {
 		if i >= len(p) {
 			break
@@ -58,9 +67,10 @@ func ConvertToProofResponse(proof tree.Proof) ProofResponse {
 
 // ClaimProof represents the Merkle proofs (local and rollup exit roots) and the L1 info tree leaf
 // required to verify a claim in the bridge.
+// @Description Claim proof structure for verifying claims in the bridge
 type ClaimProof struct {
-	ProofLocalExitRoot  ProofResponse          `json:"proof_local_exit_root"`
-	ProofRollupExitRoot ProofResponse          `json:"proof_rollup_exit_root"`
+	ProofLocalExitRoot  Proof                  `json:"proof_local_exit_root"`
+	ProofRollupExitRoot Proof                  `json:"proof_rollup_exit_root"`
 	L1InfoTreeLeaf      L1InfoTreeLeafResponse `json:"l1_info_tree_leaf"`
 }
 
@@ -272,19 +282,16 @@ type L1InfoTreeLeafResponse struct {
 	L1InfoTreeIndex uint32 `json:"l1_info_tree_index" example:"42"`
 
 	// Hash of the previous block in the tree
-	// @example "0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"
-	PreviousBlockHash Hash `json:"previous_block_hash"`
+	PreviousBlockHash Hash `json:"previous_block_hash" example:"0xabc1...bcd"`
 
 	// Timestamp of the block in seconds since the Unix epoch
 	Timestamp uint64 `json:"timestamp" example:"1684500000"`
 
 	// Mainnet exit root at this leaf
-	// @example "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
-	MainnetExitRoot Hash `json:"mainnet_exit_root"`
+	MainnetExitRoot Hash `json:"mainnet_exit_root" example:"0xdefc...789"`
 
 	// Rollup exit root at this leaf
-	// @example "0x7890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123456"
-	RollupExitRoot Hash `json:"rollup_exit_root"`
+	RollupExitRoot Hash `json:"rollup_exit_root" example:"0x7890...123"`
 
 	// Global exit root computed from mainnet and rollup roots
 	// @example "0x4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123"
@@ -292,4 +299,45 @@ type L1InfoTreeLeafResponse struct {
 
 	// Unique hash identifying this leaf node
 	Hash Hash `json:"hash" example:"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
+}
+
+// Claim represents a bridge claim submitted for processing.
+// It includes proofs, root hashes, origin/destination networks, token info, and metadata.
+// @Description Claim sponsoring structure
+type ClaimRequest struct {
+	// Type of leaf node (e.g., asset or message)
+	LeafType uint8 `json:"leaf_type" example:"1"`
+
+	// Merkle proof for local exit root
+	ProofLocalExitRoot Proof `json:"proof_local_exit_root"`
+
+	// Merkle proof for rollup exit root
+	ProofRollupExitRoot Proof `json:"proof_rollup_exit_root"`
+
+	// Global leaf index
+	GlobalIndex BigIntString `json:"global_index" example:"123456789012345678901234567890"`
+
+	// Mainnet exit root
+	MainnetExitRoot Hash `json:"mainnet_exit_root" example:"0xabc123..."`
+
+	// Rollup exit root
+	RollupExitRoot Hash `json:"rollup_exit_root" example:"0xdef456..."`
+
+	// Origin network ID where the claim originated
+	OriginNetwork uint32 `json:"origin_network" example:"1"`
+
+	// Origin token address
+	OriginTokenAddress Address `json:"origin_token_address" example:"0x123..."`
+
+	// ID of the network where the claim is being sent
+	DestinationNetwork uint32 `json:"destination_network" example:"100"`
+
+	// Recipient address on destination network
+	DestinationAddress Address `json:"destination_address" example:"0x456..."`
+
+	// Amount in wei (or token's smallest unit)
+	Amount BigIntString `json:"amount" example:"1000000000000000000"`
+
+	// Optional metadata for the claim
+	Metadata []byte `json:"metadata"`
 }
