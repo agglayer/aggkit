@@ -514,7 +514,12 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	}
 
 	if err != nil {
-		b.logger.Errorf("failed to get L1 info tree index (network id=%d, deposit count=%d): %v", networkID, depositCount, err)
+		b.logger.Errorf(
+			"failed to get L1 info tree index (network id=%d, deposit count=%d): %v",
+			networkID,
+			depositCount,
+			err,
+		)
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get l1 info tree index for network id %d and deposit count %d, error: %s",
 				networkID, depositCount, err)})
