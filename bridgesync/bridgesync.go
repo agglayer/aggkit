@@ -421,7 +421,11 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 	}
 
 	// Get the underlying eth client from the downloader
-	ethClient := s.downloader.EVMDownloaderInterface.GetEthClient().(bind.ContractBackend)
+	ethClientIface := s.downloader.EVMDownloaderInterface.GetEthClient()
+	ethClient, ok := ethClientIface.(bind.ContractBackend)
+	if !ok {
+		return 0, fmt.Errorf("downloader's EthClient does not implement bind.ContractBackend")
+	}
 
 	bridge, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(runtimeData.Addresses[0], ethClient)
 	if err != nil {
