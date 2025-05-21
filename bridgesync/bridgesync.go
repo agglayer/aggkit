@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -419,23 +420,10 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 		return 0, fmt.Errorf("failed to get runtime data: %w", err)
 	}
 
-	if len(runtimeData.Addresses) == 0 {
-		return 0, fmt.Errorf("no bridge addresses available")
-	}
-
-	if (runtimeData.Addresses[0] == common.Address{}) {
-		return 0, fmt.Errorf("invalid bridge address: zero address")
-	}
-
 	// Get the underlying eth client from the downloader
-	ethClient, ok := s.downloader.EVMDownloaderInterface.(interface {
-		GetEthClient() aggkittypes.BaseEthereumClienter
-	})
-	if !ok {
-		return 0, fmt.Errorf("downloader does not implement GetEthClient() method")
-	}
+	ethClient := s.downloader.EVMDownloaderInterface.GetEthClient().(bind.ContractBackend)
 
-	bridge, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(runtimeData.Addresses[0], ethClient.GetEthClient())
+	bridge, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(runtimeData.Addresses[0], ethClient)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create bridge contract instance: %w", err)
 	}

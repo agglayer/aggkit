@@ -835,7 +835,8 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 // GetSyncStatusHandler returns the sync status of the bridge service.
 //
 // @Summary Get bridge sync status
-// @Description Returns the sync status by comparing the deposit count from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
+// @Description Returns the sync status by comparing the deposit count
+// from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
 // @Tags sync
 // @Produce json
 // @Success 200 {object} types.SyncStatus "Bridge sync status for both L1 and L2 networks"

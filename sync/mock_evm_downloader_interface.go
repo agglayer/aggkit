@@ -135,6 +135,53 @@ func (_c *EVMDownloaderMock_GetBlockHeader_Call) RunAndReturn(run func(context.C
 	return _c
 }
 
+// GetEthClient provides a mock function with no fields
+func (_m *EVMDownloaderMock) GetEthClient() EthClienter {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetEthClient")
+	}
+
+	var r0 EthClienter
+	if rf, ok := ret.Get(0).(func() EthClienter); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(EthClienter)
+		}
+	}
+
+	return r0
+}
+
+// EVMDownloaderMock_GetEthClient_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetEthClient'
+type EVMDownloaderMock_GetEthClient_Call struct {
+	*mock.Call
+}
+
+// GetEthClient is a helper method to define mock.On call
+func (_e *EVMDownloaderMock_Expecter) GetEthClient() *EVMDownloaderMock_GetEthClient_Call {
+	return &EVMDownloaderMock_GetEthClient_Call{Call: _e.mock.On("GetEthClient")}
+}
+
+func (_c *EVMDownloaderMock_GetEthClient_Call) Run(run func()) *EVMDownloaderMock_GetEthClient_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *EVMDownloaderMock_GetEthClient_Call) Return(_a0 EthClienter) *EVMDownloaderMock_GetEthClient_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *EVMDownloaderMock_GetEthClient_Call) RunAndReturn(run func() EthClienter) *EVMDownloaderMock_GetEthClient_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetEventsByBlockRange provides a mock function with given fields: ctx, fromBlock, toBlock
 func (_m *EVMDownloaderMock) GetEventsByBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) EVMBlocks {
 	ret := _m.Called(ctx, fromBlock, toBlock)
