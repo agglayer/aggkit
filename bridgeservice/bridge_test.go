@@ -1875,14 +1875,6 @@ func performRequest(t *testing.T, router *gin.Engine, method, path string, body 
 }
 
 func TestGetSyncStatusHandler(t *testing.T) {
-	type testCase struct {
-		description        string
-		setupMocks         func(*gin.Context)
-		expectedStatusCode int
-		expectedResponse   types.SyncStatus
-		expectedError      string
-	}
-
 	b := newBridgeWithMocks(t, l2NetworkID)
 
 	// Deduplicated test cases for sync status
