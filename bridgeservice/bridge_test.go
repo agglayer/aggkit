@@ -1905,6 +1905,26 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			l1ContractCount: 100, l1BridgeCount: 90, l1IsSynced: false,
 			l2ContractCount: 200, l2BridgeCount: 180, l2IsSynced: false,
 		},
+		{
+			description:     "successful sync status - L1 synced, L2 out of sync",
+			l1ContractCount: 100, l1BridgeCount: 100, l1IsSynced: true,
+			l2ContractCount: 200, l2BridgeCount: 150, l2IsSynced: false,
+		},
+		{
+			description:     "successful sync status - L1 out of sync, L2 synced",
+			l1ContractCount: 100, l1BridgeCount: 80, l1IsSynced: false,
+			l2ContractCount: 200, l2BridgeCount: 200, l2IsSynced: true,
+		},
+		{
+			description:     "successful sync status - zero counts",
+			l1ContractCount: 0, l1BridgeCount: 0, l1IsSynced: true,
+			l2ContractCount: 0, l2BridgeCount: 0, l2IsSynced: true,
+		},
+		{
+			description:     "successful sync status - large numbers",
+			l1ContractCount: 1000000, l1BridgeCount: 1000000, l1IsSynced: true,
+			l2ContractCount: 2000000, l2BridgeCount: 2000000, l2IsSynced: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -2005,6 +2025,32 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get bridges from L2 database: L2 database error",
+		},
+		{
+			description: "error getting L1 contract deposit count with context timeout",
+			setupMocks: func() {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(0), context.DeadlineExceeded).
+					Once()
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedError:      "failed to get deposit count from L1 bridge contract: context deadline exceeded",
+		},
+		{
+			description: "error getting L2 contract deposit count with context timeout",
+			setupMocks: func() {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(100), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(0), context.DeadlineExceeded).
+					Once()
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedError:      "failed to get deposit count from L2 bridge contract: context deadline exceeded",
 		},
 	}
 
