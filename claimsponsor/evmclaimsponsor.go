@@ -64,8 +64,10 @@ func NewEVMClaimSponsor(
 	waitTxToBeMinedPeriod time.Duration,
 	waitOnEmptyQueue time.Duration,
 ) (*ClaimSponsor, error) {
+	logger.Info("initializing EVM claim sponsor")
 	abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
 	if err != nil {
+		logger.Errorf("failed to get bridge ABI: %v", err)
 		return nil, err
 	}
 
@@ -92,6 +94,7 @@ func NewEVMClaimSponsor(
 		return nil, err
 	}
 
+	logger.Info("evm claim sponsor initialized successfully")
 	return baseSponsor, nil
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
 	rpcTypes "github.com/0xPolygon/cdk-rpc/types"
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -55,25 +56,32 @@ const (
 
 func buildAppender(client aggkittypes.EthClienter,
 	bridgeAddr common.Address, syncFullClaims bool) (sync.LogAppenderMap, error) {
+	logger := log.WithFields("module", "bridge_downloader")
+	logger.Infof("building appender for bridge at %s with syncFullClaims=%v", bridgeAddr.String(), syncFullClaims)
+
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
+		logger.Errorf("failed to create PolygonZkEVMBridge SC binding: %v", err)
 		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
 	}
 
 	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, client)
 	if err != nil {
+		logger.Errorf("failed to create PolygonZkEVMBridgeV2 SC binding: %v", err)
 		return nil, fmt.Errorf("failed to create PolygonZkEVMBridgeV2 SC binding (bridge addr: %s): %w",
 			bridgeAddr, err)
 	}
 
 	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, client)
 	if err != nil {
+		logger.Errorf("failed to create BridgeL2SovereignChain SC binding: %v", err)
 		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain SC binding (bridge addr: %s): %w",
 			bridgeAddr, err)
 	}
 
 	gasTokenAddress, err := bridgeContractV2.GasTokenAddress(nil)
 	if err != nil {
+		logger.Errorf("failed to get gas token address: %v", err)
 		return nil, fmt.Errorf("error parsing gas token address: %w", err)
 	}
 
