@@ -133,15 +133,15 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.POST("/sponsor-claim", b.SponsorClaimHandler)
 		bridgeGroup.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
+
+		// Swagger docs endpoint
+		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
+
+		// Redirect to the Swagger UI
+		bridgeGroup.GET("/swagger", func(ctx *gin.Context) {
+			ctx.Redirect(http.StatusFound, BridgeV1Prefix+"/swagger/index.html")
+		})
 	}
-
-	// Swagger UI
-	b.router.GET("/swagger", func(c *gin.Context) {
-		c.Redirect(http.StatusFound, "/swagger/index.html")
-	})
-
-	// Swagger docs endpoint
-	b.router.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
 }
 
 // Start starts the HTTP bridge service
