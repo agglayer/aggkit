@@ -323,7 +323,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 	})
 
 	t.Run("SaveCertificate with raw data", func(t *testing.T) {
-		certfiicate := &agglayer.SignedCertificate{
+		certficate := &agglayer.SignedCertificate{
 			Certificate: &agglayer.Certificate{
 				NetworkID:         1,
 				Height:            1,
