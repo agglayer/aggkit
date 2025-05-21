@@ -495,7 +495,7 @@ func TestGetBridgesHandler(t *testing.T) {
 				IsNativeToken:      true,
 			},
 		}
-		bridgesResp := aggkitcommon.Map(expectedBridges, bridgesync.NewBridgeResponse)
+		bridgesResp := aggkitcommon.MapSlice(expectedBridges, bridgesync.NewBridgeResponse)
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetBridgesPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything, mock.Anything).
@@ -571,7 +571,7 @@ func TestGetBridgesHandler(t *testing.T) {
 				IsNativeToken:      true,
 			},
 		}
-		bridgesResp := aggkitcommon.Map(expectedBridges, bridgesync.NewBridgeResponse)
+		bridgesResp := aggkitcommon.MapSlice(expectedBridges, bridgesync.NewBridgeResponse)
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
@@ -635,7 +635,7 @@ func TestGetClaimsHandler(t *testing.T) {
 				Amount:             common.Big0,
 			},
 		}
-		claimsResp := aggkitcommon.Map(expectedClaims, bridgesync.NewClaimResponse)
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, bridgesync.NewClaimResponse)
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
@@ -674,7 +674,7 @@ func TestGetClaimsHandler(t *testing.T) {
 				Amount:             common.Big0,
 			},
 		}
-		claimsResp := aggkitcommon.Map(expectedClaims, bridgesync.NewClaimResponse)
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, bridgesync.NewClaimResponse)
 
 		bridgeMocks.bridge.networkID = 10
 		bridgeMocks.bridgeL2.EXPECT().
@@ -773,7 +773,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				Calldata:            common.Hex2Bytes("efabcd"),
 			},
 		}
-		tokenMappingsResp := aggkitcommon.Map(tokenMappings, bridgesync.NewTokenMappingResponse)
+		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, bridgesync.NewTokenMappingResponse)
 
 		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
 			Return(tokenMappings, len(tokenMappings), nil)
@@ -814,7 +814,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 				IsNotMintable:       true,
 			},
 		}
-		tokenMappingsResp := aggkitcommon.Map(tokenMappings, bridgesync.NewTokenMappingResponse)
+		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, bridgesync.NewTokenMappingResponse)
 
 		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
 			Return(tokenMappings, len(tokenMappings), nil)
@@ -906,7 +906,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 				Calldata:            common.Hex2Bytes("efabcd"),
 			},
 		}
-		tokenMigrationsResp := aggkitcommon.Map(tokenMigrations, bridgesync.NewTokenMigrationResponse)
+		tokenMigrationsResp := aggkitcommon.MapSlice(tokenMigrations, bridgesync.NewTokenMigrationResponse)
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetLegacyTokenMigrations(mock.Anything, page, pageSize).
@@ -947,7 +947,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 				Amount:              big.NewInt(10),
 			},
 		}
-		tokenMigrationsResp := aggkitcommon.Map(tokenMigrations, bridgesync.NewTokenMigrationResponse)
+		tokenMigrationsResp := aggkitcommon.MapSlice(tokenMigrations, bridgesync.NewTokenMigrationResponse)
 
 		bridgeMocks.bridgeL2.EXPECT().
 			GetLegacyTokenMigrations(mock.Anything, page, pageSize).

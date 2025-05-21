@@ -261,7 +261,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		return
 	}
 
-	bridgeResponses := aggkitcommon.Map(bridges, bridgesync.NewBridgeResponse)
+	bridgeResponses := aggkitcommon.MapSlice(bridges, bridgesync.NewBridgeResponse)
 
 	c.JSON(http.StatusOK,
 		types.BridgesResult{
@@ -338,7 +338,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	claimResponses := aggkitcommon.Map(claims, bridgesync.NewClaimResponse)
+	claimResponses := aggkitcommon.MapSlice(claims, bridgesync.NewClaimResponse)
 
 	c.JSON(http.StatusOK,
 		types.ClaimsResult{
@@ -398,7 +398,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		return
 	}
 
-	tokenMappingResponses := aggkitcommon.Map(tokenMappings, bridgesync.NewTokenMappingResponse)
+	tokenMappingResponses := aggkitcommon.MapSlice(tokenMappings, bridgesync.NewTokenMappingResponse)
 
 	c.JSON(http.StatusOK,
 		types.TokenMappingsResult{
@@ -458,7 +458,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		return
 	}
 
-	tokenMigrationResponses := aggkitcommon.Map(tokenMigrations, bridgesync.NewTokenMigrationResponse)
+	tokenMigrationResponses := aggkitcommon.MapSlice(tokenMigrations, bridgesync.NewTokenMigrationResponse)
 
 	c.JSON(http.StatusOK,
 		types.LegacyTokenMigrationsResult{
