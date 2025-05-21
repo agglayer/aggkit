@@ -1873,3 +1873,181 @@ func performRequest(t *testing.T, router *gin.Engine, method, path string, body 
 
 	return w
 }
+
+func TestGetSyncStatusHandler(t *testing.T) {
+	type testCase struct {
+		description        string
+		setupMocks         func(*gin.Context)
+		expectedStatusCode int
+		expectedResponse   types.SyncStatus
+		expectedError      string
+	}
+
+	b := newBridgeWithMocks(t, l2NetworkID)
+
+	testCases := []testCase{
+		{
+			description: "successful sync status - both synced",
+			setupMocks: func(c *gin.Context) {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(100), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(200), nil).
+					Once()
+				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 200, nil).
+					Once()
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedResponse: types.SyncStatus{
+				L1: struct {
+					ContractDepositCount uint32 `json:"contract_deposit_count"`
+					BridgeDepositCount   uint32 `json:"bridge_deposit_count"`
+					IsSynced             bool   `json:"is_synced"`
+				}{
+					BridgeDepositCount:   100,
+					ContractDepositCount: 100,
+					IsSynced:             true,
+				},
+				L2: struct {
+					ContractDepositCount uint32 `json:"contract_deposit_count"`
+					BridgeDepositCount   uint32 `json:"bridge_deposit_count"`
+					IsSynced             bool   `json:"is_synced"`
+				}{
+					BridgeDepositCount:   200,
+					ContractDepositCount: 200,
+					IsSynced:             true,
+				},
+			},
+		},
+		{
+			description: "successful sync status - both out of sync",
+			setupMocks: func(c *gin.Context) {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(100), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 90, nil).
+					Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(200), nil).
+					Once()
+				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 180, nil).
+					Once()
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedResponse: types.SyncStatus{
+				L1: struct {
+					ContractDepositCount uint32 `json:"contract_deposit_count"`
+					BridgeDepositCount   uint32 `json:"bridge_deposit_count"`
+					IsSynced             bool   `json:"is_synced"`
+				}{
+					BridgeDepositCount:   90,
+					ContractDepositCount: 100,
+					IsSynced:             false,
+				},
+				L2: struct {
+					ContractDepositCount uint32 `json:"contract_deposit_count"`
+					BridgeDepositCount   uint32 `json:"bridge_deposit_count"`
+					IsSynced             bool   `json:"is_synced"`
+				}{
+					BridgeDepositCount:   180,
+					ContractDepositCount: 200,
+					IsSynced:             false,
+				},
+			},
+		},
+		{
+			description: "L1 contract deposit count error",
+			setupMocks: func(c *gin.Context) {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(0), errors.New("L1 error")).
+					Once()
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedError:      "failed to get deposit count from L1 bridge contract: L1 error",
+		},
+		{
+			description: "L1 bridge deposit count error",
+			setupMocks: func(c *gin.Context) {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(100), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 0, errors.New("L1 bridge error")).
+					Once()
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedError:      "failed to get bridges from L1 database: L1 bridge error",
+		},
+		{
+			description: "L2 contract deposit count error",
+			setupMocks: func(c *gin.Context) {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(100), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(0), errors.New("L2 error")).
+					Once()
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedError:      "failed to get deposit count from L2 bridge contract: L2 error",
+		},
+		{
+			description: "L2 bridge deposit count error",
+			setupMocks: func(c *gin.Context) {
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(100), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(200), nil).
+					Once()
+				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 0, errors.New("L2 bridge error")).
+					Once()
+			},
+			expectedStatusCode: http.StatusInternalServerError,
+			expectedError:      "failed to get bridges from L2 database: L2 bridge error",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.description, func(t *testing.T) {
+			// Create test request
+			w := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(w)
+
+			// Setup mocks
+			tc.setupMocks(c)
+
+			// Call handler
+			b.bridge.GetSyncStatusHandler(c)
+
+			// Check response
+			require.Equal(t, tc.expectedStatusCode, w.Code)
+
+			if tc.expectedError != "" {
+				var response map[string]string
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedError, response["error"])
+			} else {
+				var response types.SyncStatus
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedResponse, response)
+			}
+		})
+	}
+}
