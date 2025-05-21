@@ -29,9 +29,8 @@ func (b BigIntString) ToBigInt() *big.Int {
 
 // ErrorResponse defines a generic error structure.
 // @Description Generic error response structure
-// @example {"error": "Invalid request parameters"}
 type ErrorResponse struct {
-	Error string `json:"error" example:"Invalid request parameters"`
+	Error string `json:"error" example:"Error message"`
 }
 
 // TokenMappingType defines the type of token mapping
@@ -67,11 +66,17 @@ func ConvertToProofResponse(proof tree.Proof) Proof {
 
 // ClaimProof represents the Merkle proofs (local and rollup exit roots) and the L1 info tree leaf
 // required to verify a claim in the bridge.
+//
 // @Description Claim proof structure for verifying claims in the bridge
 type ClaimProof struct {
-	ProofLocalExitRoot  Proof                  `json:"proof_local_exit_root"`
-	ProofRollupExitRoot Proof                  `json:"proof_rollup_exit_root"`
-	L1InfoTreeLeaf      L1InfoTreeLeafResponse `json:"l1_info_tree_leaf"`
+	// Merkle proof for the local exit root
+	ProofLocalExitRoot Proof `json:"proof_local_exit_root" example:"[0x1, 0x2, 0x3...]"`
+
+	// Merkle proof for the rollup exit root
+	ProofRollupExitRoot Proof `json:"proof_rollup_exit_root" example:"[0x4, 0x5, 0x6...]"`
+
+	// L1 info tree leaf data associated with the claim
+	L1InfoTreeLeaf L1InfoTreeLeafResponse `json:"l1_info_tree_leaf"`
 }
 
 // BridgesResult contains the bridges and the total count of bridges

@@ -532,8 +532,8 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Param l1_info_tree_index query int true "L1 Info Tree Index"
 // @Produce json
 // @Success 200 {object} types.L1InfoTreeLeafResponse
-// @Failure 400 {object} types.ErrorResponse
-// @Failure 500 {object} types.ErrorResponse
+// @Failure 400 {object} types.ErrorResponse "Missing or invalid parameters"
+// @Failure 500 {object} types.ErrorResponse "Internal server error retrieving injected l1 info tree leaf"
 // @Router /injected-l1-info-leaf [get]
 func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, leaf index=%s)",
