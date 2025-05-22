@@ -196,6 +196,7 @@ type AggchainDataProof struct {
 	Vkey           []byte            `json:"vkey"`
 	AggchainParams common.Hash       `json:"aggchain_params"`
 	Context        map[string][]byte `json:"context"`
+	Signature      []byte            `json:"signature"`
 }
 
 // MarshalJSON is the implementation of the json.Marshaler interface
@@ -206,12 +207,14 @@ func (a *AggchainDataProof) MarshalJSON() ([]byte, error) {
 		Context        map[string][]byte `json:"context"`
 		Version        string            `json:"version"`
 		VKey           string            `json:"vkey"`
+		Signature      string            `json:"signature"`
 	}{
 		Proof:          common.Bytes2Hex(a.Proof),
 		AggchainParams: a.AggchainParams.String(),
 		Context:        a.Context,
 		Version:        a.Version,
 		VKey:           common.Bytes2Hex(a.Vkey),
+		Signature:      common.Bytes2Hex(a.Signature),
 	})
 }
 
@@ -223,6 +226,7 @@ func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 		Context        map[string][]byte `json:"context"`
 		Version        string            `json:"version"`
 		VKey           string            `json:"vkey"`
+		Signature      string            `json:"signature"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
@@ -233,6 +237,7 @@ func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 	a.Context = aux.Context
 	a.Version = aux.Version
 	a.Vkey = common.Hex2Bytes(aux.VKey)
+	a.Signature = common.Hex2Bytes(aux.Signature)
 
 	return nil
 }
