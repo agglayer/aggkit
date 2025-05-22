@@ -14,7 +14,6 @@ import (
 	"github.com/agglayer/aggkit/sync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -56,6 +55,8 @@ type BridgeSync struct {
 	originNetwork uint32
 	reorgDetector ReorgDetector
 	blockFinality etherman.BlockNumberFinality
+	ethClient     aggkittypes.EthClienter
+	bridge        common.Address
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -239,6 +240,8 @@ func newBridgeSync(
 		originNetwork: originNetwork,
 		reorgDetector: rd,
 		blockFinality: blockFinalityType,
+		ethClient:     ethClient,
+		bridge:        bridge,
 	}, nil
 }
 
@@ -415,19 +418,7 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 		return 0, sync.ErrInconsistentState
 	}
 
-	runtimeData, err := s.downloader.RuntimeData(ctx)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get runtime data: %w", err)
-	}
-
-	// Get the underlying eth client from the downloader
-	ethClientIface := s.downloader.EVMDownloaderInterface.GetEthClient()
-	ethClient, ok := ethClientIface.(bind.ContractBackend)
-	if !ok {
-		return 0, fmt.Errorf("downloader's EthClient does not implement bind.ContractBackend")
-	}
-
-	bridge, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(runtimeData.Addresses[0], ethClient)
+	bridge, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(s.bridge, s.ethClient)
 	if err != nil {
 		return 0, fmt.Errorf("failed to create bridge contract instance: %w", err)
 	}

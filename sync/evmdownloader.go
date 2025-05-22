@@ -31,7 +31,6 @@ type EVMDownloaderInterface interface {
 	GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool)
 	GetLastFinalizedBlock(ctx context.Context) (*types.Header, error)
 	ChainID(ctx context.Context) (uint64, error)
-	GetEthClient() EthClienter
 }
 
 type LogAppenderMap map[common.Hash]func(b *EVMBlock, l types.Log) error
@@ -457,8 +456,4 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 			Timestamp:  header.Time,
 		}, false
 	}
-}
-
-func (d *EVMDownloaderImplementation) GetEthClient() EthClienter {
-	return d.ethClient
 }
