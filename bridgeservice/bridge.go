@@ -86,6 +86,9 @@ func New(
 	meter := otel.Meter(meterName)
 	cfg.Logger.Infof("starting bridge service (network id=%d)", cfg.NetworkID)
 
+	// The GIN_MODE environment variable controls the mode of the Gin framework.
+	// Valid values are "debug", "release", and "test". If an invalid value is provided,
+	// the mode defaults to "release" for safety and performance.
 	ginMode := os.Getenv("GIN_MODE")
 	switch ginMode {
 	case gin.DebugMode, gin.ReleaseMode, gin.TestMode:
