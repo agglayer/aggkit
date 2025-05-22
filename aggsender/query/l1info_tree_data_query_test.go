@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/require"
@@ -22,7 +23,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		mockFn        func(*mocks.L1InfoTreeSyncer, *mocks.EthClient)
+		mockFn        func(*mocks.L1InfoTreeSyncer, *aggkittypesmocks.BaseEthereumClienter)
 		expectedProof treetypes.Proof
 		expectedLeaf  *l1infotreesync.L1InfoTreeLeaf
 		expectedRoot  *treetypes.Root
@@ -30,14 +31,14 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 	}{
 		{
 			name: "error getting latest processed finalized block",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error getting latest processed finalized block",
 		},
 		{
 			name: "error getting latest info until block num",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
@@ -47,7 +48,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 		},
 		{
 			name: "error getting L1 Info tree root by index",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
@@ -64,7 +65,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 		},
 		{
 			name: "error getting L1 Info tree merkle proof from index to root",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
@@ -85,7 +86,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 		},
 		{
 			name: "success",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
@@ -113,7 +114,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-			mockL1Client := mocks.NewEthClient(t)
+			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(mockL1Client, mockL1InfoTreeSyncer)
 
 			tc.mockFn(mockL1InfoTreeSyncer, mockL1Client)
@@ -141,20 +142,20 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		mockFn        func(*mocks.L1InfoTreeSyncer, *mocks.EthClient)
+		mockFn        func(*mocks.L1InfoTreeSyncer, *aggkittypesmocks.BaseEthereumClienter)
 		expectedBlock uint64
 		expectedError string
 	}{
 		{
 			name: "error getting latest finalized L1 block",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error getting latest finalized L1 block: some error",
 		},
 		{
 			name: "error getting latest processed block from l1infotreesyncer",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(uint64(0), common.Hash{}, errors.New("some error"))
@@ -163,7 +164,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		},
 		{
 			name: "l1infotreesyncer did not process any block yet",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(uint64(0), common.Hash{}, nil)
@@ -172,7 +173,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		},
 		{
 			name: "error getting latest processed finalized block",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(uint64(9), common.Hash{}, nil)
@@ -182,7 +183,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		},
 		{
 			name: "l1infotreesyncer returned a different hash for the latest finalized block",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(
@@ -193,7 +194,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 		},
 		{
 			name: "success",
-			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *mocks.EthClient) {
+			mockFn: func(mockL1InfoTreeSyncer *mocks.L1InfoTreeSyncer, mockL1Client *aggkittypesmocks.BaseEthereumClienter) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(
@@ -209,7 +210,7 @@ func Test_AggchainProverFlow_GetLatestProcessedFinalizedBlock(t *testing.T) {
 			t.Parallel()
 
 			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
-			mockL1Client := mocks.NewEthClient(t)
+			mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 			l1InfoTreeDataQuery := NewL1InfoTreeDataQuerier(mockL1Client, mockL1InfoTreeSyncer)
 
 			tc.mockFn(mockL1InfoTreeSyncer, mockL1Client)

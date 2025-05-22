@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/mock"
@@ -205,7 +205,7 @@ func TestBlockGetCurrentBlockNumber(t *testing.T) {
 
 type blockNotifierPollingTestData struct {
 	sut           *BlockNotifierPolling
-	ethClientMock *mocks.EthClient
+	ethClientMock *aggkittypesmocks.BaseEthereumClienter
 	ctx           context.Context
 }
 
@@ -217,7 +217,7 @@ func newBlockNotifierPollingTestData(t *testing.T, config *ConfigBlockNotifierPo
 			CheckNewBlockInterval: 0,
 		}
 	}
-	ethClientMock := mocks.NewEthClient(t)
+	ethClientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
 	logger := log.WithFields("test", "BlockNotifierPolling")
 	sut, err := NewBlockNotifierPolling(ethClientMock, *config, logger, nil)
 	require.NoError(t, err)
