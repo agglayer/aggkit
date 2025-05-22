@@ -9,6 +9,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"os"
 	"time"
 
 	"github.com/agglayer/aggkit/bridgeservice/types"
@@ -84,6 +85,14 @@ func New(
 ) *BridgeService {
 	meter := otel.Meter(meterName)
 	cfg.Logger.Infof("starting bridge service (network id=%d)", cfg.NetworkID)
+
+	ginMode := os.Getenv("GIN_MODE")
+	switch ginMode {
+	case gin.DebugMode, gin.ReleaseMode, gin.TestMode:
+		gin.SetMode(ginMode)
+	default:
+		gin.SetMode(gin.ReleaseMode) // fallback to release mode
+	}
 
 	b := &BridgeService{
 		logger:       cfg.Logger,
