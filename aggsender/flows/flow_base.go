@@ -64,27 +64,38 @@ func (f *baseFlow) getBridgesAndClaims(
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) getCertificateBuildParamsInternal(
 	ctx context.Context, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
-	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
-	}
 
 	lastSentCertificateInfo, err := f.storage.GetLastSentCertificate()
 	if err != nil {
 		return nil, err
 	}
+	return f.getCertificateBuildParamsWithLastCert(
+		ctx,
+		allowEmptyCert,
+		lastSentCertificateInfo,
+	)
+}
 
-	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificateInfo)
-
-	if previousToBlock >= lastL2BlockSynced {
-		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
-			previousToBlock, lastL2BlockSynced)
-		return nil, errNoNewBlocks
+// getCertificateBuildParamsWithLastCert allow to pass the lastCert
+func (f *baseFlow) getCertificateBuildParamsWithLastCert(
+	ctx context.Context,
+	allowEmptyCert bool,
+	lastSentCertificateInfo *types.CertificateInfo) (*types.CertificateBuildParams, error) {
+	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
+	}
+	fromBlock, retryCount, err := f.getFromBlockAndRetryCount(lastSentCertificateInfo)
+	if err != nil {
+		return nil, fmt.Errorf("error getting from block and retry count: %w", err)
 	}
 
-	fromBlock := previousToBlock + 1
+	if fromBlock > lastL2BlockSynced {
+		f.log.Warnf("no new blocks to send a certificate, fromBlock: %d, lastL2BlockSynced: %d",
+			fromBlock, lastL2BlockSynced)
+		return nil, errNoNewBlocks
+	}
 	toBlock := lastL2BlockSynced
-
 	bridges, claims, err := f.getBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
 	if err != nil {
 		return nil, err
@@ -434,27 +445,28 @@ func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 	return nil
 }
 
-// getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
-// if there is no previosly sent certificate, it returns startL2Block and 0
-func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
+// getFromBlockAndRetryCount returns the next cert fromBlock and retry count based on previousCert
+func (f *baseFlow) getFromBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int, error) {
 	if lastSentCertificateInfo == nil {
 		// this is the first certificate so we start from what we have set in start L2 block
-		return f.startL2Block, 0
+		return f.startL2Block, 0, nil
 	}
-
-	retryCount := 0
-	lastSentBlock := lastSentCertificateInfo.ToBlock
-
-	if lastSentCertificateInfo.Status == agglayertypes.InError {
+	if lastSentCertificateInfo.Status.IsInError() {
 		// if the last certificate was in error, we need to resend it
-		// from the block before the error
-		if lastSentCertificateInfo.FromBlock > 0 {
-			lastSentBlock = lastSentCertificateInfo.FromBlock - 1
-		}
-
-		retryCount = lastSentCertificateInfo.RetryCount + 1
+		return lastSentCertificateInfo.FromBlock, lastSentCertificateInfo.RetryCount + 1, nil
 	}
-	return lastSentBlock, retryCount
+	if lastSentCertificateInfo.Status.IsSettled() {
+		// if the last certificate was settled, we need to start from the next block
+		return lastSentCertificateInfo.ToBlock + 1, 0, nil
+	}
+	// The lastCertificate is not closed, so we can't decide the fromBlock
+	return 0, 0, fmt.Errorf("getFromBlockAndRetryCount. Last certificate %s is not closed (status: %s), can't decide fromBlock",
+		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
+}
+
+func (f *baseFlow) checkBlockRangeGap(fromBlock, toBlock uint64, lastSentCertificateInfo *types.CertificateInfo) {
+	// case 1: last cert is inError	but there are a gap
+	// case 2: is a new cert but from l
 }
 
 // calculateGER calculates the GER hash based on the mainnet exit root and the rollup exit root

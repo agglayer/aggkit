@@ -41,6 +41,7 @@ func Test_Storage(t *testing.T) {
 			Status:           agglayertypes.Settled,
 			CreatedAt:        updateTime,
 			UpdatedAt:        updateTime,
+			CertType:         types.CertificateTypeFEP,
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 

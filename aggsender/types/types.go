@@ -26,6 +26,14 @@ const (
 	AggchainProofMode    AggsenderMode = "AggchainProof"
 )
 
+type CertificateType string
+
+const (
+	CertificateTypeUnknown CertificateType = ""
+	CertificateTypeFEP     CertificateType = "fep"
+	CertificateTypePP      CertificateType = "pp"
+)
+
 // AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender
 // based on the different prover types
 type AggsenderFlow interface {
@@ -169,6 +177,8 @@ func (s *SP1StarkProof) String() string {
 	)
 }
 
+type FlowType string
+
 type CertificateInfo struct {
 	Height        uint64      `meddler:"height"`
 	RetryCount    int         `meddler:"retry_count"`
@@ -185,6 +195,23 @@ type CertificateInfo struct {
 	AggchainProof           *AggchainProof                  `meddler:"aggchain_proof,aggchainproof"`
 	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
 	L1InfoTreeLeafCount     uint32                          `meddler:"l1_info_tree_leaf_count"`
+	// CertType must be private but there are a lot of code that create CertificateInfo directly
+	// so I add a GetCertType() that is not idiomatic but helps to determine the kind of certificate
+	CertType CertificateType `meddler:"cert_type"`
+}
+
+func (c *CertificateInfo) GetCertType() CertificateType {
+	if c == nil {
+		return CertificateTypeUnknown
+	}
+	if c.CertType == CertificateTypeUnknown {
+		if c.AggchainProof != nil {
+			return CertificateTypeFEP
+		} else {
+			return CertificateTypePP
+		}
+	}
+	return c.CertType
 }
 
 func (c *CertificateInfo) String() string {
@@ -205,6 +232,7 @@ func (c *CertificateInfo) String() string {
 	}
 
 	return fmt.Sprintf("aggsender.CertificateInfo: \n"+
+		"CertType: %s \n"+
 		"Height: %d \n"+
 		"RetryCount: %d \n"+
 		"CertificateID: %s \n"+
@@ -217,6 +245,7 @@ func (c *CertificateInfo) String() string {
 		"UpdatedAt: %s \n"+
 		"AggchainProof: %s \n"+
 		"FinalizedL1InfoTreeRoot: %s \n",
+		c.GetCertType(),
 		c.Height,
 		c.RetryCount,
 		c.CertificateID.String(),
@@ -237,7 +266,7 @@ func (c *CertificateInfo) ID() string {
 	if c == nil {
 		return NilStr
 	}
-	return fmt.Sprintf("%d/%s (retry %d)", c.Height, c.CertificateID.String(), c.RetryCount)
+	return fmt.Sprintf("%d/%s (retry:%d / type:%s)", c.Height, c.CertificateID.String(), c.RetryCount, c.GetCertType())
 }
 
 // StatusString returns the string representation of the status

@@ -129,49 +129,9 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return nil, fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
 
-	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayertypes.InError {
+	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status.IsInError() {
 		// if the last certificate was in error, we need to resend it
-		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
-		lastProvenBlock := a.getLastProvenBlock(lastSentCertificateInfo.FromBlock, lastSentCertificateInfo)
-		if lastSentCertificateInfo.FromBlock != lastProvenBlock+1 {
-			a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
-				"lastProvenBlock: %d + 1. Check update process 😅", lastSentCertificateInfo.FromBlock, lastProvenBlock)
-		}
-		bridges, claims, err := a.getBridgesAndClaims(
-			ctx, lastSentCertificateInfo.FromBlock,
-			lastSentCertificateInfo.ToBlock,
-			true,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
-		}
-
-		buildParams := &types.CertificateBuildParams{
-			FromBlock:           lastSentCertificateInfo.FromBlock,
-			ToBlock:             lastSentCertificateInfo.ToBlock,
-			RetryCount:          lastSentCertificateInfo.RetryCount + 1,
-			Bridges:             bridges,
-			Claims:              claims,
-			LastSentCertificate: lastSentCertificateInfo,
-			CreatedAt:           lastSentCertificateInfo.CreatedAt,
-		}
-
-		if lastSentCertificateInfo.AggchainProof == nil {
-			// this can happen if the aggsender db was deleted, so the aggsender
-			// got the last sent certificate from agglayer, but in that data we do not have
-			// the aggchain proof that was generated before, so we need to call the prover again
-
-			return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
-		}
-
-		// if we have the aggchain proof, we need to set it in the build params
-		// and set the root from which to prove the imported bridge exits
-		// no need to call the prover again
-		buildParams.AggchainProof = lastSentCertificateInfo.AggchainProof
-		buildParams.L1InfoTreeRootFromWhichToProve = *lastSentCertificateInfo.FinalizedL1InfoTreeRoot
-		buildParams.L1InfoTreeLeafCount = lastSentCertificateInfo.L1InfoTreeLeafCount
-
-		return buildParams, nil
+		return a.buildParamsForRetryCertificate(ctx, lastSentCertificateInfo)
 	}
 
 	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true)
@@ -184,14 +144,52 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 		return nil, err
 	}
-	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, lastSentCertificateInfo)
-	if buildParams.FromBlock != lastProvenBlock+1 {
-		a.log.Infof("aggchainProverFlow - getCertificateBuildParams - setting fromBlock to %d instead of %d",
-			lastProvenBlock+1, buildParams.FromBlock)
-		buildParams.FromBlock = lastProvenBlock + 1
+	return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
+}
+
+func (a *AggchainProverFlow) buildParamsForRetryCertificate(ctx context.Context, lastSentCertificateInfo *types.CertificateInfo) (*types.CertificateBuildParams, error) {
+	a.log.Infof("aggchainProverFlow - resending the same InError certificate: %s", lastSentCertificateInfo.String())
+	fromBlock, retryCount, err := a.baseFlow.getFromBlockAndRetryCount(lastSentCertificateInfo)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error getting from block and retry count: %w", err)
+	}
+	if lastSentCertificateInfo.FromBlock != fromBlock {
+		a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
+			"fromBlock: %d. Check update process 😅", lastSentCertificateInfo.FromBlock, fromBlock)
+	}
+	bridges, claims, err := a.baseFlow.getBridgesAndClaims(
+		ctx, lastSentCertificateInfo.FromBlock,
+		lastSentCertificateInfo.ToBlock,
+		true,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
 	}
 
-	return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:           fromBlock,
+		ToBlock:             lastSentCertificateInfo.ToBlock,
+		RetryCount:          retryCount,
+		Bridges:             bridges,
+		Claims:              claims,
+		LastSentCertificate: lastSentCertificateInfo,
+		CreatedAt:           lastSentCertificateInfo.CreatedAt,
+	}
+
+	if lastSentCertificateInfo.AggchainProof == nil {
+		// this can happen if the aggsender db was deleted, so the aggsender
+		// got the last sent certificate from agglayer, but in that data we do not have
+		// the aggchain proof that was generated before, so we need to call the prover again
+		return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
+	}
+
+	// if we have the aggchain proof, we need to set it in the build params
+	// and set the root from which to prove the imported bridge exits
+	// no need to call the prover again
+	buildParams.AggchainProof = lastSentCertificateInfo.AggchainProof
+	buildParams.L1InfoTreeRootFromWhichToProve = *lastSentCertificateInfo.FinalizedL1InfoTreeRoot
+	buildParams.L1InfoTreeLeafCount = lastSentCertificateInfo.L1InfoTreeLeafCount
+	return buildParams, nil
 }
 
 // verifyBuildParams verifies the certificate build params and returns an error if they are not valid
@@ -205,7 +203,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 		return nil, fmt.Errorf("aggchainProverFlow - error checking for block gaps: %w", err)
 	}
 
-	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, buildParams.LastSentCertificate)
+	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock)
 
 	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
 		ctx, lastProvenBlock, buildParams.ToBlock, buildParams.Claims)
@@ -398,26 +396,13 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	return aggchainProof, root, nil
 }
 
-func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificate *types.CertificateInfo) uint64 {
+func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64) uint64 {
 	if fromBlock == 0 {
-		// if this is the first certificate, we need to start from the starting L2 block
-		// that we got from the sovereign rollup
-		a.log.Infof("aggchainProverFlow - getLastProvenBlock - fromBlock is 0, returns startL2Block: %d",
-			a.startL2Block)
-		return a.startL2Block
+		if a.startL2Block == 0 {
+			a.log.Warnf("aggchainProverFlow - getLastProvenBlock - fromBlock is 0 and startL2Block is 0")
+			return a.startL2Block
+		}
+		return a.startL2Block - 1
 	}
-	if lastCertificate != nil && lastCertificate.ToBlock < a.startL2Block {
-		// if the last certificate is settled on PP, the last proven block is the starting L2 block
-		a.log.Infof("aggchainProverFlow - getLastProvenBlock. Last certificate block: %d < startL2Block: %d",
-			lastCertificate.ToBlock, a.startL2Block)
-		return a.startL2Block
-	}
-	if fromBlock-1 < a.startL2Block {
-		// if the fromBlock is less than the starting L2 block, we need to start from the starting L2 block
-		a.log.Infof("aggchainProverFlow - getLastProvenBlock. FromBlock: %d < startL2Block: %d",
-			fromBlock, a.startL2Block)
-		return a.startL2Block
-	}
-
 	return fromBlock - 1
 }

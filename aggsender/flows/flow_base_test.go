@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -226,6 +227,89 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expectedLER, result)
+			}
+		})
+	}
+}
+func Test_baseFlow_getFromBlockAndRetryCount(t *testing.T) {
+	tests := []struct {
+		name                    string
+		startL2Block            uint64
+		lastSentCertificateInfo *types.CertificateInfo
+		expectedFromBlock       uint64
+		expectedRetryCount      int
+		expectedError           string
+	}{
+		{
+			name:                    "no previous certificate, start from startL2Block",
+			startL2Block:            100,
+			lastSentCertificateInfo: nil,
+			expectedFromBlock:       100,
+			expectedRetryCount:      0,
+		},
+		{
+			name:         "last certificate not in error, use ToBlock",
+			startL2Block: 100,
+			lastSentCertificateInfo: &types.CertificateInfo{
+				ToBlock: 150,
+				Status:  agglayertypes.Settled,
+			},
+			expectedFromBlock:  151,
+			expectedRetryCount: 0,
+		},
+		{
+			name:         "last certificate in error, resend from previous block",
+			startL2Block: 100,
+			lastSentCertificateInfo: &types.CertificateInfo{
+				FromBlock:  120,
+				ToBlock:    150,
+				Status:     agglayertypes.InError,
+				RetryCount: 2,
+			},
+			expectedFromBlock:  120,
+			expectedRetryCount: 3,
+		},
+		{
+			name:         "last certificate in error, FromBlock is 0",
+			startL2Block: 100,
+			lastSentCertificateInfo: &types.CertificateInfo{
+				FromBlock:  0,
+				ToBlock:    150,
+				Status:     agglayertypes.InError,
+				RetryCount: 1,
+			},
+			expectedFromBlock:  0,
+			expectedRetryCount: 2,
+		},
+		{
+			name:         "last certificate candidate, no close cert",
+			startL2Block: 123,
+			lastSentCertificateInfo: &types.CertificateInfo{
+				FromBlock:  125,
+				ToBlock:    150,
+				Status:     agglayertypes.Candidate,
+				RetryCount: 1,
+			},
+			expectedFromBlock:  0,
+			expectedRetryCount: 2,
+			expectedError:      "not closed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			f := &baseFlow{
+				startL2Block: tt.startL2Block,
+			}
+
+			lastSentBlock, retryCount, err := f.getFromBlockAndRetryCount(tt.lastSentCertificateInfo)
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedFromBlock, lastSentBlock, tt.name)
+				require.Equal(t, tt.expectedRetryCount, retryCount, tt.name)
 			}
 		})
 	}

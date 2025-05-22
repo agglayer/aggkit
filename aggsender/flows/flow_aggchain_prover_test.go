@@ -751,7 +751,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				},
 			}
 
-			result := flow.getLastProvenBlock(tc.fromBlock, tc.lastSentCertificate)
+			result := flow.getLastProvenBlock(tc.fromBlock)
 			require.Equal(t, tc.expectedResult, result)
 		})
 	}

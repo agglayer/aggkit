@@ -177,7 +177,7 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 	}
 	shouldRollback = false
 
-	a.logger.Debugf("inserted certificate - Height: %d. Hash: %s", certificate.Height, certificate.CertificateID)
+	a.logger.Debugf("inserted certificate - %s", certificate.ID())
 
 	return nil
 }
