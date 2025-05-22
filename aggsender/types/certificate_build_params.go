@@ -22,7 +22,7 @@ type CertificateBuildParams struct {
 	Claims                         []bridgesync.Claim
 	CreatedAt                      uint32
 	RetryCount                     int
-	LastSentCertificate            *CertificateInfo
+	LastSentCertificate            *CertificateHeader
 	L1InfoTreeRootFromWhichToProve common.Hash
 	L1InfoTreeLeafCount            uint32
 	AggchainProof                  *AggchainProof

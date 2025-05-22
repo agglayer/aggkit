@@ -12,7 +12,7 @@ import (
 func TestGetCertificateHeaderPerHeight(t *testing.T) {
 	sut := NewClient("url")
 	height := uint64(1)
-	responseCert := types.CertificateInfo{}
+	responseCert := types.Certificate{Header: &types.CertificateHeader{}}
 	responseCertJSON, err := json.Marshal(responseCert)
 	require.NoError(t, err)
 	response := rpc.Response{
