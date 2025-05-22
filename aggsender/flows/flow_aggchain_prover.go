@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
 )
@@ -27,8 +28,10 @@ var errNoProofBuiltYet = &aggkitcommon.GRPCError{
 type AggchainProverFlow struct {
 	*baseFlow
 
-	aggchainProofClient grpc.AggchainProofClientInterface
-	gerQuerier          types.GERQuerier
+	aggchainProofClient   grpc.AggchainProofClientInterface
+	gerQuerier            types.GERQuerier
+	optimisticModeQuerier types.OptimisticModeQuerier
+	signer                signertypes.Signer
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
@@ -58,10 +61,13 @@ func NewAggchainProverFlow(log types.Logger,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
 	gerQuerier types.GERQuerier,
-	l1Client types.EthClient) *AggchainProverFlow {
+	optimisticModeQuerier types.OptimisticModeQuerier,
+	l1Client types.EthClient,
+	signer signertypes.Signer) *AggchainProverFlow {
 	return &AggchainProverFlow{
-		aggchainProofClient: aggkitProverClient,
-		gerQuerier:          gerQuerier,
+		aggchainProofClient:   aggkitProverClient,
+		gerQuerier:            gerQuerier,
+		optimisticModeQuerier: optimisticModeQuerier,
 		baseFlow: &baseFlow{
 			log:                   log,
 			l2BridgeQuerier:       l2BridgeQuerier,
@@ -70,6 +76,7 @@ func NewAggchainProverFlow(log types.Logger,
 			maxCertSize:           maxCertSize,
 			startL2Block:          startL2Block,
 		},
+		signer: signer,
 	}
 }
 
@@ -285,42 +292,40 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
-
-	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
-		lastProvenBlock,
-		toBlock,
-		root.Hash,
-		*leaf,
-		agglayertypes.MerkleProof{
+	var aggchainProof *types.AggchainProof
+	request := &grpc.AggchainProofRequest{
+		LastProvenBlock:    lastProvenBlock,
+		RequestedEndBlock:  toBlock,
+		L1InfoTreeRootHash: root.Hash,
+		L1InfoTreeLeaf:     *leaf,
+		L1InfoTreeMerkleProof: agglayertypes.MerkleProof{
 			Root:  root.Hash,
 			Proof: proof,
 		},
-		injectedGERsProofs,
-		importedBridgeExits,
-	)
+		GERLeavesWithBlockNumber:           injectedGERsProofs,
+		ImportedBridgeExitsWithBlockNumber: importedBridgeExits,
+	}
+	optimisticMode, err := a.optimisticModeQuerier.IsOptimisticModeOn()
 	if err != nil {
-		return nil, nil, fmt.Errorf(`error fetching aggchain proof for lastProvenBlock: %d, maxEndBlock: %d: %w. 
-			Message sent: 
-			lastProvenBlock: %d,
-			toBlock: %d,
-			root.Hash: %s,
-			*leaf: %+v,
-			agglayertypes.MerkleProof{
-				Root:  %s,
-				Proof: %+v,
-			},
-			injectedGERsProofs: %+v,
-			importedBridgeExits: %+v,
-		`,
-			lastProvenBlock, toBlock, err,
-			lastProvenBlock,
-			toBlock,
-			root.Hash,
-			*leaf,
-			root.Hash,
-			proof,
-			injectedGERsProofs,
-			importedBridgeExits,
+		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting optimistic mode: %w", err)
+	}
+	a.log.Infof("aggchainProverFlow - requesting proof lastProvenBlock: %d, maxEndBlock: %d, optimisticMode: %t",
+		lastProvenBlock, toBlock, optimisticMode)
+	if !optimisticMode {
+		aggchainProof, err = a.aggchainProofClient.GenerateAggchainProof(request)
+	} else {
+		if a.signer == nil {
+			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request, signer is nil")
+		}
+		sign, err := a.signer.SignHash(ctx, request.HashToSign())
+		if err != nil {
+			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request: %w", err)
+		}
+		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
+	}
+	if err != nil {
+		return nil, nil, fmt.Errorf(`error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, maxEndBlock: %d: %w. 
+		Message sent: %s`, optimisticMode, lastProvenBlock, toBlock, err, request.String(),
 		)
 	}
 

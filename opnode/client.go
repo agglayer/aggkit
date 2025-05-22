@@ -56,3 +56,17 @@ func (c *OpNodeClient) FinalizedL2Block() (*BlockInfo, error) {
 	}
 	return &result, nil
 }
+
+func (c *OpNodeClient) OutputAtBlockRoot(Number uint64) (common.Hash, error) {
+	emptyAnswer := common.Hash{}
+	NumberHex := fmt.Sprintf("0x%x", Number)
+	response, err := jSONRPCCall(c.url, "optimism_outputAtBlock", NumberHex)
+	if err != nil {
+		return emptyAnswer, fmt.Errorf("opNodeClient error calling optimism_outputAtBlock jSONRPCCall. Err:%w", err)
+	}
+	if response.Error != nil {
+		return emptyAnswer, fmt.Errorf("opNodeClient error calling optimism_outputAtBlock, server returns error: %v %v",
+			response.Error.Code, response.Error.Message)
+	}
+	return emptyAnswer, nil
+}
