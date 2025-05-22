@@ -403,10 +403,7 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) aggkittypes.EthCl
 		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", urlRPCL1, err)
 	}
 
-	return &aggkittypes.DefaultEthClient{
-		BaseEthereumClienter: l1Client,
-		RPCClienter:          l1Client.Client(),
-	}
+	return aggkittypes.NewDefaultEthClient(l1Client, l1Client.Client())
 }
 
 func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Config,
@@ -434,10 +431,7 @@ func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientC
 		log.Fatalf("failed to create client for L2 using URL: %s. Err:%v", urlRPCL2, err)
 	}
 
-	return &aggkittypes.DefaultEthClient{
-		BaseEthereumClienter: l2Client,
-		RPCClienter:          l2Client.Client(),
-	}
+	return l2Client
 }
 
 func runReorgDetectorL1IfNeeded(

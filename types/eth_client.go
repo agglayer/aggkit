@@ -13,6 +13,14 @@ type DefaultEthClient struct {
 	RPCClienter
 }
 
+// NewDefaultEthClient creates a new DefaultEthClient.
+func NewDefaultEthClient(baseClient BaseEthereumClienter, rpcClient RPCClienter) *DefaultEthClient {
+	return &DefaultEthClient{
+		BaseEthereumClienter: baseClient,
+		RPCClienter:          rpcClient,
+	}
+}
+
 // EthClienter defines the methods for an Ethereum RPC client.
 type EthClienter interface {
 	BaseEthereumClienter
