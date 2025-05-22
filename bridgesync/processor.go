@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -17,7 +16,6 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
@@ -57,91 +55,6 @@ var (
 	// with specific legacy token address
 	deleteLegacyTokenSQL = fmt.Sprintf("DELETE FROM %s WHERE legacy_token_address = $1", legacyTokenMigrationTableName)
 )
-
-// NewBridgeResponse creates a new BridgeResponse instance out of the provided Bridge instance
-func NewBridgeResponse(bridge *Bridge) *bridgetypes.BridgeResponse {
-	return &bridgetypes.BridgeResponse{
-		BlockNum:           bridge.BlockNum,
-		BlockPos:           bridge.BlockPos,
-		FromAddress:        bridgetypes.Address(bridge.FromAddress.Hex()),
-		TxHash:             bridgetypes.Hash(bridge.TxHash.Hex()),
-		Calldata:           fmt.Sprintf("0x%s", hex.EncodeToString(bridge.Calldata)),
-		BlockTimestamp:     bridge.BlockTimestamp,
-		LeafType:           bridge.LeafType,
-		OriginNetwork:      bridge.OriginNetwork,
-		OriginAddress:      bridgetypes.Address(bridge.OriginAddress.Hex()),
-		DestinationNetwork: bridge.DestinationNetwork,
-		DestinationAddress: bridgetypes.Address(bridge.DestinationAddress.Hex()),
-		Amount:             bridgetypes.BigIntString(bridge.Amount.String()),
-		Metadata:           fmt.Sprintf("0x%s", hex.EncodeToString(bridge.Metadata)),
-		DepositCount:       bridge.DepositCount,
-		IsNativeToken:      bridge.IsNativeToken,
-		BridgeHash:         bridgetypes.Hash(bridge.Hash().Hex()),
-	}
-}
-
-// NewClaimResponse creates ClaimResponse instance out of the provided Claim
-func NewClaimResponse(claim *Claim) *bridgetypes.ClaimResponse {
-	return &bridgetypes.ClaimResponse{
-		GlobalIndex:        bridgetypes.BigIntString(claim.GlobalIndex.String()),
-		DestinationNetwork: claim.DestinationNetwork,
-		TxHash:             bridgetypes.Hash(claim.TxHash.Hex()),
-		Amount:             bridgetypes.BigIntString(claim.Amount.String()),
-		BlockNum:           claim.BlockNum,
-		FromAddress:        bridgetypes.Address(claim.FromAddress.Hex()),
-		DestinationAddress: bridgetypes.Address(claim.DestinationAddress.Hex()),
-		OriginAddress:      bridgetypes.Address(claim.OriginAddress.Hex()),
-		OriginNetwork:      claim.OriginNetwork,
-		BlockTimestamp:     claim.BlockTimestamp,
-	}
-}
-
-// NewTokenMappingResponse creates TokenMappingResponse instance out of the provided TokenMapping
-func NewTokenMappingResponse(tokenMapping *TokenMapping) *bridgetypes.TokenMappingResponse {
-	return &bridgetypes.TokenMappingResponse{
-		BlockNum:            tokenMapping.BlockNum,
-		BlockPos:            tokenMapping.BlockPos,
-		BlockTimestamp:      tokenMapping.BlockTimestamp,
-		TxHash:              bridgetypes.Hash(tokenMapping.TxHash.Hex()),
-		OriginNetwork:       tokenMapping.OriginNetwork,
-		OriginTokenAddress:  bridgetypes.Address(tokenMapping.OriginTokenAddress.Hex()),
-		WrappedTokenAddress: bridgetypes.Address(tokenMapping.WrappedTokenAddress.Hex()),
-		Metadata:            fmt.Sprintf("0x%s", hex.EncodeToString(tokenMapping.Metadata)),
-		IsNotMintable:       tokenMapping.IsNotMintable,
-		Calldata:            fmt.Sprintf("0x%s", hex.EncodeToString(tokenMapping.Calldata)),
-		Type:                tokenMapping.Type,
-	}
-}
-
-// NewTokenMigrationResponse creates LegacyTokenMigrationResponse instance out of the provided LegacyTokenMigration
-func NewTokenMigrationResponse(tokenMigration *LegacyTokenMigration) *bridgetypes.LegacyTokenMigrationResponse {
-	return &bridgetypes.LegacyTokenMigrationResponse{
-		BlockNum:            tokenMigration.BlockNum,
-		BlockPos:            tokenMigration.BlockPos,
-		BlockTimestamp:      tokenMigration.BlockTimestamp,
-		TxHash:              bridgetypes.Hash(tokenMigration.TxHash.Hex()),
-		Sender:              bridgetypes.Address(tokenMigration.Sender.Hex()),
-		LegacyTokenAddress:  bridgetypes.Address(tokenMigration.LegacyTokenAddress.Hex()),
-		UpdatedTokenAddress: bridgetypes.Address(tokenMigration.UpdatedTokenAddress.Hex()),
-		Amount:              bridgetypes.BigIntString(tokenMigration.Amount.String()),
-		Calldata:            fmt.Sprintf("0x%s", hex.EncodeToString(tokenMigration.Calldata)),
-	}
-}
-
-// NewL1InfoTreeLeafResponse creates L1InfoTreeLeafResponse instance out of the provided L1InfoTreeLeaf
-func NewL1InfoTreeLeafResponse(leaf *l1infotreesync.L1InfoTreeLeaf) *bridgetypes.L1InfoTreeLeafResponse {
-	return &bridgetypes.L1InfoTreeLeafResponse{
-		BlockNumber:       leaf.BlockNumber,
-		BlockPosition:     leaf.BlockPosition,
-		L1InfoTreeIndex:   leaf.L1InfoTreeIndex,
-		PreviousBlockHash: bridgetypes.Hash(leaf.PreviousBlockHash.Hex()),
-		Timestamp:         leaf.Timestamp,
-		MainnetExitRoot:   bridgetypes.Hash(leaf.MainnetExitRoot.Hex()),
-		RollupExitRoot:    bridgetypes.Hash(leaf.RollupExitRoot.Hex()),
-		GlobalExitRoot:    bridgetypes.Hash(leaf.GlobalExitRoot.Hex()),
-		Hash:              bridgetypes.Hash(leaf.Hash.Hex()),
-	}
-}
 
 // Bridge is the representation of a bridge event
 type Bridge struct {

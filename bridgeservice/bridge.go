@@ -261,7 +261,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		return
 	}
 
-	bridgeResponses := aggkitcommon.MapSlice(bridges, bridgesync.NewBridgeResponse)
+	bridgeResponses := aggkitcommon.MapSlice(bridges, NewBridgeResponse)
 
 	c.JSON(http.StatusOK,
 		types.BridgesResult{
@@ -338,7 +338,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	claimResponses := aggkitcommon.MapSlice(claims, bridgesync.NewClaimResponse)
+	claimResponses := aggkitcommon.MapSlice(claims, NewClaimResponse)
 
 	c.JSON(http.StatusOK,
 		types.ClaimsResult{
@@ -398,7 +398,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		return
 	}
 
-	tokenMappingResponses := aggkitcommon.MapSlice(tokenMappings, bridgesync.NewTokenMappingResponse)
+	tokenMappingResponses := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
 
 	c.JSON(http.StatusOK,
 		types.TokenMappingsResult{
@@ -458,7 +458,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		return
 	}
 
-	tokenMigrationResponses := aggkitcommon.MapSlice(tokenMigrations, bridgesync.NewTokenMigrationResponse)
+	tokenMigrationResponses := aggkitcommon.MapSlice(tokenMigrations, NewTokenMigrationResponse)
 
 	c.JSON(http.StatusOK,
 		types.LegacyTokenMigrationsResult{
@@ -593,7 +593,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 		return
 	}
 
-	l1InfoLeafResponse := bridgesync.NewL1InfoTreeLeafResponse(l1InfoLeaf)
+	l1InfoLeafResponse := NewL1InfoTreeLeafResponse(l1InfoLeaf)
 	c.JSON(http.StatusOK, l1InfoLeafResponse)
 }
 
@@ -687,7 +687,7 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 		return
 	}
 
-	infoResponse := bridgesync.NewL1InfoTreeLeafResponse(info)
+	infoResponse := NewL1InfoTreeLeafResponse(info)
 
 	c.JSON(http.StatusOK, types.ClaimProof{
 		ProofLocalExitRoot:  types.ConvertToProofResponse(proofLocalExitRoot),
