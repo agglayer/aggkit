@@ -11,6 +11,7 @@ import (
 
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
+	clientmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -294,7 +295,7 @@ func TestFilterQueryToString(t *testing.T) {
 }
 
 func TestGetLogs(t *testing.T) {
-	mockEthClient := NewL2Mock(t)
+	mockEthClient := clientmocks.NewBaseEthereumClienter(t)
 	sut := EVMDownloaderImplementation{
 		ethClient:        mockEthClient,
 		addressesToQuery: []common.Address{contractAddr},
@@ -355,14 +356,14 @@ func buildAppender() LogAppenderMap {
 	return appender
 }
 
-func NewTestDownloader(t *testing.T, retryPeriod time.Duration) (*EVMDownloader, *L2Mock) {
+func NewTestDownloader(t *testing.T, retryPeriod time.Duration) (*EVMDownloader, *clientmocks.BaseEthereumClienter) {
 	t.Helper()
 
 	rh := &RetryHandler{
 		MaxRetryAttemptsAfterError: 5,
 		RetryAfterErrorPeriod:      retryPeriod,
 	}
-	clientMock := NewL2Mock(t)
+	clientMock := clientmocks.NewBaseEthereumClienter(t)
 	d, err := NewEVMDownloader("test",
 		clientMock, syncBlockChunck, etherman.LatestBlock, time.Millisecond,
 		buildAppender(), []common.Address{contractAddr}, rh,

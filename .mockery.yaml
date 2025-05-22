@@ -57,11 +57,6 @@ packages:
       dir: "{{ .InterfaceDir }}/mocks"
     interfaces:
       ReorgDetector:
-  github.com/agglayer/aggkit/l1infotreesync:
-    config:
-      dir: "{{ .InterfaceDir }}/mocks"
-    interfaces:
-      EthClienter:
   github.com/agglayer/aggkit/reorgdetector:
     config:
       dir: "{{ .InterfaceDir }}"
@@ -99,9 +94,6 @@ packages:
       Downloader:
         config:
           mockname: "DownloaderMock"
-      EthClienter:
-        config:
-          mockname: "L2Mock"
   github.com/agglayer/aggkit/db/compatibility:
     config:
       dir: "{{ .InterfaceDir }}/mocks"

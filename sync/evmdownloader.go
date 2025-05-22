@@ -10,6 +10,7 @@ import (
 
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -22,12 +23,6 @@ const (
 var (
 	errChainIDUndefined = errors.New("chain id is undefined")
 )
-
-type EthClienter interface {
-	FilterLogs(ctx context.Context, q ethereum.FilterQuery) ([]types.Log, error)
-	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
-	ChainID(ctx context.Context) (*big.Int, error)
-}
 
 type EVMDownloaderInterface interface {
 	WaitForNewBlocks(ctx context.Context, lastBlockSeen uint64) (newLastBlock uint64)
@@ -60,7 +55,7 @@ type EVMDownloader struct {
 
 func NewEVMDownloader(
 	syncerID string,
-	ethClient EthClienter,
+	ethClient aggkittypes.BaseEthereumClienter,
 	syncBlockChunkSize uint64,
 	blockFinalityType etherman.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
@@ -234,7 +229,7 @@ func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan 
 }
 
 type EVMDownloaderImplementation struct {
-	ethClient              EthClienter
+	ethClient              aggkittypes.BaseEthereumClienter
 	blockFinality          *big.Int
 	waitForNewBlocksPeriod time.Duration
 	appender               LogAppenderMap
@@ -247,7 +242,7 @@ type EVMDownloaderImplementation struct {
 
 func NewEVMDownloaderImplementation(
 	syncerID string,
-	ethClient EthClienter,
+	ethClient aggkittypes.BaseEthereumClienter,
 	blockFinality *big.Int,
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,

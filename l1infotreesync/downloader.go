@@ -7,8 +7,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -25,14 +24,6 @@ var (
 	)
 	initL1InfoRootMapSignature = crypto.Keccak256Hash([]byte("InitL1InfoRootMap(uint32,bytes32)"))
 )
-
-type EthClienter interface {
-	ethereum.LogFilterer
-	ethereum.BlockNumberReader
-	ethereum.ChainReader
-	ethereum.ChainIDReader
-	bind.ContractBackend
-}
 
 func checkSMCIsRollupManager(rollupManagerAddr common.Address,
 	rollupManagerContract *polygonrollupmanager.Polygonrollupmanager) error {
@@ -67,7 +58,7 @@ func sanityCheckContracts(globalExitRoot, rollupManager common.Address,
 	return nil
 }
 
-func createContracts(client EthClienter, globalExitRoot, rollupManager common.Address) (
+func createContracts(client aggkittypes.BaseEthereumClienter, globalExitRoot, rollupManager common.Address) (
 	*polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2,
 	*polygonrollupmanager.Polygonrollupmanager,
 	error) {
@@ -83,7 +74,7 @@ func createContracts(client EthClienter, globalExitRoot, rollupManager common.Ad
 	return gerContract, rollupManagerContract, nil
 }
 
-func buildAppender(client EthClienter, globalExitRoot,
+func buildAppender(client aggkittypes.BaseEthereumClienter, globalExitRoot,
 	rollupManager common.Address, flags CreationFlags) (sync.LogAppenderMap, error) {
 	ger, rm, err := createContracts(client, globalExitRoot, rollupManager)
 	if err != nil {

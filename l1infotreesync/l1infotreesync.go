@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -45,7 +46,7 @@ func New(
 	syncBlockChunkSize uint64,
 	blockFinalityType etherman.BlockNumberFinality,
 	rd sync.ReorgDetector,
-	l1Client EthClienter,
+	l1Client aggkittypes.BaseEthereumClienter,
 	waitForNewBlocksPeriod time.Duration,
 	initialBlock uint64,
 	retryAfterErrorPeriod time.Duration,
