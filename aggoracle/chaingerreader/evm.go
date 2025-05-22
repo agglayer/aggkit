@@ -28,7 +28,9 @@ type EVMChainGERReader struct {
 }
 
 // NewEVMChainGERReader creates a new L2Etherman
-func NewEVMChainGERReader(l2GERManagerAddr common.Address, l2Client aggkittypes.BaseEthereumClienter) (*EVMChainGERReader, error) {
+func NewEVMChainGERReader(
+	l2GERManagerAddr common.Address,
+	l2Client aggkittypes.BaseEthereumClienter) (*EVMChainGERReader, error) {
 	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERManagerAddr, l2Client)
 	if err != nil {
