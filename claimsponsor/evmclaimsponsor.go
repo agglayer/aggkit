@@ -12,7 +12,6 @@ import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -30,7 +29,6 @@ var ErrGasEstimateTooHigh = errors.New(
 
 type EthClienter interface {
 	ethereum.GasEstimator
-	bind.ContractBackend
 }
 
 type EthTxManager interface {
