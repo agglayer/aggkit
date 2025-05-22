@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 )
 
@@ -20,8 +21,8 @@ func NewFlow(
 	cfg config.Config,
 	logger *log.Logger,
 	storage db.AggSenderStorage,
-	l1Client types.EthClient,
-	l2Client types.EthClient,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 ) (types.AggsenderFlow, error) {
