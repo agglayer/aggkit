@@ -11,6 +11,7 @@ import (
 
 	aggkittypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/etherman"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
@@ -226,7 +227,7 @@ func TestDetectReorgs(t *testing.T) {
 		t.Parallel()
 
 		lastFinalizedBlock := &types.Header{Number: big.NewInt(8)}
-		client := NewEthClientMock(t)
+		client := aggkittypesmocks.NewBaseEthereumClienter(t)
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
 		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(trackedBlock, nil)
 
@@ -253,7 +254,7 @@ func TestDetectReorgs(t *testing.T) {
 		t.Parallel()
 
 		lastFinalizedBlock := trackedBlock
-		client := NewEthClientMock(t)
+		client := aggkittypesmocks.NewBaseEthereumClienter(t)
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")
@@ -277,7 +278,7 @@ func TestDetectReorgs(t *testing.T) {
 		lastFinalizedBlock := &types.Header{Number: big.NewInt(5)}
 		reorgedTrackedBlock := &types.Header{Number: trackedBlock.Number, Extra: []byte("reorged")} // Different hash
 
-		client := NewEthClientMock(t)
+		client := aggkittypesmocks.NewBaseEthereumClienter(t)
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
 		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(reorgedTrackedBlock, nil)
 

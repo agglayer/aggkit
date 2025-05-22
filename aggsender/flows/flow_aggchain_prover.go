@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
 )
@@ -31,7 +32,7 @@ type AggchainProverFlow struct {
 	gerQuerier          types.GERQuerier
 }
 
-func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
+func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (uint64, error) {
 	aggChainFEPContract, err := aggchainfep.NewAggchainfepCaller(sovereignRollupAddr, l1Client)
 	if err != nil {
 		return 0, fmt.Errorf("aggchainProverFlow - error creating sovereign rollup caller (%s): %w",
@@ -52,14 +53,13 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 // NewAggchainProverFlow returns a new instance of the AggchainProverFlow
 func NewAggchainProverFlow(log types.Logger,
 	maxCertSize uint,
-	bridgeMetaDataAsHash bool,
 	startL2Block uint64,
 	aggkitProverClient grpc.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
 	gerQuerier types.GERQuerier,
-	l1Client types.EthClient) *AggchainProverFlow {
+	l1Client aggkittypes.BaseEthereumClienter) *AggchainProverFlow {
 	return &AggchainProverFlow{
 		aggchainProofClient: aggkitProverClient,
 		gerQuerier:          gerQuerier,
@@ -70,7 +70,6 @@ func NewAggchainProverFlow(log types.Logger,
 			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 			maxCertSize:           maxCertSize,
 			startL2Block:          startL2Block,
-			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},
 	}
 }

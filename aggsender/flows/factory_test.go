@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/log"
+	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/stretchr/testify/require"
 )
@@ -25,10 +26,9 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "success with PessimisticProofMode",
 			cfg: config.Config{
-				Mode:                 string(types.PessimisticProofMode),
-				AggsenderPrivateKey:  signertypes.SignerConfig{Method: signertypes.MethodNone},
-				MaxCertSize:          100,
-				BridgeMetadataAsHash: true,
+				Mode:                string(types.PessimisticProofMode),
+				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
+				MaxCertSize:         100,
 			},
 		},
 		{
@@ -63,8 +63,8 @@ func TestNewFlow(t *testing.T) {
 			t.Parallel()
 
 			mockStorage := new(mocks.AggSenderStorage)
-			mockL1Client := new(mocks.EthClient)
-			mockL2Client := new(mocks.EthClient)
+			mockL1Client := new(typesmocks.BaseEthereumClienter)
+			mockL2Client := new(typesmocks.BaseEthereumClienter)
 			mockL1InfoTreeSyncer := new(mocks.L1InfoTreeSyncer)
 			mockL2BridgeSyncer := new(mocks.L2BridgeSyncer)
 			mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(1)

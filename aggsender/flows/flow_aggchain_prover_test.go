@@ -17,9 +17,11 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -460,7 +462,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 			aggchainFlow := NewAggchainProverFlow(
 				log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
-				0, true, 0,
+				0, 0,
 				mockAggchainProofClient,
 				mockStorage,
 				mockL1InfoTreeDataQuerier,
@@ -551,7 +553,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 							DestinationNetwork: 2,
 							DestinationAddress: common.HexToAddress("0x456"),
 							Amount:             big.NewInt(100),
-							Metadata:           []byte("metadata"),
+							Metadata:           crypto.Keccak256([]byte("metadata")),
 						},
 						GlobalIndex: &agglayertypes.GlobalIndex{
 							MainnetFlag: false,
@@ -572,7 +574,7 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 							DestinationNetwork: 2,
 							DestinationAddress: common.HexToAddress("0x456"),
 							Amount:             big.NewInt(100),
-							Metadata:           []byte("metadata"),
+							Metadata:           crypto.Keccak256([]byte("metadata")),
 						},
 						GlobalIndex: &agglayertypes.GlobalIndex{
 							MainnetFlag: false,
@@ -847,20 +849,20 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		mockFn        func(mockEthClient *mocks.EthClient)
+		mockFn        func(mockEthClient *aggkittypesmocks.BaseEthereumClienter)
 		expectedBlock uint64
 		expectedError string
 	}{
 		{
 			name: "error creating sovereign rollup caller",
-			mockFn: func(mockEthClient *mocks.EthClient) {
+			mockFn: func(mockEthClient *aggkittypesmocks.BaseEthereumClienter) {
 				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
 			},
 			expectedError: "aggchainProverFlow",
 		},
 		{
 			name: "ok fetching starting block number",
-			mockFn: func(mockEthClient *mocks.EthClient) {
+			mockFn: func(mockEthClient *aggkittypesmocks.BaseEthereumClienter) {
 				encodedReturnValue, err := getResponseContractCallStartingBlockNumber(12345)
 				if err != nil {
 					t.Fatalf("failed to pack method: %v", err)
@@ -878,7 +880,7 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockEthClient := mocks.NewEthClient(t)
+			mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
 
 			tc.mockFn(mockEthClient)
 

@@ -219,3 +219,37 @@ func Test_updateClaimStatus(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, newStatus, claimResp.Status)
 }
+
+func Test_deleteClaim(t *testing.T) {
+	testDir := path.Join(t.TempDir(), "claimsponsor_Test_deleteClaim.sqlite")
+	logger := log.GetDefaultLogger()
+	c, err := newClaimSponsor(logger, testDir, nil, testRetryAfterErrorPeriod, testMaxRetryAttemptsAfterError, testWaitTxToBeMinedPeriod, testWaitOnEmptyQueue)
+	require.NoError(t, err)
+
+	claim := &Claim{
+		LeafType:            1,
+		ProofLocalExitRoot:  tree.Proof{},
+		ProofRollupExitRoot: tree.Proof{},
+		GlobalIndex:         big.NewInt(1),
+		MainnetExitRoot:     common.Hash{},
+		RollupExitRoot:      common.Hash{},
+		OriginNetwork:       1,
+		OriginTokenAddress:  common.Address{},
+		DestinationNetwork:  2,
+		DestinationAddress:  common.Address{},
+		Amount:              big.NewInt(100),
+		TxID:                "test-tx-id",
+		Status:              PendingClaimStatus,
+	}
+
+	err = meddler.Insert(c.db, "claim", claim)
+	require.NoError(t, err)
+
+	// Delete the claim
+	err = c.deleteClaim(claim.GlobalIndex)
+	require.NoError(t, err)
+
+	// try to delete a claim that doesn't exist
+	err = c.deleteClaim(claim.GlobalIndex)
+	require.ErrorIs(t, err, ErrClaimDoesntExist)
+}

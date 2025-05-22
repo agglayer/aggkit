@@ -23,7 +23,6 @@ type PPFlow struct {
 // NewPPFlow returns a new instance of the PPFlow
 func NewPPFlow(log types.Logger,
 	maxCertSize uint,
-	bridgeMetaDataAsHash bool,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
@@ -36,7 +35,6 @@ func NewPPFlow(log types.Logger,
 			storage:               storage,
 			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 			maxCertSize:           maxCertSize,
-			bridgeMetaDataAsHash:  bridgeMetaDataAsHash,
 		},
 	}
 }

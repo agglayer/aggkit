@@ -31,9 +31,8 @@ type baseFlow struct {
 
 	log types.Logger
 
-	maxCertSize          uint
-	bridgeMetaDataAsHash bool
-	startL2Block         uint64
+	maxCertSize  uint
+	startL2Block uint64
 }
 
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
@@ -185,22 +184,17 @@ func (f *baseFlow) getNewLocalExitRoot(
 	return exitRoot, nil
 }
 
-// createCertificateMetadata creates the metadata for the certificate
-// it returns: newMetadata + bool if the metadata is hashed or not
-func convertBridgeMetadata(metadata []byte, importedBridgeMetadataAsHash bool) ([]byte, bool) {
-	var (
-		metaData         []byte
-		isMetadataHashed bool
-	)
+// convertBridgeMetadata converts the bridge metadata to a hash using crypto.Keccak256.
+// If the metadata is empty, it returns nil (the zero value for a slice in Go).
+// Note: The "previous flag" is no longer returned by this function.
+func convertBridgeMetadata(metadata []byte) []byte {
+	var metaData []byte
 
-	if importedBridgeMetadataAsHash && len(metadata) > 0 {
+	if len(metadata) > 0 {
 		metaData = crypto.Keccak256(metadata)
-		isMetadataHashed = true
-	} else {
-		metaData = metadata
-		isMetadataHashed = false
 	}
-	return metaData, isMetadataHashed
+
+	return metaData
 }
 
 // convertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
@@ -209,7 +203,7 @@ func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 	if claim.IsMessage {
 		leafType = agglayertypes.LeafTypeMessage
 	}
-	metaData, isMetadataIsHashed := convertBridgeMetadata(claim.Metadata, f.bridgeMetaDataAsHash)
+	metaData := convertBridgeMetadata(claim.Metadata)
 
 	bridgeExit := &agglayertypes.BridgeExit{
 		LeafType: leafType,
@@ -220,7 +214,6 @@ func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 		DestinationNetwork: claim.DestinationNetwork,
 		DestinationAddress: claim.DestinationAddress,
 		Amount:             claim.Amount,
-		IsMetadataHashed:   isMetadataIsHashed,
 		Metadata:           metaData,
 	}
 
@@ -244,7 +237,7 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 	bridgeExits := make([]*agglayertypes.BridgeExit, 0, len(bridges))
 
 	for _, bridge := range bridges {
-		metaData, isMetadataHashed := convertBridgeMetadata(bridge.Metadata, f.bridgeMetaDataAsHash)
+		metaData := convertBridgeMetadata(bridge.Metadata)
 		bridgeExits = append(bridgeExits, &agglayertypes.BridgeExit{
 			LeafType: agglayertypes.LeafType(bridge.LeafType),
 			TokenInfo: &agglayertypes.TokenInfo{
@@ -254,7 +247,6 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 			DestinationNetwork: bridge.DestinationNetwork,
 			DestinationAddress: bridge.DestinationAddress,
 			Amount:             bridge.Amount,
-			IsMetadataHashed:   isMetadataHashed,
 			Metadata:           metaData,
 		})
 	}

@@ -31,7 +31,8 @@
     "l1_seconds_per_slot": 2,
     "additional_services": [
       "bridge_spammer"
-    ]
+    ],
+    "enable_aggkit_claim_sponsor": true
   },
   "optimism_package": {
     "source": "github.com/agglayer/optimism-package/main.star@cc37713aff9c4955dd6975cdbc34072a1286754e",

@@ -56,7 +56,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 					DestinationNetwork: 2,
 					DestinationAddress: common.HexToAddress("0x456"),
 					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
+					Metadata:           crypto.Keccak256([]byte("metadata")),
 				},
 				GlobalIndex: &agglayertypes.GlobalIndex{
 					MainnetFlag: false,
@@ -88,7 +88,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 					DestinationNetwork: 2,
 					DestinationAddress: common.HexToAddress("0x456"),
 					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
+					Metadata:           crypto.Keccak256([]byte("metadata")),
 				},
 				GlobalIndex: &agglayertypes.GlobalIndex{
 					MainnetFlag: false,
@@ -164,7 +164,7 @@ func TestGetBridgeExits(t *testing.T) {
 					DestinationNetwork: 2,
 					DestinationAddress: common.HexToAddress("0x456"),
 					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
+					Metadata:           crypto.Keccak256([]byte("metadata")),
 				},
 			},
 		},
@@ -200,7 +200,7 @@ func TestGetBridgeExits(t *testing.T) {
 					DestinationNetwork: 2,
 					DestinationAddress: common.HexToAddress("0x456"),
 					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
+					Metadata:           crypto.Keccak256([]byte("metadata")),
 				},
 				{
 					LeafType: agglayertypes.LeafTypeMessage,
@@ -211,7 +211,7 @@ func TestGetBridgeExits(t *testing.T) {
 					DestinationNetwork: 4,
 					DestinationAddress: common.HexToAddress("0xabc"),
 					Amount:             big.NewInt(200),
-					Metadata:           []byte("data"),
+					Metadata:           crypto.Keccak256([]byte("data")),
 				},
 			},
 		},
@@ -288,7 +288,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 						DestinationNetwork: 2,
 						DestinationAddress: common.HexToAddress("0x4567"),
 						Amount:             big.NewInt(111),
-						Metadata:           []byte("metadata1"),
+						Metadata:           crypto.Keccak256([]byte("metadata1")),
 					},
 					GlobalIndex: &agglayertypes.GlobalIndex{
 						MainnetFlag: false,
@@ -368,7 +368,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 						DestinationNetwork: 2,
 						DestinationAddress: common.HexToAddress("0x456"),
 						Amount:             big.NewInt(100),
-						Metadata:           []byte("metadata"),
+						Metadata:           crypto.Keccak256([]byte("metadata")),
 					},
 					GlobalIndex: &agglayertypes.GlobalIndex{
 						MainnetFlag: false,
@@ -410,7 +410,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 						DestinationNetwork: 4,
 						DestinationAddress: common.HexToAddress("0xabc"),
 						Amount:             big.NewInt(200),
-						Metadata:           []byte("data"),
+						Metadata:           crypto.Keccak256([]byte("data")),
 					},
 					GlobalIndex: &agglayertypes.GlobalIndex{
 						MainnetFlag: true,
@@ -540,7 +540,7 @@ func TestBuildCertificate(t *testing.T) {
 						DestinationNetwork: 2,
 						DestinationAddress: common.HexToAddress("0x456"),
 						Amount:             big.NewInt(100),
-						Metadata:           []byte("metadata"),
+						Metadata:           crypto.Keccak256([]byte("metadata")),
 					},
 				},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{
@@ -554,7 +554,7 @@ func TestBuildCertificate(t *testing.T) {
 							DestinationNetwork: 2,
 							DestinationAddress: common.HexToAddress("0x4567"),
 							Amount:             big.NewInt(111),
-							Metadata:           []byte("metadata1"),
+							Metadata:           crypto.Keccak256([]byte("metadata1")),
 						},
 						GlobalIndex: &agglayertypes.GlobalIndex{
 							MainnetFlag: false,
