@@ -7,7 +7,7 @@ import (
 
 var _ EthClienter = (*DefaultEthClient)(nil)
 
-// DefaultEthClient is the default implementation of EthClient.
+// DefaultEthClient is the default implementation of EthClienter.
 type DefaultEthClient struct {
 	BaseEthereumClienter
 	RPCClienter
