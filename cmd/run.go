@@ -429,14 +429,14 @@ func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientC
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
-	l2CLient, err := etherman.NewRPCClient(urlRPCL2)
+	l2Client, err := etherman.NewRPCClient(urlRPCL2)
 	if err != nil {
 		log.Fatalf("failed to create client for L2 using URL: %s. Err:%v", urlRPCL2, err)
 	}
 
 	return &aggkittypes.DefaultEthClient{
-		BaseEthereumClienter: l2CLient,
-		RPCClienter:          l2CLient.Client(),
+		BaseEthereumClienter: l2Client,
+		RPCClienter:          l2Client.Client(),
 	}
 }
 
