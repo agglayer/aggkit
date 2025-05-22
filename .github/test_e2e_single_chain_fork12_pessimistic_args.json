@@ -22,6 +22,7 @@
     "agglayer_prover_primary_prover": "mock-prover",
     "enable_normalcy": true,
     "zkevm_rollup_id": 1,
-    "binary_name": "aggkit"
+    "binary_name": "aggkit",
+    "enable_aggkit_claim_sponsor": true
   }
 }
