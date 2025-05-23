@@ -17,6 +17,7 @@ import (
 	"time"
 
 	mocks "github.com/agglayer/aggkit/bridgeservice/mocks"
+	"github.com/agglayer/aggkit/bridgeservice/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
