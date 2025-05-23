@@ -35,7 +35,6 @@ if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ]; then
     make build-docker
     make build-tools
     chmod +x "./target/aggsender_find_imported_bridge"
-    export AGGSENDER_IMPORTED_BRIDGE_PATH="./target/aggsender_find_imported_bridge"
     popd >/dev/null
 else
     log_info "Docker image aggkit:local already exists."
@@ -71,6 +70,11 @@ log_info "$ENCLAVE_NAME enclave started successfully."
 popd >/dev/null
 
 if [ -n "$E2E_FOLDER" ]; then
+    if [ ! -d "$E2E_FOLDER" ]; then
+        log_error "The provided E2E folder does not exist: $E2E_FOLDER"
+        exit 1
+    fi
+
     log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
     pushd "$E2E_FOLDER" >/dev/null
 
@@ -79,9 +83,19 @@ if [ -n "$E2E_FOLDER" ]; then
     source ./tests/.env
     set +a
 
+    local imported_bridges_tool="./target/aggsender_find_imported_bridge"
+    if [ ! -f "$imported_bridges_tool" ]; then
+        log_error "The aggsender imported bridge tool is not built. Expected path: $imported_bridges_tool"
+        exit 1
+    fi
+
+    cp "$imported_bridges_tool" "$E2E_FOLDER/aggsender_find_imported_bridge"
+    chmod +x "$E2E_FOLDER/aggsender_find_imported_bridge"
+
     export BATS_LIB_PATH="$PWD/core/helpers/lib"
     export PROJECT_ROOT="$PWD"
     export ENCLAVE="$ENCLAVE_NAME"
+    export AGGSENDER_IMPORTED_BRIDGE_PATH="$E2E_FOLDER/aggsender_find_imported_bridge"
 
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
