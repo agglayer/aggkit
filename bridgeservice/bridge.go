@@ -94,6 +94,8 @@ func New(
 	case gin.DebugMode, gin.ReleaseMode, gin.TestMode:
 		gin.SetMode(ginMode)
 	default:
+		cfg.Logger.Infof("invalid or missing GIN_MODE value ('%s') provided, defaulting to '%s' mode",
+			ginMode, gin.ReleaseMode)
 		gin.SetMode(gin.ReleaseMode) // fallback to release mode
 	}
 
