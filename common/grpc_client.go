@@ -3,12 +3,19 @@ package common
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
+)
+
+const (
+	// minConnectTimeout is the minimum time to wait for a connection to be established
+	minConnectTimeout = 5 * time.Second
 )
 
 // Client holds the gRPC connection and services
@@ -18,9 +25,16 @@ type Client struct {
 
 // NewClient initializes and returns a new gRPC client
 func NewClient(serverAddr string) (*Client, error) {
-	// TODO - Check if we need to use this
-	var opts []grpc.DialOption
-	opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	connectParams := grpc.ConnectParams{
+		Backoff:           backoff.DefaultConfig,
+		MinConnectTimeout: minConnectTimeout,
+	}
+
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithConnectParams(connectParams),
+	}
+
 	conn, err := grpc.NewClient(serverAddr, opts...)
 	if err != nil {
 		return nil, err

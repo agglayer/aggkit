@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
@@ -256,7 +257,7 @@ func LoadFile(files []FileData, saveConfigPath string,
 		return nil, err
 	}
 	if saveConfigPath != "" {
-		fullPath := saveConfigPath + "/" + SaveConfigFileName + ".merged"
+		fullPath := filepath.Join(saveConfigPath, fmt.Sprintf("%s.merged", SaveConfigFileName))
 		err = SaveDataToFile(fullPath, "merged config file", []byte(renderedCfg))
 		if err != nil {
 			return nil, err

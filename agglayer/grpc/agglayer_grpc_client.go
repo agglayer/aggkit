@@ -3,7 +3,9 @@ package grpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	node "buf.build/gen/go/agglayer/agglayer/grpc/go/agglayer/node/v1/nodev1grpc"
 	v1nodetypes "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
@@ -46,15 +48,23 @@ func NewAgglayerGRPCClient(serverAddr string) (*AgglayerGRPCClient, error) {
 
 // GetEpochConfiguration returns the epoch configuration from the AggLayer
 func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error) {
-	response, err := a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
-	if err != nil {
-		return nil, aggkitCommon.RepackGRPCErrorWithDetails(err)
+	const maxRetries = 5
+	var latestErr error
+
+	for retries := range maxRetries {
+		response, err := a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
+		if err == nil {
+			return &types.ClockConfiguration{
+				EpochDuration: response.EpochConfiguration.EpochDuration,
+				GenesisBlock:  response.EpochConfiguration.GenesisBlock,
+			}, nil
+		}
+
+		latestErr = err
+		time.Sleep(time.Duration(1<<retries) * time.Second) // Exponential backoff
 	}
 
-	return &types.ClockConfiguration{
-		EpochDuration: response.EpochConfiguration.EpochDuration,
-		GenesisBlock:  response.EpochConfiguration.GenesisBlock,
-	}, nil
+	return nil, fmt.Errorf("GetEpochConfiguration failed after %d retries: %w", maxRetries, latestErr)
 }
 
 // SendCertificate sends a certificate to the AggLayer

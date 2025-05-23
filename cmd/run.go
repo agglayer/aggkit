@@ -198,10 +198,11 @@ func createAggSender(
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
 
-	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient, aggsender.ConfigBlockNotifierPolling{
-		BlockFinalityType:     etherman.NewBlockNumberFinality(cfg.BlockFinality),
-		CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
-	}, logger, nil)
+	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
+		aggsender.ConfigBlockNotifierPolling{
+			BlockFinalityType:     etherman.NewBlockNumberFinality(cfg.BlockFinality),
+			CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
+		}, logger, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize block notifier: %w", err)
 	}
@@ -209,7 +210,7 @@ func createAggSender(
 	notifierCfg, err := aggsender.NewConfigEpochNotifierPerBlock(ctx,
 		agglayerClient, cfg.EpochNotificationPercentage)
 	if err != nil {
-		return nil, fmt.Errorf("cant generate config for Epoch Notifier because: %w", err)
+		return nil, fmt.Errorf("failed to generate Epoch Notifier config. Reason: %w", err)
 	}
 	epochNotifier, err := aggsender.NewEpochNotifierPerBlock(
 		blockNotifier,
