@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -19,13 +20,13 @@ var _ types.L1InfoTreeDataQuerier = (*L1InfoTreeDataQuerier)(nil)
 
 // L1InfoTreeDataQuerier is a struct that holds the logic to query the L1 Info tree data
 type L1InfoTreeDataQuerier struct {
-	l1Client         types.EthClient
+	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
 }
 
 // NewL1InfoTreeDataQuerier returns a new instance of the L1InfoTreeDataQuery
 func NewL1InfoTreeDataQuerier(
-	l1Client types.EthClient,
+	l1Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer) *L1InfoTreeDataQuerier {
 	return &L1InfoTreeDataQuerier{
 		l1Client:         l1Client,

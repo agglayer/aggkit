@@ -106,10 +106,7 @@ func TestBridgeCallData(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, userBalance.Cmp(fundAmount) >= 0)
 
-	ethClient := &aggkittypes.DefaultEthClient{
-		BaseEthereumClienter: client,
-		RPCClienter:          client.Client(),
-	}
+	ethClient := aggkittypes.NewDefaultEthClient(client, client.Client())
 
 	// Init the reorg detector and bridge syncer
 	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")

@@ -16,15 +16,20 @@ log_error() {
 
 trap 'log_error "Script failed at line $LINENO"' ERR
 
-if [ "$#" -ne 4 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <path/to/kurtosis/cdk/repo> <path/to/e2e/repo> <run_tests: true | false>"
+if [ "$#" -lt 2 ]; then
+    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <kurtosis_repo> [e2e_repo] [run_tests: true|false]"
     exit 1
 fi
 
 TEST_TYPE=$1
 KURTOSIS_FOLDER=$2
-E2E_FOLDER=$3
-RUN_TESTS=$4
+E2E_FOLDER=${3:-""}
+RUN_TESTS=${4:-"false"}
+
+if [ "$RUN_TESTS" == "true" ] && [ -z "$E2E_FOLDER" ]; then
+    echo "Error: <e2e_repo> must be provided if <run_tests> is true"
+    exit 1
+fi
 
 PROJECT_ROOT="$PWD"
 ROOT_FOLDER="/tmp/aggkit-e2e-run"
@@ -41,23 +46,23 @@ log_info "Starting local E2E setup..."
 # Build aggkit Docker Image if it doesn't exist
 if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ]; then
     log_info "Building aggkit:local docker image..."
-    pushd "$PROJECT_ROOT" > /dev/null
+    pushd "$PROJECT_ROOT" >/dev/null
     make build-docker
     make build-tools
     chmod +x "./target/aggsender_find_imported_bridge"
     export AGGSENDER_IMPORTED_BRIDGE_PATH="./target/aggsender_find_imported_bridge"
-    popd > /dev/null
+    popd >/dev/null
 else
     log_info "Docker image aggkit:local already exists."
 fi
 
 log_info "Using provided Kurtosis CDK repo at: $KURTOSIS_FOLDER"
 
-pushd "$KURTOSIS_FOLDER" > /dev/null
+pushd "$KURTOSIS_FOLDER" >/dev/null
 log_info "Cleaning any existing Kurtosis enclaves..."
 kurtosis clean --all
 
-# Start Kurtosis Enclave 
+# Start Kurtosis Enclave
 log_info "Starting Kurtosis enclave"
 
 if [ "$TEST_TYPE" == "single-l2-network-fork12-op-succinct" ]; then
@@ -76,12 +81,12 @@ else
 fi
 
 log_info "$ENCLAVE_NAME enclave started successfully."
-popd > /dev/null
+popd >/dev/null
 
 if [ "$RUN_TESTS" == "true" ]; then
     log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
 
-    pushd "$E2E_FOLDER" > /dev/null
+    pushd "$E2E_FOLDER" >/dev/null
 
     # Setup environment
     log_info "Setting up e2e environment..."
@@ -105,7 +110,7 @@ if [ "$RUN_TESTS" == "true" ]; then
         bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
     fi
 
-    popd > /dev/null
+    popd >/dev/null
     log_info "E2E tests executed. Logs saved to $LOG_FILE"
 else
     log_info "Skipping tests as per user request."

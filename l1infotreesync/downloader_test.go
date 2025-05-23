@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
-	mocks_l1infotreesync "github.com/agglayer/aggkit/l1infotreesync/mocks"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -37,7 +37,7 @@ func TestBuildAppender(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			l1Client := mocks_l1infotreesync.NewEthClienter(t)
+			l1Client := aggkittypesmocks.NewEthClienter(t)
 			globalExitRoot := common.HexToAddress("0x1")
 			rollupManager := common.HexToAddress("0x2")
 			if tt.flags == FlagNone {
@@ -54,7 +54,7 @@ func TestBuildAppender(t *testing.T) {
 }
 
 func TestBuildAppenderVerifiedContractAddr(t *testing.T) {
-	l1Client := mocks_l1infotreesync.NewEthClienter(t)
+	l1Client := aggkittypesmocks.NewEthClienter(t)
 	globalExitRoot := common.HexToAddress("0x1")
 	rollupManager := common.HexToAddress("0x2")
 

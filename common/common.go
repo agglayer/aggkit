@@ -165,3 +165,13 @@ func EstimateSliceCapacity(total int, span, fullSpan uint64) int {
 	}
 	return int((uint64(total) * span) / fullSpan)
 }
+
+// MapSlice transforms a slice of type T into a slice of type R using the provided mapping function f.
+// It's a generic utility that reduces boilerplate when converting between types.
+func MapSlice[T any, R any](in []T, f func(T) R) []R {
+	out := make([]R, 0, len(in))
+	for _, v := range in {
+		out = append(out, f(v))
+	}
+	return out
+}

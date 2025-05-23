@@ -8,7 +8,8 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
-	rpcTypes "github.com/0xPolygon/cdk-rpc/types"
+	rpctypes "github.com/0xPolygon/cdk-rpc/types"
+	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -224,7 +225,7 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 			WrappedTokenAddress: tokenMappingEvent.WrappedTokenAddress,
 			Metadata:            tokenMappingEvent.Metadata,
 			Calldata:            foundCall.Input,
-			Type:                WrappedToken,
+			Type:                bridgetypes.WrappedToken,
 		}})
 		return nil
 	}
@@ -256,7 +257,7 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 			WrappedTokenAddress: event.SovereignTokenAddress,
 			IsNotMintable:       event.IsNotMintable,
 			Calldata:            foundCall.Input,
-			Type:                SovereignToken,
+			Type:                bridgetypes.SovereignToken,
 		}})
 		return nil
 	}
@@ -314,9 +315,9 @@ func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 type call struct {
 	From  common.Address    `json:"from"`
 	To    common.Address    `json:"to"`
-	Value *rpcTypes.ArgBig  `json:"value"`
+	Value *rpctypes.ArgBig  `json:"value"`
 	Err   *string           `json:"error"`
-	Input rpcTypes.ArgBytes `json:"input"`
+	Input rpctypes.ArgBytes `json:"input"`
 	Calls []call            `json:"calls"`
 }
 

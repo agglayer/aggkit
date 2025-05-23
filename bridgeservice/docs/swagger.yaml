@@ -1,0 +1,750 @@
+basePath: /bridge/v1
+definitions:
+  bridgesync.LastReorg:
+    properties:
+      detected_at:
+        type: integer
+      from_block:
+        type: integer
+      to_block:
+        type: integer
+    type: object
+  types.BridgeResponse:
+    description: Detailed information about a bridge event
+    properties:
+      amount:
+        description: Amount of tokens being bridged
+        example: "1000000000000000000"
+        type: string
+      block_num:
+        description: Block number where the bridge event was recorded
+        example: 1234
+        type: integer
+      block_pos:
+        description: Position of the bridge event within the block
+        example: 1
+        type: integer
+      block_timestamp:
+        description: Timestamp of the block containing the bridge event
+        example: 1684500000
+        type: integer
+      bridge_hash:
+        description: Unique hash representing the bridge event, often used as an identifier
+        example: 0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd
+        type: string
+      calldata:
+        description: Raw calldata submitted in the transaction
+        example: deadbeef
+        type: string
+      deposit_count:
+        description: Count of total deposits processed so far for the given token/address
+        example: 10
+        type: integer
+      destination_address:
+        description: Address of the token receiver on the destination network
+        example: 0xdef4567890abcdef1234567890abcdef12345678
+        type: string
+      destination_network:
+        description: ID of the network where the bridge transaction is destined
+        example: 42161
+        type: integer
+      from_address:
+        description: Address that initiated the bridge transaction
+        example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      is_native_token:
+        description: Indicates whether the bridged token is a native token (true)
+          or wrapped (false)
+        example: true
+        type: boolean
+      leaf_type:
+        description: Type of leaf (bridge event type) used in the tree structure
+        example: 1
+        type: integer
+      metadata:
+        description: Optional metadata attached to the bridge event
+        example: "0xdeadbeef"
+        type: string
+      origin_address:
+        description: Address of the token sender on the origin network
+        example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      origin_network:
+        description: ID of the network where the bridge transaction originated
+        example: 10
+        type: integer
+      tx_hash:
+        description: Hash of the transaction that included the bridge event
+        example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+    type: object
+  types.BridgesResult:
+    description: Paginated response of bridge events
+    properties:
+      bridges:
+        description: List of bridge events
+        items:
+          $ref: '#/definitions/types.BridgeResponse'
+        type: array
+      count:
+        description: Total number of bridge events
+        example: 42
+        type: integer
+    type: object
+  types.ClaimProof:
+    description: Claim proof structure for verifying claims in the bridge
+    properties:
+      l1_info_tree_leaf:
+        $ref: '#/definitions/types.L1InfoTreeLeafResponse'
+      proof_local_exit_root:
+        description: Merkle proof structure for a tree of a given height
+        items:
+          type: string
+        type: array
+      proof_rollup_exit_root:
+        description: Merkle proof structure for a tree of a given height
+        items:
+          type: string
+        type: array
+    type: object
+  types.ClaimRequest:
+    description: Claim sponsoring structure
+    properties:
+      amount:
+        description: Amount in wei (or token's smallest unit)
+        example: "1000000000000000000"
+        type: string
+      destination_address:
+        description: Recipient address on destination network
+        example: 0x456...
+        type: string
+      destination_network:
+        description: ID of the network where the claim is being sent
+        example: 100
+        type: integer
+      global_index:
+        description: Global leaf index
+        example: "123456789012345678901234567890"
+        type: string
+      leaf_type:
+        description: Type of leaf node (e.g., asset or message)
+        example: 1
+        type: integer
+      mainnet_exit_root:
+        description: Mainnet exit root
+        example: 0xabc123...
+        type: string
+      metadata:
+        description: Optional metadata for the claim
+        items:
+          type: integer
+        type: array
+      origin_network:
+        description: Origin network ID where the claim originated
+        example: 1
+        type: integer
+      origin_token_address:
+        description: Origin token address
+        example: 0x123...
+        type: string
+      proof_local_exit_root:
+        description: Merkle proof for local exit root
+        items:
+          type: string
+        type: array
+      proof_rollup_exit_root:
+        description: Merkle proof for rollup exit root
+        items:
+          type: string
+        type: array
+      rollup_exit_root:
+        description: Rollup exit root
+        example: 0xdef456...
+        type: string
+    type: object
+  types.ClaimResponse:
+    description: Detailed information about a claim event
+    properties:
+      amount:
+        description: Amount claimed
+        example: "1000000000000000000"
+        type: string
+      block_num:
+        description: Block number where the claim was processed
+        example: 1234
+        type: integer
+      block_timestamp:
+        description: Timestamp of the block containing the claim
+        example: 1684500000
+        type: integer
+      destination_address:
+        description: Address receiving the claim on the destination network
+        example: 0xdef4567890abcdef1234567890abcdef12345678
+        type: string
+      destination_network:
+        description: Destination network ID where the claim was processed
+        example: 42161
+        type: integer
+      from_address:
+        description: Address from which the claim originated
+        example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      global_index:
+        description: Global index of the claim
+        example: "1000000000000000000"
+        type: string
+      origin_address:
+        description: Address initiating the claim on the origin network
+        example: 0xabc1234567890abcdef1234567890abcdef1234
+        type: string
+      origin_network:
+        description: Origin network ID where the claim was initiated
+        example: 10
+        type: integer
+      tx_hash:
+        description: Transaction hash associated with the claim
+        example: 0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+    type: object
+  types.ClaimsResult:
+    description: Paginated response containing claim events and total count
+    properties:
+      claims:
+        description: List of claims matching the query
+        items:
+          $ref: '#/definitions/types.ClaimResponse'
+        type: array
+      count:
+        description: Total number of matching claims
+        example: 42
+        type: integer
+    type: object
+  types.ErrorResponse:
+    description: Generic error response structure
+    properties:
+      error:
+        example: Invalid request parameters
+        type: string
+    type: object
+  types.L1InfoTreeLeafResponse:
+    properties:
+      block_num:
+        description: Block number where the leaf was recorded
+        example: 123456
+        type: integer
+      block_pos:
+        description: Position of the leaf in the block (used for ordering)
+        example: 5
+        type: integer
+      global_exit_root:
+        description: |-
+          Global exit root computed from mainnet and rollup roots
+          @example "0x4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123"
+        type: string
+      hash:
+        description: Unique hash identifying this leaf node
+        example: 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+        type: string
+      l1_info_tree_index:
+        description: Index of this leaf in the L1 info tree
+        example: 42
+        type: integer
+      mainnet_exit_root:
+        description: Mainnet exit root at this leaf
+        example: 0xdefc...789
+        type: string
+      previous_block_hash:
+        description: Hash of the previous block in the tree
+        example: 0xabc1...bcd
+        type: string
+      rollup_exit_root:
+        description: Rollup exit root at this leaf
+        example: 0x7890...123
+        type: string
+      timestamp:
+        description: Timestamp of the block in seconds since the Unix epoch
+        example: 1684500000
+        type: integer
+    type: object
+  types.LegacyTokenMigrationResponse:
+    description: Details of a legacy token migration event
+    properties:
+      amount:
+        description: Amount of tokens migrated
+        example: "1000000000000000000"
+        type: string
+      block_num:
+        description: Block number where the migration occurred
+        example: 1234
+        type: integer
+      block_pos:
+        description: Position of the transaction in the block
+        example: 1
+        type: integer
+      block_timestamp:
+        description: Timestamp of the block
+        example: 1684500000
+        type: integer
+      calldata:
+        description: Raw calldata included in the migration transaction
+        example: "0xdeadbeef"
+        type: string
+      legacy_token_address:
+        description: Legacy token address being migrated
+        example: 0xdef456...
+        type: string
+      sender:
+        description: Address of the sender initiating the migration
+        example: 0xabc123...
+        type: string
+      tx_hash:
+        description: Transaction hash of the migration event
+        example: 0xabc123...
+        type: string
+      updated_token_address:
+        description: New updated token address after migration
+        example: 0xfeed789...
+        type: string
+    type: object
+  types.LegacyTokenMigrationsResult:
+    description: Paginated response of legacy token migrations
+    properties:
+      count:
+        description: Total number of legacy token migration events
+        example: 12
+        type: integer
+      legacy_token_migrations:
+        description: List of legacy token migration events
+        items:
+          $ref: '#/definitions/types.LegacyTokenMigrationResponse'
+        type: array
+    type: object
+  types.TokenMappingResponse:
+    description: Detailed information about a token mapping between origin and wrapped
+      networks
+    properties:
+      block_num:
+        description: Block number where the token mapping was recorded
+        example: 123456
+        type: integer
+      block_pos:
+        description: Position of the mapping event within the block
+        example: 2
+        type: integer
+      block_timestamp:
+        description: Timestamp of the block containing the mapping event
+        example: 1684501234
+        type: integer
+      calldata:
+        description: Raw calldata submitted during the mapping
+        example: "0xfeedface"
+        type: string
+      is_not_mintable:
+        description: Indicates whether the wrapped token is not mintable (true = not
+          mintable)
+        example: false
+        type: boolean
+      metadata:
+        description: Optional metadata associated with the token mapping
+        example: "0xdeadbeef"
+        type: string
+      origin_network:
+        description: ID of the origin network where the original token resides
+        example: 1
+        type: integer
+      origin_token_address:
+        description: Address of the token on the origin network
+        example: 0x1234567890abcdef1234567890abcdef12345678
+        type: string
+      token_type:
+        description: 'Type of the token mapping: 0 = WrappedToken, 1 = SovereignToken'
+        example: 0
+        type: integer
+      tx_hash:
+        description: Transaction hash associated with the mapping event
+        example: 0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd
+        type: string
+      wrapped_token_address:
+        description: Address of the wrapped token on the destination network
+        example: 0xabcdef1234567890abcdef1234567890abcdef12
+        type: string
+    type: object
+  types.TokenMappingsResult:
+    description: Paginated response of token mapping records
+    properties:
+      count:
+        description: Total number of token mapping records
+        example: 27
+        type: integer
+      token_mappings:
+        description: List of token mapping entries
+        items:
+          $ref: '#/definitions/types.TokenMappingResponse'
+        type: array
+    type: object
+info:
+  contact:
+    name: API Support
+    url: https://polygon.technology/
+  description: API documentation for the bridge service
+  license:
+    name: MIT
+    url: https://opensource.org/licenses/MIT
+  title: Bridge Service API
+  version: "1.0"
+paths:
+  /bridges:
+    get:
+      description: Returns a paginated list of bridge events for the specified network.
+      parameters:
+      - description: Target network ID
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Page number (default 1)
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size (default 100)
+        in: query
+        name: page_size
+        type: integer
+      - description: Filter by deposit count
+        in: query
+        name: deposit_count
+        type: integer
+      - description: Filter by from address
+        in: query
+        name: from_address
+        type: string
+      - collectionFormat: csv
+        description: Filter by one or more network IDs
+        in: query
+        items:
+          type: integer
+        name: network_ids
+        type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.BridgesResult'
+        "400":
+          description: Invalid request parameters
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get bridges
+      tags:
+      - bridges
+  /claim-proof:
+    get:
+      description: Returns the Merkle proofs (local and rollup exit root) and
+      parameters:
+      - description: Target network ID
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Index in the L1 info tree
+        in: query
+        name: l1_info_tree_index
+        required: true
+        type: integer
+      - description: Number of deposits in the bridge
+        in: query
+        name: deposit_count
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Merkle proofs and L1 info tree leaf
+          schema:
+            $ref: '#/definitions/types.ClaimProof'
+        "400":
+          description: Missing or invalid parameters
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal server error retrieving claim proof
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get claim proof
+      tags:
+      - claims
+  /claims:
+    get:
+      description: Returns a paginated list of claims for the specified network.
+      parameters:
+      - description: Target network ID
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Page number (default 1)
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size (default 100)
+        in: query
+        name: page_size
+        type: integer
+      - collectionFormat: csv
+        description: Filter by one or more network IDs
+        in: query
+        items:
+          type: integer
+        name: network_ids
+        type: array
+      - description: Filter by from address
+        in: query
+        name: from_address
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.ClaimsResult'
+        "400":
+          description: Invalid request parameters
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get claims
+      tags:
+      - claims
+  /injected-l1-info-leaf:
+    get:
+      description: Returns the L1 info tree leaf either at the given index (for L1)
+      parameters:
+      - description: Network ID
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: L1 Info Tree Index
+        in: query
+        name: l1_info_tree_index
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.L1InfoTreeLeafResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get injected L1 info tree leaf after a given L1 info tree index
+      tags:
+      - l1-info-tree-leaf
+  /l1-info-tree-index:
+    get:
+      description: Returns the first L1 Info Tree index after a given deposit count
+        for the specified network
+      parameters:
+      - description: Network ID
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Deposit count
+        in: query
+        name: deposit_count
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: integer
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get L1 Info Tree index for a bridge
+      tags:
+      - l1-info-tree-leaf
+  /last-reorg-event:
+    get:
+      description: Retrieves the last known reorg event for either L1 or L2, based
+        on the provided network ID.
+      parameters:
+      - description: Network ID (e.g., 0 for L1, or the ID of the L2 network)
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Details of the last reorg event
+          schema:
+            $ref: '#/definitions/bridgesync.LastReorg'
+        "400":
+          description: Bad request due to missing or invalid parameters
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal server error retrieving reorg data
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get last reorg event
+      tags:
+      - reorgs
+  /legacy-token-migrations:
+    get:
+      description: Returns legacy token migrations for the given network, paginated
+      parameters:
+      - description: Network ID
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Page number
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.LegacyTokenMigrationsResult'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get legacy token migrations
+      tags:
+      - legacy-token-migrations
+  /sponsor-claim:
+    post:
+      consumes:
+      - application/json
+      description: Sponsors a claim to be processed by the bridge service.
+      parameters:
+      - description: Claim Request
+        in: body
+        name: Claim
+        required: true
+        schema:
+          $ref: '#/definitions/types.ClaimRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Claim is sponsored
+          schema:
+            type: string
+        "400":
+          description: Invalid request parameters
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Sponsor a claim
+      tags:
+      - claim-sponsoring
+  /sponsored-claim-status:
+    get:
+      description: Returns the sponsorship status of a claim identified by the given
+        global index.
+      parameters:
+      - description: Global index of the claim (big.Int format)
+        in: query
+        name: global_index
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Claim sponsorship status
+          schema:
+            type: string
+        "400":
+          description: Missing or invalid input, or sponsorship not supported
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal server error retrieving claim status
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get sponsored claim status
+      tags:
+      - claim-sponsoring
+  /token-mappings:
+    get:
+      description: Returns token mappings for the given network, paginated
+      parameters:
+      - description: Network ID
+        in: query
+        name: network_id
+        required: true
+        type: integer
+      - description: Page number
+        in: query
+        name: page_number
+        type: integer
+      - description: Page size
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/types.TokenMappingsResult'
+        "400":
+          description: Invalid request parameters
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get token mappings
+      tags:
+      - token-mappings
+swagger: "2.0"

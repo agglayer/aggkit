@@ -7,10 +7,18 @@ import (
 
 var _ EthClienter = (*DefaultEthClient)(nil)
 
-// DefaultEthClient is the default implementation of EthClient.
+// DefaultEthClient is the default implementation of EthClienter.
 type DefaultEthClient struct {
 	BaseEthereumClienter
 	RPCClienter
+}
+
+// NewDefaultEthClient creates a new DefaultEthClient.
+func NewDefaultEthClient(baseClient BaseEthereumClienter, rpcClient RPCClienter) *DefaultEthClient {
+	return &DefaultEthClient{
+		BaseEthereumClienter: baseClient,
+		RPCClienter:          rpcClient,
+	}
 }
 
 // EthClienter defines the methods for an Ethereum RPC client.
