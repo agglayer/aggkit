@@ -379,6 +379,30 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		})
 }
 
+// handleNetworkSwitch is a helper function that handles the common pattern of switching between L1 and L2 networks
+func (b *BridgeService) handleNetworkSwitch(networkID uint32, c *gin.Context, ctx context.Context, l1Handler, l2Handler func(context.Context) error) {
+	switch {
+	case networkID == mainnetNetworkID:
+		if err := l1Handler(ctx); err != nil {
+			b.logger.Errorf("failed to handle L1 network request: %v", err)
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to handle L1 network request, error: %s", err)})
+			return
+		}
+	case networkID == b.networkID:
+		if err := l2Handler(ctx); err != nil {
+			b.logger.Errorf("failed to handle L2 network request (ID=%d): %v", networkID, err)
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to handle L2 network request (ID=%d), error: %s", networkID, err)})
+			return
+		}
+	default:
+		b.logger.Warnf(errNetworkID, networkID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
+		return
+	}
+}
+
 // @Summary Get token mappings
 // @Description Returns token mappings for the given network, paginated
 // @Tags token-mappings
@@ -416,23 +440,17 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		tokenMappingsCount int
 	)
 
-	switch {
-	case networkID == mainnetNetworkID:
+	l1Handler := func(ctx context.Context) error {
 		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize)
-	case b.networkID == networkID:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
-	default:
-		b.logger.Warnf(errNetworkID, networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
-		return
+		return err
 	}
 
-	if err != nil {
-		b.logger.Errorf("failed to fetch token mappings: %v", err)
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to fetch token mappings: %s", err.Error())})
-		return
+	l2Handler := func(ctx context.Context) error {
+		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
+		return err
 	}
+
+	b.handleNetworkSwitch(networkID, c, ctx, l1Handler, l2Handler)
 
 	tokenMappingResponses := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
 
@@ -480,23 +498,17 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		tokenMigrationsCount int
 	)
 
-	switch {
-	case networkID == mainnetNetworkID:
+	l1Handler := func(ctx context.Context) error {
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
-	case b.networkID == networkID:
-		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
-	default:
-		b.logger.Warnf(errNetworkID, networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
-		return
+		return err
 	}
 
-	if err != nil {
-		b.logger.Errorf("failed to fetch legacy token migrations: %v", err)
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to fetch legacy token migrations: %s", err.Error())})
-		return
+	l2Handler := func(ctx context.Context) error {
+		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
+		return err
 	}
+
+	b.handleNetworkSwitch(networkID, c, ctx, l1Handler, l2Handler)
 
 	tokenMigrationResponses := aggkitcommon.MapSlice(tokenMigrations, NewTokenMigrationResponse)
 
