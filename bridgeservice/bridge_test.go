@@ -17,7 +17,6 @@ import (
 	"time"
 
 	mocks "github.com/agglayer/aggkit/bridgeservice/mocks"
-	"github.com/agglayer/aggkit/bridgeservice/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/claimsponsor"
@@ -1950,7 +1949,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 			require.Equal(t, http.StatusOK, w.Code)
 
-			var response types.SyncStatus
+			var response bridgetypes.SyncStatus
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			require.NoError(t, err)
 			require.Equal(t, tc.l1BridgeCount, response.L1Info.BridgeDepositCount)
