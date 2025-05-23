@@ -148,6 +148,7 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.POST("/sponsor-claim", b.SponsorClaimHandler)
 		bridgeGroup.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
+		bridgeGroup.GET("/sync-status", b.GetSyncStatusHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -936,6 +937,75 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, reorgEvent)
+}
+
+// GetSyncStatusHandler returns the sync status of the bridge service.
+//
+// @Summary Get bridge sync status
+// @Description Returns the sync status by comparing the deposit count
+// from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
+// @Tags sync
+// @Produce json
+// @Success 200 {object} types.SyncStatus "Bridge sync status for both L1 and L2 networks"
+// @Failure 500 {object} gin.H "Internal server error retrieving sync status"
+// @Router /sync-status [get]
+func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
+	b.logger.Debugf("GetSyncStatus request received")
+
+	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+	defer cancel()
+
+	cnt, merr := b.meter.Int64Counter("get_sync_status")
+	if merr != nil {
+		b.logger.Warnf("failed to create get_sync_status counter: %s", merr)
+	}
+	cnt.Add(ctx, 1)
+
+	var syncStatus types.SyncStatus
+	syncStatus.L1Info = &types.NetworkSyncInfo{}
+	syncStatus.L2Info = &types.NetworkSyncInfo{}
+
+	// Check L1 sync status
+	l1ContractDepositCount, err := b.bridgeL1.GetContractDepositCount(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get deposit count from L1 bridge contract: %s", err)})
+		return
+	}
+
+	// Get the last bridge from L1 database
+	_, bridgesCount, err := b.bridgeL1.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get bridges from L1 database: %s", err)})
+		return
+	}
+
+	syncStatus.L1Info.BridgeDepositCount = uint32(bridgesCount)
+	syncStatus.L1Info.ContractDepositCount = l1ContractDepositCount
+	syncStatus.L1Info.IsSynced = syncStatus.L1Info.ContractDepositCount == syncStatus.L1Info.BridgeDepositCount
+
+	// Check L2 sync status
+	l2ContractDepositCount, err := b.bridgeL2.GetContractDepositCount(ctx)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get deposit count from L2 bridge contract: %s", err)})
+		return
+	}
+
+	// Get the last bridge from L2 database
+	_, bridgesCount, err = b.bridgeL2.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
+	if err != nil {
+		c.JSON(http.StatusInternalServerError,
+			gin.H{"error": fmt.Sprintf("failed to get bridges from L2 database: %s", err)})
+		return
+	}
+
+	syncStatus.L2Info.BridgeDepositCount = uint32(bridgesCount)
+	syncStatus.L2Info.ContractDepositCount = l2ContractDepositCount
+	syncStatus.L2Info.IsSynced = syncStatus.L2Info.ContractDepositCount == syncStatus.L2Info.BridgeDepositCount
+
+	c.JSON(http.StatusOK, syncStatus)
 }
 
 func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, depositCount uint32) (uint32, error) {

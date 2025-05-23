@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridgev2"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -256,7 +256,10 @@ func TestBuildAppender(t *testing.T) {
 				Return(nil).
 				Maybe()
 
-			appenderMap, err := buildAppender(ethClient, bridgeAddr, false)
+			bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
+			require.NoError(t, err)
+
+			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeContractV2)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 

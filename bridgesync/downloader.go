@@ -11,7 +11,6 @@ import (
 	rpctypes "github.com/0xPolygon/cdk-rpc/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -55,20 +54,15 @@ const (
 	callTracerType = "callTracer"
 )
 
-func buildAppender(client aggkittypes.EthClienter,
-	bridgeAddr common.Address, syncFullClaims bool) (sync.LogAppenderMap, error) {
-	logger := log.WithFields("module", "bridge_downloader")
-	logger.Infof("building appender for bridge at %s with syncFullClaims=%v", bridgeAddr.String(), syncFullClaims)
-
+func buildAppender(
+	client aggkittypes.EthClienter,
+	bridgeAddr common.Address,
+	syncFullClaims bool,
+	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
-	}
-
-	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create PolygonZkEVMBridgeV2 SC binding (bridge addr: %s): %w",
-			bridgeAddr, err)
 	}
 
 	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, client)

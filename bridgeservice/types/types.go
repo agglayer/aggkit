@@ -346,3 +346,23 @@ type ClaimRequest struct {
 	// Optional metadata for the claim
 	Metadata []byte `json:"metadata"`
 }
+
+// SyncStatus represents the synchronization status of the bridge service for both L1 and L2 networks
+// @Description Contains synchronization information for both L1 and L2 networks
+// including deposit counts and sync status
+// @example {"l1_info":{"contract_deposit_count":100,"bridge_deposit_count":100,"is_synced":true},
+// "l2_info":{"contract_deposit_count":200,"bridge_deposit_count":200,"is_synced":true}}
+type SyncStatus struct {
+	L1Info *NetworkSyncInfo `json:"l1_info"`
+	L2Info *NetworkSyncInfo `json:"l2_info"`
+}
+
+// NetworkSyncInfo represents the synchronization status of a single network (L1 or L2)
+// @Description Contains network-specific synchronization information
+// including contract and bridge deposit counts and sync status
+// @example {"contract_deposit_count":100,"bridge_deposit_count":100,"is_synced":true}
+type NetworkSyncInfo struct {
+	ContractDepositCount uint32 `json:"contract_deposit_count"`
+	BridgeDepositCount   uint32 `json:"bridge_deposit_count"`
+	IsSynced             bool   `json:"is_synced"`
+}
