@@ -56,7 +56,9 @@ const (
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
 
-	errNetworkID = "unsupported network id: %v"
+	errNetworkID         = "unsupported network id: %v"
+	errSetupRequest      = "failed to setup request: %v"
+	errDepositCountParam = "invalid deposit count parameter: %v"
 )
 
 var (
@@ -225,7 +227,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 	depositCount, err := parseUintQuery(c, depositCountParam, false, uint64(math.MaxUint64))
 	if err != nil {
-		b.logger.Warnf("invalid deposit count parameter: %v", err)
+		b.logger.Warnf(errDepositCountParam, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -246,7 +248,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_bridges")
 	if err != nil {
-		b.logger.Warnf("failed to setup request: %v", err)
+		b.logger.Warnf(errSetupRequest, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -331,7 +333,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_claims")
 	if err != nil {
-		b.logger.Warnf("failed to setup request: %v", err)
+		b.logger.Warnf(errSetupRequest, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -403,7 +405,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 
 	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_token_mappings")
 	if err != nil {
-		b.logger.Warnf("failed to setup request: %v", err)
+		b.logger.Warnf(errSetupRequest, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -467,7 +469,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 
 	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_legacy_token_migrations")
 	if err != nil {
-		b.logger.Warnf("failed to setup request: %v", err)
+		b.logger.Warnf(errSetupRequest, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -528,7 +530,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 
 	depositCount, err := parseUintQuery(c, depositCountParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid deposit count parameter: %v", err)
+		b.logger.Warnf(errDepositCountParam, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -692,7 +694,7 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 
 	depositCount, err := parseUintQuery(c, depositCountParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid deposit count parameter: %v", err)
+		b.logger.Warnf(errDepositCountParam, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
