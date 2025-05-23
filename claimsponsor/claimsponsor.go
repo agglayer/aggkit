@@ -105,18 +105,20 @@ func newClaimSponsor(
 }
 
 func (c *ClaimSponsor) Start(ctx context.Context) {
+	c.logger.Info("starting claim sponsor service")
 	attempts := 0
 
 	for {
 		select {
 		case <-ctx.Done():
+			c.logger.Info("claim sponsor service shutting down")
 			return
 
 		default:
 			err := c.claim(ctx)
 			if err != nil {
 				attempts++
-				c.logger.Error(err)
+				c.logger.Errorf("error in claim sponsor main loop (attempt %d): %v", attempts, err)
 				c.rh.Handle("claimsponsor main loop", attempts)
 			} else {
 				attempts = 0
@@ -136,7 +138,7 @@ func (c *ClaimSponsor) claim(ctx context.Context) error {
 		claim, err = c.getFirstPendingClaim()
 		if err != nil {
 			if errors.Is(err, db.ErrNotFound) {
-				c.logger.Debugf("queue is empty")
+				c.logger.Debug("no pending claims found in db")
 				time.Sleep(c.waitOnEmptyQueue)
 				return nil
 			}
@@ -146,7 +148,7 @@ func (c *ClaimSponsor) claim(ctx context.Context) error {
 		claim.TxID, err = c.sender.sendClaim(ctx, claim)
 		if err != nil {
 			if strings.Contains(err.Error(), alreadyClaimedRevertCode) {
-				c.logger.Infof("Trx GlobalIndex: %s already claimed; deleting", claim.GlobalIndex)
+				c.logger.Infof("claim with global index %s already claimed; deleting from queue", claim.GlobalIndex)
 				if err := c.deleteClaim(claim.GlobalIndex); err != nil {
 					return fmt.Errorf("cleanup delete after AlreadyClaimed: %w", err)
 				}
@@ -169,12 +171,17 @@ func (c *ClaimSponsor) claim(ctx context.Context) error {
 		}
 	}
 
-	c.logger.Infof("waiting for tx %s with global index %s to be processed", claim.TxID, claim.GlobalIndex.String())
+	c.logger.Infof("waiting for transaction %s (global index %s) to be processed", claim.TxID, claim.GlobalIndex.String())
 	status, err := c.waitForTxResult(ctx, claim.TxID)
 	if err != nil {
 		return fmt.Errorf("error calling waitForTxResult for tx %s: %w", claim.TxID, err)
 	}
-	c.logger.Infof("tx %s with global index %s is processed, status: %s", claim.TxID, claim.GlobalIndex.String(), status)
+	c.logger.Infof(
+		"transaction %s (global index %s) processed with status: %s",
+		claim.TxID,
+		claim.GlobalIndex.String(),
+		status,
+	)
 	return c.updateClaimStatus(claim.GlobalIndex, status)
 }
 

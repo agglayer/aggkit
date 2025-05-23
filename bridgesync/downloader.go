@@ -73,7 +73,7 @@ func buildAppender(
 
 	gasTokenAddress, err := bridgeContractV2.GasTokenAddress(nil)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing gas token address: %w", err)
+		return nil, fmt.Errorf("failed to get gas token address: %w", err)
 	}
 
 	appender := make(sync.LogAppenderMap)

@@ -604,7 +604,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		queryParams := url.Values{networkIDParam: []string{fmt.Sprintf("%d", unsupportedNetworkID)}}
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id %d", unsupportedNetworkID))
+		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id: %d", unsupportedNetworkID))
 	})
 
 	t.Run("GetBridges invalid network id", func(t *testing.T) {
@@ -705,7 +705,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id %d", unsupportedNetworkID))
+		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id: %d", unsupportedNetworkID))
 	})
 
 	t.Run("GetClaims for L1 network failed", func(t *testing.T) {
@@ -843,7 +843,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), "unsupported network id 999")
+		require.Contains(t, w.Body.String(), "unsupported network id: 999")
 	})
 
 	t.Run("GetTokenMappingsHandler for L1 network failed", func(t *testing.T) {
@@ -980,7 +980,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/legacy-token-migrations?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id %d", unsupportedNetworkID))
+		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id: %d", unsupportedNetworkID))
 	})
 
 	t.Run("GetLegacyTokenMigrations for L1 network failed", func(t *testing.T) {
@@ -1129,7 +1129,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id %d", invalidNetworkID))
+		require.Contains(t, w.Body.String(), fmt.Sprintf("unsupported network id: %d", invalidNetworkID))
 	})
 
 	t.Run("Error from GetLastInfo", func(t *testing.T) {
@@ -1272,7 +1272,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/injected-l1-info-leaf?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 
 		require.Equal(t, http.StatusBadRequest, response.Code)
-		require.Contains(t, response.Body.String(), fmt.Sprintf("unsupported network id %d", unsupportedNetworkID))
+		require.Contains(t, response.Body.String(), fmt.Sprintf("unsupported network id: %d", unsupportedNetworkID))
 	})
 
 	t.Run("L1 network error", func(t *testing.T) {
@@ -1386,7 +1386,7 @@ func TestClaimProofHandler(t *testing.T) {
 		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get l1 info tree leaf for index %d", l1InfoTreeIndex))
 	})
 
-	t.Run("Unsupported network id", func(t *testing.T) {
+	t.Run("Unsupported network id:", func(t *testing.T) {
 		unsupportedNetworkID := uint32(999)
 
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
@@ -1760,7 +1760,7 @@ func TestSponsorClaimHandler(t *testing.T) {
 		require.Contains(t, response.Body.String(), "this client does not support claim sponsoring")
 	})
 
-	t.Run("Unsupported network id", func(t *testing.T) {
+	t.Run("Unsupported network id:", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		claim := claimsponsor.Claim{
 			GlobalIndex:        common.Big1,
