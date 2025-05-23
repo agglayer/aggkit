@@ -86,36 +86,9 @@ func NewAggchainProverFlow(log types.Logger,
 // CheckInitialStatus checks that initial status is correct.
 // For AggchainProverFlow checks that starting block and last certificate match
 func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
-	lastSentCertificate, err := a.storage.GetLastSentCertificate()
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
-	}
-	return a.sanityCheckNoBlockGaps(lastSentCertificate)
-}
+	_, err := a.GetCertificateBuildParams(ctx)
+	return err
 
-// sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate
-// #436. Don't allow gaps updating from PP to FEP
-func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.CertificateInfo) error {
-	lastSentCertficateStr := types.NilStr
-	if lastSentCertificate != nil {
-		lastSentCertficateStr = fmt.Sprintf("cert from:%d, to:%d", lastSentCertificate.FromBlock, lastSentCertificate.ToBlock)
-	}
-	msg := fmt.Sprintf("aggchainProverFlow - sanityCheckNoBlockGaps - last sent certificate: %s, startL2Block:%d",
-		lastSentCertficateStr, a.startL2Block)
-	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.startL2Block {
-		err := fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
-			lastSentCertificate.ToBlock, a.startL2Block)
-		if a.requireNoFEPBlockGap {
-			a.log.Error("%s. Err: %s", msg+" fails!", err.Error())
-			return err
-		}
-		// The sanity check is disabled
-		a.log.Warnf("%s. Ignoring block gaps due to RequireNoFEPBlockGap. Err: %w", msg, err)
-		return nil
-	}
-	a.log.Infof("%s. Passed check.", msg)
-
-	return nil
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate
@@ -134,7 +107,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return a.buildParamsForRetryCertificate(ctx, lastSentCertificateInfo)
 	}
 
-	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true)
+	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true, types.CertificateTypeFEP)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) {
 			// no new blocks to send a certificate
@@ -147,11 +120,15 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
 }
 
-func (a *AggchainProverFlow) buildParamsForRetryCertificate(ctx context.Context, lastSentCertificateInfo *types.CertificateInfo) (*types.CertificateBuildParams, error) {
+func (a *AggchainProverFlow) buildParamsForRetryCertificate(ctx context.Context,
+	lastSentCertificateInfo *types.CertificateInfo) (*types.CertificateBuildParams, error) {
 	a.log.Infof("aggchainProverFlow - resending the same InError certificate: %s", lastSentCertificateInfo.String())
-	fromBlock, retryCount, err := a.baseFlow.getFromBlockAndRetryCount(lastSentCertificateInfo)
+	toBlock := lastSentCertificateInfo.ToBlock
+	fromBlock, retryCount, err := a.baseFlow.getFromBlockAndRetryCount(lastSentCertificateInfo, a.startL2Block)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting from block and retry count: %w", err)
+	}
+	if err := a.checkBlockRangeGap(BlockRange{fromBlock, toBlock}, lastSentCertificateInfo); err != nil {
 	}
 	if lastSentCertificateInfo.FromBlock != fromBlock {
 		a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
@@ -159,7 +136,7 @@ func (a *AggchainProverFlow) buildParamsForRetryCertificate(ctx context.Context,
 	}
 	bridges, claims, err := a.baseFlow.getBridgesAndClaims(
 		ctx, lastSentCertificateInfo.FromBlock,
-		lastSentCertificateInfo.ToBlock,
+		toBlock,
 		true,
 	)
 	if err != nil {
@@ -168,12 +145,13 @@ func (a *AggchainProverFlow) buildParamsForRetryCertificate(ctx context.Context,
 
 	buildParams := &types.CertificateBuildParams{
 		FromBlock:           fromBlock,
-		ToBlock:             lastSentCertificateInfo.ToBlock,
+		ToBlock:             toBlock,
 		RetryCount:          retryCount,
 		Bridges:             bridges,
 		Claims:              claims,
 		LastSentCertificate: lastSentCertificateInfo,
 		CreatedAt:           lastSentCertificateInfo.CreatedAt,
+		CertificateType:     types.CertificateTypeFEP,
 	}
 
 	if lastSentCertificateInfo.AggchainProof == nil {
@@ -192,11 +170,24 @@ func (a *AggchainProverFlow) buildParamsForRetryCertificate(ctx context.Context,
 	return buildParams, nil
 }
 
+func (p *AggchainProverFlow) VerifyBuildParams(ctx context.Context, buildParams *types.CertificateBuildParams) error {
+	if err := p.baseFlow.verifyClaimGERs(buildParams.Claims); err != nil {
+		return fmt.Errorf("ppFlow - error verifying build params. ClaimGERs: %w", err)
+	}
+	if err := p.baseFlow.VerifyRetryCertStartingBlock(buildParams); err != nil {
+		return fmt.Errorf("ppFlow - error verifying build params. IsValidRetry: %w", err)
+	}
+	if err := p.baseFlow.VerifyBlockRangeGaps(ctx, buildParams); err != nil {
+		return fmt.Errorf("ppFlow - error verifying build params. Range Gaps: %w", err)
+	}
+	return nil
+}
+
 // verifyBuildParams verifies the certificate build params and returns an error if they are not valid
 // it also calls the prover to get the aggchain proof
 func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	ctx context.Context, buildParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
-	if err := a.verifyBuildParams(buildParams); err != nil {
+	if err := a.VerifyBuildParams(ctx, buildParams); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 	if err := a.sanityCheckNoBlockGaps(buildParams.LastSentCertificate); err != nil {
@@ -228,7 +219,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 // this function is the implementation of the FlowManager interface
 func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	cert, err := a.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
+	cert, err := a.baseFlow.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error building certificate: %w", err)
 	}
