@@ -54,7 +54,7 @@ build: build-aggkit build-tools
 
 .PHONY: build-aggkit
 build-aggkit:
-	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
+	GIN_MODE=release $(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
 
 .PHONY: build-tools
 build-tools: ## Builds the tools
