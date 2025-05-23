@@ -532,28 +532,6 @@ func (f *baseFlow) getFromBlockAndRetryCount(lastSentCertificateInfo *types.Cert
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 }
 
-func (f *baseFlow) checkBlockRangeGap(blockRange BlockRange, lastSentCertificateInfo *types.CertificateInfo) error {
-	if lastSentCertificateInfo == nil {
-		return nil
-	}
-	lastBlockRange := BlockRange{
-		FromBlock: lastSentCertificateInfo.FromBlock,
-		ToBlock:   lastSentCertificateInfo.ToBlock,
-	}
-	// case 1: last cert is inError	but there are a gap
-	if lastSentCertificateInfo.Status.IsInError() && blockRange.FromBlock != lastSentCertificateInfo.FromBlock {
-
-		return fmt.Errorf("checkBlockRangeGap. lastCert in error. FromBlock: %d != %d",
-			blockRange.FromBlock, lastBlockRange.FromBlock)
-	}
-
-	// case 2: is a new cert but is not contigous to previous one
-	if !blockRange.Between(lastBlockRange).IsEmpty() {
-		return fmt.Errorf("checkBlockRangeGap. New cert is not contigous to previous. %s -> %s = %s",
-			lastBlockRange.String(), blockRange.String(), lastBlockRange.Between(blockRange).String())
-	}
-}
-
 // calculateGER calculates the GER hash based on the mainnet exit root and the rollup exit root
 func calculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
 	var gerBytes [common.HashLength]byte
