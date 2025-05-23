@@ -51,7 +51,7 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	buildParams, err := p.getCertificateBuildParamsInternal(ctx, false)
+	buildParams, err := p.getCertificateBuildParamsInternal(ctx, false, types.CertificateTypePP)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) {
 			// no new blocks to send a certificate
@@ -67,7 +67,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, nil
 	}
 
-	if err := p.verifyBuildParams(buildParams); err != nil {
+	if err := p.VerifyBuildParams(ctx, buildParams); err != nil {
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
 	}
 
@@ -82,11 +82,24 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 	return buildParams, nil
 }
 
+func (p *PPFlow) VerifyBuildParams(ctx context.Context, buildParams *types.CertificateBuildParams) error {
+	if err := p.baseFlow.verifyClaimGERs(buildParams.Claims); err != nil {
+		return fmt.Errorf("ppFlow - error verifying build params. ClaimGERs: %w", err)
+	}
+	if err := p.baseFlow.VerifyRetryCertStartingBlock(buildParams); err != nil {
+		return fmt.Errorf("ppFlow - error verifying build params. IsValidRetry: %w", err)
+	}
+	if err := p.baseFlow.VerifyBlockRangeGaps(ctx, buildParams); err != nil {
+		return fmt.Errorf("ppFlow - error verifying build params. Range Gaps: %w", err)
+	}
+	return nil
+}
+
 // BuildCertificate builds a certificate based on the buildParams
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	certificate, err := p.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, false)
+	certificate, err := p.baseFlow.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, false)
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error building certificate: %w", err)
 	}

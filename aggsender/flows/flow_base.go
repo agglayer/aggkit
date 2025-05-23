@@ -17,8 +17,9 @@ import (
 )
 
 var (
-	errNoBridgesAndClaims = errors.New("no bridges and claims to build certificate")
-	errNoNewBlocks        = errors.New("no new blocks to send a certificate")
+	errNoBridgesAndClaims    = errors.New("no bridges and claims to build certificate")
+	errNoNewBlocks           = errors.New("no new blocks to send a certificate")
+	ErrBlockRangeGapWithData = errors.New("there are a gap between certs with data (claims/bridges)")
 
 	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
@@ -62,29 +63,41 @@ func (f *baseFlow) getBridgesAndClaims(
 }
 
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
-func (f *baseFlow) getCertificateBuildParamsInternal(
-	ctx context.Context, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
-	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
-	}
-
+func (f *baseFlow) getCertificateBuildParamsInternal(ctx context.Context, allowEmptyCert bool,
+	certType types.CertificateType) (*types.CertificateBuildParams, error) {
 	lastSentCertificateInfo, err := f.storage.GetLastSentCertificate()
 	if err != nil {
 		return nil, err
 	}
+	return f.getCertificateBuildParamsWithLastCert(
+		ctx,
+		allowEmptyCert,
+		certType,
+		lastSentCertificateInfo,
+	)
+}
 
-	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificateInfo)
-
-	if previousToBlock >= lastL2BlockSynced {
-		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
-			previousToBlock, lastL2BlockSynced)
-		return nil, errNoNewBlocks
+// getCertificateBuildParamsWithLastCert allow to pass the lastCert
+func (f *baseFlow) getCertificateBuildParamsWithLastCert(
+	ctx context.Context,
+	allowEmptyCert bool,
+	certType types.CertificateType,
+	lastSentCertificateInfo *types.CertificateInfo) (*types.CertificateBuildParams, error) {
+	lastL2BlockSynced, err := f.l2Syncer.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
+	}
+	fromBlock, retryCount, err := f.getFromBlockAndRetryCount(lastSentCertificateInfo, lastL2BlockSynced)
+	if err != nil {
+		return nil, fmt.Errorf("error getting from block and retry count: %w", err)
 	}
 
-	fromBlock := previousToBlock + 1
+	if fromBlock > lastL2BlockSynced {
+		f.log.Warnf("no new blocks to send a certificate, fromBlock: %d, lastL2BlockSynced: %d",
+			fromBlock, lastL2BlockSynced)
+		return nil, errNoNewBlocks
+	}
 	toBlock := lastL2BlockSynced
-
 	bridges, claims, err := f.getBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
 	if err != nil {
 		return nil, err
@@ -98,6 +111,7 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 		Bridges:             bridges,
 		Claims:              claims,
 		CreatedAt:           uint32(time.Now().UTC().Unix()),
+		CertificateType:     certType,
 	}
 
 	if !allowEmptyCert && buildParams.NumberOfBridges() == 0 {
@@ -113,10 +127,35 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 	return buildParams, nil
 }
 
-// verifyBuildParams verifies the build parameters
-func (f *baseFlow) verifyBuildParams(fullCert *types.CertificateBuildParams) error {
-	// this will be a good place to add more verification checks in the future
-	return f.verifyClaimGERs(fullCert.Claims)
+func (f *baseFlow) VerifyBlockRangeGaps(ctx context.Context, buildParams *types.CertificateBuildParams) error {
+	if buildParams.LastSentCertificate == nil {
+		return nil
+	}
+	nextBlockRange := BlockRange{buildParams.FromBlock, buildParams.ToBlock}
+	lastBlockRange := BlockRange{buildParams.LastSentCertificate.FromBlock, buildParams.LastSentCertificate.ToBlock}
+
+	// case 2: is a new cert but is not contigous to previous one
+	gap := nextBlockRange.Between(lastBlockRange)
+	if gap.IsEmpty() {
+		return nil
+	}
+	bridgeDataInTheGap, claimDataInTheGap, err := f.getBridgesAndClaims(ctx, gap.FromBlock, gap.ToBlock, false)
+	if err != nil {
+		return fmt.Errorf("error getting bridges and claims in the gap %s: %w", gap.String(), err)
+	}
+	if len(bridgeDataInTheGap) > 0 || len(claimDataInTheGap) > 0 {
+		return fmt.Errorf("there are new bridges or claims in the gap %s, len(bridges)=%d. len(claims)=%d. Err: %w",
+			gap.String(), len(bridgeDataInTheGap), len(claimDataInTheGap), ErrBlockRangeGapWithData)
+	}
+	return nil
+}
+
+func (f *baseFlow) VerifyRetryCertStartingBlock(buildParams *types.CertificateBuildParams) error {
+	if buildParams.IsARetry() && buildParams.FromBlock != buildParams.LastSentCertificate.FromBlock {
+		return fmt.Errorf("retry certificate fromBlock %d != last sent certificate fromBlock %d",
+			buildParams.FromBlock, buildParams.LastSentCertificate.FromBlock)
+
+	}
 }
 
 // limitCertSize limits certificate size based on the max size configuration parameter
@@ -434,27 +473,63 @@ func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 	return nil
 }
 
-// getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
-// if there is no previosly sent certificate, it returns startL2Block and 0
-func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
+type BlockRange struct {
+	FromBlock uint64
+	ToBlock   uint64
+}
+
+func (b BlockRange) Intersection(other BlockRange) BlockRange {
+	if b.FromBlock > other.ToBlock || b.ToBlock < other.FromBlock {
+		return BlockRange{}
+	}
+	return BlockRange{
+		FromBlock: max(b.FromBlock, other.FromBlock),
+		ToBlock:   min(b.ToBlock, other.ToBlock),
+	}
+}
+
+func (b BlockRange) Between(other BlockRange) BlockRange {
+	if b.FromBlock > other.ToBlock || b.ToBlock < other.FromBlock {
+		return BlockRange{}
+	}
+	return BlockRange{
+		FromBlock: min(b.FromBlock, other.FromBlock),
+		ToBlock:   max(b.ToBlock, other.ToBlock),
+	}
+}
+
+func (b BlockRange) CountBlocks() int {
+	if b.FromBlock > b.ToBlock {
+		return 0
+	}
+	return int(b.ToBlock - b.FromBlock + 1)
+}
+func (b BlockRange) IsEmpty() bool {
+	return b.CountBlocks() == 0
+}
+func (b BlockRange) String() string {
+	return fmt.Sprintf("FromBlock: %d, ToBlock: %d", b.FromBlock, b.ToBlock)
+}
+
+// getFromBlockAndRetryCount returns the next cert fromBlock and retry count based on previousCert and
+// startL2Block: you can use the one reported by the contract or zero to disable it
+func (f *baseFlow) getFromBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo, startL2Block uint64) (uint64, int, error) {
 	if lastSentCertificateInfo == nil {
 		// this is the first certificate so we start from what we have set in start L2 block
-		return f.startL2Block, 0
+		return startL2Block, 0, nil
 	}
-
-	retryCount := 0
-	lastSentBlock := lastSentCertificateInfo.ToBlock
-
-	if lastSentCertificateInfo.Status == agglayertypes.InError {
+	if lastSentCertificateInfo.Status.IsInError() {
 		// if the last certificate was in error, we need to resend it
-		// from the block before the error
-		if lastSentCertificateInfo.FromBlock > 0 {
-			lastSentBlock = lastSentCertificateInfo.FromBlock - 1
-		}
-
-		retryCount = lastSentCertificateInfo.RetryCount + 1
+		return max(startL2Block, lastSentCertificateInfo.FromBlock), lastSentCertificateInfo.RetryCount + 1, nil
 	}
-	return lastSentBlock, retryCount
+	if lastSentCertificateInfo.Status.IsSettled() {
+		// if the last certificate was settled, we need to start from the next block
+		return max(startL2Block, lastSentCertificateInfo.ToBlock+1), 0, nil
+	}
+	// The lastCertificate is not closed, so we can't decide the fromBlock
+	return 0, 0, fmt.Errorf("getFromBlockAndRetryCount. Last certificate %s is not closed (status: %s),"+
+		" can't decide fromBlock",
+		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 }
 
 // calculateGER calculates the GER hash based on the mainnet exit root and the rollup exit root

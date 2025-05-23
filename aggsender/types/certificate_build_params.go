@@ -26,6 +26,11 @@ type CertificateBuildParams struct {
 	L1InfoTreeRootFromWhichToProve common.Hash
 	L1InfoTreeLeafCount            uint32
 	AggchainProof                  *AggchainProof
+	CertificateType                CertificateType
+}
+
+func (c *CertificateBuildParams) IsARetry() bool {
+	return c != nil && c.RetryCount > 0 && c.LastSentCertificate != nil
 }
 
 func (c *CertificateBuildParams) String() string {
@@ -58,6 +63,7 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		AggchainProof:                  c.AggchainProof,
 		L1InfoTreeRootFromWhichToProve: c.L1InfoTreeRootFromWhichToProve,
 		L1InfoTreeLeafCount:            c.L1InfoTreeLeafCount,
+		CertificateType:                c.CertificateType,
 	}
 
 	for _, bridge := range c.Bridges {
