@@ -253,7 +253,7 @@ func (s *BridgeSync) GetClaimsPaged(
 
 // Start starts the synchronization process
 func (s *BridgeSync) Start(ctx context.Context) {
-	s.processor.log.Info("starting bridge synchronization")
+	s.processor.log.Info("starting bridge synchronizer")
 	s.driver.Sync(ctx)
 }
 

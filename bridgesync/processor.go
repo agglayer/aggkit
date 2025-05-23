@@ -854,7 +854,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	defer func() {
 		if shouldRollback {
 			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
-				p.log.Errorf("error rolling back transaction for block %d: %v", block.Num, errRllbck)
+				p.log.Errorf("error rolling back db transaction (block number %d): %v", block.Num, errRllbck)
 			}
 		}
 	}()
@@ -922,7 +922,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 
 	if err := tx.Commit(); err != nil {
-		p.log.Errorf("failed to commit transaction for block %d: %v", block.Num, err)
+		p.log.Errorf("failed to commit db transaction (block number %d): %v", block.Num, err)
 		return err
 	}
 	shouldRollback = false
