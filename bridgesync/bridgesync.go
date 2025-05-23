@@ -252,7 +252,7 @@ func newBridgeSync(
 
 func (s *BridgeSync) GetClaimsPaged(
 	ctx context.Context,
-	page, pageSize uint32, networkIDs []uint32, fromAddress string) ([]*ClaimResponse, int, error) {
+	page, pageSize uint32, networkIDs []uint32, fromAddress string) ([]*Claim, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}
@@ -267,7 +267,7 @@ func (s *BridgeSync) Start(ctx context.Context) {
 func (s *BridgeSync) GetBridgesPaged(
 	ctx context.Context,
 	page, pageSize uint32,
-	depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*BridgeResponse, int, error) {
+	depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*Bridge, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}

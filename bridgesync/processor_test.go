@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
+	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
@@ -988,7 +989,7 @@ func TestGetBridgesPaged(t *testing.T) {
 		networkIDs      []uint32
 		fromAddress     string
 		expectedCount   int
-		expectedBridges []*BridgeResponse
+		expectedBridges []*Bridge
 		expectedError   string
 	}{
 		{
@@ -997,8 +998,8 @@ func TestGetBridgesPaged(t *testing.T) {
 			page:          1,
 			depositCount:  nil,
 			expectedCount: len(bridges),
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[6]),
+			expectedBridges: []*Bridge{
+				bridges[6],
 			},
 			expectedError: "",
 		},
@@ -1008,14 +1009,14 @@ func TestGetBridgesPaged(t *testing.T) {
 			page:          1,
 			depositCount:  nil,
 			expectedCount: len(bridges),
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[6]),
-				NewBridgeResponse(bridges[5]),
-				NewBridgeResponse(bridges[4]),
-				NewBridgeResponse(bridges[3]),
-				NewBridgeResponse(bridges[2]),
-				NewBridgeResponse(bridges[1]),
-				NewBridgeResponse(bridges[0]),
+			expectedBridges: []*Bridge{
+				bridges[6],
+				bridges[5],
+				bridges[4],
+				bridges[3],
+				bridges[2],
+				bridges[1],
+				bridges[0],
 			},
 			expectedError: "",
 		},
@@ -1025,10 +1026,10 @@ func TestGetBridgesPaged(t *testing.T) {
 			page:          2,
 			depositCount:  nil,
 			expectedCount: len(bridges),
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[3]),
-				NewBridgeResponse(bridges[2]),
-				NewBridgeResponse(bridges[1]),
+			expectedBridges: []*Bridge{
+				bridges[3],
+				bridges[2],
+				bridges[1],
 			},
 			expectedError: "",
 		},
@@ -1038,8 +1039,8 @@ func TestGetBridgesPaged(t *testing.T) {
 			page:          1,
 			depositCount:  depositCountPtr(1),
 			expectedCount: 1,
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[1]),
+			expectedBridges: []*Bridge{
+				bridges[1],
 			},
 			expectedError: "",
 		},
@@ -1049,7 +1050,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			page:            2,
 			depositCount:    depositCountPtr(1),
 			expectedCount:   0,
-			expectedBridges: []*BridgeResponse{},
+			expectedBridges: []*Bridge{},
 			expectedError:   "invalid page number for given page size and total number of bridges",
 		},
 		{
@@ -1058,7 +1059,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			page:            20,
 			depositCount:    nil,
 			expectedCount:   len(bridges),
-			expectedBridges: []*BridgeResponse{},
+			expectedBridges: []*Bridge{},
 			expectedError:   "invalid page number for given page size and total number of bridges",
 		},
 		{
@@ -1067,8 +1068,8 @@ func TestGetBridgesPaged(t *testing.T) {
 			page:          1,
 			depositCount:  depositCountPtr(0),
 			expectedCount: 1,
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[0]),
+			expectedBridges: []*Bridge{
+				bridges[0],
 			},
 			expectedError: "",
 		},
@@ -1083,11 +1084,11 @@ func TestGetBridgesPaged(t *testing.T) {
 				bridges[6].DestinationNetwork,
 			},
 			expectedCount: 4,
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[6]),
-				NewBridgeResponse(bridges[2]),
-				NewBridgeResponse(bridges[1]),
-				NewBridgeResponse(bridges[0]),
+			expectedBridges: []*Bridge{
+				bridges[6],
+				bridges[2],
+				bridges[1],
+				bridges[0],
 			},
 			expectedError: "",
 		},
@@ -1102,7 +1103,7 @@ func TestGetBridgesPaged(t *testing.T) {
 				bridges[6].DestinationNetwork,
 			},
 			expectedCount:   0,
-			expectedBridges: []*BridgeResponse{},
+			expectedBridges: []*Bridge{},
 			expectedError:   "",
 		},
 		{
@@ -1112,8 +1113,8 @@ func TestGetBridgesPaged(t *testing.T) {
 			fromAddress:   "0xE34aaF64b29273B7D567FCFc40544c014EEe9970",
 			depositCount:  depositCountPtr(0),
 			expectedCount: 1,
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[0]),
+			expectedBridges: []*Bridge{
+				bridges[0],
 			},
 			expectedError: "",
 		},
@@ -1124,8 +1125,8 @@ func TestGetBridgesPaged(t *testing.T) {
 			fromAddress:   "0xe34aaF64b29273B7D567FCFc40544c014EEe9970",
 			depositCount:  depositCountPtr(0),
 			expectedCount: 1,
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[0]),
+			expectedBridges: []*Bridge{
+				bridges[0],
 			},
 			expectedError: "",
 		},
@@ -1136,7 +1137,7 @@ func TestGetBridgesPaged(t *testing.T) {
 			fromAddress:     "0xf34aad64b29273B7D567FCFc40544c014EEe9970",
 			depositCount:    nil,
 			expectedCount:   0,
-			expectedBridges: []*BridgeResponse{},
+			expectedBridges: []*Bridge{},
 			expectedError:   "",
 		},
 		{
@@ -1146,8 +1147,8 @@ func TestGetBridgesPaged(t *testing.T) {
 			fromAddress:   "0xD34AAF64b29273B7D567FCFc40544c014EEe9970",
 			depositCount:  nil,
 			expectedCount: 1,
-			expectedBridges: []*BridgeResponse{
-				NewBridgeResponse(bridges[6]),
+			expectedBridges: []*Bridge{
+				bridges[6],
 			},
 			expectedError: "",
 		},
@@ -1222,7 +1223,7 @@ func TestGetClaimsPaged(t *testing.T) {
 		networkIDs     []uint32
 		fromAddress    string
 		expectedCount  int
-		expectedClaims []*ClaimResponse
+		expectedClaims []*Claim
 		expectedError  string
 	}{
 		{
@@ -1230,81 +1231,60 @@ func TestGetClaimsPaged(t *testing.T) {
 			pageSize:       1,
 			page:           2,
 			expectedCount:  len(claims),
-			expectedClaims: []*ClaimResponse{NewClaimResponse(claims[4])},
+			expectedClaims: []*Claim{claims[4]},
 			expectedError:  "",
 		},
 		{
-			name:          "all results on the same page",
-			pageSize:      20,
-			page:          1,
-			expectedCount: len(claims),
-			expectedClaims: []*ClaimResponse{
-				NewClaimResponse(claims[5]),
-				NewClaimResponse(claims[4]),
-				NewClaimResponse(claims[3]),
-				NewClaimResponse(claims[2]),
-				NewClaimResponse(claims[1]),
-				NewClaimResponse(claims[0]),
-			},
-			expectedError: "",
+			name:           "all results on the same page",
+			pageSize:       20,
+			page:           1,
+			expectedCount:  len(claims),
+			expectedClaims: []*Claim{claims[5], claims[4], claims[3], claims[2], claims[1], claims[0]},
+			expectedError:  "",
 		},
 		{
-			name:          "pagination: page 2, size 3",
-			pageSize:      3,
-			page:          2,
-			expectedCount: len(claims),
-			expectedClaims: []*ClaimResponse{
-				NewClaimResponse(claims[2]),
-				NewClaimResponse(claims[1]),
-				NewClaimResponse(claims[0]),
-			},
-			expectedError: "",
+			name:           "pagination: page 2, size 3",
+			pageSize:       3,
+			page:           2,
+			expectedCount:  len(claims),
+			expectedClaims: []*Claim{claims[2], claims[1], claims[0]},
+			expectedError:  "",
 		},
 		{
 			name:           "invalid page size",
 			pageSize:       3,
 			page:           4,
 			expectedCount:  0,
-			expectedClaims: []*ClaimResponse{},
+			expectedClaims: []*Claim{},
 			expectedError:  "invalid page number for given page size and total number of claims",
 		},
 		{
-			name:          "filter by network ids (all results within the same page)",
-			pageSize:      3,
-			page:          1,
-			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
-			expectedCount: 3,
-			expectedClaims: []*ClaimResponse{
-				NewClaimResponse(claims[4]),
-				NewClaimResponse(claims[1]),
-				NewClaimResponse(claims[0]),
-			},
-			expectedError: "",
+			name:           "filter by network ids (all results within the same page)",
+			pageSize:       3,
+			page:           1,
+			networkIDs:     []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
+			expectedCount:  3,
+			expectedClaims: []*Claim{claims[4], claims[1], claims[0]},
+			expectedError:  "",
 		},
 		{
-			name:          "filter by network ids (paginated results)",
-			pageSize:      1,
-			page:          2,
-			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
-			expectedCount: 3,
-			expectedClaims: []*ClaimResponse{
-				NewClaimResponse(claims[1]),
-			},
-			expectedError: "",
+			name:           "filter by network ids (paginated results)",
+			pageSize:       1,
+			page:           2,
+			networkIDs:     []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
+			expectedCount:  3,
+			expectedClaims: []*Claim{claims[1]},
+			expectedError:  "",
 		},
 		{
-			name:          "filter by network ids (all results within the same page) and from address",
-			pageSize:      3,
-			page:          1,
-			networkIDs:    []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
-			fromAddress:   claims[0].FromAddress.String(),
-			expectedCount: 3,
-			expectedClaims: []*ClaimResponse{
-				NewClaimResponse(claims[4]),
-				NewClaimResponse(claims[1]),
-				NewClaimResponse(claims[0]),
-			},
-			expectedError: "",
+			name:           "filter by network ids (all results within the same page) and from address",
+			pageSize:       3,
+			page:           1,
+			networkIDs:     []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
+			fromAddress:    claims[0].FromAddress.String(),
+			expectedCount:  3,
+			expectedClaims: []*Claim{claims[4], claims[1], claims[0]},
+			expectedError:  "",
 		},
 		{
 			name:           "filter by network ids (all results within the same page) and from address case insensitive",
@@ -1313,7 +1293,7 @@ func TestGetClaimsPaged(t *testing.T) {
 			networkIDs:     []uint32{claims[0].OriginNetwork, claims[4].OriginNetwork},
 			fromAddress:    "0xd34aaF64b29273B7D567FCFc40544c014EEe9970",
 			expectedCount:  0,
-			expectedClaims: []*ClaimResponse{},
+			expectedClaims: []*Claim{},
 			expectedError:  "",
 		},
 	}
@@ -1362,10 +1342,10 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 		}
 
 		if i%2 == 0 {
-			tokenMappingEvt.Type = WrappedToken
+			tokenMappingEvt.Type = bridgetypes.WrappedToken
 			tokenMappingEvt.IsNotMintable = false
 		} else {
-			tokenMappingEvt.Type = SovereignToken
+			tokenMappingEvt.Type = bridgetypes.SovereignToken
 			tokenMappingEvt.IsNotMintable = true
 		}
 
@@ -1594,17 +1574,17 @@ func TestDecodePreEtrogCalldata_Valid(t *testing.T) {
 func TestTokenMappingTypeString(t *testing.T) {
 	tests := []struct {
 		name     string
-		t        TokenMappingType
+		t        bridgetypes.TokenMappingType
 		expected string
 	}{
 		{
 			name:     "WrappedToken",
-			t:        WrappedToken,
+			t:        bridgetypes.WrappedToken,
 			expected: "WrappedToken",
 		},
 		{
 			name:     "SovereignToken",
-			t:        SovereignToken,
+			t:        bridgetypes.SovereignToken,
 			expected: "SovereignToken",
 		},
 	}
