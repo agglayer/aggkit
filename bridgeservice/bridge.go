@@ -56,7 +56,7 @@ const (
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
 
-	unsupportedNetworkErrTmpl = "unsupported network id %d"
+	errNetworkID = "unsupported network id: %v"
 )
 
 var (
@@ -218,7 +218,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid network ID parameter: %v", err)
+		b.logger.Warnf(errNetworkID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -279,8 +279,8 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 			return
 		}
 	default:
-		b.logger.Warnf("unsupported network ID: %d", networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
+		b.logger.Warnf(errNetworkID, networkID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -315,7 +315,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid network ID parameter: %v", err)
+		b.logger.Warnf(errNetworkID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -363,8 +363,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 			return
 		}
 	default:
-		b.logger.Warnf("unsupported network ID: %d", networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
+		b.logger.Warnf(errNetworkID, networkID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -396,7 +396,7 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid network ID parameter: %v", err)
+		b.logger.Warnf(errNetworkID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -420,8 +420,8 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 	case b.networkID == networkID:
 		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
 	default:
-		b.logger.Warnf("unsupported network ID: %d", networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
+		b.logger.Warnf(errNetworkID, networkID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -460,7 +460,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid network ID parameter: %v", err)
+		b.logger.Warnf(errNetworkID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -484,8 +484,8 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 	case b.networkID == networkID:
 		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	default:
-		b.logger.Warnf("unsupported network ID: %d", networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
+		b.logger.Warnf(errNetworkID, networkID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -521,7 +521,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid network ID parameter: %v", err)
+		b.logger.Warnf(errNetworkID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -550,8 +550,8 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	case b.networkID == networkID:
 		l1InfoTreeIndex, err = b.getFirstL1InfoTreeIndexForL2Bridge(ctx, depositCount)
 	default:
-		b.logger.Warnf("unsupported network ID: %d", networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
+		b.logger.Warnf(errNetworkID, networkID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -588,7 +588,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid network ID parameter: %v", err)
+		b.logger.Warnf(errNetworkID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -633,8 +633,8 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 			return
 		}
 	default:
-		b.logger.Warnf("unsupported network ID: %d", networkID)
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
+		b.logger.Warnf(errNetworkID, networkID)
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
 		return
 	}
 
@@ -678,7 +678,7 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid network ID parameter: %v", err)
+		b.logger.Warnf(errNetworkID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -733,7 +733,7 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 		}
 
 	default:
-		b.logger.Warnf("unsupported network ID for claim proof: %d", networkID)
+		b.logger.Warnf("unsupported network id for claim proof: %d", networkID)
 		c.JSON(http.StatusBadRequest,
 			gin.H{"error": fmt.Sprintf("failed to get claim proof, unsupported network %d", networkID)})
 		return
@@ -905,7 +905,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
-		b.logger.Warnf("invalid network ID parameter: %v", err)
+		b.logger.Warnf(errNetworkID, err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
@@ -930,7 +930,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 			return
 		}
 	default:
-		b.logger.Warnf("unsupported network ID: %d", networkID)
+		b.logger.Warnf(errNetworkID, networkID)
 		c.JSON(http.StatusBadRequest,
 			gin.H{"error": fmt.Sprintf("failed to get last reorg event, unsupported network %d", networkID)})
 		return
