@@ -7,7 +7,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridgev2"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -52,11 +52,11 @@ type BridgeSync struct {
 	driver     *sync.EVMDriver
 	downloader *sync.EVMDownloader
 
-	originNetwork uint32
-	reorgDetector ReorgDetector
-	blockFinality etherman.BlockNumberFinality
-	ethClient     aggkittypes.EthClienter
-	bridge        common.Address
+	originNetwork    uint32
+	reorgDetector    ReorgDetector
+	blockFinality    etherman.BlockNumberFinality
+	ethClient        aggkittypes.EthClienter
+	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
 }
 
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
@@ -150,7 +150,12 @@ func newBridgeSync(
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
-	err := sanityCheckContract(logger, bridge, ethClient)
+	bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridge, ethClient)
+	if err != nil {
+		return nil, err
+	}
+
+	err = sanityCheckContract(logger, bridge, bridgeContractV2)
 	if err != nil {
 		logger.Errorf("sanityCheckContract(bridge:%s) fails sanity check. Err: %w",
 			bridge.String(), err)
@@ -185,7 +190,7 @@ func newBridgeSync(
 		RetryAfterErrorPeriod:      retryAfterErrorPeriod,
 	}
 
-	appender, err := buildAppender(ethClient, bridge, syncFullClaims)
+	appender, err := buildAppender(ethClient, bridge, syncFullClaims, bridgeContractV2)
 	if err != nil {
 		return nil, err
 	}
@@ -234,14 +239,14 @@ func newBridgeSync(
 	)
 
 	return &BridgeSync{
-		processor:     processor,
-		driver:        driver,
-		downloader:    downloader,
-		originNetwork: originNetwork,
-		reorgDetector: rd,
-		blockFinality: blockFinalityType,
-		ethClient:     ethClient,
-		bridge:        bridge,
+		processor:        processor,
+		driver:           driver,
+		downloader:       downloader,
+		originNetwork:    originNetwork,
+		reorgDetector:    rd,
+		blockFinality:    blockFinalityType,
+		ethClient:        ethClient,
+		bridgeContractV2: bridgeContractV2,
 	}, nil
 }
 
@@ -397,12 +402,8 @@ func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) 
 }
 
 func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
-	ethClient aggkittypes.BaseEthereumClienter) error {
-	contract, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
-	if err != nil {
-		return fmt.Errorf("sanityCheckContract(bridge:%s) fails creating contract. Err: %w", bridgeAddr.String(), err)
-	}
-	lastUpdatedDespositCount, err := contract.LastUpdatedDepositCount(nil)
+	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2) error {
+	lastUpdatedDespositCount, err := bridgeContractV2.LastUpdatedDepositCount(nil)
 	if err != nil {
 		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w",
 			bridgeAddr.String(), err)
@@ -418,12 +419,7 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 		return 0, sync.ErrInconsistentState
 	}
 
-	bridge, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(s.bridge, s.ethClient)
-	if err != nil {
-		return 0, fmt.Errorf("failed to create bridge contract instance: %w", err)
-	}
-
-	depositCount, err := bridge.DepositCount(nil)
+	depositCount, err := s.bridgeContractV2.DepositCount(nil)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get deposit count: %w", err)
 	}

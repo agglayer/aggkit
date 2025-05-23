@@ -1944,12 +1944,12 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			var response types.SyncStatus
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			require.NoError(t, err)
-			require.Equal(t, tc.l1BridgeCount, response.L1.BridgeDepositCount)
-			require.Equal(t, tc.l1ContractCount, response.L1.ContractDepositCount)
-			require.Equal(t, tc.l1IsSynced, response.L1.IsSynced)
-			require.Equal(t, tc.l2BridgeCount, response.L2.BridgeDepositCount)
-			require.Equal(t, tc.l2ContractCount, response.L2.ContractDepositCount)
-			require.Equal(t, tc.l2IsSynced, response.L2.IsSynced)
+			require.Equal(t, tc.l1BridgeCount, response.L1Info.BridgeDepositCount)
+			require.Equal(t, tc.l1ContractCount, response.L1Info.ContractDepositCount)
+			require.Equal(t, tc.l1IsSynced, response.L1Info.IsSynced)
+			require.Equal(t, tc.l2BridgeCount, response.L2Info.BridgeDepositCount)
+			require.Equal(t, tc.l2ContractCount, response.L2Info.ContractDepositCount)
+			require.Equal(t, tc.l2IsSynced, response.L2Info.IsSynced)
 		})
 	}
 

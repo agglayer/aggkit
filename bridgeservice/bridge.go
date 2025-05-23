@@ -855,6 +855,8 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	cnt.Add(ctx, 1)
 
 	var syncStatus types.SyncStatus
+	syncStatus.L1Info = &types.NetworkSyncInfo{}
+	syncStatus.L2Info = &types.NetworkSyncInfo{}
 
 	// Check L1 sync status
 	l1ContractDepositCount, err := b.bridgeL1.GetContractDepositCount(ctx)
@@ -872,9 +874,9 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 		return
 	}
 
-	syncStatus.L1.BridgeDepositCount = uint32(bridgesCount)
-	syncStatus.L1.ContractDepositCount = l1ContractDepositCount
-	syncStatus.L1.IsSynced = syncStatus.L1.ContractDepositCount == syncStatus.L1.BridgeDepositCount
+	syncStatus.L1Info.BridgeDepositCount = uint32(bridgesCount)
+	syncStatus.L1Info.ContractDepositCount = l1ContractDepositCount
+	syncStatus.L1Info.IsSynced = syncStatus.L1Info.ContractDepositCount == syncStatus.L1Info.BridgeDepositCount
 
 	// Check L2 sync status
 	l2ContractDepositCount, err := b.bridgeL2.GetContractDepositCount(ctx)
@@ -892,9 +894,9 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 		return
 	}
 
-	syncStatus.L2.BridgeDepositCount = uint32(bridgesCount)
-	syncStatus.L2.ContractDepositCount = l2ContractDepositCount
-	syncStatus.L2.IsSynced = syncStatus.L2.ContractDepositCount == syncStatus.L2.BridgeDepositCount
+	syncStatus.L2Info.BridgeDepositCount = uint32(bridgesCount)
+	syncStatus.L2Info.ContractDepositCount = l2ContractDepositCount
+	syncStatus.L2Info.IsSynced = syncStatus.L2Info.ContractDepositCount == syncStatus.L2Info.BridgeDepositCount
 
 	c.JSON(http.StatusOK, syncStatus)
 }
