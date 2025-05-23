@@ -10,6 +10,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -27,14 +28,39 @@ const (
 	base10 = 10
 )
 
-type ClientRenamed simulated.Client
+var _ aggkittypes.EthClienter = (*TestClient)(nil)
 
 type TestClient struct {
-	ClientRenamed
+	simulated.Client
+	aggkittypes.RPCClienter
 }
 
-func (tc TestClient) Client() *rpc.Client {
-	return nil
+// TestClientOption defines a function signature for optional parameters.
+type TestClientOption func(*TestClient)
+
+// NewTestClient creates a new TestClient with optional configurations.
+func NewTestClient(ethClient simulated.Client, opts ...TestClientOption) *TestClient {
+	tc := &TestClient{
+		Client: ethClient,
+	}
+
+	// Apply options
+	for _, opt := range opts {
+		opt(tc)
+	}
+
+	return tc
+}
+
+// WithRPCClienter sets the optional RPCClienter.
+func WithRPCClienter(rpcClient aggkittypes.RPCClienter) TestClientOption {
+	return func(tc *TestClient) {
+		tc.RPCClienter = rpcClient
+	}
+}
+
+func (t *TestClient) Call(result any, method string, args ...any) error {
+	return t.RPCClienter.Call(result, method, args)
 }
 
 // SimulatedBackendSetup defines the setup for a simulated backend.

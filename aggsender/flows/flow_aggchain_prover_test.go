@@ -17,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	gethtypes "github.com/ethereum/go-ethereum/core/types"
@@ -848,20 +849,20 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		mockFn        func(mockEthClient *mocks.EthClient)
+		mockFn        func(mockEthClient *aggkittypesmocks.BaseEthereumClienter)
 		expectedBlock uint64
 		expectedError string
 	}{
 		{
 			name: "error creating sovereign rollup caller",
-			mockFn: func(mockEthClient *mocks.EthClient) {
+			mockFn: func(mockEthClient *aggkittypesmocks.BaseEthereumClienter) {
 				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
 			},
 			expectedError: "aggchainProverFlow",
 		},
 		{
 			name: "ok fetching starting block number",
-			mockFn: func(mockEthClient *mocks.EthClient) {
+			mockFn: func(mockEthClient *aggkittypesmocks.BaseEthereumClienter) {
 				encodedReturnValue, err := getResponseContractCallStartingBlockNumber(12345)
 				if err != nil {
 					t.Fatalf("failed to pack method: %v", err)
@@ -879,7 +880,7 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockEthClient := mocks.NewEthClient(t)
+			mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
 
 			tc.mockFn(mockEthClient)
 

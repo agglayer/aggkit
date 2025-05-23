@@ -9,6 +9,7 @@ import (
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/etherman/mocks"
 	"github.com/agglayer/aggkit/opnode"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/require"
@@ -32,7 +33,7 @@ func TestNewRPCClientModeOp(t *testing.T) {
 }
 
 func TestHeaderByNumber(t *testing.T) {
-	mockEth := mocks.NewEthClienter(t)
+	mockEth := aggkittypesmocks.NewEthClienter(t)
 	mockOpNode := mocks.NewOpNodeClienter(t)
 	sut := NewRPCOpNodeDecorator(mockEth, mockOpNode)
 	ctx := context.TODO()
