@@ -210,10 +210,10 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequest(c, "get_bridges")
-	if setupErr != nil {
-		b.logger.Warnf("failed to setup request: %v", setupErr)
-		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_bridges")
+	if err != nil {
+		b.logger.Warnf("failed to setup request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	defer cancel()
@@ -293,10 +293,10 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	fromAddress := c.Query(fromAddressParam)
 
-	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequest(c, "get_claims")
-	if setupErr != nil {
-		b.logger.Warnf("failed to setup request: %v", setupErr)
-		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_claims")
+	if err != nil {
+		b.logger.Warnf("failed to setup request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	defer cancel()
@@ -363,10 +363,10 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequest(c, "get_token_mappings")
-	if setupErr != nil {
-		b.logger.Warnf("failed to setup request: %v", setupErr)
-		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_token_mappings")
+	if err != nil {
+		b.logger.Warnf("failed to setup request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	defer cancel()
@@ -378,19 +378,19 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 
 	switch {
 	case networkID == mainnetNetworkID:
-		tokenMappings, tokenMappingsCount, setupErr = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize)
+		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize)
 	case b.networkID == networkID:
-		tokenMappings, tokenMappingsCount, setupErr = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
+		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
 	default:
 		b.logger.Warnf("unsupported network ID: %d", networkID)
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
 		return
 	}
 
-	if setupErr != nil {
-		b.logger.Errorf("failed to fetch token mappings: %v", setupErr)
+	if err != nil {
+		b.logger.Errorf("failed to fetch token mappings: %v", err)
 		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to fetch token mappings: %s", setupErr.Error())})
+			gin.H{"error": fmt.Sprintf("failed to fetch token mappings: %s", err.Error())})
 		return
 	}
 
@@ -425,10 +425,10 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 		return
 	}
 
-	ctx, cancel, pageNumber, pageSize, setupErr := b.setupRequest(c, "get_legacy_token_migrations")
-	if setupErr != nil {
-		b.logger.Warnf("failed to setup request: %v", setupErr)
-		c.JSON(http.StatusBadRequest, gin.H{"error": setupErr.Error()})
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_legacy_token_migrations")
+	if err != nil {
+		b.logger.Warnf("failed to setup request: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	defer cancel()
@@ -440,19 +440,19 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 
 	switch {
 	case networkID == mainnetNetworkID:
-		tokenMigrations, tokenMigrationsCount, setupErr = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
+		tokenMigrations, tokenMigrationsCount, err = b.bridgeL1.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	case b.networkID == networkID:
-		tokenMigrations, tokenMigrationsCount, setupErr = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
+		tokenMigrations, tokenMigrationsCount, err = b.bridgeL2.GetLegacyTokenMigrations(ctx, pageNumber, pageSize)
 	default:
 		b.logger.Warnf("unsupported network ID: %d", networkID)
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(unsupportedNetworkErrTmpl, networkID)})
 		return
 	}
 
-	if setupErr != nil {
-		b.logger.Errorf("failed to fetch legacy token migrations: %v", setupErr)
+	if err != nil {
+		b.logger.Errorf("failed to fetch legacy token migrations: %v", err)
 		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to fetch legacy token migrations: %s", setupErr.Error())})
+			gin.H{"error": fmt.Sprintf("failed to fetch legacy token migrations: %s", err.Error())})
 		return
 	}
 
