@@ -53,8 +53,12 @@ const (
 	callTracerType = "callTracer"
 )
 
-func buildAppender(client aggkittypes.EthClienter,
-	bridgeAddr common.Address, syncFullClaims bool, bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2) (sync.LogAppenderMap, error) {
+func buildAppender(
+	client aggkittypes.EthClienter,
+	bridgeAddr common.Address,
+	syncFullClaims bool,
+	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
