@@ -35,6 +35,8 @@ func NewClient(serverAddr string) (*Client, error) {
 		grpc.WithConnectParams(connectParams),
 	}
 
+	// trim the http:// prefix if it exists in the URL because the go-grpc client expects it without it
+	serverAddr = strings.TrimPrefix(serverAddr, "http://")
 	conn, err := grpc.NewClient(serverAddr, opts...)
 	if err != nil {
 		return nil, err

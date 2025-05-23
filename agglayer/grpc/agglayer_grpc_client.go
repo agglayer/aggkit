@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	node "buf.build/gen/go/agglayer/agglayer/grpc/go/agglayer/node/v1/nodev1grpc"
@@ -13,15 +12,19 @@ import (
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	aggkitCommon "github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 var (
 	errUndefinedAggchainData = errors.New("undefined aggchain data parameter")
 	errUnknownAggchainData   = errors.New("unknown aggchain data type")
 )
+
+const maxRequestRetries = 5
 
 type AgglayerGRPCClient struct {
 	networkStateService node.NodeStateServiceClient
@@ -31,10 +34,7 @@ type AgglayerGRPCClient struct {
 
 // NewAggchainProofClient initializes a new AggchainProof instance
 func NewAgglayerGRPCClient(serverAddr string) (*AgglayerGRPCClient, error) {
-	// trim the http:// prefix if it exists in the URL because the go-grpc client expects it without it
-	addr := strings.TrimPrefix(serverAddr, "http://")
-
-	grpcClient, err := aggkitCommon.NewClient(addr)
+	grpcClient, err := aggkitcommon.NewClient(serverAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -48,23 +48,30 @@ func NewAgglayerGRPCClient(serverAddr string) (*AgglayerGRPCClient, error) {
 
 // GetEpochConfiguration returns the epoch configuration from the AggLayer
 func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error) {
-	const maxRetries = 5
-	var latestErr error
+	var (
+		response *v1.GetEpochConfigurationResponse
+		err      error
+	)
 
-	for retries := range maxRetries {
-		response, err := a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
-		if err == nil {
-			return &types.ClockConfiguration{
-				EpochDuration: response.EpochConfiguration.EpochDuration,
-				GenesisBlock:  response.EpochConfiguration.GenesisBlock,
-			}, nil
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, 0, func() error {
+		response, err = a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
+		if err != nil {
+			if !isRetryableGRPCError(err) {
+				return errors.Join(aggkitcommon.ErrNonRetryable, err)
+			}
+			return fmt.Errorf("transient error: %w", err)
 		}
 
-		latestErr = err
-		time.Sleep(time.Duration(1<<retries) * time.Second) // Exponential backoff
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("GetEpochConfiguration failed after %d retries: %w", maxRequestRetries, err)
 	}
 
-	return nil, fmt.Errorf("GetEpochConfiguration failed after %d retries: %w", maxRetries, latestErr)
+	return &types.ClockConfiguration{
+		GenesisBlock:  response.EpochConfiguration.GenesisBlock,
+		EpochDuration: response.EpochConfiguration.EpochDuration,
+	}, nil
 }
 
 // SendCertificate sends a certificate to the AggLayer
@@ -140,12 +147,29 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		protoCert.ImportedBridgeExits = append(protoCert.ImportedBridgeExits, protoImportedBridgeExit)
 	}
 
-	response, err := a.submissionService.SubmitCertificate(ctx, &v1.SubmitCertificateRequest{
-		Certificate: protoCert,
-	})
+	var (
+		response *v1.SubmitCertificateResponse
+		err      error
+	)
 
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, 0, func() error {
+		response, err = a.submissionService.SubmitCertificate(ctx,
+			&v1.SubmitCertificateRequest{
+				Certificate: protoCert,
+			})
+
+		if err != nil {
+			if !isRetryableGRPCError(err) {
+				return fmt.Errorf("non-retryable error: %w", err)
+			}
+
+			return fmt.Errorf("transient error: %w", err)
+		}
+
+		return nil
+	})
 	if err != nil {
-		return common.Hash{}, aggkitCommon.RepackGRPCErrorWithDetails(err)
+		return common.Hash{}, fmt.Errorf("failed to submit certificate: %w", aggkitcommon.RepackGRPCErrorWithDetails(err))
 	}
 
 	return common.BytesToHash(response.CertificateId.Value.Value), nil
@@ -154,15 +178,33 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 // GetLatestPendingCertificateHeader returns the latest pending certificate header from the AggLayer
 func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
-	response, err := a.networkStateService.GetLatestCertificateHeader(
-		ctx,
-		&v1.GetLatestCertificateHeaderRequest{
-			NetworkId: networkID,
-			Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_SETTLED,
-		},
+	var (
+		response *v1.GetLatestCertificateHeaderResponse
+		err      error
 	)
+
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, time.Second, func() error {
+		response, err = a.networkStateService.GetLatestCertificateHeader(
+			ctx,
+			&v1.GetLatestCertificateHeaderRequest{
+				NetworkId: networkID,
+				Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_SETTLED,
+			},
+		)
+		if err != nil {
+			if !isRetryableGRPCError(err) {
+				// Non-retryable error, do not retry
+				return fmt.Errorf("non-retryable error: %w", err)
+			}
+			// Retryable error, return to trigger retry
+			return fmt.Errorf("transient error: %w", err)
+		}
+		return nil
+	})
+
 	if err != nil {
-		return nil, aggkitCommon.RepackGRPCErrorWithDetails(err)
+		return nil, fmt.Errorf("failed to get latest settled certificate header after %d retries: %w",
+			maxRequestRetries, aggkitcommon.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
@@ -171,32 +213,68 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 // GetLatestPendingCertificateHeader returns the latest pending certificate header from the AggLayer
 func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
-	response, err := a.networkStateService.GetLatestCertificateHeader(
-		ctx,
-		&v1.GetLatestCertificateHeaderRequest{
-			NetworkId: networkID,
-			Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_PENDING,
-		},
+	var (
+		response *v1.GetLatestCertificateHeaderResponse
+		err      error
 	)
+
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, time.Second, func() error {
+		response, err = a.networkStateService.GetLatestCertificateHeader(
+			ctx,
+			&v1.GetLatestCertificateHeaderRequest{
+				NetworkId: networkID,
+				Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_PENDING,
+			},
+		)
+		if err != nil {
+			if !isRetryableGRPCError(err) {
+				// Non-retryable error, stop retrying
+				return errors.Join(aggkitcommon.ErrNonRetryable, err)
+			}
+			// Retryable error, return error to trigger retry
+			return fmt.Errorf("transient error: %w", err)
+		}
+		return nil
+	})
+
 	if err != nil {
-		return nil, aggkitCommon.RepackGRPCErrorWithDetails(err)
+		return nil, fmt.Errorf("failed to get latest pending certificate header after %d retries: %w",
+			maxRequestRetries, aggkitcommon.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
 }
 
 // GetCertificateHeader returns the certificate header from the AggLayer for the given certificate ID
-func (a *AgglayerGRPCClient) GetCertificateHeader(ctx context.Context,
-	certificateID common.Hash) (*types.CertificateHeader, error) {
-	response, err := a.networkStateService.GetCertificateHeader(ctx,
-		&v1.GetCertificateHeaderRequest{CertificateId: &v1nodetypes.CertificateId{
-			Value: &v1types.FixedBytes32{
-				Value: certificateID.Bytes(),
-			},
-		},
-		})
+func (a *AgglayerGRPCClient) GetCertificateHeader(
+	ctx context.Context, certificateID common.Hash) (*types.CertificateHeader, error) {
+	var (
+		response *v1.GetCertificateHeaderResponse
+		err      error
+	)
+
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, time.Second, func() error {
+		response, err = a.networkStateService.GetCertificateHeader(ctx,
+			&v1.GetCertificateHeaderRequest{CertificateId: &v1nodetypes.CertificateId{
+				Value: &v1types.FixedBytes32{
+					Value: certificateID.Bytes(),
+				},
+			}},
+		)
+		if err != nil {
+			if !isRetryableGRPCError(err) {
+				// Non-retryable, abort retries
+				return errors.Join(aggkitcommon.ErrNonRetryable, err)
+			}
+			// Retryable error, return error to retry
+			return fmt.Errorf("transient error: %w", err)
+		}
+		return nil
+	})
+
 	if err != nil {
-		return nil, aggkitCommon.RepackGRPCErrorWithDetails(err)
+		// Wrap the error to add context about retries
+		return nil, fmt.Errorf("failed to get certificate header: %w", aggkitcommon.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
@@ -413,4 +491,10 @@ func certificateStatusFromProto(status v1nodetypes.CertificateStatus) types.Cert
 	default:
 		return types.Pending
 	}
+}
+
+// isRetryableGRPCError checks if the error is a retryable gRPC error
+func isRetryableGRPCError(err error) bool {
+	code := status.Code(err)
+	return code == codes.Unavailable || code == codes.DeadlineExceeded
 }
