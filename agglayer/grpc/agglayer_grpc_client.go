@@ -24,7 +24,14 @@ var (
 	errUnknownAggchainData   = errors.New("unknown aggchain data type")
 )
 
-const maxRequestRetries = 5
+const (
+	// maxRequestRetries is the maximum number of retries for gRPC requests
+	// before giving up and returning an error
+	maxRequestRetries = 8
+	// initialDelay is the initial delay before retrying a gRPC request
+	// using exponential backoff
+	initialDelay = 1 * time.Second
+)
 
 type AgglayerGRPCClient struct {
 	networkStateService node.NodeStateServiceClient
@@ -53,11 +60,11 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 		err      error
 	)
 
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, 0, func() error {
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, initialDelay, func() error {
 		response, err = a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
 		if err != nil {
 			if !isRetryableGRPCError(err) {
-				return errors.Join(aggkitcommon.ErrNonRetryable, err)
+				return fmt.Errorf("%w :%w", aggkitcommon.ErrNonRetryable, err)
 			}
 			return fmt.Errorf("transient error: %w", err)
 		}
@@ -152,7 +159,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		err      error
 	)
 
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, 0, func() error {
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, initialDelay, func() error {
 		response, err = a.submissionService.SubmitCertificate(ctx,
 			&v1.SubmitCertificateRequest{
 				Certificate: protoCert,
@@ -160,7 +167,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 
 		if err != nil {
 			if !isRetryableGRPCError(err) {
-				return fmt.Errorf("non-retryable error: %w", err)
+				return fmt.Errorf("%w :%w", aggkitcommon.ErrNonRetryable, err)
 			}
 
 			return fmt.Errorf("transient error: %w", err)
@@ -183,7 +190,7 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 		err      error
 	)
 
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, time.Second, func() error {
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, initialDelay, func() error {
 		response, err = a.networkStateService.GetLatestCertificateHeader(
 			ctx,
 			&v1.GetLatestCertificateHeaderRequest{
@@ -194,7 +201,7 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 		if err != nil {
 			if !isRetryableGRPCError(err) {
 				// Non-retryable error, do not retry
-				return fmt.Errorf("non-retryable error: %w", err)
+				return fmt.Errorf("%w :%w", aggkitcommon.ErrNonRetryable, err)
 			}
 			// Retryable error, return to trigger retry
 			return fmt.Errorf("transient error: %w", err)
@@ -218,7 +225,7 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 		err      error
 	)
 
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, time.Second, func() error {
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, initialDelay, func() error {
 		response, err = a.networkStateService.GetLatestCertificateHeader(
 			ctx,
 			&v1.GetLatestCertificateHeaderRequest{
@@ -229,7 +236,7 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 		if err != nil {
 			if !isRetryableGRPCError(err) {
 				// Non-retryable error, stop retrying
-				return errors.Join(aggkitcommon.ErrNonRetryable, err)
+				return fmt.Errorf("%w :%w", aggkitcommon.ErrNonRetryable, err)
 			}
 			// Retryable error, return error to trigger retry
 			return fmt.Errorf("transient error: %w", err)
@@ -253,7 +260,7 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 		err      error
 	)
 
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, time.Second, func() error {
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx, maxRequestRetries, initialDelay, func() error {
 		response, err = a.networkStateService.GetCertificateHeader(ctx,
 			&v1.GetCertificateHeaderRequest{CertificateId: &v1nodetypes.CertificateId{
 				Value: &v1types.FixedBytes32{
@@ -264,7 +271,7 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 		if err != nil {
 			if !isRetryableGRPCError(err) {
 				// Non-retryable, abort retries
-				return errors.Join(aggkitcommon.ErrNonRetryable, err)
+				return fmt.Errorf("%w :%w", aggkitcommon.ErrNonRetryable, err)
 			}
 			// Retryable error, return error to retry
 			return fmt.Errorf("transient error: %w", err)
