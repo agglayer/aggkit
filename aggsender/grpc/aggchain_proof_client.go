@@ -3,7 +3,6 @@ package grpc
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
@@ -43,8 +42,7 @@ type AggchainProofClient struct {
 // NewAggchainProofClient initializes a new AggchainProof instance
 func NewAggchainProofClient(serverAddr string,
 	generateProofTimeout time.Duration) (*AggchainProofClient, error) {
-	addr := strings.TrimPrefix(serverAddr, "http://")
-	grpcClient, err := aggkitcommon.NewClient(addr)
+	grpcClient, err := aggkitcommon.NewClient(serverAddr)
 	if err != nil {
 		return nil, err
 	}
