@@ -3,6 +3,7 @@ package types
 import (
 	"encoding/binary"
 	"log"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -80,12 +81,11 @@ func (c *CertificateMetadata) ToHash() common.Hash {
 	b := make([]byte, common.HashLength) // 32-byte hash
 
 	// Encode version
-	b[0] = c.Version
 	if c.Version == CertificateMetadataV0 {
 		// For v0, we only store ToBlock
-		binary.BigEndian.PutUint64(b[1:9], c.ToBlock)
-		return common.BytesToHash(b)
+		return common.BigToHash(new(big.Int).SetUint64(c.ToBlock))
 	}
+	b[0] = c.Version
 	// CertificateMetadataV1
 	// Encode fromBlock
 	binary.BigEndian.PutUint64(b[1:9], c.FromBlock)
