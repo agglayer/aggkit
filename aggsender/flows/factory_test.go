@@ -46,7 +46,7 @@ func TestNewFlow(t *testing.T) {
 			cfg: config.Config{
 				Mode: string(types.AggchainProofMode),
 			},
-			expectedError: "aggchain prover mode requires AggchainProofURL",
+			expectedError: "aggchain prover mode requires AggkitProverClient configuration",
 		},
 		{
 			name: "unsupported Aggsender mode",

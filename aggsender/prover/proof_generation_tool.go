@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	configtypes "github.com/agglayer/aggkit/config/types"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -34,8 +35,8 @@ type AggchainProofFlow interface {
 
 // Config is the configuration for the AggchainProofGenerationTool
 type Config struct {
-	// AggchainProofURL is the URL of the AggkitProver
-	AggchainProofURL string `mapstructure:"AggchainProofURL"`
+	// AggkitProverClient is the AggkitProver client configuration
+	AggkitProverClient *aggkitgrpc.Config `mapstructure:"AggkitProverClient"`
 
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
@@ -69,7 +70,7 @@ func NewAggchainProofGenerationTool(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter) (*AggchainProofGenerationTool, error) {
 	aggchainProofClient, err := grpc.NewAggchainProofClient(
-		cfg.AggchainProofURL, cfg.GenerateAggchainProofTimeout.Duration)
+		cfg.AggkitProverClient, cfg.GenerateAggchainProofTimeout.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}

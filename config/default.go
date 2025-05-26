@@ -226,7 +226,11 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
-AggLayerURL = "{{AggLayerURL}}"
+	[AggSender.AgglayerClient]
+		URL = "{{AggLayerURL}}"
+		MinConnectionTimeout = "5s"
+		MaxRequestRetries = 8
+		InitialDelay = "1s"
 AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
@@ -237,7 +241,11 @@ KeepCertificatesHistory = true
 MaxCertSize = 8388608
 DryRun = false
 EnableRPC = true
-AggchainProofURL = "{{AggchainProofURL}}"
+	[AggSender.AggkitProverClient]
+		URL = "{{AggchainProofURL}}"
+		MinConnectionTimeout = "5s"
+		MaxRequestRetries = 8
+		InitialDelay = "1s"
 # PessimisticProof or AggchainProver
 Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
@@ -256,10 +264,14 @@ Host = "localhost"
 Port = 9091
 
 [AggchainProofGen]
-AggchainProofURL = "{{AggchainProofURL}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+	[AggchainProofGen.AggkitProverClient]
+		URL = "{{AggchainProofURL}}"
+		MinConnectionTimeout = "5s"
+		MaxRequestRetries = 8
+		InitialDelay = "1s"
 
 [Profiling]
 ProfilingHost = "localhost"

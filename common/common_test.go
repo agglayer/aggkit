@@ -350,7 +350,7 @@ func TestCalculateAccInputHash(t *testing.T) {
 func TestRetryWithExponentialBackoff(t *testing.T) {
 	tests := []struct {
 		name           string
-		maxRetries     int
+		maxRetries     uint
 		initialDelay   time.Duration
 		ctxTimeout     time.Duration
 		callback       func() func() error

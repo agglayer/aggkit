@@ -24,6 +24,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/agglayer/go_signer/signer"
@@ -41,7 +42,7 @@ const (
 func TestConfigString(t *testing.T) {
 	config := config.Config{
 		StoragePath:                  "/path/to/storage",
-		AggLayerURL:                  "http://agglayer.url",
+		AgglayerClient:               &aggkitgrpc.Config{URL: "http://agglayer.url"},
 		AggsenderPrivateKey:          signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                     "http://l2.rpc.url",
 		BlockFinality:                "latestBlock",
@@ -51,20 +52,27 @@ func TestConfigString(t *testing.T) {
 		SovereignRollupAddr:          common.HexToAddress("0x1"),
 	}
 
-	expected := "StoragePath: /path/to/storage\n" +
-		"AggLayerURL: http://agglayer.url\n" +
-		"AggsenderPrivateKey: local\n" +
-		"BlockFinality: latestBlock\n" +
-		"EpochNotificationPercentage: 50\n" +
-		"DryRun: false\n" +
-		"EnableRPC: false\n" +
-		"AggchainProofURL: \n" +
-		"Mode: PP\n" +
-		"CheckStatusCertificateInterval: 0s\n" +
-		"RetryCertAfterInError: false\n" +
-		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
-		"GenerateAggchainProofTimeout: 1s\n" +
-		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"
+	agglayerClientCfg := fmt.Sprintf("GRPC Client Config: URL=%s, MinConnectTimeout=%s, MaxRequestRetries=%d, InitialDelay=%s",
+		config.AgglayerClient.URL,
+		config.AgglayerClient.MinConnectTimeout,
+		config.AgglayerClient.MaxRequestRetries,
+		config.AgglayerClient.InitialDelay.String())
+
+	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
+		"AgglayerClient: %s\n"+
+		"AggsenderPrivateKey: local\n"+
+		"BlockFinality: latestBlock\n"+
+		"EpochNotificationPercentage: 50\n"+
+		"DryRun: false\n"+
+		"EnableRPC: false\n"+
+		"AggkitProverClient: none\n"+
+		"Mode: PP\n"+
+		"CheckStatusCertificateInterval: 0s\n"+
+		"RetryCertAfterInError: false\n"+
+		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
+		"GenerateAggchainProofTimeout: 1s\n"+
+		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n",
+		agglayerClientCfg)
 
 	require.Equal(t, expected, config.String())
 }

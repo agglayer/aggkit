@@ -92,6 +92,11 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 
 	[AggSender]
 	BridgeMetaDataAsHash = true
+	AggLayerUrl = "https://localhost:5575"
+	AggchainProofURL = "http://localhost:5576"
+
+	[AggchainProofGen]
+	AggchainProofUrl = "http://localhost:5577"
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
@@ -99,4 +104,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.Error(t, err)
 	require.Contains(t, err.Error(), bridgeMetadataAsHashDeprecated)
 	require.Contains(t, err.Error(), bridgeAddrSetOnWrongSection)
+	require.Contains(t, err.Error(), aggsenderAgglayerURLDeprecated)
+	require.Contains(t, err.Error(), aggsenderAggchainProofURLDeprecated)
+	require.Contains(t, err.Error(), aggchainProofGenAggchainProofURLDeprecated)
 }

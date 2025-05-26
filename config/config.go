@@ -49,7 +49,14 @@ const (
 	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of " +
 		"config file as polygonBridgeAddr."
 	specificL2URLDeprecated        = "Use L2URL instead"
-	bridgeMetadataAsHashDeprecated = "BridgeMetaDataAsHash is deprecated, bridge metadata is always stored as hash."
+	bridgeMetadataAsHashDeprecated = "BridgeMetaDataAsHash is deprecated, " +
+		"bridge metadata is always stored as hash."
+	aggsenderAgglayerURLDeprecated = "AggSender.AggLayerURL is deprecated, " +
+		"use AggSender.AgglayerClient instead"
+	aggsenderAggchainProofURLDeprecated = "AggSender.AggchainProofURL is deprecated, " +
+		"use AggSender.AggkitProverClient instead"
+	aggchainProofGenAggchainProofURLDeprecated = "AggchainProofGen.AggchainProofURL is deprecated, " +
+		"use AggSender.AggkitProverClient instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -103,6 +110,18 @@ var (
 		{
 			FieldNamePattern: "AggSender.BridgeMetadataAsHash",
 			Reason:           bridgeMetadataAsHashDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.AggLayerURL",
+			Reason:           aggsenderAgglayerURLDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.AggchainProofURL",
+			Reason:           aggsenderAggchainProofURLDeprecated,
+		},
+		{
+			FieldNamePattern: "AggchainProofGen.AggchainProofURL",
+			Reason:           aggchainProofGenAggchainProofURLDeprecated,
 		},
 	}
 )

@@ -40,9 +40,9 @@ type AggchainProofClient struct {
 }
 
 // NewAggchainProofClient initializes a new AggchainProof instance
-func NewAggchainProofClient(serverAddr string,
+func NewAggchainProofClient(cfg *aggkitgrpc.Config,
 	generateProofTimeout time.Duration) (*AggchainProofClient, error) {
-	grpcClient, err := aggkitgrpc.NewClient(serverAddr)
+	grpcClient, err := aggkitgrpc.NewClient(cfg)
 	if err != nil {
 		return nil, err
 	}

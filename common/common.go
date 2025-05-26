@@ -185,7 +185,7 @@ var ErrNonRetryable = errors.New("non-retryable")
 // RetryWithExponentialBackoff retries the given function up to maxRetries with exponential backoff.
 // Use `context.Canceled` or `context.DeadlineExceeded` to cancel early.
 // Wrap return with `fmt.Errorf("%w: your error", ErrNonRetryable)` to avoid retries.
-func RetryWithExponentialBackoff(ctx context.Context, maxRetries int,
+func RetryWithExponentialBackoff(ctx context.Context, maxRetries uint,
 	initialDelay time.Duration, callback func() error) error {
 	if callback == nil {
 		return errors.New("retry callback cannot be nil")

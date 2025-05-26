@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/agglayer/aggkit/config/types"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
@@ -14,9 +15,46 @@ import (
 )
 
 const (
-	// minConnectTimeout is the minimum time to wait for a connection to be established
-	minConnectTimeout = 5 * time.Second
+	defaultMaxRequestRetries = 3
+	defaultInitialDelay      = 1 * time.Second
+	defaultMinConnectTimeout = 5 * time.Second
 )
+
+// Config is the configuration for the gRPC client
+type Config struct {
+	// URL is the URL of the gRPC server
+	URL string `mapstructure:"URL"`
+
+	// MinConnectTimeout is the minimum time to wait for a connection to be established
+	// This is used to prevent the client from hanging indefinitely if the server is unreachable.
+	MinConnectTimeout types.Duration `mapstructure:"MinConnectTimeout"`
+
+	// MaxRequestRetries is the maximum number of retries for a request
+	MaxRequestRetries uint `mapstructure:"MaxRequestRetries"`
+
+	// InitialDelay is the initial delay before retrying a request
+	InitialDelay types.Duration `mapstructure:"RetryDelay"`
+}
+
+// DefaultConfig returns a default configuration for the gRPC client
+func DefaultConfig() *Config {
+	return &Config{
+		URL:               "",
+		MinConnectTimeout: types.NewDuration(defaultMinConnectTimeout),
+		MaxRequestRetries: defaultMaxRequestRetries,
+		InitialDelay:      types.NewDuration(defaultInitialDelay),
+	}
+}
+
+// String returns a string representation of the gRPC client configuration
+func (c *Config) String() string {
+	if c == nil {
+		return "none"
+	}
+
+	return fmt.Sprintf("GRPC Client Config: URL=%s, MinConnectTimeout=%s, MaxRequestRetries=%d, InitialDelay=%s",
+		c.URL, c.MinConnectTimeout.String(), c.MaxRequestRetries, c.InitialDelay.String())
+}
 
 // Client holds the gRPC connection and services
 type Client struct {
@@ -24,10 +62,10 @@ type Client struct {
 }
 
 // NewClient initializes and returns a new gRPC client
-func NewClient(serverAddr string) (*Client, error) {
+func NewClient(cfg *Config) (*Client, error) {
 	connectParams := grpc.ConnectParams{
 		Backoff:           backoff.DefaultConfig,
-		MinConnectTimeout: minConnectTimeout,
+		MinConnectTimeout: cfg.MinConnectTimeout.Duration,
 	}
 
 	opts := []grpc.DialOption{
@@ -36,7 +74,7 @@ func NewClient(serverAddr string) (*Client, error) {
 	}
 
 	// trim the http:// and https:// prefixes from the URL because the go-grpc client expects it without it
-	serverAddr = strings.TrimPrefix(serverAddr, "http://")
+	serverAddr := strings.TrimPrefix(cfg.URL, "http://")
 	serverAddr = strings.TrimPrefix(serverAddr, "https://")
 	conn, err := grpc.NewClient(serverAddr, opts...)
 	if err != nil {
