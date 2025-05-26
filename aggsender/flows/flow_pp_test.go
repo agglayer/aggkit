@@ -680,6 +680,7 @@ func TestBuildCertificate(t *testing.T) {
 				ToBlock:                        tt.toBlock,
 				Bridges:                        tt.bridges,
 				Claims:                         tt.claims,
+				CertificateType:                types.CertificateTypePP,
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x7891"),
 			}
 			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificate, false)
@@ -965,6 +966,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				ToBlock:             10,
 				RetryCount:          0,
 				L1InfoTreeLeafCount: 1,
+				CertificateType:     types.CertificateTypePP,
 				LastSentCertificate: &types.CertificateHeader{ToBlock: 5},
 				Bridges:             []bridgesync.Bridge{{}},
 				Claims: []bridgesync.Claim{
