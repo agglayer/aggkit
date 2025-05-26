@@ -75,6 +75,15 @@ if [ -n "$E2E_FOLDER" ]; then
         exit 1
     fi
 
+    imported_bridges_tool="./target/aggsender_find_imported_bridge"
+    if [ ! -f "$imported_bridges_tool" ]; then
+        log_error "The aggsender imported bridges monitor tool is not built. Expected path: $imported_bridges_tool"
+        exit 1
+    fi
+
+    cp "$imported_bridges_tool" "$E2E_FOLDER/aggsender_find_imported_bridge"
+    chmod +x "$E2E_FOLDER/aggsender_find_imported_bridge"
+
     log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
     pushd "$E2E_FOLDER" >/dev/null
 
@@ -82,15 +91,6 @@ if [ -n "$E2E_FOLDER" ]; then
     set -a
     source ./tests/.env
     set +a
-
-    local imported_bridges_tool="./target/aggsender_find_imported_bridge"
-    if [ ! -f "$imported_bridges_tool" ]; then
-        log_error "The aggsender imported bridge tool is not built. Expected path: $imported_bridges_tool"
-        exit 1
-    fi
-
-    cp "$imported_bridges_tool" "$E2E_FOLDER/aggsender_find_imported_bridge"
-    chmod +x "$E2E_FOLDER/aggsender_find_imported_bridge"
 
     export BATS_LIB_PATH="$PWD/core/helpers/lib"
     export PROJECT_ROOT="$PWD"
