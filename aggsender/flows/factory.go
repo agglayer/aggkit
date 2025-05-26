@@ -78,6 +78,7 @@ func NewFlow(
 			query.NewBridgeDataQuerier(l2Syncer),
 			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 			l1Client,
+			cfg.RequireNoFEPBlockGap,
 		), nil
 
 	default:

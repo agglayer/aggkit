@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -134,4 +135,17 @@ func TestGetRPCServices(t *testing.T) {
 	require.Len(t, services, 1)
 	require.Equal(t, "aggkit", services[0].Name)
 	require.NotNil(t, services[0].Service)
+}
+
+func TestNewAggchainProofGenerationTool(t *testing.T) {
+	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
+	mockL1Client := mocks.NewEthClient(t)
+	mockL2Client := mocks.NewEthClient(t)
+	mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	mockL1Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
+	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
+		Config{}, mockL2Syncer, nil, mockL1Client, mockL2Client)
+	require.Error(t, err)
 }

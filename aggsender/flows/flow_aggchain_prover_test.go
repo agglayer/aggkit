@@ -477,6 +477,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier,
 				mockGERQuerier,
 				nil,
+				false,
 			)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockAggchainProofClient, mockL1InfoTreeDataQuerier, mockGERQuerier)
@@ -623,10 +624,11 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name           string
-		fromBlock      uint64
-		startL2Block   uint64
-		expectedResult uint64
+		name                string
+		fromBlock           uint64
+		startL2Block        uint64
+		expectedResult      uint64
+		lastSentCertificate *types.CertificateHeader
 	}{
 		{
 			name:           "fromBlock is 0, return startL2Block",
@@ -646,6 +648,49 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 			startL2Block:   1,
 			expectedResult: 9,
 		},
+		{
+			name:         "lastSentCertificate settled on PP",
+			fromBlock:    10,
+			startL2Block: 50,
+			lastSentCertificate: &types.CertificateHeader{
+				FromBlock: 10,
+				ToBlock:   20,
+				Status:    agglayertypes.Settled,
+			},
+			expectedResult: 50,
+		},
+		{
+			name:         "lastSentCertificate settled on PP on the fence",
+			fromBlock:    10,
+			startL2Block: 50,
+			lastSentCertificate: &types.CertificateHeader{
+				FromBlock: 10,
+				ToBlock:   50,
+				Status:    agglayertypes.Settled,
+			},
+			expectedResult: 50,
+		},
+		{
+			name:                "lastSentCertificate settled on PP on the fence. Case 2",
+			fromBlock:           50,
+			startL2Block:        50,
+			lastSentCertificate: nil,
+			expectedResult:      50,
+		},
+		{
+			name:                "lastSentCertificate settled on PP on the fence. Case 3",
+			fromBlock:           51,
+			startL2Block:        50,
+			lastSentCertificate: nil,
+			expectedResult:      50,
+		},
+		{
+			name:                "lastSentCertificate settled on PP on the fence. Case 4",
+			fromBlock:           52,
+			startL2Block:        50,
+			lastSentCertificate: nil,
+			expectedResult:      51,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -655,11 +700,12 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 
 			flow := &AggchainProverFlow{
 				baseFlow: &baseFlow{
+					log:          log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
 					startL2Block: tc.startL2Block,
 				},
 			}
 
-			result := flow.getLastProvenBlock(tc.fromBlock)
+			result := flow.getLastProvenBlock(tc.fromBlock, tc.lastSentCertificate)
 			require.Equal(t, tc.expectedResult, result)
 		})
 	}
@@ -785,19 +831,22 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 	testCases := []struct {
 		name                        string
 		cert                        *types.CertificateHeader
+		requireNoFEPBlockGap        bool
 		getLastSentCertificateError error
 		expectedError               bool
 	}{
 		{
 			name:                        "error getting last sent certificate",
 			cert:                        nil,
+			requireNoFEPBlockGap:        true,
 			getLastSentCertificateError: exampleError,
 			expectedError:               true,
 		},
 		{
-			name:          "no last sent certificate on storage",
-			cert:          nil,
-			expectedError: false,
+			name:                 "no last sent certificate on storage",
+			cert:                 nil,
+			requireNoFEPBlockGap: true,
+			expectedError:        false,
 		},
 		{
 			name:          "last cert after upgrade L2 block (startL2Block) that is OK",
@@ -810,15 +859,43 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 			expectedError: false,
 		},
 		{
-			name:          "last cert is 2 block below upgrade L2 block (startL2Block) so it's a gap of block 1233. Error",
-			cert:          &types.CertificateHeader{ToBlock: 1232},
-			expectedError: true,
+			name: "last cert after upgrade L2 block (startL2Block) that is OK",
+			cert: &types.CertificateHeader{
+				ToBlock: 4000,
+			},
+			requireNoFEPBlockGap: true,
+			expectedError:        false,
+		},
+		{
+			name: "last cert is immediately before upgrade L2 block (startL2Block) that is OK",
+			cert: &types.CertificateHeader{
+				ToBlock: 1233,
+			},
+			requireNoFEPBlockGap: true,
+			expectedError:        false,
+		},
+		{
+			name: "last cert is 2 block below upgrade L2 block (startL2Block) so it's a gap of block 1233. Error",
+			cert: &types.CertificateHeader{
+				ToBlock: 1232,
+			},
+			requireNoFEPBlockGap: true,
+			expectedError:        true,
+		},
+		{
+			name: "there are a gap, but bypass error because requireNoFEPBlockGap is false",
+			cert: &types.CertificateHeader{
+				ToBlock: 1232,
+			},
+			requireNoFEPBlockGap: false,
+			expectedError:        false,
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockStorage.EXPECT().GetLastSentCertificateHeader().Return(tc.cert, tc.getLastSentCertificateError).Once()
+			sut.requireNoFEPBlockGap = tc.requireNoFEPBlockGap
 			err := sut.CheckInitialStatus(context.TODO())
 			if tc.expectedError {
 				require.Error(t, err)
