@@ -41,9 +41,20 @@ func TestNewFlow(t *testing.T) {
 			expectedError: "error signer.Initialize",
 		},
 		{
-			name: "error missing AggchainProofURL in AggchainProofMode",
+			name: "error creating signer in AggchainProofMode",
 			cfg: config.Config{
 				Mode: string(types.AggchainProofMode),
+				AggsenderPrivateKey: signertypes.SignerConfig{
+					Method: signertypes.MethodLocal,
+				},
+			},
+			expectedError: "error signer.Initialize",
+		},
+		{
+			name: "error missing AggchainProofURL in AggchainProofMode",
+			cfg: config.Config{
+				Mode:                string(types.AggchainProofMode),
+				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
 			},
 			expectedError: "aggchain prover mode requires AggchainProofURL",
 		},

@@ -325,7 +325,7 @@ func (c *Certificate) Hash() common.Hash {
 
 	return crypto.Keccak256Hash(
 		aggkitcommon.Uint32ToBytes(c.NetworkID),
-		aggkitcommon.Uint64ToBytes(c.Height),
+		aggkitcommon.Uint64ToBigEndianBytes(c.Height),
 		c.PrevLocalExitRoot.Bytes(),
 		c.NewLocalExitRoot.Bytes(),
 		bridgeExitsPart,
@@ -333,9 +333,9 @@ func (c *Certificate) Hash() common.Hash {
 	)
 }
 
-// HashToSign is the actual hash that needs to be signed by the aggsender
-// as expected by the agglayer
-func (c *Certificate) HashToSign() common.Hash {
+// PPHashToSign is the actual hash that needs to be signed by the aggsender
+// as expected by the agglayer for the PP flow
+func (c *Certificate) PPHashToSign() common.Hash {
 	globalIndexHashes := make([][]byte, len(c.ImportedBridgeExits))
 	for i, importedBridgeExit := range c.ImportedBridgeExits {
 		globalIndexHashes[i] = importedBridgeExit.GlobalIndex.Hash().Bytes()
@@ -344,6 +344,36 @@ func (c *Certificate) HashToSign() common.Hash {
 	return crypto.Keccak256Hash(
 		c.NewLocalExitRoot.Bytes(),
 		crypto.Keccak256Hash(globalIndexHashes...).Bytes(),
+	)
+}
+
+// FEPHashToSign is the actual hash that needs to be signed by the aggsender
+// as expected by the agglayer for the FEP flow
+func (c *Certificate) FEPHashToSign() common.Hash {
+	chunks := make([][]byte, 0, len(c.ImportedBridgeExits))
+	for _, importedBridgeExit := range c.ImportedBridgeExits {
+		indexBytes := importedBridgeExit.GlobalIndexToLittleEndianBytes()
+		hashBytes := importedBridgeExit.BridgeExit.Hash().Bytes()
+
+		combined := make([]byte, 0, len(indexBytes)+len(hashBytes))
+		combined = append(combined, indexBytes...) // combine into one slice
+		combined = append(combined, hashBytes...)  // combine into one slice
+		chunks = append(chunks, combined)
+	}
+
+	importedBridgeExitsHash := crypto.Keccak256(chunks...)
+
+	aggchainParams := emptyBytesHash
+	aggchainDataProof, ok := c.AggchainData.(*AggchainDataProof)
+	if ok {
+		aggchainParams = aggchainDataProof.AggchainParams.Bytes()
+	}
+
+	return crypto.Keccak256Hash(
+		c.NewLocalExitRoot.Bytes(),
+		importedBridgeExitsHash,
+		aggkitcommon.Uint64ToLittleEndianBytes(c.Height),
+		aggchainParams,
 	)
 }
 
@@ -615,7 +645,7 @@ func (l *L1InfoTreeLeafInner) Hash() common.Hash {
 	return crypto.Keccak256Hash(
 		l.GlobalExitRoot.Bytes(),
 		l.BlockHash.Bytes(),
-		aggkitcommon.Uint64ToBytes(l.Timestamp),
+		aggkitcommon.Uint64ToBigEndianBytes(l.Timestamp),
 	)
 }
 
@@ -875,6 +905,17 @@ func (c *ImportedBridgeExit) Hash() common.Hash {
 		c.BridgeExit.Hash().Bytes(),
 		c.ClaimData.Hash().Bytes(),
 		c.GlobalIndex.Hash().Bytes(),
+	)
+}
+
+// GlobalIndexToLittleEndianBytes converts the global index to a byte slice in little-endian format
+func (c *ImportedBridgeExit) GlobalIndexToLittleEndianBytes() []byte {
+	return aggkitcommon.BigIntToLittleEndianBytes(
+		bridgesync.GenerateGlobalIndex(
+			c.GlobalIndex.MainnetFlag,
+			c.GlobalIndex.RollupIndex,
+			c.GlobalIndex.LeafIndex,
+		),
 	)
 }
 
