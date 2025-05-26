@@ -33,7 +33,7 @@ type Config struct {
 	MaxRequestRetries uint `mapstructure:"MaxRequestRetries"`
 
 	// InitialDelay is the initial delay before retrying a request
-	InitialDelay types.Duration `mapstructure:"RetryDelay"`
+	InitialDelay types.Duration `mapstructure:"InitialDelay"`
 }
 
 // DefaultConfig returns a default configuration for the gRPC client
