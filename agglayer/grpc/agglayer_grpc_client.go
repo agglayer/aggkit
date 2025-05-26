@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
@@ -41,7 +42,7 @@ type AgglayerGRPCClient struct {
 
 // NewAggchainProofClient initializes a new AggchainProof instance
 func NewAgglayerGRPCClient(serverAddr string) (*AgglayerGRPCClient, error) {
-	grpcClient, err := aggkitcommon.NewClient(serverAddr)
+	grpcClient, err := aggkitgrpc.NewClient(serverAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -161,7 +162,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		return handleGrpcError(err)
 	})
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to submit certificate: %w", aggkitcommon.RepackGRPCErrorWithDetails(err))
+		return common.Hash{}, fmt.Errorf("failed to submit certificate: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return common.BytesToHash(response.CertificateId.Value.Value), nil
@@ -188,7 +189,7 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest settled certificate header after %d retries: %w",
-			maxRequestRetries, aggkitcommon.RepackGRPCErrorWithDetails(err))
+			maxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
@@ -215,7 +216,7 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest pending certificate header after %d retries: %w",
-			maxRequestRetries, aggkitcommon.RepackGRPCErrorWithDetails(err))
+			maxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
@@ -242,7 +243,7 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 
 	if err != nil {
 		// Wrap the error to add context about retries
-		return nil, fmt.Errorf("failed to get certificate header: %w", aggkitcommon.RepackGRPCErrorWithDetails(err))
+		return nil, fmt.Errorf("failed to get certificate header: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
