@@ -213,7 +213,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		rateLimiter:     aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
-	mockStorage.EXPECT().GetLastSentCertificate().Return(&aggsendertypes.CertificateInfo{
+	mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&aggsendertypes.CertificateHeader{
 		NewLocalExitRoot: common.HexToHash("0x123"),
 		Height:           1,
 		FromBlock:        0,
@@ -594,7 +594,6 @@ type aggsenderTestData struct {
 	compatibilityChekerMock *mocksdb.CompatibilityChecker
 	certStatusCheckerMock   *mocks.CertificateStatusChecker
 	sut                     *AggSender
-	testCerts               []aggsendertypes.CertificateInfo
 }
 
 func NewBridgesData(t *testing.T, num int, blockNum []uint64) []bridgesync.Bridge {
@@ -688,21 +687,6 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		sut.certStatusChecker = statusCheckerMock
 	}
 
-	testCerts := []aggsendertypes.CertificateInfo{
-		{
-			Height:           0,
-			CertificateID:    common.HexToHash("0x1"),
-			NewLocalExitRoot: common.HexToHash("0x2"),
-			Status:           agglayertypes.Pending,
-		},
-		{
-			Height:           1,
-			CertificateID:    common.HexToHash("0x1a111"),
-			NewLocalExitRoot: common.HexToHash("0x2a2"),
-			Status:           agglayertypes.Pending,
-		},
-	}
-
 	return &aggsenderTestData{
 		ctx:                     ctx,
 		agglayerClientMock:      agglayerClientMock,
@@ -714,6 +698,5 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		compatibilityChekerMock: compatibilityCheckerMock,
 		certStatusCheckerMock:   statusCheckerMock,
 		sut:                     sut,
-		testCerts:               testCerts,
 	}
 }

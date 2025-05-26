@@ -76,7 +76,7 @@ func NewAggchainProverFlow(log types.Logger,
 // CheckInitialStatus checks that initial status is correct.
 // For AggchainProverFlow checks that starting block and last certificate match
 func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
-	lastSentCertificate, err := a.storage.GetLastSentCertificate()
+	lastSentCertificate, err := a.storage.GetLastSentCertificateHeader()
 	if err != nil {
 		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
 	}
@@ -85,7 +85,7 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 
 // sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate
 // #436. Don't allow gaps updating from PP to FEP
-func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.CertificateInfo) error {
+func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.CertificateHeader) error {
 	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.startL2Block {
 		return fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
 			lastSentCertificate.ToBlock, a.startL2Block)
@@ -99,18 +99,17 @@ func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.C
 // if the last sent certificate is in error, we need to resend the exact same certificate
 // also, it calls the aggchain prover to get the aggchain proof
 func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	lastSentCertificateInfo, err := a.storage.GetLastSentCertificate()
+	lastSentCert, proof, err := a.storage.GetLastSentCertificateHeaderWithProofIfInError(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
+		return nil, fmt.Errorf("aggchainProverFlow - error checking if last sent certificate is InError: %w", err)
 	}
 
-	if lastSentCertificateInfo != nil && lastSentCertificateInfo.Status == agglayertypes.InError {
-		// if the last certificate was in error, we need to resend it
-		a.log.Infof("resending the same InError certificate: %s", lastSentCertificateInfo.String())
+	if lastSentCert != nil && lastSentCert.Status.IsInError() {
+		a.log.Infof("resending the same InError certificate: %s", lastSentCert.String())
 
 		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
-			ctx, lastSentCertificateInfo.FromBlock,
-			lastSentCertificateInfo.ToBlock,
+			ctx, lastSentCert.FromBlock,
+			lastSentCert.ToBlock,
 			true,
 		)
 		if err != nil {
@@ -118,16 +117,16 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		}
 
 		buildParams := &types.CertificateBuildParams{
-			FromBlock:           lastSentCertificateInfo.FromBlock,
-			ToBlock:             lastSentCertificateInfo.ToBlock,
-			RetryCount:          lastSentCertificateInfo.RetryCount + 1,
+			FromBlock:           lastSentCert.FromBlock,
+			ToBlock:             lastSentCert.ToBlock,
+			RetryCount:          lastSentCert.RetryCount + 1,
 			Bridges:             bridges,
 			Claims:              claims,
-			LastSentCertificate: lastSentCertificateInfo,
-			CreatedAt:           lastSentCertificateInfo.CreatedAt,
+			LastSentCertificate: lastSentCert,
+			CreatedAt:           lastSentCert.CreatedAt,
 		}
 
-		if lastSentCertificateInfo.AggchainProof == nil {
+		if proof == nil {
 			// this can happen if the aggsender db was deleted, so the aggsender
 			// got the last sent certificate from agglayer, but in that data we do not have
 			// the aggchain proof that was generated before, so we need to call the prover again
@@ -138,9 +137,9 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		// if we have the aggchain proof, we need to set it in the build params
 		// and set the root from which to prove the imported bridge exits
 		// no need to call the prover again
-		buildParams.AggchainProof = lastSentCertificateInfo.AggchainProof
-		buildParams.L1InfoTreeRootFromWhichToProve = *lastSentCertificateInfo.FinalizedL1InfoTreeRoot
-		buildParams.L1InfoTreeLeafCount = lastSentCertificateInfo.L1InfoTreeLeafCount
+		buildParams.AggchainProof = proof
+		buildParams.L1InfoTreeRootFromWhichToProve = *lastSentCert.FinalizedL1InfoTreeRoot
+		buildParams.L1InfoTreeLeafCount = lastSentCert.L1InfoTreeLeafCount
 
 		return buildParams, nil
 	}

@@ -47,7 +47,7 @@ func unmarshalGlobalIndex(globalIndex string) (*agglayertypes.GlobalIndex, error
 
 // This function find out the certificate for a deposit
 // It use the aggsender RPC
-func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayertypes.GlobalIndex) (bool, error) {
+func certContainsGlobalIndex(cert *types.Certificate, globalIndex *agglayertypes.GlobalIndex) (bool, error) {
 	if cert == nil {
 		return false, nil
 	}
@@ -64,9 +64,9 @@ func certContainsGlobalIndex(cert *types.CertificateInfo, globalIndex *agglayert
 	return false, nil
 }
 
-func tryUnmarshalCertificate(cert *types.CertificateInfo) (*agglayertypes.Certificate, error) {
+func tryUnmarshalCertificate(cert *types.Certificate) (*agglayertypes.Certificate, error) {
 	var certSigned agglayertypes.Certificate
-	err := json.Unmarshal([]byte(cert.SignedCertificate), &certSigned)
+	err := json.Unmarshal([]byte(*cert.SignedCertificate), &certSigned)
 	if err == nil {
 		return &certSigned, nil
 	}
@@ -74,7 +74,7 @@ func tryUnmarshalCertificate(cert *types.CertificateInfo) (*agglayertypes.Certif
 	log.Warnf("Error unmarshal new certificate format: %v. It will fallback to the old one", err)
 
 	var certSignedOld agglayertypes.SignedCertificate
-	err = json.Unmarshal([]byte(cert.SignedCertificate), &certSignedOld)
+	err = json.Unmarshal([]byte(*cert.SignedCertificate), &certSignedOld)
 	if err != nil {
 		log.Errorf("Could not unmarshal certificate with old format: %v", err)
 		return nil, fmt.Errorf("error Unmarshal cert. Err: %w", err)
@@ -105,7 +105,7 @@ func main() {
 		os.Exit(errLevelComms)
 	}
 
-	currentHeight := cert.Height
+	currentHeight := cert.Header.Height
 	for cert != nil {
 		found, err := certContainsGlobalIndex(cert, decodedGlobalIndex)
 		if err != nil {
@@ -114,8 +114,8 @@ func main() {
 		}
 		if found {
 			log.Infof("Found certificate for global index: %v", globalIndex)
-			if cert.Status.IsSettled() {
-				log.Infof("Certificate is settled: %s status:%s", cert.ID(), cert.Status.String())
+			if cert.Header.Status.IsSettled() {
+				log.Infof("Certificate is settled: %s status:%s", cert.Header.ID(), cert.Header.Status.String())
 				os.Exit(0)
 			}
 			log.Errorf("Certificate is not settled")
