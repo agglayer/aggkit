@@ -1,7 +1,7 @@
 package types
 
 import (
-	"encoding/binary"
+	"database/sql/driver"
 	"fmt"
 	"time"
 
@@ -17,6 +17,81 @@ const (
 	PessimisticProofMode AggsenderMode = "PessimisticProof"
 	AggchainProofMode    AggsenderMode = "AggchainProof"
 )
+
+type CertificateType uint8
+
+const (
+	CertificateTypeUnknownStr string = ""
+	CertificateTypePPStr      string = "pp"
+	CertificateTypeFEPStr     string = "fep"
+
+	CertificateTypeUnknown CertificateType = 0
+	CertificateTypePP      CertificateType = 1
+	CertificateTypeFEP     CertificateType = 2
+)
+
+func (c CertificateType) String() string {
+	switch c {
+	case CertificateTypeFEP:
+		return CertificateTypeFEPStr
+	case CertificateTypePP:
+		return CertificateTypePPStr
+	default:
+		return CertificateTypeUnknownStr
+	}
+}
+
+// meddler support for store as string
+func (c CertificateType) Value() (driver.Value, error) {
+	return c.String(), nil
+}
+
+// meddler support for store as string
+func (c *CertificateType) Scan(value interface{}) error {
+	str, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("CertificateType: expected string, got %T", value)
+	}
+	v, err := NewCertificateTypeFromStr(str)
+	if err != nil {
+		return fmt.Errorf("CertificateType.Scan(...): %w", err)
+	}
+	*c = v
+	return nil
+}
+
+func (c CertificateType) ToInt() uint8 {
+	return uint8(c)
+}
+
+func NewCertificateTypeFromInt(v uint8) CertificateType {
+	return CertificateType(v)
+}
+
+func NewCertificateTypeFromStr(v string) (CertificateType, error) {
+	switch v {
+	case CertificateTypePPStr:
+		return CertificateTypePP, nil
+	case CertificateTypeFEPStr:
+		return CertificateTypeFEP, nil
+	case CertificateTypeUnknownStr:
+		return CertificateTypeUnknown, nil
+	default:
+		return CertificateTypeUnknown, fmt.Errorf("unknown CertificateType: %s", v)
+	}
+}
+
+type CertificateSource string
+
+const (
+	CertificateSourceAggLayer CertificateSource = "agglayer"
+	CertificateSourceLocal    CertificateSource = "local"
+	CertificateSourceUnknown  CertificateSource = ""
+)
+
+func (c CertificateSource) String() string {
+	return string(c)
+}
 
 // CertStatus holds the status of pending and in error certificates
 type CertStatus struct {
@@ -92,6 +167,11 @@ type CertificateHeader struct {
 	UpdatedAt               uint32                          `meddler:"updated_at"`
 	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
 	L1InfoTreeLeafCount     uint32                          `meddler:"l1_info_tree_leaf_count"`
+	// CertType must be private but there are a lot of code that create CertificateInfo directly
+	// so I add a GetCertType() that is not idiomatic but helps to determine the kind of certificate
+	CertType CertificateType `meddler:"cert_type"`
+	// This is the origin of this data, it can be from the AggLayer or from the local sender
+	CertSource CertificateSource `meddler:"cert_source"`
 }
 
 func (c *CertificateHeader) String() string {
@@ -108,6 +188,7 @@ func (c *CertificateHeader) String() string {
 	}
 
 	return fmt.Sprintf("aggsender.CertificateHeader: \n"+
+		"Type: %s \n"+
 		"Height: %d \n"+
 		"RetryCount: %d \n"+
 		"CertificateID: %s \n"+
@@ -118,7 +199,9 @@ func (c *CertificateHeader) String() string {
 		"ToBlock: %d \n"+
 		"CreatedAt: %s \n"+
 		"UpdatedAt: %s \n"+
-		"FinalizedL1InfoTreeRoot: %s \n",
+		"FinalizedL1InfoTreeRoot: %s \n"+
+		"Source: %s \n",
+		c.CertType.String(),
 		c.Height,
 		c.RetryCount,
 		c.CertificateID.String(),
@@ -130,6 +213,7 @@ func (c *CertificateHeader) String() string {
 		time.Unix(int64(c.CreatedAt), 0),
 		time.Unix(int64(c.UpdatedAt), 0),
 		finalizedL1InfoTreeRoot,
+		c.CertSource.String(),
 	)
 }
 
@@ -138,7 +222,8 @@ func (c *CertificateHeader) ID() string {
 	if c == nil {
 		return NilStr
 	}
-	return fmt.Sprintf("%d/%s (retry %d)", c.Height, c.CertificateID.String(), c.RetryCount)
+	return fmt.Sprintf("%d/%s (retry: %d, type: %s)",
+		c.Height, c.CertificateID.String(), c.RetryCount, c.CertType.String())
 }
 
 // StatusString returns the string representation of the status
@@ -171,6 +256,28 @@ type Certificate struct {
 	AggchainProof     *AggchainProof `meddler:"aggchain_proof,aggchainproof"`
 }
 
+func (c *Certificate) DetermineCertType(startL2Block uint64) CertificateType {
+	if c == nil {
+		return CertificateTypeUnknown
+	}
+	if c.Header.CertType == CertificateTypeUnknown {
+		if c.AggchainProof != nil {
+			return CertificateTypeFEP
+		}
+		// If the certificate is not set, we can determine the type based on the FromBlock
+		if startL2Block == 0 {
+			return CertificateTypeUnknown
+		}
+		// If fromBlock it's before startL2Block it's a valid determination that it is a PP
+		if c.Header.FromBlock < startL2Block {
+			return CertificateTypePP
+		}
+		// If not then we assume it's a FEP
+		return CertificateTypeFEP
+	}
+	return c.Header.CertType
+}
+
 func (c *Certificate) String() string {
 	if c == nil {
 		return NilStr
@@ -187,71 +294,4 @@ func (c *Certificate) String() string {
 		c.Header.String(),
 		aggchainProof,
 	)
-}
-
-type CertificateMetadata struct {
-	// ToBlock contains the pre v1 value stored in the metadata certificate field
-	// is not stored in the hash post v1
-	ToBlock uint64
-
-	// FromBlock is the block number from which the certificate contains data
-	FromBlock uint64
-
-	// Offset is the number of blocks from the FromBlock that the certificate contains
-	Offset uint32
-
-	// CreatedAt is the timestamp when the certificate was created
-	CreatedAt uint32
-
-	// Version is the version of the metadata
-	Version uint8
-}
-
-// NewCertificateMetadataFromHash returns a new CertificateMetadata from the given hash
-func NewCertificateMetadata(fromBlock uint64, offset uint32, createdAt uint32) *CertificateMetadata {
-	return &CertificateMetadata{
-		FromBlock: fromBlock,
-		Offset:    offset,
-		CreatedAt: createdAt,
-		Version:   1,
-	}
-}
-
-// NewCertificateMetadataFromHash returns a new CertificateMetadata from the given hash
-func NewCertificateMetadataFromHash(hash common.Hash) *CertificateMetadata {
-	b := hash.Bytes()
-
-	if b[0] < 1 {
-		return &CertificateMetadata{
-			ToBlock: hash.Big().Uint64(),
-		}
-	}
-
-	return &CertificateMetadata{
-		Version:   b[0],
-		FromBlock: binary.BigEndian.Uint64(b[1:9]),
-		Offset:    binary.BigEndian.Uint32(b[9:13]),
-		CreatedAt: binary.BigEndian.Uint32(b[13:17]),
-	}
-}
-
-// ToHash returns the hash of the metadata
-func (c *CertificateMetadata) ToHash() common.Hash {
-	b := make([]byte, common.HashLength) // 32-byte hash
-
-	// Encode version
-	b[0] = c.Version
-
-	// Encode fromBlock
-	binary.BigEndian.PutUint64(b[1:9], c.FromBlock)
-
-	// Encode offset
-	binary.BigEndian.PutUint32(b[9:13], c.Offset)
-
-	// Encode createdAt
-	binary.BigEndian.PutUint32(b[13:17], c.CreatedAt)
-
-	// Last 8 bytes remain as zero padding
-
-	return common.BytesToHash(b)
 }

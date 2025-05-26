@@ -43,6 +43,8 @@ func Test_Storage(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				CreatedAt:        updateTime,
 				UpdatedAt:        updateTime,
+				CertType:         types.CertificateTypeFEP,
+				CertSource:       types.CertificateSourceAggLayer,
 			},
 			AggchainProof: &types.AggchainProof{
 				LastProvenBlock: 0,
@@ -65,6 +67,8 @@ func Test_Storage(t *testing.T) {
 		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.NoError(t, err)
 		require.Equal(t, certificate, *certificateFromDB)
+		require.Equal(t, certificate.Header.CertType, certificateFromDB.Header.CertType, "equal cert type")
+		require.Equal(t, certificate.Header.CertSource, certificateFromDB.Header.CertSource, "equal cert source")
 
 		// try to save a certificate without certificate header
 		certificateWithoutHeader := types.Certificate{
@@ -665,6 +669,8 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
 				UpdatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				CertType:         types.CertificateTypeFEP,
+				CertSource:       types.CertificateSourceLocal,
 			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
@@ -703,6 +709,8 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 				Status:           agglayertypes.InError,
 				CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
 				UpdatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				CertType:         types.CertificateTypeFEP,
+				CertSource:       types.CertificateSourceLocal,
 			},
 			AggchainProof: aggchainProof,
 		}

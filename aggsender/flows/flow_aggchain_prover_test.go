@@ -355,9 +355,10 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					SP1StarkProof: &types.SP1StarkProof{Proof: []byte("some-proof")}, LastProvenBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
-				FromBlock:  6,
-				ToBlock:    10,
-				RetryCount: 0,
+				FromBlock:       6,
+				ToBlock:         10,
+				RetryCount:      0,
+				CertificateType: types.CertificateTypeFEP,
 				LastSentCertificate: &types.CertificateHeader{
 					ToBlock: 5,
 				},
@@ -438,7 +439,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				LastSentCertificate: &types.CertificateHeader{
 					ToBlock: 5,
 				},
-				Bridges: []bridgesync.Bridge{{BlockNum: 6}},
+				CertificateType: types.CertificateTypeFEP,
+				Bridges:         []bridgesync.Bridge{{BlockNum: 6}},
 				Claims: []bridgesync.Claim{{
 					BlockNum:        8,
 					GlobalIndex:     big.NewInt(1),
@@ -750,6 +752,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				Claims:                         []bridgesync.Claim{},
 				CreatedAt:                      uint32(createdAt.Unix()),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
+				CertificateType:                types.CertificateTypeFEP,
 				AggchainProof: &types.AggchainProof{
 					SP1StarkProof: &types.SP1StarkProof{
 						Proof:   []byte("some-proof"),
@@ -771,7 +774,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				Height:              0,
 				NewLocalExitRoot:    zeroLER,
 				CustomChainData:     []byte("some-data"),
-				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix())).ToHash(),
+				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix()), types.CertificateTypeFEP.ToInt()).ToHash(),
 				BridgeExits:         []*agglayertypes.BridgeExit{},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
 				PrevLocalExitRoot:   zeroLER,

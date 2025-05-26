@@ -37,7 +37,7 @@ type baseFlow struct {
 
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) getCertificateBuildParamsInternal(
-	ctx context.Context, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
+	ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -72,6 +72,7 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 		Bridges:             bridges,
 		Claims:              claims,
 		CreatedAt:           uint32(time.Now().UTC().Unix()),
+		CertificateType:     certType,
 	}
 
 	buildParams, err = f.limitCertSize(buildParams, allowEmptyCert)
@@ -149,6 +150,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		certParams.FromBlock,
 		uint32(certParams.ToBlock-certParams.FromBlock),
 		certParams.CreatedAt,
+		certParams.CertificateType.ToInt(),
 	)
 
 	return &agglayertypes.Certificate{

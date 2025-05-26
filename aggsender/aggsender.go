@@ -294,6 +294,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 			UpdatedAt:               certificateParams.CreatedAt,
 			FinalizedL1InfoTreeRoot: &certificateParams.L1InfoTreeRootFromWhichToProve,
 			L1InfoTreeLeafCount:     certificateParams.L1InfoTreeLeafCount,
+			CertType:                certificateParams.CertificateType,
+			CertSource:              types.CertificateSourceLocal,
 		},
 		SignedCertificate: &jsonCert,
 		AggchainProof:     certificateParams.AggchainProof,

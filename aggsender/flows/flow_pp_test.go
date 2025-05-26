@@ -529,7 +529,7 @@ func TestBuildCertificate(t *testing.T) {
 				NetworkID:         1,
 				PrevLocalExitRoot: common.HexToHash("0x123"),
 				NewLocalExitRoot:  common.HexToHash("0x789"),
-				Metadata:          types.NewCertificateMetadata(0, 10, 0).ToHash(),
+				Metadata:          types.NewCertificateMetadata(0, 10, 0, types.CertificateTypePP.ToInt()).ToHash(),
 				BridgeExits: []*agglayertypes.BridgeExit{
 					{
 						LeafType: agglayertypes.LeafTypeAsset,
@@ -680,6 +680,7 @@ func TestBuildCertificate(t *testing.T) {
 				ToBlock:                        tt.toBlock,
 				Bridges:                        tt.bridges,
 				Claims:                         tt.claims,
+				CertificateType:                types.CertificateTypePP,
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x7891"),
 			}
 			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificate, false)
@@ -965,6 +966,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				ToBlock:             10,
 				RetryCount:          0,
 				L1InfoTreeLeafCount: 1,
+				CertificateType:     types.CertificateTypePP,
 				LastSentCertificate: &types.CertificateHeader{ToBlock: 5},
 				Bridges:             []bridgesync.Bridge{{}},
 				Claims: []bridgesync.Claim{

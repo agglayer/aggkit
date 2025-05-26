@@ -169,7 +169,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		return buildParams, nil
 	}
 
-	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true)
+	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true, types.CertificateTypeFEP)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) {
 			// no new blocks to send a certificate
