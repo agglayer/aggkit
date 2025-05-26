@@ -28,7 +28,7 @@ type certificateInfo struct {
 	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
 	L1InfoTreeLeafCount     uint32                          `meddler:"l1_info_tree_leaf_count"`
 	CertType                types.CertificateType           `meddler:"cert_type"`
-	CertSource              types.CertificateSource         `meddler:"cert_source"` // Source of the certificate, e.g., AggLayer, SP1, etc.
+	CertSource              types.CertificateSource         `meddler:"cert_source"`
 }
 
 // toCertificate converts the certificateInfo struct to a Certificate struct

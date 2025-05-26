@@ -34,8 +34,8 @@ func (c CertificateType) String() string {
 	return string(c)
 }
 
-func (ct CertificateType) ToInt() uint8 {
-	switch ct {
+func (c CertificateType) ToInt() uint8 {
+	switch c {
 	case CertificateTypeFEP:
 		return uint8(CertificateTypeFEPInt)
 	case CertificateTypePP:
@@ -196,7 +196,8 @@ func (c *CertificateHeader) ID() string {
 	if c == nil {
 		return NilStr
 	}
-	return fmt.Sprintf("%d/%s (retry: %d, type: %s)", c.Height, c.CertificateID.String(), c.RetryCount, c.CertSource.String())
+	return fmt.Sprintf("%d/%s (retry: %d, type: %s)",
+		c.Height, c.CertificateID.String(), c.RetryCount, c.CertSource.String())
 }
 
 // StatusString returns the string representation of the status
