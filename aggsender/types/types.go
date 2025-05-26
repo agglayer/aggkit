@@ -197,7 +197,7 @@ func (c *CertificateHeader) ID() string {
 		return NilStr
 	}
 	return fmt.Sprintf("%d/%s (retry: %d, type: %s)",
-		c.Height, c.CertificateID.String(), c.RetryCount, c.CertSource.String())
+		c.Height, c.CertificateID.String(), c.RetryCount, c.CertType.String())
 }
 
 // StatusString returns the string representation of the status
@@ -230,16 +230,24 @@ type Certificate struct {
 	AggchainProof     *AggchainProof `meddler:"aggchain_proof,aggchainproof"`
 }
 
-func (c *Certificate) GetCertType() CertificateType {
+func (c *Certificate) DetermineCertType(startL2Block uint64) CertificateType {
 	if c == nil {
 		return CertificateTypeUnknown
 	}
 	if c.Header.CertType == CertificateTypeUnknown {
 		if c.AggchainProof != nil {
 			return CertificateTypeFEP
-		} else {
+		}
+		// If the certificate is not set, we can determine the type based on the FromBlock
+		if startL2Block == 0 {
+			return CertificateTypeUnknown
+		}
+		// If fromBlock it's before startL2Block it's a valid determination that it is a PP
+		if c.Header.FromBlock < startL2Block {
 			return CertificateTypePP
 		}
+		// If not then we assume it's a FEP
+		return CertificateTypeFEP
 	}
 	return c.Header.CertType
 }

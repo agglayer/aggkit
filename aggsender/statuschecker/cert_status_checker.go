@@ -232,34 +232,44 @@ func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader
 	}
 	now := uint32(time.Now().UTC().Unix())
 	meta := types.NewCertificateMetadataFromHash(c.Metadata)
-	toBlock := meta.FromBlock + uint64(meta.Offset)
-	createdAt := meta.CreatedAt
+	var toBlock uint64
+	var createdAt uint32
+	var certType types.CertificateType
 
-	if meta.Version == types.CertificateMetadataV0 {
+	switch meta.Version {
+	case types.CertificateMetadataV0:
 		toBlock = meta.ToBlock
 		createdAt = now
+		certType = types.CertificateTypeUnknown
+	case types.CertificateMetadataV1:
+		toBlock = meta.FromBlock + uint64(meta.Offset)
+		createdAt = meta.CreatedAt
+		certType = types.CertificateTypeUnknown
+	case types.CertificateMetadataV2:
+		toBlock = meta.FromBlock + uint64(meta.Offset)
+		createdAt = meta.CreatedAt
+		certType = types.NewCertificateTypeFromInt(meta.CertType)
+	default:
+		log.Warnf("aggsender: unsupported certificate metadata version: %d", meta.Version)
+		return nil
 	}
-	var res *types.Certificate
-	if meta.Version >= types.CertificateMetadataV1 {
-		res = &types.Certificate{
-			Header: &types.CertificateHeader{
-				Height:           c.Height,
-				CertificateID:    c.CertificateID,
-				NewLocalExitRoot: c.NewLocalExitRoot,
-				FromBlock:        meta.FromBlock,
-				ToBlock:          toBlock,
-				Status:           c.Status,
-				CreatedAt:        createdAt,
-				UpdatedAt:        now,
-				CertType:         types.CertificateTypeUnknown,
-			},
-			SignedCertificate: &naAgglayerHeader,
-		}
+
+	res := &types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:           c.Height,
+			CertificateID:    c.CertificateID,
+			NewLocalExitRoot: c.NewLocalExitRoot,
+			FromBlock:        meta.FromBlock,
+			ToBlock:          toBlock,
+			Status:           c.Status,
+			CreatedAt:        createdAt,
+			UpdatedAt:        now,
+			CertType:         certType,
+			CertSource:       types.CertificateSourceAggLayer,
+		},
+		SignedCertificate: &naAgglayerHeader,
 	}
-	if meta.Version == types.CertificateMetadataV2 {
-		res.Header.CertType = types.NewCertificateTypeFromInt(meta.CertType)
-	}
-	res.Header.CertSource = types.CertificateSourceAggLayer
+
 	if c.PreviousLocalExitRoot != nil {
 		res.Header.PreviousLocalExitRoot = c.PreviousLocalExitRoot
 	}
