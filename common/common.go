@@ -197,7 +197,7 @@ func RetryWithExponentialBackoff(ctx context.Context, maxRetries uint,
 	delay := initialDelay
 	var lastErr error
 
-	for attempt := range maxRetries {
+	for attempt := uint(0); attempt < maxRetries; attempt++ {
 		select {
 		case <-ctx.Done():
 			return fmt.Errorf("retry cancelled after %d attempt(s): %w", attempt, ctx.Err())
