@@ -240,7 +240,7 @@ func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader
 		createdAt = now
 	}
 	var res *types.Certificate
-	if meta.Version == types.CertificateMetadataV1 {
+	if meta.Version >= types.CertificateMetadataV1 {
 		res = &types.Certificate{
 			Header: &types.CertificateHeader{
 				Height:           c.Height,
@@ -259,7 +259,7 @@ func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader
 	if meta.Version == types.CertificateMetadataV2 {
 		res.Header.CertType = types.NewCertificateTypeFromInt(meta.CertType)
 	}
-
+	res.Header.CertSource = types.CertificateSourceAggLayer
 	if c.PreviousLocalExitRoot != nil {
 		res.Header.PreviousLocalExitRoot = c.PreviousLocalExitRoot
 	}

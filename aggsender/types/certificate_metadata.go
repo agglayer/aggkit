@@ -34,7 +34,7 @@ type CertificateMetadata struct {
 	CertType uint8 // version >= V2
 }
 
-// NewCertificateMetadataFromHash returns a new CertificateMetadata from the given hash
+// NewCertificateMetadata returns a new CertificateMetadata from the given hash
 func NewCertificateMetadata(fromBlock uint64, offset uint32, createdAt uint32, certType uint8) *CertificateMetadata {
 	return &CertificateMetadata{
 		FromBlock: fromBlock,

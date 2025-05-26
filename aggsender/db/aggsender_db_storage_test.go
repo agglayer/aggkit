@@ -44,6 +44,7 @@ func Test_Storage(t *testing.T) {
 				CreatedAt:        updateTime,
 				UpdatedAt:        updateTime,
 				CertType:         types.CertificateTypeFEP,
+				CertSource:       types.CertificateSourceAggLayer,
 			},
 			AggchainProof: &types.AggchainProof{
 				LastProvenBlock: 0,
@@ -67,6 +68,7 @@ func Test_Storage(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, certificate, *certificateFromDB)
 		require.Equal(t, certificate.Header.CertType, certificateFromDB.Header.CertType, "equal cert type")
+		require.Equal(t, certificate.Header.CertSource, certificateFromDB.Header.CertSource, "equal cert source")
 
 		// try to save a certificate without certificate header
 		certificateWithoutHeader := types.Certificate{

@@ -30,6 +30,10 @@ const (
 	CertificateTypeFEPInt     CertificateTypeInt = 2
 )
 
+func (c CertificateType) String() string {
+	return string(c)
+}
+
 func (ct CertificateType) ToInt() uint8 {
 	switch ct {
 	case CertificateTypeFEP:
@@ -49,6 +53,18 @@ func NewCertificateTypeFromInt(i uint8) CertificateType {
 	default:
 		return CertificateTypeUnknown
 	}
+}
+
+type CertificateSource string
+
+const (
+	CertificateSourceAggLayer CertificateSource = "agglayer"
+	CertificateSourceLocal    CertificateSource = "Local"
+	CertificateSourceUnknown  CertificateSource = ""
+)
+
+func (c CertificateSource) String() string {
+	return string(c)
 }
 
 // CertStatus holds the status of pending and in error certificates
@@ -128,6 +144,8 @@ type CertificateHeader struct {
 	// CertType must be private but there are a lot of code that create CertificateInfo directly
 	// so I add a GetCertType() that is not idiomatic but helps to determine the kind of certificate
 	CertType CertificateType `meddler:"cert_type"`
+	// This is the origin of this data, it can be from the AggLayer or from the local sender
+	CertSource CertificateSource `meddler:"cert_source"`
 }
 
 func (c *CertificateHeader) String() string {
@@ -144,6 +162,7 @@ func (c *CertificateHeader) String() string {
 	}
 
 	return fmt.Sprintf("aggsender.CertificateHeader: \n"+
+		"Type: %s \n"+
 		"Height: %d \n"+
 		"RetryCount: %d \n"+
 		"CertificateID: %s \n"+
@@ -154,7 +173,9 @@ func (c *CertificateHeader) String() string {
 		"ToBlock: %d \n"+
 		"CreatedAt: %s \n"+
 		"UpdatedAt: %s \n"+
-		"FinalizedL1InfoTreeRoot: %s \n",
+		"FinalizedL1InfoTreeRoot: %s \n"+
+		"Source: %s \n",
+		c.CertType.String(),
 		c.Height,
 		c.RetryCount,
 		c.CertificateID.String(),
@@ -166,6 +187,7 @@ func (c *CertificateHeader) String() string {
 		time.Unix(int64(c.CreatedAt), 0),
 		time.Unix(int64(c.UpdatedAt), 0),
 		finalizedL1InfoTreeRoot,
+		c.CertSource.String(),
 	)
 }
 
@@ -174,7 +196,7 @@ func (c *CertificateHeader) ID() string {
 	if c == nil {
 		return NilStr
 	}
-	return fmt.Sprintf("%d/%s (retry %d)", c.Height, c.CertificateID.String(), c.RetryCount)
+	return fmt.Sprintf("%d/%s (retry: %d, type: %s)", c.Height, c.CertificateID.String(), c.RetryCount, c.CertSource.String())
 }
 
 // StatusString returns the string representation of the status
