@@ -64,16 +64,16 @@ Level = "info"
 Outputs = ["stderr"]
 
 [Etherman]
-	URL="{{L1URL}}"
-	ForkIDChunkSize={{L1URLSyncChunkSize}}
+	URL = "{{L1URL}}"
+	ForkIDChunkSize = {{L1URLSyncChunkSize}}
 	[Etherman.EthermanConfig]
-		URL="{{L1URL}}"
-		MultiGasProvider=false
-		L1ChainID={{NetworkConfig.L1.L1ChainID}}
-		HTTPHeaders=[]
+		URL = "{{L1URL}}"
+		MultiGasProvider = false
+		L1ChainID = {{NetworkConfig.L1.L1ChainID}}
+		HTTPHeaders = []
 		[Etherman.EthermanConfig.Etherscan]
-			ApiKey=""
-			Url="https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
+			ApiKey = ""
+			Url = "https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
 
 [Common]
 NetworkID = {{NetworkID}}
@@ -83,34 +83,34 @@ L2RPC = {{L2RPC}}
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
-FinalizedBlock="FinalizedBlock"
+FinalizedBlock = "FinalizedBlock"
 
 [ReorgDetectorL2]
 DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
-FinalizedBlock="LatestBlock"
+FinalizedBlock = "LatestBlock"
 
 [L1InfoTreeSync]
 DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
-GlobalExitRootAddr="{{NetworkConfig.L1.GlobalExitRootManagerAddr}}"
+GlobalExitRootAddr = "{{NetworkConfig.L1.GlobalExitRootManagerAddr}}"
 RollupManagerAddr = "{{NetworkConfig.L1.RollupManagerAddr}}"
-SyncBlockChunkSize=100
-BlockFinality="LatestBlock"
-URLRPCL1="{{L1URL}}"
-WaitForNewBlocksPeriod="100ms"
-InitialBlock={{genesisBlockNumber}}
-RetryAfterErrorPeriod="1s"
-MaxRetryAttemptsAfterError=-1
+SyncBlockChunkSize = 100
+BlockFinality = "LatestBlock"
+URLRPCL1 = "{{L1URL}}"
+WaitForNewBlocksPeriod = "100ms"
+InitialBlock = {{genesisBlockNumber}}
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggOracle]
-TargetChainType="EVM"
-URLRPCL1="{{L1URL}}"
-BlockFinality="FinalizedBlock"
-WaitPeriodNextGER="100ms"
+TargetChainType = "EVM"
+URLRPCL1 = "{{L1URL}}"
+BlockFinality = "FinalizedBlock"
+WaitPeriodNextGER = "100ms"
 	[AggOracle.EVMSender]
-		GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
-		GasOffset=0
-		WaitPeriodMonitorTx="100ms"
+		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+		GasOffset = 0
+		WaitPeriodMonitorTx = "100ms"
 		[AggOracle.EVMSender.EthTxManager]
 				FrequencyToMonitorTxs = "1s"
 				WaitTxToBeMined = "2s"
@@ -226,11 +226,6 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
-	[AggSender.AgglayerClient]
-		URL = "{{AggLayerURL}}"
-		MinConnectionTimeout = "5s"
-		MaxRequestRetries = 8
-		InitialDelay = "1s"
 AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
@@ -241,11 +236,6 @@ KeepCertificatesHistory = true
 MaxCertSize = 8388608
 DryRun = false
 EnableRPC = true
-	[AggSender.AggkitProverClient]
-		URL = "{{AggchainProofURL}}"
-		MinConnectionTimeout = "5s"
-		MaxRequestRetries = 8
-		InitialDelay = "1s"
 # PessimisticProof or AggchainProver
 Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
@@ -254,6 +244,16 @@ GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+	[AggSender.AgglayerClient]
+		URL = "{{AggLayerURL}}"
+		MinConnectionTimeout = "5s"
+		MaxRequestRetries = 8
+		InitialDelay = "1s"
+	[AggSender.AggkitProverClient]
+		URL = "{{AggchainProofURL}}"
+		MinConnectionTimeout = "5s"
+		MaxRequestRetries = 8
+		InitialDelay = "1s"
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
