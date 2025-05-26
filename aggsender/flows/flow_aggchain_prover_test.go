@@ -728,7 +728,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				Height:              0,
 				NewLocalExitRoot:    zeroLER,
 				CustomChainData:     []byte("some-data"),
-				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix()), uint8(types.CertificateTypeFEPInt)).ToHash(),
+				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix()), types.CertificateTypeFEP.ToInt()).ToHash(),
 				BridgeExits:         []*agglayertypes.BridgeExit{},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
 				PrevLocalExitRoot:   zeroLER,
