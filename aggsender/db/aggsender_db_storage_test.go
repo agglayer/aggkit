@@ -669,6 +669,8 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
 				UpdatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				CertType:         types.CertificateTypeFEP,
+				CertSource:       types.CertificateSourceLocal,
 			},
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
@@ -707,6 +709,8 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 				Status:           agglayertypes.InError,
 				CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
 				UpdatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				CertType:         types.CertificateTypeFEP,
+				CertSource:       types.CertificateSourceLocal,
 			},
 			AggchainProof: aggchainProof,
 		}

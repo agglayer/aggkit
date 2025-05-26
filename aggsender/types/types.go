@@ -1,6 +1,7 @@
 package types
 
 import (
+	"database/sql/driver"
 	"fmt"
 	"time"
 
@@ -17,41 +18,66 @@ const (
 	AggchainProofMode    AggsenderMode = "AggchainProof"
 )
 
-type CertificateType string
-type CertificateTypeInt uint8
+type CertificateType uint8
 
 const (
-	CertificateTypeUnknown CertificateType = ""
-	CertificateTypePP      CertificateType = "pp"
-	CertificateTypeFEP     CertificateType = "fep"
+	CertificateTypeUnknownStr string = ""
+	CertificateTypePPStr      string = "pp"
+	CertificateTypeFEPStr     string = "fep"
 
-	CertificateTypeUnknownInt CertificateTypeInt = 0
-	CertificateTypePPInt      CertificateTypeInt = 1
-	CertificateTypeFEPInt     CertificateTypeInt = 2
+	CertificateTypeUnknown CertificateType = 0
+	CertificateTypePP      CertificateType = 1
+	CertificateTypeFEP     CertificateType = 2
 )
 
 func (c CertificateType) String() string {
-	return string(c)
+	switch c {
+	case CertificateTypeFEP:
+		return CertificateTypeFEPStr
+	case CertificateTypePP:
+		return CertificateTypePPStr
+	default:
+		return CertificateTypeUnknownStr
+	}
+}
+
+// meddler support for store as string
+func (c CertificateType) Value() (driver.Value, error) {
+	return c.String(), nil
+}
+
+// meddler support for store as string
+func (c *CertificateType) Scan(value interface{}) error {
+	str, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("CertificateType: expected string, got %T", value)
+	}
+	v, err := NewCertificateTypeFromStr(str)
+	if err != nil {
+		return fmt.Errorf("CertificateType.Scan(...): %w", err)
+	}
+	*c = v
+	return nil
 }
 
 func (c CertificateType) ToInt() uint8 {
-	switch c {
-	case CertificateTypeFEP:
-		return uint8(CertificateTypeFEPInt)
-	case CertificateTypePP:
-		return uint8(CertificateTypePPInt)
-	default:
-		return uint8(CertificateTypeUnknownInt)
-	}
+	return uint8(c)
 }
-func NewCertificateTypeFromInt(i uint8) CertificateType {
-	switch i {
-	case uint8(CertificateTypePPInt):
-		return CertificateTypePP
-	case uint8(CertificateTypeFEPInt):
-		return CertificateTypeFEP
+
+func NewCertificateTypeFromInt(v uint8) CertificateType {
+	return CertificateType(v)
+}
+
+func NewCertificateTypeFromStr(v string) (CertificateType, error) {
+	switch v {
+	case CertificateTypePPStr:
+		return CertificateTypePP, nil
+	case CertificateTypeFEPStr:
+		return CertificateTypeFEP, nil
+	case CertificateTypeUnknownStr:
+		return CertificateTypeUnknown, nil
 	default:
-		return CertificateTypeUnknown
+		return CertificateTypeUnknown, fmt.Errorf("unknown CertificateType: %s", v)
 	}
 }
 
