@@ -195,7 +195,8 @@ func TestNewCertificateInfoFromAgglayerCertHeader(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := newCertificateInfoFromAgglayerCertHeader(tt.inputHeader)
+			result, err := newCertificateInfoFromAgglayerCertHeader(tt.inputHeader)
+			require.NoError(t, err)
 			if tt.expectedResult == nil {
 				require.Nil(t, result)
 			} else {

@@ -217,7 +217,10 @@ func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 // updateLocalStorageWithAggLayerCert updates the local storage with the certificate from the AggLayer
 func (c *certStatusChecker) updateLocalStorageWithAggLayerCert(ctx context.Context,
 	aggLayerCert *agglayertypes.CertificateHeader) (*types.Certificate, error) {
-	cert := newCertificateInfoFromAgglayerCertHeader(aggLayerCert)
+	cert, err := newCertificateInfoFromAgglayerCertHeader(aggLayerCert)
+	if err != nil {
+		return nil, fmt.Errorf("error creating certificate from AggLayer header: %w", err)
+	}
 	if cert == nil {
 		return nil, nil
 	}
@@ -226,9 +229,9 @@ func (c *certStatusChecker) updateLocalStorageWithAggLayerCert(ctx context.Conte
 	return cert, c.storage.SaveLastSentCertificate(ctx, *cert)
 }
 
-func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader) *types.Certificate {
+func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader) (*types.Certificate, error) {
 	if c == nil {
-		return nil
+		return nil, nil
 	}
 	now := uint32(time.Now().UTC().Unix())
 	meta := types.NewCertificateMetadataFromHash(c.Metadata)
@@ -250,8 +253,8 @@ func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader
 		createdAt = meta.CreatedAt
 		certType = types.NewCertificateTypeFromInt(meta.CertType)
 	default:
-		log.Warnf("aggsender: unsupported certificate metadata version: %d", meta.Version)
-		return nil
+		return nil, fmt.Errorf("newCertificateInfoFromAgglayerCertHeader."+
+			" Unsupported certificate metadata version: %d", meta.Version)
 	}
 
 	res := &types.Certificate{
@@ -274,5 +277,5 @@ func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader
 		res.Header.PreviousLocalExitRoot = c.PreviousLocalExitRoot
 	}
 
-	return res
+	return res, nil
 }
