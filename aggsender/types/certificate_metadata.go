@@ -11,7 +11,7 @@ import (
 const (
 	CertificateMetadataV0 = uint8(0) // Pre v1 metadata, only ToBlock is stored
 	CertificateMetadataV1 = uint8(1) // Post v1 metadata, FromBlock, Offset, CreatedAt are stored
-	CertificateMetadataV2 = uint8(2) // Same V1 + typeCert
+	CertificateMetadataV2 = uint8(2) // Same V1 + CertType
 )
 
 type CertificateMetadata struct {

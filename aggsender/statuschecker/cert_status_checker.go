@@ -235,9 +235,11 @@ func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader
 	}
 	now := uint32(time.Now().UTC().Unix())
 	meta := types.NewCertificateMetadataFromHash(c.Metadata)
-	var toBlock uint64
-	var createdAt uint32
-	var certType types.CertificateType
+	var (
+		toBlock   uint64
+		createdAt uint32
+		certType  types.CertificateType
+	)
 
 	switch meta.Version {
 	case types.CertificateMetadataV0:

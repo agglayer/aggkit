@@ -59,7 +59,7 @@ type CertificateSource string
 
 const (
 	CertificateSourceAggLayer CertificateSource = "agglayer"
-	CertificateSourceLocal    CertificateSource = "Local"
+	CertificateSourceLocal    CertificateSource = "local"
 	CertificateSourceUnknown  CertificateSource = ""
 )
 
