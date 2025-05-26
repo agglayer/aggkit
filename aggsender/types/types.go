@@ -18,6 +18,14 @@ const (
 	AggchainProofMode    AggsenderMode = "AggchainProof"
 )
 
+type CertificateType string
+
+const (
+	CertificateTypeUnknown CertificateType = ""
+	CertificateTypeFEP     CertificateType = "fep"
+	CertificateTypePP      CertificateType = "pp"
+)
+
 // CertStatus holds the status of pending and in error certificates
 type CertStatus struct {
 	ExistPendingCerts   bool
@@ -92,6 +100,9 @@ type CertificateHeader struct {
 	UpdatedAt               uint32                          `meddler:"updated_at"`
 	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
 	L1InfoTreeLeafCount     uint32                          `meddler:"l1_info_tree_leaf_count"`
+	// CertType must be private but there are a lot of code that create CertificateInfo directly
+	// so I add a GetCertType() that is not idiomatic but helps to determine the kind of certificate
+	CertType CertificateType `meddler:"cert_type"`
 }
 
 func (c *CertificateHeader) String() string {
@@ -169,6 +180,20 @@ type Certificate struct {
 	Header            *CertificateHeader
 	SignedCertificate *string        `meddler:"signed_certificate"`
 	AggchainProof     *AggchainProof `meddler:"aggchain_proof,aggchainproof"`
+}
+
+func (c *Certificate) GetCertType() CertificateType {
+	if c == nil {
+		return CertificateTypeUnknown
+	}
+	if c.Header.CertType == CertificateTypeUnknown {
+		if c.AggchainProof != nil {
+			return CertificateTypeFEP
+		} else {
+			return CertificateTypePP
+		}
+	}
+	return c.Header.CertType
 }
 
 func (c *Certificate) String() string {

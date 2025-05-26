@@ -253,6 +253,8 @@ func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader
 		},
 		SignedCertificate: &naAgglayerHeader,
 	}
+	// We try to guess the type of certificate
+	res.Header.CertType = res.GetCertType()
 
 	if c.PreviousLocalExitRoot != nil {
 		res.Header.PreviousLocalExitRoot = c.PreviousLocalExitRoot

@@ -43,6 +43,7 @@ func Test_Storage(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				CreatedAt:        updateTime,
 				UpdatedAt:        updateTime,
+				CertType:         types.CertificateTypeFEP,
 			},
 			AggchainProof: &types.AggchainProof{
 				LastProvenBlock: 0,
@@ -65,6 +66,7 @@ func Test_Storage(t *testing.T) {
 		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.NoError(t, err)
 		require.Equal(t, certificate, *certificateFromDB)
+		require.Equal(t, certificate.Header.CertType, certificateFromDB.Header.CertType, "equal cert type")
 
 		// try to save a certificate without certificate header
 		certificateWithoutHeader := types.Certificate{

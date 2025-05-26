@@ -27,6 +27,7 @@ type certificateInfo struct {
 	AggchainProof           *types.AggchainProof            `meddler:"aggchain_proof,aggchainproof"`
 	FinalizedL1InfoTreeRoot *common.Hash                    `meddler:"finalized_l1_info_tree_root,hash"`
 	L1InfoTreeLeafCount     uint32                          `meddler:"l1_info_tree_leaf_count"`
+	CertType                types.CertificateType           `meddler:"cert_type"`
 }
 
 // toCertificate converts the certificateInfo struct to a Certificate struct
@@ -45,6 +46,7 @@ func (c *certificateInfo) toCertificate() *types.Certificate {
 			UpdatedAt:               c.UpdatedAt,
 			FinalizedL1InfoTreeRoot: c.FinalizedL1InfoTreeRoot,
 			L1InfoTreeLeafCount:     c.L1InfoTreeLeafCount,
+			CertType:                c.CertType,
 		},
 		SignedCertificate: c.SignedCertificate,
 		AggchainProof:     c.AggchainProof,
