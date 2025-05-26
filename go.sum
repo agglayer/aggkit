@@ -1,5 +1,5 @@
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250416180731-ff8952695828.2 h1:iesZoH6hEHWjg+Vv87dgRmMrEP3RtmAfXTiq/ONdlME=
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250416180731-ff8952695828.2/go.mod h1:qLXl0jnkGL4ahlAy9Rz3tVECDZVkz/+xzUGXF1TzuFc=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250520190516-57743a879f16.2 h1:WaCaLIlQmBZVPeNKAb8/OlwOGBWkhqd0dCPFAuyiVaw=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250520190516-57743a879f16.2/go.mod h1:qDtlbBtwnXbXCj6dj8RT44y8qfL5y6VuTTmEdCXNK1A=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250416180731-ff8952695828.1 h1:VzRjMEC9fUaRQ6GpQ1NhD8/tAmYXLhwhcquDIgCywDM=
 buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250416180731-ff8952695828.1/go.mod h1:gpKWP3fihl4pBXg3UG+CXgEgDugkVATGVyulVyjR/f8=
 buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250403073306-df9b770ff25d.1 h1:vLqUHNLYJPK4aDHoDOhbo+PwAr9umdqwU2E2Wap2FGE=
@@ -27,8 +27,6 @@ github.com/0xPolygon/cdk-contracts-tooling v0.0.3 h1:G7H3UNyDOpoLqDvW9c4lgn2iMnt
 github.com/0xPolygon/cdk-contracts-tooling v0.0.3/go.mod h1:mFlcEjsm2YBBsu8atHJ3zyVnwM+Z/fMXpVmIJge+WVU=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6 h1:FXL/rcO7/GtZ3kRFw+C7J6vmGnl8gcazg+Gh/NVmnas=
 github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6/go.mod h1:2scWqMMufrQXu7TikDgQ3BsyaKoX8qP26D6E262vSOg=
-github.com/0xPolygon/zkevm-ethtx-manager v0.2.11 h1:SogCgBHdbIJtUgpGzKtLp8TDgoTuHKRaaJyKn/q65ms=
-github.com/0xPolygon/zkevm-ethtx-manager v0.2.11/go.mod h1:mRdWtyuzQQOiQWvo1nNuj44H0UNqK/8FOF44bjOCKYs=
 github.com/0xPolygon/zkevm-ethtx-manager v0.2.12 h1:7Z+8lyuDxyfmJUW/CnnNQ1ZcDgGlKpi4el2BZ4gfL/8=
 github.com/0xPolygon/zkevm-ethtx-manager v0.2.12/go.mod h1:mRdWtyuzQQOiQWvo1nNuj44H0UNqK/8FOF44bjOCKYs=
 github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.7 h1:KJM1QlNZdZjNRS+ajPauD4uG+uaYgItaL+96Om3f8aI=
