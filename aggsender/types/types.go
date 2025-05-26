@@ -1,7 +1,6 @@
 package types
 
 import (
-	"encoding/binary"
 	"fmt"
 	"time"
 
@@ -19,12 +18,38 @@ const (
 )
 
 type CertificateType string
+type CertificateTypeInt uint8
 
 const (
 	CertificateTypeUnknown CertificateType = ""
-	CertificateTypeFEP     CertificateType = "fep"
 	CertificateTypePP      CertificateType = "pp"
+	CertificateTypeFEP     CertificateType = "fep"
+
+	CertificateTypeUnknownInt CertificateTypeInt = 0
+	CertificateTypePPInt      CertificateTypeInt = 1
+	CertificateTypeFEPInt     CertificateTypeInt = 2
 )
+
+func (ct CertificateType) ToInt() uint8 {
+	switch ct {
+	case CertificateTypeFEP:
+		return uint8(CertificateTypeFEPInt)
+	case CertificateTypePP:
+		return uint8(CertificateTypePPInt)
+	default:
+		return uint8(CertificateTypeUnknownInt)
+	}
+}
+func NewCertificateTypeFromInt(i uint8) CertificateType {
+	switch i {
+	case uint8(CertificateTypePPInt):
+		return CertificateTypePP
+	case uint8(CertificateTypeFEPInt):
+		return CertificateTypeFEP
+	default:
+		return CertificateTypeUnknown
+	}
+}
 
 // CertStatus holds the status of pending and in error certificates
 type CertStatus struct {
@@ -212,71 +237,4 @@ func (c *Certificate) String() string {
 		c.Header.String(),
 		aggchainProof,
 	)
-}
-
-type CertificateMetadata struct {
-	// ToBlock contains the pre v1 value stored in the metadata certificate field
-	// is not stored in the hash post v1
-	ToBlock uint64
-
-	// FromBlock is the block number from which the certificate contains data
-	FromBlock uint64
-
-	// Offset is the number of blocks from the FromBlock that the certificate contains
-	Offset uint32
-
-	// CreatedAt is the timestamp when the certificate was created
-	CreatedAt uint32
-
-	// Version is the version of the metadata
-	Version uint8
-}
-
-// NewCertificateMetadataFromHash returns a new CertificateMetadata from the given hash
-func NewCertificateMetadata(fromBlock uint64, offset uint32, createdAt uint32) *CertificateMetadata {
-	return &CertificateMetadata{
-		FromBlock: fromBlock,
-		Offset:    offset,
-		CreatedAt: createdAt,
-		Version:   1,
-	}
-}
-
-// NewCertificateMetadataFromHash returns a new CertificateMetadata from the given hash
-func NewCertificateMetadataFromHash(hash common.Hash) *CertificateMetadata {
-	b := hash.Bytes()
-
-	if b[0] < 1 {
-		return &CertificateMetadata{
-			ToBlock: hash.Big().Uint64(),
-		}
-	}
-
-	return &CertificateMetadata{
-		Version:   b[0],
-		FromBlock: binary.BigEndian.Uint64(b[1:9]),
-		Offset:    binary.BigEndian.Uint32(b[9:13]),
-		CreatedAt: binary.BigEndian.Uint32(b[13:17]),
-	}
-}
-
-// ToHash returns the hash of the metadata
-func (c *CertificateMetadata) ToHash() common.Hash {
-	b := make([]byte, common.HashLength) // 32-byte hash
-
-	// Encode version
-	b[0] = c.Version
-
-	// Encode fromBlock
-	binary.BigEndian.PutUint64(b[1:9], c.FromBlock)
-
-	// Encode offset
-	binary.BigEndian.PutUint32(b[9:13], c.Offset)
-
-	// Encode createdAt
-	binary.BigEndian.PutUint32(b[13:17], c.CreatedAt)
-
-	// Last 8 bytes remain as zero padding
-
-	return common.BytesToHash(b)
 }

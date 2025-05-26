@@ -150,6 +150,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		certParams.FromBlock,
 		uint32(certParams.ToBlock-certParams.FromBlock),
 		certParams.CreatedAt,
+		certParams.CertificateType.ToInt(),
 	)
 
 	return &agglayertypes.Certificate{

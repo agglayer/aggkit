@@ -235,26 +235,30 @@ func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader
 	toBlock := meta.FromBlock + uint64(meta.Offset)
 	createdAt := meta.CreatedAt
 
-	if meta.Version < 1 {
+	if meta.Version == types.CertificateMetadataV0 {
 		toBlock = meta.ToBlock
 		createdAt = now
 	}
-
-	res := &types.Certificate{
-		Header: &types.CertificateHeader{
-			Height:           c.Height,
-			CertificateID:    c.CertificateID,
-			NewLocalExitRoot: c.NewLocalExitRoot,
-			FromBlock:        meta.FromBlock,
-			ToBlock:          toBlock,
-			Status:           c.Status,
-			CreatedAt:        createdAt,
-			UpdatedAt:        now,
-		},
-		SignedCertificate: &naAgglayerHeader,
+	var res *types.Certificate
+	if meta.Version == types.CertificateMetadataV1 {
+		res = &types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           c.Height,
+				CertificateID:    c.CertificateID,
+				NewLocalExitRoot: c.NewLocalExitRoot,
+				FromBlock:        meta.FromBlock,
+				ToBlock:          toBlock,
+				Status:           c.Status,
+				CreatedAt:        createdAt,
+				UpdatedAt:        now,
+				CertType:         types.CertificateTypeUnknown,
+			},
+			SignedCertificate: &naAgglayerHeader,
+		}
 	}
-	// We try to guess the type of certificate
-	res.Header.CertType = res.GetCertType()
+	if meta.Version == types.CertificateMetadataV2 {
+		res.Header.CertType = types.NewCertificateTypeFromInt(meta.CertType)
+	}
 
 	if c.PreviousLocalExitRoot != nil {
 		res.Header.PreviousLocalExitRoot = c.PreviousLocalExitRoot
