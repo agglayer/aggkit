@@ -291,8 +291,9 @@ func TestExtractFromCertificateMetadataToBlock(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := *aggsendertypes.NewCertificateMetadataFromHash(tt.metadata)
-			require.Equal(t, tt.expected, result)
+			result, err := aggsendertypes.NewCertificateMetadataFromHash(tt.metadata)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, *result)
 		})
 	}
 }

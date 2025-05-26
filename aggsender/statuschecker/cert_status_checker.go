@@ -234,7 +234,11 @@ func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader
 		return nil, nil
 	}
 	now := uint32(time.Now().UTC().Unix())
-	meta := types.NewCertificateMetadataFromHash(c.Metadata)
+	meta, err := types.NewCertificateMetadataFromHash(c.Metadata)
+	if err != nil {
+		return nil, fmt.Errorf("newCertificateInfoFromAgglayerCertHeader."+
+			" error creating certificate metadata from hash: %w", err)
+	}
 	var (
 		toBlock   uint64
 		createdAt uint32
