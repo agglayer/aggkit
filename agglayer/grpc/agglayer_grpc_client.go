@@ -15,8 +15,6 @@ import (
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
 )
 
 var (
@@ -57,7 +55,7 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 		a.cfg.MaxRequestRetries, a.cfg.InitialDelay.Duration,
 		func() error {
 			response, err = a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
-			return handleGrpcError(err)
+			return aggkitgrpc.HandleGRPCError(err)
 		})
 	if err != nil {
 		return nil, fmt.Errorf("GetEpochConfiguration failed after %d retries: %w", a.cfg.MaxRequestRetries, err)
@@ -154,7 +152,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 					Certificate: protoCert,
 				})
 
-			return handleGrpcError(err)
+			return aggkitgrpc.HandleGRPCError(err)
 		})
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to submit certificate: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
@@ -181,7 +179,7 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 					Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_SETTLED,
 				},
 			)
-			return handleGrpcError(err)
+			return aggkitgrpc.HandleGRPCError(err)
 		})
 
 	if err != nil {
@@ -210,7 +208,7 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 					Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_PENDING,
 				},
 			)
-			return handleGrpcError(err)
+			return aggkitgrpc.HandleGRPCError(err)
 		})
 
 	if err != nil {
@@ -239,7 +237,7 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 					},
 				}},
 			)
-			return handleGrpcError(err)
+			return aggkitgrpc.HandleGRPCError(err)
 		})
 
 	if err != nil {
@@ -461,22 +459,4 @@ func certificateStatusFromProto(status v1nodetypes.CertificateStatus) types.Cert
 	default:
 		return types.Pending
 	}
-}
-
-// handleGrpcError checks if the error is a retryable gRPC error
-// and returns a formatted error message.
-func handleGrpcError(err error) error {
-	if err != nil {
-		if !isRetryableGRPCError(err) {
-			return fmt.Errorf("%w: %w", aggkitcommon.ErrNonRetryable, err)
-		}
-		return fmt.Errorf("transient error: %w", err)
-	}
-	return nil
-}
-
-// isRetryableGRPCError checks if the error is a retryable gRPC error
-func isRetryableGRPCError(err error) bool {
-	code := status.Code(err)
-	return code == codes.Unavailable || code == codes.DeadlineExceeded
 }

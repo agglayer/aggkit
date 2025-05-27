@@ -1,10 +1,11 @@
-package common
+package grpc
 
 import (
 	"fmt"
 	"strings"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
@@ -149,4 +150,22 @@ func joinDetails(details []string) string {
 		return "none"
 	}
 	return fmt.Sprintf("[%s]", strings.Join(details, ";"))
+}
+
+// HandleGRPCError checks if the error is a retryable gRPC error
+// and returns a formatted error message.
+func HandleGRPCError(err error) error {
+	if err != nil {
+		if !isRetryableGRPCError(err) {
+			return fmt.Errorf("%w: %w", aggkitcommon.ErrNonRetryable, err)
+		}
+		return fmt.Errorf("transient error: %w", err)
+	}
+	return nil
+}
+
+// isRetryableGRPCError checks if the error is a retryable gRPC error
+func isRetryableGRPCError(err error) bool {
+	code := status.Code(err)
+	return code == codes.Unavailable || code == codes.DeadlineExceeded
 }
