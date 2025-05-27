@@ -57,6 +57,10 @@ const (
 		"use AggSender.AggkitProverClient instead"
 	aggchainProofGenAggchainProofURLDeprecated = "AggchainProofGen.AggchainProofURL is deprecated, " +
 		"use AggSender.AggkitProverClient instead"
+	aggsenderAgglayerUseTLSDeprecated = "AggSender.UseAgglayerTLS is deprecated, " +
+		"use AggSender.AgglayerClient.UseTLS instead"
+	aggsenderAggkitProverUseTLSDeprecated = "AggSender.UseAggkitProverTLS is deprecated, " +
+		"use AggSender.AggkitProverClient.UseTLS instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -122,6 +126,14 @@ var (
 		{
 			FieldNamePattern: "AggchainProofGen.AggchainProofURL",
 			Reason:           aggchainProofGenAggchainProofURLDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.UseAgglayerTLS",
+			Reason:           "AggSender.UseAgglayerTLS is deprecated, use AggSender.AgglayerClient.UseTLS instead",
+		},
+		{
+			FieldNamePattern: "AggSender.UseAggkitProverTLS",
+			Reason:           "AggSender.UseAggkitProverTLS is deprecated, use AggSender.AggkitProverClient.UseTLS instead",
 		},
 	}
 )

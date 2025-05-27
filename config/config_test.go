@@ -94,7 +94,9 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[AggSender]
 	BridgeMetaDataAsHash = true
 	AggLayerUrl = "https://localhost:5575"
+	UseAgglayerTLS = true
 	AggchainProofURL = "http://localhost:5576"
+	UseAggkitProverTLS = true
 
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
@@ -108,4 +110,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.Contains(t, err.Error(), aggsenderAgglayerURLDeprecated)
 	require.Contains(t, err.Error(), aggsenderAggchainProofURLDeprecated)
 	require.Contains(t, err.Error(), aggchainProofGenAggchainProofURLDeprecated)
+	require.Contains(t, err.Error(), aggsenderAgglayerUseTLSDeprecated)
+	require.Contains(t, err.Error(), aggsenderAggkitProverUseTLSDeprecated)
 }
