@@ -35,6 +35,7 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
 		}
+		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 
 		return NewPPFlow(
 			logger,
