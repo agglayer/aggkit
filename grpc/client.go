@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"crypto/tls"
 	"fmt"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 )
@@ -35,6 +37,9 @@ type Config struct {
 
 	// InitialDelay is the initial delay before retrying a request
 	InitialDelay types.Duration `mapstructure:"InitialDelay"`
+
+	// UseTLS indicates whether to use TLS for the gRPC connection
+	UseTLS bool `mapstructure:"UseTLS"`
 }
 
 // DefaultConfig returns a default configuration for the gRPC client
@@ -44,6 +49,7 @@ func DefaultConfig() *Config {
 		MinConnectTimeout: types.NewDuration(defaultMinConnectTimeout),
 		MaxRequestRetries: defaultMaxRequestRetries,
 		InitialDelay:      types.NewDuration(defaultInitialDelay),
+		UseTLS:            false,
 	}
 }
 
@@ -53,8 +59,9 @@ func (c *Config) String() string {
 		return "none"
 	}
 
-	return fmt.Sprintf("GRPC Client Config: URL=%s, MinConnectTimeout=%s, MaxRequestRetries=%d, InitialDelay=%s",
-		c.URL, c.MinConnectTimeout.String(), c.MaxRequestRetries, c.InitialDelay.String())
+	return fmt.Sprintf("GRPC Client Config: URL=%s, MinConnectTimeout=%s, "+
+		"MaxRequestRetries=%d, InitialDelay=%s, UseTLS=%t",
+		c.URL, c.MinConnectTimeout.String(), c.MaxRequestRetries, c.InitialDelay.String(), c.UseTLS)
 }
 
 // Client holds the gRPC connection and services
@@ -72,6 +79,13 @@ func NewClient(cfg *Config) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(connectParams),
+	}
+
+	if cfg.UseTLS {
+		creds := credentials.NewTLS(&tls.Config{InsecureSkipVerify: false, MinVersion: tls.VersionTLS12})
+		opts = append(opts, grpc.WithTransportCredentials(creds))
+	} else {
+		opts = append(opts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 
 	// trim the http:// and https:// prefixes from the URL because the go-grpc client expects it without it

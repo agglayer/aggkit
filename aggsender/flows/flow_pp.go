@@ -48,7 +48,7 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	buildParams, err := p.getCertificateBuildParamsInternal(ctx, false)
+	buildParams, err := p.getCertificateBuildParamsInternal(ctx, false, types.CertificateTypePP)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) || errors.Is(err, query.ErrNoBridgeExits) {
 			// no new blocks to send a certificate, or no bridge exits consumed

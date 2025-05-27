@@ -70,7 +70,8 @@ func NewAggchainProofGenerationTool(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter) (*AggchainProofGenerationTool, error) {
 	aggchainProofClient, err := grpc.NewAggchainProofClient(
-		cfg.AggkitProverClient, cfg.GenerateAggchainProofTimeout.Duration)
+		cfg.AggkitProverClient,
+		cfg.GenerateAggchainProofTimeout.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}
@@ -92,6 +93,7 @@ func NewAggchainProofGenerationTool(
 		query.NewBridgeDataQuerier(l2Syncer),
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
 		l1Client,
+		false,
 	)
 
 	return &AggchainProofGenerationTool{

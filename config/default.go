@@ -249,14 +249,17 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 		MinConnectionTimeout = "5s"
 		MaxRequestRetries = 8
 		InitialDelay = "1s"
+		UseTLS = false
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectionTimeout = "5s"
 		MaxRequestRetries = 8
 		InitialDelay = "1s"
+		UseTLS = false
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
+RequireNoFEPBlockGap = true
 		
 [Prometheus]
 Enabled = true
@@ -272,6 +275,7 @@ GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 		MinConnectionTimeout = "5s"
 		MaxRequestRetries = 8
 		InitialDelay = "1s"
+		UseTLS = false
 
 [Profiling]
 ProfilingHost = "localhost"

@@ -37,18 +37,18 @@ type baseFlow struct {
 
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) getCertificateBuildParamsInternal(
-	ctx context.Context, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
+	ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
 	}
 
-	lastSentCertificateInfo, err := f.storage.GetLastSentCertificate()
+	lastSentCertificate, err := f.storage.GetLastSentCertificateHeader()
 	if err != nil {
 		return nil, err
 	}
 
-	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificateInfo)
+	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
 
 	if previousToBlock >= lastL2BlockSynced {
 		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
@@ -68,10 +68,11 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 		FromBlock:           fromBlock,
 		ToBlock:             toBlock,
 		RetryCount:          retryCount,
-		LastSentCertificate: lastSentCertificateInfo,
+		LastSentCertificate: lastSentCertificate,
 		Bridges:             bridges,
 		Claims:              claims,
 		CreatedAt:           uint32(time.Now().UTC().Unix()),
+		CertificateType:     certType,
 	}
 
 	buildParams, err = f.limitCertSize(buildParams, allowEmptyCert)
@@ -121,7 +122,7 @@ func (f *baseFlow) limitCertSize(
 
 func (f *baseFlow) buildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
-	lastSentCertificateInfo *types.CertificateInfo,
+	lastSentCertificate *types.CertificateHeader,
 	allowEmptyCert bool) (*agglayertypes.Certificate, error) {
 	f.log.Infof("building certificate for %s estimatedSize=%d", certParams.String(), certParams.EstimatedSize())
 
@@ -135,7 +136,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("error getting imported bridge exits: %w", err)
 	}
 
-	height, previousLER, err := f.getNextHeightAndPreviousLER(lastSentCertificateInfo)
+	height, previousLER, err := f.getNextHeightAndPreviousLER(lastSentCertificate)
 	if err != nil {
 		return nil, fmt.Errorf("error getting next height and previous LER: %w", err)
 	}
@@ -149,6 +150,7 @@ func (f *baseFlow) buildCertificate(ctx context.Context,
 		certParams.FromBlock,
 		uint32(certParams.ToBlock-certParams.FromBlock),
 		certParams.CreatedAt,
+		certParams.CertificateType.ToInt(),
 	)
 
 	return &agglayertypes.Certificate{
@@ -341,7 +343,7 @@ func (f *baseFlow) getImportedBridgeExits(
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
 func (f *baseFlow) getNextHeightAndPreviousLER(
-	lastSentCertificateInfo *types.CertificateInfo) (uint64, common.Hash, error) {
+	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
 		return 0, zeroLER, nil
 	}
@@ -365,7 +367,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		// We get previous certificate that must be settled
 		f.log.Debugf("last certificate %s is in error, getting previous settled certificate height:%d",
 			lastSentCertificateInfo.Height-1)
-		lastSettleCert, err := f.storage.GetCertificateByHeight(lastSentCertificateInfo.Height - 1)
+		lastSettleCert, err := f.storage.GetCertificateHeaderByHeight(lastSentCertificateInfo.Height - 1)
 		if err != nil {
 			return 0, common.Hash{}, fmt.Errorf("error getting last settled certificate: %w", err)
 		}
@@ -398,7 +400,7 @@ func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
 // if there is no previosly sent certificate, it returns startL2Block and 0
-func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateInfo) (uint64, int) {
+func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateHeader) (uint64, int) {
 	if lastSentCertificateInfo == nil {
 		// this is the first certificate so we start from what we have set in start L2 block
 		return f.startL2Block, 0

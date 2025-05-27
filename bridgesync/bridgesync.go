@@ -254,6 +254,7 @@ func (s *BridgeSync) GetClaimsPaged(
 	ctx context.Context,
 	page, pageSize uint32, networkIDs []uint32, fromAddress string) ([]*Claim, int, error) {
 	if s.processor.isHalted() {
+		s.processor.log.Error("processor is halted, cannot get claims")
 		return nil, 0, sync.ErrInconsistentState
 	}
 	return s.processor.GetClaimsPaged(ctx, page, pageSize, networkIDs, fromAddress)
@@ -261,6 +262,7 @@ func (s *BridgeSync) GetClaimsPaged(
 
 // Start starts the synchronization process
 func (s *BridgeSync) Start(ctx context.Context) {
+	s.processor.log.Info("starting bridge synchronizer")
 	s.driver.Sync(ctx)
 }
 
@@ -276,6 +278,7 @@ func (s *BridgeSync) GetBridgesPaged(
 
 func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	if s.processor.isHalted() {
+		s.processor.log.Error("processor is halted, cannot get last processed block")
 		return 0, sync.ErrInconsistentState
 	}
 	return s.processor.GetLastProcessedBlock(ctx)
@@ -391,6 +394,7 @@ type LastReorg struct {
 func (s *BridgeSync) GetLastReorgEvent(ctx context.Context) (*LastReorg, error) {
 	rEvent, err := s.reorgDetector.GetLastReorgEvent(ctx)
 	if err != nil {
+		s.processor.log.Errorf("failed to get last reorg event: %v", err)
 		return nil, err
 	}
 
@@ -405,6 +409,7 @@ func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2) error {
 	lastUpdatedDespositCount, err := bridgeContractV2.LastUpdatedDepositCount(nil)
 	if err != nil {
+		logger.Error("failed to get last updated deposit count", "error", err)
 		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w",
 			bridgeAddr.String(), err)
 	}

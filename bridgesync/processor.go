@@ -646,29 +646,34 @@ func (p *processor) getLastProcessedBlockWithTx(tx db.Querier) (uint64, error) {
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
+		p.log.Errorf("failed to start transaction for reorg: %v", err)
 		return err
 	}
 	defer func() {
 		if err != nil {
 			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
-				log.Errorf("error while rolling back tx %v", errRllbck)
+				p.log.Errorf("error rolling back reorg transaction: %v", errRllbck)
 			}
 		}
 	}()
 
 	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
 	if err != nil {
+		p.log.Errorf("failed to delete blocks during reorg: %v", err)
 		return err
 	}
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {
+		p.log.Errorf("failed to get rows affected during reorg: %v", err)
 		return err
 	}
 
 	if err = p.exitTree.Reorg(tx, firstReorgedBlock); err != nil {
+		p.log.Errorf("failed to reorg exit tree: %v", err)
 		return err
 	}
 	if err := tx.Commit(); err != nil {
+		p.log.Errorf("failed to commit reorg transaction: %v", err)
 		return err
 	}
 	sync.UnhaltIfAffectedRows(&p.halted, &p.haltedReason, &p.mu, rowsAffected)
@@ -679,28 +684,32 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 // and updates the last processed block (can be called without events for that purpose)
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	if p.isHalted() {
-		log.Errorf("processor is halted due to: %s", p.haltedReason)
+		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
 		return sync.ErrInconsistentState
 	}
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
+		p.log.Errorf("failed to start transaction for block %d: %v", block.Num, err)
 		return err
 	}
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
 			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
-				log.Errorf("error while rolling back tx %v", errRllbck)
+				p.log.Errorf("error rolling back db transaction (block number %d): %v", block.Num, errRllbck)
 			}
 		}
 	}()
 
 	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
+		p.log.Errorf("failed to insert block %d: %v", block.Num, err)
 		return err
 	}
+
 	for _, e := range block.Events {
 		event, ok := e.(Event)
 		if !ok {
+			p.log.Errorf("failed to convert event to Event type in block %d", block.Num)
 			return errors.New("failed to convert sync.Block.Event to Event")
 		}
 
@@ -714,28 +723,33 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 					p.halted = true
 					p.haltedReason = fmt.Sprintf("error adding leaf to the exit tree: %v", err)
 					p.mu.Unlock()
+					p.log.Errorf("processor halted: %s", p.haltedReason)
 				}
 				return sync.ErrInconsistentState
 			}
 			if err = meddler.Insert(tx, bridgeTableName, event.Bridge); err != nil {
+				p.log.Errorf("failed to insert bridge event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
 
 		if event.Claim != nil {
 			if err = meddler.Insert(tx, claimTableName, event.Claim); err != nil {
+				p.log.Errorf("failed to insert claim event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
 
 		if event.TokenMapping != nil {
 			if err = meddler.Insert(tx, tokenMappingTableName, event.TokenMapping); err != nil {
+				p.log.Errorf("failed to insert token mapping event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
 
 		if event.LegacyTokenMigration != nil {
 			if err = meddler.Insert(tx, legacyTokenMigrationTableName, event.LegacyTokenMigration); err != nil {
+				p.log.Errorf("failed to insert legacy token migration event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
@@ -743,12 +757,14 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		if event.RemoveLegacyToken != nil {
 			_, err := tx.Exec(deleteLegacyTokenSQL, event.RemoveLegacyToken.LegacyTokenAddress.Hex())
 			if err != nil {
+				p.log.Errorf("failed to remove legacy token at block %d: %v", block.Num, err)
 				return err
 			}
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
+		p.log.Errorf("failed to commit db transaction (block number %d): %v", block.Num, err)
 		return err
 	}
 	shouldRollback = false

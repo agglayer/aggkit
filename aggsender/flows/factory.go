@@ -50,8 +50,7 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchain prover mode requires AggkitProverClient configuration")
 		}
 
-		aggchainProofClient, err := grpc.NewAggchainProofClient(
-			cfg.AggkitProverClient,
+		aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient,
 			cfg.GenerateAggchainProofTimeout.Duration)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
@@ -79,6 +78,7 @@ func NewFlow(
 			query.NewBridgeDataQuerier(l2Syncer),
 			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 			l1Client,
+			cfg.RequireNoFEPBlockGap,
 		), nil
 
 	default:
