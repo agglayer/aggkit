@@ -58,7 +58,8 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 			return aggkitgrpc.HandleGRPCError(err)
 		})
 	if err != nil {
-		return nil, fmt.Errorf("GetEpochConfiguration failed after %d retries: %w", a.cfg.MaxRequestRetries, err)
+		return nil, fmt.Errorf("GetEpochConfiguration failed after %d retries: %w",
+			a.cfg.MaxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return &types.ClockConfiguration{
@@ -145,7 +146,8 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		err      error
 	)
 
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx, a.cfg.MaxRequestRetries, a.cfg.InitialDelay.Duration,
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx,
+		a.cfg.MaxRequestRetries, a.cfg.InitialDelay.Duration,
 		func() error {
 			response, err = a.submissionService.SubmitCertificate(ctx,
 				&v1.SubmitCertificateRequest{
@@ -155,7 +157,8 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 			return aggkitgrpc.HandleGRPCError(err)
 		})
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to submit certificate: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
+		return common.Hash{}, fmt.Errorf("failed to submit certificate after %d retries: %w",
+			a.cfg.MaxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return common.BytesToHash(response.CertificateId.Value.Value), nil
@@ -241,8 +244,8 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 		})
 
 	if err != nil {
-		// Wrap the error to add context about retries
-		return nil, fmt.Errorf("failed to get certificate header: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
+		return nil, fmt.Errorf("failed to get certificate header after %d retries: %w",
+			a.cfg.MaxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
