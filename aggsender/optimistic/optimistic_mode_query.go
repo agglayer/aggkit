@@ -1,4 +1,4 @@
-package query
+package optimistic
 
 import (
 	"fmt"

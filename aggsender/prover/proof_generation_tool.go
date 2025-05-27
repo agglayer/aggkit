@@ -76,6 +76,7 @@ func NewAggchainProofGenerationTool(
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*AggchainProofGenerationTool, error) {
+
 	aggchainProofClient, err := grpc.NewAggchainProofClient(
 		cfg.AggchainProofURL, cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
 	if err != nil {
@@ -88,7 +89,7 @@ func NewAggchainProofGenerationTool(
 	}
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
-
+	// TODO: the signer it's required?
 	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,
 		0,
@@ -100,6 +101,7 @@ func NewAggchainProofGenerationTool(
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
 		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode
 		l1Client,
+		nil,
 		false,
 	)
 

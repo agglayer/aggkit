@@ -19,11 +19,25 @@ var (
 )
 
 // Uint64ToBytes converts a uint64 to a byte slice
-func Uint64ToBytes(num uint64) []byte {
+// we left this function for backward compatibility
+var Uint64ToBytes = Uint64ToBigEndianBytes
+
+// Uint64ToBigEndianBytes converts a uint64 to a byte slice in big-endian order
+func Uint64ToBigEndianBytes(num uint64) []byte {
 	const uint64ByteSize = 8
 
 	bytes := make([]byte, uint64ByteSize)
 	binary.BigEndian.PutUint64(bytes, num)
+
+	return bytes
+}
+
+// Uint64ToLittleEndianBytes converts a uint64 to a byte slice in little-endian order
+func Uint64ToLittleEndianBytes(num uint64) []byte {
+	const uint64ByteSize = 8
+
+	bytes := make([]byte, uint64ByteSize)
+	binary.LittleEndian.PutUint64(bytes, num)
 
 	return bytes
 }

@@ -1,13 +1,11 @@
 package types
 
 import (
-	"encoding/binary"
 	"fmt"
 
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 const (
@@ -29,21 +27,6 @@ type CertificateBuildParams struct {
 	L1InfoTreeLeafCount            uint32
 	AggchainProof                  *AggchainProof
 	CertificateType                CertificateType
-}
-
-// CommitImportedBridgeExit returns the hash of the claims
-func (c *CertificateBuildParams) CommitImportedBridgeExit() common.Hash {
-	if len(c.Bridges) == 0 {
-		return common.Hash{}
-	}
-	var combined []byte
-	for _, claim := range c.Claims {
-		indexUint := claim.GlobalIndex.Uint64()
-		var indexLE [8]byte
-		binary.LittleEndian.PutUint64(indexLE[:], indexUint)
-		combined = append(combined, indexLE[:]...)
-	}
-	return common.BytesToHash(crypto.Keccak256(combined))
 }
 
 func (c *CertificateBuildParams) String() string {

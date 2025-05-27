@@ -1,4 +1,4 @@
-package query
+package optimistic
 
 import (
 	"testing"
@@ -22,7 +22,12 @@ func TestSignatureOptimisticData_Hash(t *testing.T) {
 		newLocalExitRoot:             common.HexToHash("0x81b8a2cf7a80538dee49ae721a87655b080523d37cdad80c6a002a33e91c96cb"),
 		commitImportedBridgeExits:    common.HexToHash("0x1b2d35e62df05e64b5987fa70c318ccabb08ce181818c9c88851ac15da9d277a"),
 	}
-	hash := signData.Hash()
+	hash, err := signData.Hash()
+	require.NoError(t, err, "Hashing should not return an error")
 	expectedHash := common.HexToHash("0x30ab2b423a824db41a33d05756e59b1dbc46b3ef41a70750bceb3c7b7324ebc1")
 	require.Equal(t, expectedHash, hash, "Hash should match the expected value")
+}
+
+func TestSignatureOptimisticData_FromBuildParams(t *testing.T) {
+
 }

@@ -7,6 +7,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
+	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
@@ -45,6 +46,10 @@ func NewFlow(
 			signer,
 		), nil
 	case types.AggchainProofMode:
+		signer, err := signer.NewSigner(ctx, 0, cfg.AggsenderPrivateKey, common.AGGSENDER, logger)
+		if err != nil {
+			return nil, fmt.Errorf("error NewSigner. Err: %w", err)
+		}
 		if cfg.AggchainProofURL == "" {
 			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
 		}
@@ -67,7 +72,7 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 		}
-		optimisticModeQuerier, err := query.NewOptimisticModeQuerierFromContract(cfg.SovereignRollupAddr, l1Client)
+		optimisticModeQuerier, err := optimistic.NewOptimisticModeQuerierFromContract(cfg.SovereignRollupAddr, l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
@@ -83,6 +88,7 @@ func NewFlow(
 			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 			optimisticModeQuerier,
 			l1Client,
+			signer,
 			cfg.RequireNoFEPBlockGap,
 		), nil
 
