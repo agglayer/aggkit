@@ -81,6 +81,65 @@ func (_c *AggchainProofServiceServer_GenerateAggchainProof_Call) RunAndReturn(ru
 	return _c
 }
 
+// GenerateOptimisticAggchainProof provides a mock function with given fields: _a0, _a1
+func (_m *AggchainProofServiceServer) GenerateOptimisticAggchainProof(_a0 context.Context, _a1 *proverv1.GenerateOptimisticAggchainProofRequest) (*proverv1.GenerateOptimisticAggchainProofResponse, error) {
+	ret := _m.Called(_a0, _a1)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GenerateOptimisticAggchainProof")
+	}
+
+	var r0 *proverv1.GenerateOptimisticAggchainProofResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *proverv1.GenerateOptimisticAggchainProofRequest) (*proverv1.GenerateOptimisticAggchainProofResponse, error)); ok {
+		return rf(_a0, _a1)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *proverv1.GenerateOptimisticAggchainProofRequest) *proverv1.GenerateOptimisticAggchainProofResponse); ok {
+		r0 = rf(_a0, _a1)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*proverv1.GenerateOptimisticAggchainProofResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *proverv1.GenerateOptimisticAggchainProofRequest) error); ok {
+		r1 = rf(_a0, _a1)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GenerateOptimisticAggchainProof'
+type AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call struct {
+	*mock.Call
+}
+
+// GenerateOptimisticAggchainProof is a helper method to define mock.On call
+//   - _a0 context.Context
+//   - _a1 *proverv1.GenerateOptimisticAggchainProofRequest
+func (_e *AggchainProofServiceServer_Expecter) GenerateOptimisticAggchainProof(_a0 interface{}, _a1 interface{}) *AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call {
+	return &AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call{Call: _e.mock.On("GenerateOptimisticAggchainProof", _a0, _a1)}
+}
+
+func (_c *AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call) Run(run func(_a0 context.Context, _a1 *proverv1.GenerateOptimisticAggchainProofRequest)) *AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*proverv1.GenerateOptimisticAggchainProofRequest))
+	})
+	return _c
+}
+
+func (_c *AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call) Return(_a0 *proverv1.GenerateOptimisticAggchainProofResponse, _a1 error) *AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call) RunAndReturn(run func(context.Context, *proverv1.GenerateOptimisticAggchainProofRequest) (*proverv1.GenerateOptimisticAggchainProofResponse, error)) *AggchainProofServiceServer_GenerateOptimisticAggchainProof_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewAggchainProofServiceServer creates a new instance of AggchainProofServiceServer. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewAggchainProofServiceServer(t interface {
