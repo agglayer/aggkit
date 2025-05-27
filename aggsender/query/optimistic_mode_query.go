@@ -5,11 +5,8 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	"github.com/agglayer/aggkit/aggoracle/types"
-	"github.com/agglayer/aggkit/opnode"
 	"github.com/ethereum/go-ethereum/common"
 )
-
-
 
 type OptimisticModeQuerierFromContract struct {
 	aggchainFEPContract *aggchainfep.Aggchainfep
