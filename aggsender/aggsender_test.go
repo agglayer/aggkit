@@ -64,7 +64,10 @@ func TestConfigString(t *testing.T) {
 		"RetryCertAfterInError: false\n" +
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
 		"GenerateAggchainProofTimeout: 1s\n" +
-		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"
+		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n" +
+		"UseAgglayerTLS: false\n" +
+		"UseAggkitProverTLS: false\n" +
+		"RequireNoFEPBlockGap: false\n"
 
 	require.Equal(t, expected, config.String())
 }
@@ -213,7 +216,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		rateLimiter:     aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
-	mockStorage.EXPECT().GetLastSentCertificate().Return(&aggsendertypes.CertificateInfo{
+	mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&aggsendertypes.CertificateHeader{
 		NewLocalExitRoot: common.HexToHash("0x123"),
 		Height:           1,
 		FromBlock:        0,
@@ -263,22 +266,24 @@ func TestExtractFromCertificateMetadataToBlock(t *testing.T) {
 	}{
 		{
 			name:     "Valid metadata",
-			metadata: aggsendertypes.NewCertificateMetadata(0, 1000, 123567890).ToHash(),
+			metadata: aggsendertypes.NewCertificateMetadata(0, 1000, 123567890, 123).ToHash(),
 			expected: aggsendertypes.CertificateMetadata{
-				Version:   1,
+				Version:   aggsendertypes.CertificateMetadataV2,
 				FromBlock: 0,
 				Offset:    1000,
 				CreatedAt: 123567890,
+				CertType:  123,
 			},
 		},
 		{
 			name:     "Zero metadata",
-			metadata: aggsendertypes.NewCertificateMetadata(0, 0, 0).ToHash(),
+			metadata: aggsendertypes.NewCertificateMetadata(0, 0, 0, 0).ToHash(),
 			expected: aggsendertypes.CertificateMetadata{
-				Version:   1,
+				Version:   aggsendertypes.CertificateMetadataV2,
 				FromBlock: 0,
 				Offset:    0,
 				CreatedAt: 0,
+				CertType:  0,
 			},
 		},
 	}
@@ -289,8 +294,9 @@ func TestExtractFromCertificateMetadataToBlock(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result := *aggsendertypes.NewCertificateMetadataFromHash(tt.metadata)
-			require.Equal(t, tt.expected, result)
+			result, err := aggsendertypes.NewCertificateMetadataFromHash(tt.metadata)
+			require.NoError(t, err)
+			require.Equal(t, tt.expected, *result)
 		})
 	}
 }
@@ -594,7 +600,6 @@ type aggsenderTestData struct {
 	compatibilityChekerMock *mocksdb.CompatibilityChecker
 	certStatusCheckerMock   *mocks.CertificateStatusChecker
 	sut                     *AggSender
-	testCerts               []aggsendertypes.CertificateInfo
 }
 
 func NewBridgesData(t *testing.T, num int, blockNum []uint64) []bridgesync.Bridge {
@@ -688,21 +693,6 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		sut.certStatusChecker = statusCheckerMock
 	}
 
-	testCerts := []aggsendertypes.CertificateInfo{
-		{
-			Height:           0,
-			CertificateID:    common.HexToHash("0x1"),
-			NewLocalExitRoot: common.HexToHash("0x2"),
-			Status:           agglayertypes.Pending,
-		},
-		{
-			Height:           1,
-			CertificateID:    common.HexToHash("0x1a111"),
-			NewLocalExitRoot: common.HexToHash("0x2a2"),
-			Status:           agglayertypes.Pending,
-		},
-	}
-
 	return &aggsenderTestData{
 		ctx:                     ctx,
 		agglayerClientMock:      agglayerClientMock,
@@ -714,6 +704,5 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		compatibilityChekerMock: compatibilityCheckerMock,
 		certStatusCheckerMock:   statusCheckerMock,
 		sut:                     sut,
-		testCerts:               testCerts,
 	}
 }

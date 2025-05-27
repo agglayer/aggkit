@@ -9,8 +9,8 @@ import (
 )
 
 type AggsenderStorer interface {
-	GetCertificateByHeight(height uint64) (*types.CertificateInfo, error)
-	GetLastSentCertificate() (*types.CertificateInfo, error)
+	GetCertificateByHeight(height uint64) (*types.Certificate, error)
+	GetLastSentCertificate() (*types.Certificate, error)
 }
 
 type AggsenderInterface interface {
@@ -57,19 +57,20 @@ func (b *AggsenderRPC) Status() (interface{}, rpc.Error) {
 // -d '{"method":"aggsender_getCertificateHeaderPerHeight", "params":[$height], "id":1}'
 func (b *AggsenderRPC) GetCertificateHeaderPerHeight(height *uint64) (interface{}, rpc.Error) {
 	var (
-		certInfo *types.CertificateInfo
-		err      error
+		cert *types.Certificate
+		err  error
 	)
 	if height == nil {
-		certInfo, err = b.storage.GetLastSentCertificate()
+		cert, err = b.storage.GetLastSentCertificate()
 	} else {
-		certInfo, err = b.storage.GetCertificateByHeight(*height)
+		cert, err = b.storage.GetCertificateByHeight(*height)
 	}
 	if err != nil {
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, fmt.Sprintf("error getting certificate by height: %v", err))
 	}
-	if certInfo == nil {
+	if cert == nil {
 		return nil, rpc.NewRPCError(rpc.NotFoundErrorCode, "certificate not found")
 	}
-	return certInfo, nil
+
+	return cert, nil
 }

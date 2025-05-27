@@ -28,11 +28,11 @@ type AgglayerGRPCClient struct {
 }
 
 // NewAggchainProofClient initializes a new AggchainProof instance
-func NewAgglayerGRPCClient(serverAddr string) (*AgglayerGRPCClient, error) {
+func NewAgglayerGRPCClient(serverAddr string, useTLS bool) (*AgglayerGRPCClient, error) {
 	// trim the http:// prefix if it exists in the URL because the go-grpc client expects it without it
 	addr := strings.TrimPrefix(serverAddr, "http://")
 
-	grpcClient, err := aggkitCommon.NewClient(addr)
+	grpcClient, err := aggkitCommon.NewClient(addr, useTLS)
 	if err != nil {
 		return nil, err
 	}

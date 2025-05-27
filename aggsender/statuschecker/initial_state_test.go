@@ -253,7 +253,7 @@ func runTestCases(t *testing.T, tests []testCaseData) {
 		t.Run(tt.name, func(t *testing.T) {
 			sut := initialStatus{log: logger}
 			if tt.localCert != nil {
-				sut.LocalCert = &types.CertificateInfo{
+				sut.LocalCert = &types.CertificateHeader{
 					CertificateID: tt.localCert.CertificateID,
 					Height:        tt.localCert.Height,
 					Status:        tt.localCert.Status,

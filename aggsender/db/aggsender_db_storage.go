@@ -37,17 +37,29 @@ func (r RuntimeData) IsCompatible(storage RuntimeData) error {
 // AggSenderStorage is the interface that defines the methods to interact with the storage
 type AggSenderStorage interface {
 	// GetCertificateByHeight returns a certificate by its height
-	GetCertificateByHeight(height uint64) (*types.CertificateInfo, error)
+	GetCertificateByHeight(height uint64) (*types.Certificate, error)
 	// GetLastSentCertificate returns the last certificate sent to the aggLayer
-	GetLastSentCertificate() (*types.CertificateInfo, error)
+	GetLastSentCertificate() (*types.Certificate, error)
 	// SaveLastSentCertificate saves the last certificate sent to the aggLayer
-	SaveLastSentCertificate(ctx context.Context, certificate types.CertificateInfo) error
+	SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error
 	// DeleteCertificate deletes a certificate from the storage
 	DeleteCertificate(ctx context.Context, certificateID common.Hash) error
-	// GetCertificatesByStatus returns a list of certificates by their status
-	GetCertificatesByStatus(status []agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error)
-	// UpdateCertificate updates certificate in db
-	UpdateCertificate(ctx context.Context, certificate types.CertificateInfo) error
+	// GetCertificateHeadersByStatus returns a list of certificate headers by their status
+	GetCertificateHeadersByStatus(status []agglayertypes.CertificateStatus) ([]*types.CertificateHeader, error)
+	// UpdateCertificateStatus updates certificate status in db
+	UpdateCertificateStatus(
+		ctx context.Context,
+		certificateID common.Hash,
+		newStatus agglayertypes.CertificateStatus,
+		updatedAt uint32) error
+	// GetLastSentCertificateHeader returns the last certificate header sent to the aggLayer
+	GetLastSentCertificateHeader() (*types.CertificateHeader, error)
+	// GetCertificateHeaderByHeight returns a certificate header by its height
+	GetCertificateHeaderByHeight(height uint64) (*types.CertificateHeader, error)
+	// GetLastSentCertificateHeaderWithProofIfInError returns the last certificate header sent to the aggLayer
+	// and the aggchain proof if the certificate is in error
+	GetLastSentCertificateHeaderWithProofIfInError(
+		ctx context.Context) (*types.CertificateHeader, *types.AggchainProof, error)
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -84,10 +96,12 @@ func NewAggSenderSQLStorage(logger *log.Logger, cfg AggSenderSQLStorageConfig) (
 	}, nil
 }
 
-func (a *AggSenderSQLStorage) GetCertificatesByStatus(
-	statuses []agglayertypes.CertificateStatus) ([]*types.CertificateInfo, error) {
-	query := "SELECT * FROM certificate_info"
-	args := make([]interface{}, len(statuses))
+// GetCertificateHeadersByStatus returns a list of certificate headers by their status
+func (a *AggSenderSQLStorage) GetCertificateHeadersByStatus(
+	statuses []agglayertypes.CertificateStatus) ([]*types.CertificateHeader, error) {
+	query := selectQueryCertificateHeader
+
+	args := make([]any, len(statuses))
 
 	if len(statuses) > 0 {
 		placeholders := make([]string, len(statuses))
@@ -104,7 +118,7 @@ func (a *AggSenderSQLStorage) GetCertificatesByStatus(
 	// Add ordering by creation date (oldest first)
 	query += " ORDER BY height ASC"
 
-	var certificates []*types.CertificateInfo
+	var certificates []*types.CertificateHeader
 	if err := meddler.QueryAll(a.db, &certificates, query, args...); err != nil {
 		return nil, err
 	}
@@ -113,14 +127,33 @@ func (a *AggSenderSQLStorage) GetCertificatesByStatus(
 }
 
 // GetCertificateByHeight returns a certificate by its height
-func (a *AggSenderSQLStorage) GetCertificateByHeight(height uint64) (*types.CertificateInfo, error) {
-	return getCertificateByHeight(a.db, height)
+func (a *AggSenderSQLStorage) GetCertificateByHeight(height uint64) (*types.Certificate, error) {
+	certInfo, err := getCertificateByHeight(a.db, height)
+	if err != nil {
+		return nil, err
+	}
+
+	if certInfo == nil {
+		return nil, nil
+	}
+
+	return certInfo.toCertificate(), nil
+}
+
+// GetCertificateHeaderByHeight returns a certificate by its height
+func (a *AggSenderSQLStorage) GetCertificateHeaderByHeight(height uint64) (*types.CertificateHeader, error) {
+	var certificateHeader types.CertificateHeader
+	if err := meddler.QueryRow(a.db, &certificateHeader,
+		fmt.Sprintf("%s WHERE height = $1;", selectQueryCertificateHeader), height); err != nil {
+		return nil, getSelectQueryError(height, err)
+	}
+	return &certificateHeader, nil
 }
 
 // getCertificateByHeight returns a certificate by its height using the provided db
 func getCertificateByHeight(db db.Querier,
-	height uint64) (*types.CertificateInfo, error) {
-	var certificateInfo types.CertificateInfo
+	height uint64) (*certificateInfo, error) {
+	var certificateInfo certificateInfo
 	if err := meddler.QueryRow(db, &certificateInfo,
 		"SELECT * FROM certificate_info WHERE height = $1;", height); err != nil {
 		return nil, getSelectQueryError(height, err)
@@ -130,18 +163,28 @@ func getCertificateByHeight(db db.Querier,
 }
 
 // GetLastSentCertificate returns the last certificate sent to the aggLayer
-func (a *AggSenderSQLStorage) GetLastSentCertificate() (*types.CertificateInfo, error) {
-	var certificateInfo types.CertificateInfo
+func (a *AggSenderSQLStorage) GetLastSentCertificate() (*types.Certificate, error) {
+	var certificateInfo certificateInfo
 	if err := meddler.QueryRow(a.db, &certificateInfo,
 		"SELECT * FROM certificate_info ORDER BY height DESC LIMIT 1;"); err != nil {
 		return nil, getSelectQueryError(0, err)
 	}
 
-	return &certificateInfo, nil
+	return certificateInfo.toCertificate(), nil
+}
+
+// GetLastSentCertificateHeader returns the last certificate header sent to the aggLayer
+func (a *AggSenderSQLStorage) GetLastSentCertificateHeader() (*types.CertificateHeader, error) {
+	var certificateHeader types.CertificateHeader
+	if err := meddler.QueryRow(a.db, &certificateHeader,
+		fmt.Sprintf("%s ORDER BY height DESC LIMIT 1;", selectQueryCertificateHeader)); err != nil {
+		return nil, getSelectQueryError(0, err)
+	}
+	return &certificateHeader, nil
 }
 
 // SaveLastSentCertificate saves the last certificate sent to the aggLayer
-func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certificate types.CertificateInfo) error {
+func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error {
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
 		return fmt.Errorf("saveLastSentCertificate NewTx. Err: %w", err)
@@ -155,7 +198,12 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 		}
 	}()
 
-	cert, err := getCertificateByHeight(tx, certificate.Height)
+	certificateInfo, err := convertCertificateToCertificateInfo(&certificate)
+	if err != nil {
+		return fmt.Errorf("error converting certificate to certificate info: %w", err)
+	}
+
+	cert, err := getCertificateByHeight(tx, certificateInfo.Height)
 	if err != nil && !errors.Is(err, db.ErrNotFound) {
 		return fmt.Errorf("saveLastSentCertificate getCertificateByHeight. Err: %w", err)
 	}
@@ -168,7 +216,7 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 		}
 	}
 
-	if err = meddler.Insert(tx, "certificate_info", &certificate); err != nil {
+	if err = meddler.Insert(tx, "certificate_info", certificateInfo); err != nil {
 		return fmt.Errorf("error inserting certificate info: %w", err)
 	}
 
@@ -177,13 +225,14 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 	}
 	shouldRollback = false
 
-	a.logger.Debugf("inserted certificate - Height: %d. Hash: %s", certificate.Height, certificate.CertificateID)
+	a.logger.Debugf("inserted certificate - Height: %d. Hash: %s",
+		certificateInfo.Height, certificateInfo.CertificateID)
 
 	return nil
 }
 
 func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx db.Querier,
-	certificate *types.CertificateInfo) error {
+	certificate *certificateInfo) error {
 	if a.cfg.KeepCertificatesHistory {
 		a.logger.Debugf("moving certificate to history - new CertificateID: %s", certificate.ID())
 		if _, err := tx.Exec(`INSERT INTO certificate_info_history SELECT * FROM certificate_info WHERE height = $1;`,
@@ -233,8 +282,12 @@ func deleteCertificate(tx db.Querier, certificateID common.Hash) error {
 	return nil
 }
 
-// UpdateCertificate updates a certificate
-func (a *AggSenderSQLStorage) UpdateCertificate(ctx context.Context, certificate types.CertificateInfo) error {
+// UpdateCertificateStatus updates a certificate status in the storage
+func (a *AggSenderSQLStorage) UpdateCertificateStatus(
+	ctx context.Context,
+	certificateID common.Hash,
+	newStatus agglayertypes.CertificateStatus,
+	updatedAt uint32) error {
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
 		return err
@@ -249,7 +302,7 @@ func (a *AggSenderSQLStorage) UpdateCertificate(ctx context.Context, certificate
 	}()
 
 	if _, err = tx.Exec(`UPDATE certificate_info SET status = $1, updated_at = $2 WHERE certificate_id = $3;`,
-		certificate.Status, certificate.UpdatedAt, certificate.CertificateID.String()); err != nil {
+		newStatus, updatedAt, certificateID.String()); err != nil {
 		return fmt.Errorf("error updating certificate info: %w", err)
 	}
 	if err = tx.Commit(); err != nil {
@@ -257,9 +310,44 @@ func (a *AggSenderSQLStorage) UpdateCertificate(ctx context.Context, certificate
 	}
 	shouldRollback = false
 
-	a.logger.Debugf("updated certificate status - CertificateID: %s", certificate.CertificateID)
+	a.logger.Debugf("updated certificate status - CertificateID: %s", certificateID)
 
 	return nil
+}
+
+// GetLastSentCertificateHeaderWithProofIfInError returns the last certificate header sent to the aggLayer
+// and the aggchain proof if the certificate is in error
+func (a *AggSenderSQLStorage) GetLastSentCertificateHeaderWithProofIfInError(
+	ctx context.Context) (*types.CertificateHeader, *types.AggchainProof, error) {
+	tx, err := db.NewTx(context.Background(), a.db)
+	if err != nil {
+		return nil, nil, fmt.Errorf("GetLastSentCertificateHeaderWithProofIfInError NewTx. Err: %w", err)
+	}
+
+	defer func() {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil {
+			a.logger.Errorf("error rolling back transaction: %v", rollbackErr)
+		}
+	}()
+
+	var certificateHeader types.CertificateHeader
+	if err := meddler.QueryRow(a.db, &certificateHeader,
+		fmt.Sprintf("%s ORDER BY height DESC LIMIT 1;", selectQueryCertificateHeader)); err != nil {
+		return nil, nil, getSelectQueryError(0, err)
+	}
+
+	if certificateHeader.Status.IsInError() {
+		var certWithOnlyProof types.Certificate
+		if err := meddler.QueryRow(tx, &certWithOnlyProof,
+			"SELECT aggchain_proof FROM certificate_info WHERE height = $1;",
+			certificateHeader.Height); err != nil {
+			return nil, nil, getSelectQueryError(certificateHeader.Height, err)
+		}
+
+		return &certificateHeader, certWithOnlyProof.AggchainProof, nil
+	}
+
+	return &certificateHeader, nil, nil
 }
 
 func getSelectQueryError(height uint64, err error) error {

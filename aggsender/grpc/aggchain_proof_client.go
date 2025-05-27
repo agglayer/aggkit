@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -42,9 +43,9 @@ type AggchainProofClient struct {
 
 // NewAggchainProofClient initializes a new AggchainProof instance
 func NewAggchainProofClient(serverAddr string,
-	generateProofTimeout time.Duration) (*AggchainProofClient, error) {
+	generateProofTimeout time.Duration, useTLS bool) (*AggchainProofClient, error) {
 	addr := strings.TrimPrefix(serverAddr, "http://")
-	grpcClient, err := aggkitcommon.NewClient(addr)
+	grpcClient, err := aggkitcommon.NewClient(addr, useTLS)
 	if err != nil {
 		return nil, err
 	}
@@ -159,6 +160,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 
 	proof, ok := resp.AggchainProof.Proof.(*agglayerInteropTypesV1Proto.AggchainProof_Sp1Stark)
 	if !ok {
+		log.Errorf("aggchain proof is not SP1Stark: %+v", resp.AggchainProof.Proof)
 		return nil, errProofNotSP1Stark
 	}
 

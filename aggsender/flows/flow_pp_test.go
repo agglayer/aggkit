@@ -477,15 +477,15 @@ func TestBuildCertificate(t *testing.T) {
 	mockProof := generateTestProof(t)
 
 	tests := []struct {
-		name                    string
-		bridges                 []bridgesync.Bridge
-		claims                  []bridgesync.Claim
-		lastSentCertificateInfo types.CertificateInfo
-		fromBlock               uint64
-		toBlock                 uint64
-		mockFn                  func()
-		expectedCert            *agglayertypes.Certificate
-		expectedError           bool
+		name                string
+		bridges             []bridgesync.Bridge
+		claims              []bridgesync.Claim
+		lastSentCertificate types.CertificateHeader
+		fromBlock           uint64
+		toBlock             uint64
+		mockFn              func()
+		expectedCert        *agglayertypes.Certificate
+		expectedError       bool
 	}{
 		{
 			name: "Valid certificate with bridges and claims",
@@ -518,7 +518,7 @@ func TestBuildCertificate(t *testing.T) {
 					ProofRollupExitRoot: mockProof,
 				},
 			},
-			lastSentCertificateInfo: types.CertificateInfo{
+			lastSentCertificate: types.CertificateHeader{
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Height:           1,
 				Status:           agglayertypes.Settled,
@@ -529,7 +529,7 @@ func TestBuildCertificate(t *testing.T) {
 				NetworkID:         1,
 				PrevLocalExitRoot: common.HexToHash("0x123"),
 				NewLocalExitRoot:  common.HexToHash("0x789"),
-				Metadata:          types.NewCertificateMetadata(0, 10, 0).ToHash(),
+				Metadata:          types.NewCertificateMetadata(0, 10, 0, types.CertificateTypePP.ToInt()).ToHash(),
 				BridgeExits: []*agglayertypes.BridgeExit{
 					{
 						LeafType: agglayertypes.LeafTypeAsset,
@@ -605,7 +605,7 @@ func TestBuildCertificate(t *testing.T) {
 			name:    "No bridges or claims",
 			bridges: []bridgesync.Bridge{},
 			claims:  []bridgesync.Claim{},
-			lastSentCertificateInfo: types.CertificateInfo{
+			lastSentCertificate: types.CertificateHeader{
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Height:           1,
 			},
@@ -642,7 +642,7 @@ func TestBuildCertificate(t *testing.T) {
 					ProofLocalExitRoot: mockProof,
 				},
 			},
-			lastSentCertificateInfo: types.CertificateInfo{
+			lastSentCertificate: types.CertificateHeader{
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Height:           1,
 			},
@@ -680,9 +680,10 @@ func TestBuildCertificate(t *testing.T) {
 				ToBlock:                        tt.toBlock,
 				Bridges:                        tt.bridges,
 				Claims:                         tt.claims,
+				CertificateType:                types.CertificateTypePP,
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x7891"),
 			}
-			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificateInfo, false)
+			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificate, false)
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -711,18 +712,18 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name                           string
-		lastSentCertificateInfo        *types.CertificateInfo
-		lastSettleCertificateInfoCall  bool
-		lastSettleCertificateInfo      *types.CertificateInfo
-		lastSettleCertificateInfoError error
-		expectedHeight                 uint64
-		expectedPreviousLER            common.Hash
-		expectedError                  bool
+		name                       string
+		lastSentCertificate        *types.CertificateHeader
+		lastSettleCertificateCall  bool
+		lastSettledCertificate     *types.CertificateHeader
+		lastSettleCertificateError error
+		expectedHeight             uint64
+		expectedPreviousLER        common.Hash
+		expectedError              bool
 	}{
 		{
 			name: "Normal case",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Status:           agglayertypes.Settled,
@@ -731,14 +732,14 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			expectedPreviousLER: common.HexToHash("0x123"),
 		},
 		{
-			name:                    "First certificate",
-			lastSentCertificateInfo: nil,
-			expectedHeight:          0,
-			expectedPreviousLER:     zeroLER,
+			name:                "First certificate",
+			lastSentCertificate: nil,
+			expectedHeight:      0,
+			expectedPreviousLER: zeroLER,
 		},
 		{
 			name: "First certificate error, with prevLER",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				Height:                0,
 				NewLocalExitRoot:      common.HexToHash("0x123"),
 				Status:                agglayertypes.InError,
@@ -749,7 +750,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		},
 		{
 			name: "First certificate error, no prevLER",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				Height:           0,
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Status:           agglayertypes.InError,
@@ -759,7 +760,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		},
 		{
 			name: "n certificate error, prevLER",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				Height:                10,
 				NewLocalExitRoot:      common.HexToHash("0x123"),
 				PreviousLocalExitRoot: &ler1,
@@ -770,7 +771,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		},
 		{
 			name: "last cert not closed, error",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				Height:                10,
 				NewLocalExitRoot:      common.HexToHash("0x123"),
 				PreviousLocalExitRoot: &ler1,
@@ -782,12 +783,12 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		},
 		{
 			name: "Previous certificate in error, no prevLER",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Status:           agglayertypes.InError,
 			},
-			lastSettleCertificateInfo: &types.CertificateInfo{
+			lastSettledCertificate: &types.CertificateHeader{
 				Height:           9,
 				NewLocalExitRoot: common.HexToHash("0x3456"),
 				Status:           agglayertypes.Settled,
@@ -797,41 +798,41 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		},
 		{
 			name: "Previous certificate in error, no prevLER. Error getting previous cert",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Status:           agglayertypes.InError,
 			},
-			lastSettleCertificateInfo:      nil,
-			lastSettleCertificateInfoError: errors.New("error getting last settle certificate"),
-			expectedError:                  true,
+			lastSettledCertificate:     nil,
+			lastSettleCertificateError: errors.New("error getting last settle certificate"),
+			expectedError:              true,
 		},
 		{
 			name: "Previous certificate in error, no prevLER. prev cert not available on storage",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Status:           agglayertypes.InError,
 			},
-			lastSettleCertificateInfoCall:  true,
-			lastSettleCertificateInfo:      nil,
-			lastSettleCertificateInfoError: nil,
-			expectedError:                  true,
+			lastSettleCertificateCall:  true,
+			lastSettledCertificate:     nil,
+			lastSettleCertificateError: nil,
+			expectedError:              true,
 		},
 		{
 			name: "Previous certificate in error, no prevLER. prev cert not available on storage",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				Height:           10,
 				NewLocalExitRoot: common.HexToHash("0x123"),
 				Status:           agglayertypes.InError,
 			},
-			lastSettleCertificateInfo: &types.CertificateInfo{
+			lastSettledCertificate: &types.CertificateHeader{
 				Height:           9,
 				NewLocalExitRoot: common.HexToHash("0x3456"),
 				Status:           agglayertypes.InError,
 			},
-			lastSettleCertificateInfoError: nil,
-			expectedError:                  true,
+			lastSettleCertificateError: nil,
+			expectedError:              true,
 		},
 	}
 
@@ -842,11 +843,11 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			t.Parallel()
 			storageMock := mocks.NewAggSenderStorage(t)
 			flow := &baseFlow{log: log.WithFields("aggsender-test", "getNextHeightAndPreviousLER"), storage: storageMock}
-			if tt.lastSettleCertificateInfoCall || tt.lastSettleCertificateInfo != nil || tt.lastSettleCertificateInfoError != nil {
-				storageMock.EXPECT().GetCertificateByHeight(mock.Anything).Return(tt.lastSettleCertificateInfo, tt.lastSettleCertificateInfoError).Once()
+			if tt.lastSettleCertificateCall || tt.lastSettledCertificate != nil || tt.lastSettleCertificateError != nil {
+				storageMock.EXPECT().GetCertificateHeaderByHeight(mock.Anything).Return(tt.lastSettledCertificate, tt.lastSettleCertificateError).Once()
 			}
 
-			height, previousLER, err := flow.getNextHeightAndPreviousLER(tt.lastSentCertificateInfo)
+			height, previousLER, err := flow.getNextHeightAndPreviousLER(tt.lastSentCertificate)
 			if tt.expectedError {
 				require.Error(t, err)
 			} else {
@@ -884,7 +885,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
-				mockStorage.EXPECT().GetLastSentCertificate().Return(nil, errors.New("some error"))
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, errors.New("some error"))
 			},
 			expectedError: "some error",
 		},
@@ -894,7 +895,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
-				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 10}, nil)
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 10}, nil)
 			},
 			expectedParams: nil,
 		},
@@ -904,7 +905,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
-				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil)
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return(nil, nil, errors.New("some error"))
 			},
 			expectedError: "some error",
@@ -915,8 +916,9 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
-				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return(
+					[]bridgesync.Bridge{{}}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
 			},
 			expectedError: "GER mismatch",
 		},
@@ -929,7 +931,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
-				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil)
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalExitRoot:  ger,
@@ -949,7 +951,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mer := common.HexToHash("0x2")
 				ger := calculateGER(mer, rer)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
-				mockStorage.EXPECT().GetLastSentCertificate().Return(&types.CertificateInfo{ToBlock: 5}, nil)
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalExitRoot:  ger,
@@ -964,7 +966,8 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				ToBlock:             10,
 				RetryCount:          0,
 				L1InfoTreeLeafCount: 1,
-				LastSentCertificate: &types.CertificateInfo{ToBlock: 5},
+				CertificateType:     types.CertificateTypePP,
+				LastSentCertificate: &types.CertificateHeader{ToBlock: 5},
 				Bridges:             []bridgesync.Bridge{{}},
 				Claims: []bridgesync.Claim{
 					{
@@ -1017,29 +1020,29 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name                    string
-		lastSentCertificateInfo *types.CertificateInfo
-		expectedBlock           uint64
-		startL2Block            uint64
-		expectedRetryCount      int
+		name                string
+		lastSentCertificate *types.CertificateHeader
+		expectedBlock       uint64
+		startL2Block        uint64
+		expectedRetryCount  int
 	}{
 		{
-			name:                    "No last sent certificate, start block is 0",
-			lastSentCertificateInfo: nil,
-			expectedBlock:           0,
-			startL2Block:            0,
-			expectedRetryCount:      0,
+			name:                "No last sent certificate, start block is 0",
+			lastSentCertificate: nil,
+			expectedBlock:       0,
+			startL2Block:        0,
+			expectedRetryCount:  0,
 		},
 		{
-			name:                    "No last sent certificate, start block is 1000",
-			lastSentCertificateInfo: nil,
-			expectedBlock:           1000,
-			startL2Block:            1000,
-			expectedRetryCount:      0,
+			name:                "No last sent certificate, start block is 1000",
+			lastSentCertificate: nil,
+			expectedBlock:       1000,
+			startL2Block:        1000,
+			expectedRetryCount:  0,
 		},
 		{
 			name: "Last sent certificate with no error",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				ToBlock: 10,
 				Status:  agglayertypes.Settled,
 			},
@@ -1048,7 +1051,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 		},
 		{
 			name: "Last sent certificate with error and non-zero FromBlock",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				FromBlock:  5,
 				ToBlock:    10,
 				Status:     agglayertypes.InError,
@@ -1059,7 +1062,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 		},
 		{
 			name: "Last sent certificate with error and zero FromBlock",
-			lastSentCertificateInfo: &types.CertificateInfo{
+			lastSentCertificate: &types.CertificateHeader{
 				FromBlock:  0,
 				ToBlock:    10,
 				Status:     agglayertypes.InError,
@@ -1078,7 +1081,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 
 			baseFlow := &baseFlow{startL2Block: tt.startL2Block}
 
-			block, retryCount := baseFlow.getLastSentBlockAndRetryCount(tt.lastSentCertificateInfo)
+			block, retryCount := baseFlow.getLastSentBlockAndRetryCount(tt.lastSentCertificate)
 
 			require.Equal(t, tt.expectedBlock, block)
 			require.Equal(t, tt.expectedRetryCount, retryCount)

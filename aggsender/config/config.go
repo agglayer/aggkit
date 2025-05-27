@@ -63,6 +63,13 @@ type Config struct {
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
+	// UseAgglayerTLS is a flag to enable the Agglayer TLS handshake in the AggSender-Agglayer gRPC connection
+	UseAgglayerTLS bool `mapstructure:"UseAgglayerTLS"`
+	// UseAggkitProverTLS is a flag to enable the AggkitProver TLS handshake in the AggSender-AggkitProver gRPC connection
+	UseAggkitProverTLS bool `mapstructure:"UseAggkitProverTLS"`
+	// RequireNoFEPBlockGap is true if the AggSender should not accept a gap between
+	// lastBlock from lastCertificate and first block of FEP
+	RequireNoFEPBlockGap bool `mapstructure:"RequireNoFEPBlockGap"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -84,5 +91,8 @@ func (c Config) String() string {
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"GenerateAggchainProofTimeout: " + c.GenerateAggchainProofTimeout.String() + "\n" +
-		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n"
+		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
+		"UseAgglayerTLS: " + fmt.Sprintf("%t", c.UseAgglayerTLS) + "\n" +
+		"UseAggkitProverTLS: " + fmt.Sprintf("%t", c.UseAggkitProverTLS) + "\n" +
+		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n"
 }

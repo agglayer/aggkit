@@ -23,15 +23,17 @@ func TestAggsenderRPCGetCertificateHeaderPerHeight(t *testing.T) {
 	cases := []struct {
 		name          string
 		height        *uint64
-		certResult    *types.CertificateInfo
+		certResult    *types.Certificate
 		certError     error
 		expectedError string
 		expectedNil   bool
 	}{
 		{
-			name:       "latest, no error",
-			certResult: &types.CertificateInfo{},
-			certError:  nil,
+			name: "latest, no error",
+			certResult: &types.Certificate{
+				Header: &types.CertificateHeader{},
+			},
+			certError: nil,
 		},
 		{
 			name:          "latest,no error, no cert",
@@ -41,17 +43,21 @@ func TestAggsenderRPCGetCertificateHeaderPerHeight(t *testing.T) {
 			expectedNil:   true,
 		},
 		{
-			name:          "latest,error",
-			certResult:    &types.CertificateInfo{},
+			name: "latest,error",
+			certResult: &types.Certificate{
+				Header: &types.CertificateHeader{},
+			},
 			certError:     fmt.Errorf("my_error"),
 			expectedError: "my_error",
 			expectedNil:   true,
 		},
 		{
-			name:       "hight, no error",
-			height:     &height,
-			certResult: &types.CertificateInfo{},
-			certError:  nil,
+			name:   "hight, no error",
+			height: &height,
+			certResult: &types.Certificate{
+				Header: &types.CertificateHeader{},
+			},
+			certError: nil,
 		},
 	}
 
