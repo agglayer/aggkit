@@ -23,14 +23,14 @@ var (
 )
 
 type AgglayerGRPCClient struct {
-	cfg                 *aggkitgrpc.Config
+	cfg                 *aggkitgrpc.ClientConfig
 	networkStateService node.NodeStateServiceClient
 	cfgService          node.ConfigurationServiceClient
 	submissionService   node.CertificateSubmissionServiceClient
 }
 
 // NewAggchainProofClient initializes a new AggchainProof instance
-func NewAgglayerGRPCClient(cfg *aggkitgrpc.Config) (*AgglayerGRPCClient, error) {
+func NewAgglayerGRPCClient(cfg *aggkitgrpc.ClientConfig) (*AgglayerGRPCClient, error) {
 	grpcClient, err := aggkitgrpc.NewClient(cfg)
 	if err != nil {
 		return nil, err

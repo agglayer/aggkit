@@ -23,8 +23,8 @@ const (
 	defaultMinConnectTimeout = 5 * time.Second
 )
 
-// Config is the configuration for the gRPC client
-type Config struct {
+// ClientConfig is the configuration for the gRPC client
+type ClientConfig struct {
 	// URL is the URL of the gRPC server
 	URL string `mapstructure:"URL"`
 
@@ -43,8 +43,8 @@ type Config struct {
 }
 
 // DefaultConfig returns a default configuration for the gRPC client
-func DefaultConfig() *Config {
-	return &Config{
+func DefaultConfig() *ClientConfig {
+	return &ClientConfig{
 		URL:               "",
 		MinConnectTimeout: types.NewDuration(defaultMinConnectTimeout),
 		MaxRequestRetries: defaultMaxRequestRetries,
@@ -54,7 +54,7 @@ func DefaultConfig() *Config {
 }
 
 // String returns a string representation of the gRPC client configuration
-func (c *Config) String() string {
+func (c *ClientConfig) String() string {
 	if c == nil {
 		return "none"
 	}
@@ -70,7 +70,7 @@ type Client struct {
 }
 
 // NewClient initializes and returns a new gRPC client
-func NewClient(cfg *Config) (*Client, error) {
+func NewClient(cfg *ClientConfig) (*Client, error) {
 	connectParams := grpc.ConnectParams{
 		Backoff:           backoff.DefaultConfig,
 		MinConnectTimeout: cfg.MinConnectTimeout.Duration,

@@ -42,7 +42,7 @@ const (
 func TestConfigString(t *testing.T) {
 	config := config.Config{
 		StoragePath:                  "/path/to/storage",
-		AgglayerClient:               &aggkitgrpc.Config{URL: "http://agglayer.url"},
+		AgglayerClient:               &aggkitgrpc.ClientConfig{URL: "http://agglayer.url"},
 		AggsenderPrivateKey:          signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                     "http://l2.rpc.url",
 		BlockFinality:                "latestBlock",

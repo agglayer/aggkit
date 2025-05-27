@@ -36,7 +36,7 @@ type AggchainProofFlow interface {
 // Config is the configuration for the AggchainProofGenerationTool
 type Config struct {
 	// AggkitProverClient is the AggkitProver client configuration
-	AggkitProverClient *aggkitgrpc.Config `mapstructure:"AggkitProverClient"`
+	AggkitProverClient *aggkitgrpc.ClientConfig `mapstructure:"AggkitProverClient"`
 
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender

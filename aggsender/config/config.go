@@ -15,7 +15,7 @@ type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
 	StoragePath string `mapstructure:"StoragePath"`
 	// AgglayerClient is the Agglayer gRPC client configuration
-	AgglayerClient *aggkitgrpc.Config `mapstructure:"AgglayerClient"`
+	AgglayerClient *aggkitgrpc.ClientConfig `mapstructure:"AgglayerClient"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
 	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
@@ -44,7 +44,7 @@ type Config struct {
 	// EnableRPC is a flag to enable the RPC for aggsender
 	EnableRPC bool `mapstructure:"EnableRPC"`
 	// AggkitProverClient is the config for the AggkitProver client
-	AggkitProverClient *aggkitgrpc.Config `mapstructure:"AggkitProverClient"`
+	AggkitProverClient *aggkitgrpc.ClientConfig `mapstructure:"AggkitProverClient"`
 	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)
 	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
 	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
