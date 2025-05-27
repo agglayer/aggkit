@@ -121,7 +121,8 @@ func (a *AggchainProof) String() string {
 		"LocalExitRoot: %s \n"+
 		"AggchainParams: %s \n"+
 		"Context: %v \n"+
-		"SP1StarkProof: %v \n",
+		"SP1StarkProof: %v \n"+
+		"Signature: %s",
 		a.LastProvenBlock,
 		a.EndBlock,
 		a.CustomChainData,
@@ -129,6 +130,7 @@ func (a *AggchainProof) String() string {
 		a.AggchainParams.String(),
 		a.Context,
 		a.SP1StarkProof.String(),
+		common.Bytes2Hex(a.Signature),
 	)
 }
 
