@@ -11,6 +11,7 @@ import (
 
 	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
 	"github.com/agglayer/aggkit/etherman"
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
@@ -122,7 +123,10 @@ func TestNewLx(t *testing.T) {
 }
 
 func TestGetLastProcessedBlock(t *testing.T) {
-	s := BridgeSync{processor: &processor{halted: true}}
+	s := BridgeSync{processor: &processor{
+		halted: true,
+		log:    log.WithFields("module", "L2BridgeSyncer"),
+	}}
 	_, err := s.GetLastProcessedBlock(context.Background())
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
@@ -441,7 +445,10 @@ func TestGetBridgePaged(t *testing.T) {
 }
 
 func TestGetClaimPaged(t *testing.T) {
-	s := BridgeSync{processor: &processor{halted: true}}
+	s := BridgeSync{processor: &processor{
+		halted: true,
+		log:    log.WithFields("module", "L2BridgeSyncer"),
+	}}
 	_, _, err := s.GetClaimsPaged(context.Background(), 0, 0, nil, "")
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
@@ -456,6 +463,9 @@ func TestBridgeSync_GetLastReorgEvent(t *testing.T) {
 	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
 	s := BridgeSync{
 		reorgDetector: mockReorgDetector,
+		processor: &processor{
+			log: log.WithFields("module", "L2BridgeSyncer"),
+		},
 	}
 
 	t.Run("retrieve last reorg event successfully", func(t *testing.T) {
