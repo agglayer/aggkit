@@ -57,7 +57,7 @@ type AggchainProofGenerationTool struct {
 	logger   *log.Logger
 	l2Syncer types.L2BridgeSyncer
 
-	aggchainProofClient grpc.AggchainProofClientInterface
+	aggchainProofClient types.AggchainProofClientInterface
 	flow                AggchainProofFlow
 }
 

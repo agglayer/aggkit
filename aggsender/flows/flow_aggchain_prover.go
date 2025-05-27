@@ -9,7 +9,6 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
-	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -28,7 +27,7 @@ var errNoProofBuiltYet = &aggkitcommon.GRPCError{
 type AggchainProverFlow struct {
 	*baseFlow
 
-	aggchainProofClient   grpc.AggchainProofClientInterface
+	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
 	optimisticModeQuerier types.OptimisticModeQuerier
 	requireNoFEPBlockGap  bool
@@ -57,7 +56,7 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 func NewAggchainProverFlow(log types.Logger,
 	maxCertSize uint,
 	startL2Block uint64,
-	aggkitProverClient grpc.AggchainProofClientInterface,
+	aggkitProverClient types.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
@@ -323,7 +322,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
 	var aggchainProof *types.AggchainProof
-	request := &grpc.AggchainProofRequest{
+	request := &types.AggchainProofRequest{
 		LastProvenBlock:    lastProvenBlock,
 		RequestedEndBlock:  toBlock,
 		L1InfoTreeRootHash: root.Hash,

@@ -3,88 +3,20 @@ package grpc
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	aggkitProverV1Grpc "buf.build/gen/go/agglayer/provers/grpc/go/aggkit/prover/v1/proverv1grpc"
 	aggkitProverV1Proto "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
-	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var errProofNotSP1Stark = errors.New("aggchain proof is not SP1Stark")
-
-type AggchainProofRequest struct {
-	LastProvenBlock                    uint64
-	RequestedEndBlock                  uint64
-	L1InfoTreeRootHash                 common.Hash
-	L1InfoTreeLeaf                     l1infotreesync.L1InfoTreeLeaf
-	L1InfoTreeMerkleProof              agglayer.MerkleProof
-	GERLeavesWithBlockNumber           map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber
-	ImportedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber
-}
-
-func NewAggchainProofRequest(
-	lastProvenBlock, requestedEndBlock uint64,
-	l1InfoTreeRootHash common.Hash,
-	l1InfoTreeLeaf l1infotreesync.L1InfoTreeLeaf,
-	l1InfoTreeMerkleProof agglayer.MerkleProof,
-	gerLeavesWithBlockNumber map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber,
-	importedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber,
-) *AggchainProofRequest {
-	return &AggchainProofRequest{
-		LastProvenBlock:                    lastProvenBlock,
-		RequestedEndBlock:                  requestedEndBlock,
-		L1InfoTreeRootHash:                 l1InfoTreeRootHash,
-		L1InfoTreeLeaf:                     l1InfoTreeLeaf,
-		L1InfoTreeMerkleProof:              l1InfoTreeMerkleProof,
-		GERLeavesWithBlockNumber:           gerLeavesWithBlockNumber,
-		ImportedBridgeExitsWithBlockNumber: importedBridgeExitsWithBlockNumber,
-	}
-}
-
-func (r *AggchainProofRequest) String() string {
-	return fmt.Sprintf(`AggchainProofRequest{
-	lastProvenBlock: %d,
-	toBlock: %d,
-	root.Hash: %s,
-	*leaf: %+v,
-	agglayertypes.MerkleProof{
-		Root:  %s,
-		Proof: %+v,	
-	},
-	injectedGERsProofs: %+v,
-	importedBridgeExits: %+v
-	}`,
-		r.LastProvenBlock,
-		r.RequestedEndBlock,
-		r.L1InfoTreeRootHash.String(),
-		r.L1InfoTreeLeaf,
-		r.L1InfoTreeMerkleProof.Root.String(),
-		r.L1InfoTreeMerkleProof.Proof,
-		r.GERLeavesWithBlockNumber,
-		r.ImportedBridgeExitsWithBlockNumber,
-	)
-}
-
-// TODO: HashToSign function
-func (r *AggchainProofRequest) HashToSign() common.Hash {
-	return crypto.Keccak256Hash(r.L1InfoTreeRootHash[:])
-}
-
-// AggchainProofClientInterface defines an interface for aggchain proof client
-type AggchainProofClientInterface interface {
-	GenerateAggchainProof(req *AggchainProofRequest) (*types.AggchainProof, error)
-	GenerateOptimisticAggchainProof(req *AggchainProofRequest, signature []byte) (*types.AggchainProof, error)
-}
 
 // AggchainProofClient provides an implementation for the AggchainProofClient interface
 type AggchainProofClient struct {
@@ -107,7 +39,7 @@ func NewAggchainProofClient(serverAddr string,
 	}, nil
 }
 
-func (c *AggchainProofClient) GenerateAggchainProof(req *AggchainProofRequest) (*types.AggchainProof, error) {
+func (c *AggchainProofClient) GenerateAggchainProof(req *types.AggchainProofRequest) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.generateAggchainProofTimeout)
 	defer cancel()
 	request := convertAggchainProofRequestToGrpcRequest(req)
@@ -136,7 +68,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(req *AggchainProofRequest) (
 	}, nil
 }
 
-func (c *AggchainProofClient) GenerateOptimisticAggchainProof(req *AggchainProofRequest, signature []byte) (*types.AggchainProof, error) {
+func (c *AggchainProofClient) GenerateOptimisticAggchainProof(req *types.AggchainProofRequest, signature []byte) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.generateAggchainProofTimeout)
 	defer cancel()
 	request := &aggkitProverV1Proto.GenerateOptimisticAggchainProofRequest{
@@ -168,7 +100,7 @@ func (c *AggchainProofClient) GenerateOptimisticAggchainProof(req *AggchainProof
 
 }
 
-func convertAggchainProofRequestToGrpcRequest(req *AggchainProofRequest) *aggkitProverV1Proto.GenerateAggchainProofRequest {
+func convertAggchainProofRequestToGrpcRequest(req *types.AggchainProofRequest) *aggkitProverV1Proto.GenerateAggchainProofRequest {
 	convertedL1InfoTreeLeaf := &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
 		Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
 			GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{Value: req.L1InfoTreeLeaf.GlobalExitRoot[:]},

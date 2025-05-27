@@ -8,6 +8,7 @@ import (
 	aggkitProverV1Proto "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
 	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	aggkitProverMocks "github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
@@ -43,15 +44,20 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
-	result, err := client.GenerateAggchainProof(
-		100,
-		200,
-		common.Hash{},
-		l1infotreesync.L1InfoTreeLeaf{},
-		agglayer.MerkleProof{Root: common.Hash{}, Proof: [32]common.Hash{}},
-		nil,
-		nil,
-	)
+	request := &types.AggchainProofRequest{
+		LastProvenBlock:    100,
+		RequestedEndBlock:  200,
+		L1InfoTreeRootHash: common.Hash{},
+		L1InfoTreeLeaf:     l1infotreesync.L1InfoTreeLeaf{},
+		L1InfoTreeMerkleProof: agglayer.MerkleProof{
+			Root:  common.Hash{},
+			Proof: [32]common.Hash{},
+		},
+		GERLeavesWithBlockNumber:           nil,
+		ImportedBridgeExitsWithBlockNumber: nil,
+	}
+
+	result, err := client.GenerateAggchainProof(request)
 
 	assert.NoError(t, err)
 	assert.Equal(t, []byte("dummy-proof"), result.SP1StarkProof.Proof)
@@ -72,19 +78,19 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 
 	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return((*aggkitProverV1Proto.GenerateAggchainProofResponse)(nil), expectedError)
 
-	result, err := client.GenerateAggchainProof(
-		300,
-		400,
-		common.BytesToHash([]byte("0x")),
-		l1infotreesync.L1InfoTreeLeaf{
+	request := &types.AggchainProofRequest{
+		LastProvenBlock:    300,
+		RequestedEndBlock:  400,
+		L1InfoTreeRootHash: common.BytesToHash([]byte("0x")),
+		L1InfoTreeLeaf: l1infotreesync.L1InfoTreeLeaf{
 			BlockNumber: 1,
 			Hash:        common.HexToHash("0x2"),
 		},
-		agglayer.MerkleProof{
+		L1InfoTreeMerkleProof: agglayer.MerkleProof{
 			Root:  common.HexToHash("0x3"),
 			Proof: [32]common.Hash{common.HexToHash("0x4")},
 		},
-		map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber{
+		GERLeavesWithBlockNumber: map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber{
 			common.HexToHash("0x5"): {
 				BlockNumber: 1,
 				ProvenInsertedGERLeaf: agglayer.ProvenInsertedGER{
@@ -105,7 +111,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 				},
 			},
 		},
-		[]*agglayer.ImportedBridgeExitWithBlockNumber{
+		ImportedBridgeExitsWithBlockNumber: []*agglayer.ImportedBridgeExitWithBlockNumber{
 			{
 				BlockNumber: 1,
 				ImportedBridgeExit: &agglayer.ImportedBridgeExit{
@@ -193,7 +199,9 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 				},
 			},
 		},
-	)
+	}
+
+	result, err := client.GenerateAggchainProof(request)
 	assert.Error(t, err)
 	assert.Nil(t, result)
 	assert.Equal(t, "Generate error", err.Error())

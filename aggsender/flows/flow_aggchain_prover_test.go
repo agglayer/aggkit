@@ -11,7 +11,6 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -174,7 +173,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					Hash:  common.HexToHash("0x1"),
 					Index: 10,
 				}, uint64(1), uint64(10)).Return(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{}, nil)
-				mockProverClient.EXPECT().GenerateAggchainProof(grpc.NewAggchainProofRequest(uint64(0), uint64(10),
+				mockProverClient.EXPECT().GenerateAggchainProof(types.NewAggchainProofRequest(uint64(0), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -250,7 +249,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					Hash:  common.HexToHash("0x1"),
 					Index: 10,
 				}, uint64(1), uint64(10)).Return(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{}, nil)
-				mockProverClient.EXPECT().GenerateAggchainProof(grpc.NewAggchainProofRequest(uint64(0), uint64(10),
+				mockProverClient.EXPECT().GenerateAggchainProof(types.NewAggchainProofRequest(uint64(0), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -292,7 +291,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					Hash:  common.HexToHash("0x1"),
 					Index: 10,
 				}, uint64(1), uint64(10)).Return(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{}, nil)
-				mockProverClient.EXPECT().GenerateAggchainProof(grpc.NewAggchainProofRequest(uint64(0), uint64(10),
+				mockProverClient.EXPECT().GenerateAggchainProof(types.NewAggchainProofRequest(uint64(0), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -343,7 +342,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					Hash:  common.HexToHash("0x1"),
 					Index: 10,
 				}, uint64(6), uint64(10)).Return(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{}, nil)
-				mockProverClient.EXPECT().GenerateAggchainProof(grpc.NewAggchainProofRequest(uint64(5), uint64(10),
+				mockProverClient.EXPECT().GenerateAggchainProof(types.NewAggchainProofRequest(uint64(5), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -417,7 +416,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					Hash:  common.HexToHash("0x1"),
 					Index: 10,
 				}, uint64(6), uint64(10)).Return(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber{}, nil)
-				mockProverClient.EXPECT().GenerateAggchainProof(grpc.NewAggchainProofRequest(uint64(5), uint64(10),
+				mockProverClient.EXPECT().GenerateAggchainProof(types.NewAggchainProofRequest(uint64(5), uint64(10),
 					common.HexToHash("0x1"), l1infotreesync.L1InfoTreeLeaf{
 						BlockNumber: l1Header.Number.Uint64(),
 						Hash:        common.HexToHash("0x2"),
@@ -481,6 +480,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier,
 				mockGERQuerier,
 				mockOptimistic,
+				nil,
 				nil,
 				false,
 			)
