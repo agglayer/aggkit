@@ -58,8 +58,7 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 			return aggkitgrpc.HandleGRPCError(err)
 		})
 	if err != nil {
-		return nil, fmt.Errorf("GetEpochConfiguration failed after %d retries: %w",
-			a.cfg.MaxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
+		return nil, fmt.Errorf("GetEpochConfiguration failed: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return &types.ClockConfiguration{
@@ -157,8 +156,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 			return aggkitgrpc.HandleGRPCError(err)
 		})
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("failed to submit certificate after %d retries: %w",
-			a.cfg.MaxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
+		return common.Hash{}, fmt.Errorf("failed to submit certificate: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return common.BytesToHash(response.CertificateId.Value.Value), nil
@@ -186,8 +184,8 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 		})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get latest settled certificate header after %d retries: %w",
-			a.cfg.MaxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
+		return nil, fmt.Errorf("failed to get latest settled certificate header: %w",
+			aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
@@ -215,8 +213,8 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 		})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get latest pending certificate header after %d retries: %w",
-			a.cfg.MaxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
+		return nil, fmt.Errorf("failed to get latest pending certificate header: %w",
+			aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
@@ -244,8 +242,7 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 		})
 
 	if err != nil {
-		return nil, fmt.Errorf("failed to get certificate header after %d retries: %w",
-			a.cfg.MaxRequestRetries, aggkitgrpc.RepackGRPCErrorWithDetails(err))
+		return nil, fmt.Errorf("failed to get certificate header: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil

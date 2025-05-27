@@ -171,7 +171,7 @@ func joinDetails(details []string) string {
 func HandleGRPCError(err error) error {
 	if err != nil {
 		if !isRetryableGRPCError(err) {
-			return fmt.Errorf("%w: %w", aggkitcommon.ErrNonRetryable, err)
+			return fmt.Errorf("(%w) %w", aggkitcommon.ErrNonRetryable, err)
 		}
 		return fmt.Errorf("transient error: %w", err)
 	}

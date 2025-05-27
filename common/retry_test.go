@@ -51,7 +51,7 @@ func TestRetryWithExponentialBackoff(t *testing.T) {
 					return errors.New("always fails")
 				}
 			},
-			expectedErrMsg: "operation failed after 3 retries",
+			expectedErrMsg: "operation failed after 3 attempt(s)",
 		},
 		{
 			name:         "aborts on non-retryable error",
@@ -67,7 +67,7 @@ func TestRetryWithExponentialBackoff(t *testing.T) {
 					return errors.New("transient")
 				}
 			},
-			expectedErrMsg: "non-retryable error after 2 attempt(s)",
+			expectedErrMsg: "operation failed after 2 attempt(s): wrapper: non-retryable error",
 		},
 		{
 			name:         "context cancelled before completion",

@@ -7,7 +7,13 @@ import (
 	"time"
 )
 
-var ErrNonRetryable = errors.New("non-retryable")
+var (
+	ErrNonRetryable = errors.New("non-retryable error")
+)
+
+const (
+	operationFailedTemplate = "operation failed after %d attempt(s): %w"
+)
 
 // RetryWithExponentialBackoff retries the given function up to maxRetries with exponential backoff.
 // Use `context.Canceled` or `context.DeadlineExceeded` to cancel early.
@@ -17,6 +23,7 @@ func RetryWithExponentialBackoff(ctx context.Context, maxRetries uint,
 	if callback == nil {
 		return errors.New("retry callback cannot be nil")
 	}
+
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -39,7 +46,7 @@ func RetryWithExponentialBackoff(ctx context.Context, maxRetries uint,
 
 		// Exit early if the error is marked non-retryable
 		if errors.Is(err, ErrNonRetryable) {
-			return fmt.Errorf("non-retryable error after %d attempt(s): %w", attempt+1, err)
+			return fmt.Errorf(operationFailedTemplate, attempt+1, err)
 		}
 
 		if attempt < maxRetries-1 {
@@ -48,5 +55,5 @@ func RetryWithExponentialBackoff(ctx context.Context, maxRetries uint,
 		}
 	}
 
-	return fmt.Errorf("operation failed after %d retries: %w", maxRetries, lastErr)
+	return fmt.Errorf(operationFailedTemplate, maxRetries, lastErr)
 }

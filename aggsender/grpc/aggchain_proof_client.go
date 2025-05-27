@@ -3,6 +3,7 @@ package grpc
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
@@ -11,6 +12,7 @@ import (
 	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -38,6 +40,7 @@ type AggchainProofClient struct {
 	client aggkitProverV1Grpc.AggchainProofServiceClient
 
 	generateAggchainProofTimeout time.Duration
+	grpcClientCfg                *aggkitgrpc.ClientConfig
 }
 
 // NewAggchainProofClient initializes a new AggchainProof instance
@@ -50,6 +53,7 @@ func NewAggchainProofClient(cfg *aggkitgrpc.ClientConfig,
 	return &AggchainProofClient{
 		generateAggchainProofTimeout: generateProofTimeout,
 		client:                       aggkitProverV1Grpc.NewAggchainProofServiceClient(grpcClient.Conn()),
+		grpcClientCfg:                cfg,
 	}, nil
 }
 
@@ -77,7 +81,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	}
 
 	convertedMerkleProofSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, treetypes.DefaultHeight)
-	for i := 0; i < int(treetypes.DefaultHeight); i++ {
+	for i := range int(treetypes.DefaultHeight) {
 		convertedMerkleProofSiblings[i] = &agglayerInteropTypesV1Proto.FixedBytes32{Value: l1InfoTreeMerkleProof.Proof[i][:]}
 	}
 	convertedMerkleProof := &agglayerInteropTypesV1Proto.MerkleProof{
@@ -88,7 +92,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	convertedGerLeaves := make(map[string]*aggkitProverV1Proto.ProvenInsertedGERWithBlockNumber, 0)
 	for k, v := range gerLeavesWithBlockNumber {
 		convertedProofGerL1RootSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, treetypes.DefaultHeight)
-		for i := 0; i < int(treetypes.DefaultHeight); i++ {
+		for i := range int(treetypes.DefaultHeight) {
 			convertedProofGerL1RootSiblings[i] = &agglayerInteropTypesV1Proto.FixedBytes32{
 				Value: v.ProvenInsertedGERLeaf.ProofGERToL1Root.Proof[i][:],
 			}
@@ -151,9 +155,18 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		ImportedBridgeExits:   convertedImportedBridgeExitsWithBlockNumber,
 	}
 
-	resp, err := c.client.GenerateAggchainProof(ctx, request)
+	var (
+		resp *aggkitProverV1Proto.GenerateAggchainProofResponse
+		err  error
+	)
+
+	err = aggkitcommon.RetryWithExponentialBackoff(ctx,
+		c.grpcClientCfg.MaxRequestRetries, c.grpcClientCfg.InitialDelay.Duration, func() error {
+			resp, err = c.client.GenerateAggchainProof(ctx, request)
+			return aggkitgrpc.HandleGRPCError(err)
+		})
 	if err != nil {
-		return nil, aggkitgrpc.RepackGRPCErrorWithDetails(err)
+		return nil, fmt.Errorf("GenerateAggchainProof failed: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	proof, ok := resp.AggchainProof.Proof.(*agglayerInteropTypesV1Proto.AggchainProof_Sp1Stark)
