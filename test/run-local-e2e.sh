@@ -27,6 +27,8 @@ LOG_FILE="$LOG_FOLDER/run-local-e2e.log"
 rm -rf "$ROOT_FOLDER"
 mkdir -p "$LOG_FOLDER"
 
+exec > >(tee -a "$LOG_FILE") 2>&1
+
 log_info "Starting local E2E setup..."
 
 if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ]; then
@@ -74,6 +76,8 @@ if [ -n "$E2E_FOLDER" ]; then
         log_error "The provided E2E folder does not exist: $E2E_FOLDER"
         exit 1
     fi
+    
+    log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
 
     imported_bridges_tool="./target/aggsender_find_imported_bridge"
     if [ ! -f "$imported_bridges_tool" ]; then

@@ -248,7 +248,7 @@ RequireNoFEPBlockGap = true
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectionTimeout = "5s"
-		InitialBackoff = "500ms"
+		InitialBackoff = "1s"
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
 		MaxAttempts = 8
