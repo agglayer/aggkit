@@ -15,6 +15,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
 )
@@ -61,7 +62,8 @@ func NewAggchainProverFlow(log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
 	gerQuerier types.GERQuerier,
 	l1Client aggkittypes.BaseEthereumClienter,
-	requireNoFEPBlockGap bool) *AggchainProverFlow {
+	requireNoFEPBlockGap bool,
+	signer signertypes.Signer) *AggchainProverFlow {
 	return &AggchainProverFlow{
 		aggchainProofClient:  aggkitProverClient,
 		gerQuerier:           gerQuerier,
@@ -73,6 +75,7 @@ func NewAggchainProverFlow(log types.Logger,
 			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 			maxCertSize:           maxCertSize,
 			startL2Block:          startL2Block,
+			signer:                signer,
 		},
 	}
 }
@@ -247,7 +250,12 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 
 	cert.CustomChainData = buildParams.AggchainProof.CustomChainData
 
-	return cert, nil
+	signedCert, err := a.signCertificate(ctx, cert)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error signing certificate: %w", err)
+	}
+
+	return signedCert, nil
 }
 
 // getImportedBridgeExitsForProver converts the claims to imported bridge exits
@@ -380,4 +388,32 @@ func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificat
 	}
 
 	return fromBlock - 1
+}
+
+// signCertificate signs a certificate with the aggsender key
+func (a *AggchainProverFlow) signCertificate(
+	ctx context.Context, cert *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
+	aggchainData, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
+	if !ok {
+		return nil, fmt.Errorf("aggchainProverFlow - signCertificate - AggchainData is not of type AggchainDataProof")
+	}
+
+	hashToSign := cert.FEPHashToSign()
+	sig, err := a.signer.SignHash(ctx, hashToSign)
+	if err != nil {
+		return nil, err
+	}
+
+	aggchainData.Signature = sig
+
+	a.log.Infof("aggchainProverFlow - Signed certificate. Sequencer address: %s. "+
+		"New local exit root: %s. Aggchain Params: %s. Height: %d Hash signed: %s",
+		a.signer.PublicAddress().String(),
+		cert.NewLocalExitRoot.String(),
+		aggchainData.AggchainParams.String(),
+		cert.Height,
+		hashToSign.String(),
+	)
+
+	return cert, nil
 }
