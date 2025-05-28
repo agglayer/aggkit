@@ -247,7 +247,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = true
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
-		MinConnectionTimeout = "5s"
+		MinConnectTimeout = "5s"
 		InitialBackoff = "1s"
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
@@ -255,7 +255,7 @@ RequireNoFEPBlockGap = true
 		UseTLS = false
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
-		MinConnectionTimeout = "5s"
+		MinConnectTimeout = "5s"
 		InitialBackoff = "1s"
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
@@ -276,7 +276,7 @@ GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
-		MinConnectionTimeout = "5s"
+		MinConnectTimeout = "5s"
 		InitialBackoff = "1s"
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
