@@ -11,7 +11,6 @@ import (
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -46,19 +45,9 @@ func NewAgglayerGRPCClient(cfg *aggkitgrpc.ClientConfig) (*AgglayerGRPCClient, e
 
 // GetEpochConfiguration returns the epoch configuration from the AggLayer
 func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error) {
-	var (
-		response *v1.GetEpochConfigurationResponse
-		err      error
-	)
-
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx,
-		a.cfg.MaxRequestRetries, a.cfg.InitialDelay.Duration,
-		func() error {
-			response, err = a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
-			return aggkitgrpc.HandleGRPCError(err)
-		})
+	response, err := a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
 	if err != nil {
-		return nil, fmt.Errorf("GetEpochConfiguration failed: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
+		return nil, fmt.Errorf("failed to get epoch configuration: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	return &types.ClockConfiguration{
@@ -140,20 +129,9 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		protoCert.ImportedBridgeExits = append(protoCert.ImportedBridgeExits, protoImportedBridgeExit)
 	}
 
-	var (
-		response *v1.SubmitCertificateResponse
-		err      error
-	)
-
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx,
-		a.cfg.MaxRequestRetries, a.cfg.InitialDelay.Duration,
-		func() error {
-			response, err = a.submissionService.SubmitCertificate(ctx,
-				&v1.SubmitCertificateRequest{
-					Certificate: protoCert,
-				})
-
-			return aggkitgrpc.HandleGRPCError(err)
+	response, err := a.submissionService.SubmitCertificate(ctx,
+		&v1.SubmitCertificateRequest{
+			Certificate: protoCert,
 		})
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to submit certificate: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
@@ -165,24 +143,13 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 // GetLatestPendingCertificateHeader returns the latest pending certificate header from the AggLayer
 func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
-	var (
-		response *v1.GetLatestCertificateHeaderResponse
-		err      error
+	response, err := a.networkStateService.GetLatestCertificateHeader(
+		ctx,
+		&v1.GetLatestCertificateHeaderRequest{
+			NetworkId: networkID,
+			Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_SETTLED,
+		},
 	)
-
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx,
-		a.cfg.MaxRequestRetries, a.cfg.InitialDelay.Duration,
-		func() error {
-			response, err = a.networkStateService.GetLatestCertificateHeader(
-				ctx,
-				&v1.GetLatestCertificateHeaderRequest{
-					NetworkId: networkID,
-					Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_SETTLED,
-				},
-			)
-			return aggkitgrpc.HandleGRPCError(err)
-		})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest settled certificate header: %w",
 			aggkitgrpc.RepackGRPCErrorWithDetails(err))
@@ -194,24 +161,13 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 // GetLatestPendingCertificateHeader returns the latest pending certificate header from the AggLayer
 func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
-	var (
-		response *v1.GetLatestCertificateHeaderResponse
-		err      error
+	response, err := a.networkStateService.GetLatestCertificateHeader(
+		ctx,
+		&v1.GetLatestCertificateHeaderRequest{
+			NetworkId: networkID,
+			Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_PENDING,
+		},
 	)
-
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx,
-		a.cfg.MaxRequestRetries, a.cfg.InitialDelay.Duration,
-		func() error {
-			response, err = a.networkStateService.GetLatestCertificateHeader(
-				ctx,
-				&v1.GetLatestCertificateHeaderRequest{
-					NetworkId: networkID,
-					Type:      v1.LatestCertificateRequestType_LATEST_CERTIFICATE_REQUEST_TYPE_PENDING,
-				},
-			)
-			return aggkitgrpc.HandleGRPCError(err)
-		})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to get latest pending certificate header: %w",
 			aggkitgrpc.RepackGRPCErrorWithDetails(err))
@@ -223,24 +179,13 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 // GetCertificateHeader returns the certificate header from the AggLayer for the given certificate ID
 func (a *AgglayerGRPCClient) GetCertificateHeader(
 	ctx context.Context, certificateID common.Hash) (*types.CertificateHeader, error) {
-	var (
-		response *v1.GetCertificateHeaderResponse
-		err      error
+	response, err := a.networkStateService.GetCertificateHeader(ctx,
+		&v1.GetCertificateHeaderRequest{CertificateId: &v1nodetypes.CertificateId{
+			Value: &v1types.FixedBytes32{
+				Value: certificateID.Bytes(),
+			},
+		}},
 	)
-
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx,
-		a.cfg.MaxRequestRetries, a.cfg.InitialDelay.Duration,
-		func() error {
-			response, err = a.networkStateService.GetCertificateHeader(ctx,
-				&v1.GetCertificateHeaderRequest{CertificateId: &v1nodetypes.CertificateId{
-					Value: &v1types.FixedBytes32{
-						Value: certificateID.Bytes(),
-					},
-				}},
-			)
-			return aggkitgrpc.HandleGRPCError(err)
-		})
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to get certificate header: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}

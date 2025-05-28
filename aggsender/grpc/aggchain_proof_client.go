@@ -12,7 +12,6 @@ import (
 	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -155,18 +154,9 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		ImportedBridgeExits:   convertedImportedBridgeExitsWithBlockNumber,
 	}
 
-	var (
-		resp *aggkitProverV1Proto.GenerateAggchainProofResponse
-		err  error
-	)
-
-	err = aggkitcommon.RetryWithExponentialBackoff(ctx,
-		c.grpcClientCfg.MaxRequestRetries, c.grpcClientCfg.InitialDelay.Duration, func() error {
-			resp, err = c.client.GenerateAggchainProof(ctx, request)
-			return aggkitgrpc.HandleGRPCError(err)
-		})
+	resp, err := c.client.GenerateAggchainProof(ctx, request)
 	if err != nil {
-		return nil, fmt.Errorf("GenerateAggchainProof failed: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
+		return nil, fmt.Errorf("failed to generate aggchain proof: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
 	proof, ok := resp.AggchainProof.Proof.(*agglayerInteropTypesV1Proto.AggchainProof_Sp1Stark)

@@ -2,11 +2,11 @@ package grpc
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
 
-	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
@@ -18,9 +18,11 @@ import (
 )
 
 const (
-	defaultMaxRequestRetries = 3
-	defaultInitialDelay      = 1 * time.Second
 	defaultMinConnectTimeout = 5 * time.Second
+	defaultInitialBackoff    = 100 * time.Millisecond
+	defaultMaxAttempts       = 3
+	defaultMaxBackoff        = 10 * time.Second
+	defaultBackoffMultiplier = 2.0
 )
 
 // ClientConfig is the configuration for the gRPC client
@@ -32,11 +34,17 @@ type ClientConfig struct {
 	// This is used to prevent the client from hanging indefinitely if the server is unreachable.
 	MinConnectTimeout types.Duration `mapstructure:"MinConnectTimeout"`
 
-	// MaxRequestRetries is the maximum number of retries for a request
-	MaxRequestRetries uint `mapstructure:"MaxRequestRetries"`
+	// InitialBackoff is the initial delay before retrying a request
+	InitialBackoff types.Duration `mapstructure:"InitialBackoff"`
 
-	// InitialDelay is the initial delay before retrying a request
-	InitialDelay types.Duration `mapstructure:"InitialDelay"`
+	// MaxBackoff is the maximum backoff duration for retries
+	MaxBackoff types.Duration `mapstructure:"MaxBackoff"`
+
+	// BackoffMultiplier is the multiplier for the backoff duration
+	BackoffMultiplier float64 `mapstructure:"BackoffMultiplier"`
+
+	// MaxAttempts is the maximum number of retries for a request
+	MaxAttempts int `mapstructure:"MaxAttempts"`
 
 	// UseTLS indicates whether to use TLS for the gRPC connection
 	UseTLS bool `mapstructure:"UseTLS"`
@@ -45,10 +53,11 @@ type ClientConfig struct {
 // DefaultConfig returns a default configuration for the gRPC client
 func DefaultConfig() *ClientConfig {
 	return &ClientConfig{
-		URL:               "",
 		MinConnectTimeout: types.NewDuration(defaultMinConnectTimeout),
-		MaxRequestRetries: defaultMaxRequestRetries,
-		InitialDelay:      types.NewDuration(defaultInitialDelay),
+		MaxAttempts:       defaultMaxAttempts,
+		InitialBackoff:    types.NewDuration(defaultInitialBackoff),
+		MaxBackoff:        types.NewDuration(defaultMaxBackoff),
+		BackoffMultiplier: defaultBackoffMultiplier,
 		UseTLS:            false,
 	}
 }
@@ -59,9 +68,15 @@ func (c *ClientConfig) String() string {
 		return "none"
 	}
 
-	return fmt.Sprintf("GRPC Client Config: URL=%s, MinConnectTimeout=%s, "+
-		"MaxRequestRetries=%d, InitialDelay=%s, UseTLS=%t",
-		c.URL, c.MinConnectTimeout.String(), c.MaxRequestRetries, c.InitialDelay.String(), c.UseTLS)
+	return fmt.Sprintf("GRPC Client Config: "+
+		"URL=%s, MinConnectTimeout=%s, "+
+		"InitialBackoff=%s, MaxBackoff=%s, "+
+		"BackoffMultiplier=%f, MaxAttempts=%d, "+
+		"UseTLS=%t",
+		c.URL, c.MinConnectTimeout.String(),
+		c.InitialBackoff.String(), c.MaxBackoff.String(),
+		c.BackoffMultiplier, c.MaxAttempts,
+		c.UseTLS)
 }
 
 // Client holds the gRPC connection and services
@@ -71,14 +86,50 @@ type Client struct {
 
 // NewClient initializes and returns a new gRPC client
 func NewClient(cfg *ClientConfig) (*Client, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("gRPC client configuration cannot be nil")
+	}
+
+	connectBackoff := backoff.DefaultConfig
+	connectBackoff.BaseDelay = cfg.InitialBackoff.Duration
+	connectBackoff.MaxDelay = cfg.MaxBackoff.Duration
+	connectBackoff.Multiplier = cfg.BackoffMultiplier
 	connectParams := grpc.ConnectParams{
-		Backoff:           backoff.DefaultConfig,
+		Backoff:           connectBackoff,
 		MinConnectTimeout: cfg.MinConnectTimeout.Duration,
+	}
+
+	serviceCfg := ServiceConfig{
+		MethodConfig: []MethodConfig{
+			{
+				Name: []MethodName{{}}, // Empty name matches all methods
+				RetryPolicy: &RetryPolicy{
+					MaxAttempts:       cfg.MaxAttempts,
+					InitialBackoff:    cfg.InitialBackoff.String(),
+					MaxBackoff:        cfg.MaxBackoff.String(),
+					BackoffMultiplier: cfg.BackoffMultiplier,
+					RetryableStatusCodes: []string{
+						codes.Unavailable.String(),
+						codes.DeadlineExceeded.String(),
+						codes.ResourceExhausted.String(),
+						codes.Aborted.String(),
+						codes.Unknown.String(),
+						codes.Internal.String(),
+					},
+				},
+			},
+		},
+	}
+
+	serviceCfgJSON, err := json.Marshal(serviceCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal gRPC service config: %w", err)
 	}
 
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(connectParams),
+		grpc.WithDefaultServiceConfig(string(serviceCfgJSON)),
 	}
 
 	if cfg.UseTLS {
@@ -164,22 +215,4 @@ func joinDetails(details []string) string {
 		return "none"
 	}
 	return fmt.Sprintf("[%s]", strings.Join(details, ";"))
-}
-
-// HandleGRPCError checks if the error is a retryable gRPC error
-// and returns a formatted error message.
-func HandleGRPCError(err error) error {
-	if err != nil {
-		if !isRetryableGRPCError(err) {
-			return fmt.Errorf("(%w) %w", aggkitcommon.ErrNonRetryable, err)
-		}
-		return fmt.Errorf("transient error: %w", err)
-	}
-	return nil
-}
-
-// isRetryableGRPCError checks if the error is a retryable gRPC error
-func isRetryableGRPCError(err error) bool {
-	code := status.Code(err)
-	return code == codes.Unavailable || code == codes.DeadlineExceeded
 }

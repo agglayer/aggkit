@@ -52,14 +52,6 @@ func TestConfigString(t *testing.T) {
 		SovereignRollupAddr:          common.HexToAddress("0x1"),
 	}
 
-	agglayerClientCfg := fmt.Sprintf("GRPC Client Config: URL=%s, MinConnectTimeout=%s, "+
-		"MaxRequestRetries=%d, InitialDelay=%s, UseTLS=%t",
-		config.AgglayerClient.URL,
-		config.AgglayerClient.MinConnectTimeout,
-		config.AgglayerClient.MaxRequestRetries,
-		config.AgglayerClient.InitialDelay.String(),
-		config.AgglayerClient.UseTLS)
-
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
 		"AgglayerClient: %s\n"+
 		"AggsenderPrivateKey: local\n"+
@@ -75,7 +67,7 @@ func TestConfigString(t *testing.T) {
 		"GenerateAggchainProofTimeout: 1s\n"+
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
 		"RequireNoFEPBlockGap: false\n",
-		agglayerClientCfg)
+		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
 }

@@ -248,14 +248,18 @@ RequireNoFEPBlockGap = true
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectionTimeout = "5s"
-		MaxRequestRetries = 8
-		InitialDelay = "1s"
+		InitialBackoff = "500ms"
+		MaxBackoff = "10s"
+		BackoffMultiplier = 2.0
+		MaxAttempts = 8
 		UseTLS = false
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectionTimeout = "5s"
-		MaxRequestRetries = 8
-		InitialDelay = "1s"
+		InitialBackoff = "1s"
+		MaxBackoff = "10s"
+		BackoffMultiplier = 2.0
+		MaxAttempts = 8
 		UseTLS = false
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
@@ -273,8 +277,10 @@ GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectionTimeout = "5s"
-		MaxRequestRetries = 8
-		InitialDelay = "1s"
+		InitialBackoff = "1s"
+		MaxBackoff = "10s"
+		BackoffMultiplier = 2.0
+		MaxAttempts = 8
 		UseTLS = false
 
 [Profiling]
