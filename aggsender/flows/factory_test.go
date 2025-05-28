@@ -7,6 +7,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -29,6 +30,7 @@ func TestNewFlow(t *testing.T) {
 				Mode:                string(types.PessimisticProofMode),
 				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
 				MaxCertSize:         100,
+				AggkitProverClient:  aggkitgrpc.DefaultConfig(),
 			},
 		},
 		{
@@ -38,15 +40,16 @@ func TestNewFlow(t *testing.T) {
 				AggsenderPrivateKey: signertypes.SignerConfig{
 					Method: signertypes.MethodLocal,
 				},
+				AggkitProverClient: aggkitgrpc.DefaultConfig(),
 			},
 			expectedError: "error signer.Initialize",
 		},
 		{
-			name: "error missing AggchainProofURL in AggchainProofMode",
+			name: "error missing AggkitProverClient in AggchainProofMode",
 			cfg: config.Config{
 				Mode: string(types.AggchainProofMode),
 			},
-			expectedError: "aggchain prover mode requires AggkitProverClient configuration",
+			expectedError: "invalid aggkit prover client config: gRPC client configuration cannot be nil",
 		},
 		{
 			name: "unsupported Aggsender mode",
