@@ -20,10 +20,8 @@ L2Coinbase =  "{{.zkevm_l2_sequencer_address}}"
 SequencerPrivateKeyPath = "{{or .zkevm_l2_sequencer_keystore_file "/etc/cdk/sequencer.keystore"}}"
 SequencerPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
 
-SenderProofToL1Addr = "{{.zkevm_l2_agglayer_address}}"   
 polygonBridgeAddr = "{{.zkevm_bridge_address}}" 
 
-WitnessURL = "http://{{.l2_rpc_name}}{{.deployment_suffix}}:{{.zkevm_rpc_http_port}}"
 
 
 # This values can be override directly from genesis.json
@@ -38,7 +36,7 @@ genesisBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
 	polygonZkEVMAddress = "{{.zkevm_rollup_address}}"
 	
 [L2Config]
-	GlobalExitRootAddr = "{{.zkevm_global_exit_root_address}}"
+	GlobalExitRootAddr = "{{.l2_global_exit_root_address}}"
 
 [Log]
 Environment = "development" # "production" or "development"
@@ -46,6 +44,7 @@ Level = "{{.global_log_level}}"
 Outputs = ["stderr"]
        
 [AggSender]
+Mode= "{{.aggsender_mode}}"
 CheckStatusCertificateInterval = "1s"
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20

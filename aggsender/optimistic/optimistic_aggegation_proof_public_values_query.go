@@ -30,22 +30,45 @@ var _ TrustedSequencerQuerier = (*etherman.Client)(nil)
 // FEPContractQuerier is an interface that defines the methods for interacting with the FEP contract.
 type FEPContractQuerier interface {
 	RollupConfigHash(opts *bind.CallOpts) ([32]byte, error)
+	AggregationVkey(opts *bind.CallOpts) ([32]byte, error)
 }
 
 var _ FEPContractQuerier = (*aggchainfep.Aggchainfep)(nil)
 
-type OptimisticModeSignQuery struct {
-	aggchainFEPContract  *aggchainfep.Aggchainfep
+// OptimisticAggregationProofPublicValuesQuerier defines an interface for querying aggregation proof public values in optimistic mode.
+type OptimisticAggregationProofPublicValuesQuerier interface {
+	GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
+		l1InfoTreeLeafHash common.Hash) (*AggregationProofPublicValues, error)
+}
+
+var _OptimisticAggregationProofPublicValuesQuerier = (*OptimisticAggregationProofPublicValuesQuery)(nil)
+
+type OptimisticAggregationProofPublicValuesQuery struct {
+	aggchainFEPContract  FEPContractQuerier
 	aggchainFEPAddr      common.Address
 	opNodeClient         OpNodeClienter
 	proverAddressQuerier TrustedSequencerQuerier
+}
+
+func NewOptimisticAggregationProofPublicValuesQuery(
+	aggchainFEPContract FEPContractQuerier,
+	aggchainFEPAddr common.Address,
+	opNodeClient OpNodeClienter,
+	proverAddressQuerier TrustedSequencerQuerier,
+) *OptimisticAggregationProofPublicValuesQuery {
+	return &OptimisticAggregationProofPublicValuesQuery{
+		aggchainFEPContract:  aggchainFEPContract,
+		aggchainFEPAddr:      aggchainFEPAddr,
+		opNodeClient:         opNodeClient,
+		proverAddressQuerier: proverAddressQuerier,
+	}
 }
 
 // The parametameters are contained in the AggchainProofRequest struct
 // LastProvenBlock =  req.LastProvenBlock
 // RequestedEndBlock = req.RequestedEndBlock
 // L1InfoTreeLeafHash = req.L1InfoTreeLeaf.Hash
-func (o *OptimisticModeSignQuery) GetSignatureData(lastProvenBlock, requestedEndBlock uint64,
+func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
 	l1InfoTreeLeafHash common.Hash) (*AggregationProofPublicValues, error) {
 	l2PreRoot, err := o.opNodeClient.OutputAtBlockRoot(lastProvenBlock)
 	if err != nil {

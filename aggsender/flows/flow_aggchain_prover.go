@@ -237,7 +237,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 // this function is the implementation of the FlowManager interface
 func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	cert, err := a.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
+	cert, err := a.baseFlow.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error building certificate: %w", err)
 	}

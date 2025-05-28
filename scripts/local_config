@@ -119,7 +119,7 @@ function export_obj_key_from_toml_file() {
     local _SECTION="$3"
     local _KEY="$4"
     local _OBJ_KEY="$5"
-    log_debug "export_obj_key_from_toml_file: $_EXPORTED_VAR_NAME $_FILE $_SECTION $_KEY $_OBJ_KEY"
+    log_debug "export_obj_key_from_toml_file: $_EXPORTED_VAR_NAME file:$_FILE section:$_SECTION  key:$_KEY obj_key:$_OBJ_KEY"
     local _VALUE=$(get_value_from_toml_file $_FILE $_SECTION $_KEY)
     if [ -z "$_VALUE" ]; then
         log_debug "export_obj_key_from_toml_file: obj_key $_KEY not found in section [$_SECTION]"
@@ -152,19 +152,19 @@ function export_values_of_genesis() {
     if [ ! -f $_GENESIS_FILE ]; then
         log_fatal "Error: genesis file not found: $_GENESIS_FILE"
     fi
-    export l1_chain_id=$(jq -r '.L1Config.chainId' $_GENESIS_FILE | tr -d '"')
-    export pol_token_address=$(jq -r '.L1Config.polTokenAddress' $_GENESIS_FILE)
-    export zkevm_rollup_address=$(jq -r '.L1Config.polygonZkEVMAddress' $_GENESIS_FILE)
-    export zkevm_rollup_manager_address=$(jq -r '.L1Config.polygonRollupManagerAddress' $_GENESIS_FILE)
-    export zkevm_global_exit_root_address=$(jq -r '.L1Config.polygonZkEVMGlobalExitRootAddress' $_GENESIS_FILE)
-    export zkevm_rollup_manager_block_number=$(jq -r '.rollupManagerCreationBlockNumber' $_GENESIS_FILE)
+    export l1_chain_id=$(jq -r '.genesis_sovereign.L1Config.chainId' $_GENESIS_FILE | tr -d '"')
+    export pol_token_address=$(jq -r '.genesis_sovereign.L1Config.polTokenAddress' $_GENESIS_FILE)
+    export zkevm_rollup_address=$(jq -r '.genesis_sovereign.L1Config.polygonZkEVMAddress' $_GENESIS_FILE)
+    export zkevm_rollup_manager_address=$(jq -r '.genesis_sovereign.L1Config.polygonRollupManagerAddress' $_GENESIS_FILE)
+    export zkevm_global_exit_root_address=$(jq -r '.genesis_sovereign.L1Config.polygonZkEVMGlobalExitRootAddress' $_GENESIS_FILE)
+    export zkevm_rollup_manager_block_number=$(jq -r '.genesis_sovereign.rollupManagerCreationBlockNumber' $_GENESIS_FILE)
 }
 
 ###############################################################################
 function export_values_of_cdk_node_config() {
     local _CDK_CONFIG_FILE=$1
     export_key_from_toml_file_or_fatal zkevm_l2_sequencer_address $_CDK_CONFIG_FILE "." L2Coinbase
-    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
+    #export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
     export_key_from_toml_file_or_fatal l1_chain_id $_CDK_CONFIG_FILE L1Config chainId
     export_key_from_toml_file zkevm_is_validium $_CDK_CONFIG_FILE Common IsValidiumMode
     if [ $? -ne 0 ]; then
@@ -179,12 +179,11 @@ function export_values_of_cdk_node_config() {
         log_debug "l2_chain_id not found in Aggregator section, using 0"
         export l2_chain_id="0"
     fi
-    export_key_from_toml_file_or_fatal zkevm_l2_agglayer_address $_CDK_CONFIG_FILE "." SenderProofToL1Addr
     export_key_from_toml_file_or_fatal zkevm_rollup_fork_id $_CDK_CONFIG_FILE "." ForkId
-    export_key_from_toml_file zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE AggSender.SequencerPrivateKey Password
-    if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
-    fi
+    export_key_from_toml_file_or_fatal aggsender_mode $_CDK_CONFIG_FILE AggSender Mode
+    
+    export_obj_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE AggSender AggsenderPrivateKey Password
+    export zkevm_l2_sequencer_keystore_password=${zkevm_l2_agglayer_keystore_password}
     export_key_from_toml_file zkevm_bridge_address $_CDK_CONFIG_FILE BridgeL1Sync BridgeAddr
     if [ $? -ne 0 ]; then
         export_key_from_toml_file_or_fatal zkevm_bridge_address $_CDK_CONFIG_FILE "." polygonBridgeAddr
@@ -197,6 +196,17 @@ function export_values_of_cdk_node_config() {
         export_value_from_kurtosis_or_fail dac_port zkevm-dac-001 dac
     fi
     export zkevm_l2_keystore_password=$zkevm_l2_sequencer_keystore_password
+}
+###############################################################################
+function export_values_of_cdk_node_config_genesis() {
+    local _CDK_CONFIG_FILE=$1
+    export_key_from_toml_file_or_fatal l1_chain_id                       $_CDK_CONFIG_FILE L1Config chainId
+    export_key_from_toml_file_or_fatal pol_token_address                 $_CDK_CONFIG_FILE L1Config polTokenAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_address              $_CDK_CONFIG_FILE L1Config polygonZkEVMAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_address      $_CDK_CONFIG_FILE L1Config polygonRollupManagerAddress
+    export_key_from_toml_file_or_fatal zkevm_global_exit_root_address    $_CDK_CONFIG_FILE L1Config polygonZkEVMGlobalExitRootAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_block_number $_CDK_CONFIG_FILE "." genesisBlockNumber
+    export_key_from_toml_file_or_fatal l2_global_exit_root_address       $_CDK_CONFIG_FILE L2Config GlobalExitRootAddr
 }
 ###############################################################################
 # params:
@@ -245,9 +255,10 @@ function export_portnum_from_kurtosis_or_fail() {
 ###############################################################################
 function export_ports_from_kurtosis() {
     export_portnum_from_kurtosis_or_fail l1_rpc_port el-1-geth-lighthouse rpc
-    export_portnum_from_kurtosis_or_fail zkevm_rpc_http_port cdk-erigon-rpc-001 http-rpc rpc
-    export_portnum_from_kurtosis_or_fail zkevm_data_streamer_port cdk-erigon-sequencer-001 data-streamer
-    export_portnum_from_kurtosis_or_fail aggregator_db_port postgres-001 postgres
+    #export_portnum_from_kurtosis_or_fail zkevm_rpc_http_port cdk-erigon-rpc-001 http-rpc rpc
+    export_portnum_from_kurtosis_or_fail zkevm_rpc_http_port op-el-1-op-geth-op-node-001 rpc
+    #export_portnum_from_kurtosis_or_fail zkevm_data_streamer_port cdk-erigon-sequencer-001 data-streamer
+    #export_portnum_from_kurtosis_or_fail aggregator_db_port postgres-001 postgres
     export_portnum_from_kurtosis_or_fail agglayer_grpc_port agglayer aglr-grpc
     export aggregator_db_hostname="127.0.0.1"
     export l1_rpc_url="http://localhost:${l1_rpc_port}"
@@ -297,18 +308,26 @@ function create_dest_folder() {
     rm $DEST/*
     mkdir $zkevm_path_rw_data
 }
+
+#KURTOSIS_ARTIFACT_AGGKIT_KEY="agglayer-keystore"
+#KURTOSIS_ARTIFACT_AGGKIT_CONFIG="cdk-node-config-artifact"
+#KURTOSIS_ARTIFACT_GENESIS="genesis"
+KURTOSIS_ARTIFACT_AGGKIT_KEY="sovereignadmin-keystore"
+KURTOSIS_ARTIFACT_AGGKIT_CONFIG="cdk-aggoracle-config-artifact"
+KURTOSIS_ARTIFACT_GENESIS="sovereign_genesis"
+
 ###############################################################################
 function download_kurtosis_artifacts() {
-    kurtosis files download $KURTOSIS_ENCLAVE genesis $DEST
-    ok_or_fatal "Error downloading kurtosis artifact genesis  to $DEST"
-    export genesis_file=$DEST/genesis.json
+    #kurtosis files download $KURTOSIS_ENCLAVE $KURTOSIS_ARTIFACT_GENESIS $DEST
+    #ok_or_fatal "Error downloading kurtosis artifact $KURTOSIS_ARTIFACT_GENESIS to $DEST"
+    #export genesis_file=$DEST/genesis.json
 
-    kurtosis files download $KURTOSIS_ENCLAVE sequencer-keystore $DEST
-    ok_or_fatal "Error downloading kurtosis artifact sequencer-keystore  to $DEST"
-    export zkevm_l2_sequencer_keystore_file=$DEST/sequencer.keystore
+    kurtosis files download $KURTOSIS_ENCLAVE $KURTOSIS_ARTIFACT_AGGKIT_KEY $DEST
+    ok_or_fatal "Error downloading kurtosis artifact $KURTOSIS_ARTIFACT_AGGKIT_KEY to $DEST"
+    export zkevm_l2_sequencer_keystore_file=$DEST/sovereignadmin.keystore
 
-    kurtosis files download $KURTOSIS_ENCLAVE cdk-node-config-artifact $DEST
-    ok_or_fatal "Error downloading kurtosis artifact cdk-node-config-artifact  to $DEST"
+    kurtosis files download $KURTOSIS_ENCLAVE $KURTOSIS_ARTIFACT_AGGKIT_CONFIG $DEST
+    ok_or_fatal "Error downloading kurtosis artifact $KURTOSIS_ARTIFACT_AGGKIT_CONFIG  to $DEST"
 
     kurtosis files download $KURTOSIS_ENCLAVE agglayer-keystore $DEST
     ok_or_fatal "Error downloading kurtosis artifact agglayer  to $DEST"
@@ -363,15 +382,22 @@ function parse_command_line_args() {
 # MAIN
 ###############################################################################
 set -o pipefail # enable strict command pipe error detection
+#set -x
+#export_values_of_genesis tmp/aggkit/local_config/genesis.json
+#export_obj_key_from_toml_file zkevm_l2_agglayer_keystore_password tmp/aggkit/local_config/config.toml AggSender AggsenderPrivateKey Password
+#exit 0
+
 parse_command_line_args $*
 check_requirements
 create_dest_folder
 
 download_kurtosis_artifacts
 
-export_values_of_genesis $genesis_file
+#export_values_of_genesis $genesis_file
 export_ports_from_kurtosis
-export_values_of_cdk_node_config $DEST/cdk-node-config.toml
+#export_values_of_cdk_node_config $DEST/cdk-node-config.toml
+export_values_of_cdk_node_config $DEST/config.toml
+export_values_of_cdk_node_config_genesis  $DEST/config.toml
 export_forced_values
 
 ORIG_TEMPLATE_FILE=test/config/kurtosis-cdk-node-config.toml.template

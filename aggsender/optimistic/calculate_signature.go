@@ -82,7 +82,7 @@ func NewOptimisticSignatureData(aggregationProofPublicValues AggregationProofPub
 	}
 }
 
-func (o *OptimisticSignatureData) Hash() (common.Hash, error) {
+func OptimisticHashToSign(o *OptimisticSignatureData) (common.Hash, error) {
 	aggregationProofPublicValuesHash, err := o.aggregationProofPublicValues.Hash()
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("OptimisticSignatureData.Hash: error hashing aggregationProofPublicValues: %w", err)
@@ -94,8 +94,8 @@ func (o *OptimisticSignatureData) Hash() (common.Hash, error) {
 	), nil
 }
 
-func (o *OptimisticSignatureData) Sign(ctx context.Context, signer signertypes.HashSigner) (common.Hash, error) {
-	hash, err := o.Hash()
+func OptimisticSign(ctx context.Context, o *OptimisticSignatureData, signer signertypes.HashSigner) (common.Hash, error) {
+	hash, err := OptimisticHashToSign(o)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("OptimisticSignatureData.Sign: error hashing signature data: %w", err)
 	}
