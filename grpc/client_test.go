@@ -3,7 +3,9 @@ package grpc
 import (
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/agglayer/aggkit/config/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc/codes"
@@ -103,6 +105,103 @@ func TestGRPCCodeCanonicalString(t *testing.T) {
 		t.Run(tt.code.String(), func(t *testing.T) {
 			result := GRPCCodeCanonicalString(tt.code)
 			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestClientConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     *ClientConfig
+		wantErr string
+	}{
+		{
+			name:    "nil config",
+			cfg:     nil,
+			wantErr: "gRPC client configuration cannot be nil",
+		},
+		{
+			name: "empty URL",
+			cfg: &ClientConfig{
+				URL:               "",
+				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
+				InitialBackoff:    types.Duration{Duration: 500 * time.Millisecond},
+				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       3,
+			},
+			wantErr: "gRPC client URL cannot be empty",
+		},
+		{
+			name: "zero MinConnectTimeout",
+			cfg: &ClientConfig{
+				URL:               "localhost:1234",
+				MinConnectTimeout: types.Duration{Duration: 0},
+				InitialBackoff:    types.Duration{Duration: 500 * time.Millisecond},
+				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       3,
+			},
+			wantErr: "MinConnectTimeout must be greater than zero",
+		},
+		{
+			name: "initial backoff >= max backoff",
+			cfg: &ClientConfig{
+				URL:               "localhost:1234",
+				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
+				InitialBackoff:    types.Duration{Duration: 5 * time.Second},
+				MaxBackoff:        types.Duration{Duration: 2 * time.Second},
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       3,
+			},
+			wantErr: "InitialBackoff must be less than MaxBackoff",
+		},
+		{
+			name: "backoff multiplier too small",
+			cfg: &ClientConfig{
+				URL:               "localhost:1234",
+				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
+				InitialBackoff:    types.Duration{Duration: 1 * time.Second},
+				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+				BackoffMultiplier: 0.5,
+				MaxAttempts:       3,
+			},
+			wantErr: "BackoffMultiplier must be greater than 1.0",
+		},
+		{
+			name: "max attempts too small",
+			cfg: &ClientConfig{
+				URL:               "localhost:1234",
+				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
+				InitialBackoff:    types.Duration{Duration: 1 * time.Second},
+				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       0,
+			},
+			wantErr: "MaxAttempts must be at least 1",
+		},
+		{
+			name: "valid config",
+			cfg: &ClientConfig{
+				URL:               "localhost:1234",
+				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
+				InitialBackoff:    types.Duration{Duration: 500 * time.Millisecond},
+				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+				BackoffMultiplier: 1.5,
+				MaxAttempts:       3,
+			},
+			wantErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if tt.wantErr == "" && err != nil {
+				t.Errorf("expected no error, got %v", err)
+			} else if tt.wantErr != "" && (err == nil || err.Error() != tt.wantErr) {
+				t.Errorf("expected error: %q, got: %v", tt.wantErr, err)
+			}
 		})
 	}
 }
