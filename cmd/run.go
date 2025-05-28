@@ -193,6 +193,10 @@ func createAggSender(
 	l2Client aggkittypes.BaseEthereumClienter) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
+	if err := cfg.AgglayerClient.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid agglayer client config: %w", err)
+	}
+
 	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AgglayerClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)

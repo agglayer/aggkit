@@ -46,8 +46,8 @@ func NewFlow(
 			signer,
 		), nil
 	case types.AggchainProofMode:
-		if cfg.AggkitProverClient == nil || cfg.AggkitProverClient.URL == "" {
-			return nil, fmt.Errorf("aggchain prover mode requires AggkitProverClient configuration")
+		if err := cfg.AggkitProverClient.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
 		}
 
 		aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient,

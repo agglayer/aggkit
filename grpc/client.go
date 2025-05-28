@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/agglayer/aggkit/config/types"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -79,6 +80,44 @@ func (c *ClientConfig) String() string {
 		c.UseTLS)
 }
 
+// Validate checks if the gRPC client configuration is valid.
+// It returns an error if any of the required fields are missing or invalid.
+func (c *ClientConfig) Validate() error {
+	if c == nil {
+		return fmt.Errorf("gRPC client configuration cannot be nil")
+	}
+
+	if c.URL == "" {
+		return fmt.Errorf("gRPC client URL cannot be empty")
+	}
+
+	if c.MinConnectTimeout.Duration <= 0 {
+		return fmt.Errorf("MinConnectTimeout must be greater than zero")
+	}
+
+	if c.InitialBackoff.Duration <= 0 {
+		return fmt.Errorf("InitialBackoff must be greater than zero")
+	}
+
+	if c.MaxBackoff.Duration <= 0 {
+		return fmt.Errorf("MaxBackoff must be greater than zero")
+	}
+
+	if c.InitialBackoff.Duration >= c.MaxBackoff.Duration {
+		return fmt.Errorf("InitialBackoff must be less than MaxBackoff")
+	}
+
+	if c.BackoffMultiplier < 1.0 {
+		return fmt.Errorf("BackoffMultiplier must be greater than 1.0")
+	}
+
+	if c.MaxAttempts < 1 {
+		return fmt.Errorf("MaxAttempts must be at least 1")
+	}
+
+	return nil
+}
+
 // Client holds the gRPC connection and services
 type Client struct {
 	conn *grpc.ClientConn
@@ -109,12 +148,12 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 					MaxBackoff:        cfg.MaxBackoff.String(),
 					BackoffMultiplier: cfg.BackoffMultiplier,
 					RetryableStatusCodes: []string{
-						codes.Unavailable.String(),
-						codes.DeadlineExceeded.String(),
-						codes.ResourceExhausted.String(),
-						codes.Aborted.String(),
-						codes.Unknown.String(),
-						codes.Internal.String(),
+						GRPCCodeCanonicalString(codes.Unavailable),
+						GRPCCodeCanonicalString(codes.DeadlineExceeded),
+						GRPCCodeCanonicalString(codes.ResourceExhausted),
+						GRPCCodeCanonicalString(codes.Aborted),
+						GRPCCodeCanonicalString(codes.Unknown),
+						GRPCCodeCanonicalString(codes.Internal),
 					},
 				},
 			},
@@ -215,4 +254,24 @@ func joinDetails(details []string) string {
 		return "none"
 	}
 	return fmt.Sprintf("[%s]", strings.Join(details, ";"))
+}
+
+// GRPCCodeCanonicalString returns the canonical service config string for a gRPC status code.
+func GRPCCodeCanonicalString(c codes.Code) string {
+	if c == codes.OK {
+		return "OK"
+	}
+
+	var b strings.Builder
+	name := c.String()
+
+	for i, r := range name {
+		if i > 0 && unicode.IsUpper(r) &&
+			(unicode.IsLower(rune(name[i-1])) || (i+1 < len(name) && unicode.IsLower(rune(name[i+1])))) {
+			b.WriteByte('_')
+		}
+		b.WriteRune(unicode.ToUpper(r))
+	}
+
+	return b.String()
 }

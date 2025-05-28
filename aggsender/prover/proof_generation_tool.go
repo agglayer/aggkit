@@ -69,6 +69,10 @@ func NewAggchainProofGenerationTool(
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter) (*AggchainProofGenerationTool, error) {
+	if err := cfg.AggkitProverClient.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
+	}
+
 	aggchainProofClient, err := grpc.NewAggchainProofClient(
 		cfg.AggkitProverClient,
 		cfg.GenerateAggchainProofTimeout.Duration)
