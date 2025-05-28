@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -129,6 +130,7 @@ func TestClientConfig_Validate(t *testing.T) {
 				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
 				BackoffMultiplier: 2.0,
 				MaxAttempts:       3,
+				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
 			},
 			wantErr: "gRPC client URL cannot be empty",
 		},
@@ -141,6 +143,7 @@ func TestClientConfig_Validate(t *testing.T) {
 				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
 				BackoffMultiplier: 2.0,
 				MaxAttempts:       3,
+				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
 			},
 			wantErr: "MinConnectTimeout must be greater than zero",
 		},
@@ -153,6 +156,7 @@ func TestClientConfig_Validate(t *testing.T) {
 				MaxBackoff:        types.Duration{Duration: 2 * time.Second},
 				BackoffMultiplier: 2.0,
 				MaxAttempts:       3,
+				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
 			},
 			wantErr: "InitialBackoff must be less than MaxBackoff",
 		},
@@ -165,6 +169,7 @@ func TestClientConfig_Validate(t *testing.T) {
 				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
 				BackoffMultiplier: 0.5,
 				MaxAttempts:       3,
+				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
 			},
 			wantErr: "BackoffMultiplier must be greater than 1.0",
 		},
@@ -177,8 +182,22 @@ func TestClientConfig_Validate(t *testing.T) {
 				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
 				BackoffMultiplier: 2.0,
 				MaxAttempts:       0,
+				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
 			},
 			wantErr: "MaxAttempts must be at least 1",
+		},
+		{
+			name: "request timeout too short",
+			cfg: &ClientConfig{
+				URL:               "localhost:1234",
+				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
+				InitialBackoff:    types.Duration{Duration: 1 * time.Second},
+				MaxBackoff:        types.Duration{Duration: 10 * time.Second},
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       5,
+				RequestTimeout:    types.Duration{Duration: 1 * time.Second}, // too short
+			},
+			wantErr: "RequestTimeout (1s) is too short", // partial match
 		},
 		{
 			name: "valid config",
@@ -189,6 +208,7 @@ func TestClientConfig_Validate(t *testing.T) {
 				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
 				BackoffMultiplier: 1.5,
 				MaxAttempts:       3,
+				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
 			},
 			wantErr: "",
 		},
@@ -199,8 +219,10 @@ func TestClientConfig_Validate(t *testing.T) {
 			err := tt.cfg.Validate()
 			if tt.wantErr == "" && err != nil {
 				t.Errorf("expected no error, got %v", err)
-			} else if tt.wantErr != "" && (err == nil || err.Error() != tt.wantErr) {
-				t.Errorf("expected error: %q, got: %v", tt.wantErr, err)
+			} else if tt.wantErr != "" {
+				if err == nil || !strings.HasPrefix(err.Error(), tt.wantErr) {
+					t.Errorf("expected error prefix: %q, got: %v", tt.wantErr, err)
+				}
 			}
 		})
 	}

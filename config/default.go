@@ -251,7 +251,7 @@ RequireNoFEPBlockGap = true
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
 		MaxAttempts = 8
-		RequestTimeout = "5s"
+		RequestTimeout = "300s" 
 		UseTLS = false
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"

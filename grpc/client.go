@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -118,6 +119,17 @@ func (c *ClientConfig) Validate() error {
 
 	if c.MaxAttempts < 1 {
 		return fmt.Errorf("MaxAttempts must be at least 1")
+	}
+
+	initialBackoffMillis := float64(c.InitialBackoff.Milliseconds())
+	attempts := float64(c.MaxAttempts)
+
+	minTimeoutMillis := initialBackoffMillis * (1 - math.Pow(c.BackoffMultiplier, attempts)) / (1 - c.BackoffMultiplier)
+
+	minRequestTimeout := time.Duration(minTimeoutMillis * float64(time.Millisecond))
+	if c.RequestTimeout.Duration < minRequestTimeout {
+		return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate retries",
+			c.RequestTimeout, minRequestTimeout)
 	}
 
 	return nil
