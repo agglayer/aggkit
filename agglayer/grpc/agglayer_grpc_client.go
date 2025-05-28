@@ -83,6 +83,9 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 						Value: ad.AggchainParams.Bytes(),
 					},
 					Context: ad.Context,
+					Signature: &v1types.FixedBytes65{
+						Value: ad.Signature,
+					},
 				},
 			},
 		}
