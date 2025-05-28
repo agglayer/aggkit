@@ -45,9 +45,21 @@ func TestNewFlow(t *testing.T) {
 			expectedError: "error signer.Initialize",
 		},
 		{
-			name: "error missing AggkitProverClient in AggchainProofMode",
+			name: "error creating signer in AggchainProofMode",
 			cfg: config.Config{
 				Mode: string(types.AggchainProofMode),
+				AggsenderPrivateKey: signertypes.SignerConfig{
+					Method: signertypes.MethodLocal,
+				},
+				AggkitProverClient: aggkitgrpc.DefaultConfig(),
+			},
+			expectedError: "error signer.Initialize",
+		},
+		{
+			name: "error missing AggkitProverClient in AggchainProofMode",
+			cfg: config.Config{
+				Mode:                string(types.AggchainProofMode),
+				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
 			},
 			expectedError: "invalid aggkit prover client config: gRPC client configuration cannot be nil",
 		},

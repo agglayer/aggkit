@@ -9,6 +9,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tree/types"
@@ -504,7 +505,7 @@ func TestCertificate_Hash(t *testing.T) {
 
 	expectedHash := crypto.Keccak256Hash(
 		aggkitcommon.Uint32ToBytes(1),
-		aggkitcommon.Uint64ToBytes(100),
+		aggkitcommon.Uint64ToBigEndianBytes(100),
 		prevLocalExitRoot[:],
 		newLocalExitRoot[:],
 		bridgeExitsPart,
@@ -550,7 +551,7 @@ func TestCertificate_HashToSign(t *testing.T) {
 		crypto.Keccak256Hash(globalIndexHashes...).Bytes(),
 	)
 
-	certHash := c.HashToSign()
+	certHash := c.PPHashToSign()
 	require.Equal(t, expectedHash, certHash)
 }
 
@@ -1126,19 +1127,21 @@ func TestAggchainDataProof_MarshalUnmarshalJSON(t *testing.T) {
 				Context:        map[string][]byte{},
 				Version:        "0.1",
 				Vkey:           common.FromHex("0x123456"),
+				Signature:      []byte{0x01, 0x02, 0x03},
 			},
-			expected: `{"proof":"123456","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000abcdef","context":{},"version":"0.1","vkey":"123456"}`,
+			expected: `{"aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000abcdef", "context":{}, "proof":"123456", "signature":"010203", "version":"0.1", "vkey":"123456"}`,
 		},
 		{
-			name: "Empty AggchainDataProof",
+			name: "Empty AggchainDataProof, Context and Signature",
 			input: &AggchainDataProof{
 				Proof:          []byte{},
 				AggchainParams: common.Hash{},
 				Context:        map[string][]byte{},
+				Signature:      []byte{},
 				Version:        "",
 				Vkey:           []byte{},
 			},
-			expected: `{"proof":"","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000000000","context":{},"version":"","vkey":""}`,
+			expected: `{"proof":"","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000000000","context":{},"version":"","vkey":"","signature":""}`,
 		},
 	}
 
@@ -1155,6 +1158,94 @@ func TestAggchainDataProof_MarshalUnmarshalJSON(t *testing.T) {
 			var unmarshalled AggchainDataProof
 			require.NoError(t, unmarshalled.UnmarshalJSON(result))
 			require.Equal(t, *tt.input, unmarshalled)
+		})
+	}
+}
+
+func TestCertificate_FEPHashToSign(t *testing.T) {
+	t.Parallel()
+
+	bridgeExit := &BridgeExit{
+		LeafType: LeafTypeAsset,
+		TokenInfo: &TokenInfo{
+			OriginNetwork:      0,
+			OriginTokenAddress: common.HexToAddress("0x1234"),
+		},
+		DestinationNetwork: 1,
+		DestinationAddress: common.HexToAddress("0x1234"),
+		Amount:             big.NewInt(1000),
+		Metadata:           []byte{0x01, 0x02, 0x03},
+	}
+
+	testCases := []struct {
+		name         string
+		certificate  *Certificate
+		expectedHash common.Hash
+	}{
+		{
+			name:        "Empty Certificate",
+			certificate: &Certificate{},
+			expectedHash: crypto.Keccak256Hash(
+				common.Hash{}.Bytes(),
+				emptyBytesHash,
+				aggkitcommon.Uint64ToLittleEndianBytes(0),
+				emptyBytesHash,
+			),
+		},
+		{
+			name: "With Aggchain Data Proof",
+			certificate: &Certificate{
+				NewLocalExitRoot: common.HexToHash("0xdef456"),
+				Height:           100,
+				AggchainData: &AggchainDataProof{
+					AggchainParams: common.HexToHash("0x123abc"),
+				},
+			},
+			expectedHash: crypto.Keccak256Hash(
+				common.HexToHash("0xdef456").Bytes(),
+				emptyBytesHash,
+				aggkitcommon.Uint64ToLittleEndianBytes(100),
+				common.HexToHash("0x123abc").Bytes(),
+			),
+		},
+		{
+			name: "With Imported Bridge Exits",
+			certificate: &Certificate{
+				NewLocalExitRoot: common.HexToHash("0xdef456"),
+				Height:           100,
+				ImportedBridgeExits: []*ImportedBridgeExit{
+					{
+						GlobalIndex: &GlobalIndex{
+							MainnetFlag: true,
+							RollupIndex: 0,
+							LeafIndex:   1,
+						},
+						BridgeExit: bridgeExit,
+					},
+				},
+				AggchainData: &AggchainDataProof{
+					AggchainParams: common.HexToHash("0x123abc"),
+				},
+			},
+			expectedHash: crypto.Keccak256Hash(
+				common.HexToHash("0xdef456").Bytes(),
+				crypto.Keccak256(aggkitcommon.BigIntToLittleEndianBytes(
+					bridgesync.GenerateGlobalIndex(true, 0, 1),
+				), bridgeExit.Hash().Bytes()),
+				aggkitcommon.Uint64ToLittleEndianBytes(100),
+				common.HexToHash("0x123abc").Bytes(),
+			),
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			hash := tc.certificate.FEPHashToSign()
+			require.Equal(t, tc.expectedHash, hash)
 		})
 	}
 }

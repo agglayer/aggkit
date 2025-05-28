@@ -100,13 +100,14 @@ type CertStatus struct {
 }
 
 type AggchainProof struct {
-	LastProvenBlock uint64            `json:"last_proven_block"`
-	EndBlock        uint64            `json:"end_block"`
-	CustomChainData []byte            `json:"custom_chain_data,omitempty"`
-	LocalExitRoot   common.Hash       `json:"local_exit_root"`
-	AggchainParams  common.Hash       `json:"aggchain_params"`
-	Context         map[string][]byte `json:"context,omitempty"`
-	SP1StarkProof   *SP1StarkProof    `json:"sp1_stark_proof,omitempty"`
+	LastProvenBlock uint64
+	EndBlock        uint64
+	CustomChainData []byte
+	LocalExitRoot   common.Hash
+	AggchainParams  common.Hash
+	Context         map[string][]byte
+	SP1StarkProof   *SP1StarkProof
+	Signature       []byte
 }
 
 func (a *AggchainProof) String() string {
@@ -120,7 +121,8 @@ func (a *AggchainProof) String() string {
 		"LocalExitRoot: %s \n"+
 		"AggchainParams: %s \n"+
 		"Context: %v \n"+
-		"SP1StarkProof: %v \n",
+		"SP1StarkProof: %v \n"+
+		"Signature: %s",
 		a.LastProvenBlock,
 		a.EndBlock,
 		a.CustomChainData,
@@ -128,16 +130,17 @@ func (a *AggchainProof) String() string {
 		a.AggchainParams.String(),
 		a.Context,
 		a.SP1StarkProof.String(),
+		common.Bytes2Hex(a.Signature),
 	)
 }
 
 type SP1StarkProof struct {
 	// SP1 Version
-	Version string `json:"version,omitempty"`
+	Version string
 	// SP1 stark proof.
-	Proof []byte `json:"proof,omitempty"`
+	Proof []byte
 	// SP1 stark proof verification key.
-	Vkey []byte `json:"vkey,omitempty"`
+	Vkey []byte
 }
 
 func (s *SP1StarkProof) String() string {

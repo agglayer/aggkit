@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
+	signerTypes "github.com/agglayer/go_signer/signer/types"
 )
 
 // NewFlow creates a new Aggsender flow based on the provided configuration.
@@ -28,13 +29,9 @@ func NewFlow(
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
-		signer, err := signer.NewSigner(ctx, 0, cfg.AggsenderPrivateKey, common.AGGSENDER, logger)
+		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
 		if err != nil {
-			return nil, fmt.Errorf("error NewSigner. Err: %w", err)
-		}
-		err = signer.Initialize(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
+			return nil, err
 		}
 
 		return NewPPFlow(
@@ -48,6 +45,11 @@ func NewFlow(
 	case types.AggchainProofMode:
 		if err := cfg.AggkitProverClient.Validate(); err != nil {
 			return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
+		}
+
+		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+		if err != nil {
+			return nil, err
 		}
 
 		aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient,
@@ -79,9 +81,27 @@ func NewFlow(
 			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 			l1Client,
 			cfg.RequireNoFEPBlockGap,
+			signer,
 		), nil
 
 	default:
 		return nil, fmt.Errorf("unsupported Aggsender mode: %s", cfg.Mode)
 	}
+}
+
+func initializeSigner(
+	ctx context.Context,
+	signerCfg signerTypes.SignerConfig,
+	logger *log.Logger,
+) (signerTypes.Signer, error) {
+	signer, err := signer.NewSigner(ctx, 0, signerCfg, common.AGGSENDER, logger)
+	if err != nil {
+		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
+	}
+
+	if err := signer.Initialize(ctx); err != nil {
+		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
+	}
+
+	return signer, nil
 }

@@ -57,6 +57,7 @@ type ClientConfig struct {
 // DefaultConfig returns a default configuration for the gRPC client
 func DefaultConfig() *ClientConfig {
 	return &ClientConfig{
+		URL:               "localhost:50051",
 		MinConnectTimeout: types.NewDuration(defaultTimeout),
 		MaxAttempts:       defaultMaxAttempts,
 		InitialBackoff:    types.NewDuration(defaultInitialBackoff),

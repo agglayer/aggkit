@@ -994,12 +994,12 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 			ppFlow := &PPFlow{
-				signer: signer,
 				baseFlow: &baseFlow{
 					log:                   log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams"),
 					storage:               mockStorage,
 					l2BridgeQuerier:       mockL2BridgeQuerier,
 					l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
+					signer:                signer,
 				},
 			}
 
@@ -1146,9 +1146,9 @@ func Test_PPFlow_SignCertificate(t *testing.T) {
 			}
 
 			ppFlow := &PPFlow{
-				signer: mockSigner,
 				baseFlow: &baseFlow{
-					log: log.WithFields("test", "Test_PPFlow_SignCertificate"),
+					log:    log.WithFields("test", "Test_PPFlow_SignCertificate"),
+					signer: mockSigner,
 				},
 			}
 
