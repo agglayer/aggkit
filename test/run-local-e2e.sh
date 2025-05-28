@@ -17,19 +17,13 @@ log_error() {
 trap 'log_error "Script failed at line $LINENO"' ERR
 
 if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <kurtosis_repo> [e2e_repo] [run_tests: true|false]"
+    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <path/to/kurtosis-cdk/repo> [<path/to/e2e/repo>]"
     exit 1
 fi
 
 TEST_TYPE=$1
 KURTOSIS_FOLDER=$2
 E2E_FOLDER=${3:-""}
-RUN_TESTS=${4:-"false"}
-
-if [ "$RUN_TESTS" == "true" ] && [ -z "$E2E_FOLDER" ]; then
-    echo "Error: <e2e_repo> must be provided if <run_tests> is true"
-    exit 1
-fi
 
 PROJECT_ROOT="$PWD"
 ROOT_FOLDER="/tmp/aggkit-e2e-run"
@@ -39,7 +33,7 @@ LOG_FILE="$LOG_FOLDER/run-local-e2e.log"
 rm -rf "$ROOT_FOLDER"
 mkdir -p "$LOG_FOLDER"
 
-# exec > >(tee -a "$LOG_FILE") 2>&1
+exec > >(tee -a "$LOG_FILE") 2>&1
 
 log_info "Starting local E2E setup..."
 
@@ -83,7 +77,7 @@ fi
 log_info "$ENCLAVE_NAME enclave started successfully."
 popd >/dev/null
 
-if [ "$RUN_TESTS" == "true" ]; then
+if [ -n "$E2E_FOLDER" ]; then
     log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
 
     pushd "$E2E_FOLDER" >/dev/null
