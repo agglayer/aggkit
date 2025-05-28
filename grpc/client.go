@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	defaultMinConnectTimeout = 5 * time.Second
+	defaultTimeout           = 5 * time.Second
 	defaultInitialBackoff    = 100 * time.Millisecond
 	defaultMaxAttempts       = 3
 	defaultMaxBackoff        = 10 * time.Second
@@ -47,6 +47,9 @@ type ClientConfig struct {
 	// MaxAttempts is the maximum number of retries for a request
 	MaxAttempts int `mapstructure:"MaxAttempts"`
 
+	// RequestTimeout is the timeout for individual requests
+	RequestTimeout types.Duration `mapstructure:"RequestTimeout"`
+
 	// UseTLS indicates whether to use TLS for the gRPC connection
 	UseTLS bool `mapstructure:"UseTLS"`
 }
@@ -54,11 +57,12 @@ type ClientConfig struct {
 // DefaultConfig returns a default configuration for the gRPC client
 func DefaultConfig() *ClientConfig {
 	return &ClientConfig{
-		MinConnectTimeout: types.NewDuration(defaultMinConnectTimeout),
+		MinConnectTimeout: types.NewDuration(defaultTimeout),
 		MaxAttempts:       defaultMaxAttempts,
 		InitialBackoff:    types.NewDuration(defaultInitialBackoff),
 		MaxBackoff:        types.NewDuration(defaultMaxBackoff),
 		BackoffMultiplier: defaultBackoffMultiplier,
+		RequestTimeout:    types.NewDuration(defaultTimeout),
 		UseTLS:            false,
 	}
 }

@@ -33,7 +33,7 @@ func TestGetEpochConfiguration(t *testing.T) {
 			cfg:        aggkitgrpc.DefaultConfig(),
 		}
 
-		cfgServiceMock.EXPECT().GetEpochConfiguration(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		cfgServiceMock.EXPECT().GetEpochConfiguration(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetEpochConfiguration(ctx)
 		require.ErrorContains(t, err, "test error")
@@ -55,7 +55,7 @@ func TestGetEpochConfiguration(t *testing.T) {
 			},
 		}
 
-		cfgServiceMock.EXPECT().GetEpochConfiguration(ctx, mock.Anything).Return(expectedResponse, nil)
+		cfgServiceMock.EXPECT().GetEpochConfiguration(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetEpochConfiguration(ctx)
 		require.NoError(t, err)
@@ -79,7 +79,7 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetLatestPendingCertificateHeader(ctx, networkID)
 		require.ErrorContains(t, err, "test error")
@@ -121,7 +121,7 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 			},
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetLatestPendingCertificateHeader(ctx, networkID)
 		require.NoError(t, err)
@@ -153,7 +153,7 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetLatestSettledCertificateHeader(ctx, networkID)
 		require.ErrorContains(t, err, "test error")
@@ -195,7 +195,7 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 			},
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetLatestSettledCertificateHeader(ctx, networkID)
 		require.NoError(t, err)
@@ -227,7 +227,7 @@ func TestGetCertificateHeader(t *testing.T) {
 			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
-		networkStateServiceMock.EXPECT().GetCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetCertificateHeader(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetCertificateHeader(ctx, certificateID)
 		require.ErrorContains(t, err, "test error")
@@ -269,7 +269,7 @@ func TestGetCertificateHeader(t *testing.T) {
 			},
 		}
 
-		networkStateServiceMock.EXPECT().GetCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
+		networkStateServiceMock.EXPECT().GetCertificateHeader(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetCertificateHeader(ctx, certificateID)
 		require.NoError(t, err)
@@ -319,7 +319,7 @@ func TestSendCertificate(t *testing.T) {
 			},
 		}
 
-		submissionServiceMock.EXPECT().SubmitCertificate(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.SendCertificate(ctx, certificate)
 		require.ErrorContains(t, err, "test error")
@@ -447,7 +447,7 @@ func TestSendCertificate(t *testing.T) {
 			},
 		}
 
-		submissionServiceMock.EXPECT().SubmitCertificate(ctx, mock.Anything).Return(expectedResponse, nil)
+		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.SendCertificate(ctx, certificate)
 		require.NoError(t, err)

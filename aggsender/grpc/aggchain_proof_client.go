@@ -24,6 +24,7 @@ var errProofNotSP1Stark = errors.New("aggchain proof is not SP1Stark")
 // AggchainProofClientInterface defines an interface for aggchain proof client
 type AggchainProofClientInterface interface {
 	GenerateAggchainProof(
+		ctx context.Context,
 		lastProvenBlock uint64,
 		requestedEndBlock uint64,
 		l1InfoTreeRootHash common.Hash,
@@ -57,6 +58,7 @@ func NewAggchainProofClient(cfg *aggkitgrpc.ClientConfig,
 }
 
 func (c *AggchainProofClient) GenerateAggchainProof(
+	ctx context.Context,
 	lastProvenBlock uint64,
 	requestedEndBlock uint64,
 	l1InfoTreeRootHash common.Hash,
@@ -65,9 +67,6 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 	gerLeavesWithBlockNumber map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber,
 	importedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber,
 ) (*types.AggchainProof, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), c.generateAggchainProofTimeout)
-	defer cancel()
-
 	convertedL1InfoTreeLeaf := &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
 		Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
 			GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{Value: l1InfoTreeLeaf.GlobalExitRoot[:]},
@@ -153,6 +152,9 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		GerLeaves:             convertedGerLeaves,
 		ImportedBridgeExits:   convertedImportedBridgeExitsWithBlockNumber,
 	}
+
+	ctx, cancel := context.WithTimeout(ctx, c.generateAggchainProofTimeout)
+	defer cancel()
 
 	resp, err := c.client.GenerateAggchainProof(ctx, request)
 	if err != nil {

@@ -318,6 +318,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	}
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
+		ctx,
 		lastProvenBlock,
 		toBlock,
 		root.Hash,

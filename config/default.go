@@ -240,8 +240,7 @@ EnableRPC = true
 Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
-GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
-GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = true
@@ -252,6 +251,7 @@ RequireNoFEPBlockGap = true
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
 		MaxAttempts = 8
+		RequestTimeout = "5s"
 		UseTLS = false
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
@@ -260,6 +260,7 @@ RequireNoFEPBlockGap = true
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
 		MaxAttempts = 8
+		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 		UseTLS = false
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
@@ -273,7 +274,6 @@ Port = 9091
 [AggchainProofGen]
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
-GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"
@@ -282,6 +282,7 @@ GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
 		BackoffMultiplier = 2.0
 		MaxAttempts = 8
 		UseTLS = false
+		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 
 [Profiling]
 ProfilingHost = "localhost"

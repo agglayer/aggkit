@@ -57,10 +57,14 @@ const (
 		"use AggSender.AggkitProverClient instead"
 	aggchainProofGenAggchainProofURLDeprecated = "AggchainProofGen.AggchainProofURL is deprecated, " +
 		"use AggSender.AggkitProverClient instead"
-	aggsenderAgglayerUseTLSDeprecated = "AggSender.UseAgglayerTLS is deprecated, " +
+	aggsenderUseAgglayerTLSDeprecated = "AggSender.UseAgglayerTLS is deprecated, " +
 		"use AggSender.AgglayerClient.UseTLS instead"
-	aggsenderAggkitProverUseTLSDeprecated = "AggSender.UseAggkitProverTLS is deprecated, " +
+	aggsenderUseAggkitProverTLSDeprecated = "AggSender.UseAggkitProverTLS is deprecated, " +
 		"use AggSender.AggkitProverClient.UseTLS instead"
+	aggsenderAggchainProofTimeoutDeprecated = "AggSender.GenerateAggchainProofTimeout is deprecated, " +
+		"use AggSender.AggkitProverClient.RequestTimeout instead"
+	aggchainProofGenAggchainProofTimeoutDeprecated = "AggchainProofGen.GenerateAggchainProofTimeout is deprecated, " +
+		"use AggchainProofGen.AggkitProverClient.RequestTimeout instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -129,11 +133,19 @@ var (
 		},
 		{
 			FieldNamePattern: "AggSender.UseAgglayerTLS",
-			Reason:           "AggSender.UseAgglayerTLS is deprecated, use AggSender.AgglayerClient.UseTLS instead",
+			Reason:           aggsenderUseAgglayerTLSDeprecated,
 		},
 		{
 			FieldNamePattern: "AggSender.UseAggkitProverTLS",
-			Reason:           "AggSender.UseAggkitProverTLS is deprecated, use AggSender.AggkitProverClient.UseTLS instead",
+			Reason:           aggsenderUseAggkitProverTLSDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.GenerateAggchainProofTimeout",
+			Reason:           aggsenderAggchainProofTimeoutDeprecated,
+		},
+		{
+			FieldNamePattern: "AggchainProofGen.GenerateAggchainProofTimeout",
+			Reason:           aggchainProofGenAggchainProofTimeoutDeprecated,
 		},
 	}
 )

@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -50,6 +51,7 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 	result, err := client.GenerateAggchainProof(
+		context.Background(),
 		100,
 		200,
 		common.Hash{},
@@ -82,6 +84,7 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 	mockClient.On("GenerateAggchainProof", mock.Anything, mock.Anything).Return((*aggkitProverV1Proto.GenerateAggchainProofResponse)(nil), expectedError)
 
 	result, err := client.GenerateAggchainProof(
+		context.Background(),
 		300,
 		400,
 		common.BytesToHash([]byte("0x")),

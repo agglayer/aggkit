@@ -45,6 +45,9 @@ func NewAgglayerGRPCClient(cfg *aggkitgrpc.ClientConfig) (*AgglayerGRPCClient, e
 
 // GetEpochConfiguration returns the epoch configuration from the AggLayer
 func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout.Duration)
+	defer cancel()
+
 	response, err := a.cfgService.GetEpochConfiguration(ctx, &v1.GetEpochConfigurationRequest{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to get epoch configuration: %w", aggkitgrpc.RepackGRPCErrorWithDetails(err))
@@ -129,6 +132,9 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 		protoCert.ImportedBridgeExits = append(protoCert.ImportedBridgeExits, protoImportedBridgeExit)
 	}
 
+	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout.Duration)
+	defer cancel()
+
 	response, err := a.submissionService.SubmitCertificate(ctx,
 		&v1.SubmitCertificateRequest{
 			Certificate: protoCert,
@@ -143,6 +149,9 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 // GetLatestPendingCertificateHeader returns the latest pending certificate header from the AggLayer
 func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout.Duration)
+	defer cancel()
+
 	response, err := a.networkStateService.GetLatestCertificateHeader(
 		ctx,
 		&v1.GetLatestCertificateHeaderRequest{
@@ -161,6 +170,9 @@ func (a *AgglayerGRPCClient) GetLatestSettledCertificateHeader(
 // GetLatestPendingCertificateHeader returns the latest pending certificate header from the AggLayer
 func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 	ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout.Duration)
+	defer cancel()
+
 	response, err := a.networkStateService.GetLatestCertificateHeader(
 		ctx,
 		&v1.GetLatestCertificateHeaderRequest{
@@ -179,6 +191,9 @@ func (a *AgglayerGRPCClient) GetLatestPendingCertificateHeader(
 // GetCertificateHeader returns the certificate header from the AggLayer for the given certificate ID
 func (a *AgglayerGRPCClient) GetCertificateHeader(
 	ctx context.Context, certificateID common.Hash) (*types.CertificateHeader, error) {
+	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout.Duration)
+	defer cancel()
+
 	response, err := a.networkStateService.GetCertificateHeader(ctx,
 		&v1.GetCertificateHeaderRequest{CertificateId: &v1nodetypes.CertificateId{
 			Value: &v1types.FixedBytes32{

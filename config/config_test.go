@@ -97,9 +97,11 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	UseAgglayerTLS = true
 	AggchainProofURL = "http://localhost:5576"
 	UseAggkitProverTLS = true
+	GenerateAggchainProofTimeout = "1h"
 
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
+	GenerateAggchainProofTimeout = "1h"
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
@@ -110,6 +112,8 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.Contains(t, err.Error(), aggsenderAgglayerURLDeprecated)
 	require.Contains(t, err.Error(), aggsenderAggchainProofURLDeprecated)
 	require.Contains(t, err.Error(), aggchainProofGenAggchainProofURLDeprecated)
-	require.Contains(t, err.Error(), aggsenderAgglayerUseTLSDeprecated)
-	require.Contains(t, err.Error(), aggsenderAggkitProverUseTLSDeprecated)
+	require.Contains(t, err.Error(), aggsenderUseAgglayerTLSDeprecated)
+	require.Contains(t, err.Error(), aggsenderUseAggkitProverTLSDeprecated)
+	require.Contains(t, err.Error(), aggsenderAggchainProofTimeoutDeprecated)
+	require.Contains(t, err.Error(), aggchainProofGenAggchainProofTimeoutDeprecated)
 }
