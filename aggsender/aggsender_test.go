@@ -41,15 +41,14 @@ const (
 
 func TestConfigString(t *testing.T) {
 	config := config.Config{
-		StoragePath:                  "/path/to/storage",
-		AgglayerClient:               &aggkitgrpc.ClientConfig{URL: "http://agglayer.url"},
-		AggsenderPrivateKey:          signer.NewLocalSignerConfig("/path/to/key", "password"),
-		URLRPCL2:                     "http://l2.rpc.url",
-		BlockFinality:                "latestBlock",
-		EpochNotificationPercentage:  50,
-		Mode:                         "PP",
-		GenerateAggchainProofTimeout: types.Duration{Duration: time.Second},
-		SovereignRollupAddr:          common.HexToAddress("0x1"),
+		StoragePath:                 "/path/to/storage",
+		AgglayerClient:              &aggkitgrpc.ClientConfig{URL: "http://agglayer.url"},
+		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
+		URLRPCL2:                    "http://l2.rpc.url",
+		BlockFinality:               "latestBlock",
+		EpochNotificationPercentage: 50,
+		Mode:                        "PP",
+		SovereignRollupAddr:         common.HexToAddress("0x1"),
 	}
 
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
@@ -64,7 +63,6 @@ func TestConfigString(t *testing.T) {
 		"CheckStatusCertificateInterval: 0s\n"+
 		"RetryCertAfterInError: false\n"+
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
-		"GenerateAggchainProofTimeout: 1s\n"+
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
 		"RequireNoFEPBlockGap: false\n",
 		config.AgglayerClient.String())

@@ -52,8 +52,7 @@ func NewFlow(
 			return nil, err
 		}
 
-		aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient,
-			cfg.GenerateAggchainProofTimeout.Duration)
+		aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}

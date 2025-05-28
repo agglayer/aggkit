@@ -73,9 +73,7 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
 	}
 
-	aggchainProofClient, err := grpc.NewAggchainProofClient(
-		cfg.AggkitProverClient,
-		cfg.GenerateAggchainProofTimeout.Duration)
+	aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}

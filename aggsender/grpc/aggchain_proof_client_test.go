@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	"time"
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	aggkitProverV1Proto "buf.build/gen/go/agglayer/provers/protocolbuffers/go/aggkit/prover/v1"
@@ -21,9 +20,8 @@ import (
 func TestGenerateAggchainProof_Success(t *testing.T) {
 	mockClient := aggkitProverMocks.NewAggchainProofServiceClient(t)
 	client := &AggchainProofClient{
-		client:                       mockClient,
-		grpcClientCfg:                aggkitgrpc.DefaultConfig(),
-		generateAggchainProofTimeout: 1 * time.Second,
+		client:        mockClient,
+		grpcClientCfg: aggkitgrpc.DefaultConfig(),
 	}
 
 	expectedResponse := &aggkitProverV1Proto.GenerateAggchainProofResponse{
@@ -75,9 +73,9 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 func TestGenerateAggchainProof_Error(t *testing.T) {
 	mockClient := aggkitProverMocks.NewAggchainProofServiceClient(t)
 	client := &AggchainProofClient{
-		client:                       mockClient,
-		grpcClientCfg:                aggkitgrpc.DefaultConfig(),
-		generateAggchainProofTimeout: 1 * time.Second}
+		client:        mockClient,
+		grpcClientCfg: aggkitgrpc.DefaultConfig(),
+	}
 
 	expectedError := errors.New("Generate error")
 

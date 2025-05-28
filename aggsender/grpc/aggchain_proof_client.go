@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	aggkitProverV1Grpc "buf.build/gen/go/agglayer/provers/grpc/go/aggkit/prover/v1/proverv1grpc"
@@ -37,23 +36,19 @@ type AggchainProofClientInterface interface {
 
 // AggchainProofClient provides an implementation for the AggchainProofClient interface
 type AggchainProofClient struct {
-	client aggkitProverV1Grpc.AggchainProofServiceClient
-
-	generateAggchainProofTimeout time.Duration
-	grpcClientCfg                *aggkitgrpc.ClientConfig
+	client        aggkitProverV1Grpc.AggchainProofServiceClient
+	grpcClientCfg *aggkitgrpc.ClientConfig
 }
 
 // NewAggchainProofClient initializes a new AggchainProof instance
-func NewAggchainProofClient(cfg *aggkitgrpc.ClientConfig,
-	generateProofTimeout time.Duration) (*AggchainProofClient, error) {
+func NewAggchainProofClient(cfg *aggkitgrpc.ClientConfig) (*AggchainProofClient, error) {
 	grpcClient, err := aggkitgrpc.NewClient(cfg)
 	if err != nil {
 		return nil, err
 	}
 	return &AggchainProofClient{
-		generateAggchainProofTimeout: generateProofTimeout,
-		client:                       aggkitProverV1Grpc.NewAggchainProofServiceClient(grpcClient.Conn()),
-		grpcClientCfg:                cfg,
+		client:        aggkitProverV1Grpc.NewAggchainProofServiceClient(grpcClient.Conn()),
+		grpcClientCfg: cfg,
 	}, nil
 }
 
@@ -153,7 +148,7 @@ func (c *AggchainProofClient) GenerateAggchainProof(
 		ImportedBridgeExits:   convertedImportedBridgeExitsWithBlockNumber,
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, c.generateAggchainProofTimeout)
+	ctx, cancel := context.WithTimeout(ctx, c.grpcClientCfg.RequestTimeout.Duration)
 	defer cancel()
 
 	resp, err := c.client.GenerateAggchainProof(ctx, request)

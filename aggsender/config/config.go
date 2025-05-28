@@ -57,8 +57,6 @@ type Config struct {
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
 	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
-	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
-	GenerateAggchainProofTimeout types.Duration `mapstructure:"GenerateAggchainProofTimeout"`
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
@@ -87,7 +85,6 @@ func (c Config) String() string {
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
-		"GenerateAggchainProofTimeout: " + c.GenerateAggchainProofTimeout.String() + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
 		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n"
 }
