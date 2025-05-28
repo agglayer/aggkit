@@ -79,11 +79,11 @@ func (c *ClientConfig) String() string {
 		"URL=%s, MinConnectTimeout=%s, "+
 		"InitialBackoff=%s, MaxBackoff=%s, "+
 		"BackoffMultiplier=%f, MaxAttempts=%d, "+
-		"UseTLS=%t",
+		"RequestTimeout=%s, UseTLS=%t",
 		c.URL, c.MinConnectTimeout.String(),
 		c.InitialBackoff.String(), c.MaxBackoff.String(),
 		c.BackoffMultiplier, c.MaxAttempts,
-		c.UseTLS)
+		c.RequestTimeout.Duration, c.UseTLS)
 }
 
 // Validate checks if the gRPC client configuration is valid.
