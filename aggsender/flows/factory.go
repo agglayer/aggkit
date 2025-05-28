@@ -33,6 +33,10 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
+		optimisticSigner := optimistic.NewOptimisticSignatureCalculatorImpl(
+			cfg.AggchainFEPAddr,
+			l1Client,
+			cfg.OpNodeURL,
 
 		return NewPPFlow(
 			logger,
@@ -70,7 +74,8 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 		}
-		optimisticModeQuerier, err := optimistic.NewOptimisticModeQuerierFromContract(cfg.SovereignRollupAddr, l1Client)
+		optimisticSigner, optimisticModeQuerier, err := optimistic.NewOptimistic(
+			ctx, logger, l1Client, cfg.OptimisticModeConfig)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}

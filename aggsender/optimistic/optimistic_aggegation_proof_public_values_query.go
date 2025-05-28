@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/opnode"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,15 +16,6 @@ type OpNodeClienter interface {
 
 // The real object that implements OpNodeClienter is opnode.OpNodeClient
 var _ OpNodeClienter = (*opnode.OpNodeClient)(nil)
-
-// TrustedSequencerQuerier it's the object that returns the trusted sequencer address that
-// usually it's obtanied from rollup contract
-type TrustedSequencerQuerier interface {
-	TrustedSequencer() (common.Address, error)
-}
-
-// The real object that implements TrustedSequencerQuerier is etherman.Client
-var _ TrustedSequencerQuerier = (*etherman.Client)(nil)
 
 // FEPContractQuerier is an interface that defines the methods for interacting with the FEP contract.
 type FEPContractQuerier interface {
@@ -44,23 +34,23 @@ type OptimisticAggregationProofPublicValuesQuerier interface {
 var _OptimisticAggregationProofPublicValuesQuerier = (*OptimisticAggregationProofPublicValuesQuery)(nil)
 
 type OptimisticAggregationProofPublicValuesQuery struct {
-	aggchainFEPContract  FEPContractQuerier
-	aggchainFEPAddr      common.Address
-	opNodeClient         OpNodeClienter
-	proverAddressQuerier TrustedSequencerQuerier
+	aggchainFEPContract FEPContractQuerier
+	aggchainFEPAddr     common.Address
+	opNodeClient        OpNodeClienter
+	proverAddress       common.Address
 }
 
 func NewOptimisticAggregationProofPublicValuesQuery(
 	aggchainFEPContract FEPContractQuerier,
 	aggchainFEPAddr common.Address,
 	opNodeClient OpNodeClienter,
-	proverAddressQuerier TrustedSequencerQuerier,
+	proverAddress common.Address,
 ) *OptimisticAggregationProofPublicValuesQuery {
 	return &OptimisticAggregationProofPublicValuesQuery{
-		aggchainFEPContract:  aggchainFEPContract,
-		aggchainFEPAddr:      aggchainFEPAddr,
-		opNodeClient:         opNodeClient,
-		proverAddressQuerier: proverAddressQuerier,
+		aggchainFEPContract: aggchainFEPContract,
+		aggchainFEPAddr:     aggchainFEPAddr,
+		opNodeClient:        opNodeClient,
+		proverAddress:       proverAddress,
 	}
 }
 
@@ -86,10 +76,7 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 	if err != nil {
 		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get multiBlockVKey(AggregationVkey) from contract %s. Err: %w", o.aggchainFEPAddr, err)
 	}
-	proverAddress, err := o.proverAddressQuerier.TrustedSequencer()
-	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get proverAddress. Err: %w", err)
-	}
+
 	return &AggregationProofPublicValues{
 		l1Head:           l1InfoTreeLeafHash,
 		l2PreRoot:        l2PreRoot,
@@ -97,6 +84,6 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 		l2BlockNumber:    requestedEndBlock,
 		rollupConfigHash: rollupConfigHash,
 		multiBlockVKey:   multiBlockVKey,
-		proverAddress:    proverAddress,
+		proverAddress:    o.proverAddress,
 	}, nil
 }

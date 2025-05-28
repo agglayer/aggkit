@@ -5,6 +5,7 @@ package config
 const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
+OpNodeURL = "http://localhost:8080"
 
 
 AggLayerURL = "https://agglayer-dev.polygon.technology"
@@ -35,6 +36,7 @@ genesisBlockNumber = 0
 	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
 	polTokenAddress = "0x0000000000000000000000000000000000000000"
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
+	AggchainFEPAddr = "0x0000000000000000000000000000000000000000"
 
 
 [L2Config]
@@ -242,7 +244,10 @@ RequireNoFEPBlockGap = true
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
-		
+	[AggSender.OptimisticModeConfig]
+		AggchainFEPAddr = "{{L1Config.AggchainFEPAddr}}"
+		SignPrivateKey = {{AggSender.AggsenderPrivateKey}}
+		OpNodeURL = "{{OpNodeURL}}"
 [Prometheus]
 Enabled = true
 Host = "localhost"

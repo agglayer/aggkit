@@ -78,7 +78,7 @@ func NewOptimisticSignatureData(aggregationProofPublicValues AggregationProofPub
 	return &OptimisticSignatureData{
 		aggregationProofPublicValues: aggregationProofPublicValues,
 		newLocalExitRoot:             cert.NewLocalExitRoot,
-		commitImportedBridgeExits:    CalculateCommitImportedBrdigeExitsHash(cert.ImportedBridgeExits),
+		commitImportedBridgeExits:    CalculateCommitImportedBridgeExitsHash(cert.ImportedBridgeExits),
 	}
 }
 
@@ -119,7 +119,7 @@ func OptimisticSign(ctx context.Context, o *OptimisticSignatureData, signer sign
 //	})
 //
 // )
-func CalculateCommitImportedBrdigeExitsHash(importedBridges []*agglayertypes.ImportedBridgeExit) common.Hash {
+func CalculateCommitImportedBridgeExitsHash(importedBridges []*agglayertypes.ImportedBridgeExit) common.Hash {
 	var combined []byte
 	for _, claim := range importedBridges {
 		globalIndex := bridgesync.GenerateGlobalIndex(

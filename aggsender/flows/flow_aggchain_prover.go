@@ -29,9 +29,10 @@ type AggchainProverFlow struct {
 
 	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
-	optimisticModeQuerier types.OptimisticModeQuerier
 	requireNoFEPBlockGap  bool
 	signer                signertypes.Signer
+	optimisticModeQuerier types.OptimisticModeQuerier
+	optimisticSigner      types.OptimisticSigner
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
@@ -61,15 +62,15 @@ func NewAggchainProverFlow(log types.Logger,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
 	gerQuerier types.GERQuerier,
-	optimisticModeQuerier types.OptimisticModeQuerier,
 	l1Client types.EthClient,
 	requireNoFEPBlockGap bool,
-	signer signertypes.Signer) *AggchainProverFlow {
+	signer signertypes.Signer,
+	optimisticModeQuerier types.OptimisticModeQuerier,
+	optimisticSigner types.OptimisticSigner) *AggchainProverFlow {
 	return &AggchainProverFlow{
-		aggchainProofClient:   aggkitProverClient,
-		gerQuerier:            gerQuerier,
-		optimisticModeQuerier: optimisticModeQuerier,
-		requireNoFEPBlockGap:  requireNoFEPBlockGap,
+		aggchainProofClient:  aggkitProverClient,
+		gerQuerier:           gerQuerier,
+		requireNoFEPBlockGap: requireNoFEPBlockGap,
 		baseFlow: &baseFlow{
 			log:                   log,
 			l2BridgeQuerier:       l2BridgeQuerier,
@@ -79,7 +80,9 @@ func NewAggchainProverFlow(log types.Logger,
 			startL2Block:          startL2Block,
 			signer:                signer,
 		},
-		signer: signer,
+		signer:                signer,
+		optimisticModeQuerier: optimisticModeQuerier,
+		optimisticSigner:      optimisticSigner,
 	}
 }
 
@@ -352,7 +355,8 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		if a.signer == nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request, signer is nil")
 		}
-		sign, err := a.signer.SignHash(ctx, request.HashToSign())
+		// TODO: set newLER and importedBridges
+		sign, err := a.optimisticSigner.Sign(ctx, *request, leaf.Hash, nil)
 		if err != nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request: %w", err)
 		}

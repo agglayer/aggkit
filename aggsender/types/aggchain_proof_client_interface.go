@@ -6,7 +6,6 @@ import (
 	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // AggchainProofClientInterface defines an interface for aggchain proof client
@@ -66,9 +65,4 @@ func (r *AggchainProofRequest) String() string {
 		r.GERLeavesWithBlockNumber,
 		r.ImportedBridgeExitsWithBlockNumber,
 	)
-}
-
-// TODO: HashToSign function
-func (r *AggchainProofRequest) HashToSign() common.Hash {
-	return crypto.Keccak256Hash(r.L1InfoTreeRootHash[:])
 }
