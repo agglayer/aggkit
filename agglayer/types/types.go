@@ -149,10 +149,10 @@ func (a *AggchainDataSelector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	var ok bool
-	if _, ok = obj["signature"]; ok {
-		a.obj = &AggchainDataSignature{}
-	} else if _, ok = obj["proof"]; ok {
+	if _, ok = obj["proof"]; ok {
 		a.obj = &AggchainDataProof{}
+	} else if _, ok = obj["signature"]; ok {
+		a.obj = &AggchainDataSignature{}
 	} else {
 		return errors.New("invalid aggchain_data type")
 	}
