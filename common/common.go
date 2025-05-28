@@ -18,10 +18,6 @@ var (
 	ZeroHash = common.HexToHash("0x0")
 )
 
-// Uint64ToBytes converts a uint64 to a byte slice
-// we left this function for backward compatibility
-var Uint64ToBytes = Uint64ToBigEndianBytes
-
 // Uint64ToBigEndianBytes converts a uint64 to a byte slice in big-endian order
 func Uint64ToBigEndianBytes(num uint64) []byte {
 	const uint64ByteSize = 8

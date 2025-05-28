@@ -103,6 +103,7 @@ func NewAggchainProofGenerationTool(
 		l1Client,
 		nil,
 		false,
+		nil,
 	)
 
 	return &AggchainProofGenerationTool{

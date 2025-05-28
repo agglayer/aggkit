@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/tree"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/crypto/sha3"
@@ -33,6 +34,7 @@ type baseFlow struct {
 
 	maxCertSize  uint
 	startL2Block uint64
+	signer       signertypes.Signer
 }
 
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
