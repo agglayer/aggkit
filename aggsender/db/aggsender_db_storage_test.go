@@ -484,6 +484,14 @@ func (a *AggSenderSQLStorage) clean() error {
 		return err
 	}
 
+	if _, err := a.db.Exec(`DELETE FROM certificate_info_history;`); err != nil {
+		return err
+	}
+
+	if _, err := a.db.Exec(`DELETE FROM nonaccepted_certificates;`); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -723,4 +731,154 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 		require.Equal(t, certificate.Header, header)
 		require.Equal(t, certificate.AggchainProof, proof)
 	})
+
+	t.Run("CertificateInErrorWithoutProof", func(t *testing.T) {
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           3,
+				CertificateID:    common.HexToHash("0x3"),
+				NewLocalExitRoot: common.HexToHash("0x4"),
+				FromBlock:        5,
+				ToBlock:          6,
+				Status:           agglayertypes.InError,
+				CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				UpdatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				CertType:         types.CertificateTypeFEP,
+				CertSource:       types.CertificateSourceLocal,
+			},
+		}
+		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
+
+		header, proof, err := storage.GetLastSentCertificateHeaderWithProofIfInError(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, header)
+		require.Nil(t, proof)
+		require.Equal(t, certificate.Header, header)
+	})
+}
+
+func Test_SaveNonAcceptedCertificate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	bridgeExits := []*agglayertypes.BridgeExit{
+		{
+			LeafType: agglayertypes.LeafTypeAsset,
+			TokenInfo: &agglayertypes.TokenInfo{
+				OriginNetwork:      1,
+				OriginTokenAddress: common.HexToAddress("0x1"),
+			},
+			DestinationNetwork: 2,
+			DestinationAddress: common.HexToAddress("0x2"),
+			Amount:             big.NewInt(100),
+			Metadata:           []byte("metadata"),
+		},
+	}
+
+	importedBridgeExits := []*agglayertypes.ImportedBridgeExit{
+		{
+			BridgeExit: bridgeExits[0],
+			ClaimData:  &agglayertypes.ClaimFromRollup{},
+		},
+	}
+
+	createdAt := uint32(time.Now().UTC().UnixMilli())
+
+	testCases := []struct {
+		name          string
+		certificate   *agglayertypes.Certificate
+		keepHistory   bool
+		expectedError string
+	}{
+		{
+			name:        "SaveNonAcceptedCertificate_NoHistory",
+			keepHistory: false,
+			certificate: &agglayertypes.Certificate{
+				Height:            3,
+				PrevLocalExitRoot: common.HexToHash("0x4"),
+				NewLocalExitRoot:  common.HexToHash("0x5"),
+				Metadata:          common.HexToHash("0x6"),
+				NetworkID:         3,
+			},
+			expectedError: "",
+		},
+		{
+			name:        "SaveNonAcceptedCertificate_Success_PP_Certificate",
+			keepHistory: true,
+			certificate: &agglayertypes.Certificate{
+				Height:              1,
+				PrevLocalExitRoot:   common.HexToHash("0x1"),
+				NewLocalExitRoot:    common.HexToHash("0x2"),
+				Metadata:            common.HexToHash("0x3"),
+				NetworkID:           2,
+				BridgeExits:         bridgeExits,
+				ImportedBridgeExits: importedBridgeExits,
+				L1InfoTreeLeafCount: 19,
+				AggchainData: &agglayertypes.AggchainDataSignature{
+					Signature: common.Hex2Bytes("0x1234567890abcdef"),
+				},
+			},
+		},
+		{
+			name:        "SaveNonAcceptedCertificate_Success_FEP_Certificate",
+			keepHistory: true,
+			certificate: &agglayertypes.Certificate{
+				Height:              2,
+				PrevLocalExitRoot:   common.HexToHash("0x4"),
+				NewLocalExitRoot:    common.HexToHash("0x5"),
+				Metadata:            common.HexToHash("0x6"),
+				NetworkID:           3,
+				BridgeExits:         bridgeExits,
+				ImportedBridgeExits: importedBridgeExits,
+				L1InfoTreeLeafCount: 20,
+				AggchainData: &agglayertypes.AggchainDataProof{
+					Proof:          common.Hex2Bytes("abcdef1234567890"),
+					Version:        "0.1",
+					Vkey:           common.Hex2Bytes("bcdef1234567890abcdef1234567890"),
+					AggchainParams: common.HexToHash("0x7"),
+					Context: map[string][]byte{
+						"key1": {0x1, 0x2},
+						"key2": {0x3, 0x4},
+					},
+					Signature: common.Hex2Bytes("1234567890abcdef1234567890abcdef"),
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
+			log.Debugf("sqlite path: %s", path)
+			cfg := AggSenderSQLStorageConfig{
+				DBPath:                  path,
+				KeepCertificatesHistory: tc.keepHistory,
+			}
+
+			storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+			require.NoError(t, err)
+
+			err = storage.SaveNonAcceptedCertificate(ctx, tc.certificate, createdAt)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError, "should return expected error")
+			} else {
+				require.NoError(t, err, "should save non-accepted certificate without error")
+
+				nonAcceptedCertsDB, err := storage.GetNonAcceptedCertificates()
+				require.NoError(t, err, "should retrieve non-accepted certificates from DB")
+
+				if tc.keepHistory {
+					require.Len(t, nonAcceptedCertsDB, 1, "should have one non-accepted certificate in DB")
+					require.Equal(t, tc.certificate, nonAcceptedCertsDB[0], "saved certificate should match the one retrieved from DB")
+				} else {
+					require.Empty(t, nonAcceptedCertsDB, "should not save non-accepted certificates when history is disabled")
+				}
+			}
+		})
+	}
 }
