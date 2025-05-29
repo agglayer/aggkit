@@ -205,25 +205,30 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 		}
 	}()
 
-	certificateInfo, err := convertCertificateToCertificateInfo(&certificate)
+	var (
+		certInfo *certificateInfo
+		certInDB *certificateInfo
+	)
+
+	certInfo, err = convertCertificateToCertificateInfo(&certificate)
 	if err != nil {
 		return fmt.Errorf("error converting certificate to certificate info: %w", err)
 	}
 
-	cert, err := getCertificateByHeight(tx, certificateInfo.Height)
+	certInDB, err = getCertificateByHeight(tx, certInfo.Height)
 	if err != nil && !errors.Is(err, db.ErrNotFound) {
 		return fmt.Errorf("saveLastSentCertificate getCertificateByHeight. Err: %w", err)
 	}
 
-	if cert != nil {
+	if certInDB != nil {
 		// we already have a certificate with this height
 		// we need to delete it before inserting the new one
-		if err = a.moveCertificateToHistoryOrDelete(tx, cert); err != nil {
+		if err = a.moveCertificateToHistoryOrDelete(tx, certInDB); err != nil {
 			return fmt.Errorf("saveLastSentCertificate moveCertificateToHistory Err: %w", err)
 		}
 	}
 
-	if err = meddler.Insert(tx, "certificate_info", certificateInfo); err != nil {
+	if err = meddler.Insert(tx, "certificate_info", certInfo); err != nil {
 		return fmt.Errorf("error inserting certificate info: %w", err)
 	}
 
@@ -233,7 +238,7 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 	shouldRollback = false
 
 	a.logger.Debugf("inserted certificate - Height: %d. Hash: %s",
-		certificateInfo.Height, certificateInfo.CertificateID)
+		certInfo.Height, certInfo.CertificateID)
 
 	return nil
 }
@@ -386,7 +391,9 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 		}
 	}()
 
-	raw, err := json.Marshal(certificate)
+	var raw []byte
+
+	raw, err = json.Marshal(certificate)
 	if err != nil {
 		return fmt.Errorf("error marshalling non-accepted certificate: %w", err)
 	}
