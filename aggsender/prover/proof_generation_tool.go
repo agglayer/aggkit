@@ -99,10 +99,10 @@ func NewAggchainProofGenerationTool(
 		l1InfoTreeQuerier,
 		query.NewBridgeDataQuerier(l2Syncer),
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
-		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode
 		l1Client,
-		nil,
 		false,
+		nil,
+		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode,
 		nil,
 	)
 

@@ -33,10 +33,6 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
-		optimisticSigner := optimistic.NewOptimisticSignatureCalculatorImpl(
-			cfg.AggchainFEPAddr,
-			l1Client,
-			cfg.OpNodeURL,
 
 		return NewPPFlow(
 			logger,
@@ -89,11 +85,11 @@ func NewFlow(
 			l1InfoTreeQuerier,
 			query.NewBridgeDataQuerier(l2Syncer),
 			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
-			optimisticModeQuerier,
 			l1Client,
-			signer,
 			cfg.RequireNoFEPBlockGap,
 			signer,
+			optimisticModeQuerier,
+			optimisticSigner,
 		), nil
 
 	default:

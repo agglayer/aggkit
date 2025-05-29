@@ -12,7 +12,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -188,28 +187,5 @@ func convertAggchainProofRequestToGrpcRequest(req *types.AggchainProofRequest) *
 		ImportedBridgeExits:   convertedImportedBridgeExitsWithBlockNumber,
 	}
 
-	resp, err := c.client.GenerateAggchainProof(ctx, request)
-	if err != nil {
-		return nil, aggkitcommon.RepackGRPCErrorWithDetails(err)
-	}
-
-	proof, ok := resp.AggchainProof.Proof.(*agglayerInteropTypesV1Proto.AggchainProof_Sp1Stark)
-	if !ok {
-		log.Errorf("aggchain proof is not SP1Stark: %+v", resp.AggchainProof.Proof)
-		return nil, errProofNotSP1Stark
-	}
-
-	return &types.AggchainProof{
-		SP1StarkProof: &types.SP1StarkProof{
-			Proof:   proof.Sp1Stark.Proof,
-			Vkey:    proof.Sp1Stark.Vkey,
-			Version: proof.Sp1Stark.Version,
-		},
-		LastProvenBlock: resp.LastProvenBlock,
-		EndBlock:        resp.EndBlock,
-		LocalExitRoot:   common.BytesToHash(resp.LocalExitRootHash.Value),
-		CustomChainData: resp.CustomChainData,
-		AggchainParams:  common.BytesToHash(resp.AggchainProof.AggchainParams.Value),
-		Context:         resp.AggchainProof.Context,
-	}, nil
+	return request
 }

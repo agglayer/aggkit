@@ -360,7 +360,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		if err != nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request: %w", err)
 		}
-		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
+		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign[:])
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf(`error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, maxEndBlock: %d: %w. 
