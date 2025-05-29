@@ -205,17 +205,12 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 		}
 	}()
 
-	var (
-		certInfo *certificateInfo
-		certInDB *certificateInfo
-	)
-
-	certInfo, err = convertCertificateToCertificateInfo(&certificate)
+	certInfo, err := convertCertificateToCertificateInfo(&certificate)
 	if err != nil {
 		return fmt.Errorf("error converting certificate to certificate info: %w", err)
 	}
 
-	certInDB, err = getCertificateByHeight(tx, certInfo.Height)
+	certInDB, err := getCertificateByHeight(tx, certInfo.Height)
 	if err != nil && !errors.Is(err, db.ErrNotFound) {
 		return fmt.Errorf("saveLastSentCertificate getCertificateByHeight. Err: %w", err)
 	}
@@ -380,7 +375,7 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
-		return fmt.Errorf("SaveNonAcceptedCertificate NewTx. Err: %w", err)
+		return fmt.Errorf("failed to create db transaction for non-accepted certificate persistence: %w", err)
 	}
 	shouldRollback := true
 	defer func() {
@@ -395,7 +390,7 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 
 	raw, err = json.Marshal(certificate)
 	if err != nil {
-		return fmt.Errorf("error marshalling non-accepted certificate: %w", err)
+		return fmt.Errorf("failed to marshal non-accepted certificate: %w", err)
 	}
 
 	nonAcceptedCert := &nonAcceptedCertificate{
@@ -405,11 +400,11 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 	}
 
 	if err = meddler.Insert(tx, "nonaccepted_certificates", nonAcceptedCert); err != nil {
-		return fmt.Errorf("error inserting non-accepted certificate: %w", err)
+		return fmt.Errorf("failed to insert non-accepted certificate: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("SaveNonAcceptedCertificate commit. Err: %w", err)
+		return fmt.Errorf("failed to commit db transaction for non-accepted certificate: %w", err)
 	}
 	shouldRollback = false
 
