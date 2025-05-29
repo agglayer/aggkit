@@ -129,15 +129,15 @@ type RetryConfig struct {
 	MaxAttempts int `mapstructure:"MaxAttempts"`
 
 	// Excluded captures functions which are excluded from retry policies
-	Excluded []Method `mapstructure:"excluded"`
+	Excluded []Method `mapstructure:"Excluded"`
 }
 
 type Method struct {
 	// ServiceName identifies gRPC service name (alongside package)
-	ServiceName string `mapstructure:"service"`
+	ServiceName string `mapstructure:"Service"`
 
 	// MethodName denotes gRPC function name
-	MethodName string `mapstructure:"method"` // optional
+	MethodName string `mapstructure:"Method"` // optional
 }
 
 func (r *RetryConfig) String() string {
