@@ -43,18 +43,16 @@ func NewFlow(
 			signer,
 		), nil
 	case types.AggchainProofMode:
+		if err := cfg.AggkitProverClient.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
+		}
+
 		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
 		if err != nil {
 			return nil, err
 		}
 
-		if cfg.AggchainProofURL == "" {
-			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
-		}
-
-		aggchainProofClient, err := grpc.NewAggchainProofClient(
-			cfg.AggchainProofURL,
-			cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
+		aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}

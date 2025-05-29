@@ -5,6 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
@@ -13,8 +14,8 @@ import (
 type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
 	StoragePath string `mapstructure:"StoragePath"`
-	// AggLayerURL is the URL of the AggLayer
-	AggLayerURL string `mapstructure:"AggLayerURL"`
+	// AgglayerClient is the Agglayer gRPC client configuration
+	AgglayerClient *aggkitgrpc.ClientConfig `mapstructure:"AgglayerClient"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
 	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
@@ -42,8 +43,8 @@ type Config struct {
 	DryRun bool `mapstructure:"DryRun"`
 	// EnableRPC is a flag to enable the RPC for aggsender
 	EnableRPC bool `mapstructure:"EnableRPC"`
-	// AggchainProofURL is the URL of the AggkitProver
-	AggchainProofURL string `mapstructure:"AggchainProofURL"`
+	// AggkitProverClient is the config for the AggkitProver client
+	AggkitProverClient *aggkitgrpc.ClientConfig `mapstructure:"AggkitProverClient"`
 	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)
 	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
 	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
@@ -56,17 +57,11 @@ type Config struct {
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
 	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
-	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
-	GenerateAggchainProofTimeout types.Duration `mapstructure:"GenerateAggchainProofTimeout"`
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
-	// UseAgglayerTLS is a flag to enable the Agglayer TLS handshake in the AggSender-Agglayer gRPC connection
-	UseAgglayerTLS bool `mapstructure:"UseAgglayerTLS"`
-	// UseAggkitProverTLS is a flag to enable the AggkitProver TLS handshake in the AggSender-AggkitProver gRPC connection
-	UseAggkitProverTLS bool `mapstructure:"UseAggkitProverTLS"`
 	// RequireNoFEPBlockGap is true if the AggSender should not accept a gap between
 	// lastBlock from lastCertificate and first block of FEP
 	RequireNoFEPBlockGap bool `mapstructure:"RequireNoFEPBlockGap"`
@@ -79,20 +74,17 @@ func (c Config) CheckCertConfigBriefString() string {
 // String returns a string representation of the Config
 func (c Config) String() string {
 	return "StoragePath: " + c.StoragePath + "\n" +
-		"AggLayerURL: " + c.AggLayerURL + "\n" +
+		"AgglayerClient: " + c.AgglayerClient.String() + "\n" +
 		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
 		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
-		"AggchainProofURL: " + c.AggchainProofURL + "\n" +
+		"AggkitProverClient: " + c.AggkitProverClient.String() + "\n" +
 		"Mode: " + c.Mode + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
-		"GenerateAggchainProofTimeout: " + c.GenerateAggchainProofTimeout.String() + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
-		"UseAgglayerTLS: " + fmt.Sprintf("%t", c.UseAgglayerTLS) + "\n" +
-		"UseAggkitProverTLS: " + fmt.Sprintf("%t", c.UseAggkitProverTLS) + "\n" +
 		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n"
 }

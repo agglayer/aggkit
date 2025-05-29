@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	configtypes "github.com/agglayer/aggkit/config/types"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -34,8 +35,8 @@ type AggchainProofFlow interface {
 
 // Config is the configuration for the AggchainProofGenerationTool
 type Config struct {
-	// AggchainProofURL is the URL of the AggkitProver
-	AggchainProofURL string `mapstructure:"AggchainProofURL"`
+	// AggkitProverClient is the AggkitProver client configuration
+	AggkitProverClient *aggkitgrpc.ClientConfig `mapstructure:"AggkitProverClient"`
 
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
@@ -46,9 +47,6 @@ type Config struct {
 
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`
-
-	// UseAggkitProverTLS is a flag to enable the AggkitProver TLS handshake in the AggSender-AggkitProver gRPC connection
-	UseAggkitProverTLS bool `mapstructure:"UseAggkitProverTLS"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs
@@ -71,8 +69,11 @@ func NewAggchainProofGenerationTool(
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter) (*AggchainProofGenerationTool, error) {
-	aggchainProofClient, err := grpc.NewAggchainProofClient(
-		cfg.AggchainProofURL, cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
+	if err := cfg.AggkitProverClient.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
+	}
+
+	aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}

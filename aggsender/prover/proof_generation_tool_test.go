@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/stretchr/testify/mock"
@@ -147,6 +148,6 @@ func TestNewAggchainProofGenerationTool(t *testing.T) {
 	mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
-		Config{}, mockL2Syncer, nil, mockL1Client, mockL2Client)
+		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL2Syncer, nil, mockL1Client, mockL2Client)
 	require.Error(t, err)
 }

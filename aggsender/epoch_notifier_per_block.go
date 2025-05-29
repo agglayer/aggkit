@@ -41,12 +41,12 @@ func (c *ConfigEpochNotifierPerBlock) String() string {
 }
 
 func NewConfigEpochNotifierPerBlock(ctx context.Context,
-	aggLayer agglayer.AggLayerClientGetEpochConfiguration,
+	agglayerClient agglayer.AggLayerClientGetEpochConfiguration,
 	epochNotificationPercentage uint) (*ConfigEpochNotifierPerBlock, error) {
-	if aggLayer == nil {
-		return nil, fmt.Errorf("newConfigEpochNotifierPerBlock: aggLayerClient is required")
+	if agglayerClient == nil {
+		return nil, fmt.Errorf("newConfigEpochNotifierPerBlock: agglayerClient is required")
 	}
-	clockConfig, err := aggLayer.GetEpochConfiguration(ctx)
+	clockConfig, err := agglayerClient.GetEpochConfiguration(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("newConfigEpochNotifierPerBlock: error getting clock configuration from AggLayer: %w", err)
 	}
@@ -59,10 +59,10 @@ func NewConfigEpochNotifierPerBlock(ctx context.Context,
 
 func (c *ConfigEpochNotifierPerBlock) Validate() error {
 	if c.NumBlockPerEpoch == 0 {
-		return fmt.Errorf("numBlockPerEpoch: num block per epoch is required > 0 ")
+		return fmt.Errorf("num block per epoch should be greater than 0")
 	}
 	if c.EpochNotificationPercentage >= maxPercent {
-		return fmt.Errorf("epochNotificationPercentage: must be between 0 and 99")
+		return fmt.Errorf("epoch notification percentage must be between 0 and 99")
 	}
 	return nil
 }

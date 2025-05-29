@@ -12,7 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	aggkitcommon "github.com/agglayer/aggkit/common"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -20,7 +20,7 @@ import (
 	"google.golang.org/grpc/codes"
 )
 
-var errNoProofBuiltYet = &aggkitcommon.GRPCError{
+var errNoProofBuiltYet = &aggkitgrpc.GRPCError{
 	Code:    codes.Unavailable,
 	Message: "Proposer service has not built any proof yet",
 }
@@ -326,6 +326,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	}
 
 	aggchainProof, err := a.aggchainProofClient.GenerateAggchainProof(
+		ctx,
 		lastProvenBlock,
 		toBlock,
 		root.Hash,
