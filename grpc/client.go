@@ -260,9 +260,6 @@ func createServiceConfig(cfg *RetryConfig) (string, error) {
 				GRPCCodeCanonicalString(codes.Unavailable),
 				GRPCCodeCanonicalString(codes.DeadlineExceeded),
 				GRPCCodeCanonicalString(codes.ResourceExhausted),
-				GRPCCodeCanonicalString(codes.Aborted),
-				GRPCCodeCanonicalString(codes.Unknown),
-				GRPCCodeCanonicalString(codes.Internal),
 			},
 		},
 	})
