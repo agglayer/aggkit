@@ -355,9 +355,10 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					SP1StarkProof: &types.SP1StarkProof{Proof: []byte("some-proof")}, LastProvenBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
-				FromBlock:  6,
-				ToBlock:    10,
-				RetryCount: 0,
+				FromBlock:       6,
+				ToBlock:         10,
+				RetryCount:      0,
+				CertificateType: types.CertificateTypeFEP,
 				LastSentCertificate: &types.CertificateHeader{
 					ToBlock: 5,
 				},
@@ -438,7 +439,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				LastSentCertificate: &types.CertificateHeader{
 					ToBlock: 5,
 				},
-				Bridges: []bridgesync.Bridge{{BlockNum: 6}},
+				CertificateType: types.CertificateTypeFEP,
+				Bridges:         []bridgesync.Bridge{{BlockNum: 6}},
 				Claims: []bridgesync.Claim{{
 					BlockNum:        8,
 					GlobalIndex:     big.NewInt(1),
@@ -478,6 +480,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockGERQuerier,
 				nil,
 				false,
+				nil,
 			)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockAggchainProofClient, mockL1InfoTreeDataQuerier, mockGERQuerier)
@@ -719,14 +722,14 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		mockFn         func(*mocks.BridgeQuerier)
+		mockFn         func(*mocks.BridgeQuerier, *mocks.Signer)
 		buildParams    *types.CertificateBuildParams
 		expectedError  string
 		expectedResult *agglayertypes.Certificate
 	}{
 		{
 			name: "error building certificate",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockSigner *mocks.Signer) {
 				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(common.Hash{}, errors.New("some error"))
 			},
 			buildParams: &types.CertificateBuildParams{
@@ -740,8 +743,10 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		},
 		{
 			name: "success building certificate",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockSigner *mocks.Signer) {
 				mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
+				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0x123"))
+				mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil)
 			},
 			buildParams: &types.CertificateBuildParams{
 				FromBlock:                      1,
@@ -750,6 +755,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				Claims:                         []bridgesync.Claim{},
 				CreatedAt:                      uint32(createdAt.Unix()),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
+				CertificateType:                types.CertificateTypeFEP,
 				AggchainProof: &types.AggchainProof{
 					SP1StarkProof: &types.SP1StarkProof{
 						Proof:   []byte("some-proof"),
@@ -771,7 +777,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				Height:              0,
 				NewLocalExitRoot:    zeroLER,
 				CustomChainData:     []byte("some-data"),
-				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix())).ToHash(),
+				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix()), types.CertificateTypeFEP.ToInt()).ToHash(),
 				BridgeExits:         []*agglayertypes.BridgeExit{},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
 				PrevLocalExitRoot:   zeroLER,
@@ -784,6 +790,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 					Context: map[string][]byte{
 						"key1": []byte("value1"),
 					},
+					Signature: []byte("signature"),
 				},
 			},
 		},
@@ -794,15 +801,17 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			mockSigner := mocks.NewSigner(t)
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			if tc.mockFn != nil {
-				tc.mockFn(mockL2BridgeQuerier)
+				tc.mockFn(mockL2BridgeQuerier, mockSigner)
 			}
 
 			aggchainFlow := &AggchainProverFlow{
 				baseFlow: &baseFlow{
 					log:             log.WithFields("flowManager", "Test_AggchainProverFlow_BuildCertificate"),
 					l2BridgeQuerier: mockL2BridgeQuerier,
+					signer:          mockSigner,
 				},
 			}
 

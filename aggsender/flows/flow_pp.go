@@ -16,8 +16,6 @@ import (
 // PPFlow is a struct that holds the logic for the regular pessimistic proof flow
 type PPFlow struct {
 	*baseFlow
-
-	signer signertypes.Signer
 }
 
 // NewPPFlow returns a new instance of the PPFlow
@@ -28,13 +26,13 @@ func NewPPFlow(log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
 	signer signertypes.Signer) *PPFlow {
 	return &PPFlow{
-		signer: signer,
 		baseFlow: &baseFlow{
 			log:                   log,
 			l2BridgeQuerier:       l2BridgeQuerier,
 			storage:               storage,
 			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 			maxCertSize:           maxCertSize,
+			signer:                signer,
 		},
 	}
 }
@@ -48,7 +46,7 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	buildParams, err := p.getCertificateBuildParamsInternal(ctx, false)
+	buildParams, err := p.getCertificateBuildParamsInternal(ctx, false, types.CertificateTypePP)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) || errors.Is(err, query.ErrNoBridgeExits) {
 			// no new blocks to send a certificate, or no bridge exits consumed
@@ -94,7 +92,7 @@ func (p *PPFlow) BuildCertificate(ctx context.Context,
 // signCertificate signs a certificate with the aggsender key
 func (p *PPFlow) signCertificate(ctx context.Context,
 	certificate *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
-	hashToSign := certificate.HashToSign()
+	hashToSign := certificate.PPHashToSign()
 	sig, err := p.signer.SignHash(ctx, hashToSign)
 	if err != nil {
 		return nil, err

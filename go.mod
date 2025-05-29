@@ -3,11 +3,11 @@ module github.com/agglayer/aggkit
 go 1.24.2
 
 require (
-	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250416180731-ff8952695828.2
-	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250416180731-ff8952695828.1
-	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250403073306-df9b770ff25d.1
-	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250414085509-fe25425e2577.2
-	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250414085509-fe25425e2577.1
+	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250520190516-57743a879f16.2
+	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.6-20250520190516-57743a879f16.1
+	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250519093743-85e8a3d9f59c.1
+	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2
+	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250520163122-7efa0a2f81a8.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.3
 	github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.13
@@ -32,15 +32,15 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v2 v2.27.6
 	github.com/valyala/fasttemplate v1.2.2
-	go.opentelemetry.io/otel v1.35.0
-	go.opentelemetry.io/otel/metric v1.35.0
+	go.opentelemetry.io/otel v1.36.0
+	go.opentelemetry.io/otel/metric v1.36.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.38.0
 	golang.org/x/net v0.40.0
 	golang.org/x/sync v0.14.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250218202821-56aae31c358a
-	google.golang.org/grpc v1.72.1
-	modernc.org/sqlite v1.37.0
+	google.golang.org/grpc v1.72.2
+	modernc.org/sqlite v1.37.1
 )
 
 require (
@@ -175,16 +175,16 @@ require (
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.54.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.54.0 // indirect
-	go.opentelemetry.io/otel/trace v1.35.0 // indirect
+	go.opentelemetry.io/otel/trace v1.36.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
-	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394 // indirect
+	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/mod v0.24.0 // indirect
 	golang.org/x/oauth2 v0.26.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
 	golang.org/x/time v0.10.0 // indirect
-	golang.org/x/tools v0.31.0 // indirect
+	golang.org/x/tools v0.33.0 // indirect
 	google.golang.org/api v0.215.0 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250218202821-56aae31c358a // indirect
@@ -192,8 +192,8 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.0.1-2020.1.4 // indirect
-	modernc.org/libc v1.62.1 // indirect
+	modernc.org/libc v1.65.7 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
-	modernc.org/memory v1.9.1 // indirect
+	modernc.org/memory v1.11.0 // indirect
 	rsc.io/tmplfunc v0.0.3 // indirect
 )

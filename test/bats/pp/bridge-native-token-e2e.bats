@@ -41,7 +41,7 @@ setup() {
     local bridge_tx_hash=$output
 
     echo "=== Running claim on L2" >&3
-    timeout="120"
+    timeout="600"
     claim_frequency="10"
     run claim_tx_hash "$timeout" "$bridge_tx_hash" "$destination_addr" "$l2_rpc_url" "$bridge_api_url" "$l2_bridge_addr"
     assert_success

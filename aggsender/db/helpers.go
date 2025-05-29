@@ -77,6 +77,8 @@ func convertCertificateToCertificateInfo(c *types.Certificate) (*certificateInfo
 		UpdatedAt:               c.Header.UpdatedAt,
 		FinalizedL1InfoTreeRoot: c.Header.FinalizedL1InfoTreeRoot,
 		L1InfoTreeLeafCount:     c.Header.L1InfoTreeLeafCount,
+		CertType:                c.Header.CertType,
+		CertSource:              c.Header.CertSource,
 		SignedCertificate:       c.SignedCertificate,
 		AggchainProof:           c.AggchainProof,
 	}, nil
