@@ -12,7 +12,7 @@ type MethodConfig struct {
 	// List of service/method pairs this config applies to.
 	Name []MethodName `json:"name"`
 	// Optional retry policy to apply to the specified methods.
-	RetryPolicy *RetryPolicy `json:"retryPolicy,omitempty"`
+	RetryPolicy *RetryPolicy `json:"retryPolicy"`
 }
 
 // MethodName identifies a gRPC method or service that the retry policy should apply to.
