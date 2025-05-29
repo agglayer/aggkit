@@ -260,10 +260,15 @@ function export_ports_from_kurtosis() {
     #export_portnum_from_kurtosis_or_fail zkevm_data_streamer_port cdk-erigon-sequencer-001 data-streamer
     #export_portnum_from_kurtosis_or_fail aggregator_db_port postgres-001 postgres
     export_portnum_from_kurtosis_or_fail agglayer_grpc_port agglayer aglr-grpc
+    export_portnum_from_kurtosis_or_fail op_node_port op-cl-1-op-node-op-geth-001 http
+    export_portnum_from_kurtosis_or_fail aggkit_prover_port aggkit-prover-001 grpc
+    
     export aggregator_db_hostname="127.0.0.1"
     export l1_rpc_url="http://localhost:${l1_rpc_port}"
     export l2_rpc_url="http://localhost:${zkevm_rpc_http_port}"
     export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
+    export op_cl_rpc_url="http://localhost:${op_node_port}"
+    export aggkit_prover_grpc_url="http://localhost:${aggkit_prover_port}"
 }
 
 ###############################################################################
@@ -433,6 +438,7 @@ cat <<EOF
             "args":[
                 "run",
                 "-cfg", "$DEST_TEMPLATE_FILE",
+                "-disable-default-config-vars",
                 "-components", "aggsender",
             ]
         },

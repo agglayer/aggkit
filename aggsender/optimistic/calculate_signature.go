@@ -74,25 +74,6 @@ type OptimisticSignatureData struct {
 	commitImportedBridgeExits        common.Hash
 }
 
-/*
-	func NewOptimisticSignatureDataFromAgglayerCert(aggregationProofPublicValues AggregationProofPublicValues, cert *agglayertypes.Certificate) *OptimisticSignatureData {
-		return &OptimisticSignatureData{
-			aggregationProofPublicValues: aggregationProofPublicValues,
-			newLocalExitRoot:             cert.NewLocalExitRoot,
-			commitImportedBridgeExits:    CalculateCommitImportedBridgeExitsHashFromImportedBridges(cert.ImportedBridgeExits),
-		}
-	}
-
-	func NewOptimisticSignatureDataFromCertBuildParams(aggregationProofPublicValues AggregationProofPublicValues, certBuildParams *types.CertificateBuildParams) *OptimisticSignatureData {
-		// TODO: Fill newLocalExitRoot with the correct value!!!!!!
-		return &OptimisticSignatureData{
-			aggregationProofPublicValues: aggregationProofPublicValues,
-			newLocalExitRoot:             common.Hash{},
-			commitImportedBridgeExits:    CalculateCommitImportedBrdigeExitsHashFromClaims(certBuildParams.Claims),
-		}
-	}
-*/
-
 func (o *OptimisticSignatureData) Hash() common.Hash {
 	return crypto.Keccak256Hash(
 		o.aggregationProofPublicValuesHash.Bytes(),

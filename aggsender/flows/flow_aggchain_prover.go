@@ -374,9 +374,6 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	if !optimisticMode {
 		aggchainProof, err = a.aggchainProofClient.GenerateAggchainProof(request)
 	} else {
-		if a.signer == nil {
-			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request, signer is nil")
-		}
 		newLER, err := a.baseFlow.GetNewLocalExitRoot(ctx, certBuildParams)
 		if err != nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error getting new local exit root: %w", err)
