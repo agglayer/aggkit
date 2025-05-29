@@ -132,14 +132,6 @@ type RetryConfig struct {
 	Excluded []Method `mapstructure:"Excluded"`
 }
 
-type Method struct {
-	// ServiceName identifies gRPC service name (alongside package)
-	ServiceName string `mapstructure:"Service"`
-
-	// MethodName denotes gRPC function name
-	MethodName string `mapstructure:"Method"` // optional
-}
-
 func (r *RetryConfig) String() string {
 	if r == nil {
 		return noneStr
@@ -176,6 +168,15 @@ func (r *RetryConfig) Validate() error {
 	}
 
 	return nil
+}
+
+// Method describes the gRPC service name and method name
+type Method struct {
+	// ServiceName identifies gRPC service name (alongside package)
+	ServiceName string `mapstructure:"Service"`
+
+	// MethodName denotes gRPC function name
+	MethodName string `mapstructure:"Method"` // optional
 }
 
 // Client holds the gRPC connection and services
@@ -238,6 +239,21 @@ func createServiceConfig(cfg *RetryConfig) (string, error) {
 	}
 
 	methodCfg := make([]MethodConfig, 0, len(cfg.Excluded))
+	methodCfg = append(methodCfg, MethodConfig{
+		Name: []MethodName{{}}, // Empty name matches all methods
+		RetryPolicy: &RetryPolicy{
+			MaxAttempts:       cfg.MaxAttempts,
+			InitialBackoff:    cfg.InitialBackoff.String(),
+			MaxBackoff:        cfg.MaxBackoff.String(),
+			BackoffMultiplier: cfg.BackoffMultiplier,
+			RetryableStatusCodes: []string{
+				grpcCodeCanonicalString(codes.Unavailable),
+				grpcCodeCanonicalString(codes.DeadlineExceeded),
+				grpcCodeCanonicalString(codes.ResourceExhausted),
+			},
+		},
+	})
+
 	for _, excluded := range cfg.Excluded {
 		methodCfg = append(methodCfg, MethodConfig{
 			Name: []MethodName{
@@ -248,21 +264,6 @@ func createServiceConfig(cfg *RetryConfig) (string, error) {
 			},
 		})
 	}
-
-	methodCfg = append(methodCfg, MethodConfig{
-		Name: []MethodName{{}}, // Empty name matches all methods
-		RetryPolicy: &RetryPolicy{
-			MaxAttempts:       cfg.MaxAttempts,
-			InitialBackoff:    cfg.InitialBackoff.String(),
-			MaxBackoff:        cfg.MaxBackoff.String(),
-			BackoffMultiplier: cfg.BackoffMultiplier,
-			RetryableStatusCodes: []string{
-				GRPCCodeCanonicalString(codes.Unavailable),
-				GRPCCodeCanonicalString(codes.DeadlineExceeded),
-				GRPCCodeCanonicalString(codes.ResourceExhausted),
-			},
-		},
-	})
 
 	serviceCfg := ServiceConfig{MethodConfig: methodCfg}
 
@@ -341,8 +342,12 @@ func joinDetails(details []string) string {
 	return fmt.Sprintf("[%s]", strings.Join(details, ";"))
 }
 
-// GRPCCodeCanonicalString returns the canonical service config string for a gRPC status code.
-func GRPCCodeCanonicalString(c codes.Code) string {
+// grpcCodeCanonicalString returns the canonical service config string for a gRPC status code.
+// It transforms from camel case notation to a canonical string representation.
+// For example:
+// Unavailable -> UNAVAILABLE
+// DeadlineExceeded -> DEADLINE_EXCEEDED
+func grpcCodeCanonicalString(c codes.Code) string {
 	if c == codes.OK {
 		return "OK"
 	}

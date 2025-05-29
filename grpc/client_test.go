@@ -104,7 +104,7 @@ func TestGRPCCodeCanonicalString(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.code.String(), func(t *testing.T) {
-			result := GRPCCodeCanonicalString(tt.code)
+			result := grpcCodeCanonicalString(tt.code)
 			require.Equal(t, tt.expected, result)
 		})
 	}
