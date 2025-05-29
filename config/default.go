@@ -247,21 +247,23 @@ RequireNoFEPBlockGap = true
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectTimeout = "5s"
-		InitialBackoff = "1s"
-		MaxBackoff = "10s"
-		BackoffMultiplier = 2.0
-		MaxAttempts = 8
 		RequestTimeout = "300s" 
 		UseTLS = false
+		[AggSender.AgglayerClient.Retry]
+			InitialBackoff = "1s"
+			MaxBackoff = "10s"
+			BackoffMultiplier = 2.0
+			MaxAttempts = 8
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"
-		InitialBackoff = "1s"
-		MaxBackoff = "10s"
-		BackoffMultiplier = 2.0
-		MaxAttempts = 8
 		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 		UseTLS = false
+		[AggSender.AggkitProverClient.Retry]
+			InitialBackoff = "1s"
+			MaxBackoff = "10s"
+			BackoffMultiplier = 2.0
+			MaxAttempts = 8
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
@@ -277,12 +279,13 @@ GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"
-		InitialBackoff = "1s"
-		MaxBackoff = "10s"
-		BackoffMultiplier = 2.0
-		MaxAttempts = 8
 		UseTLS = false
 		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
+		[AggchainProofGen.AggkitProverClient.Retry]
+			InitialBackoff = "1s"
+			MaxBackoff = "10s"
+			BackoffMultiplier = 2.0
+			MaxAttempts = 8
 
 [Profiling]
 ProfilingHost = "localhost"

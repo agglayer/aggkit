@@ -25,6 +25,8 @@ const (
 	defaultMaxAttempts       = 3
 	defaultMaxBackoff        = 10 * time.Second
 	defaultBackoffMultiplier = 2.0
+
+	noneStr = "none"
 )
 
 // ClientConfig is the configuration for the gRPC client
@@ -36,23 +38,14 @@ type ClientConfig struct {
 	// This is used to prevent the client from hanging indefinitely if the server is unreachable.
 	MinConnectTimeout types.Duration `mapstructure:"MinConnectTimeout"`
 
-	// InitialBackoff is the initial delay before retrying a request
-	InitialBackoff types.Duration `mapstructure:"InitialBackoff"`
-
-	// MaxBackoff is the maximum backoff duration for retries
-	MaxBackoff types.Duration `mapstructure:"MaxBackoff"`
-
-	// BackoffMultiplier is the multiplier for the backoff duration
-	BackoffMultiplier float64 `mapstructure:"BackoffMultiplier"`
-
-	// MaxAttempts is the maximum number of retries for a request
-	MaxAttempts int `mapstructure:"MaxAttempts"`
-
 	// RequestTimeout is the timeout for individual requests
 	RequestTimeout types.Duration `mapstructure:"RequestTimeout"`
 
 	// UseTLS indicates whether to use TLS for the gRPC connection
 	UseTLS bool `mapstructure:"UseTLS"`
+
+	// Retry represents the retry configuration
+	Retry *RetryConfig `mapstructure:"Retry"`
 }
 
 // DefaultConfig returns a default configuration for the gRPC client
@@ -60,30 +53,28 @@ func DefaultConfig() *ClientConfig {
 	return &ClientConfig{
 		URL:               "localhost:50051",
 		MinConnectTimeout: types.NewDuration(defaultTimeout),
-		MaxAttempts:       defaultMaxAttempts,
-		InitialBackoff:    types.NewDuration(defaultInitialBackoff),
-		MaxBackoff:        types.NewDuration(defaultMaxBackoff),
-		BackoffMultiplier: defaultBackoffMultiplier,
-		RequestTimeout:    types.NewDuration(defaultTimeout),
-		UseTLS:            false,
+		Retry: &RetryConfig{
+			MaxAttempts:       defaultMaxAttempts,
+			InitialBackoff:    types.NewDuration(defaultInitialBackoff),
+			MaxBackoff:        types.NewDuration(defaultMaxBackoff),
+			BackoffMultiplier: defaultBackoffMultiplier,
+		},
+		RequestTimeout: types.NewDuration(defaultTimeout),
+		UseTLS:         false,
 	}
 }
 
 // String returns a string representation of the gRPC client configuration
 func (c *ClientConfig) String() string {
 	if c == nil {
-		return "none"
+		return noneStr
 	}
 
 	return fmt.Sprintf("GRPC Client Config: "+
 		"URL=%s, MinConnectTimeout=%s, "+
-		"InitialBackoff=%s, MaxBackoff=%s, "+
-		"BackoffMultiplier=%f, MaxAttempts=%d, "+
-		"RequestTimeout=%s, UseTLS=%t",
+		"RequestTimeout=%s, UseTLS=%t, Retry=%s",
 		c.URL, c.MinConnectTimeout.String(),
-		c.InitialBackoff.String(), c.MaxBackoff.String(),
-		c.BackoffMultiplier, c.MaxAttempts,
-		c.RequestTimeout.Duration, c.UseTLS)
+		c.RequestTimeout.Duration, c.UseTLS, c.Retry.String())
 }
 
 // Validate checks if the gRPC client configuration is valid.
@@ -101,35 +92,87 @@ func (c *ClientConfig) Validate() error {
 		return fmt.Errorf("MinConnectTimeout must be greater than zero")
 	}
 
-	if c.InitialBackoff.Duration <= 0 {
+	if c.Retry != nil {
+		if err := c.Retry.Validate(); err != nil {
+			return err
+		}
+
+		initialBackoffMillis := float64(c.Retry.InitialBackoff.Milliseconds())
+		attempts := float64(c.Retry.MaxAttempts)
+
+		// minTimeout = initialBackoff - (1 - backoffMultiplier ^ maxAttempts) / (1 - backoffMultiplier)
+		minTimeoutMillis := initialBackoffMillis *
+			(1 - math.Pow(c.Retry.BackoffMultiplier, attempts)) / (1 - c.Retry.BackoffMultiplier)
+
+		minRequestTimeout := time.Duration(minTimeoutMillis * float64(time.Millisecond))
+		if c.RequestTimeout.Duration < minRequestTimeout {
+			return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate retries",
+				c.RequestTimeout, minRequestTimeout)
+		}
+	}
+
+	return nil
+}
+
+// RetryConfig denotes the gRPC retry policy
+type RetryConfig struct {
+	// InitialBackoff is the initial delay before retrying a request
+	InitialBackoff types.Duration `mapstructure:"InitialBackoff"`
+
+	// MaxBackoff is the maximum backoff duration for retries
+	MaxBackoff types.Duration `mapstructure:"MaxBackoff"`
+
+	// BackoffMultiplier is the multiplier for the backoff duration
+	BackoffMultiplier float64 `mapstructure:"BackoffMultiplier"`
+
+	// MaxAttempts is the maximum number of retries for a request
+	MaxAttempts int `mapstructure:"MaxAttempts"`
+
+	// Excluded captures functions which are excluded from retry policies
+	Excluded []Method `mapstructure:"excluded"`
+}
+
+type Method struct {
+	// ServiceName identifies gRPC service name (alongside package)
+	ServiceName string `mapstructure:"service"`
+
+	// MethodName denotes gRPC function name
+	MethodName string `mapstructure:"method"` // optional
+}
+
+func (r *RetryConfig) String() string {
+	if r == nil {
+		return noneStr
+	}
+
+	return fmt.Sprintf("InitialBackoff=%s, MaxBackoff=%s, "+
+		"BackoffMultiplier=%f, MaxAttempts=%d",
+		r.InitialBackoff.String(), r.MaxBackoff.String(),
+		r.BackoffMultiplier, r.MaxAttempts,
+	)
+}
+
+// Validate checks if the gRPC retry configuration is valid.
+// It returns an error if any of the required fields are missing or invalid.
+func (r *RetryConfig) Validate() error {
+	if r.InitialBackoff.Duration <= 0 {
 		return fmt.Errorf("InitialBackoff must be greater than zero")
 	}
 
-	if c.MaxBackoff.Duration <= 0 {
+	if r.MaxBackoff.Duration <= 0 {
 		return fmt.Errorf("MaxBackoff must be greater than zero")
 	}
 
-	if c.InitialBackoff.Duration >= c.MaxBackoff.Duration {
+	if r.InitialBackoff.Duration >= r.MaxBackoff.Duration {
 		return fmt.Errorf("InitialBackoff must be less than MaxBackoff")
 	}
 
-	if c.BackoffMultiplier < 1.0 {
+	if r.BackoffMultiplier < 1.0 {
 		return fmt.Errorf("BackoffMultiplier must be greater than 1.0")
 	}
 
-	if c.MaxAttempts < 1 {
+	if r.MaxAttempts < 1 {
 		return fmt.Errorf("MaxAttempts must be at least 1")
-	}
-
-	initialBackoffMillis := float64(c.InitialBackoff.Milliseconds())
-	attempts := float64(c.MaxAttempts)
-
-	minTimeoutMillis := initialBackoffMillis * (1 - math.Pow(c.BackoffMultiplier, attempts)) / (1 - c.BackoffMultiplier)
-
-	minRequestTimeout := time.Duration(minTimeoutMillis * float64(time.Millisecond))
-	if c.RequestTimeout.Duration < minRequestTimeout {
-		return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate retries",
-			c.RequestTimeout, minRequestTimeout)
 	}
 
 	return nil
@@ -146,46 +189,27 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 		return nil, fmt.Errorf("gRPC client configuration cannot be nil")
 	}
 
-	connectBackoff := backoff.DefaultConfig
-	connectBackoff.BaseDelay = cfg.InitialBackoff.Duration
-	connectBackoff.MaxDelay = cfg.MaxBackoff.Duration
-	connectBackoff.Multiplier = cfg.BackoffMultiplier
+	dialBackoff := backoff.DefaultConfig
+	retryCfg := cfg.Retry
+	if retryCfg != nil {
+		dialBackoff.BaseDelay = retryCfg.InitialBackoff.Duration
+		dialBackoff.MaxDelay = retryCfg.MaxBackoff.Duration
+		dialBackoff.Multiplier = retryCfg.BackoffMultiplier
+	}
 	connectParams := grpc.ConnectParams{
-		Backoff:           connectBackoff,
+		Backoff:           dialBackoff,
 		MinConnectTimeout: cfg.MinConnectTimeout.Duration,
 	}
 
-	serviceCfg := ServiceConfig{
-		MethodConfig: []MethodConfig{
-			{
-				Name: []MethodName{{}}, // Empty name matches all methods
-				RetryPolicy: &RetryPolicy{
-					MaxAttempts:       cfg.MaxAttempts,
-					InitialBackoff:    cfg.InitialBackoff.String(),
-					MaxBackoff:        cfg.MaxBackoff.String(),
-					BackoffMultiplier: cfg.BackoffMultiplier,
-					RetryableStatusCodes: []string{
-						GRPCCodeCanonicalString(codes.Unavailable),
-						GRPCCodeCanonicalString(codes.DeadlineExceeded),
-						GRPCCodeCanonicalString(codes.ResourceExhausted),
-						GRPCCodeCanonicalString(codes.Aborted),
-						GRPCCodeCanonicalString(codes.Unknown),
-						GRPCCodeCanonicalString(codes.Internal),
-					},
-				},
-			},
-		},
-	}
-
-	serviceCfgJSON, err := json.Marshal(serviceCfg)
+	serviceCfgJSON, err := createServiceConfig(retryCfg)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal gRPC service config: %w", err)
+		return nil, err
 	}
 
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(connectParams),
-		grpc.WithDefaultServiceConfig(string(serviceCfgJSON)),
+		grpc.WithDefaultServiceConfig(serviceCfgJSON),
 	}
 
 	if cfg.UseTLS {
@@ -204,6 +228,51 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 	}
 
 	return &Client{conn: conn}, nil
+}
+
+func createServiceConfig(cfg *RetryConfig) (string, error) {
+	if cfg == nil {
+		return "", nil
+	}
+
+	methodCfg := make([]MethodConfig, 0, len(cfg.Excluded))
+	for _, excluded := range cfg.Excluded {
+		methodCfg = append(methodCfg, MethodConfig{
+			Name: []MethodName{
+				{
+					Service: excluded.ServiceName,
+					Method:  excluded.MethodName,
+				},
+			},
+		})
+	}
+
+	methodCfg = append(methodCfg, MethodConfig{
+		Name: []MethodName{{}}, // Empty name matches all methods
+		RetryPolicy: &RetryPolicy{
+			MaxAttempts:       cfg.MaxAttempts,
+			InitialBackoff:    cfg.InitialBackoff.String(),
+			MaxBackoff:        cfg.MaxBackoff.String(),
+			BackoffMultiplier: cfg.BackoffMultiplier,
+			RetryableStatusCodes: []string{
+				GRPCCodeCanonicalString(codes.Unavailable),
+				GRPCCodeCanonicalString(codes.DeadlineExceeded),
+				GRPCCodeCanonicalString(codes.ResourceExhausted),
+				GRPCCodeCanonicalString(codes.Aborted),
+				GRPCCodeCanonicalString(codes.Unknown),
+				GRPCCodeCanonicalString(codes.Internal),
+			},
+		},
+	})
+
+	serviceCfg := ServiceConfig{MethodConfig: methodCfg}
+
+	serviceCfgJSON, err := json.Marshal(serviceCfg)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal gRPC service config: %w", err)
+	}
+
+	return string(serviceCfgJSON), nil
 }
 
 // Conn returns the gRPC connection
@@ -268,7 +337,7 @@ func RepackGRPCErrorWithDetails(err error) error {
 // joinDetails joins detail strings with a separator
 func joinDetails(details []string) string {
 	if len(details) == 0 {
-		return "none"
+		return noneStr
 	}
 	return fmt.Sprintf("[%s]", strings.Join(details, ";"))
 }

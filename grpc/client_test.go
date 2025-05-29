@@ -126,11 +126,13 @@ func TestClientConfig_Validate(t *testing.T) {
 			cfg: &ClientConfig{
 				URL:               "",
 				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
-				InitialBackoff:    types.Duration{Duration: 500 * time.Millisecond},
-				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
-				BackoffMultiplier: 2.0,
-				MaxAttempts:       3,
 				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
+				Retry: &RetryConfig{
+					InitialBackoff:    types.Duration{Duration: 500 * time.Millisecond},
+					MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+					BackoffMultiplier: 2.0,
+					MaxAttempts:       3,
+				},
 			},
 			wantErr: "gRPC client URL cannot be empty",
 		},
@@ -139,11 +141,13 @@ func TestClientConfig_Validate(t *testing.T) {
 			cfg: &ClientConfig{
 				URL:               "localhost:1234",
 				MinConnectTimeout: types.Duration{Duration: 0},
-				InitialBackoff:    types.Duration{Duration: 500 * time.Millisecond},
-				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
-				BackoffMultiplier: 2.0,
-				MaxAttempts:       3,
 				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
+				Retry: &RetryConfig{
+					InitialBackoff:    types.Duration{Duration: 500 * time.Millisecond},
+					MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+					BackoffMultiplier: 2.0,
+					MaxAttempts:       3,
+				},
 			},
 			wantErr: "MinConnectTimeout must be greater than zero",
 		},
@@ -152,11 +156,13 @@ func TestClientConfig_Validate(t *testing.T) {
 			cfg: &ClientConfig{
 				URL:               "localhost:1234",
 				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
-				InitialBackoff:    types.Duration{Duration: 5 * time.Second},
-				MaxBackoff:        types.Duration{Duration: 2 * time.Second},
-				BackoffMultiplier: 2.0,
-				MaxAttempts:       3,
 				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
+				Retry: &RetryConfig{
+					InitialBackoff:    types.Duration{Duration: 5 * time.Second},
+					MaxBackoff:        types.Duration{Duration: 2 * time.Second},
+					BackoffMultiplier: 2.0,
+					MaxAttempts:       3,
+				},
 			},
 			wantErr: "InitialBackoff must be less than MaxBackoff",
 		},
@@ -165,11 +171,13 @@ func TestClientConfig_Validate(t *testing.T) {
 			cfg: &ClientConfig{
 				URL:               "localhost:1234",
 				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
-				InitialBackoff:    types.Duration{Duration: 1 * time.Second},
-				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
-				BackoffMultiplier: 0.5,
-				MaxAttempts:       3,
 				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
+				Retry: &RetryConfig{
+					InitialBackoff:    types.Duration{Duration: 1 * time.Second},
+					MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+					BackoffMultiplier: 0.5,
+					MaxAttempts:       3,
+				},
 			},
 			wantErr: "BackoffMultiplier must be greater than 1.0",
 		},
@@ -178,11 +186,13 @@ func TestClientConfig_Validate(t *testing.T) {
 			cfg: &ClientConfig{
 				URL:               "localhost:1234",
 				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
-				InitialBackoff:    types.Duration{Duration: 1 * time.Second},
-				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
-				BackoffMultiplier: 2.0,
-				MaxAttempts:       0,
 				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
+				Retry: &RetryConfig{
+					InitialBackoff:    types.Duration{Duration: 1 * time.Second},
+					MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+					BackoffMultiplier: 2.0,
+					MaxAttempts:       0,
+				},
 			},
 			wantErr: "MaxAttempts must be at least 1",
 		},
@@ -191,24 +201,58 @@ func TestClientConfig_Validate(t *testing.T) {
 			cfg: &ClientConfig{
 				URL:               "localhost:1234",
 				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
-				InitialBackoff:    types.Duration{Duration: 1 * time.Second},
-				MaxBackoff:        types.Duration{Duration: 10 * time.Second},
-				BackoffMultiplier: 2.0,
-				MaxAttempts:       5,
 				RequestTimeout:    types.Duration{Duration: 1 * time.Second}, // too short
+				Retry: &RetryConfig{
+					InitialBackoff:    types.Duration{Duration: 1 * time.Second},
+					MaxBackoff:        types.Duration{Duration: 10 * time.Second},
+					BackoffMultiplier: 2.0,
+					MaxAttempts:       5,
+				},
 			},
 			wantErr: "RequestTimeout (1s) is too short", // partial match
+		},
+		{
+			name: "initial backoff invalid",
+			cfg: &ClientConfig{
+				URL:               "localhost:1234",
+				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
+				RequestTimeout:    types.Duration{Duration: 1 * time.Second}, // too short
+				Retry: &RetryConfig{
+					InitialBackoff:    types.Duration{Duration: 0},
+					MaxBackoff:        types.Duration{Duration: 0},
+					BackoffMultiplier: 2.0,
+					MaxAttempts:       5,
+				},
+			},
+			wantErr: "InitialBackoff must be greater than zero",
+		},
+		{
+			name: "max backoff invalid",
+			cfg: &ClientConfig{
+				URL:               "localhost:1234",
+				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
+				RequestTimeout:    types.Duration{Duration: 1 * time.Second}, // too short
+				Retry: &RetryConfig{
+					InitialBackoff:    types.Duration{Duration: 1 * time.Second},
+					MaxBackoff:        types.Duration{Duration: 0},
+					BackoffMultiplier: 2.0,
+					MaxAttempts:       5,
+				},
+			},
+			wantErr: "MaxBackoff must be greater than zero",
 		},
 		{
 			name: "valid config",
 			cfg: &ClientConfig{
 				URL:               "localhost:1234",
 				MinConnectTimeout: types.Duration{Duration: 1 * time.Second},
-				InitialBackoff:    types.Duration{Duration: 500 * time.Millisecond},
-				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
-				BackoffMultiplier: 1.5,
-				MaxAttempts:       3,
 				RequestTimeout:    types.Duration{Duration: 5 * time.Second},
+				Retry: &RetryConfig{
+					InitialBackoff:    types.Duration{Duration: 500 * time.Millisecond},
+					MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+					BackoffMultiplier: 1.5,
+					MaxAttempts:       3,
+				},
 			},
 			wantErr: "",
 		},
@@ -226,4 +270,43 @@ func TestClientConfig_Validate(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestGenerateServiceConfig(t *testing.T) {
+	defaultRetry := RetryConfig{
+		MaxAttempts:       4,
+		InitialBackoff:    types.NewDuration(100 * time.Millisecond),
+		MaxBackoff:        types.NewDuration(2 * time.Second),
+		BackoffMultiplier: 1.5,
+	}
+
+	t.Run("retry policy applied to all methods", func(t *testing.T) {
+		cfg := defaultRetry
+		cfg.Excluded = nil
+
+		sc, err := createServiceConfig(&cfg)
+		require.NoError(t, err)
+		require.Contains(t, sc, `"name":[{}]`)
+		require.Contains(t, sc, `"retryPolicy"`)
+	})
+
+	t.Run("retry excluded for one method", func(t *testing.T) {
+		cfg := defaultRetry
+		cfg.Excluded = []Method{{ServiceName: "some.Service", MethodName: "Foo"}}
+
+		sc, err := createServiceConfig(&cfg)
+		require.NoError(t, err)
+		require.Contains(t, sc, `"name":[{"service":"some.Service","method":"Foo"}]`)
+		require.Contains(t, sc, `"name":[{}]`) // default retry for others
+	})
+
+	t.Run("retry excluded for entire service", func(t *testing.T) {
+		cfg := defaultRetry
+		cfg.Excluded = []Method{{ServiceName: "some.Service", MethodName: ""}}
+
+		sc, err := createServiceConfig(&cfg)
+		require.NoError(t, err)
+		require.Contains(t, sc, `"name":[{"service":"some.Service"}]`)
+		require.Contains(t, sc, `"name":[{}]`) // default retry for all others
+	})
 }
