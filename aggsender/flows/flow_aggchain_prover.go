@@ -122,6 +122,19 @@ func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.C
 	return nil
 }
 
+// getCertificateTypeToGenerate returns the type of certificate to generate
+func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateType, error) {
+	// AggchainProverFlow only supports FEP certificates
+	optimisticMode, err := a.optimisticModeQuerier.IsOptimisticModeOn()
+	if err != nil {
+		return types.CertificateTypeUnknown, fmt.Errorf("getCertificateTypeToGenerate - error getting optimistic mode: %w", err)
+	}
+	if optimisticMode {
+		return types.CertificateTypeOptimistic, nil
+	}
+	return types.CertificateTypeFEP, nil
+}
+
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 // What differentiates this function from the regular PP flow is that,
@@ -132,19 +145,24 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error checking if last sent certificate is InError: %w", err)
 	}
+	typeCert, err := a.getCertificateTypeToGenerate()
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error getting certificate type to generate: %w", err)
+	}
 
-	if lastSentCert != nil && lastSentCert.Status.IsInError() {
+	if lastSentCert != nil && lastSentCert.Status.IsInError() && lastSentCert.CertType == typeCert {
 		a.log.Infof("resending the same InError certificate: %s", lastSentCert.String())
-
-		lastProvenBlock := a.getLastProvenBlock(lastSentCert.FromBlock, lastSentCert)
+		fromBlock := lastSentCert.FromBlock
+		ToBlock := lastSentCert.ToBlock
+		lastProvenBlock := a.getLastProvenBlock(fromBlock, lastSentCert)
 		if lastSentCert.FromBlock != lastProvenBlock+1 {
 			a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
 				"lastProvenBlock: %d + 1. Check update process 😅", lastSentCert.FromBlock, lastProvenBlock)
 		}
 
 		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
-			ctx, lastSentCert.FromBlock,
-			lastSentCert.ToBlock,
+			ctx, fromBlock,
+			ToBlock,
 			true,
 		)
 		if err != nil {
@@ -152,8 +170,8 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		}
 
 		buildParams := &types.CertificateBuildParams{
-			FromBlock:           lastSentCert.FromBlock,
-			ToBlock:             lastSentCert.ToBlock,
+			FromBlock:           fromBlock,
+			ToBlock:             ToBlock,
 			RetryCount:          lastSentCert.RetryCount + 1,
 			Bridges:             bridges,
 			Claims:              claims,
@@ -178,8 +196,14 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 		return buildParams, nil
 	}
+	// This line is just for emit a warning
+	if lastSentCert != nil && lastSentCert.Status.IsInError() && lastSentCert.CertType != typeCert {
+		a.log.Warnf("aggchainProverFlow - next cert is a retry but type %s is != from current one %s. "+
+			" So it going to generate a totally new certificate",
+			lastSentCert.CertType, typeCert)
+	}
 
-	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true, types.CertificateTypeFEP)
+	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true, typeCert)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) {
 			// no new blocks to send a certificate
@@ -213,7 +237,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, buildParams.LastSentCertificate)
 
 	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
-		ctx, lastProvenBlock, buildParams.ToBlock, buildParams.Claims)
+		ctx, lastProvenBlock, buildParams.ToBlock, buildParams)
 	if err != nil {
 		if errors.As(err, errNoProofBuiltYet) {
 			a.log.Infof("aggchainProverFlow - no proof built yet for lastProvenBlock: %d, maxEndBlock: %d",
@@ -307,13 +331,13 @@ func adjustBlockRange(buildParams *types.CertificateBuildParams,
 func (a *AggchainProverFlow) GenerateAggchainProof(
 	ctx context.Context,
 	lastProvenBlock, toBlock uint64,
-	claims []bridgesync.Claim,
+	certBuildParams *types.CertificateBuildParams,
 ) (*types.AggchainProof, *treetypes.Root, error) {
 	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
-
+	claims := certBuildParams.Claims
 	if err := a.l1InfoTreeDataQuerier.CheckIfClaimsArePartOfFinalizedL1InfoTree(
 		root, claims); err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
@@ -343,10 +367,8 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		GERLeavesWithBlockNumber:           injectedGERsProofs,
 		ImportedBridgeExitsWithBlockNumber: importedBridgeExits,
 	}
-	optimisticMode, err := a.optimisticModeQuerier.IsOptimisticModeOn()
-	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting optimistic mode: %w", err)
-	}
+	// It decide if must generate optimistic proof using CertType
+	optimisticMode := certBuildParams.CertificateType == types.CertificateTypeOptimistic
 	a.log.Infof("aggchainProverFlow - requesting proof lastProvenBlock: %d, maxEndBlock: %d, optimisticMode: %t",
 		lastProvenBlock, toBlock, optimisticMode)
 	if !optimisticMode {
@@ -355,12 +377,20 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		if a.signer == nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request, signer is nil")
 		}
-		// TODO: set newLER and importedBridges
-		sign, err := a.optimisticSigner.Sign(ctx, *request, leaf.Hash, nil)
+		newLER, err := a.baseFlow.GetNewLocalExitRoot(ctx, certBuildParams)
+		if err != nil {
+			return nil, nil, fmt.Errorf("aggchainProverFlow - error getting new local exit root: %w", err)
+		}
+		sign, err := a.optimisticSigner.Sign(ctx, *request, newLER, certBuildParams)
 		if err != nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request: %w", err)
 		}
 		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign[:])
+		if err != nil {
+			return nil, nil, fmt.Errorf("aggchainProverFlow - error generating optimistic aggchain proof: %w", err)
+		}
+		a.log.Infof("aggchainProverFlow - generated optimistic aggchain proof for lastProvenBlock: %d, maxEndBlock: %d",
+			lastProvenBlock, toBlock)
 	}
 	if err != nil {
 		return nil, nil, fmt.Errorf(`error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, maxEndBlock: %d: %w. 

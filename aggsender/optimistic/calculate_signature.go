@@ -69,36 +69,40 @@ func (s *AggregationProofPublicValues) Hash() (common.Hash, error) {
 }
 
 type OptimisticSignatureData struct {
-	aggregationProofPublicValues AggregationProofPublicValues
-	newLocalExitRoot             common.Hash
-	commitImportedBridgeExits    common.Hash
+	aggregationProofPublicValuesHash common.Hash
+	newLocalExitRoot                 common.Hash
+	commitImportedBridgeExits        common.Hash
 }
 
-func NewOptimisticSignatureData(aggregationProofPublicValues AggregationProofPublicValues, cert *agglayertypes.Certificate) *OptimisticSignatureData {
-	return &OptimisticSignatureData{
-		aggregationProofPublicValues: aggregationProofPublicValues,
-		newLocalExitRoot:             cert.NewLocalExitRoot,
-		commitImportedBridgeExits:    CalculateCommitImportedBridgeExitsHash(cert.ImportedBridgeExits),
+/*
+	func NewOptimisticSignatureDataFromAgglayerCert(aggregationProofPublicValues AggregationProofPublicValues, cert *agglayertypes.Certificate) *OptimisticSignatureData {
+		return &OptimisticSignatureData{
+			aggregationProofPublicValues: aggregationProofPublicValues,
+			newLocalExitRoot:             cert.NewLocalExitRoot,
+			commitImportedBridgeExits:    CalculateCommitImportedBridgeExitsHashFromImportedBridges(cert.ImportedBridgeExits),
+		}
 	}
-}
 
-func OptimisticHashToSign(o *OptimisticSignatureData) (common.Hash, error) {
-	aggregationProofPublicValuesHash, err := o.aggregationProofPublicValues.Hash()
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("OptimisticSignatureData.Hash: error hashing aggregationProofPublicValues: %w", err)
+	func NewOptimisticSignatureDataFromCertBuildParams(aggregationProofPublicValues AggregationProofPublicValues, certBuildParams *types.CertificateBuildParams) *OptimisticSignatureData {
+		// TODO: Fill newLocalExitRoot with the correct value!!!!!!
+		return &OptimisticSignatureData{
+			aggregationProofPublicValues: aggregationProofPublicValues,
+			newLocalExitRoot:             common.Hash{},
+			commitImportedBridgeExits:    CalculateCommitImportedBrdigeExitsHashFromClaims(certBuildParams.Claims),
+		}
 	}
+*/
+
+func (o *OptimisticSignatureData) Hash() common.Hash {
 	return crypto.Keccak256Hash(
-		aggregationProofPublicValuesHash.Bytes(),
+		o.aggregationProofPublicValuesHash.Bytes(),
 		o.newLocalExitRoot.Bytes(),
 		o.commitImportedBridgeExits.Bytes(),
-	), nil
+	)
 }
 
-func OptimisticSign(ctx context.Context, o *OptimisticSignatureData, signer signertypes.HashSigner) (common.Hash, error) {
-	hash, err := OptimisticHashToSign(o)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("OptimisticSignatureData.Sign: error hashing signature data: %w", err)
-	}
+func (o *OptimisticSignatureData) Sign(ctx context.Context, signer signertypes.HashSigner) (common.Hash, error) {
+	hash := o.Hash()
 	signData, err := signer.SignHash(ctx, hash)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("OptimisticSignatureData.Sign: error signing hash: %w", err)
@@ -106,20 +110,9 @@ func OptimisticSign(ctx context.Context, o *OptimisticSignatureData, signer sign
 	return common.BytesToHash(signData), nil
 }
 
-// calulate commit_imported_bridge_exits
-// /// keccak(ib[0].global_index # ib[0].bridge_exit_hash # .. # ib[n].global_index # ib[n].bridge_exit_hash)
-// let commit_imported_bridge_exits = keccak256_combine(
-//
-//	imported_bridge_exits.iter().map(|ibe| {
-//	    [
-//	        ibe.global_index.as_le_slice(),
-//	        ibe.bridge_exit_hash.as_slice(),
-//	    ]
-//	    .concat()
-//	})
-//
-// )
-func CalculateCommitImportedBridgeExitsHash(importedBridges []*agglayertypes.ImportedBridgeExit) common.Hash {
+// CalculateCommitImportedBridgeExitsHashFromImportedBridges calculate from a agglayer certificate
+func CalculateCommitImportedBridgeExitsHashFromImportedBridges(
+	importedBridges []*agglayertypes.ImportedBridgeExit) common.Hash {
 	var combined []byte
 	for _, claim := range importedBridges {
 		globalIndex := bridgesync.GenerateGlobalIndex(
@@ -157,7 +150,7 @@ func CalculateBridgeExitHash(bridgeExit *agglayertypes.BridgeExit) common.Hash {
 	)
 }
 
-// This calculate hash from certBuildParams
+// CalculateCommitImportedBrdigeExitsHashFromClaims.This calculate hash from certBuildParams
 func CalculateCommitImportedBrdigeExitsHashFromClaims(claims []bridgesync.Claim) common.Hash {
 	var combined []byte
 	for _, claim := range claims {

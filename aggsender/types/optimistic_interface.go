@@ -3,8 +3,6 @@ package types
 import (
 	"context"
 
-	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -17,6 +15,6 @@ type OptimisticSigner interface {
 	Sign(ctx context.Context,
 		aggchainReq AggchainProofRequest,
 		newLocalExitRoot common.Hash,
-		importedBridges []*agglayertypes.ImportedBridgeExit,
+		certBuildParams *CertificateBuildParams,
 	) (common.Hash, error)
 }

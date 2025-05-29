@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
-	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
@@ -19,7 +18,7 @@ type OptimisticSignatureCalculator interface {
 	Sign(ctx context.Context,
 		aggchainReq types.AggchainProofRequest,
 		newLocalExitRoot common.Hash,
-		importedBridges []*agglayertypes.ImportedBridgeExit,
+		certBuildParams *types.CertificateBuildParams,
 	) (common.Hash, error)
 }
 
@@ -61,7 +60,7 @@ func NewOptimisticSignatureCalculatorImpl(
 func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	aggchainReq types.AggchainProofRequest,
 	newLocalExitRoot common.Hash,
-	importedBridges []*agglayertypes.ImportedBridgeExit,
+	certBuildParams *types.CertificateBuildParams,
 ) (common.Hash, error) {
 	aggregationProofPublicValues, err := o.QueryAggregationProofPublicValues.GetAggregationProofPublicValuesData(
 		aggchainReq.LastProvenBlock,
@@ -71,12 +70,17 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	if err != nil {
 		return common.Hash{}, err
 	}
-	importedBridgesHash := CalculateCommitImportedBridgeExitsHash(importedBridges)
-	signature, err := OptimisticSign(ctx, &OptimisticSignatureData{
-		aggregationProofPublicValues: *aggregationProofPublicValues,
-		newLocalExitRoot:             newLocalExitRoot,
-		commitImportedBridgeExits:    importedBridgesHash,
-	}, o.Signer)
+	aggregationProofPublicValuesHash, err := aggregationProofPublicValues.Hash()
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("aggregationProofPublicValues.Hash: error hashing aggregationProofPublicValues: %w", err)
+	}
+	importedBridgesHash := CalculateCommitImportedBrdigeExitsHashFromClaims(certBuildParams.Claims)
+	optimisticSignature := OptimisticSignatureData{
+		aggregationProofPublicValuesHash: aggregationProofPublicValuesHash,
+		newLocalExitRoot:                 newLocalExitRoot,
+		commitImportedBridgeExits:        importedBridgesHash,
+	}
+	signature, err := optimisticSignature.Sign(ctx, o.Signer)
 	if err != nil {
 		return common.Hash{}, err
 	}

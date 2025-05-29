@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
 	configtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -28,7 +27,7 @@ type AggchainProofFlow interface {
 	GenerateAggchainProof(
 		ctx context.Context,
 		lastProvenBlock, toBlock uint64,
-		claims []bridgesync.Claim) (*types.AggchainProof, *treetypes.Root, error)
+		certBuildParams *types.CertificateBuildParams) (*types.AggchainProof, *treetypes.Root, error)
 }
 
 // Config is the configuration for the AggchainProofGenerationTool
@@ -165,11 +164,14 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	a.logger.Debugf("Calling AggchainProofClient to generate proof for block range [%d : %d]",
 		fromBlock, maxEndBlock)
 
+	certBuildParams := &types.CertificateBuildParams{
+		Claims: claims,
+	}
 	aggchainProof, _, err := a.flow.GenerateAggchainProof(
 		ctx,
 		lastProvenBlock,
 		maxEndBlock,
-		claims,
+		certBuildParams,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error generating Aggchain proof: %w", err)

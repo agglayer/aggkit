@@ -122,6 +122,24 @@ func (f *baseFlow) limitCertSize(
 	}
 }
 
+// GetNewLocalExitRoot gets the new local exit root for the certificate
+func (f *baseFlow) GetNewLocalExitRoot(ctx context.Context,
+	certParams *types.CertificateBuildParams) (common.Hash, error) {
+	if certParams == nil {
+		return common.Hash{}, fmt.Errorf("baseFlow.GetNewLocalExitRoot. certificate build parameters cannot be nil")
+	}
+	_, previousLER, err := f.getNextHeightAndPreviousLER(certParams.LastSentCertificate)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("baseFlow.GetNewLocalExitRoot. error getting next height and previous LER: %w", err)
+	}
+
+	newLER, err := f.getNewLocalExitRoot(ctx, certParams, previousLER)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("baseFlow.GetNewLocalExitRoot. error getting new local exit root: %w", err)
+	}
+	return newLER, nil
+}
+
 func (f *baseFlow) buildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
 	lastSentCertificate *types.CertificateHeader,
