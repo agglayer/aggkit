@@ -200,16 +200,18 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 		Backoff:           dialBackoff,
 		MinConnectTimeout: cfg.MinConnectTimeout.Duration,
 	}
+	opts := []grpc.DialOption{
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
+		grpc.WithConnectParams(connectParams),
+	}
 
 	serviceCfgJSON, err := createServiceConfig(retryCfg)
 	if err != nil {
 		return nil, err
 	}
 
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
-		grpc.WithConnectParams(connectParams),
-		grpc.WithDefaultServiceConfig(serviceCfgJSON),
+	if serviceCfgJSON != "" {
+		opts = append(opts, grpc.WithDefaultServiceConfig(serviceCfgJSON))
 	}
 
 	if cfg.UseTLS {
