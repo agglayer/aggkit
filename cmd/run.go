@@ -260,6 +260,10 @@ func createAggoracle(
 		if err != nil {
 			log.Fatal(err)
 		}
+		logger.Infof("AggOracle sender address: %s | GER contract address on L2: %s",
+			ethTxManager.From().Hex(),
+			cfg.AggOracle.EVMSender.GlobalExitRootL2Addr.Hex(),
+		)
 		go ethTxManager.Start()
 		sender, err = chaingersender.NewEVMChainGERSender(
 			logger,
