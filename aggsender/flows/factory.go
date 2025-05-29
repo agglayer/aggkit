@@ -33,6 +33,7 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
+		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 
 		return NewPPFlow(
 			logger,
@@ -51,6 +52,7 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
+		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 
 		aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {

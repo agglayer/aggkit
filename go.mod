@@ -10,7 +10,7 @@ require (
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250520163122-7efa0a2f81a8.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.3
 	github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229
-	github.com/0xPolygon/zkevm-ethtx-manager v0.2.12
+	github.com/0xPolygon/zkevm-ethtx-manager v0.2.13
 	github.com/agglayer/go_signer v0.0.6
 	github.com/ethereum/go-ethereum v1.15.5
 	github.com/gin-gonic/gin v1.10.0
