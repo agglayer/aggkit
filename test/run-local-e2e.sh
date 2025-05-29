@@ -1,0 +1,123 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+NC='\033[0m'
+
+log_info() { echo -e "${GREEN}[INFO]${NC} $*" | tee -a "$LOG_FILE"; }
+log_error() { echo -e "${RED}[ERROR]${NC} $*" | tee -a "$LOG_FILE"; }
+
+trap 'log_error "Script failed at line $LINENO"' ERR
+
+if [ "$#" -lt 2 ]; then
+    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <kurtosis_repo> [e2e_repo]"
+    exit 1
+fi
+
+TEST_TYPE=$1
+KURTOSIS_FOLDER=$2
+E2E_FOLDER=${3:-""}
+
+PROJECT_ROOT="$PWD"
+ROOT_FOLDER="/tmp/aggkit-e2e-run"
+LOG_FOLDER="$ROOT_FOLDER/logs"
+LOG_FILE="$LOG_FOLDER/run-local-e2e.log"
+
+rm -rf "$ROOT_FOLDER"
+mkdir -p "$LOG_FOLDER"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+log_info "Starting local E2E setup..."
+
+if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ]; then
+    log_info "Building aggkit:local docker image..."
+    pushd "$PROJECT_ROOT" >/dev/null
+    make build-docker
+    make build-tools
+    chmod +x "./target/aggsender_find_imported_bridge"
+    popd >/dev/null
+else
+    log_info "Docker image aggkit:local already exists."
+fi
+
+log_info "Using provided Kurtosis CDK repo at: $KURTOSIS_FOLDER"
+
+pushd "$KURTOSIS_FOLDER" >/dev/null
+log_info "Cleaning any existing Kurtosis enclaves..."
+kurtosis clean --all
+
+log_info "Starting Kurtosis enclave"
+case "$TEST_TYPE" in
+single-l2-network-fork12-op-succinct)
+    ENCLAVE_NAME="op"
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
+    ;;
+single-l2-network-fork12-pessimistic)
+    ENCLAVE_NAME="aggkit"
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_pessimistic_args.json" .
+    ;;
+multi-l2-networks)
+    ENCLAVE_NAME="aggkit"
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" .
+    ;;
+*)
+    log_error "Unknown test type: $TEST_TYPE"
+    exit 1
+    ;;
+esac
+log_info "$ENCLAVE_NAME enclave started successfully."
+popd >/dev/null
+
+if [ -n "$E2E_FOLDER" ]; then
+    if [ ! -d "$E2E_FOLDER" ]; then
+        log_error "The provided E2E folder does not exist: $E2E_FOLDER"
+        exit 1
+    fi
+    
+    log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
+
+    imported_bridges_tool="./target/aggsender_find_imported_bridge"
+    if [ ! -f "$imported_bridges_tool" ]; then
+        log_error "The aggsender imported bridges monitor tool is not built. Expected path: $imported_bridges_tool"
+        exit 1
+    fi
+
+    cp "$imported_bridges_tool" "$E2E_FOLDER/aggsender_find_imported_bridge"
+    chmod +x "$E2E_FOLDER/aggsender_find_imported_bridge"
+
+    log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
+    pushd "$E2E_FOLDER" >/dev/null
+
+    log_info "Setting up e2e environment..."
+    set -a
+    source ./tests/.env
+    set +a
+
+    export BATS_LIB_PATH="$PWD/core/helpers/lib"
+    export PROJECT_ROOT="$PWD"
+    export ENCLAVE="$ENCLAVE_NAME"
+    export AGGSENDER_IMPORTED_BRIDGE_PATH="$E2E_FOLDER/aggsender_find_imported_bridge"
+
+    log_info "Running BATS E2E tests..."
+    case "$TEST_TYPE" in
+    single-l2-network-fork12-op-succinct)
+        export DISABLE_L2_FUND="false"
+        bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
+        ;;
+    single-l2-network-fork12-pessimistic)
+        export DISABLE_L2_FUND="true"
+        bats ./tests/aggkit/bridge-e2e-custom-gas.bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/e2e-pp.bats
+        ;;
+    multi-l2-networks)
+        export DISABLE_L2_FUND="true"
+        bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
+        ;;
+    esac
+    popd >/dev/null
+    log_info "E2E tests executed. Logs saved to $LOG_FILE"
+else
+    log_info "E2E_FOLDER not provided, skipping tests."
+fi

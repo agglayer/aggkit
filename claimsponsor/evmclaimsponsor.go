@@ -2,18 +2,16 @@ package claimsponsor
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
-	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
-	configTypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 )
@@ -23,14 +21,14 @@ const (
 	LeafTypeAsset uint8 = 0
 	// LeafTypeMessage represents a bridge message
 	LeafTypeMessage uint8 = 1
+)
 
-	gasTooHighErrTemplate = "Claim tx estimated to consume more gas than the maximum allowed by the service. " +
-		"Estimated %d, maximum allowed: %d"
+var ErrGasEstimateTooHigh = errors.New(
+	"claim gas estimate exceeds maximum gas allowed by claim sponsor service",
 )
 
 type EthClienter interface {
 	ethereum.GasEstimator
-	bind.ContractBackend
 }
 
 type EthTxManager interface {
@@ -47,35 +45,8 @@ type EVMClaimSponsor struct {
 	bridgeAddr   common.Address
 	ethTxManager EthTxManager
 	sender       common.Address
-	gasOffest    uint64
+	gasOffset    uint64
 	maxGas       uint64
-}
-
-type EVMClaimSponsorConfig struct {
-	// DBPath path of the DB
-	DBPath string `mapstructure:"DBPath"`
-	// Enabled indicates if the sponsor should be run or not
-	Enabled bool `mapstructure:"Enabled"`
-	// SenderAddr is the address that will be used to send the claim txs
-	SenderAddr common.Address `mapstructure:"SenderAddr"`
-	// BridgeAddrL2 is the address of the bridge smart contract on L2
-	BridgeAddrL2 common.Address `mapstructure:"BridgeAddrL2"`
-	// MaxGas is the max gas (limit) allowed for a claim to be sponsored
-	MaxGas uint64 `mapstructure:"MaxGas"`
-	// RetryAfterErrorPeriod is the time that will be waited when an unexpected error happens before retry
-	RetryAfterErrorPeriod configTypes.Duration `mapstructure:"RetryAfterErrorPeriod"`
-	// MaxRetryAttemptsAfterError is the maximum number of consecutive attempts that will happen before panicing.
-	// Any number smaller than zero will be considered as unlimited retries
-	MaxRetryAttemptsAfterError int `mapstructure:"MaxRetryAttemptsAfterError"`
-	// WaitTxToBeMinedPeriod is the period that will be used to ask if a given tx has been mined (or failed)
-	WaitTxToBeMinedPeriod configTypes.Duration `mapstructure:"WaitTxToBeMinedPeriod"`
-	// WaitOnEmptyQueue is the time that will be waited before trying to send the next claim of the queue
-	// if the queue is empty
-	WaitOnEmptyQueue configTypes.Duration `mapstructure:"WaitOnEmptyQueue"`
-	// EthTxManager is the configuration of the EthTxManager to be used by the claim sponsor
-	EthTxManager ethtxmanager.Config `mapstructure:"EthTxManager"`
-	// GasOffset is the gas to add on top of the estimated gas when sending the claim txs
-	GasOffset uint64 `mapstructure:"GasOffset"`
 }
 
 func NewEVMClaimSponsor(
@@ -91,8 +62,10 @@ func NewEVMClaimSponsor(
 	waitTxToBeMinedPeriod time.Duration,
 	waitOnEmptyQueue time.Duration,
 ) (*ClaimSponsor, error) {
+	logger.Info("initializing evm claim sponsor")
 	abi, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
 	if err != nil {
+		logger.Errorf("failed to get bridge ABI: %v", err)
 		return nil, err
 	}
 
@@ -101,7 +74,7 @@ func NewEVMClaimSponsor(
 		bridgeABI:    abi,
 		bridgeAddr:   bridgeAddr,
 		sender:       sender,
-		gasOffest:    gasOffset,
+		gasOffset:    gasOffset,
 		maxGas:       maxGas,
 		ethTxManager: ethTxManager,
 	}
@@ -119,14 +92,16 @@ func NewEVMClaimSponsor(
 		return nil, err
 	}
 
+	logger.Info("evm claim sponsor initialized successfully")
 	return baseSponsor, nil
 }
 
-func (c *EVMClaimSponsor) checkClaim(ctx context.Context, claim *Claim) error {
-	data, err := c.buildClaimTxData(claim)
-	if err != nil {
-		return err
+func (c *EVMClaimSponsor) checkClaim(ctx context.Context, claim *Claim, data []byte) error {
+	// if maxGas is zero, that means “no limit”
+	if c.maxGas == 0 {
+		return nil
 	}
+
 	gas, err := c.l2Client.EstimateGas(ctx, ethereum.CallMsg{
 		From: c.sender,
 		To:   &c.bridgeAddr,
@@ -136,7 +111,10 @@ func (c *EVMClaimSponsor) checkClaim(ctx context.Context, claim *Claim) error {
 		return err
 	}
 	if gas > c.maxGas {
-		return fmt.Errorf(gasTooHighErrTemplate, gas, c.maxGas)
+		return fmt.Errorf(
+			"%w: estimated %d, maximum allowed: %d",
+			ErrGasEstimateTooHigh, gas, c.maxGas,
+		)
 	}
 
 	return nil
@@ -147,7 +125,12 @@ func (c *EVMClaimSponsor) sendClaim(ctx context.Context, claim *Claim) (string, 
 	if err != nil {
 		return "", err
 	}
-	id, err := c.ethTxManager.Add(ctx, &c.bridgeAddr, common.Big0, data, c.gasOffest, nil)
+
+	if err := c.checkClaim(ctx, claim, data); err != nil {
+		return "", err
+	}
+
+	id, err := c.ethTxManager.Add(ctx, &c.bridgeAddr, common.Big0, data, c.gasOffset, nil)
 	if err != nil {
 		return "", err
 	}

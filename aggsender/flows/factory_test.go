@@ -7,7 +7,9 @@ import (
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/stretchr/testify/require"
 )
@@ -28,6 +30,7 @@ func TestNewFlow(t *testing.T) {
 				Mode:                string(types.PessimisticProofMode),
 				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
 				MaxCertSize:         100,
+				AggkitProverClient:  aggkitgrpc.DefaultConfig(),
 			},
 		},
 		{
@@ -37,6 +40,7 @@ func TestNewFlow(t *testing.T) {
 				AggsenderPrivateKey: signertypes.SignerConfig{
 					Method: signertypes.MethodLocal,
 				},
+				AggkitProverClient: aggkitgrpc.DefaultConfig(),
 			},
 			expectedError: "error signer.Initialize",
 		},
@@ -47,16 +51,17 @@ func TestNewFlow(t *testing.T) {
 				AggsenderPrivateKey: signertypes.SignerConfig{
 					Method: signertypes.MethodLocal,
 				},
+				AggkitProverClient: aggkitgrpc.DefaultConfig(),
 			},
 			expectedError: "error signer.Initialize",
 		},
 		{
-			name: "error missing AggchainProofURL in AggchainProofMode",
+			name: "error missing AggkitProverClient in AggchainProofMode",
 			cfg: config.Config{
 				Mode:                string(types.AggchainProofMode),
 				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
 			},
-			expectedError: "aggchain prover mode requires AggchainProofURL",
+			expectedError: "invalid aggkit prover client config: gRPC client configuration cannot be nil",
 		},
 		{
 			name: "unsupported Aggsender mode",
@@ -73,8 +78,8 @@ func TestNewFlow(t *testing.T) {
 			t.Parallel()
 
 			mockStorage := new(mocks.AggSenderStorage)
-			mockL1Client := new(mocks.EthClient)
-			mockL2Client := new(mocks.EthClient)
+			mockL1Client := new(typesmocks.BaseEthereumClienter)
+			mockL2Client := new(typesmocks.BaseEthereumClienter)
 			mockL1InfoTreeSyncer := new(mocks.L1InfoTreeSyncer)
 			mockL2BridgeSyncer := new(mocks.L2BridgeSyncer)
 			mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(1)

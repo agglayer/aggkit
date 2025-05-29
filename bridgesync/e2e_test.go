@@ -11,9 +11,11 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/helpers"
+	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,12 +24,17 @@ func TestBridgeEventE2E(t *testing.T) {
 		blockTime    = time.Millisecond * 10
 		totalBridges = 80
 	)
-	setup := helpers.NewE2EEnvWithEVML2(t)
+
+	rpcClient := mocks.NewRPCClienter(t)
+	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+
+	setup := helpers.NewE2EEnvWithEVML2(t, &helpers.EnvironmentConfig{L1RPCClient: rpcClient})
 	ctx := context.Background()
 	// Send bridge txs
 	bridgesSent := 0
 	expectedBridges := []bridgesync.Bridge{}
 	lastDepositCount := uint32(0)
+
 	for i := 1; i > 0; i++ {
 		// Send bridge
 		bridge := bridgesync.Bridge{
@@ -36,7 +43,9 @@ func TestBridgeEventE2E(t *testing.T) {
 			DestinationNetwork: uint32(i + 1),
 			DestinationAddress: common.HexToAddress("f00"),
 			Metadata:           []byte{},
+			IsNativeToken:      true,
 		}
+
 		lastDepositCount++
 		tx, err := setup.L1Environment.BridgeContract.BridgeAsset(
 			setup.L1Environment.Auth,
@@ -48,10 +57,17 @@ func TestBridgeEventE2E(t *testing.T) {
 		)
 		require.NoError(t, err)
 		helpers.CommitBlocks(t, setup.L1Environment.SimBackend, 1, blockTime)
-		bn, err := setup.L1Environment.SimBackend.Client().BlockNumber(ctx)
+
+		simulatedClient := setup.L1Environment.SimBackend.Client()
+		bn, err := simulatedClient.BlockNumber(ctx)
 		require.NoError(t, err)
 		bridge.BlockNum = bn
 		receipt, err := setup.L1Environment.SimBackend.Client().TransactionReceipt(ctx, tx.Hash())
+		require.NoError(t, err)
+		bridge.TxHash = receipt.TxHash
+		block, err := simulatedClient.BlockByNumber(ctx, new(big.Int).SetUint64(bn))
+		require.NoError(t, err)
+		bridge.BlockTimestamp = block.Time()
 		require.NoError(t, err)
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 		expectedBridges = append(expectedBridges, bridge)
@@ -88,7 +104,7 @@ func TestBridgeEventE2E(t *testing.T) {
 	root, err := setup.L1Environment.BridgeSync.GetExitRootByIndex(ctx, expectedBridges[len(expectedBridges)-1].DepositCount)
 	require.NoError(t, err)
 	log.Infof("expectedRoot: %s lastBlock: %d lastFinalized:%d DepositCount:%d ", common.Hash(expectedRoot).Hex(), lastBlock, lb, expectedBridges[len(expectedBridges)-1].DepositCount)
-	for i := 79; i >= 00; i-- {
+	for i := 79; i >= 0; i-- {
 		root, err := setup.L1Environment.BridgeSync.GetExitRootByIndex(ctx, uint32(i))
 		require.NoError(t, err, fmt.Sprintf("DepositCount:%d", i))
 		log.Infof("DepositCount:%d root: %s", i, root.Hash.Hex())
