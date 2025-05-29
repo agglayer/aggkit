@@ -248,7 +248,7 @@ func createServiceConfig(cfg *RetryConfig) (string, error) {
 			BackoffMultiplier: cfg.BackoffMultiplier,
 			RetryableStatusCodes: []string{
 				grpcCodeCanonicalString(codes.Unavailable),
-				grpcCodeCanonicalString(codes.DeadlineExceeded),
+				grpcCodeCanonicalString(codes.Aborted),
 				grpcCodeCanonicalString(codes.ResourceExhausted),
 			},
 		},
