@@ -299,7 +299,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		return err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err = tx.Commit(); err != nil {
 		return err
 	}
 
@@ -333,13 +333,17 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}()
 
-	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
+	if _, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
 		return fmt.Errorf("insert Block. err: %w", err)
 	}
 
-	var initialL1InfoIndex uint32
-	var l1InfoLeavesAdded uint32
-	lastIndex, err := p.getLastIndex(tx)
+	var (
+		initialL1InfoIndex uint32
+		l1InfoLeavesAdded  uint32
+		lastIndex          uint32
+	)
+
+	lastIndex, err = p.getLastIndex(tx)
 
 	switch {
 	case errors.Is(err, db.ErrNotFound):
@@ -385,8 +389,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		if event.UpdateL1InfoTreeV2 != nil {
 			p.log.Infof("handle UpdateL1InfoTreeV2 event. Block: %d, block hash: %s. Event root: %s. Event leaf count: %d.",
 				block.Num, block.Hash, event.UpdateL1InfoTreeV2.CurrentL1InfoRoot.String(), event.UpdateL1InfoTreeV2.LeafCount)
-
-			root, err := p.l1InfoTree.GetLastRoot(tx)
+			var root treeTypes.Root
+			root, err = p.l1InfoTree.GetLastRoot(tx)
 			if err != nil {
 				return fmt.Errorf("GetLastRoot(). err: %w", err)
 			}
@@ -407,7 +411,9 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				p.haltedReason = errStr
 				p.halted = true
 				p.mu.Unlock()
-				return sync.ErrInconsistentState
+
+				err = sync.ErrInconsistentState
+				return err
 			}
 		}
 		if event.VerifyBatches != nil {
@@ -431,7 +437,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("err: %w", err)
 	}
 	shouldRollback = false
