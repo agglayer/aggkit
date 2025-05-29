@@ -221,6 +221,14 @@ sequenceDiagram
     Note right of User: Bridge process completed successfully
 ```
 
+## API Documentation
+
+<iframe src="assets/swagger/bridge_service/index.html" 
+  style="width: 100%; height: 90vh; border: none;"
+  loading="lazy"></iframe>
+
+
+<!-- TODO: REMOVE -->
 ## API
 
 This paragraph explains a set of endpoints, that are necessary in order to conduct the bridge flow described above.

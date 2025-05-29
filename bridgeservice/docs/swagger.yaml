@@ -95,14 +95,24 @@ definitions:
     description: Claim proof structure for verifying claims in the bridge
     properties:
       l1_info_tree_leaf:
-        $ref: '#/definitions/types.L1InfoTreeLeafResponse'
+        allOf:
+        - $ref: '#/definitions/types.L1InfoTreeLeafResponse'
+        description: L1 info tree leaf data associated with the claim
       proof_local_exit_root:
-        description: Merkle proof structure for a tree of a given height
+        description: Merkle proof for the local exit root
+        example:
+        - '[0x1'
+        - ' 0x2'
+        - ' 0x3...]'
         items:
           type: string
         type: array
       proof_rollup_exit_root:
-        description: Merkle proof structure for a tree of a given height
+        description: Merkle proof for the rollup exit root
+        example:
+        - '[0x4'
+        - ' 0x5'
+        - ' 0x6...]'
         items:
           type: string
         type: array
@@ -223,7 +233,7 @@ definitions:
     description: Generic error response structure
     properties:
       error:
-        example: Invalid request parameters
+        example: Error message
         type: string
     type: object
   types.L1InfoTreeLeafResponse:
@@ -318,6 +328,24 @@ definitions:
         items:
           $ref: '#/definitions/types.LegacyTokenMigrationResponse'
         type: array
+    type: object
+  types.NetworkSyncInfo:
+    description: Contains network-specific synchronization information
+    properties:
+      bridge_deposit_count:
+        type: integer
+      contract_deposit_count:
+        type: integer
+      is_synced:
+        type: boolean
+    type: object
+  types.SyncStatus:
+    description: Contains synchronization information for both L1 and L2 networks
+    properties:
+      l1_info:
+        $ref: '#/definitions/types.NetworkSyncInfo'
+      l2_info:
+        $ref: '#/definitions/types.NetworkSyncInfo'
     type: object
   types.TokenMappingResponse:
     description: Detailed information about a token mapping between origin and wrapped
@@ -433,11 +461,11 @@ paths:
           schema:
             $ref: '#/definitions/types.BridgesResult'
         "400":
-          description: Invalid request parameters
+          description: Bad Request
           schema:
             $ref: '#/definitions/types.ErrorResponse'
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Get bridges
@@ -470,11 +498,11 @@ paths:
           schema:
             $ref: '#/definitions/types.ClaimProof'
         "400":
-          description: Missing or invalid parameters
+          description: Bad Request
           schema:
             $ref: '#/definitions/types.ErrorResponse'
         "500":
-          description: Internal server error retrieving claim proof
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Get claim proof
@@ -516,11 +544,11 @@ paths:
           schema:
             $ref: '#/definitions/types.ClaimsResult'
         "400":
-          description: Invalid request parameters
+          description: Bad Request
           schema:
             $ref: '#/definitions/types.ErrorResponse'
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Get claims
@@ -609,11 +637,11 @@ paths:
           schema:
             $ref: '#/definitions/bridgesync.LastReorg'
         "400":
-          description: Bad request due to missing or invalid parameters
+          description: Bad Request
           schema:
             $ref: '#/definitions/types.ErrorResponse'
         "500":
-          description: Internal server error retrieving reorg data
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Get last reorg event
@@ -660,7 +688,7 @@ paths:
       - application/json
       description: Sponsors a claim to be processed by the bridge service.
       parameters:
-      - description: Claim Request
+      - description: Claim request
         in: body
         name: Claim
         required: true
@@ -674,11 +702,11 @@ paths:
           schema:
             type: string
         "400":
-          description: Invalid request parameters
+          description: Bad Request
           schema:
             $ref: '#/definitions/types.ErrorResponse'
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Sponsor a claim
@@ -702,16 +730,33 @@ paths:
           schema:
             type: string
         "400":
-          description: Missing or invalid input, or sponsorship not supported
+          description: Bad Request
           schema:
             $ref: '#/definitions/types.ErrorResponse'
         "500":
-          description: Internal server error retrieving claim status
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Get sponsored claim status
       tags:
       - claim-sponsoring
+  /sync-status:
+    get:
+      description: Returns the sync status by comparing the deposit count
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Bridge sync status for both L1 and L2 networks
+          schema:
+            $ref: '#/definitions/types.SyncStatus'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get bridge sync status
+      tags:
+      - sync
   /token-mappings:
     get:
       description: Returns token mappings for the given network, paginated
@@ -737,11 +782,11 @@ paths:
           schema:
             $ref: '#/definitions/types.TokenMappingsResult'
         "400":
-          description: Invalid request parameters
+          description: Bad Request
           schema:
             $ref: '#/definitions/types.ErrorResponse'
         "500":
-          description: Internal server error
+          description: Internal Server Error
           schema:
             $ref: '#/definitions/types.ErrorResponse'
       summary: Get token mappings

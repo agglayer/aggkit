@@ -83,13 +83,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request parameters",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -138,13 +138,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Missing or invalid parameters",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error retrieving claim proof",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -207,13 +207,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request parameters",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -344,13 +344,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Bad request due to missing or invalid parameters",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error retrieving reorg data",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -426,7 +426,7 @@ const docTemplate = `{
                 "summary": "Sponsor a claim",
                 "parameters": [
                     {
-                        "description": "Claim Request",
+                        "description": "Claim request",
                         "name": "Claim",
                         "in": "body",
                         "required": true,
@@ -443,13 +443,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request parameters",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -484,13 +484,39 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Missing or invalid input, or sponsorship not supported",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error retrieving claim status",
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sync-status": {
+            "get": {
+                "description": "Returns the sync status by comparing the deposit count",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sync"
+                ],
+                "summary": "Get bridge sync status",
+                "responses": {
+                    "200": {
+                        "description": "Bridge sync status for both L1 and L2 networks",
+                        "schema": {
+                            "$ref": "#/definitions/types.SyncStatus"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -537,13 +563,13 @@ const docTemplate = `{
                         }
                     },
                     "400": {
-                        "description": "Invalid request parameters",
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
                     },
                     "500": {
-                        "description": "Internal server error",
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/types.ErrorResponse"
                         }
@@ -676,21 +702,36 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "l1_info_tree_leaf": {
-                    "$ref": "#/definitions/types.L1InfoTreeLeafResponse"
+                    "description": "L1 info tree leaf data associated with the claim",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.L1InfoTreeLeafResponse"
+                        }
+                    ]
                 },
                 "proof_local_exit_root": {
-                    "description": "Merkle proof structure for a tree of a given height",
+                    "description": "Merkle proof for the local exit root",
                     "type": "array",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "example": [
+                        "[0x1",
+                        " 0x2",
+                        " 0x3...]"
+                    ]
                 },
                 "proof_rollup_exit_root": {
-                    "description": "Merkle proof structure for a tree of a given height",
+                    "description": "Merkle proof for the rollup exit root",
                     "type": "array",
                     "items": {
                         "type": "string"
-                    }
+                    },
+                    "example": [
+                        "[0x4",
+                        " 0x5",
+                        " 0x6...]"
+                    ]
                 }
             }
         },
@@ -846,7 +887,7 @@ const docTemplate = `{
             "properties": {
                 "error": {
                     "type": "string",
-                    "example": "Invalid request parameters"
+                    "example": "Error message"
                 }
             }
         },
@@ -965,6 +1006,33 @@ const docTemplate = `{
                     "items": {
                         "$ref": "#/definitions/types.LegacyTokenMigrationResponse"
                     }
+                }
+            }
+        },
+        "types.NetworkSyncInfo": {
+            "description": "Contains network-specific synchronization information",
+            "type": "object",
+            "properties": {
+                "bridge_deposit_count": {
+                    "type": "integer"
+                },
+                "contract_deposit_count": {
+                    "type": "integer"
+                },
+                "is_synced": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "types.SyncStatus": {
+            "description": "Contains synchronization information for both L1 and L2 networks",
+            "type": "object",
+            "properties": {
+                "l1_info": {
+                    "$ref": "#/definitions/types.NetworkSyncInfo"
+                },
+                "l2_info": {
+                    "$ref": "#/definitions/types.NetworkSyncInfo"
                 }
             }
         },
