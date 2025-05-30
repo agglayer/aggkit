@@ -7,6 +7,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/grpc"
+	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
@@ -71,6 +72,11 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 		}
+		optimisticSigner, optimisticModeQuerier, err := optimistic.NewOptimistic(
+			ctx, logger, l1Client, cfg.OptimisticModeConfig)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
+		}
 
 		return NewAggchainProverFlow(
 			logger,
@@ -84,6 +90,8 @@ func NewFlow(
 			l1Client,
 			cfg.RequireNoFEPBlockGap,
 			signer,
+			optimisticModeQuerier,
+			optimisticSigner,
 		), nil
 
 	default:

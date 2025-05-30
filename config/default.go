@@ -5,11 +5,12 @@ package config
 const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
+OpNodeURL = "http://localhost:8080"
 
 
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
-GenerateAggchainProofTimeout = "1h"
+
 
 ForkId = 9
 ContractVersions = "elderberry"
@@ -35,6 +36,7 @@ genesisBlockNumber = 0
 	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
 	polTokenAddress = "0x0000000000000000000000000000000000000000"
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
+	AggchainFEPAddr = "0x0000000000000000000000000000000000000000"
 
 
 [L2Config]
@@ -49,13 +51,14 @@ PathRWData = "/tmp/aggkit"
 L1URLSyncChunkSize = 100
 RequireStorageContentCompatibility = true
 L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
+GenerateAggchainProofTimeout = "1h"
 `
 
 // DefaultValues is the default configuration
 const DefaultValues = `
 ForkUpgradeBatchNumber = 0
 ForkUpgradeNewForkId = 0
-
+AggsenderPrivateKey = "{Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
 
 [Log]
 Environment = "development" # "production" or "development"
@@ -217,14 +220,14 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 AggLayerURL = "{{AggLayerURL}}"
-AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
+AggsenderPrivateKey = {{AggsenderPrivateKey}}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
 DelayBeetweenRetries = "60s"
 KeepCertificatesHistory = true
-# MaxSize of the certificate to 8Mb
-MaxCertSize = 8388608
+# MaxSize of the certificate disabled
+MaxCertSize = 0
 DryRun = false
 EnableRPC = true
 AggchainProofURL = "{{AggchainProofURL}}"
@@ -242,7 +245,10 @@ RequireNoFEPBlockGap = true
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
-		
+	[AggSender.OptimisticModeConfig]
+		AggchainFEPAddr = "{{L1Config.polygonZkEVMAddress}}"
+		SignPrivateKey = {{AggsenderPrivateKey}}
+		OpNodeURL = "{{OpNodeURL}}"
 [Prometheus]
 Enabled = true
 Host = "localhost"
