@@ -62,7 +62,7 @@ type L2Environment struct {
 	CommonEnvironment
 	GERContract      *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
 	AggoracleSender  aggoracle.ChainSender
-	EthTxManagerMock *EthTxManagerMock
+	EthTxManagerMock *EthTxManager
 }
 
 // NewE2EEnvWithEVML2 creates a new E2E environment with EVM L1 and L2 chains.
