@@ -15,6 +15,9 @@ test-e2e-fork12-pessimistic: stop
 .PHONY: test-e2e-fork12-op-succinct
 test-e2e-fork12-op-succinct: stop
 	./run-e2e.sh fork12 op-succinct
+	# Adding a delay to ensure that bridge service is not started before L2 op node
+	# This is a temporary fix because there is a race condition in kurtosis somewhere
+	sleep 30
 	export BATS_TEST_TIMEOUT=1800
 	bats bats/pp/bridge-native-token-e2e.bats \
 	     bats/pp/bridge-e2e-msg.bats \
