@@ -14,12 +14,9 @@ package bridgeservice
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"math"
-	"math/big"
 	"net/http"
 	"os"
 	"time"
@@ -27,7 +24,6 @@ import (
 	_ "github.com/agglayer/aggkit/bridgeservice/docs"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -147,8 +143,8 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/l1-info-tree-index", b.L1InfoTreeIndexForBridgeHandler)
 		bridgeGroup.GET("/injected-l1-info-leaf", b.InjectedL1InfoLeafHandler)
 		bridgeGroup.GET("/claim-proof", b.ClaimProofHandler)
-		bridgeGroup.POST("/sponsor-claim", b.SponsorClaimHandler)
-		bridgeGroup.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
+		// bridgeGroup.POST("/sponsor-claim", b.SponsorClaimHandler)
+		// bridgeGroup.GET("/sponsored-claim-status", b.GetSponsoredClaimStatusHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 		bridgeGroup.GET("/sync-status", b.GetSyncStatusHandler)
 
@@ -761,127 +757,127 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	})
 }
 
-// @Summary Sponsor a claim
-// @Description Sponsors a claim to be processed by the bridge service.
-// @Tags claim-sponsoring
-// @Accept json
-// @Produce json
-// @Param Claim body types.ClaimRequest true "Claim request"
-// @Success 200 {object} string "Claim is sponsored"
-// @Failure 400 {object} types.ErrorResponse "Bad Request"
-// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
-// @Router /sponsor-claim [post]
-func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
-	rawBody, err := io.ReadAll(c.Request.Body)
-	if err != nil {
-		b.logger.Warnf("failed to read request body: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
-		return
-	}
+// // @Summary Sponsor a claim
+// // @Description Sponsors a claim to be processed by the bridge service.
+// // @Tags claim-sponsoring
+// // @Accept json
+// // @Produce json
+// // @Param Claim body types.ClaimRequest true "Claim request"
+// // @Success 200 {object} string "Claim is sponsored"
+// // @Failure 400 {object} types.ErrorResponse "Bad Request"
+// // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// // @Router /sponsor-claim [post]
+// func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
+// 	rawBody, err := io.ReadAll(c.Request.Body)
+// 	if err != nil {
+// 		b.logger.Warnf("failed to read request body: %v", err)
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+// 		return
+// 	}
 
-	if len(rawBody) == 0 {
-		b.logger.Warn("empty request body received")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
-		return
-	}
+// 	if len(rawBody) == 0 {
+// 		b.logger.Warn("empty request body received")
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "request body is empty"})
+// 		return
+// 	}
 
-	var claim claimsponsor.Claim
-	if err := json.Unmarshal(rawBody, &claim); err != nil {
-		b.logger.Warnf("failed to unmarshal claim request: %v", err)
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
-		return
-	}
+// 	var claim claimsponsor.Claim
+// 	if err := json.Unmarshal(rawBody, &claim); err != nil {
+// 		b.logger.Warnf("failed to unmarshal claim request: %v", err)
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
+// 		return
+// 	}
 
-	// Validate required fields
-	if claim.GlobalIndex == nil {
-		b.logger.Warn("missing global_index in claim request")
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is mandatory", globalIndexParam)})
-		return
-	}
+// 	// Validate required fields
+// 	if claim.GlobalIndex == nil {
+// 		b.logger.Warn("missing global_index in claim request")
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is mandatory", globalIndexParam)})
+// 		return
+// 	}
 
-	b.logger.Debugf("SponsorClaim request received (claim global index=%d)", claim.GlobalIndex)
+// 	b.logger.Debugf("SponsorClaim request received (claim global index=%d)", claim.GlobalIndex)
 
-	ctx, cancel := context.WithTimeout(c, b.writeTimeout)
-	defer cancel()
+// 	ctx, cancel := context.WithTimeout(c, b.writeTimeout)
+// 	defer cancel()
 
-	cnt, merr := b.meter.Int64Counter("sponsor_claim")
-	if merr != nil {
-		b.logger.Warnf("failed to create sponsor_claim counter: %s", merr)
-	}
-	cnt.Add(ctx, 1)
+// 	cnt, merr := b.meter.Int64Counter("sponsor_claim")
+// 	if merr != nil {
+// 		b.logger.Warnf("failed to create sponsor_claim counter: %s", merr)
+// 	}
+// 	cnt.Add(ctx, 1)
 
-	if b.sponsor == nil {
-		b.logger.Warn("claim sponsoring not supported by this client")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "this client does not support claim sponsoring"})
-		return
-	}
+// 	if b.sponsor == nil {
+// 		b.logger.Warn("claim sponsoring not supported by this client")
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "this client does not support claim sponsoring"})
+// 		return
+// 	}
 
-	if claim.DestinationNetwork != b.networkID {
-		b.logger.Warnf("invalid destination network %d (expected %d)", claim.DestinationNetwork, b.networkID)
-		c.JSON(http.StatusBadRequest, gin.H{
-			"error": fmt.Sprintf("this client only sponsors claims for destination network %d", b.networkID),
-		})
-		return
-	}
+// 	if claim.DestinationNetwork != b.networkID {
+// 		b.logger.Warnf("invalid destination network %d (expected %d)", claim.DestinationNetwork, b.networkID)
+// 		c.JSON(http.StatusBadRequest, gin.H{
+// 			"error": fmt.Sprintf("this client only sponsors claims for destination network %d", b.networkID),
+// 		})
+// 		return
+// 	}
 
-	if err := b.sponsor.AddClaimToQueue(&claim); err != nil {
-		b.logger.Errorf("failed to add claim to queue: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to add claim to queue: " + err.Error()})
-		return
-	}
+// 	if err := b.sponsor.AddClaimToQueue(&claim); err != nil {
+// 		b.logger.Errorf("failed to add claim to queue: %v", err)
+// 		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to add claim to queue: " + err.Error()})
+// 		return
+// 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"status": fmt.Sprintf("claim is sponsored (global index=%d)", claim.GlobalIndex)})
-}
+// 	c.JSON(http.StatusOK, gin.H{
+// 		"status": fmt.Sprintf("claim is sponsored (global index=%d)", claim.GlobalIndex)})
+// }
 
-// GetSponsoredClaimStatusHandler returns the sponsorship status of a claim by its global index.
-//
-// @Summary Get sponsored claim status
-// @Description Returns the sponsorship status of a claim identified by the given global index.
-// Only available if claim sponsoring is enabled.
-// @Tags claim-sponsoring
-// @Param global_index query string true "Global index of the claim (big.Int format)"
-// @Produce json
-// @Success 200 {object} string "Claim sponsorship status"
-// @Failure 400 {object} types.ErrorResponse "Bad Request"
-// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
-// @Router /sponsored-claim-status [get]
-func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
-	globalIndexRaw := c.Query(globalIndexParam)
+// // GetSponsoredClaimStatusHandler returns the sponsorship status of a claim by its global index.
+// //
+// // @Summary Get sponsored claim status
+// // @Description Returns the sponsorship status of a claim identified by the given global index.
+// // Only available if claim sponsoring is enabled.
+// // @Tags claim-sponsoring
+// // @Param global_index query string true "Global index of the claim (big.Int format)"
+// // @Produce json
+// // @Success 200 {object} string "Claim sponsorship status"
+// // @Failure 400 {object} types.ErrorResponse "Bad Request"
+// // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// // @Router /sponsored-claim-status [get]
+// func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
+// 	globalIndexRaw := c.Query(globalIndexParam)
 
-	b.logger.Debugf("GetSponsoredClaimStatus request received (claim global index=%s)", globalIndexRaw)
-	ctx, cancel := context.WithTimeout(c, b.readTimeout)
-	defer cancel()
+// 	b.logger.Debugf("GetSponsoredClaimStatus request received (claim global index=%s)", globalIndexRaw)
+// 	ctx, cancel := context.WithTimeout(c, b.readTimeout)
+// 	defer cancel()
 
-	cnt, merr := b.meter.Int64Counter("get_sponsored_claim_status")
-	if merr != nil {
-		b.logger.Warnf("failed to create get_sponsored_claim_status counter: %s", merr)
-	}
-	cnt.Add(ctx, 1)
+// 	cnt, merr := b.meter.Int64Counter("get_sponsored_claim_status")
+// 	if merr != nil {
+// 		b.logger.Warnf("failed to create get_sponsored_claim_status counter: %s", merr)
+// 	}
+// 	cnt.Add(ctx, 1)
 
-	if b.sponsor == nil {
-		b.logger.Warn("claim sponsoring not supported by this client")
-		c.JSON(http.StatusBadRequest, gin.H{"error": "this client does not support claim sponsoring"})
-		return
-	}
+// 	if b.sponsor == nil {
+// 		b.logger.Warn("claim sponsoring not supported by this client")
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": "this client does not support claim sponsoring"})
+// 		return
+// 	}
 
-	if globalIndexRaw == "" {
-		b.logger.Warn("missing global_index parameter")
-		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is mandatory", globalIndexParam)})
-		return
-	}
+// 	if globalIndexRaw == "" {
+// 		b.logger.Warn("missing global_index parameter")
+// 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("%s is mandatory", globalIndexParam)})
+// 		return
+// 	}
 
-	globalIndex, _ := new(big.Int).SetString(globalIndexRaw, 0)
-	claim, err := b.sponsor.GetClaim(globalIndex)
-	if err != nil {
-		b.logger.Errorf("failed to get claim status for global index %d: %v", globalIndex, err)
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get claim status for global index %d, error: %s", globalIndex, err)})
-		return
-	}
+// 	globalIndex, _ := new(big.Int).SetString(globalIndexRaw, 0)
+// 	claim, err := b.sponsor.GetClaim(globalIndex)
+// 	if err != nil {
+// 		b.logger.Errorf("failed to get claim status for global index %d: %v", globalIndex, err)
+// 		c.JSON(http.StatusInternalServerError,
+// 			gin.H{"error": fmt.Sprintf("failed to get claim status for global index %d, error: %s", globalIndex, err)})
+// 		return
+// 	}
 
-	c.JSON(http.StatusOK, claim.Status)
-}
+// 	c.JSON(http.StatusOK, claim.Status)
+// }
 
 // GetLastReorgEventHandler returns the most recent reorganization event for the specified network.
 //
