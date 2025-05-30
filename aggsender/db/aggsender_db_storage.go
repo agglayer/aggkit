@@ -254,8 +254,9 @@ func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificate
 	if err != nil {
 		return err
 	}
+	shouldRollback := true
 	defer func() {
-		if err != nil {
+		if shouldRollback {
 			if errRllbck := tx.Rollback(); errRllbck != nil {
 				a.logger.Errorf(errWhileRollbackFormat, errRllbck)
 			}
@@ -269,6 +270,8 @@ func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificate
 	if err = tx.Commit(); err != nil {
 		return err
 	}
+	shouldRollback = false
+
 	a.logger.Debugf("deleted certificate - CertificateID: %s", certificateID)
 	return nil
 }
