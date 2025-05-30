@@ -2,6 +2,7 @@ package chaingersender
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -51,6 +52,10 @@ func NewEVMChainGERSender(
 		return nil, err
 	}
 
+	if err := validateGERSender(ethTxMan, l2GERManager); err != nil {
+		return nil, err
+	}
+
 	l2GERAbi, err := globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainMetaData.GetAbi()
 	if err != nil {
 		return nil, err
@@ -65,6 +70,31 @@ func NewEVMChainGERSender(
 		gasOffset:           gasOffset,
 		waitPeriodMonitorTx: waitPeriodMonitorTx,
 	}, nil
+}
+
+// validateGERSender validates whether the provided GER sender is allowed to send and remove GERs
+func validateGERSender(txManager types.EthTxManager,
+	l2GERManagerSC *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain) error {
+	gerUpdater, err := l2GERManagerSC.GlobalExitRootUpdater(nil)
+	if err != nil {
+		return err
+	}
+
+	gerRemover, err := l2GERManagerSC.GlobalExitRootRemover(nil)
+	if err != nil {
+		return err
+	}
+
+	// TODO: validate only in case the zero address is provided to SC
+	if txManager.From() != gerUpdater {
+		return errors.New("invalid GER sender provided (EthTxManager), it is not allowed to update GERs")
+	}
+
+	if txManager.From() != gerRemover {
+		return errors.New("invalid GER sender provided (EthTxManager), it is not allowed to remove GERs")
+	}
+
+	return nil
 }
 
 func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
