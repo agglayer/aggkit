@@ -382,6 +382,8 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		if err != nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request: %w", err)
 		}
+		a.log.Infof("aggchainProverFlow - signed aggchain proof request with new local exit root: %s",
+			request.String())
 		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign[:])
 		if err != nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error generating optimistic aggchain proof: %w", err)

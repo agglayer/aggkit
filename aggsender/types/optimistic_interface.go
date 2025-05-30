@@ -16,5 +16,5 @@ type OptimisticSigner interface {
 		aggchainReq AggchainProofRequest,
 		newLocalExitRoot common.Hash,
 		certBuildParams *CertificateBuildParams,
-	) (common.Hash, error)
+	) ([]byte, error)
 }

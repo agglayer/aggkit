@@ -73,6 +73,9 @@ func (c *AggchainProofClient) GenerateOptimisticAggchainProof(req *types.Aggchai
 	defer cancel()
 	request := &aggkitProverV1Proto.GenerateOptimisticAggchainProofRequest{
 		AggchainProofRequest: convertAggchainProofRequestToGrpcRequest(req),
+		OptimisticModeSignature: &agglayerInteropTypesV1Proto.FixedBytes65{
+			Value: signature,
+		},
 	}
 	resp, err := c.client.GenerateOptimisticAggchainProof(ctx, request)
 	if err != nil {

@@ -19,6 +19,7 @@ IsValidiumMode = false
 L2Coinbase = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 SequencerPrivateKeyPath = "/app/sequencer.keystore"
 SequencerPrivateKeyPassword = "test"
+TrustedSequencerKey = "{Method =  \"local\", Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
 WitnessURL = "http://localhost:8123"
 
 # Who send Proof to L1? AggLayer addr, or aggregator addr?
@@ -58,7 +59,7 @@ GenerateAggchainProofTimeout = "1h"
 const DefaultValues = `
 ForkUpgradeBatchNumber = 0
 ForkUpgradeNewForkId = 0
-AggsenderPrivateKey = "{Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
+AggsenderPrivateKey = "{Method =  \"local\", Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
 
 [Log]
 Environment = "development" # "production" or "development"
@@ -120,7 +121,7 @@ WaitPeriodNextGER="100ms"
 				GetReceiptMaxTime = "250ms"
 				GetReceiptWaitInterval = "1s"
 				PrivateKeys = [
-					{Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
+					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
 				]
 				ForcedGas = 0
 				GasPriceMarginFactor = 1
@@ -247,7 +248,7 @@ RequireNoFEPBlockGap = true
 		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
 		AggchainFEPAddr = "{{L1Config.polygonZkEVMAddress}}"
-		SignPrivateKey = {{AggsenderPrivateKey}}
+		SignPrivateKey = {{TrustedSequencerKey}}
 		OpNodeURL = "{{OpNodeURL}}"
 [Prometheus]
 Enabled = true

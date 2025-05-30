@@ -25,6 +25,7 @@ type OptimisticSignatureCalculator interface {
 type OptimisticSignatureCalculatorImpl struct {
 	QueryAggregationProofPublicValues OptimisticAggregationProofPublicValuesQuerier
 	Signer                            signertypes.HashSigner
+	Logger                            *log.Logger
 }
 
 func NewOptimisticSignatureCalculatorImpl(
@@ -45,14 +46,28 @@ func NewOptimisticSignatureCalculatorImpl(
 	if err := signer.Initialize(ctx); err != nil {
 		return nil, fmt.Errorf("optimisitc. error signer.Initialize. Err: %w", err)
 	}
+	publicAddrSigner := signer.PublicAddress()
+	trustedSequencerAddr, err := aggchainFEPContract.TrustedSequencer(nil)
+	if err != nil {
+		return nil, fmt.Errorf("optimisitc. error aggchainFEPContract.TrustedSequencer. Err: %w", err)
+	}
+	if publicAddrSigner != trustedSequencerAddr {
+		return nil, fmt.Errorf("optimisitc. error signer.PublicAddress() %s != aggchainFEPContract.TrustedSequencer %s",
+			publicAddrSigner.Hex(), trustedSequencerAddr.Hex())
+	}
+
+	logger.Infof("OptimisticSignatureCalculatorImpl.signerPublicKey: %s, trustedSequencerAddr: %s", signer.PublicAddress().Hex(),
+		trustedSequencerAddr.Hex())
 	query := NewOptimisticAggregationProofPublicValuesQuery(
 		aggchainFEPContract,
 		cfg.AggchainFEPAddr,
 		opnode.NewOpNodeClient(cfg.OpNodeURL),
 		signer.PublicAddress())
+
 	return &OptimisticSignatureCalculatorImpl{
 		QueryAggregationProofPublicValues: query,
 		Signer:                            signer,
+		Logger:                            logger,
 	}, nil
 
 }
@@ -61,18 +76,20 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	aggchainReq types.AggchainProofRequest,
 	newLocalExitRoot common.Hash,
 	certBuildParams *types.CertificateBuildParams,
-) (common.Hash, error) {
+) ([]byte, error) {
+	o.Logger.Debugf("OptimisticSignatureCalculatorImpl.Sign. L1InfoTreeLeaf.BlockNumber=%d", aggchainReq.L1InfoTreeLeaf.BlockNumber)
 	aggregationProofPublicValues, err := o.QueryAggregationProofPublicValues.GetAggregationProofPublicValuesData(
 		aggchainReq.LastProvenBlock,
 		aggchainReq.RequestedEndBlock,
-		aggchainReq.L1InfoTreeLeaf.Hash,
+		aggchainReq.L1InfoTreeLeaf.PreviousBlockHash,
 	)
 	if err != nil {
-		return common.Hash{}, err
+		return nil, err
 	}
+	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign agg:%s", aggregationProofPublicValues.String())
 	aggregationProofPublicValuesHash, err := aggregationProofPublicValues.Hash()
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("aggregationProofPublicValues.Hash: error hashing aggregationProofPublicValues: %w", err)
+		return nil, fmt.Errorf("aggregationProofPublicValues.Hash: error hashing aggregationProofPublicValues: %w", err)
 	}
 	importedBridgesHash := CalculateCommitImportedBrdigeExitsHashFromClaims(certBuildParams.Claims)
 	optimisticSignature := OptimisticSignatureData{
@@ -80,9 +97,11 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 		newLocalExitRoot:                 newLocalExitRoot,
 		commitImportedBridgeExits:        importedBridgesHash,
 	}
-	signature, err := optimisticSignature.Sign(ctx, o.Signer)
+	hashToSign := optimisticSignature.Hash()
+
+	signData, err := o.Signer.SignHash(ctx, hashToSign)
 	if err != nil {
-		return common.Hash{}, err
+		return nil, fmt.Errorf("OptimisticSignatureData.Sign: error signing hash: %w", err)
 	}
-	return signature, nil
+	return signData, nil
 }

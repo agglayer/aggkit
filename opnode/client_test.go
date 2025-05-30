@@ -19,7 +19,7 @@ const (
 func TestExploratory(t *testing.T) {
 	//t.Skip("exploratory test")
 	client := OpNodeClient{
-		url: "http://localhost:32783",
+		url: "http://localhost:32864",
 	}
 	blockInfo, err := client.FinalizedL2Block()
 	require.NoError(t, err)

@@ -68,5 +68,15 @@ func (c *OpNodeClient) OutputAtBlockRoot(Number uint64) (common.Hash, error) {
 		return emptyAnswer, fmt.Errorf("opNodeClient error calling optimism_outputAtBlock, server returns error: %v %v",
 			response.Error.Code, response.Error.Message)
 	}
-	return emptyAnswer, nil
+	var data map[string]interface{}
+	err = json.Unmarshal(response.Result, &data)
+	if err != nil {
+		return emptyAnswer, fmt.Errorf("opNodeClient error calling optimism_outputAtBlock. Unmarshal json fails. Err:%w", err)
+	}
+	if outputRoot, ok := data["outputRoot"]; ok {
+		reponse := common.HexToHash(outputRoot.(string))
+		return reponse, nil
+	} else {
+		return emptyAnswer, fmt.Errorf("opNodeClient.OutputAtBlockRoot: outputRoot not found in RPC response")
+	}
 }

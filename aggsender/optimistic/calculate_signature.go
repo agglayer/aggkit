@@ -25,6 +25,19 @@ type AggregationProofPublicValues struct {
 	proverAddress    common.Address
 }
 
+func (a *AggregationProofPublicValues) String() string {
+	return fmt.Sprintf(
+		"AggregationProofPublicValues{l1Head: %s, l2PreRoot: %s, claimRoot: %s, l2BlockNumber: %d, rollupConfigHash: %s, multiBlockVKey: %s, proverAddress: %s}",
+		a.l1Head.Hex(),
+		a.l2PreRoot.Hex(),
+		a.claimRoot.Hex(),
+		a.l2BlockNumber,
+		a.rollupConfigHash.Hex(),
+		a.multiBlockVKey.Hex(),
+		a.proverAddress.Hex(),
+	)
+}
+
 func (s *AggregationProofPublicValues) Hash() (common.Hash, error) {
 	// Crear tipos ABI uno por uno
 	tBytes32, err := abi.NewType("bytes32", "", nil)
@@ -82,13 +95,13 @@ func (o *OptimisticSignatureData) Hash() common.Hash {
 	)
 }
 
-func (o *OptimisticSignatureData) Sign(ctx context.Context, signer signertypes.HashSigner) (common.Hash, error) {
+func (o *OptimisticSignatureData) Sign(ctx context.Context, signer signertypes.HashSigner) ([]byte, error) {
 	hash := o.Hash()
 	signData, err := signer.SignHash(ctx, hash)
 	if err != nil {
-		return common.Hash{}, fmt.Errorf("OptimisticSignatureData.Sign: error signing hash: %w", err)
+		return nil, fmt.Errorf("OptimisticSignatureData.Sign: error signing hash: %w", err)
 	}
-	return common.BytesToHash(signData), nil
+	return signData, nil
 }
 
 // CalculateCommitImportedBridgeExitsHashFromImportedBridges calculate from a agglayer certificate
