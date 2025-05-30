@@ -2,7 +2,6 @@ package chaingersender
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -52,7 +51,7 @@ func NewEVMChainGERSender(
 		return nil, err
 	}
 
-	if err := validateGERSender(ethTxMan, l2GERManager); err != nil {
+	if err := validateGERSender(ethTxMan.From(), l2GERManager); err != nil {
 		return nil, err
 	}
 
@@ -73,8 +72,9 @@ func NewEVMChainGERSender(
 }
 
 // validateGERSender validates whether the provided GER sender is allowed to send and remove GERs
-func validateGERSender(txManager types.EthTxManager,
+func validateGERSender(gerSender common.Address,
 	l2GERManagerSC *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain) error {
+	zeroAddr := common.Address{}
 	gerUpdater, err := l2GERManagerSC.GlobalExitRootUpdater(nil)
 	if err != nil {
 		return err
@@ -85,13 +85,14 @@ func validateGERSender(txManager types.EthTxManager,
 		return err
 	}
 
-	// TODO: validate only in case the zero address is provided to SC
-	if txManager.From() != gerUpdater {
-		return errors.New("invalid GER sender provided (EthTxManager), it is not allowed to update GERs")
+	if gerUpdater != zeroAddr && gerSender != gerUpdater {
+		return fmt.Errorf("invalid GER sender provided (in the EthTxManager configuration),"+
+			"and it is not allowed to update GERs. Expected GER updater by the L2 GER manager contract: %s", gerUpdater)
 	}
 
-	if txManager.From() != gerRemover {
-		return errors.New("invalid GER sender provided (EthTxManager), it is not allowed to remove GERs")
+	if gerSender != gerRemover {
+		return fmt.Errorf("invalid GER sender provided (in the EthTxManager configuration),"+
+			" and it is not allowed to remove GERs. Expected GER remover by the L2 GER manager contract: %s", gerRemover)
 	}
 
 	return nil
