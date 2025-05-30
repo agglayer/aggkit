@@ -23,6 +23,6 @@
     "enable_normalcy": true,
     "zkevm_rollup_id": 1,
     "binary_name": "aggkit",
-    "enable_aggkit_claim_sponsor": true
+    "enable_aggkit_claim_sponsor": false
   }
 }
