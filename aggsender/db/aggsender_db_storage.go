@@ -386,9 +386,7 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 		}
 	}()
 
-	var raw []byte
-
-	raw, err = json.Marshal(certificate)
+	raw, err := json.Marshal(certificate)
 	if err != nil {
 		return fmt.Errorf("failed to marshal non-accepted certificate: %w", err)
 	}
