@@ -92,6 +92,9 @@ lint: ## Runs the linter
 generate-swagger-docs: ## Generates the swagger docs
 	@echo "Generating swagger docs"
 	@swag init -g bridgeservice/bridge.go -o bridgeservice/docs
+	@mkdir -p docs/assets/swagger/bridge_service
+	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
+	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"
 
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted

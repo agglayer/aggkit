@@ -211,8 +211,8 @@ func (b *BridgeService) Start(ctx context.Context) {
 // @Param network_ids query []uint32 false "Filter by one or more network IDs"
 // @Produce json
 // @Success 200 {object} types.BridgesResult
-// @Failure 400 {object} types.ErrorResponse "Invalid request parameters"
-// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /bridges [get]
 func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 	b.logger.Debugf("GetBridges request received (network id=%s, page number=%s, page size=%s)",
@@ -308,8 +308,8 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Param from_address query string false "Filter by from address"
 // @Produce json
 // @Success 200 {object} types.ClaimsResult
-// @Failure 400 {object} types.ErrorResponse "Invalid request parameters"
-// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /claims [get]
 func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s)",
@@ -387,8 +387,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 // @Param page_size query int false "Page size"
 // @Produce json
 // @Success 200 {object} types.TokenMappingsResult
-// @Failure 400 {object} types.ErrorResponse "Invalid request parameters"
-// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /token-mappings [get]
 //
 //nolint:dupl
@@ -451,8 +451,8 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 // @Param page_size query int false "Page size"
 // @Produce json
 // @Success 200 {object} types.LegacyTokenMigrationsResult
-// @Failure 400 {object} types.ErrorResponse
-// @Failure 500 {object} types.ErrorResponse
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /legacy-token-migrations [get]
 //
 //nolint:dupl
@@ -514,8 +514,8 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 // @Param deposit_count query int true "Deposit count"
 // @Produce json
 // @Success 200 {object} uint32
-// @Failure 400 {object} types.ErrorResponse
-// @Failure 500 {object} types.ErrorResponse
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /l1-info-tree-index [get]
 func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	b.logger.Debugf("L1InfoTreeIndexForBridge request received (network id=%s, deposit count=%s)",
@@ -581,8 +581,8 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Param l1_info_tree_index query int true "L1 Info Tree Index"
 // @Produce json
 // @Success 200 {object} types.L1InfoTreeLeafResponse
-// @Failure 400 {object} types.ErrorResponse "Missing or invalid parameters"
-// @Failure 500 {object} types.ErrorResponse "Internal server error retrieving injected l1 info tree leaf"
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /injected-l1-info-leaf [get]
 func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	b.logger.Debugf("InjectedInfoAfterIndex request received (network id=%s, leaf index=%s)",
@@ -663,8 +663,8 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 // @Param deposit_count query uint32 true "Number of deposits in the bridge"
 // @Produce json
 // @Success 200 {object} types.ClaimProof "Merkle proofs and L1 info tree leaf"
-// @Failure 400 {object} types.ErrorResponse "Missing or invalid parameters"
-// @Failure 500 {object} types.ErrorResponse "Internal server error retrieving claim proof"
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /claim-proof [get]
 func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	b.logger.Debugf("ClaimProof request received (network id=%s, l1 info tree index=%s, deposit count=%s)",
@@ -768,8 +768,8 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 // @Produce json
 // @Param Claim body types.ClaimRequest true "Claim request"
 // @Success 200 {object} string "Claim is sponsored"
-// @Failure 400 {object} types.ErrorResponse "Invalid request parameters"
-// @Failure 500 {object} types.ErrorResponse "Internal server error"
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /sponsor-claim [post]
 func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 	rawBody, err := io.ReadAll(c.Request.Body)
@@ -843,8 +843,8 @@ func (b *BridgeService) SponsorClaimHandler(c *gin.Context) {
 // @Param global_index query string true "Global index of the claim (big.Int format)"
 // @Produce json
 // @Success 200 {object} string "Claim sponsorship status"
-// @Failure 400 {object} types.ErrorResponse "Missing or invalid input, or sponsorship not supported"
-// @Failure 500 {object} types.ErrorResponse "Internal server error retrieving claim status"
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /sponsored-claim-status [get]
 func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
 	globalIndexRaw := c.Query(globalIndexParam)
@@ -891,8 +891,8 @@ func (b *BridgeService) GetSponsoredClaimStatusHandler(c *gin.Context) {
 // @Param network_id query int true "Network ID (e.g., 0 for L1, or the ID of the L2 network)"
 // @Produce json
 // @Success 200 {object} bridgesync.LastReorg "Details of the last reorg event"
-// @Failure 400 {object} types.ErrorResponse "Bad request due to missing or invalid parameters"
-// @Failure 500 {object} types.ErrorResponse "Internal server error retrieving reorg data"
+// @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /last-reorg-event [get]
 func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	b.logger.Debugf("GetLastReorgEvent request received (network id=%s)", c.Query(networkIDParam))
@@ -949,7 +949,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 // @Tags sync
 // @Produce json
 // @Success 200 {object} types.SyncStatus "Bridge sync status for both L1 and L2 networks"
-// @Failure 500 {object} gin.H "Internal server error retrieving sync status"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /sync-status [get]
 func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	b.logger.Debugf("GetSyncStatus request received")
