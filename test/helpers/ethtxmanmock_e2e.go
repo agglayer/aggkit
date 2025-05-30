@@ -21,7 +21,7 @@ func NewEthTxManMock(
 	t *testing.T,
 	client *simulated.Backend,
 	auth *bind.TransactOpts,
-) *EthTxManagerMock {
+) *EthTxManager {
 	t.Helper()
 
 	const (
@@ -29,7 +29,7 @@ func NewEthTxManMock(
 		argTxInputIdx  = 3
 	)
 
-	ethTxMock := NewEthTxManagerMock(t)
+	ethTxMock := NewEthTxManager(t)
 	ethTxMock.On(
 		"Add", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 		Run(func(args mock.Arguments) {
