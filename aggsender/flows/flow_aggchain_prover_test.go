@@ -300,7 +300,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						Root:  common.HexToHash("0x1"),
 						Proof: treetypes.Proof{},
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
-					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{}).Return(nil, *errNoProofBuiltYet)
+					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{}).Return(nil, fmt.Errorf("wrapped error: %w", errNoProofBuiltYet))
 			},
 			expectedError:  "",
 			expectedParams: nil, // expecting no params to be returned since no proof was built
