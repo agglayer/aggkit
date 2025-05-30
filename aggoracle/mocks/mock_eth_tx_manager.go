@@ -91,6 +91,53 @@ func (_c *EthTxManager_Add_Call) RunAndReturn(run func(context.Context, *common.
 	return _c
 }
 
+// From provides a mock function with no fields
+func (_m *EthTxManager) From() common.Address {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for From")
+	}
+
+	var r0 common.Address
+	if rf, ok := ret.Get(0).(func() common.Address); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(common.Address)
+		}
+	}
+
+	return r0
+}
+
+// EthTxManager_From_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'From'
+type EthTxManager_From_Call struct {
+	*mock.Call
+}
+
+// From is a helper method to define mock.On call
+func (_e *EthTxManager_Expecter) From() *EthTxManager_From_Call {
+	return &EthTxManager_From_Call{Call: _e.mock.On("From")}
+}
+
+func (_c *EthTxManager_From_Call) Run(run func()) *EthTxManager_From_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *EthTxManager_From_Call) Return(_a0 common.Address) *EthTxManager_From_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *EthTxManager_From_Call) RunAndReturn(run func() common.Address) *EthTxManager_From_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // Remove provides a mock function with given fields: ctx, id
 func (_m *EthTxManager) Remove(ctx context.Context, id common.Hash) error {
 	ret := _m.Called(ctx, id)
