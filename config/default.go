@@ -106,11 +106,11 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 TargetChainType="EVM"
 URLRPCL1="{{L1URL}}"
 BlockFinality="FinalizedBlock"
-WaitPeriodNextGER="100ms"
+WaitPeriodNextGER="5s"
 	[AggOracle.EVMSender]
 		GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
 		GasOffset=0
-		WaitPeriodMonitorTx="100ms"
+		WaitPeriodMonitorTx="1s"
 		[AggOracle.EVMSender.EthTxManager]
 				FrequencyToMonitorTxs = "1s"
 				WaitTxToBeMined = "2s"
