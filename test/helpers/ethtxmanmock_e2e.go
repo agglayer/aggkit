@@ -24,58 +24,45 @@ func NewEthTxManMock(
 ) *EthTxManager {
 	t.Helper()
 
-	const (
-		argReceiverIdx = 1
-		argTxInputIdx  = 3
-	)
-
 	ethTxMock := NewEthTxManager(t)
-	ethTxMock.On(
-		"Add", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Run(func(args mock.Arguments) {
-			ctx := context.Background()
-			to, ok := args.Get(argReceiverIdx).(*common.Address)
-			if !ok {
-				log.Error("expected *common.Address for tx receiver arg")
-				return
-			}
 
-			data, ok := args.Get(argTxInputIdx).([]byte)
-			if !ok {
-				log.Error("expected []byte for tx input data arg")
-				return
-			}
+	ethTxMock.EXPECT().
+		Add(mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(
+			func(ctx context.Context, to *common.Address, value *big.Int,
+				data []byte, gasOffset uint64, sidecar *types.BlobTxSidecar) {
+				log.Debugf("receiver %s, data: %s", to, hex.EncodeToString(data))
 
-			log.Debugf("receiver %s, data: %s", to, hex.EncodeToString(data))
-
-			msg := ethereum.CallMsg{
-				From: auth.From,
-				To:   to,
-				Data: data,
-			}
-
-			_, err := client.Client().EstimateGas(ctx, msg)
-			if err != nil {
-				log.Errorf("eth_estimateGas invocation failed: %w", ExtractRPCErrorData(err))
-
-				res, err := client.Client().CallContract(ctx, msg, nil)
-				if err != nil {
-					log.Errorf("eth_call invocation failed: %w", ExtractRPCErrorData(err))
-				} else {
-					log.Debugf("contract call result: %s", hex.EncodeToString(res))
+				msg := ethereum.CallMsg{
+					From: auth.From,
+					To:   to,
+					Data: data,
 				}
-				return
-			}
 
-			err = SendTx(ctx, client, auth, to, data, common.Big0)
-			if err != nil {
-				log.Errorf("failed to send transaction: %w", err)
-				return
-			}
-		}).
+				_, err := client.Client().EstimateGas(ctx, msg)
+				if err != nil {
+					log.Errorf("eth_estimateGas invocation failed: %w", ExtractRPCErrorData(err))
+
+					res, err := client.Client().CallContract(ctx, msg, nil)
+					if err != nil {
+						log.Errorf("eth_call invocation failed: %w", ExtractRPCErrorData(err))
+					} else {
+						log.Debugf("contract call result: %s", hex.EncodeToString(res))
+					}
+					return
+				}
+
+				err = SendTx(ctx, client, auth, to, data, common.Big0)
+				if err != nil {
+					log.Errorf("failed to send transaction: %w", err)
+					return
+				}
+			}).
 		Return(common.Hash{}, nil)
-	ethTxMock.On("Result", mock.Anything, mock.Anything).
+	ethTxMock.EXPECT().
+		Result(mock.Anything, mock.Anything).
 		Return(ethtxtypes.MonitoredTxResult{Status: ethtxtypes.MonitoredTxStatusMined}, nil)
+	ethTxMock.EXPECT().From().Return(auth.From)
 
 	return ethTxMock
 }
