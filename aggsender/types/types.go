@@ -263,6 +263,8 @@ type Certificate struct {
 	Header            *CertificateHeader
 	SignedCertificate *string        `meddler:"signed_certificate"`
 	AggchainProof     *AggchainProof `meddler:"aggchain_proof,aggchainproof"`
+	// ExtraData is a no structured data used to debug or extra info for this certificate
+	ExtraData string `meddler:"extra_data"`
 }
 
 func (c *Certificate) DetermineCertType(startL2Block uint64) CertificateType {

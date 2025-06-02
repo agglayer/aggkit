@@ -78,12 +78,12 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 	}
 
 	return &AggregationProofPublicValues{
-		l1Head:           l1InfoTreeLeafHash,
-		l2PreRoot:        l2PreRoot,
-		claimRoot:        claimRoot,
-		l2BlockNumber:    requestedEndBlock,
-		rollupConfigHash: rollupConfigHash,
-		multiBlockVKey:   multiBlockVKey,
-		proverAddress:    o.proverAddress,
+		L1Head:           l1InfoTreeLeafHash,
+		L2PreRoot:        l2PreRoot,
+		ClaimRoot:        claimRoot,
+		L2BlockNumber:    requestedEndBlock,
+		RollupConfigHash: rollupConfigHash,
+		MultiBlockVKey:   multiBlockVKey,
+		ProverAddress:    o.proverAddress,
 	}, nil
 }

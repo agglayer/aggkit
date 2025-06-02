@@ -61,6 +61,7 @@ func Test_Storage(t *testing.T) {
 					Vkey:    []byte{0x4, 0x5, 0x6},
 				},
 			},
+			ExtraData: "extra data",
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 

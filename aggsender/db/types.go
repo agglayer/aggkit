@@ -29,6 +29,7 @@ type certificateInfo struct {
 	L1InfoTreeLeafCount     uint32                          `meddler:"l1_info_tree_leaf_count"`
 	CertType                types.CertificateType           `meddler:"cert_type"`
 	CertSource              types.CertificateSource         `meddler:"cert_source"`
+	ExtraData               string                          `meddler:"extra_data"`
 }
 
 // toCertificate converts the certificateInfo struct to a Certificate struct
@@ -52,6 +53,7 @@ func (c *certificateInfo) toCertificate() *types.Certificate {
 		},
 		SignedCertificate: c.SignedCertificate,
 		AggchainProof:     c.AggchainProof,
+		ExtraData:         c.ExtraData,
 	}
 }
 

@@ -378,10 +378,11 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		if err != nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error getting new local exit root: %w", err)
 		}
-		sign, err := a.optimisticSigner.Sign(ctx, *request, newLER, certBuildParams)
+		sign, extraData, err := a.optimisticSigner.Sign(ctx, *request, newLER, certBuildParams)
 		if err != nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request: %w", err)
 		}
+		certBuildParams.ExtraData = extraData
 		a.log.Infof("aggchainProverFlow - signed aggchain proof request with new local exit root: %s",
 			request.String())
 		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign[:])
