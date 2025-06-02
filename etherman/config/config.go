@@ -10,8 +10,10 @@ type Config struct {
 	// URL is the URL of the Ethereum node for L1
 	URL string `mapstructure:"URL"`
 
+	// TODO: @Stefan-Ethernal Deprecate
 	EthermanConfig etherman.Config
 
+	// TODO: @Stefan-Ethernal Deprecate
 	// ForkIDChunkSize is the max interval for each call to L1 provider to get the forkIDs
 	ForkIDChunkSize uint64 `mapstructure:"ForkIDChunkSize"`
 }

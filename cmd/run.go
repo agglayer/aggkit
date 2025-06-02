@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -74,12 +75,16 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	rollupID := getRollUpIDIfNeeded(components, cfg.NetworkConfig.L1Config, l1Client)
+	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config)
+	if err != nil {
+		return errors.New("failed to create etherman client")
+	}
+
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
 	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupID)
+		l2Client, ethermanClient.RollupID)
 	lastGERSync := runLastGERSyncIfNeeded(
 		cliCtx.Context, components, cfg.LastGERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
@@ -410,18 +415,6 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) aggkittypes.EthCl
 	}
 
 	return aggkittypes.NewDefaultEthClient(l1Client, l1Client.Client())
-}
-
-func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Config,
-	l1Client aggkittypes.BaseEthereumClienter) uint32 {
-	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.BRIDGE}, components) {
-		return 0
-	}
-	rollupID, err := etherman.GetRollupID(networkConfig, networkConfig.ZkEVMAddr, l1Client)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return rollupID
 }
 
 func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
