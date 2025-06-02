@@ -28,6 +28,11 @@ const (
 	nilStr  = "nil"
 	nullStr = "null"
 	base10  = 10
+
+	EstimatedAggchainProofSize      = 10_000
+	EstimatedAggchainSignatureSize  = 70
+	EstimatedBridgeExitSize         = 90
+	EstimatedImportedBridgeExitSize = 2800
 )
 
 var (
@@ -252,7 +257,7 @@ type Certificate struct {
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
 	Metadata            common.Hash           `json:"metadata"`
 	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
-	AggchainData        AggchainData          `json:"data,omitempty"`
+	AggchainData        AggchainData          `json:"aggchain_data,omitempty"`
 	L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
 }
 
@@ -267,7 +272,7 @@ func (c *Certificate) UnmarshalJSON(data []byte) error {
 		ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
 		Metadata            common.Hash           `json:"metadata"`
 		CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
-		AggchainData        AggchainDataSelector  `json:"data,omitempty"`
+		AggchainData        AggchainDataSelector  `json:"aggchain_data,omitempty"`
 		L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
