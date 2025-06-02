@@ -235,7 +235,7 @@ func createAggoracle(
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
-	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config, cfg.Common)
+	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config)
 	if err != nil {
 		logger.Fatal(err)
 	}
