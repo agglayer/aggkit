@@ -50,4 +50,6 @@ type L2GERManagerContract interface {
 		*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator,
 		error,
 	)
+	GlobalExitRootUpdater(opts *bind.CallOpts) (common.Address, error)
+	GlobalExitRootRemover(opts *bind.CallOpts) (common.Address, error)
 }

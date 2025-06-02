@@ -263,6 +263,122 @@ func (_c *L2GERManagerContract_GlobalExitRootMap_Call) RunAndReturn(run func(*bi
 	return _c
 }
 
+// GlobalExitRootRemover provides a mock function with given fields: opts
+func (_m *L2GERManagerContract) GlobalExitRootRemover(opts *bind.CallOpts) (common.Address, error) {
+	ret := _m.Called(opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GlobalExitRootRemover")
+	}
+
+	var r0 common.Address
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) (common.Address, error)); ok {
+		return rf(opts)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) common.Address); ok {
+		r0 = rf(opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(common.Address)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
+		r1 = rf(opts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L2GERManagerContract_GlobalExitRootRemover_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GlobalExitRootRemover'
+type L2GERManagerContract_GlobalExitRootRemover_Call struct {
+	*mock.Call
+}
+
+// GlobalExitRootRemover is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+func (_e *L2GERManagerContract_Expecter) GlobalExitRootRemover(opts interface{}) *L2GERManagerContract_GlobalExitRootRemover_Call {
+	return &L2GERManagerContract_GlobalExitRootRemover_Call{Call: _e.mock.On("GlobalExitRootRemover", opts)}
+}
+
+func (_c *L2GERManagerContract_GlobalExitRootRemover_Call) Run(run func(opts *bind.CallOpts)) *L2GERManagerContract_GlobalExitRootRemover_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts))
+	})
+	return _c
+}
+
+func (_c *L2GERManagerContract_GlobalExitRootRemover_Call) Return(_a0 common.Address, _a1 error) *L2GERManagerContract_GlobalExitRootRemover_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L2GERManagerContract_GlobalExitRootRemover_Call) RunAndReturn(run func(*bind.CallOpts) (common.Address, error)) *L2GERManagerContract_GlobalExitRootRemover_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GlobalExitRootUpdater provides a mock function with given fields: opts
+func (_m *L2GERManagerContract) GlobalExitRootUpdater(opts *bind.CallOpts) (common.Address, error) {
+	ret := _m.Called(opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GlobalExitRootUpdater")
+	}
+
+	var r0 common.Address
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) (common.Address, error)); ok {
+		return rf(opts)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) common.Address); ok {
+		r0 = rf(opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(common.Address)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
+		r1 = rf(opts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L2GERManagerContract_GlobalExitRootUpdater_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GlobalExitRootUpdater'
+type L2GERManagerContract_GlobalExitRootUpdater_Call struct {
+	*mock.Call
+}
+
+// GlobalExitRootUpdater is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+func (_e *L2GERManagerContract_Expecter) GlobalExitRootUpdater(opts interface{}) *L2GERManagerContract_GlobalExitRootUpdater_Call {
+	return &L2GERManagerContract_GlobalExitRootUpdater_Call{Call: _e.mock.On("GlobalExitRootUpdater", opts)}
+}
+
+func (_c *L2GERManagerContract_GlobalExitRootUpdater_Call) Run(run func(opts *bind.CallOpts)) *L2GERManagerContract_GlobalExitRootUpdater_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts))
+	})
+	return _c
+}
+
+func (_c *L2GERManagerContract_GlobalExitRootUpdater_Call) Return(_a0 common.Address, _a1 error) *L2GERManagerContract_GlobalExitRootUpdater_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L2GERManagerContract_GlobalExitRootUpdater_Call) RunAndReturn(run func(*bind.CallOpts) (common.Address, error)) *L2GERManagerContract_GlobalExitRootUpdater_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewL2GERManagerContract creates a new instance of L2GERManagerContract. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewL2GERManagerContract(t interface {
