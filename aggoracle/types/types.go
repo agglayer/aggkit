@@ -51,5 +51,4 @@ type L2GERManagerContract interface {
 		error,
 	)
 	GlobalExitRootUpdater(opts *bind.CallOpts) (common.Address, error)
-	GlobalExitRootRemover(opts *bind.CallOpts) (common.Address, error)
 }

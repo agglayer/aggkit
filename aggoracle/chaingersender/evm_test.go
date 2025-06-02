@@ -173,7 +173,6 @@ func TestEVMChainGERSender_IsGERInjected(t *testing.T) {
 func TestValidateGERSender(t *testing.T) {
 	zeroAddr := common.Address{}
 	updaterAddr := common.HexToAddress("0x1111")
-	removerAddr := common.HexToAddress("0x2222")
 	otherAddr := common.HexToAddress("0x9999")
 
 	tests := []struct {
@@ -187,7 +186,6 @@ func TestValidateGERSender(t *testing.T) {
 			gerSender: updaterAddr,
 			setupMock: func(m *mocks.L2GERManagerContract) {
 				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(updaterAddr, nil)
-				m.EXPECT().GlobalExitRootRemover(mock.Anything).Return(updaterAddr, nil)
 			},
 			expectErrMsg: "",
 		},
@@ -196,18 +194,8 @@ func TestValidateGERSender(t *testing.T) {
 			gerSender: otherAddr,
 			setupMock: func(m *mocks.L2GERManagerContract) {
 				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(updaterAddr, nil)
-				m.EXPECT().GlobalExitRootRemover(mock.Anything).Return(removerAddr, nil)
 			},
 			expectErrMsg: "invalid GER sender provided (in the EthTxManager configuration), and it is not allowed to update GERs",
-		},
-		{
-			name:      "invalid remover sender",
-			gerSender: updaterAddr, // Matches remover but not updater
-			setupMock: func(m *mocks.L2GERManagerContract) {
-				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(updaterAddr, nil)
-				m.EXPECT().GlobalExitRootRemover(mock.Anything).Return(otherAddr, nil)
-			},
-			expectErrMsg: "invalid GER sender provided (in the EthTxManager configuration), and it is not allowed to remove GERs",
 		},
 		{
 			name:      "contract returns error on updater",
@@ -216,15 +204,6 @@ func TestValidateGERSender(t *testing.T) {
 				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(zeroAddr, fmt.Errorf("updater error"))
 			},
 			expectErrMsg: "updater error",
-		},
-		{
-			name:      "contract returns error on remover",
-			gerSender: removerAddr,
-			setupMock: func(m *mocks.L2GERManagerContract) {
-				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(removerAddr, nil)
-				m.EXPECT().GlobalExitRootRemover(mock.Anything).Return(zeroAddr, fmt.Errorf("remover error"))
-			},
-			expectErrMsg: "remover error",
 		},
 	}
 

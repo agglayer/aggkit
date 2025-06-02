@@ -79,19 +79,9 @@ func validateGERSender(gerSender common.Address, l2GERManagerSC types.L2GERManag
 		return err
 	}
 
-	gerRemover, err := l2GERManagerSC.GlobalExitRootRemover(nil)
-	if err != nil {
-		return err
-	}
-
 	if gerUpdater != zeroAddr && gerSender != gerUpdater {
 		return fmt.Errorf("invalid GER sender provided (in the EthTxManager configuration), "+
 			"and it is not allowed to update GERs. Expected GER updater by the L2 GER manager contract: %s", gerUpdater)
-	}
-
-	if gerSender != gerRemover {
-		return fmt.Errorf("invalid GER sender provided (in the EthTxManager configuration), "+
-			"and it is not allowed to remove GERs. Expected GER remover by the L2 GER manager contract: %s", gerRemover)
 	}
 
 	return nil
