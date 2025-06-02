@@ -20,7 +20,7 @@ var _ OpNodeClienter = (*opnode.OpNodeClient)(nil)
 // FEPContractQuerier is an interface that defines the methods for interacting with the FEP contract.
 type FEPContractQuerier interface {
 	RollupConfigHash(opts *bind.CallOpts) ([32]byte, error)
-	AggregationVkey(opts *bind.CallOpts) ([32]byte, error)
+	RangeVkeyCommitment(opts *bind.CallOpts) ([32]byte, error)
 }
 
 var _ FEPContractQuerier = (*aggchainfep.Aggchainfep)(nil)
@@ -72,7 +72,7 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 	if err != nil {
 		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get rollupConfigHash from contract %s. Err: %w", o.aggchainFEPAddr, err)
 	}
-	multiBlockVKey, err := o.aggchainFEPContract.AggregationVkey(nil)
+	multiBlockVKey, err := o.aggchainFEPContract.RangeVkeyCommitment(nil)
 	if err != nil {
 		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get multiBlockVKey(AggregationVkey) from contract %s. Err: %w", o.aggchainFEPAddr, err)
 	}

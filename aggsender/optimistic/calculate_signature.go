@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/agglayer/aggkit/agglayer/types"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -104,22 +105,82 @@ func (o *OptimisticSignatureData) Sign(ctx context.Context, signer signertypes.H
 	return signData, nil
 }
 
+type optimisticCommitImportedBrigesData struct {
+	bridges []optimisticCommitImportedBrigeData
+}
+
+type optimisticCommitImportedBrigeData struct {
+	globalIndex    *big.Int
+	bridgeExitHash common.Hash
+}
+
+func newCommitImportedBrigesDataFromAgglayer(importedBridges []*agglayertypes.ImportedBridgeExit) *optimisticCommitImportedBrigesData {
+	res := optimisticCommitImportedBrigesData{}
+	res.bridges = make([]optimisticCommitImportedBrigeData, len(importedBridges))
+	for i, bridge := range importedBridges {
+		res.bridges[i] = optimisticCommitImportedBrigeData{}
+		res.bridges[i].setGlobalIndex(*bridge.GlobalIndex)
+		res.bridges[i].setBridgeExitHashFromAgglayer(bridge.BridgeExit)
+	}
+	return &res
+}
+
+func newCommitImportedBrigesDataFromBuildParams(claims []bridgesync.Claim) *optimisticCommitImportedBrigesData {
+	res := optimisticCommitImportedBrigesData{}
+	res.bridges = make([]optimisticCommitImportedBrigeData, len(claims))
+	for i, claim := range claims {
+		res.bridges[i] = optimisticCommitImportedBrigeData{}
+		res.bridges[i].globalIndex = claim.GlobalIndex
+		res.bridges[i].setBridgeExitHashFromBuildParams(&claim)
+	}
+	return &res
+}
+func (o *optimisticCommitImportedBrigesData) Hash() common.Hash {
+	var combined []byte
+	for _, bridge := range o.bridges {
+		combined = append(combined, aggkitcommon.BigIntToLittleEndianBytes(bridge.globalIndex)...)
+		combined = append(combined, bridge.bridgeExitHash.Bytes()...)
+	}
+	return crypto.Keccak256Hash(combined)
+}
+
+func (o *optimisticCommitImportedBrigeData) setGlobalIndex(globalIndex agglayertypes.GlobalIndex) {
+	o.globalIndex = bridgesync.GenerateGlobalIndex(
+		globalIndex.MainnetFlag,
+		globalIndex.RollupIndex,
+		globalIndex.LeafIndex,
+	)
+}
+
+func (o *optimisticCommitImportedBrigeData) setBridgeExitHashFromAgglayer(bridgeExit *agglayertypes.BridgeExit) {
+	o.bridgeExitHash = bridgeExit.Hash()
+}
+
+func (o *optimisticCommitImportedBrigeData) setBridgeExitHashFromBuildParams(claim *bridgesync.Claim) {
+	leafType := agglayertypes.LeafTypeAsset
+	if claim.IsMessage {
+		leafType = agglayertypes.LeafTypeMessage
+	}
+
+	be := types.BridgeExit{
+		LeafType: leafType,
+		TokenInfo: &agglayertypes.TokenInfo{
+			OriginNetwork:      claim.OriginNetwork,
+			OriginTokenAddress: claim.OriginAddress,
+		},
+		DestinationNetwork: claim.DestinationNetwork,
+		DestinationAddress: claim.DestinationAddress,
+		Amount:             claim.Amount,
+		Metadata:           claim.Metadata,
+	}
+	o.bridgeExitHash = be.Hash()
+}
+
 // CalculateCommitImportedBridgeExitsHashFromImportedBridges calculate from a agglayer certificate
 func CalculateCommitImportedBridgeExitsHashFromImportedBridges(
 	importedBridges []*agglayertypes.ImportedBridgeExit) common.Hash {
-	var combined []byte
-	for _, claim := range importedBridges {
-		globalIndex := bridgesync.GenerateGlobalIndex(
-			claim.GlobalIndex.MainnetFlag,
-			claim.GlobalIndex.RollupIndex,
-			claim.GlobalIndex.LeafIndex,
-		).Uint64()
-		combined = append(combined, aggkitcommon.Uint64ToBigEndianBytes(globalIndex)...)
-		claimHash := CalculateBridgeExitHash(claim.BridgeExit).Bytes()
-		combined = append(combined, claimHash[:]...)
-
-	}
-	return crypto.Keccak256Hash(combined)
+	data := newCommitImportedBrigesDataFromAgglayer(importedBridges)
+	return data.Hash()
 }
 
 func CalculateBridgeExitHash(bridgeExit *agglayertypes.BridgeExit) common.Hash {
@@ -146,19 +207,30 @@ func CalculateBridgeExitHash(bridgeExit *agglayertypes.BridgeExit) common.Hash {
 
 // CalculateCommitImportedBrdigeExitsHashFromClaims.This calculate hash from certBuildParams
 func CalculateCommitImportedBrdigeExitsHashFromClaims(claims []bridgesync.Claim) common.Hash {
-	var combined []byte
-	for _, claim := range claims {
-		globalIndex := claim.GlobalIndex.Uint64()
-		combined = append(combined, aggkitcommon.Uint64ToBigEndianBytes(globalIndex)...)
-		claimHash := CalculateClaimHash(&claim).Bytes()
-		combined = append(combined, claimHash[:]...)
-
-	}
-	return crypto.Keccak256Hash(combined)
+	data := newCommitImportedBrigesDataFromBuildParams(claims)
+	return data.Hash()
 }
 
 // This calculate hash from certBuildParamss
 func CalculateClaimHash(claim *bridgesync.Claim) common.Hash {
+	leafType := agglayertypes.LeafTypeAsset
+	if claim.IsMessage {
+		leafType = agglayertypes.LeafTypeMessage
+	}
+
+	be := types.BridgeExit{
+		LeafType: leafType,
+		TokenInfo: &agglayertypes.TokenInfo{
+			OriginNetwork:      claim.OriginNetwork,
+			OriginTokenAddress: claim.OriginAddress,
+		},
+		Amount:   claim.Amount,
+		Metadata: claim.Metadata,
+	}
+	return be.Hash()
+}
+
+func CalculateClaimHashOld(claim *bridgesync.Claim) common.Hash {
 	amount := claim.Amount
 	if amount == nil {
 		amount = big.NewInt(0)

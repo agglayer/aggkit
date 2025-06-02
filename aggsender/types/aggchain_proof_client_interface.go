@@ -44,6 +44,11 @@ func NewAggchainProofRequest(
 }
 
 func (r *AggchainProofRequest) String() string {
+	var importedBridgeStr string
+	for _, ib := range r.ImportedBridgeExitsWithBlockNumber {
+		importedBridgeStr += fmt.Sprintf("%s, ", ib.String())
+	}
+
 	return fmt.Sprintf(`AggchainProofRequest{
 	lastProvenBlock: %d,
 	toBlock: %d,

@@ -1,6 +1,7 @@
 package optimistic
 
 import (
+	"math/big"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -17,17 +18,40 @@ func TestSignatureOptimisticData_Hash(t *testing.T) {
 		multiBlockVKey:   common.HexToHash("0x35882a76205af8c12eaeea7551ff8dbc392dc2a95b0f7f31660a5468237d4434"),
 		proverAddress:    common.HexToAddress("0x4ce23a785114db45ac6351e02f0de440845351af"),
 	}
-	signData := &OptimisticSignatureData{
-		aggregationProofPublicValues: *aggregationProofPublicValues,
-		newLocalExitRoot:             common.HexToHash("0x81b8a2cf7a80538dee49ae721a87655b080523d37cdad80c6a002a33e91c96cb"),
-		commitImportedBridgeExits:    common.HexToHash("0x1b2d35e62df05e64b5987fa70c318ccabb08ce181818c9c88851ac15da9d277a"),
-	}
-	hash, err := signData.Hash()
+	aHash, err := aggregationProofPublicValues.Hash()
 	require.NoError(t, err, "Hashing should not return an error")
+
+	signData := &OptimisticSignatureData{
+		aggregationProofPublicValuesHash: aHash,
+		newLocalExitRoot:                 common.HexToHash("0x81b8a2cf7a80538dee49ae721a87655b080523d37cdad80c6a002a33e91c96cb"),
+		commitImportedBridgeExits:        common.HexToHash("0x1b2d35e62df05e64b5987fa70c318ccabb08ce181818c9c88851ac15da9d277a"),
+	}
+	hash := signData.Hash()
 	expectedHash := common.HexToHash("0x30ab2b423a824db41a33d05756e59b1dbc46b3ef41a70750bceb3c7b7324ebc1")
 	require.Equal(t, expectedHash, hash, "Hash should match the expected value")
 }
 
-func TestSignatureOptimisticData_FromBuildParams(t *testing.T) {
+func TestSignatureOptimisticData_CommitImportedBrige(t *testing.T) {
+	g1 := new(big.Int)
+	_, ok := g1.SetString("0x100000000000346b0", 0)
+	require.True(t, ok, "BigInt should be set correctly from hex string")
+	g2 := new(big.Int)
+	_, ok = g2.SetString("0x4000054c8", 0)
+	require.True(t, ok, "BigInt should be set correctly from hex string")
+
+	data := &optimisticCommitImportedBrigesData{
+		bridges: []optimisticCommitImportedBrigeData{
+			{
+				globalIndex:    g1,
+				bridgeExitHash: common.HexToHash("0x637a82baa4451ff75e386d0f1df266ef1f8d6fe2e155cf2e071b5a05b2838035"),
+			},
+			{
+				globalIndex:    g2,
+				bridgeExitHash: common.HexToHash("0x855f364671260b1143962defe40ab63a0ec76b20a773f594f3c7bd0d87d6c27c"),
+			},
+		},
+	}
+	expectedHash := common.HexToHash("0x1b2d35e62df05e64b5987fa70c318ccabb08ce181818c9c88851ac15da9d277a")
+	require.Equal(t, expectedHash, data.Hash(), "Hash should match the expected value")
 
 }

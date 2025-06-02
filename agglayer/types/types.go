@@ -692,6 +692,14 @@ type ImportedBridgeExitWithBlockNumber struct {
 	ImportedBridgeExit *ImportedBridgeExit `json:"imported_bridge_exit"`
 }
 
+func (i *ImportedBridgeExitWithBlockNumber) String() string {
+	if i == nil {
+		return "ImportedBridgeExitWithBlockNumber{nil}"
+	}
+	return fmt.Sprintf("BlockNumber: %d, ImportedBridgeExit: %s",
+		i.BlockNumber, i.ImportedBridgeExit.String())
+}
+
 // Claim is the interface that will be implemented by the different types of claims
 type Claim interface {
 	Type() string
@@ -878,8 +886,11 @@ func (c *ImportedBridgeExit) String() string {
 	} else {
 		res += fmt.Sprintf(", GlobalIndex: %s", c.GlobalIndex.String())
 	}
-
-	res += fmt.Sprintf("ClaimData: %s", c.ClaimData.String())
+	if c.ClaimData != nil {
+		res += fmt.Sprintf("ClaimData: %s", c.ClaimData.String())
+	} else {
+		res += ", ClaimData: nil"
+	}
 
 	return res
 }

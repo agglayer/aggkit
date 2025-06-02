@@ -92,16 +92,20 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 		return nil, fmt.Errorf("aggregationProofPublicValues.Hash: error hashing aggregationProofPublicValues: %w", err)
 	}
 	importedBridgesHash := CalculateCommitImportedBrdigeExitsHashFromClaims(certBuildParams.Claims)
+	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign aggHash:%s", aggregationProofPublicValuesHash.Hex())
+	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign newLocalExitRoot:%s", newLocalExitRoot.Hex())
+	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign commitImportedBridgeExits:%s", importedBridgesHash.Hex())
+
 	optimisticSignature := OptimisticSignatureData{
 		aggregationProofPublicValuesHash: aggregationProofPublicValuesHash,
 		newLocalExitRoot:                 newLocalExitRoot,
 		commitImportedBridgeExits:        importedBridgesHash,
 	}
 	hashToSign := optimisticSignature.Hash()
-
+	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign signed_commitment:%s", hashToSign.Hex())
 	signData, err := o.Signer.SignHash(ctx, hashToSign)
 	if err != nil {
-		return nil, fmt.Errorf("OptimisticSignatureData.Sign: error signing hash: %w", err)
+		return nil, fmt.Errorf("OptimisticSignatureData.Sign: Fails to sign. Err: %w", err)
 	}
 	return signData, nil
 }
