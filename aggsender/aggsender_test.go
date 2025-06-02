@@ -353,7 +353,7 @@ func TestSendCertificate(t *testing.T) {
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.Hash{}, errors.New("some error")).Once()
-				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
+				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 			},
 			expectedError: "error sending certificate",
 		},

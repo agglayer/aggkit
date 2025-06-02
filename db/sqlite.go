@@ -79,5 +79,25 @@ func (kv *KeyValueStorage) ExistsKey(tx Querier, owner, key string) (bool, error
 	}
 	err := tx.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE owner = ? and key = ?", tableKVName),
 		owner, key).Scan(&count)
-	return count > 0, ReturnErrNotFound(err)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+func (kv *KeyValueStorage) UpdateValue(tx Querier, owner, key, value string) error {
+	if tx == nil {
+		tx = kv.DB
+	}
+
+	updateAt := funcTimeNow().Unix()
+	_, err := tx.Exec(fmt.Sprintf("UPDATE %s SET value = $1, updated_at = $2 WHERE owner = $3 and key = $4", tableKVName),
+		value, updateAt, owner, key)
+
+	return ReturnErrNotFound(err)
 }

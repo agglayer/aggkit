@@ -18,6 +18,8 @@ func TestSqlite(t *testing.T) {
 	require.NoError(t, err)
 	owner := "unittest"
 	kv := KeyValueStorage{db}
+
+	// Test InsertValue and GetValue
 	_, err = kv.GetValue(db, owner, "key")
 	require.ErrorIs(t, err, ErrNotFound)
 	err = kv.InsertValue(db, owner, "key", "value")
@@ -25,4 +27,22 @@ func TestSqlite(t *testing.T) {
 	value, err := kv.GetValue(db, owner, "key")
 	require.NoError(t, err)
 	require.Equal(t, "value", value)
+
+	// Test ExistsKey
+	exists, err := kv.ExistsKey(db, owner, "key")
+	require.NoError(t, err)
+	require.True(t, exists)
+	exists, err = kv.ExistsKey(db, owner, "nonexistent_key")
+	require.NoError(t, err)
+	require.False(t, exists)
+	exists, err = kv.ExistsKey(db, "some_new_owner", "nonexistent_key")
+	require.NoError(t, err)
+	require.False(t, exists)
+
+	// Test UpdateValue
+	err = kv.UpdateValue(db, owner, "key", "new_value")
+	require.NoError(t, err)
+	value, err = kv.GetValue(db, owner, "key")
+	require.NoError(t, err)
+	require.Equal(t, "new_value", value)
 }

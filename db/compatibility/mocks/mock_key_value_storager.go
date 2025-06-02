@@ -20,6 +20,64 @@ func (_m *KeyValueStorager) EXPECT() *KeyValueStorager_Expecter {
 	return &KeyValueStorager_Expecter{mock: &_m.Mock}
 }
 
+// ExistsKey provides a mock function with given fields: tx, owner, key
+func (_m *KeyValueStorager) ExistsKey(tx db.Querier, owner string, key string) (bool, error) {
+	ret := _m.Called(tx, owner, key)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ExistsKey")
+	}
+
+	var r0 bool
+	var r1 error
+	if rf, ok := ret.Get(0).(func(db.Querier, string, string) (bool, error)); ok {
+		return rf(tx, owner, key)
+	}
+	if rf, ok := ret.Get(0).(func(db.Querier, string, string) bool); ok {
+		r0 = rf(tx, owner, key)
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	if rf, ok := ret.Get(1).(func(db.Querier, string, string) error); ok {
+		r1 = rf(tx, owner, key)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// KeyValueStorager_ExistsKey_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ExistsKey'
+type KeyValueStorager_ExistsKey_Call struct {
+	*mock.Call
+}
+
+// ExistsKey is a helper method to define mock.On call
+//   - tx db.Querier
+//   - owner string
+//   - key string
+func (_e *KeyValueStorager_Expecter) ExistsKey(tx interface{}, owner interface{}, key interface{}) *KeyValueStorager_ExistsKey_Call {
+	return &KeyValueStorager_ExistsKey_Call{Call: _e.mock.On("ExistsKey", tx, owner, key)}
+}
+
+func (_c *KeyValueStorager_ExistsKey_Call) Run(run func(tx db.Querier, owner string, key string)) *KeyValueStorager_ExistsKey_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(db.Querier), args[1].(string), args[2].(string))
+	})
+	return _c
+}
+
+func (_c *KeyValueStorager_ExistsKey_Call) Return(_a0 bool, _a1 error) *KeyValueStorager_ExistsKey_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *KeyValueStorager_ExistsKey_Call) RunAndReturn(run func(db.Querier, string, string) (bool, error)) *KeyValueStorager_ExistsKey_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetValue provides a mock function with given fields: tx, owner, key
 func (_m *KeyValueStorager) GetValue(tx db.Querier, owner string, key string) (string, error) {
 	ret := _m.Called(tx, owner, key)
@@ -123,6 +181,55 @@ func (_c *KeyValueStorager_InsertValue_Call) Return(_a0 error) *KeyValueStorager
 }
 
 func (_c *KeyValueStorager_InsertValue_Call) RunAndReturn(run func(db.Querier, string, string, string) error) *KeyValueStorager_InsertValue_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateValue provides a mock function with given fields: tx, owner, key, value
+func (_m *KeyValueStorager) UpdateValue(tx db.Querier, owner string, key string, value string) error {
+	ret := _m.Called(tx, owner, key, value)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateValue")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(db.Querier, string, string, string) error); ok {
+		r0 = rf(tx, owner, key, value)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// KeyValueStorager_UpdateValue_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateValue'
+type KeyValueStorager_UpdateValue_Call struct {
+	*mock.Call
+}
+
+// UpdateValue is a helper method to define mock.On call
+//   - tx db.Querier
+//   - owner string
+//   - key string
+//   - value string
+func (_e *KeyValueStorager_Expecter) UpdateValue(tx interface{}, owner interface{}, key interface{}, value interface{}) *KeyValueStorager_UpdateValue_Call {
+	return &KeyValueStorager_UpdateValue_Call{Call: _e.mock.On("UpdateValue", tx, owner, key, value)}
+}
+
+func (_c *KeyValueStorager_UpdateValue_Call) Run(run func(tx db.Querier, owner string, key string, value string)) *KeyValueStorager_UpdateValue_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(db.Querier), args[1].(string), args[2].(string), args[3].(string))
+	})
+	return _c
+}
+
+func (_c *KeyValueStorager_UpdateValue_Call) Return(_a0 error) *KeyValueStorager_UpdateValue_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *KeyValueStorager_UpdateValue_Call) RunAndReturn(run func(db.Querier, string, string, string) error) *KeyValueStorager_UpdateValue_Call {
 	_c.Call.Return(run)
 	return _c
 }

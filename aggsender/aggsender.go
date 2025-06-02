@@ -261,7 +261,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
-		if err := a.storage.SaveNonAcceptedCertificate(ctx, certificate, certificateParams.CreatedAt); err != nil {
+		if err := a.storage.SaveNonAcceptedCertificate(
+			ctx, certificate, certificateParams.CreatedAt, err.Error()); err != nil {
 			a.log.Errorf("error saving non accepted certificate %s in db: %w", certificate.Brief(), err)
 		}
 

@@ -8,6 +8,8 @@ import (
 
 	context "context"
 
+	db "github.com/agglayer/aggkit/aggsender/db"
+
 	mock "github.com/stretchr/testify/mock"
 
 	types "github.com/agglayer/aggkit/aggsender/types"
@@ -428,24 +430,24 @@ func (_c *AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call) 
 	return _c
 }
 
-// GetNonAcceptedCertificates provides a mock function with no fields
-func (_m *AggSenderStorage) GetNonAcceptedCertificates() ([]*agglayertypes.Certificate, error) {
+// GetNonAcceptedCertificate provides a mock function with no fields
+func (_m *AggSenderStorage) GetNonAcceptedCertificate() (*db.NonAcceptedCertificate, error) {
 	ret := _m.Called()
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetNonAcceptedCertificates")
+		panic("no return value specified for GetNonAcceptedCertificate")
 	}
 
-	var r0 []*agglayertypes.Certificate
+	var r0 *db.NonAcceptedCertificate
 	var r1 error
-	if rf, ok := ret.Get(0).(func() ([]*agglayertypes.Certificate, error)); ok {
+	if rf, ok := ret.Get(0).(func() (*db.NonAcceptedCertificate, error)); ok {
 		return rf()
 	}
-	if rf, ok := ret.Get(0).(func() []*agglayertypes.Certificate); ok {
+	if rf, ok := ret.Get(0).(func() *db.NonAcceptedCertificate); ok {
 		r0 = rf()
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]*agglayertypes.Certificate)
+			r0 = ret.Get(0).(*db.NonAcceptedCertificate)
 		}
 	}
 
@@ -458,29 +460,29 @@ func (_m *AggSenderStorage) GetNonAcceptedCertificates() ([]*agglayertypes.Certi
 	return r0, r1
 }
 
-// AggSenderStorage_GetNonAcceptedCertificates_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNonAcceptedCertificates'
-type AggSenderStorage_GetNonAcceptedCertificates_Call struct {
+// AggSenderStorage_GetNonAcceptedCertificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNonAcceptedCertificate'
+type AggSenderStorage_GetNonAcceptedCertificate_Call struct {
 	*mock.Call
 }
 
-// GetNonAcceptedCertificates is a helper method to define mock.On call
-func (_e *AggSenderStorage_Expecter) GetNonAcceptedCertificates() *AggSenderStorage_GetNonAcceptedCertificates_Call {
-	return &AggSenderStorage_GetNonAcceptedCertificates_Call{Call: _e.mock.On("GetNonAcceptedCertificates")}
+// GetNonAcceptedCertificate is a helper method to define mock.On call
+func (_e *AggSenderStorage_Expecter) GetNonAcceptedCertificate() *AggSenderStorage_GetNonAcceptedCertificate_Call {
+	return &AggSenderStorage_GetNonAcceptedCertificate_Call{Call: _e.mock.On("GetNonAcceptedCertificate")}
 }
 
-func (_c *AggSenderStorage_GetNonAcceptedCertificates_Call) Run(run func()) *AggSenderStorage_GetNonAcceptedCertificates_Call {
+func (_c *AggSenderStorage_GetNonAcceptedCertificate_Call) Run(run func()) *AggSenderStorage_GetNonAcceptedCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *AggSenderStorage_GetNonAcceptedCertificates_Call) Return(_a0 []*agglayertypes.Certificate, _a1 error) *AggSenderStorage_GetNonAcceptedCertificates_Call {
+func (_c *AggSenderStorage_GetNonAcceptedCertificate_Call) Return(_a0 *db.NonAcceptedCertificate, _a1 error) *AggSenderStorage_GetNonAcceptedCertificate_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggSenderStorage_GetNonAcceptedCertificates_Call) RunAndReturn(run func() ([]*agglayertypes.Certificate, error)) *AggSenderStorage_GetNonAcceptedCertificates_Call {
+func (_c *AggSenderStorage_GetNonAcceptedCertificate_Call) RunAndReturn(run func() (*db.NonAcceptedCertificate, error)) *AggSenderStorage_GetNonAcceptedCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -532,17 +534,17 @@ func (_c *AggSenderStorage_SaveLastSentCertificate_Call) RunAndReturn(run func(c
 	return _c
 }
 
-// SaveNonAcceptedCertificate provides a mock function with given fields: ctx, certificate, createdAt
-func (_m *AggSenderStorage) SaveNonAcceptedCertificate(ctx context.Context, certificate *agglayertypes.Certificate, createdAt uint32) error {
-	ret := _m.Called(ctx, certificate, createdAt)
+// SaveNonAcceptedCertificate provides a mock function with given fields: ctx, certificate, createdAt, certError
+func (_m *AggSenderStorage) SaveNonAcceptedCertificate(ctx context.Context, certificate *agglayertypes.Certificate, createdAt uint32, certError string) error {
+	ret := _m.Called(ctx, certificate, createdAt, certError)
 
 	if len(ret) == 0 {
 		panic("no return value specified for SaveNonAcceptedCertificate")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate, uint32) error); ok {
-		r0 = rf(ctx, certificate, createdAt)
+	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate, uint32, string) error); ok {
+		r0 = rf(ctx, certificate, createdAt, certError)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -559,13 +561,14 @@ type AggSenderStorage_SaveNonAcceptedCertificate_Call struct {
 //   - ctx context.Context
 //   - certificate *agglayertypes.Certificate
 //   - createdAt uint32
-func (_e *AggSenderStorage_Expecter) SaveNonAcceptedCertificate(ctx interface{}, certificate interface{}, createdAt interface{}) *AggSenderStorage_SaveNonAcceptedCertificate_Call {
-	return &AggSenderStorage_SaveNonAcceptedCertificate_Call{Call: _e.mock.On("SaveNonAcceptedCertificate", ctx, certificate, createdAt)}
+//   - certError string
+func (_e *AggSenderStorage_Expecter) SaveNonAcceptedCertificate(ctx interface{}, certificate interface{}, createdAt interface{}, certError interface{}) *AggSenderStorage_SaveNonAcceptedCertificate_Call {
+	return &AggSenderStorage_SaveNonAcceptedCertificate_Call{Call: _e.mock.On("SaveNonAcceptedCertificate", ctx, certificate, createdAt, certError)}
 }
 
-func (_c *AggSenderStorage_SaveNonAcceptedCertificate_Call) Run(run func(ctx context.Context, certificate *agglayertypes.Certificate, createdAt uint32)) *AggSenderStorage_SaveNonAcceptedCertificate_Call {
+func (_c *AggSenderStorage_SaveNonAcceptedCertificate_Call) Run(run func(ctx context.Context, certificate *agglayertypes.Certificate, createdAt uint32, certError string)) *AggSenderStorage_SaveNonAcceptedCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*agglayertypes.Certificate), args[2].(uint32))
+		run(args[0].(context.Context), args[1].(*agglayertypes.Certificate), args[2].(uint32), args[3].(string))
 	})
 	return _c
 }
@@ -575,7 +578,7 @@ func (_c *AggSenderStorage_SaveNonAcceptedCertificate_Call) Return(_a0 error) *A
 	return _c
 }
 
-func (_c *AggSenderStorage_SaveNonAcceptedCertificate_Call) RunAndReturn(run func(context.Context, *agglayertypes.Certificate, uint32) error) *AggSenderStorage_SaveNonAcceptedCertificate_Call {
+func (_c *AggSenderStorage_SaveNonAcceptedCertificate_Call) RunAndReturn(run func(context.Context, *agglayertypes.Certificate, uint32, string) error) *AggSenderStorage_SaveNonAcceptedCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }
