@@ -904,7 +904,6 @@ func Test_UnmarshalCertificate(t *testing.T) {
 	require.NoError(t, err)
 	marshalData, err := json.Marshal(cert)
 	require.NoError(t, err)
-	fmt.Println(string(fullCertificateJSON))
 	require.JSONEq(t, fullCertificateJSON, string(marshalData))
 }
 

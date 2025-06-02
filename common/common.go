@@ -14,6 +14,8 @@ import (
 	"github.com/iden3/go-iden3-crypto/keccak256"
 )
 
+const KB = 1 << 10 // 1024
+
 var (
 	ZeroHash = common.HexToHash("0x0")
 )

@@ -29,10 +29,10 @@ const (
 	nullStr = "null"
 	base10  = 10
 
-	EstimatedAggchainProofSize      = 10_000
-	EstimatedAggchainSignatureSize  = 70
-	EstimatedBridgeExitSize         = 90
-	EstimatedImportedBridgeExitSize = 2800
+	EstimatedAggchainProofSize      = 10 * aggkitcommon.KB
+	EstimatedAggchainSignatureSize  = 0.07 * aggkitcommon.KB
+	EstimatedBridgeExitSize         = 0.09 * aggkitcommon.KB
+	EstimatedImportedBridgeExitSize = 2.8 * aggkitcommon.KB
 )
 
 var (

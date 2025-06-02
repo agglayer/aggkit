@@ -102,23 +102,23 @@ func (c *CertificateBuildParams) EstimatedSize() uint {
 	if c == nil {
 		return 0
 	}
-	sizeBridges := int(0)
+	sizeBridges := float64(0)
 	for _, bridge := range c.Bridges {
 		sizeBridges += agglayertypes.EstimatedBridgeExitSize
-		sizeBridges += len(bridge.Metadata)
+		sizeBridges += float64(len(bridge.Metadata))
 	}
 
-	sizeClaims := int(0)
+	sizeClaims := float64(0)
 	for _, claim := range c.Claims {
 		sizeClaims += agglayertypes.EstimatedImportedBridgeExitSize
-		sizeClaims += len(claim.Metadata)
+		sizeClaims += float64(len(claim.Metadata))
 	}
 
-	sizeAggchainData := int(0)
+	sizeAggchainData := float64(0)
 	switch c.CertificateType {
 	case CertificateTypeFEP:
 		sizeAggchainData += agglayertypes.EstimatedAggchainProofSize
-		sizeAggchainData += len(c.Claims) * claimSizeFactor // for each claim the proof gets bigger by some size
+		sizeAggchainData += float64(len(c.Claims) * claimSizeFactor) // for each claim the proof gets bigger by some size
 	default:
 		sizeAggchainData += agglayertypes.EstimatedAggchainSignatureSize
 	}
