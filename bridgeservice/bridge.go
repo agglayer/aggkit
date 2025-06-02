@@ -1082,7 +1082,7 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 		return 0, err
 	}
 
-	// Binary search between the first and last blcoks where batches were verified.
+	// Binary search between the first and last blocks where batches were verified.
 	// Find the smallest deposit count that is greater than depositCount and matches with
 	// a LER that is verified
 	bestResult := lastVerified
