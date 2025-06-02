@@ -62,3 +62,9 @@ func (c *certificateInfo) ID() string {
 	}
 	return fmt.Sprintf("%d/%s (retry %d)", c.Height, c.CertificateID.String(), c.RetryCount)
 }
+
+type nonAcceptedCertificate struct {
+	Height            uint64 `meddler:"height"`
+	SignedCertificate string `meddler:"signed_certificate"`
+	CreatedAt         uint32 `meddler:"created_at"`
+}
