@@ -4,34 +4,17 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
+	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/agglayer/aggkit/opnode"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
-
-// OpNodeClienter is an interface that defines the methods for interacting with the OpNode client.
-type OpNodeClienter interface {
-	OutputAtBlockRoot(blockNum uint64) (common.Hash, error)
-}
 
 // The real object that implements OpNodeClienter is opnode.OpNodeClient
 var _ OpNodeClienter = (*opnode.OpNodeClient)(nil)
 
-// FEPContractQuerier is an interface that defines the methods for interacting with the FEP contract.
-type FEPContractQuerier interface {
-	RollupConfigHash(opts *bind.CallOpts) ([32]byte, error)
-	RangeVkeyCommitment(opts *bind.CallOpts) ([32]byte, error)
-}
-
 var _ FEPContractQuerier = (*aggchainfep.Aggchainfep)(nil)
 
-// OptimisticAggregationProofPublicValuesQuerier defines an interface for querying aggregation proof public values in optimistic mode.
-type OptimisticAggregationProofPublicValuesQuerier interface {
-	GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
-		l1InfoTreeLeafHash common.Hash) (*AggregationProofPublicValues, error)
-}
-
-var _OptimisticAggregationProofPublicValuesQuerier = (*OptimisticAggregationProofPublicValuesQuery)(nil)
+var _ OptimisticAggregationProofPublicValuesQuerier = (*OptimisticAggregationProofPublicValuesQuery)(nil)
 
 type OptimisticAggregationProofPublicValuesQuery struct {
 	aggchainFEPContract FEPContractQuerier
@@ -59,7 +42,7 @@ func NewOptimisticAggregationProofPublicValuesQuery(
 // RequestedEndBlock = req.RequestedEndBlock
 // L1InfoTreeLeafHash = req.L1InfoTreeLeaf.Hash
 func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
-	l1InfoTreeLeafHash common.Hash) (*AggregationProofPublicValues, error) {
+	l1InfoTreeLeafHash common.Hash) (*optimistichash.AggregationProofPublicValues, error) {
 	l2PreRoot, err := o.opNodeClient.OutputAtBlockRoot(lastProvenBlock)
 	if err != nil {
 		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get l2PreRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w", lastProvenBlock, err)
@@ -77,7 +60,7 @@ func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicV
 		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get multiBlockVKey(AggregationVkey) from contract %s. Err: %w", o.aggchainFEPAddr, err)
 	}
 
-	return &AggregationProofPublicValues{
+	return &optimistichash.AggregationProofPublicValues{
 		L1Head:           l1InfoTreeLeafHash,
 		L2PreRoot:        l2PreRoot,
 		ClaimRoot:        claimRoot,

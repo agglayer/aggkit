@@ -9,7 +9,7 @@ import (
 )
 
 type OptimisticModeQuerierFromContract struct {
-	aggchainFEPContract *aggchainfep.Aggchainfep
+	aggchainFEPContract FEPContractQuerier
 	aggchainFEPAddr     common.Address
 	// op-node client
 }

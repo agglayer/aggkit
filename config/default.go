@@ -20,6 +20,7 @@ L2Coinbase = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 SequencerPrivateKeyPath = "/app/sequencer.keystore"
 SequencerPrivateKeyPassword = "test"
 TrustedSequencerKey = "{Method =  \"local\", Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
+
 WitnessURL = "http://localhost:8123"
 
 # Who send Proof to L1? AggLayer addr, or aggregator addr?
@@ -247,8 +248,8 @@ RequireNoFEPBlockGap = true
 		NumRequests = 20
 		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
-		AggchainFEPAddr = "{{L1Config.polygonZkEVMAddress}}"
-		SignPrivateKey = {{TrustedSequencerKey}}
+		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
+		TrustedSequencerKey = {{TrustedSequencerKey}}
 		OpNodeURL = "{{OpNodeURL}}"
 [Prometheus]
 Enabled = true

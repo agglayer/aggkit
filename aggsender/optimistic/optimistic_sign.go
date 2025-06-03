@@ -5,11 +5,11 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
+	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
 	"github.com/agglayer/go_signer/signer"
-
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -34,11 +34,11 @@ func NewOptimisticSignatureCalculatorImpl(
 	l1Client types.EthClient,
 	cfg Config,
 ) (*OptimisticSignatureCalculatorImpl, error) {
-	aggchainFEPContract, err := aggchainfep.NewAggchainfep(cfg.AggchainFEPAddr, l1Client)
+	aggchainFEPContract, err := aggchainfep.NewAggchainfep(cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("newOptimisticSignatureCalculatorImpl.NewAggchainfep Err: %w", err)
 	}
-	signer, err := signer.NewSigner(ctx, 0, cfg.SignPrivateKey, "optimistic", logger)
+	signer, err := signer.NewSigner(ctx, 0, cfg.TrustedSequencerKey, "optimistic", logger)
 	if err != nil {
 		return nil, fmt.Errorf("optimisitc. error NewSigner. Err: %w", err)
 	}
@@ -60,7 +60,7 @@ func NewOptimisticSignatureCalculatorImpl(
 		trustedSequencerAddr.Hex())
 	query := NewOptimisticAggregationProofPublicValuesQuery(
 		aggchainFEPContract,
-		cfg.AggchainFEPAddr,
+		cfg.SovereignRollupAddr,
 		opnode.NewOpNodeClient(cfg.OpNodeURL),
 		signer.PublicAddress())
 
@@ -93,12 +93,12 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	if err != nil {
 		return nil, "", fmt.Errorf("aggregationProofPublicValues.Hash: error hashing aggregationProofPublicValues: %w", err)
 	}
-	importedBridgesHash := CalculateCommitImportedBrdigeExitsHashFromClaims(certBuildParams.Claims)
+	importedBridgesHash := optimistichash.CalculateCommitImportedBrdigeExitsHashFromClaims(certBuildParams.Claims)
 	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign aggHash:%s", aggregationProofPublicValuesHash.Hex())
 	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign newLocalExitRoot:%s", newLocalExitRoot.Hex())
 	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign commitImportedBridgeExits:%s", importedBridgesHash.Hex())
 
-	optimisticSignature := OptimisticSignatureData{
+	optimisticSignature := optimistichash.OptimisticSignatureData{
 		AggregationProofPublicValuesHash: aggregationProofPublicValuesHash,
 		NewLocalExitRoot:                 newLocalExitRoot,
 		CommitImportedBridgeExits:        importedBridgesHash,

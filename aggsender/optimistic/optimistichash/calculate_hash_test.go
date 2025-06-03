@@ -1,4 +1,4 @@
-package optimistic
+package optimistichash
 
 import (
 	"testing"

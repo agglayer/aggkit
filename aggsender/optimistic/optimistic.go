@@ -20,7 +20,7 @@ func NewOptimistic(ctx context.Context,
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating optimistic signer: %w", err)
 	}
-	optimisticModeQuerier, err := NewOptimisticModeQuerierFromContract(cfg.AggchainFEPAddr, l1Client)
+	optimisticModeQuerier, err := NewOptimisticModeQuerierFromContract(cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error creating optimistic mode querier: %w", err)
 	}
