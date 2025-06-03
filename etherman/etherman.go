@@ -32,11 +32,11 @@ type Client struct {
 }
 
 // NewClient creates a new etherman.
-func NewClient(cfg config.Config, l1Config config.L1Config) (*Client, error) {
+func NewClient(l1Config config.L1Config) (*Client, error) {
 	// Connect to ethereum node
-	ethClient, err := ethclient.Dial(cfg.EthermanConfig.URL)
+	ethClient, err := ethclient.Dial(l1Config.URL)
 	if err != nil {
-		log.Errorf("error connecting to %s: %+v", cfg.EthermanConfig.URL, err)
+		log.Errorf("error connecting to %s: %+v", l1Config.URL, err)
 
 		return nil, err
 	}
