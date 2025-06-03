@@ -94,7 +94,6 @@ if [ -n "$E2E_FOLDER" ]; then
     cp "$imported_bridges_tool" "$E2E_FOLDER/aggsender_find_imported_bridge"
     chmod +x "$E2E_FOLDER/aggsender_find_imported_bridge"
 
-    log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
     pushd "$E2E_FOLDER" >/dev/null
 
     log_info "Setting up e2e environment..."
