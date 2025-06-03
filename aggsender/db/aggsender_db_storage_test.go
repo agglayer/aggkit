@@ -900,3 +900,42 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 		})
 	}
 }
+
+func Test_GetNonAcceptedCert(t *testing.T) {
+	t.Parallel()
+
+	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
+	cfg := AggSenderSQLStorageConfig{
+		DBPath: dbPath,
+	}
+
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+
+	// Test with no non-accepted certificate
+	nonAcceptedCert, err := storage.GetNonAcceptedCertificate()
+	require.NoError(t, err)
+	require.Nil(t, nonAcceptedCert, "should return nil when no non-accepted certificate exists")
+
+	// Test with a non-accepted certificate
+	certificate := &agglayertypes.Certificate{
+		Height:              1,
+		PrevLocalExitRoot:   common.HexToHash("0x1"),
+		NewLocalExitRoot:    common.HexToHash("0x2"),
+		Metadata:            common.HexToHash("0x3"),
+		NetworkID:           2,
+		BridgeExits:         []*agglayertypes.BridgeExit{},
+		ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
+		L1InfoTreeLeafCount: 19,
+	}
+	require.NoError(t, storage.SaveNonAcceptedCertificate(context.Background(), certificate, uint32(time.Now().UTC().UnixMilli()), "test error"))
+	nonAcceptedCert, err = storage.GetNonAcceptedCertificate()
+	require.NoError(t, err)
+	require.NotNil(t, nonAcceptedCert, "should return a non-nil non-accepted certificate")
+
+	var certificateFromDB agglayertypes.Certificate
+	if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificateFromDB); err != nil {
+		t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+	}
+	require.Equal(t, *certificate, certificateFromDB, "retrieved certificate should match the saved certificate")
+}
