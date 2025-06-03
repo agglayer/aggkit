@@ -6,7 +6,6 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/banana/polygonrollupmanager"
 	"github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -26,14 +25,10 @@ type L1Config struct {
 	GlobalExitRootManagerAddr common.Address `json:"polygonZkEVMGlobalExitRootAddress" mapstructure:"GlobalExitRootManagerAddr"` //nolint:lll
 }
 
-// Client is a simple implementation of EtherMan.
+// Client is a simple implementation of Etherman.
 type Client struct {
-	EthClient aggkittypes.BaseEthereumClienter
-
 	rollupManagerSC *polygonrollupmanager.Polygonrollupmanager
 	RollupID        uint32
-
-	l1Cfg config.L1Config
 }
 
 // NewClient creates a new etherman.
@@ -65,21 +60,15 @@ func NewClient(cfg config.Config, l1Config config.L1Config) (*Client, error) {
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 
 	return &Client{
-		EthClient:       ethClient,
 		rollupManagerSC: rollupManagerSC,
 		RollupID:        rollupID,
-		l1Cfg:           l1Config,
 	}, nil
 }
 
 // GetL2ChainID returns L2 Chain ID
 func (c *Client) GetL2ChainID() (uint64, error) {
-	// TODO: @Stefan-Ethernal Check if we can invoke the eth_chainId endpoint
-	rollupData, err := c.rollupManagerSC.RollupIDToRollupData(
-		&bind.CallOpts{Pending: false},
-		c.RollupID,
-	)
-	log.Debug("chainID read from rollupManager: ", rollupData.ChainID)
+	rollupData, err := c.rollupManagerSC.RollupIDToRollupData(&bind.CallOpts{Pending: false}, c.RollupID)
+	log.Infof("rollup chain id (read from rollup manager): %d", rollupData.ChainID)
 	if err != nil {
 		log.Debug("error from rollupManager: ", err)
 
