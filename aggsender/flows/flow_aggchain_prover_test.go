@@ -199,6 +199,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					ToBlock:       10,
 					Status:        agglayertypes.InError,
 					CertificateID: common.HexToHash("0x1"),
+					CertType:      types.CertificateTypeFEP,
 				},
 				Bridges:             []bridgesync.Bridge{{}},
 				L1InfoTreeLeafCount: 11,
@@ -497,18 +498,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
-				if tc.expectedParams != nil {
-					paramsCopy := *params
-					expectedCopy := *tc.expectedParams
-					require.Equal(t, expectedCopy.CertificateType, paramsCopy.CertificateType, "unexpected certificate type")
-					paramsCopy.CertificateType = types.CertificateTypeUnknown // ignore certificate type in comparison
-					expectedCopy.CertificateType = paramsCopy.CertificateType // ignore certificate type in comparison
-					require.Equal(t, expectedCopy.CertificateType, paramsCopy.CertificateType, "unexpected certificate type")
-
-					require.Equal(t, expectedCopy, paramsCopy, "no params "+tc.name)
-				} else {
-					require.Equal(t, tc.expectedParams, params)
-				}
+				require.Equal(t, tc.expectedParams, params)
 			}
 
 			mockStorage.AssertExpectations(t)
