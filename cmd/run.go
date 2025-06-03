@@ -92,7 +92,7 @@ func start(cliCtx *cli.Context) error {
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
-			aggOracle := createAggoracle(*cfg, l1Client, l2Client, l1InfoTreeSync)
+			aggOracle := createAggoracle(ethermanClient, *cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(cliCtx.Context)
 
 		case aggkitcommon.BRIDGE:
@@ -234,16 +234,13 @@ func createAggSender(
 }
 
 func createAggoracle(
+	ethermanClient *etherman.Client,
 	cfg config.Config,
 	l1Client,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
-	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config)
-	if err != nil {
-		logger.Fatal(err)
-	}
 	l2ChainID, err := ethermanClient.GetL2ChainID()
 	if err != nil {
 		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
