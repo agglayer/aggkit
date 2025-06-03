@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	db "github.com/agglayer/aggkit/db"
+	types "github.com/agglayer/aggkit/db/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -23,7 +23,7 @@ func (_m *CompatibilityDataStorager[T]) EXPECT() *CompatibilityDataStorager_Expe
 }
 
 // GetCompatibilityData provides a mock function with given fields: ctx, tx
-func (_m *CompatibilityDataStorager[T]) GetCompatibilityData(ctx context.Context, tx db.Querier) (bool, T, error) {
+func (_m *CompatibilityDataStorager[T]) GetCompatibilityData(ctx context.Context, tx types.Querier) (bool, T, error) {
 	ret := _m.Called(ctx, tx)
 
 	if len(ret) == 0 {
@@ -33,16 +33,16 @@ func (_m *CompatibilityDataStorager[T]) GetCompatibilityData(ctx context.Context
 	var r0 bool
 	var r1 T
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, db.Querier) (bool, T, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier) (bool, T, error)); ok {
 		return rf(ctx, tx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, db.Querier) bool); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier) bool); ok {
 		r0 = rf(ctx, tx)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, db.Querier) T); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, types.Querier) T); ok {
 		r1 = rf(ctx, tx)
 	} else {
 		if ret.Get(1) != nil {
@@ -50,7 +50,7 @@ func (_m *CompatibilityDataStorager[T]) GetCompatibilityData(ctx context.Context
 		}
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, db.Querier) error); ok {
+	if rf, ok := ret.Get(2).(func(context.Context, types.Querier) error); ok {
 		r2 = rf(ctx, tx)
 	} else {
 		r2 = ret.Error(2)
@@ -66,14 +66,14 @@ type CompatibilityDataStorager_GetCompatibilityData_Call[T any] struct {
 
 // GetCompatibilityData is a helper method to define mock.On call
 //   - ctx context.Context
-//   - tx db.Querier
+//   - tx types.Querier
 func (_e *CompatibilityDataStorager_Expecter[T]) GetCompatibilityData(ctx interface{}, tx interface{}) *CompatibilityDataStorager_GetCompatibilityData_Call[T] {
 	return &CompatibilityDataStorager_GetCompatibilityData_Call[T]{Call: _e.mock.On("GetCompatibilityData", ctx, tx)}
 }
 
-func (_c *CompatibilityDataStorager_GetCompatibilityData_Call[T]) Run(run func(ctx context.Context, tx db.Querier)) *CompatibilityDataStorager_GetCompatibilityData_Call[T] {
+func (_c *CompatibilityDataStorager_GetCompatibilityData_Call[T]) Run(run func(ctx context.Context, tx types.Querier)) *CompatibilityDataStorager_GetCompatibilityData_Call[T] {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(db.Querier))
+		run(args[0].(context.Context), args[1].(types.Querier))
 	})
 	return _c
 }
@@ -83,13 +83,13 @@ func (_c *CompatibilityDataStorager_GetCompatibilityData_Call[T]) Return(_a0 boo
 	return _c
 }
 
-func (_c *CompatibilityDataStorager_GetCompatibilityData_Call[T]) RunAndReturn(run func(context.Context, db.Querier) (bool, T, error)) *CompatibilityDataStorager_GetCompatibilityData_Call[T] {
+func (_c *CompatibilityDataStorager_GetCompatibilityData_Call[T]) RunAndReturn(run func(context.Context, types.Querier) (bool, T, error)) *CompatibilityDataStorager_GetCompatibilityData_Call[T] {
 	_c.Call.Return(run)
 	return _c
 }
 
 // SetCompatibilityData provides a mock function with given fields: ctx, tx, data
-func (_m *CompatibilityDataStorager[T]) SetCompatibilityData(ctx context.Context, tx db.Querier, data T) error {
+func (_m *CompatibilityDataStorager[T]) SetCompatibilityData(ctx context.Context, tx types.Querier, data T) error {
 	ret := _m.Called(ctx, tx, data)
 
 	if len(ret) == 0 {
@@ -97,7 +97,7 @@ func (_m *CompatibilityDataStorager[T]) SetCompatibilityData(ctx context.Context
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, db.Querier, T) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier, T) error); ok {
 		r0 = rf(ctx, tx, data)
 	} else {
 		r0 = ret.Error(0)
@@ -113,15 +113,15 @@ type CompatibilityDataStorager_SetCompatibilityData_Call[T any] struct {
 
 // SetCompatibilityData is a helper method to define mock.On call
 //   - ctx context.Context
-//   - tx db.Querier
+//   - tx types.Querier
 //   - data T
 func (_e *CompatibilityDataStorager_Expecter[T]) SetCompatibilityData(ctx interface{}, tx interface{}, data interface{}) *CompatibilityDataStorager_SetCompatibilityData_Call[T] {
 	return &CompatibilityDataStorager_SetCompatibilityData_Call[T]{Call: _e.mock.On("SetCompatibilityData", ctx, tx, data)}
 }
 
-func (_c *CompatibilityDataStorager_SetCompatibilityData_Call[T]) Run(run func(ctx context.Context, tx db.Querier, data T)) *CompatibilityDataStorager_SetCompatibilityData_Call[T] {
+func (_c *CompatibilityDataStorager_SetCompatibilityData_Call[T]) Run(run func(ctx context.Context, tx types.Querier, data T)) *CompatibilityDataStorager_SetCompatibilityData_Call[T] {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(db.Querier), args[2].(T))
+		run(args[0].(context.Context), args[1].(types.Querier), args[2].(T))
 	})
 	return _c
 }
@@ -131,7 +131,7 @@ func (_c *CompatibilityDataStorager_SetCompatibilityData_Call[T]) Return(_a0 err
 	return _c
 }
 
-func (_c *CompatibilityDataStorager_SetCompatibilityData_Call[T]) RunAndReturn(run func(context.Context, db.Querier, T) error) *CompatibilityDataStorager_SetCompatibilityData_Call[T] {
+func (_c *CompatibilityDataStorager_SetCompatibilityData_Call[T]) RunAndReturn(run func(context.Context, types.Querier, T) error) *CompatibilityDataStorager_SetCompatibilityData_Call[T] {
 	_c.Call.Return(run)
 	return _c
 }

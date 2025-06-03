@@ -14,6 +14,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	dbmocks "github.com/agglayer/aggkit/db/mocks"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -884,7 +885,7 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			mockDBFn: func() *dbmocks.DBer {
 				dbMock := dbmocks.NewDBer(t)
 				txnMock := dbmocks.NewTxer(t)
-				newTxer = func(_ context.Context, _ db.DBer) (db.Txer, error) {
+				newTxer = func(_ context.Context, _ dbtypes.DBer) (dbtypes.Txer, error) {
 					return txnMock, nil
 				}
 				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil)
@@ -911,7 +912,7 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			storage, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 			require.NoError(t, err)
 
-			var dber db.DBer
+			var dber dbtypes.DBer
 			if tc.mockDBFn != nil {
 				dber = tc.mockDBFn()
 			} else {

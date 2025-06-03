@@ -11,6 +11,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/l1infotreesync/migrations"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -219,7 +220,7 @@ func (p *processor) GetInfoByIndex(ctx context.Context, index uint32) (*L1InfoTr
 	return p.getInfoByIndexWithTx(p.db, index)
 }
 
-func (p *processor) getInfoByIndexWithTx(tx db.DBer, index uint32) (*L1InfoTreeLeaf, error) {
+func (p *processor) getInfoByIndexWithTx(tx dbtypes.DBer, index uint32) (*L1InfoTreeLeaf, error) {
 	info := &L1InfoTreeLeaf{}
 	return info, meddler.QueryRow(
 		tx, info,
@@ -232,7 +233,7 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return p.getLastProcessedBlockWithTx(p.db)
 }
 
-func (p *processor) getLastProcessedBlockWithTx(tx db.Querier) (uint64, error) {
+func (p *processor) getLastProcessedBlockWithTx(tx dbtypes.Querier) (uint64, error) {
 	var lastProcessedBlockNum uint64
 
 	row := tx.QueryRow("SELECT num FROM BLOCK ORDER BY num DESC LIMIT 1;")
@@ -443,7 +444,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	return nil
 }
 
-func (p *processor) getLastIndex(tx db.Querier) (uint32, error) {
+func (p *processor) getLastIndex(tx dbtypes.Querier) (uint32, error) {
 	var lastProcessedIndex uint32
 	row := tx.QueryRow("SELECT position FROM l1info_leaf ORDER BY block_num DESC, block_pos DESC LIMIT 1;")
 	err := row.Scan(&lastProcessedIndex)
@@ -505,7 +506,7 @@ func (p *processor) GetInfoByGlobalExitRoot(ger common.Hash) (*L1InfoTreeLeaf, e
 	return info, db.ReturnErrNotFound(err)
 }
 
-func (p *processor) getDBQuerier(tx db.Txer) db.Querier {
+func (p *processor) getDBQuerier(tx dbtypes.Txer) dbtypes.Querier {
 	if tx != nil {
 		return tx
 	}

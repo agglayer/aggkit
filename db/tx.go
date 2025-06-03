@@ -2,15 +2,17 @@ package db
 
 import (
 	"context"
+
+	"github.com/agglayer/aggkit/db/types"
 )
 
 type Tx struct {
-	SQLTxer
+	types.SQLTxer
 	rollbackCallbacks []func()
 	commitCallbacks   []func()
 }
 
-func NewTx(ctx context.Context, db DBer) (Txer, error) {
+func NewTx(ctx context.Context, db types.DBer) (types.Txer, error) {
 	tx, err := db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, err

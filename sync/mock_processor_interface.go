@@ -5,7 +5,7 @@ package sync
 import (
 	context "context"
 
-	db "github.com/agglayer/aggkit/db"
+	types "github.com/agglayer/aggkit/db/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -23,7 +23,7 @@ func (_m *ProcessorMock) EXPECT() *ProcessorMock_Expecter {
 }
 
 // GetCompatibilityData provides a mock function with given fields: ctx, tx
-func (_m *ProcessorMock) GetCompatibilityData(ctx context.Context, tx db.Querier) (bool, RuntimeData, error) {
+func (_m *ProcessorMock) GetCompatibilityData(ctx context.Context, tx types.Querier) (bool, RuntimeData, error) {
 	ret := _m.Called(ctx, tx)
 
 	if len(ret) == 0 {
@@ -33,22 +33,22 @@ func (_m *ProcessorMock) GetCompatibilityData(ctx context.Context, tx db.Querier
 	var r0 bool
 	var r1 RuntimeData
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, db.Querier) (bool, RuntimeData, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier) (bool, RuntimeData, error)); ok {
 		return rf(ctx, tx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, db.Querier) bool); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier) bool); ok {
 		r0 = rf(ctx, tx)
 	} else {
 		r0 = ret.Get(0).(bool)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, db.Querier) RuntimeData); ok {
+	if rf, ok := ret.Get(1).(func(context.Context, types.Querier) RuntimeData); ok {
 		r1 = rf(ctx, tx)
 	} else {
 		r1 = ret.Get(1).(RuntimeData)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, db.Querier) error); ok {
+	if rf, ok := ret.Get(2).(func(context.Context, types.Querier) error); ok {
 		r2 = rf(ctx, tx)
 	} else {
 		r2 = ret.Error(2)
@@ -64,14 +64,14 @@ type ProcessorMock_GetCompatibilityData_Call struct {
 
 // GetCompatibilityData is a helper method to define mock.On call
 //   - ctx context.Context
-//   - tx db.Querier
+//   - tx types.Querier
 func (_e *ProcessorMock_Expecter) GetCompatibilityData(ctx interface{}, tx interface{}) *ProcessorMock_GetCompatibilityData_Call {
 	return &ProcessorMock_GetCompatibilityData_Call{Call: _e.mock.On("GetCompatibilityData", ctx, tx)}
 }
 
-func (_c *ProcessorMock_GetCompatibilityData_Call) Run(run func(ctx context.Context, tx db.Querier)) *ProcessorMock_GetCompatibilityData_Call {
+func (_c *ProcessorMock_GetCompatibilityData_Call) Run(run func(ctx context.Context, tx types.Querier)) *ProcessorMock_GetCompatibilityData_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(db.Querier))
+		run(args[0].(context.Context), args[1].(types.Querier))
 	})
 	return _c
 }
@@ -81,7 +81,7 @@ func (_c *ProcessorMock_GetCompatibilityData_Call) Return(_a0 bool, _a1 RuntimeD
 	return _c
 }
 
-func (_c *ProcessorMock_GetCompatibilityData_Call) RunAndReturn(run func(context.Context, db.Querier) (bool, RuntimeData, error)) *ProcessorMock_GetCompatibilityData_Call {
+func (_c *ProcessorMock_GetCompatibilityData_Call) RunAndReturn(run func(context.Context, types.Querier) (bool, RuntimeData, error)) *ProcessorMock_GetCompatibilityData_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -237,7 +237,7 @@ func (_c *ProcessorMock_Reorg_Call) RunAndReturn(run func(context.Context, uint6
 }
 
 // SetCompatibilityData provides a mock function with given fields: ctx, tx, data
-func (_m *ProcessorMock) SetCompatibilityData(ctx context.Context, tx db.Querier, data RuntimeData) error {
+func (_m *ProcessorMock) SetCompatibilityData(ctx context.Context, tx types.Querier, data RuntimeData) error {
 	ret := _m.Called(ctx, tx, data)
 
 	if len(ret) == 0 {
@@ -245,7 +245,7 @@ func (_m *ProcessorMock) SetCompatibilityData(ctx context.Context, tx db.Querier
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, db.Querier, RuntimeData) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier, RuntimeData) error); ok {
 		r0 = rf(ctx, tx, data)
 	} else {
 		r0 = ret.Error(0)
@@ -261,15 +261,15 @@ type ProcessorMock_SetCompatibilityData_Call struct {
 
 // SetCompatibilityData is a helper method to define mock.On call
 //   - ctx context.Context
-//   - tx db.Querier
+//   - tx types.Querier
 //   - data RuntimeData
 func (_e *ProcessorMock_Expecter) SetCompatibilityData(ctx interface{}, tx interface{}, data interface{}) *ProcessorMock_SetCompatibilityData_Call {
 	return &ProcessorMock_SetCompatibilityData_Call{Call: _e.mock.On("SetCompatibilityData", ctx, tx, data)}
 }
 
-func (_c *ProcessorMock_SetCompatibilityData_Call) Run(run func(ctx context.Context, tx db.Querier, data RuntimeData)) *ProcessorMock_SetCompatibilityData_Call {
+func (_c *ProcessorMock_SetCompatibilityData_Call) Run(run func(ctx context.Context, tx types.Querier, data RuntimeData)) *ProcessorMock_SetCompatibilityData_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(db.Querier), args[2].(RuntimeData))
+		run(args[0].(context.Context), args[1].(types.Querier), args[2].(RuntimeData))
 	})
 	return _c
 }
@@ -279,7 +279,7 @@ func (_c *ProcessorMock_SetCompatibilityData_Call) Return(_a0 error) *ProcessorM
 	return _c
 }
 
-func (_c *ProcessorMock_SetCompatibilityData_Call) RunAndReturn(run func(context.Context, db.Querier, RuntimeData) error) *ProcessorMock_SetCompatibilityData_Call {
+func (_c *ProcessorMock_SetCompatibilityData_Call) RunAndReturn(run func(context.Context, types.Querier, RuntimeData) error) *ProcessorMock_SetCompatibilityData_Call {
 	_c.Call.Return(run)
 	return _c
 }

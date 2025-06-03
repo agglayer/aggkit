@@ -5,7 +5,7 @@ package mocks
 import (
 	context "context"
 
-	db "github.com/agglayer/aggkit/db"
+	types "github.com/agglayer/aggkit/db/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -23,7 +23,7 @@ func (_m *CompatibilityChecker) EXPECT() *CompatibilityChecker_Expecter {
 }
 
 // Check provides a mock function with given fields: ctx, tx
-func (_m *CompatibilityChecker) Check(ctx context.Context, tx db.Querier) error {
+func (_m *CompatibilityChecker) Check(ctx context.Context, tx types.Querier) error {
 	ret := _m.Called(ctx, tx)
 
 	if len(ret) == 0 {
@@ -31,7 +31,7 @@ func (_m *CompatibilityChecker) Check(ctx context.Context, tx db.Querier) error 
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, db.Querier) error); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, types.Querier) error); ok {
 		r0 = rf(ctx, tx)
 	} else {
 		r0 = ret.Error(0)
@@ -47,14 +47,14 @@ type CompatibilityChecker_Check_Call struct {
 
 // Check is a helper method to define mock.On call
 //   - ctx context.Context
-//   - tx db.Querier
+//   - tx types.Querier
 func (_e *CompatibilityChecker_Expecter) Check(ctx interface{}, tx interface{}) *CompatibilityChecker_Check_Call {
 	return &CompatibilityChecker_Check_Call{Call: _e.mock.On("Check", ctx, tx)}
 }
 
-func (_c *CompatibilityChecker_Check_Call) Run(run func(ctx context.Context, tx db.Querier)) *CompatibilityChecker_Check_Call {
+func (_c *CompatibilityChecker_Check_Call) Run(run func(ctx context.Context, tx types.Querier)) *CompatibilityChecker_Check_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(db.Querier))
+		run(args[0].(context.Context), args[1].(types.Querier))
 	})
 	return _c
 }
@@ -64,7 +64,7 @@ func (_c *CompatibilityChecker_Check_Call) Return(_a0 error) *CompatibilityCheck
 	return _c
 }
 
-func (_c *CompatibilityChecker_Check_Call) RunAndReturn(run func(context.Context, db.Querier) error) *CompatibilityChecker_Check_Call {
+func (_c *CompatibilityChecker_Check_Call) RunAndReturn(run func(context.Context, types.Querier) error) *CompatibilityChecker_Check_Call {
 	_c.Call.Return(run)
 	return _c
 }

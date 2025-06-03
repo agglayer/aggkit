@@ -14,7 +14,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/db/compatibility"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
@@ -84,7 +84,7 @@ type AggSenderSQLStorageConfig struct {
 
 // AggSenderSQLStorage is the struct that implements the AggSenderStorage interface
 type AggSenderSQLStorage struct {
-	compatibility.KeyValueStorager
+	dbtypes.KeyValueStorager
 	logger *log.Logger
 	db     *sql.DB
 	cfg    AggSenderSQLStorageConfig
@@ -163,7 +163,7 @@ func (a *AggSenderSQLStorage) GetCertificateHeaderByHeight(height uint64) (*type
 }
 
 // getCertificateByHeight returns a certificate by its height using the provided db
-func getCertificateByHeight(db db.Querier,
+func getCertificateByHeight(db dbtypes.Querier,
 	height uint64) (*certificateInfo, error) {
 	var certificateInfo certificateInfo
 	if err := meddler.QueryRow(db, &certificateInfo,
@@ -243,7 +243,7 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 	return nil
 }
 
-func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx db.Querier,
+func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx dbtypes.Querier,
 	certificate *certificateInfo) error {
 	if a.cfg.KeepCertificatesHistory {
 		a.logger.Debugf("moving certificate to history - new CertificateID: %s", certificate.ID())
@@ -289,7 +289,7 @@ func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificate
 }
 
 // deleteCertificate deletes a certificate from the storage using the provided db
-func deleteCertificate(tx db.Querier, certificateID common.Hash) error {
+func deleteCertificate(tx dbtypes.Querier, certificateID common.Hash) error {
 	if _, err := tx.Exec(`DELETE FROM certificate_info WHERE certificate_id = $1;`, certificateID.String()); err != nil {
 		return fmt.Errorf("error deleting certificate info: %w", err)
 	}
@@ -377,7 +377,7 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 }
 
 func (a *AggSenderSQLStorage) saveNonAcceptedCertificate(
-	ctx context.Context, database db.DBer,
+	ctx context.Context, database dbtypes.DBer,
 	nonAcceptedCert *NonAcceptedCertificate) error {
 	tx, err := newTxer(ctx, database)
 	if err != nil {

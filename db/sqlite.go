@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/agglayer/aggkit/db/types"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/russross/meddler"
 )
@@ -50,7 +51,7 @@ type kvRow struct {
 	UpdatedAt int64  `meddler:"updated_at"`
 }
 
-func (kv *KeyValueStorage) InsertValue(tx Querier, owner, key, value string) error {
+func (kv *KeyValueStorage) InsertValue(tx types.Querier, owner, key, value string) error {
 	updateAt := funcTimeNow().Unix()
 	if tx == nil {
 		tx = kv.DB
@@ -58,7 +59,7 @@ func (kv *KeyValueStorage) InsertValue(tx Querier, owner, key, value string) err
 	return meddler.Insert(tx, tableKVName, &kvRow{Owner: owner, Key: key, Value: value, UpdatedAt: updateAt})
 }
 
-func (kv *KeyValueStorage) GetValue(tx Querier, owner, key string) (string, error) {
+func (kv *KeyValueStorage) GetValue(tx types.Querier, owner, key string) (string, error) {
 	var data kvRow
 	if tx == nil {
 		if kv.DB == nil {
@@ -72,7 +73,7 @@ func (kv *KeyValueStorage) GetValue(tx Querier, owner, key string) (string, erro
 	return data.Value, ReturnErrNotFound(err)
 }
 
-func (kv *KeyValueStorage) UpdateValue(tx Querier, owner, key, value string) error {
+func (kv *KeyValueStorage) UpdateValue(tx types.Querier, owner, key, value string) error {
 	if tx == nil {
 		tx = kv.DB
 	}
