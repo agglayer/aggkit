@@ -312,7 +312,7 @@ func TestSendCertificate(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockFlow *mocks.AggsenderFlow,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(nil, errors.New("some error")).Once()
+				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(nil, errors.New("some error")).Once()
 			},
 			expectedError: "error getting certificate build params",
 		},
@@ -321,7 +321,7 @@ func TestSendCertificate(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockFlow *mocks.AggsenderFlow,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(nil, nil).Once()
+				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(nil, nil).Once()
 			},
 		},
 		{
@@ -329,10 +329,10 @@ func TestSendCertificate(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockFlow *mocks.AggsenderFlow,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
 				}, nil).Once()
-				mockFlow.On("BuildCertificate", mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
+				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
 			},
 			expectedError: "error building certificate",
 		},
@@ -341,16 +341,17 @@ func TestSendCertificate(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockFlow *mocks.AggsenderFlow,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
 				}, nil).Once()
-				mockFlow.On("BuildCertificate", mock.Anything, mock.Anything).Return(&agglayertypes.Certificate{
+				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(&agglayertypes.Certificate{
 					NetworkID:        1,
 					Height:           0,
 					NewLocalExitRoot: common.HexToHash("0x1"),
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
-				mockAgglayerClient.On("SendCertificate", mock.Anything, mock.Anything).Return(common.Hash{}, errors.New("some error")).Once()
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.Hash{}, errors.New("some error")).Once()
+				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil).Once()
 			},
 			expectedError: "error sending certificate",
 		},
@@ -359,17 +360,17 @@ func TestSendCertificate(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockFlow *mocks.AggsenderFlow,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
 				}, nil).Once()
-				mockFlow.On("BuildCertificate", mock.Anything, mock.Anything).Return(&agglayertypes.Certificate{
+				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(&agglayertypes.Certificate{
 					NetworkID:        11,
 					Height:           0,
 					NewLocalExitRoot: common.HexToHash("0x11"),
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
-				mockAgglayerClient.On("SendCertificate", mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
-				mockStorage.On("SaveLastSentCertificate", mock.Anything, mock.Anything).Return(errors.New("some error")).Once()
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
+				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(errors.New("some error")).Once()
 			},
 			expectedError: "error saving last sent certificate",
 		},
@@ -378,17 +379,17 @@ func TestSendCertificate(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockFlow *mocks.AggsenderFlow,
 				mockAgglayerClient *agglayer.AgglayerClientMock) {
-				mockFlow.On("GetCertificateBuildParams", mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
 					Bridges: []bridgesync.Bridge{{}},
 				}, nil).Once()
-				mockFlow.On("BuildCertificate", mock.Anything, mock.Anything).Return(&agglayertypes.Certificate{
+				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(&agglayertypes.Certificate{
 					NetworkID:        11,
 					Height:           0,
 					NewLocalExitRoot: common.HexToHash("0x11"),
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
-				mockAgglayerClient.On("SendCertificate", mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
-				mockStorage.On("SaveLastSentCertificate", mock.Anything, mock.Anything).Return(nil).Once()
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
+				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
 		},
 	}

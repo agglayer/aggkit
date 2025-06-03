@@ -649,8 +649,10 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		p.log.Errorf("failed to start transaction for reorg: %v", err)
 		return err
 	}
+
+	shouldRollback := true
 	defer func() {
-		if err != nil {
+		if shouldRollback {
 			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
 				p.log.Errorf("error rolling back reorg transaction: %v", errRllbck)
 			}
@@ -676,6 +678,9 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		p.log.Errorf("failed to commit reorg transaction: %v", err)
 		return err
 	}
+
+	shouldRollback = false
+
 	sync.UnhaltIfAffectedRows(&p.halted, &p.haltedReason, &p.mu, rowsAffected)
 	return nil
 }

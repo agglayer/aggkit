@@ -2,6 +2,7 @@ package grpc
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -309,4 +310,119 @@ func TestGenerateServiceConfig(t *testing.T) {
 		require.Contains(t, sc, `"name":[{"service":"some.Service"}]`)
 		require.Contains(t, sc, `"name":[{}]`) // default retry for all others
 	})
+}
+
+func TestGRPCError_Is(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name     string
+		err1     error
+		err2     error
+		expected bool
+	}{
+		{
+			name: "MatchSameCodeAndMessage",
+			err1: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			},
+			err2: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			},
+			expected: true,
+		},
+		{
+			name: "MatchSameCodeAndPartialMessage",
+			err1: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument with extra info",
+			},
+			err2: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			},
+			expected: true,
+		},
+		{
+			name: "MatchSameCodeAndDifferentCaseMessage",
+			err1: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "Invalid Argument",
+			},
+			err2: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			},
+			expected: true,
+		},
+		{
+			name: "DifferentCode",
+			err1: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			},
+			err2: &GRPCError{
+				Code:    codes.NotFound,
+				Message: "invalid argument",
+			},
+			expected: false,
+		},
+		{
+			name: "DifferentMessage",
+			err1: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			},
+			err2: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "different message",
+			},
+			expected: false,
+		},
+		{
+			name: "UnknownCode",
+			err1: &GRPCError{
+				Code:    codes.Unknown,
+				Message: "unknown error",
+			},
+			err2: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			},
+			expected: false,
+		},
+		{
+			name: "NonGRPCErrorAgainstGRPCError",
+			err1: errors.New("non-gRPC error"),
+			err2: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			},
+			expected: false,
+		},
+		{
+			name: "WrappedGRPCError",
+			err1: fmt.Errorf("wrapped error: %w", &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			}),
+			err2: &GRPCError{
+				Code:    codes.InvalidArgument,
+				Message: "invalid argument",
+			},
+			expected: true,
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			require.Equal(t, tc.expected, errors.Is(tc.err1, tc.err2), "Is should match expected result")
+		})
+	}
 }
