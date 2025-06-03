@@ -262,10 +262,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
-		raw, marshalErr := json.Marshal(certificate)
-		if marshalErr == nil {
-			// we ignore the marshal error, since marshaled certificate is only needed for logging
-			a.log.Errorf("error sending certificate. Err: %w. Certificate: %s", err, string(raw))
+		if err := a.storage.SaveNonAcceptedCertificate(ctx, certificate, certificateParams.CreatedAt); err != nil {
+			a.log.Errorf("error saving non accepted certificate %s in db: %w", certificate.Brief(), err)
 		}
 
 		return nil, fmt.Errorf("error sending certificate: %w", err)

@@ -1,0 +1,43 @@
+{
+  "deployment_stages": {
+    "deploy_l1": false,
+    "deploy_agglayer": false,
+    "deploy_cdk_bridge_infra": false
+  },
+  "args": {
+    "verbosity": "debug",
+    "deployment_suffix": "-003",
+    "zkevm_rollup_chain_id": 20203,
+    "zkevm_rollup_id": 3,
+    "zkevm_l2_sequencer_address": "0x7A07e60fE93d9f73dF1E09AD58c75f140d0b7Db9",
+    "zkevm_l2_sequencer_private_key": "0x2e7aa6777c9c6adc7e5cc40dbc20bac37f917688314713d0a261a9dbf4bbee5e",
+    "zkevm_l2_aggregator_address": "0x64547723E5A9B1246D95B5C40cC15317d3b5a857",
+    "zkevm_l2_aggregator_private_key": "0x72b024664ce54fe0b519caa9e146b934c4858bedf4111e735c55d8dbd4737ecd",
+    "zkevm_l2_claimtxmanager_address": "0xbBc2DaF17618c46afF711882E41Ee72490C37d18",
+    "zkevm_l2_claimtxmanager_private_key": "0x71cd960ac5ce485153cb8cdb803e6529b29681d2b2a207d50d6576e3af0c61fd",
+    "zkevm_l2_timelock_address": "0xDDCBA1887AbC95Da0A5796e83f76136361A1712a",
+    "zkevm_l2_timelock_private_key": "0x1f4a7280cf0f1510e42a511d3dcf34397b978459f9df9af3133533d5e834d9c5",
+    "zkevm_l2_loadtest_address": "0x8f8D23cC337f3f14b84F8B9e3c03904adc708a28",
+    "zkevm_l2_loadtest_private_key": "0x3f9a4db3ae3977ce274e15396c0ef93cca38d4bea31e32c7b93ceef6d95586e5",
+    "zkevm_l2_dac_address": "0x7E3f4E273b890Fd4A32867e5C5537AdDC072b54a",
+    "zkevm_l2_dac_private_key": "0x278f7b033f190463c365098d7b1295f91ef28873449b02e7784ce4beb28c7c6e",
+    "zkevm_l2_proofsigner_address": "0x0e1d3099F5670FfdE40e73ED9BC39A3F56Bc2E3B",
+    "zkevm_l2_proofsigner_private_key": "0x9d806d89120e9ec361fbfe226ac64da65927fa021eab09cc4e4afc38a2c4f317",
+    "cdk_node_image": "aggkit:local",
+    "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.0-rc.21",
+    "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.61.19",
+    "pp_vkey_hash": "0x00e60517ac96bf6255d81083269e72c14ad006e5f336f852f7ee3efb91b966be",
+    "zkevm_contracts_image": "jhkimqd/zkevm-contracts:v10.0.0-rc.6-fork.12",
+    "additional_services": [],
+    "consensus_contract_type": "pessimistic",
+    "sequencer_type": "erigon",
+    "erigon_strict_mode": false,
+    "gas_token_enabled": true,
+    "gas_token_address": "",
+    "zkevm_use_real_verifier": false,
+    "enable_normalcy": true,
+    "verifier_program_vkey": "0x00766aa16a6efe4ac05c0fe21d4b50f9631dbd1a2663a982da861427085ea2ea",
+    "binary_name": "aggkit",
+    "enable_aggkit_claim_sponsor": true
+  }
+} 
