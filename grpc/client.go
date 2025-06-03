@@ -301,6 +301,21 @@ func (e GRPCError) Error() string {
 	return fmt.Sprintf("Code: %s, Message: %s, Details: %s", e.Code.String(), e.Message, joinDetails(e.Details))
 }
 
+// Is is an implementation of the error.Is interface for GRPCError.
+// It checks if the provided error matches the GRPCError's code and message.
+func (e GRPCError) Is(err error) bool {
+	if e.Code == codes.Unknown {
+		return false // Do not match Unknown errors
+	}
+
+	if grpcErr, ok := err.(*GRPCError); ok {
+		return e.Code == grpcErr.Code && strings.Contains(
+			strings.ToLower(e.Message), strings.ToLower(grpcErr.Message))
+	}
+
+	return false // Not a GRPCError, cannot match
+}
+
 // RepackGRPCErrorWithDetails extracts *status.Status and formats ErrorInfo details into a single error
 func RepackGRPCErrorWithDetails(err error) error {
 	st, ok := status.FromError(err)
