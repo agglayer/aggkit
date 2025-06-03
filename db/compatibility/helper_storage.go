@@ -43,8 +43,6 @@ type KeyValueStorager interface {
 	GetValue(tx db.Querier, owner, key string) (string, error)
 	// UpdateValue updates the value of the key in the storage
 	UpdateValue(tx db.Querier, owner, key, value string) error
-	// ExistsKey checks if the key exists in the storage
-	ExistsKey(tx db.Querier, owner, key string) (bool, error)
 }
 
 // KeyValueToCompatibilityStorage is the object that implements the CompatibilityDataStorager interface

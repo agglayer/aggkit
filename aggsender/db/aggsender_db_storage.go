@@ -25,6 +25,8 @@ const (
 	nonAcceptedCertKey     = "non_accepted_cert"
 )
 
+var newTxer = db.NewTx
+
 type RuntimeData struct {
 	NetworkID uint32
 }
@@ -371,10 +373,17 @@ func (a *AggSenderSQLStorage) GetLastSentCertificateHeaderWithProofIfInError(
 // and to allow for debugging and analysis of why they were not accepted.
 func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 	ctx context.Context, nonAcceptedCert *NonAcceptedCertificate) error {
-	tx, err := db.NewTx(ctx, a.db)
+	return a.saveNonAcceptedCertificate(ctx, a.db, nonAcceptedCert)
+}
+
+func (a *AggSenderSQLStorage) saveNonAcceptedCertificate(
+	ctx context.Context, database db.DBer,
+	nonAcceptedCert *NonAcceptedCertificate) error {
+	tx, err := newTxer(ctx, database)
 	if err != nil {
 		return fmt.Errorf("failed to create db transaction for non-accepted certificate persistence: %w", err)
 	}
+
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {

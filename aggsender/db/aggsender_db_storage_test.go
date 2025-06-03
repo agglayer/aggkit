@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"path"
 	"testing"
@@ -10,9 +11,12 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
+	dbmocks "github.com/agglayer/aggkit/db/mocks"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -754,8 +758,6 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 }
 
 func Test_SaveNonAcceptedCertificate(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 
 	bridgeExits := []*agglayertypes.BridgeExit{
@@ -782,9 +784,11 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 	createdAt := uint32(time.Now().UTC().UnixMilli())
 
 	testCases := []struct {
-		name         string
-		certificates []*agglayertypes.Certificate
-		certError    string
+		name          string
+		mockDBFn      func() *dbmocks.DBer
+		certificates  []*agglayertypes.Certificate
+		certError     string
+		expectedError string
 	}{
 		{
 			name: "SaveNonAcceptedCertificate_Success_PP_Certificate",
@@ -864,52 +868,91 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			},
 			certError: "yet another error occurred",
 		},
+		{
+			name:         "SaveNonAcceptedCertificate_FailToCreateDBTxn",
+			certificates: []*agglayertypes.Certificate{{}},
+			mockDBFn: func() *dbmocks.DBer {
+				dbMock := dbmocks.NewDBer(t)
+				dbMock.EXPECT().BeginTx(mock.Anything, mock.Anything).Return(nil, errors.New("failed to begin tx"))
+				return dbMock
+			},
+			expectedError: "failed to begin tx",
+		},
+		{
+			name:         "SaveNonAcceptedCertificate_CommitAndRollbackFails",
+			certificates: []*agglayertypes.Certificate{{}},
+			mockDBFn: func() *dbmocks.DBer {
+				dbMock := dbmocks.NewDBer(t)
+				txnMock := dbmocks.NewTxer(t)
+				newTxer = func(_ context.Context, _ db.DBer) (db.Txer, error) {
+					return txnMock, nil
+				}
+				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil)
+				txnMock.EXPECT().Commit().Return(errors.New("failed to commit tx"))
+				txnMock.EXPECT().Rollback().Return(errors.New("failed to rollback tx"))
+				return dbMock
+			},
+			expectedError: "failed to commit tx",
+		},
 	}
 
 	for _, tc := range testCases {
-		tc := tc
-
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+			var (
+				storage *AggSenderSQLStorage
+				err     error
+			)
 
 			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
 			log.Debugf("sqlite path: %s", path)
 			cfg := AggSenderSQLStorageConfig{
 				DBPath: path,
 			}
-
-			storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+			storage, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 			require.NoError(t, err)
+
+			var dber db.DBer
+			if tc.mockDBFn != nil {
+				dber = tc.mockDBFn()
+			} else {
+				dber = storage.db
+			}
 
 			for _, cert := range tc.certificates {
 				nonAcceptedCert, err := NewNonAcceptedCertificate(cert, createdAt, tc.certError)
 				require.NoError(t, err, "should create non-accepted certificate without error")
-				err = storage.SaveNonAcceptedCertificate(ctx, nonAcceptedCert)
-				require.NoError(t, err, "should save non-accepted certificate without error")
+				err = storage.saveNonAcceptedCertificate(ctx, dber, nonAcceptedCert)
+				if tc.expectedError != "" {
+					require.ErrorContains(t, err, tc.expectedError)
+				} else {
+					require.NoError(t, err, "should save non-accepted certificate without error")
+				}
 			}
 
-			nonAcceptedCert, err := storage.GetNonAcceptedCertificate()
-			require.NoError(t, err, "should retrieve one non-accepted certificate from DB even though multiple were saved")
+			if tc.expectedError == "" {
+				nonAcceptedCert, err := storage.GetNonAcceptedCertificate()
+				require.NoError(t, err, "should retrieve one non-accepted certificate from DB even though multiple were saved")
 
-			var certificate agglayertypes.Certificate
-			if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificate); err != nil {
-				t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+				var certificate agglayertypes.Certificate
+				if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificate); err != nil {
+					t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+				}
+
+				require.Equal(t, tc.certificates[len(tc.certificates)-1], &certificate, "last saved certificate should match the one retrieved from DB")
+				require.Equal(t, tc.certError, nonAcceptedCert.Error, "error message should match the expected error")
+				require.Equal(t, createdAt, nonAcceptedCert.CreatedAt, "created at timestamp should match the expected value")
 			}
-
-			require.Equal(t, tc.certificates[len(tc.certificates)-1], &certificate, "last saved certificate should match the one retrieved from DB")
-			require.Equal(t, tc.certError, nonAcceptedCert.Error, "error message should match the expected error")
-			require.Equal(t, createdAt, nonAcceptedCert.CreatedAt, "created at timestamp should match the expected value")
 		})
 	}
 }
 
 func Test_GetNonAcceptedCert(t *testing.T) {
-	t.Parallel()
-
 	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
 	cfg := AggSenderSQLStorageConfig{
 		DBPath: dbPath,
 	}
+
+	newTxer = db.NewTx
 
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.NoError(t, err)

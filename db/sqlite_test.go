@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"path"
 	"testing"
 
@@ -29,17 +28,6 @@ func TestSqlite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "value", value)
 
-	// Test ExistsKey
-	exists, err := kv.ExistsKey(db, owner, "key")
-	require.NoError(t, err)
-	require.True(t, exists)
-	exists, err = kv.ExistsKey(db, owner, "nonexistent_key")
-	require.NoError(t, err)
-	require.False(t, exists)
-	exists, err = kv.ExistsKey(db, "some_new_owner", "nonexistent_key")
-	require.NoError(t, err)
-	require.False(t, exists)
-
 	// Test UpdateValue
 	err = kv.UpdateValue(db, owner, "key", "new_value")
 	require.NoError(t, err)
@@ -52,20 +40,4 @@ func TestSqlite(t *testing.T) {
 	value, err = kv.GetValue(db, owner, "nonexistent_key")
 	require.NoError(t, err)
 	require.Equal(t, "value", value)
-
-	// Test exists key when we clean the table to make sure it doesn't return an error
-	require.NoError(t, kv.clean(t))
-	exists, err = kv.ExistsKey(db, owner, "key")
-	require.NoError(t, err)
-	require.False(t, exists)
-}
-
-func (kv *KeyValueStorage) clean(t *testing.T) error {
-	t.Helper()
-
-	if _, err := kv.Exec(fmt.Sprintf(`DELETE FROM %s;`, tableKVName)); err != nil {
-		return err
-	}
-
-	return nil
 }

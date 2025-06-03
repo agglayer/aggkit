@@ -72,22 +72,6 @@ func (kv *KeyValueStorage) GetValue(tx Querier, owner, key string) (string, erro
 	return data.Value, ReturnErrNotFound(err)
 }
 
-func (kv *KeyValueStorage) ExistsKey(tx Querier, owner, key string) (bool, error) {
-	var count int
-	if tx == nil {
-		tx = kv.DB
-	}
-	err := tx.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s WHERE owner = ? and key = ?", tableKVName),
-		owner, key).Scan(&count)
-	if err != nil {
-		// if there are no matching rows, the query will not return an error
-		// this error can only be if the table does not exist, or if there is problem with the query or connection
-		return false, err
-	}
-
-	return count > 0, nil
-}
-
 func (kv *KeyValueStorage) UpdateValue(tx Querier, owner, key, value string) error {
 	if tx == nil {
 		tx = kv.DB

@@ -4,18 +4,6 @@ import (
 	"context"
 )
 
-type SQLTxer interface {
-	Querier
-	Commit() error
-	Rollback() error
-}
-
-type Txer interface {
-	SQLTxer
-	AddRollbackCallback(cb func())
-	AddCommitCallback(cb func())
-}
-
 type Tx struct {
 	SQLTxer
 	rollbackCallbacks []func()
