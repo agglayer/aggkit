@@ -10,8 +10,6 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -99,14 +97,6 @@ type GERQuerier interface {
 		ctx context.Context,
 		finalizedL1InfoTreeRoot *treetypes.Root,
 		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
-}
-
-// EthClient is an interface defining functions that an EthClient should implement
-type EthClient interface {
-	bind.ContractBackend
-	ethereum.LogFilterer
-	ethereum.BlockNumberReader
-	ethereum.ChainReader
 }
 
 // Logger is an interface that defines the methods to log messages
