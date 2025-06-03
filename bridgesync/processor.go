@@ -654,7 +654,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	defer func() {
 		if shouldRollback {
 			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
-				log.Errorf("error while rolling back tx %v", errRllbck)
+				p.log.Errorf("error rolling back reorg transaction: %v", errRllbck)
 			}
 		}
 	}()
