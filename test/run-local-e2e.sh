@@ -119,11 +119,11 @@ if [ -n "$E2E_FOLDER" ]; then
         ;;
     multi-l2-networks-2-chains)
         export DISABLE_L2_FUND="true"
-        bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
+        bats ./tests/aggkit/bridge-e2e-2-l2s.bats
         ;;
     multi-l2-networks-3-chains)
         export DISABLE_L2_FUND="true"
-        bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
+        bats ./tests/aggkit/bridge-e2e-2-l2s.bats
         ;;
     esac
     popd >/dev/null
