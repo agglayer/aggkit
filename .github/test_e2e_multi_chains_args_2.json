@@ -2,7 +2,8 @@
   "deployment_stages": {
     "deploy_l1": false,
     "deploy_agglayer": false,
-    "deploy_cdk_bridge_infra": false
+    "deploy_cdk_bridge_infra": false,
+    "deploy_optimism_rollup": false
   },
   "args": {
     "verbosity": "debug",
@@ -37,6 +38,6 @@
     "enable_normalcy": true,
     "verifier_program_vkey": "0x00766aa16a6efe4ac05c0fe21d4b50f9631dbd1a2663a982da861427085ea2ea",
     "binary_name": "aggkit",
-    "enable_aggkit_claim_sponsor": true
+    "enable_aggkit_claim_sponsor": false
   }
 }
