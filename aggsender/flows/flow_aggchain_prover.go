@@ -53,32 +53,41 @@ func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClien
 
 var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 
+type AggchainProverFlowConfig struct {
+	baseFlowConfig       BaseFlowConfig
+	requireNoFEPBlockGap bool
+}
+
+func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
+	return AggchainProverFlowConfig{
+		baseFlowConfig:       NewBaseFlowConfigDefault(),
+		requireNoFEPBlockGap: true, // default to true, can be set to false for testing purposes
+	}
+}
+
 // NewAggchainProverFlow returns a new instance of the AggchainProverFlow
 func NewAggchainProverFlow(log types.Logger,
-	maxCertSize uint,
-	startL2Block uint64,
+	aggChainProverConfig AggchainProverFlowConfig,
 	aggkitProverClient types.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
 	gerQuerier types.GERQuerier,
 	l1Client types.EthClient,
-	requireNoFEPBlockGap bool,
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	optimisticSigner types.OptimisticSigner) *AggchainProverFlow {
 	return &AggchainProverFlow{
 		aggchainProofClient:  aggkitProverClient,
 		gerQuerier:           gerQuerier,
-		requireNoFEPBlockGap: requireNoFEPBlockGap,
+		requireNoFEPBlockGap: aggChainProverConfig.requireNoFEPBlockGap,
 		baseFlow: &baseFlow{
 			log:                   log,
 			l2BridgeQuerier:       l2BridgeQuerier,
 			storage:               storage,
 			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
-			maxCertSize:           maxCertSize,
-			startL2Block:          startL2Block,
 			signer:                signer,
+			BaseFlowConfig:        aggChainProverConfig.baseFlowConfig,
 		},
 		signer:                signer,
 		optimisticModeQuerier: optimisticModeQuerier,
@@ -177,6 +186,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			Claims:              claims,
 			LastSentCertificate: lastSentCert,
 			CreatedAt:           lastSentCert.CreatedAt,
+			CertificateType:     typeCert,
 		}
 
 		if proof == nil {

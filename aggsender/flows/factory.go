@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	agggchainproofclient "github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
-	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -52,7 +52,7 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
 		}
 
-		aggchainProofClient, err := grpc.NewAggchainProofClient(
+		aggchainProofClient, err := agggchainproofclient.NewAggchainProofClient(
 			cfg.AggchainProofURL,
 			cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
 		if err != nil {
@@ -78,15 +78,19 @@ func NewFlow(
 
 		return NewAggchainProverFlow(
 			logger,
-			cfg.MaxCertSize,
-			startL2Block,
+			AggchainProverFlowConfig{
+				baseFlowConfig: BaseFlowConfig{
+					MaxCertSize:  cfg.MaxCertSize,
+					StartL2Block: startL2Block,
+				},
+				requireNoFEPBlockGap: cfg.RequireNoFEPBlockGap,
+			},
 			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,
 			query.NewBridgeDataQuerier(l2Syncer),
 			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 			l1Client,
-			cfg.RequireNoFEPBlockGap,
 			signer,
 			optimisticModeQuerier,
 			optimisticSigner,

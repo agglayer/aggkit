@@ -26,7 +26,7 @@ import (
 )
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
-	t.Parallel()
+	//t.Parallel()
 
 	ctx := context.Background()
 
@@ -91,6 +91,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					Status:                  agglayertypes.InError,
 					FinalizedL1InfoTreeRoot: &finalizedL1Root,
 					CertificateID:           common.HexToHash("0x1"),
+					CertType:                types.CertificateTypeFEP,
 				},
 					&types.AggchainProof{
 						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
@@ -128,7 +129,9 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					Status:                  agglayertypes.InError,
 					FinalizedL1InfoTreeRoot: &finalizedL1Root,
 					CertificateID:           common.HexToHash("0x1"),
+					CertType:                types.CertificateTypeFEP,
 				},
+				CertificateType: types.CertificateTypeFEP,
 			},
 		},
 		{
@@ -148,6 +151,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					ToBlock:       10,
 					Status:        agglayertypes.InError,
 					CertificateID: common.HexToHash("0x1"),
+					CertType:      types.CertificateTypeFEP,
 				}, nil, nil).Once()
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
@@ -186,9 +190,10 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					SP1StarkProof: &types.SP1StarkProof{Proof: []byte("some-proof")}, LastProvenBlock: 0, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
-				FromBlock:  1,
-				ToBlock:    10,
-				RetryCount: 1,
+				CertificateType: types.CertificateTypeFEP,
+				FromBlock:       1,
+				ToBlock:         10,
+				RetryCount:      1,
 				LastSentCertificate: &types.CertificateHeader{
 					FromBlock:     1,
 					ToBlock:       10,
@@ -260,7 +265,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
 					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}})).Return(nil, errors.New("some error"))
 			},
-			expectedError: "error fetching aggchain proof for lastProvenBlock: 0, maxEndBlock: 10: some error",
+			expectedError: "error generating aggchain proof: error fetching aggchain proof (optimisticMode: false) for lastProvenBlock: 0, maxEndBlock: 10: some error",
 		},
 		{
 			name: "error fetching aggchain proof for new certificate - no proofs built yet",
@@ -355,10 +360,9 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					SP1StarkProof: &types.SP1StarkProof{Proof: []byte("some-proof")}, LastProvenBlock: 6, EndBlock: 10}, nil)
 			},
 			expectedParams: &types.CertificateBuildParams{
-				FromBlock:       6,
-				ToBlock:         10,
-				RetryCount:      0,
-				CertificateType: types.CertificateTypeFEP,
+				FromBlock:  6,
+				ToBlock:    10,
+				RetryCount: 0,
 				LastSentCertificate: &types.CertificateHeader{
 					ToBlock: 5,
 				},
@@ -376,7 +380,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					LastProvenBlock: 6,
 					EndBlock:        10,
 				},
-				CreatedAt: uint32(time.Now().UTC().Unix()),
+				CreatedAt:       uint32(time.Now().UTC().Unix()),
+				CertificateType: types.CertificateTypeFEP,
 			},
 		},
 		{
@@ -439,8 +444,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				LastSentCertificate: &types.CertificateHeader{
 					ToBlock: 5,
 				},
-				CertificateType: types.CertificateTypeFEP,
-				Bridges:         []bridgesync.Bridge{{BlockNum: 6}},
+				Bridges: []bridgesync.Bridge{{BlockNum: 6}},
 				Claims: []bridgesync.Claim{{
 					BlockNum:        8,
 					GlobalIndex:     big.NewInt(1),
@@ -454,15 +458,16 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					LastProvenBlock: 6,
 					EndBlock:        8,
 				},
-				CreatedAt: uint32(time.Now().UTC().Unix()),
+				CreatedAt:       uint32(time.Now().UTC().Unix()),
+				CertificateType: types.CertificateTypeFEP,
 			},
 		},
 	}
 
-	for _, tc := range testCases {
-		tc := tc
+	for _, tca := range testCases {
+		tc := tca
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
+			//t.Parallel()
 
 			mockAggchainProofClient := mocks.NewAggchainProofClientInterface(t)
 			mockStorage := mocks.NewAggSenderStorage(t)
@@ -470,22 +475,21 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockGERQuerier := mocks.NewGERQuerier(t)
 			mockOptimistic := mocks.NewOptimisticModeQuerier(t)
 			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-
+			mockSigner := mocks.NewSigner(t)
 			aggchainFlow := NewAggchainProverFlow(
 				log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
-				0, 0,
+				NewAggchainProverFlowConfigDefault(),
 				mockAggchainProofClient,
 				mockStorage,
 				mockL1InfoTreeDataQuerier,
 				mockL2BridgeQuerier,
 				mockGERQuerier,
+				nil,
+				mockSigner,
 				mockOptimistic,
 				nil,
-				nil,
-				false,
-				nil,
 			)
-
+			mockOptimistic.EXPECT().IsOptimisticModeOn().Return(false, nil).Maybe()
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockAggchainProofClient, mockL1InfoTreeDataQuerier, mockGERQuerier)
 
 			params, err := aggchainFlow.GetCertificateBuildParams(ctx)
@@ -493,7 +497,19 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expectedParams, params)
+				//require.NotNil(t, tc.expectedParams, "expected params should not be nil")
+				if tc.expectedParams != nil {
+					paramsCopy := *params
+					expectedCopy := *tc.expectedParams
+					require.Equal(t, expectedCopy.CertificateType, paramsCopy.CertificateType, "unexpected certificate type")
+					paramsCopy.CertificateType = types.CertificateTypeUnknown // ignore certificate type in comparison
+					expectedCopy.CertificateType = paramsCopy.CertificateType // ignore certificate type in comparison
+					require.Equal(t, expectedCopy.CertificateType, paramsCopy.CertificateType, "unexpected certificate type")
+
+					require.Equal(t, expectedCopy, paramsCopy, "no params "+tc.name)
+				} else {
+					require.Equal(t, tc.expectedParams, params)
+				}
 			}
 
 			mockStorage.AssertExpectations(t)
@@ -816,6 +832,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 					l2BridgeQuerier: mockL2BridgeQuerier,
 					signer:          mockSigner,
 				},
+				signer: mockSigner,
 			}
 
 			certificate, err := aggchainFlow.BuildCertificate(ctx, tc.buildParams)

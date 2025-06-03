@@ -24,12 +24,24 @@ var (
 	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
+type BaseFlowConfig struct {
+	MaxCertSize  uint
+	StartL2Block uint64
+}
+
+func NewBaseFlowConfigDefault() BaseFlowConfig {
+	return BaseFlowConfig{
+		MaxCertSize:  0, // 0 means no limit
+		StartL2Block: 0,
+	}
+}
+
 // baseFlow is a struct that holds the common logic for the different prover types
 type baseFlow struct {
 	l2BridgeQuerier       types.BridgeQuerier
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-
+	BaseFlowConfig
 	log types.Logger
 
 	maxCertSize  uint

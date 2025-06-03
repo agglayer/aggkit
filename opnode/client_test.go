@@ -17,7 +17,7 @@ const (
 )
 
 func TestExploratory(t *testing.T) {
-	//t.Skip("exploratory test")
+	t.Skip("exploratory test")
 	client := OpNodeClient{
 		url: "http://localhost:32864",
 	}

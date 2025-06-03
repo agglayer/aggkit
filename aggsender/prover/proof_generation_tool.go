@@ -6,8 +6,8 @@ import (
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
+	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/flows"
-	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	configtypes "github.com/agglayer/aggkit/config/types"
@@ -76,7 +76,7 @@ func NewAggchainProofGenerationTool(
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*AggchainProofGenerationTool, error) {
 
-	aggchainProofClient, err := grpc.NewAggchainProofClient(
+	aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(
 		cfg.AggchainProofURL, cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
@@ -91,15 +91,13 @@ func NewAggchainProofGenerationTool(
 	// TODO: the signer it's required?
 	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,
-		0,
-		0,
+		flows.NewAggchainProverFlowConfigDefault(),
 		aggchainProofClient,
 		nil,
 		l1InfoTreeQuerier,
 		query.NewBridgeDataQuerier(l2Syncer),
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
 		l1Client,
-		false,
 		nil,
 		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode,
 		nil,
