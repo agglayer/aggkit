@@ -31,5 +31,19 @@ trustedSequencer=$(cast call "$ROLLUP_ADDRESS" 'trustedSequencer()' --rpc-url "$
 optimisticMode=$(cast call $ROLLUP_ADDRESS "optimisticMode()" --rpc-url $L1_RPC_URL)
 echo "Trusted sequencer address: $trustedSequencer"
 echo "optimisticMode           : $optimisticMode"
-cast send $ROLLUP_ADDRESS "enableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "0xa574853f4757bfdcbb59b03635324463750b27e16df897f3d00dc6bef2997ae0"
-#cast send $ROLLUP_ADDRESS "disableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "0xa574853f4757bfdcbb59b03635324463750b27e16df897f3d00dc6bef2997ae0"
+case "$1" in
+    enable)
+        cast send $ROLLUP_ADDRESS "enableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "0xa574853f4757bfdcbb59b03635324463750b27e16df897f3d00dc6bef2997ae0"
+        echo "Optimistic mode enabled."
+        ;;
+    disable)
+        cast send $ROLLUP_ADDRESS "disableOptimisticMode()" --rpc-url "$L1_RPC_URL" --private-key "0xa574853f4757bfdcbb59b03635324463750b27e16df897f3d00dc6bef2997ae0"
+        echo "Optimistic mode disabled."
+        ;;
+    help|*)
+        echo "Usage: $0 [enable|disable|help]"
+        echo "  enable   - Enables optimistic mode."
+        echo "  disable  - Disables optimistic mode."
+        echo "  help     - Displays this help message."
+        ;;
+esac

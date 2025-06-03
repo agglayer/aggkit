@@ -26,7 +26,7 @@ import (
 )
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
-	//t.Parallel()
+	t.Parallel()
 
 	ctx := context.Background()
 
@@ -467,7 +467,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 	for _, tca := range testCases {
 		tc := tca
 		t.Run(tc.name, func(t *testing.T) {
-			//t.Parallel()
+			t.Parallel()
 
 			mockAggchainProofClient := mocks.NewAggchainProofClientInterface(t)
 			mockStorage := mocks.NewAggSenderStorage(t)
@@ -497,7 +497,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
-				//require.NotNil(t, tc.expectedParams, "expected params should not be nil")
 				if tc.expectedParams != nil {
 					paramsCopy := *params
 					expectedCopy := *tc.expectedParams

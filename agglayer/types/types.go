@@ -692,6 +692,7 @@ type ImportedBridgeExitWithBlockNumber struct {
 	ImportedBridgeExit *ImportedBridgeExit `json:"imported_bridge_exit"`
 }
 
+// String returns a string representation of the ImportedBridgeExitWithBlockNumber struct
 func (i *ImportedBridgeExitWithBlockNumber) String() string {
 	if i == nil {
 		return "ImportedBridgeExitWithBlockNumber{nil}"
