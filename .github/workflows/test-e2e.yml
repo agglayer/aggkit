@@ -118,8 +118,8 @@ jobs:
           name: aggsender_find_imported_bridge
           path: ./target/aggsender_find_imported_bridge
 
-  test-multi-l2-networks:
-    name: Multi chains E2E test
+  test-multi-l2-networks-2-chains:
+    name: Multi chains E2E test (2 chains)
     needs:
       - build-aggkit-image
       - build-tools
@@ -137,15 +137,15 @@ jobs:
   check-multi-l2-networks-tests-result:
     name: Check results for multi l2 networks (2 networks)
     needs:
-      - test-multi-l2-networks
+      - test-multi-l2-networks-2-chains
     if: always()
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks.result) }}
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-2-chains.result) }}
 
-  test-multi-l2-networks-3-networks:
-    name: Multi chains E2E test (3 networks)
+  test-multi-l2-networks-3-chains:
+    name: Multi chains E2E test (3 chain)
     needs:
       - build-aggkit-image
       - build-tools
@@ -162,12 +162,12 @@ jobs:
       kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
       number-of-chains: 3
 
-  check-multi-l2-networks-3-networks-tests-result:
-    name: Check results for multi l2 networks (3 networks)
+  check-multi-l2-networks-3-chains-tests-result:
+    name: Check results for multi l2 networks (3 chains)
     needs:
-      - test-multi-l2-networks-3-networks
+      - test-multi-l2-networks-3-chains
     if: always()
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-networks.result) }}
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains.result) }}
