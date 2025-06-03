@@ -14,7 +14,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/common"
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
@@ -47,23 +46,18 @@ const (
 
 	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of " +
 		"config file as polygonBridgeAddr."
-	specificL2URLDeprecated        = "Use L2URL instead"
-	bridgeMetadataAsHashDeprecated = "BridgeMetaDataAsHash is deprecated, " +
-		"bridge metadata is always stored as hash."
-	aggsenderAgglayerURLDeprecated = "AggSender.AggLayerURL is deprecated, " +
-		"use AggSender.AgglayerClient instead"
-	aggsenderAggchainProofURLDeprecated = "AggSender.AggchainProofURL is deprecated, " +
-		"use AggSender.AggkitProverClient instead"
-	aggchainProofGenAggchainProofURLDeprecated = "AggchainProofGen.AggchainProofURL is deprecated, " +
-		"use AggSender.AggkitProverClient instead"
-	aggsenderUseAgglayerTLSDeprecated = "AggSender.UseAgglayerTLS is deprecated, " +
-		"use AggSender.AgglayerClient.UseTLS instead"
-	aggsenderUseAggkitProverTLSDeprecated = "AggSender.UseAggkitProverTLS is deprecated, " +
-		"use AggSender.AggkitProverClient.UseTLS instead"
-	aggsenderAggchainProofTimeoutDeprecated = "AggSender.GenerateAggchainProofTimeout is deprecated, " +
-		"use AggSender.AggkitProverClient.RequestTimeout instead"
-	aggchainProofGenAggchainProofTimeoutDeprecated = "AggchainProofGen.GenerateAggchainProofTimeout is deprecated, " +
-		"use AggchainProofGen.AggkitProverClient.RequestTimeout instead"
+	l2URLHint                = "Use L2URL instead"
+	bridgeMetadataAsHashHint = "BridgeMetaDataAsHash is deprecated, remove it from configuration " +
+		"(bridge metadata is always stored as hash)"
+	aggsenderAgglayerClientHint           = "Use AggSender.AgglayerClient instead"
+	aggsenderAggkitProverClientHint       = "Use AggSender.AggkitProverClient instead"
+	aggsenderAgglayerClientUseTLSHint     = "Use AggSender.AgglayerClient.UseTLS instead"
+	aggsenderAggkitProverClientUseTLSHint = "Use AggSender.AggkitProverClient.UseTLS instead"
+	aggsenderUseRequestTimeoutHint        = "Use AggSender.AggkitProverClient.RequestTimeout instead"
+	aggchainProofGenUseRequestTimeoutHint = "Use AggchainProofGen.AggkitProverClient.RequestTimeout instead"
+	translatorDeprecatedHint              = "Translator parameter is deprecated, remove it from configuration"
+	isValidiumModeDeprecatedHint          = "IsValidiumMode parameter is deprecated, remove it from configuration"
+	ethermanDeprecatedHint                = "Etherman config is deprecated, remove it from configuration"
 )
 
 type DeprecatedFieldsError struct {
@@ -78,14 +72,13 @@ func NewErrDeprecatedFields() *DeprecatedFieldsError {
 }
 
 func (e *DeprecatedFieldsError) AddDeprecatedField(fieldName string, rule DeprecatedField) {
-	p := e.Fields[rule]
-	e.Fields[rule] = append(p, fieldName)
+	e.Fields[rule] = append(e.Fields[rule], fieldName)
 }
 
 func (e *DeprecatedFieldsError) Error() string {
 	res := "found deprecated fields:"
-	for rule, fieldsMatches := range e.Fields {
-		res += fmt.Sprintf("\n\t- %s: %s", rule.Reason, strings.Join(fieldsMatches, ", "))
+	for rule, matchingFields := range e.Fields {
+		res += fmt.Sprintf("\n\t- %s: %s", strings.Join(matchingFields, ", "), rule.Reason)
 	}
 	return res
 }
@@ -108,61 +101,70 @@ var (
 		},
 		{
 			FieldNamePattern: "AggOracle.EVMSender.URLRPCL2",
-			Reason:           specificL2URLDeprecated,
+			Reason:           l2URLHint,
 		},
 		{
 			FieldNamePattern: "AggSender.URLRPCL2",
-			Reason:           specificL2URLDeprecated,
+			Reason:           l2URLHint,
 		},
 		{
 			FieldNamePattern: "AggSender.BridgeMetadataAsHash",
-			Reason:           bridgeMetadataAsHashDeprecated,
+			Reason:           bridgeMetadataAsHashHint,
 		},
 		{
 			FieldNamePattern: "AggSender.AggLayerURL",
-			Reason:           aggsenderAgglayerURLDeprecated,
+			Reason:           aggsenderAgglayerClientHint,
 		},
 		{
 			FieldNamePattern: "AggSender.AggchainProofURL",
-			Reason:           aggsenderAggchainProofURLDeprecated,
+			Reason:           aggsenderAggkitProverClientHint,
 		},
 		{
 			FieldNamePattern: "AggchainProofGen.AggchainProofURL",
-			Reason:           aggchainProofGenAggchainProofURLDeprecated,
+			Reason:           aggsenderAggkitProverClientHint,
 		},
 		{
 			FieldNamePattern: "AggSender.UseAgglayerTLS",
-			Reason:           aggsenderUseAgglayerTLSDeprecated,
+			Reason:           aggsenderAgglayerClientUseTLSHint,
 		},
 		{
 			FieldNamePattern: "AggSender.UseAggkitProverTLS",
-			Reason:           aggsenderUseAggkitProverTLSDeprecated,
+			Reason:           aggsenderAggkitProverClientUseTLSHint,
 		},
 		{
 			FieldNamePattern: "AggSender.GenerateAggchainProofTimeout",
-			Reason:           aggsenderAggchainProofTimeoutDeprecated,
+			Reason:           aggsenderUseRequestTimeoutHint,
 		},
 		{
 			FieldNamePattern: "AggchainProofGen.GenerateAggchainProofTimeout",
-			Reason:           aggchainProofGenAggchainProofTimeoutDeprecated,
+			Reason:           aggchainProofGenUseRequestTimeoutHint,
+		},
+		{
+			FieldNamePattern: "Common.Translator",
+			Reason:           translatorDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "Common.IsValidiumMode",
+			Reason:           isValidiumModeDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "Etherman",
+			Reason:           ethermanDeprecatedHint,
 		},
 	}
 )
 
 /*
-Config represents the configuration of the entire CDK Node
+Config represents the configuration of the entire Aggkit Node
 The file is [TOML format]
 
 [TOML format]: https://en.wikipedia.org/wiki/TOML
 */
 type Config struct {
-	// Configuration of the etherman (client for access L1)
-	Etherman ethermanconfig.Config
-
 	// Configure Log level for all the services, allow also to store the logs in a file
 	Log log.Config
 
-	// Configuration of the genesis of the network. This is used to known the initial state of the network
+	// NetworkConfig Configuration of the genesis of the network. This is used to known the initial state of the network
 	NetworkConfig NetworkConfig
 
 	// Common Config that affects all the services

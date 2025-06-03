@@ -13,27 +13,18 @@ AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
 
 
-ForkId = 9
-ContractVersions = "elderberry"
-IsValidiumMode = false
 NetworkID = 1
-
-L2Coinbase = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 SequencerPrivateKeyPath = "/app/sequencer.keystore"
 SequencerPrivateKeyPassword = "test"
 
-WitnessURL = "http://localhost:8123"
-
-# Who send Proof to L1? AggLayer addr, or aggregator addr?
-SenderProofToL1Addr = "0x0000000000000000000000000000000000000000"
 polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
-
 
 # This values can be override directly from genesis.json
 rollupCreationBlockNumber = 0
 rollupManagerCreationBlockNumber = 0
 genesisBlockNumber = 0
 [L1Config]
+	URL = "{{L1URL}}"
 	chainId = 0
 	polygonZkEVMGlobalExitRootAddress = "0x0000000000000000000000000000000000000000"
 	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
@@ -51,7 +42,6 @@ genesisBlockNumber = 0
 // to avoid repetition in config-files
 const DefaultVars = `
 PathRWData = "/tmp/aggkit"
-L1URLSyncChunkSize = 100
 RequireStorageContentCompatibility = true
 L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
 GenerateAggchainProofTimeout = "1h"
@@ -59,8 +49,6 @@ GenerateAggchainProofTimeout = "1h"
 
 // DefaultValues is the default configuration
 const DefaultValues = `
-ForkUpgradeBatchNumber = 0
-ForkUpgradeNewForkId = 0
 AggsenderPrivateKey = "{Method =  \"local\", Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
 
 [Log]
@@ -68,22 +56,8 @@ Environment = "development" # "production" or "development"
 Level = "info"
 Outputs = ["stderr"]
 
-[Etherman]
-	URL = "{{L1URL}}"
-	ForkIDChunkSize = {{L1URLSyncChunkSize}}
-	[Etherman.EthermanConfig]
-		URL = "{{L1URL}}"
-		MultiGasProvider = false
-		L1ChainID = {{NetworkConfig.L1.L1ChainID}}
-		HTTPHeaders = []
-		[Etherman.EthermanConfig.Etherscan]
-			ApiKey = ""
-			Url = "https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
-
 [Common]
 NetworkID = {{NetworkID}}
-IsValidiumMode = {{IsValidiumMode}}
-ContractVersions = "{{ContractVersions}}"
 L2RPC = {{L2RPC}}
 
 [ReorgDetectorL1]
@@ -193,7 +167,6 @@ PolAddr = "{{L1Config.polTokenAddress}}"
 ZkEVMAddr = "{{L1Config.polygonZkEVMAddress}}"
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
-
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"

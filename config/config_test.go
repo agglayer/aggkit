@@ -92,6 +92,10 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 	_, err = tmpFile.Write([]byte(`
+	[Common]
+	IsValidiumMode = true
+	Translator = ""
+
 	[L1Config]
 	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 
@@ -111,13 +115,15 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
 	_, err = Load(ctx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), bridgeMetadataAsHashDeprecated)
+	require.Contains(t, err.Error(), bridgeMetadataAsHashHint)
 	require.Contains(t, err.Error(), bridgeAddrSetOnWrongSection)
-	require.Contains(t, err.Error(), aggsenderAgglayerURLDeprecated)
-	require.Contains(t, err.Error(), aggsenderAggchainProofURLDeprecated)
-	require.Contains(t, err.Error(), aggchainProofGenAggchainProofURLDeprecated)
-	require.Contains(t, err.Error(), aggsenderUseAgglayerTLSDeprecated)
-	require.Contains(t, err.Error(), aggsenderUseAggkitProverTLSDeprecated)
-	require.Contains(t, err.Error(), aggsenderAggchainProofTimeoutDeprecated)
-	require.Contains(t, err.Error(), aggchainProofGenAggchainProofTimeoutDeprecated)
+	require.Contains(t, err.Error(), aggsenderAgglayerClientHint)
+	require.Contains(t, err.Error(), aggsenderAggkitProverClientHint)
+	require.Contains(t, err.Error(), aggsenderAggkitProverClientHint)
+	require.Contains(t, err.Error(), aggsenderAgglayerClientUseTLSHint)
+	require.Contains(t, err.Error(), aggsenderAggkitProverClientUseTLSHint)
+	require.Contains(t, err.Error(), aggsenderUseRequestTimeoutHint)
+	require.Contains(t, err.Error(), aggchainProofGenUseRequestTimeoutHint)
+	require.Contains(t, err.Error(), translatorDeprecatedHint)
+	require.Contains(t, err.Error(), isValidiumModeDeprecatedHint)
 }
