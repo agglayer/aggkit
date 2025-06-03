@@ -882,7 +882,9 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			require.NoError(t, err)
 
 			for _, cert := range tc.certificates {
-				err = storage.SaveNonAcceptedCertificate(ctx, cert, createdAt, tc.certError)
+				nonAcceptedCert, err := NewNonAcceptedCertificate(cert, createdAt, tc.certError)
+				require.NoError(t, err, "should create non-accepted certificate without error")
+				err = storage.SaveNonAcceptedCertificate(ctx, nonAcceptedCert)
 				require.NoError(t, err, "should save non-accepted certificate without error")
 			}
 
@@ -928,7 +930,10 @@ func Test_GetNonAcceptedCert(t *testing.T) {
 		ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
 		L1InfoTreeLeafCount: 19,
 	}
-	require.NoError(t, storage.SaveNonAcceptedCertificate(context.Background(), certificate, uint32(time.Now().UTC().UnixMilli()), "test error"))
+	nonAcceptedCert, err = NewNonAcceptedCertificate(certificate, uint32(time.Now().UTC().UnixMilli()), "test error")
+	require.NoError(t, err)
+
+	require.NoError(t, storage.SaveNonAcceptedCertificate(context.Background(), nonAcceptedCert))
 	nonAcceptedCert, err = storage.GetNonAcceptedCertificate()
 	require.NoError(t, err)
 	require.NotNil(t, nonAcceptedCert, "should return a non-nil non-accepted certificate")

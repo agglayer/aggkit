@@ -261,10 +261,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
-		if err := a.storage.SaveNonAcceptedCertificate(
-			ctx, certificate, certificateParams.CreatedAt, err.Error()); err != nil {
-			a.log.Errorf("error saving non accepted certificate %s in db: %w", certificate.Brief(), err)
-		}
+		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 
 		return nil, fmt.Errorf("error sending certificate: %w", err)
 	}
@@ -330,4 +327,21 @@ func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Cer
 		}
 	}
 	return nil
+}
+
+// saveNonAcceptedCert saves a certificate that was not accepted by the aggLayer in db
+func (a *AggSender) saveNonAcceptedCert(
+	ctx context.Context,
+	cert *agglayertypes.Certificate,
+	createdAt uint32,
+	certError error) {
+	nonAcceptedCert, err := db.NewNonAcceptedCertificate(cert, createdAt, certError.Error())
+	if err != nil {
+		a.log.Errorf("error creating non accepted certificate: %s. Err: %v", cert.Brief(), err)
+		return
+	}
+
+	if err := a.storage.SaveNonAcceptedCertificate(ctx, nonAcceptedCert); err != nil {
+		a.log.Errorf("error saving non accepted certificate: %s. Err: %v", cert.Brief(), err)
+	}
 }

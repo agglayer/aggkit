@@ -47,6 +47,12 @@ func TestSqlite(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "new_value", value)
 
+	err = kv.UpdateValue(db, owner, "nonexistent_key", "value")
+	require.NoError(t, err)
+	value, err = kv.GetValue(db, owner, "nonexistent_key")
+	require.NoError(t, err)
+	require.Equal(t, "value", value)
+
 	// Test exists key when we clean the table to make sure it doesn't return an error
 	require.NoError(t, kv.clean(t))
 	exists, err = kv.ExistsKey(db, owner, "key")

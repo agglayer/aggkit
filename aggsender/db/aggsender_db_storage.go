@@ -67,8 +67,7 @@ type AggSenderStorage interface {
 	GetLastSentCertificateHeaderWithProofIfInError(
 		ctx context.Context) (*types.CertificateHeader, *types.AggchainProof, error)
 	// SaveNonAcceptedCertificate saves a non-accepted certificate in the storage
-	SaveNonAcceptedCertificate(
-		ctx context.Context, certificate *agglayertypes.Certificate, createdAt uint32, certError string) error
+	SaveNonAcceptedCertificate(ctx context.Context, nonAcceptedCert *NonAcceptedCertificate) error
 	// GetNonAcceptedCertificate returns the last non-accepted certificate
 	GetNonAcceptedCertificate() (*NonAcceptedCertificate, error)
 }
@@ -371,10 +370,7 @@ func (a *AggSenderSQLStorage) GetLastSentCertificateHeaderWithProofIfInError(
 // This is used to keep track of the last non-accepted certificate
 // and to allow for debugging and analysis of why they were not accepted.
 func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
-	ctx context.Context,
-	certificate *agglayertypes.Certificate,
-	createdAt uint32,
-	certError string) error {
+	ctx context.Context, nonAcceptedCert *NonAcceptedCertificate) error {
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
 		return fmt.Errorf("failed to create db transaction for non-accepted certificate persistence: %w", err)
@@ -388,37 +384,15 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 		}
 	}()
 
-	raw, err := json.Marshal(certificate)
-	if err != nil {
-		return fmt.Errorf("failed to marshal non-accepted certificate: %w", err)
-	}
-
-	nonAcceptedCert := &NonAcceptedCertificate{
-		Height:            certificate.Height,
-		SignedCertificate: string(raw),
-		CreatedAt:         createdAt,
-		Error:             certError,
-	}
-
-	raw, err = json.Marshal(nonAcceptedCert)
+	raw, err := json.Marshal(nonAcceptedCert)
 	if err != nil {
 		return fmt.Errorf("failed to marshal non-accepted certificate struct: %w", err)
 	}
 
-	exists, err := a.ExistsKey(tx, aggkitcommon.AGGSENDER, nonAcceptedCertKey)
-	if err != nil {
-		return fmt.Errorf("failed to get non-accepted certificate value: %w", err)
-	}
-	if !exists {
-		// if the value does not exist, we insert it
-		if err := a.InsertValue(tx, aggkitcommon.AGGSENDER, nonAcceptedCertKey, string(raw)); err != nil {
-			return fmt.Errorf("failed to insert non-accepted certificate value: %w", err)
-		}
-	} else {
-		// if the value already exists, we update it
-		if err := a.UpdateValue(tx, aggkitcommon.AGGSENDER, nonAcceptedCertKey, string(raw)); err != nil {
-			return fmt.Errorf("failed to update non-accepted certificate value: %w", err)
-		}
+	// if the value already exists, the db will update it, if not, it will insert it
+	// it is all handled in the UpdateValue function
+	if err := a.UpdateValue(tx, aggkitcommon.AGGSENDER, nonAcceptedCertKey, string(raw)); err != nil {
+		return fmt.Errorf("failed to update non-accepted certificate value: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {

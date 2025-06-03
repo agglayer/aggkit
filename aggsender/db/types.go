@@ -1,6 +1,7 @@
 package db
 
 import (
+	"encoding/json"
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -68,4 +69,21 @@ type NonAcceptedCertificate struct {
 	SignedCertificate string `meddler:"signed_certificate"`
 	CreatedAt         uint32 `meddler:"created_at"`
 	Error             string `meddler:"error"` // Error message if the certificate was not accepted
+}
+
+func NewNonAcceptedCertificate(
+	cert *agglayertypes.Certificate,
+	createdAt uint32,
+	certError string) (*NonAcceptedCertificate, error) {
+	raw, err := json.Marshal(cert)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal certificate: %w", err)
+	}
+
+	return &NonAcceptedCertificate{
+		Height:            cert.Height,
+		SignedCertificate: string(raw),
+		CreatedAt:         createdAt,
+		Error:             certError,
+	}, nil
 }
