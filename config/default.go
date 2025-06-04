@@ -162,6 +162,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 SyncMode = "FEP"
 
 [NetworkConfig.L1]
+URL = "{{L1Config.URL}}"
 L1ChainID = {{L1Config.chainId}}
 PolAddr = "{{L1Config.polTokenAddress}}"
 ZkEVMAddr = "{{L1Config.polygonZkEVMAddress}}"
