@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -44,7 +43,7 @@ func New(
 	dbPath string,
 	globalExitRoot, rollupManager common.Address,
 	syncBlockChunkSize uint64,
-	blockFinalityType etherman.BlockNumberFinality,
+	blockFinalityType aggkittypes.BlockNumberFinality,
 	rd sync.ReorgDetector,
 	l1Client aggkittypes.BaseEthereumClienter,
 	waitForNewBlocksPeriod time.Duration,
@@ -52,7 +51,7 @@ func New(
 	retryAfterErrorPeriod time.Duration,
 	maxRetryAttemptsAfterError int,
 	flags CreationFlags,
-	finalizedBlockType etherman.BlockNumberFinality,
+	finalizedBlockType aggkittypes.BlockNumberFinality,
 	requireStorageContentCompatibility bool,
 ) (*L1InfoTreeSync, error) {
 	processor, err := newProcessor(dbPath)

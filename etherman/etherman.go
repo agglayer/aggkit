@@ -7,23 +7,8 @@ import (
 	"github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
-
-// L1Config represents the configuration of the network used in L1
-type L1Config struct {
-	// Chain ID of the L1 network
-	L1ChainID uint64 `json:"chainId" mapstructure:"ChainID"`
-	// ZkEVMAddr Address of the L1 contract polygonZkEVMAddress
-	ZkEVMAddr common.Address `json:"polygonZkEVMAddress" mapstructure:"ZkEVMAddr"`
-	// RollupManagerAddr Address of the L1 contract
-	RollupManagerAddr common.Address `json:"polygonRollupManagerAddress" mapstructure:"RollupManagerAddr"`
-	// PolAddr Address of the L1 Pol token Contract
-	PolAddr common.Address `json:"polTokenAddress" mapstructure:"PolAddr"`
-	// GlobalExitRootManagerAddr Address of the L1 GlobalExitRootManager contract
-	GlobalExitRootManagerAddr common.Address `json:"polygonZkEVMGlobalExitRootAddress" mapstructure:"GlobalExitRootManagerAddr"` //nolint:lll
-}
 
 // Client is a simple implementation of Etherman.
 type Client struct {
@@ -47,7 +32,7 @@ func NewClient(l1Config config.L1Config) (*Client, error) {
 	}
 
 	// Populate rollup id
-	rollupID, err := rollupManagerSC.RollupAddressToID(&bind.CallOpts{Pending: false}, l1Config.ZkEVMAddr)
+	rollupID, err := rollupManagerSC.RollupAddressToID(&bind.CallOpts{Pending: false}, l1Config.RollupAddr)
 	if err != nil {
 		log.Errorf("failed to retrieve rollup id from rollup manager contract: %+v", err)
 
@@ -55,7 +40,7 @@ func NewClient(l1Config config.L1Config) (*Client, error) {
 	}
 	if rollupID == 0 {
 		return nil, fmt.Errorf("invalid rollup id value (%d). Check if the rollup contract  address is correct %s",
-			rollupID, l1Config.ZkEVMAddr)
+			rollupID, l1Config.RollupAddr)
 	}
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 

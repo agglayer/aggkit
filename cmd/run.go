@@ -206,7 +206,7 @@ func createAggSender(
 
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
-			BlockFinalityType:     etherman.NewBlockNumberFinality(cfg.BlockFinality),
+			BlockFinalityType:     aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 			CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 		}, logger, nil)
 	if err != nil {
@@ -293,7 +293,7 @@ func createAggoracle(
 		sender,
 		l1Client,
 		l1InfoTreeSyncer,
-		etherman.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
 	if err != nil {
@@ -376,7 +376,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.GlobalExitRootAddr,
 		cfg.L1InfoTreeSync.RollupManagerAddr,
 		cfg.L1InfoTreeSync.SyncBlockChunkSize,
-		etherman.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
 		reorgDetector,
 		l1Client,
 		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
@@ -384,7 +384,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.RetryAfterErrorPeriod.Duration,
 		cfg.L1InfoTreeSync.MaxRetryAttemptsAfterError,
 		l1infotreesync.FlagNone,
-		etherman.FinalizedBlock,
+		aggkittypes.FinalizedBlock,
 		cfg.L1InfoTreeSync.RequireStorageContentCompatibility,
 	)
 	if err != nil {
@@ -502,7 +502,7 @@ func runLastGERSyncIfNeeded(
 		l1InfoTreeSync,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
-		etherman.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
@@ -538,7 +538,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL1,
 		l1Client,
 		cfg.InitialBlockNum,
@@ -577,7 +577,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL2,
 		l2Client,
 		cfg.InitialBlockNum,

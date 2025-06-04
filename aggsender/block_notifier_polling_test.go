@@ -13,6 +13,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -29,7 +30,7 @@ func TestExploratoryBlockNotifierPolling(t *testing.T) {
 
 	sut, errSut := NewBlockNotifierPolling(ethClient,
 		ConfigBlockNotifierPolling{
-			BlockFinalityType: etherman.LatestBlock,
+			BlockFinalityType: aggkittypes.LatestBlock,
 		}, log.WithFields("test", "test"), nil)
 	require.NoError(t, errSut)
 	go sut.Start(context.Background())
@@ -210,7 +211,7 @@ func TestNewBlockNotifierPolling(t *testing.T) {
 	testData := newBlockNotifierPollingTestData(t, nil)
 	require.NotNil(t, testData.sut)
 	_, err := NewBlockNotifierPolling(testData.ethClientMock, ConfigBlockNotifierPolling{
-		BlockFinalityType: etherman.NewBlockNumberFinality("invalid"),
+		BlockFinalityType: aggkittypes.NewBlockNumberFinality("invalid"),
 	}, log.WithFields("test", "test"), nil)
 	require.Error(t, err)
 }
@@ -274,7 +275,7 @@ func newBlockNotifierPollingTestData(t *testing.T, config *ConfigBlockNotifierPo
 	t.Helper()
 	if config == nil {
 		config = &ConfigBlockNotifierPolling{
-			BlockFinalityType:     etherman.LatestBlock,
+			BlockFinalityType:     aggkittypes.LatestBlock,
 			CheckNewBlockInterval: 0,
 		}
 	}

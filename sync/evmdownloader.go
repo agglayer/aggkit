@@ -8,7 +8,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
@@ -48,7 +47,7 @@ type EVMDownloader struct {
 	syncBlockChunkSize uint64
 	EVMDownloaderInterface
 	log                        *log.Logger
-	finalizedBlockType         etherman.BlockNumberFinality
+	finalizedBlockType         aggkittypes.BlockNumberFinality
 	stopDownloaderOnIterationN int
 	addressesToQuery           []common.Address
 }
@@ -57,12 +56,12 @@ func NewEVMDownloader(
 	syncerID string,
 	ethClient aggkittypes.BaseEthereumClienter,
 	syncBlockChunkSize uint64,
-	blockFinalityType etherman.BlockNumberFinality,
+	blockFinalityType aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,
 	addressesToQuery []common.Address,
 	rh *RetryHandler,
-	finalizedBlockType etherman.BlockNumberFinality,
+	finalizedBlockType aggkittypes.BlockNumberFinality,
 ) (*EVMDownloader, error) {
 	logger := log.WithFields("syncer", syncerID)
 	finality, err := blockFinalityType.ToBlockNum()

@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
@@ -54,7 +53,7 @@ type BridgeSync struct {
 
 	originNetwork    uint32
 	reorgDetector    ReorgDetector
-	blockFinality    etherman.BlockNumberFinality
+	blockFinality    aggkittypes.BlockNumberFinality
 	ethClient        aggkittypes.EthClienter
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
 }
@@ -65,7 +64,7 @@ func NewL1(
 	dbPath string,
 	bridge common.Address,
 	syncBlockChunkSize uint64,
-	blockFinalityType etherman.BlockNumberFinality,
+	blockFinalityType aggkittypes.BlockNumberFinality,
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
@@ -101,7 +100,7 @@ func NewL2(
 	dbPath string,
 	bridge common.Address,
 	syncBlockChunkSize uint64,
-	blockFinalityType etherman.BlockNumberFinality,
+	blockFinalityType aggkittypes.BlockNumberFinality,
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
@@ -136,7 +135,7 @@ func newBridgeSync(
 	dbPath string,
 	bridge common.Address,
 	syncBlockChunkSize uint64,
-	blockFinalityType etherman.BlockNumberFinality,
+	blockFinalityType aggkittypes.BlockNumberFinality,
 	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
@@ -381,7 +380,7 @@ func (s *BridgeSync) OriginNetwork() uint32 {
 }
 
 // BlockFinality returns the block finality type
-func (s *BridgeSync) BlockFinality() etherman.BlockNumberFinality {
+func (s *BridgeSync) BlockFinality() aggkittypes.BlockNumberFinality {
 	return s.blockFinality
 }
 
