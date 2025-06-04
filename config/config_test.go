@@ -106,6 +106,18 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
 	GenerateAggchainProofTimeout = "1h"
+
+	[Etherman]
+	URL = "{{L1URL}}"
+	ForkIDChunkSize = 100
+	[Etherman.EthermanConfig]
+		URL = "{{L1URL}}"
+		MultiGasProvider = false
+		L1ChainID = {{NetworkConfig.L1.L1ChainID}}
+		HTTPHeaders = []
+		[Etherman.EthermanConfig.Etherscan]
+			ApiKey = ""
+			Url = "https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
@@ -122,4 +134,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.Contains(t, err.Error(), aggchainProofGenUseRequestTimeoutHint)
 	require.Contains(t, err.Error(), translatorDeprecatedHint)
 	require.Contains(t, err.Error(), isValidiumModeDeprecatedHint)
+	require.Contains(t, err.Error(), ethermanDeprecatedHint)
 }
