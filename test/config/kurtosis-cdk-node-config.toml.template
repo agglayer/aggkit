@@ -35,5 +35,3 @@ CheckStatusCertificateInterval = "1s"
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1m"
-
-
