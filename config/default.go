@@ -59,6 +59,14 @@ Outputs = ["stderr"]
 NetworkID = {{NetworkID}}
 L2RPC = {{L2RPC}}
 
+[L1NetworkConfig]
+URL = "{{L1Config.URL}}"
+L1ChainID = {{L1Config.chainId}}
+PolAddr = "{{L1Config.polTokenAddress}}"
+ZkEVMAddr = "{{L1Config.polygonZkEVMAddress}}"
+RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
+GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
 FinalizedBlock = "FinalizedBlock"
@@ -159,14 +167,6 @@ WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 SyncMode = "FEP"
-
-[L1NetworkConfig]
-URL = "{{L1Config.URL}}"
-L1ChainID = {{L1Config.chainId}}
-PolAddr = "{{L1Config.polTokenAddress}}"
-ZkEVMAddr = "{{L1Config.polygonZkEVMAddress}}"
-RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
-GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"

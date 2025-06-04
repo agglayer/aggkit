@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -77,7 +76,7 @@ func start(cliCtx *cli.Context) error {
 
 	ethermanClient, err := etherman.NewClient(cfg.L1NetworkConfig)
 	if err != nil {
-		return errors.New("failed to create etherman client")
+		return fmt.Errorf("failed to create etherman client: %w", err)
 	}
 
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
