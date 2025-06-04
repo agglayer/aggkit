@@ -1,28 +1,29 @@
 {
   "deployment_stages": {
-    "deploy_l2_contracts": true,
+    "deploy_l1": false,
+    "deploy_agglayer": false,
     "deploy_cdk_bridge_infra": false,
     "deploy_optimism_rollup": false
   },
   "args": {
     "verbosity": "debug",
+    "deployment_suffix": "-002",
+    "zkevm_rollup_chain_id": 20202,
+    "zkevm_rollup_id": 2,
     "cdk_node_image": "aggkit:local",
     "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.0-rc.21",
     "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.61.19",
+    "pp_vkey_hash": "0x00e60517ac96bf6255d81083269e72c14ad006e5f336f852f7ee3efb91b966be",
     "zkevm_contracts_image": "jhkimqd/zkevm-contracts:v10.0.0-rc.6-fork.12",
     "additional_services": [],
-    "pp_vkey_hash": "0x00e60517ac96bf6255d81083269e72c14ad006e5f336f852f7ee3efb91b966be",
     "consensus_contract_type": "pessimistic",
     "sequencer_type": "erigon",
     "erigon_strict_mode": false,
     "gas_token_enabled": true,
     "gas_token_address": "",
+    "zkevm_use_real_verifier": false,
     "enable_normalcy": true,
     "verifier_program_vkey": "0x00766aa16a6efe4ac05c0fe21d4b50f9631dbd1a2663a982da861427085ea2ea",
-    "agglayer_prover_sp1_key": "",
-    "zkevm_use_real_verifier": false,
-    "agglayer_prover_primary_prover": "mock-prover",
-    "zkevm_rollup_id": 1,
     "binary_name": "aggkit",
     "enable_aggkit_claim_sponsor": false
   }

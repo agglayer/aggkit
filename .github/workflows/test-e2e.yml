@@ -26,6 +26,8 @@ jobs:
       kurtosis-cdk-args-1: ${{ steps.read-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ steps.read-args.outputs.kurtosis-cdk-args-2 }}
       kurtosis-cdk-args-3: ${{ steps.read-args.outputs.kurtosis-cdk-args-3 }}
+      kurtosis-cdk-args-4: ${{ steps.read-args.outputs.kurtosis-cdk-args-4 }}
+      kurtosis-cdk-args-5: ${{ steps.read-args.outputs.kurtosis-cdk-args-5 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,6 +48,10 @@ jobs:
           echo "kurtosis-cdk-args-2=${CONTENT}" >> $GITHUB_OUTPUT
           CONTENT=$(cat ./.github/test_e2e_multi_chains_args_3.json | jq -c .)
           echo "kurtosis-cdk-args-3=${CONTENT}" >> $GITHUB_OUTPUT
+          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_4.json | jq -c .)
+          echo "kurtosis-cdk-args-4=${CONTENT}" >> $GITHUB_OUTPUT
+          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_5.json | jq -c .)
+          echo "kurtosis-cdk-args-5=${CONTENT}" >> $GITHUB_OUTPUT
 
   test-single-l2-network-fork12-pessimistic:
     name: Single L2 chain tests (pessimistic)
@@ -157,9 +163,9 @@ jobs:
       agglayer-e2e-ref: b759a4b6b973dced0d8c4ea2e6a55d60e7e9126e
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
-      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
-      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
-      kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
+      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
+      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-4 }}
+      kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-5 }}
       number-of-chains: 3
 
   check-multi-l2-networks-3-chains-tests-result:

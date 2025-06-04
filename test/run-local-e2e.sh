@@ -44,39 +44,39 @@ fi
 
 log_info "Using provided Kurtosis CDK repo at: $KURTOSIS_FOLDER"
 
-pushd "$KURTOSIS_FOLDER" >/dev/null
-log_info "Cleaning any existing Kurtosis enclaves..."
-kurtosis clean --all
+# pushd "$KURTOSIS_FOLDER" >/dev/null
+# log_info "Cleaning any existing Kurtosis enclaves..."
+# kurtosis clean --all
 
-log_info "Starting Kurtosis enclave"
-case "$TEST_TYPE" in
-single-l2-network-fork12-op-succinct)
-    ENCLAVE_NAME="op"
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
-    ;;
-single-l2-network-fork12-pessimistic)
-    ENCLAVE_NAME="aggkit"
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_pessimistic_args.json" .
-    ;;
-multi-l2-networks-2-chains)
-    ENCLAVE_NAME="aggkit"
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1.json" .
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" .
-    ;;
-multi-l2-networks-3-chains)
-    ENCLAVE_NAME="aggkit"
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1.json" .
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" .
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" .
-    ;;
-*)
-    log_error "Unknown test type: $TEST_TYPE"
-    exit 1
-    ;;
-esac
-log_info "$ENCLAVE_NAME enclave started successfully."
-popd >/dev/null
-
+# log_info "Starting Kurtosis enclave"
+# case "$TEST_TYPE" in
+# single-l2-network-fork12-op-succinct)
+#     ENCLAVE_NAME="op"
+#     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
+#     ;;
+# single-l2-network-fork12-pessimistic)
+#     ENCLAVE_NAME="aggkit"
+#     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_pessimistic_args.json" .
+#     ;;
+# multi-l2-networks-2-chains)
+#     ENCLAVE_NAME="aggkit"
+#     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1.json" .
+#     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" .
+#     ;;
+# multi-l2-networks-3-chains)
+#     ENCLAVE_NAME="aggkit"
+#     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" .
+#     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_4.json" .
+#     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_5.json" .
+#     ;;
+# *)
+#     log_error "Unknown test type: $TEST_TYPE"
+#     exit 1
+#     ;;
+# esac
+# log_info "$ENCLAVE_NAME enclave started successfully."
+# popd >/dev/null
+ENCLAVE_NAME="aggkit"
 if [ -n "$E2E_FOLDER" ]; then
     if [ ! -d "$E2E_FOLDER" ]; then
         log_error "The provided E2E folder does not exist: $E2E_FOLDER"
@@ -118,11 +118,12 @@ if [ -n "$E2E_FOLDER" ]; then
         ;;
     multi-l2-networks-2-chains)
         export DISABLE_L2_FUND="true"
-        bats ./tests/aggkit/bridge-e2e-2-l2s.bats
+        bats ./tests/aggkit/bridge-e2e-2-chains.bats
         ;;
     multi-l2-networks-3-chains)
         export DISABLE_L2_FUND="true"
-        bats ./tests/aggkit/bridge-e2e-2-l2s.bats
+        bats ./tests/aggkit/bridge-e2e-3-chains.bats
+        # bats ./tests/aggkit/bridge-e2e-2-chains.bats ./tests/aggkit/bridge-e2e-3-chains.bats
         ;;
     esac
     popd >/dev/null
