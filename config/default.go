@@ -62,8 +62,8 @@ L2RPC = {{L2RPC}}
 [L1NetworkConfig]
 URL = "{{L1Config.URL}}"
 L1ChainID = {{L1Config.chainId}}
-PolAddr = "{{L1Config.polTokenAddress}}"
-ZkEVMAddr = "{{L1Config.polygonZkEVMAddress}}"
+POLTokenAddr = "{{L1Config.polTokenAddress}}"
+RollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 
