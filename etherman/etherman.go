@@ -7,12 +7,32 @@ import (
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
+// RollupManagerContract is an abstraction for RollupManager smart contract
+type RollupManagerContract interface {
+	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (struct {
+		RollupContract                 common.Address
+		ChainID                        uint64
+		Verifier                       common.Address
+		ForkID                         uint64
+		LastLocalExitRoot              [32]byte
+		LastBatchSequenced             uint64
+		LastVerifiedBatch              uint64
+		LastPendingState               uint64
+		LastPendingStateConsolidated   uint64
+		LastVerifiedBatchBeforeUpgrade uint64
+		RollupTypeID                   uint64
+		RollupCompatibilityID          uint8
+	}, error)
+	RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error)
+}
+
 // Client is a simple implementation of Etherman.
 type Client struct {
-	rollupManagerSC *polygonrollupmanager.Polygonrollupmanager
+	rollupManagerSC RollupManagerContract
 	RollupID        uint32
 }
 
