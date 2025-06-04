@@ -65,7 +65,7 @@ jobs:
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@60fdb6e88e57083bd21daae01483df048245f89e
     secrets: inherit
     with:
-      kurtosis-cdk-ref: 45899b00758ae2e8b4f1504c1d711a818fd652f7
+      kurtosis-cdk-ref: 71cf6afad7131147e8eeac03950c6c095932ba9d
       agglayer-e2e-ref: 60fdb6e88e57083bd21daae01483df048245f89e
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
@@ -89,7 +89,7 @@ jobs:
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@60fdb6e88e57083bd21daae01483df048245f89e
     secrets: inherit
     with:
-      kurtosis-cdk-ref: 45899b00758ae2e8b4f1504c1d711a818fd652f7
+      kurtosis-cdk-ref: 71cf6afad7131147e8eeac03950c6c095932ba9d
       agglayer-e2e-ref: 60fdb6e88e57083bd21daae01483df048245f89e
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
@@ -137,8 +137,10 @@ jobs:
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@60fdb6e88e57083bd21daae01483df048245f89e
     secrets: inherit
     with:
-      kurtosis-cdk-ref: 45899b00758ae2e8b4f1504c1d711a818fd652f7
+      kurtosis-cdk-ref: 71cf6afad7131147e8eeac03950c6c095932ba9d
       agglayer-e2e-ref: 60fdb6e88e57083bd21daae01483df048245f89e
+      kurtosis-cdk-ref: 2462a04039d81fe6349e368b8c195d3af202f83f
+      agglayer-e2e-ref: 44083e2c2d2a5e84164edbbda0128253f56a6f55
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
@@ -163,7 +165,7 @@ jobs:
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@60fdb6e88e57083bd21daae01483df048245f89e
     secrets: inherit
     with:
-      kurtosis-cdk-ref: 45899b00758ae2e8b4f1504c1d711a818fd652f7
+      kurtosis-cdk-ref: 71cf6afad7131147e8eeac03950c6c095932ba9d
       agglayer-e2e-ref: 60fdb6e88e57083bd21daae01483df048245f89e
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
