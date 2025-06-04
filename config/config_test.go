@@ -114,6 +114,8 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 
 	[NetworkConfig.L1]
 	URL="{{L1URL}}"
+	PolAddr="{{L1Config.polTokenAddress}}"
+	ZkEVMAddr="{{L1Config.polygonZkEVMAddress}}"
 
 	[Etherman]
 	URL = "{{L1URL}}"
@@ -140,9 +142,11 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, aggsenderAggkitProverClientUseTLSHint)
 	require.ErrorContains(t, err, aggsenderUseRequestTimeoutHint)
 	require.ErrorContains(t, err, aggchainProofGenUseRequestTimeoutHint)
-	require.ErrorContains(t, err, translatorDeprecatedHint)
 	require.ErrorContains(t, err, contractVersionsDeprecatedHint)
 	require.ErrorContains(t, err, isValidiumModeDeprecatedHint)
+	require.ErrorContains(t, err, translatorDeprecatedHint)
 	require.ErrorContains(t, err, ethermanDeprecatedHint)
 	require.ErrorContains(t, err, networkConfigDeprecatedHint)
+	require.ErrorContains(t, err, l1NetworkConfigUsePolTokenAddrHint)
+	require.ErrorContains(t, err, l1NetworkConfigUseRollupAddrrHint)
 }
