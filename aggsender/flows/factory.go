@@ -16,6 +16,9 @@ import (
 	signerTypes "github.com/agglayer/go_signer/signer/types"
 )
 
+// funcGetL2StartBlock is a intermediate func that allow to override this call in UT
+var funcGetL2StartBlock = getL2StartBlock
+
 // NewFlow creates a new Aggsender flow based on the provided configuration.
 func NewFlow(
 	ctx context.Context,
@@ -63,12 +66,12 @@ func NewFlow(
 
 		gerReader, err := funcNewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
 		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error creating L2Etherman: %w", err)
+			return nil, fmt.Errorf("aggchainProverFlow - error creating VMChainGERReader L2Etherman: %w", err)
 		}
 
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 
-		startL2Block, err := getL2StartBlock(cfg.SovereignRollupAddr, l1Client)
+		startL2Block, err := funcGetL2StartBlock(cfg.SovereignRollupAddr, l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 		}
