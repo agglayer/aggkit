@@ -297,7 +297,7 @@ func TestGetLogs(t *testing.T) {
 	mockEthClient := NewL2Mock(t)
 	sut := EVMDownloaderImplementation{
 		ethClient:        mockEthClient,
-		adressessToQuery: []common.Address{contractAddr},
+		addressesToQuery: []common.Address{contractAddr},
 		log:              log.WithFields("test", "EVMDownloaderImplementation"),
 		rh: &RetryHandler{
 			RetryAfterErrorPeriod:      time.Millisecond,
