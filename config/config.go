@@ -57,6 +57,7 @@ const (
 	aggchainProofGenUseRequestTimeoutHint = "Use AggchainProofGen.AggkitProverClient.RequestTimeout instead"
 	translatorDeprecatedHint              = "Translator parameter is deprecated, remove it from configuration"
 	isValidiumModeDeprecatedHint          = "IsValidiumMode parameter is deprecated, remove it from configuration"
+	contractVersionsDeprecatedHint        = "ContractVersions parameter is deprecated, remove it from configuration"
 	ethermanDeprecatedHint                = "Etherman config is deprecated, remove it from configuration"
 )
 
@@ -140,12 +141,16 @@ var (
 			Reason:           aggchainProofGenUseRequestTimeoutHint,
 		},
 		{
-			FieldNamePattern: "Common.Translator",
-			Reason:           translatorDeprecatedHint,
-		},
-		{
 			FieldNamePattern: "Common.IsValidiumMode",
 			Reason:           isValidiumModeDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "Common.ContractVersions",
+			Reason:           contractVersionsDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "Common.Translator",
+			Reason:           translatorDeprecatedHint,
 		},
 		{
 			FieldNamePattern: "Etherman",

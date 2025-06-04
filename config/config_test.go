@@ -94,6 +94,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	_, err = tmpFile.Write([]byte(`
 	[Common]
 	IsValidiumMode = true
+	ContractVersions="banana"
 	Translator = ""
 
 	[L1Config]
@@ -127,16 +128,17 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
 	_, err = Load(ctx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), bridgeMetadataAsHashHint)
-	require.Contains(t, err.Error(), bridgeAddrSetOnWrongSection)
-	require.Contains(t, err.Error(), aggsenderAgglayerClientHint)
-	require.Contains(t, err.Error(), aggsenderAggkitProverClientHint)
-	require.Contains(t, err.Error(), aggsenderAggkitProverClientHint)
-	require.Contains(t, err.Error(), aggsenderAgglayerClientUseTLSHint)
-	require.Contains(t, err.Error(), aggsenderAggkitProverClientUseTLSHint)
-	require.Contains(t, err.Error(), aggsenderUseRequestTimeoutHint)
-	require.Contains(t, err.Error(), aggchainProofGenUseRequestTimeoutHint)
-	require.Contains(t, err.Error(), translatorDeprecatedHint)
-	require.Contains(t, err.Error(), isValidiumModeDeprecatedHint)
-	require.Contains(t, err.Error(), ethermanDeprecatedHint)
+	require.ErrorContains(t, err, bridgeMetadataAsHashHint)
+	require.ErrorContains(t, err, bridgeAddrSetOnWrongSection)
+	require.ErrorContains(t, err, aggsenderAgglayerClientHint)
+	require.ErrorContains(t, err, aggsenderAggkitProverClientHint)
+	require.ErrorContains(t, err, aggsenderAggkitProverClientHint)
+	require.ErrorContains(t, err, aggsenderAgglayerClientUseTLSHint)
+	require.ErrorContains(t, err, aggsenderAggkitProverClientUseTLSHint)
+	require.ErrorContains(t, err, aggsenderUseRequestTimeoutHint)
+	require.ErrorContains(t, err, aggchainProofGenUseRequestTimeoutHint)
+	require.ErrorContains(t, err, translatorDeprecatedHint)
+	require.ErrorContains(t, err, isValidiumModeDeprecatedHint)
+	require.ErrorContains(t, err, ethermanDeprecatedHint)
+	require.ErrorContains(t, err, contractVersionsDeprecatedHint)
 }
