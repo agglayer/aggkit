@@ -26,8 +26,6 @@ import (
 )
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
-	t.Parallel()
-
 	ctx := context.Background()
 
 	finalizedL1Root := common.HexToHash("0x1")
