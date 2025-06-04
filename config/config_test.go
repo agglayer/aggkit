@@ -112,6 +112,9 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	AggchainProofUrl = "http://localhost:5577"
 	GenerateAggchainProofTimeout = "1h"
 
+	[NetworkConfig.L1]
+	URL="{{L1URL}}"
+
 	[Etherman]
 	URL = "{{L1URL}}"
 	ForkIDChunkSize = 100
@@ -138,7 +141,8 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, aggsenderUseRequestTimeoutHint)
 	require.ErrorContains(t, err, aggchainProofGenUseRequestTimeoutHint)
 	require.ErrorContains(t, err, translatorDeprecatedHint)
+	require.ErrorContains(t, err, contractVersionsDeprecatedHint)
 	require.ErrorContains(t, err, isValidiumModeDeprecatedHint)
 	require.ErrorContains(t, err, ethermanDeprecatedHint)
-	require.ErrorContains(t, err, contractVersionsDeprecatedHint)
+	require.ErrorContains(t, err, networkConfigDeprecatedHint)
 }
