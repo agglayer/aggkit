@@ -61,6 +61,8 @@ const (
 	contractVersionsDeprecatedHint        = "ContractVersions parameter is deprecated, remove it from configuration"
 	ethermanDeprecatedHint                = "Etherman config is deprecated, remove it from configuration"
 	networkConfigDeprecatedHint           = "NetworkConfig is deprecated, use L1NetworkConfig instead"
+	l1NetworkConfigUsePolTokenAddrHint    = "Use L1NetworkConfig.POLTokenAddr instead"
+	l1NetworkConfigUseRollupAddrrHint     = "Use L1NetworkConfig.RollupAddr instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -157,6 +159,14 @@ var (
 		{
 			FieldNamePattern: "Etherman",
 			Reason:           ethermanDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "NetworkConfig.L1.PolAddr",
+			Reason:           l1NetworkConfigUsePolTokenAddrHint,
+		},
+		{
+			FieldNamePattern: "NetworkConfig.L1.ZkEVMAddr",
+			Reason:           l1NetworkConfigUseRollupAddrrHint,
 		},
 		{
 			FieldNamePattern: "NetworkConfig",
