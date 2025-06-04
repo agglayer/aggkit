@@ -29,7 +29,6 @@ genesisBlockNumber = 0
 	polTokenAddress = "0x0000000000000000000000000000000000000000"
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
 
-
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
 
@@ -64,8 +63,8 @@ FinalizedBlock = "LatestBlock"
 
 [L1InfoTreeSync]
 DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
-GlobalExitRootAddr = "{{NetworkConfig.L1.GlobalExitRootManagerAddr}}"
-RollupManagerAddr = "{{NetworkConfig.L1.RollupManagerAddr}}"
+GlobalExitRootAddr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
+RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
 SyncBlockChunkSize = 100
 BlockFinality = "LatestBlock"
 URLRPCL1 = "{{L1URL}}"
@@ -189,7 +188,7 @@ DownloadBufferSize = 100
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 SyncMode = "FEP"
 
-[NetworkConfig.L1]
+[L1NetworkConfig]
 URL = "{{L1Config.URL}}"
 L1ChainID = {{L1Config.chainId}}
 PolAddr = "{{L1Config.polTokenAddress}}"

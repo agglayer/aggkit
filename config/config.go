@@ -60,6 +60,7 @@ const (
 	isValidiumModeDeprecatedHint          = "IsValidiumMode parameter is deprecated, remove it from configuration"
 	contractVersionsDeprecatedHint        = "ContractVersions parameter is deprecated, remove it from configuration"
 	ethermanDeprecatedHint                = "Etherman config is deprecated, remove it from configuration"
+	networkConfigDeprecatedHint           = "NetworkConfig is deprecated, use L1NetworkConfig instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -157,6 +158,10 @@ var (
 			FieldNamePattern: "Etherman",
 			Reason:           ethermanDeprecatedHint,
 		},
+		{
+			FieldNamePattern: "NetworkConfig",
+			Reason:           networkConfigDeprecatedHint,
+		},
 	}
 )
 
@@ -170,8 +175,8 @@ type Config struct {
 	// Configure Log level for all the services, allow also to store the logs in a file
 	Log log.Config
 
-	// NetworkConfig Configuration of the genesis of the network. This is used to known the initial state of the network
-	NetworkConfig NetworkConfig
+	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
+	L1NetworkConfig L1NetworkConfig
 
 	// Common Config that affects all the services
 	Common common.Config

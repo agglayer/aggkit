@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/banana/polygonrollupmanager"
-	"github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/ethclient"
@@ -17,7 +17,7 @@ type Client struct {
 }
 
 // NewClient creates a new etherman.
-func NewClient(l1Config config.L1Config) (*Client, error) {
+func NewClient(l1Config config.L1NetworkConfig) (*Client, error) {
 	// Connect to ethereum node
 	ethClient, err := ethclient.Dial(l1Config.URL)
 	if err != nil {

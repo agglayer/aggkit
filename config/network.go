@@ -1,11 +1,19 @@
 package config
 
-import (
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
-)
+import "github.com/ethereum/go-ethereum/common"
 
-// NetworkConfig is the configuration struct for the different environments
-type NetworkConfig struct {
-	// L1: Configuration related to L1
-	L1Config ethermanconfig.L1Config `mapstructure:"L1"`
+// L1NetworkConfig represents the configuration of the network used in L1
+type L1NetworkConfig struct {
+	// URL is the URL of the Ethereum node for L1
+	URL string `mapstructure:"URL"`
+	// Chain ID of the L1 network
+	ChainID uint64 `json:"chainId"`
+	// RollupAddr Address of the L1 rollup contract
+	RollupAddr common.Address `json:"polygonZkEVMAddress"`
+	// RollupManagerAddr Address of the L1 contract
+	RollupManagerAddr common.Address `json:"polygonRollupManagerAddress"`
+	// POLTokenAddr Address of the L1 POL token Contract
+	POLTokenAddr common.Address `json:"polTokenAddress"`
+	// GlobalExitRootManagerAddr Address of the L1 GlobalExitRootManager contract
+	GlobalExitRootManagerAddr common.Address `json:"polygonZkEVMGlobalExitRootAddress"`
 }
