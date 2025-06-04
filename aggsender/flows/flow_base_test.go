@@ -363,5 +363,4 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			require.Equal(t, common.HexToHash("0xbeef"), ler, "LER should be from previous cert")
 			require.NoError(t, err)
 		})
-
 }
