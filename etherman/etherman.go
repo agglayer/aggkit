@@ -39,7 +39,7 @@ func NewClient(l1Config config.L1NetworkConfig) (*Client, error) {
 		return nil, err
 	}
 	if rollupID == 0 {
-		return nil, fmt.Errorf("invalid rollup id value (%d). Check if the rollup contract  address is correct %s",
+		return nil, fmt.Errorf("invalid rollup id value (%d). Check if the rollup contract address is correct %s",
 			rollupID, l1Config.RollupAddr)
 	}
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
