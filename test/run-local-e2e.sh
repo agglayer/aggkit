@@ -11,7 +11,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*" | tee -a "$LOG_FILE"; }
 trap 'log_error "Script failed at line $LINENO"' ERR
 
 if [ "$#" -lt 2 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks> <kurtosis_repo> [e2e_repo]"
+    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks-2-chains | multi-l2-networks-3-chains> <kurtosis_repo> [e2e_repo]"
     exit 1
 fi
 
@@ -58,10 +58,16 @@ single-l2-network-fork12-pessimistic)
     ENCLAVE_NAME="aggkit"
     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_pessimistic_args.json" .
     ;;
-multi-l2-networks)
+multi-l2-networks-2-chains)
     ENCLAVE_NAME="aggkit"
     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1.json" .
     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" .
+    ;;
+multi-l2-networks-3-chains)
+    ENCLAVE_NAME="aggkit"
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" .
     ;;
 *)
     log_error "Unknown test type: $TEST_TYPE"
@@ -88,7 +94,6 @@ if [ -n "$E2E_FOLDER" ]; then
     cp "$imported_bridges_tool" "$E2E_FOLDER/aggsender_find_imported_bridge"
     chmod +x "$E2E_FOLDER/aggsender_find_imported_bridge"
 
-    log_info "Using provided Agglayer E2E repo at: $E2E_FOLDER"
     pushd "$E2E_FOLDER" >/dev/null
 
     log_info "Setting up e2e environment..."
@@ -111,9 +116,13 @@ if [ -n "$E2E_FOLDER" ]; then
         export DISABLE_L2_FUND="true"
         bats ./tests/aggkit/bridge-e2e-custom-gas.bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/e2e-pp.bats
         ;;
-    multi-l2-networks)
+    multi-l2-networks-2-chains)
         export DISABLE_L2_FUND="true"
-        bats ./tests/aggkit/bridge-l2_to_l2-e2e.bats
+        bats ./tests/aggkit/bridge-e2e-2-l2s.bats
+        ;;
+    multi-l2-networks-3-chains)
+        export DISABLE_L2_FUND="true"
+        bats ./tests/aggkit/bridge-e2e-2-l2s.bats
         ;;
     esac
     popd >/dev/null
