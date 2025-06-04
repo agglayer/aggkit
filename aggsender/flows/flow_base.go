@@ -100,9 +100,9 @@ func (f *baseFlow) limitCertSize(
 
 	for {
 		if currentCert.NumberOfBridges() == 0 && !allowEmptyCert {
-			f.log.Warnf("Minimum certificate size reached. Estimated size: %d > max size: %d",
-				currentCert.EstimatedSize(), f.maxCertSize)
-			return currentCert, nil
+			return nil, fmt.Errorf("error on reducing the certificate size. "+
+				"No bridge exits found in range from: %d, to: %d and empty certificate is not allowed",
+				currentCert.FromBlock, currentCert.ToBlock)
 		}
 
 		if f.maxCertSize == 0 || currentCert.EstimatedSize() <= f.maxCertSize {
