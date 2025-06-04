@@ -167,7 +167,7 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 		d.log.Debugf("result events from blocks [%d to  %d] -> len(blocks)=%d",
 			fromBlock, requestToBlock, len(blocks))
 		if requestToBlock <= lastFinalizedBlockNumber {
-			d.log.Debugf("range in safe zone: requestToBlock:%d <= finalized: %d",
+			d.log.Debugf("range is in a safe zone (requestToBlock: %d <= finalized: %d)",
 				requestToBlock, lastFinalizedBlockNumber)
 			d.reportBlocks(downloadedCh, blocks, lastFinalizedBlockNumber)
 			if blocks.Len() == 0 || blocks[blocks.Len()-1].Num < requestToBlock {
@@ -176,7 +176,7 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 			fromBlock = requestToBlock + 1
 			toBlock = fromBlock + d.syncBlockChunkSize
 		} else {
-			d.log.Debugf("range in not in safe zone: requestToBlock:%d <= finalized: %d",
+			d.log.Debugf("range is not in a safe zone (requestToBlock: %d > finalized: %d)",
 				requestToBlock, lastFinalizedBlockNumber)
 			if blocks.Len() == 0 {
 				if lastFinalizedBlockNumber >= fromBlock {
