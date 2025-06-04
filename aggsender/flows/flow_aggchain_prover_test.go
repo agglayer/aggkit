@@ -26,6 +26,8 @@ import (
 )
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 
 	finalizedL1Root := common.HexToHash("0x1")
@@ -710,12 +712,6 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			// flow := &AggchainProverFlow{
-			// 	baseFlow: &baseFlow{
-			// 		log:          log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
-			// 		startL2Block: tc.startL2Block,
-			// 	},
-			// }
 			flow := NewAggchainProverFlow(
 				log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
 				AggchainProverFlowConfig{
@@ -970,7 +966,6 @@ func getResponseContractCallStartingBlockNumber(returnValue int64) ([]byte, erro
 
 func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 	t.Parallel()
-
 	sovereignRollupAddr := common.HexToAddress("0x123")
 
 	testCases := []struct {
