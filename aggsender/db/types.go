@@ -68,7 +68,8 @@ type NonAcceptedCertificate struct {
 	Height            uint64 `meddler:"height"`
 	SignedCertificate string `meddler:"signed_certificate"`
 	CreatedAt         uint32 `meddler:"created_at"`
-	Error             string `meddler:"error"` // Error message if the certificate was not accepted
+	// Error message indicating why the certificate was not accepted
+	Error string `meddler:"error"`
 }
 
 func NewNonAcceptedCertificate(
@@ -77,7 +78,7 @@ func NewNonAcceptedCertificate(
 	certError string) (*NonAcceptedCertificate, error) {
 	raw, err := json.Marshal(cert)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal certificate: %w", err)
+		return nil, fmt.Errorf("failed to marshal certificate to JSON: %w", err)
 	}
 
 	return &NonAcceptedCertificate{

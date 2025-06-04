@@ -786,7 +786,7 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		mockDBFn      func() *dbmocks.DBer
+		mockDBFn      func()
 		certificates  []*agglayertypes.Certificate
 		certError     string
 		expectedError string
@@ -869,21 +869,11 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			},
 			certError: "yet another error occurred",
 		},
-		{
-			name:         "SaveNonAcceptedCertificate_FailToCreateDBTxn",
-			certificates: []*agglayertypes.Certificate{{}},
-			mockDBFn: func() *dbmocks.DBer {
-				dbMock := dbmocks.NewDBer(t)
-				dbMock.EXPECT().BeginTx(mock.Anything, mock.Anything).Return(nil, errors.New("failed to begin tx"))
-				return dbMock
-			},
-			expectedError: "failed to begin tx",
-		},
+
 		{
 			name:         "SaveNonAcceptedCertificate_CommitAndRollbackFails",
 			certificates: []*agglayertypes.Certificate{{}},
-			mockDBFn: func() *dbmocks.DBer {
-				dbMock := dbmocks.NewDBer(t)
+			mockDBFn: func() {
 				txnMock := dbmocks.NewTxer(t)
 				newTxer = func(_ context.Context, _ dbtypes.DBer) (dbtypes.Txer, error) {
 					return txnMock, nil
@@ -891,7 +881,6 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil)
 				txnMock.EXPECT().Commit().Return(errors.New("failed to commit tx"))
 				txnMock.EXPECT().Rollback().Return(errors.New("failed to rollback tx"))
-				return dbMock
 			},
 			expectedError: "failed to commit tx",
 		},
@@ -912,17 +901,14 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			storage, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 			require.NoError(t, err)
 
-			var dber dbtypes.DBer
 			if tc.mockDBFn != nil {
-				dber = tc.mockDBFn()
-			} else {
-				dber = storage.db
+				tc.mockDBFn()
 			}
 
 			for _, cert := range tc.certificates {
 				nonAcceptedCert, err := NewNonAcceptedCertificate(cert, createdAt, tc.certError)
 				require.NoError(t, err, "should create non-accepted certificate without error")
-				err = storage.saveNonAcceptedCertificate(ctx, dber, nonAcceptedCert)
+				err = storage.SaveNonAcceptedCertificate(ctx, nonAcceptedCert)
 				if tc.expectedError != "" {
 					require.ErrorContains(t, err, tc.expectedError)
 				} else {
