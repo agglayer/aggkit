@@ -20,7 +20,6 @@ IsValidiumMode = false
 L2Coinbase = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 SequencerPrivateKeyPath = "/app/sequencer.keystore"
 SequencerPrivateKeyPassword = "test"
-TrustedSequencerKey = "{Method =  \"local\", Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
 
 WitnessURL = "http://localhost:8123"
 
@@ -250,7 +249,8 @@ RequireNoFEPBlockGap = true
 		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
 		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
-		TrustedSequencerKey = {{TrustedSequencerKey}}
+		# By default use the same key that aggsender  sign certs
+		TrustedSequencerKey = {{AggSender.AggsenderPrivateKey}}
 		OpNodeURL = "{{OpNodeURL}}"
 [Prometheus]
 Enabled = true

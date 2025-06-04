@@ -35,13 +35,14 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
 	require.Equal(t, cfg.AggSender.RequireNoFEPBlockGap, true)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.SovereignRollupAddr, cfg.AggSender.SovereignRollupAddr)
-	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey.Method.String(), "local")
+	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
 	require.Equal(t, ethermanconfig.RPCClientConfig{Mode: ethermanconfig.RPCModeBasic, URL: "http://localhost:8123"}, cfg.Common.L2RPC)
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)
+	t.Logf("cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey: %+v", cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {

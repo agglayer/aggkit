@@ -50,5 +50,7 @@ CheckStatusCertificateInterval = "1s"
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1m"
+	[AggSender.OptimisticModeConfig]
+		TrustedSequencerKey = {Method =  "local", Path = "test/config/key_trusted_sequencer.keystore", Password = "password"}
 
 
