@@ -25,7 +25,10 @@ var errNoProofBuiltYet = &aggkitcommon.GRPCError{
 
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type AggchainProverFlow struct {
-	*baseFlow
+	baseFlow types.AggsenderFlowBaser
+
+	log     types.Logger
+	storage db.AggSenderStorage
 
 	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
@@ -78,6 +81,8 @@ func NewAggchainProverFlow(log types.Logger,
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	optimisticSigner types.OptimisticSigner) *AggchainProverFlow {
 	return &AggchainProverFlow{
+		log:                  log,
+		storage:              storage,
 		aggchainProofClient:  aggkitProverClient,
 		gerQuerier:           gerQuerier,
 		requireNoFEPBlockGap: aggChainProverConfig.requireNoFEPBlockGap,
@@ -86,7 +91,6 @@ func NewAggchainProverFlow(log types.Logger,
 			l2BridgeQuerier:       l2BridgeQuerier,
 			storage:               storage,
 			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
-			signer:                signer,
 			BaseFlowConfig:        aggChainProverConfig.baseFlowConfig,
 		},
 		signer:                signer,
@@ -113,11 +117,11 @@ func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.C
 		lastSentCertficateStr = fmt.Sprintf("cert from:%d, to:%d", lastSentCertificate.FromBlock, lastSentCertificate.ToBlock)
 	}
 	msg := fmt.Sprintf("aggchainProverFlow - sanityCheckNoBlockGaps - last sent certificate: %s, startL2Block:%d",
-		lastSentCertficateStr, a.startL2Block)
+		lastSentCertficateStr, a.baseFlow.StartL2Block())
 
-	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.startL2Block {
+	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.baseFlow.StartL2Block() {
 		err := fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
-			lastSentCertificate.ToBlock, a.startL2Block)
+			lastSentCertificate.ToBlock, a.baseFlow.StartL2Block())
 		if a.requireNoFEPBlockGap {
 			a.log.Error("%s. Err: %s", msg+" fails!", err.Error())
 			return err
@@ -169,7 +173,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 				"lastProvenBlock: %d + 1. Check update process 😅", lastSentCert.FromBlock, lastProvenBlock)
 		}
 
-		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
+		bridges, claims, err := a.baseFlow.L2BridgeQuerier().GetBridgesAndClaims(
 			ctx, fromBlock,
 			ToBlock,
 			true,
@@ -213,7 +217,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			lastSentCert.CertType, typeCert)
 	}
 
-	buildParams, err := a.baseFlow.getCertificateBuildParamsInternal(ctx, true, typeCert)
+	buildParams, err := a.baseFlow.GetCertificateBuildParamsInternal(ctx, true, typeCert)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) {
 			// no new blocks to send a certificate
@@ -237,7 +241,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 // it also calls the prover to get the aggchain proof
 func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	ctx context.Context, buildParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
-	if err := a.verifyBuildParams(buildParams); err != nil {
+	if err := a.baseFlow.VerifyBuildParams(buildParams); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 	if err := a.sanityCheckNoBlockGaps(buildParams.LastSentCertificate); err != nil {
@@ -275,7 +279,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 // this function is the implementation of the FlowManager interface
 func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	cert, err := a.baseFlow.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
+	cert, err := a.baseFlow.BuildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error building certificate: %w", err)
 	}
@@ -308,7 +312,7 @@ func (a *AggchainProverFlow) getImportedBridgeExitsForProver(
 		// - bridge exit
 		// - token info
 		// - global index
-		ibe, err := a.convertClaimToImportedBridgeExit(claim)
+		ibe, err := a.baseFlow.ConvertClaimToImportedBridgeExit(claim)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error converting claim to imported bridge exit: %w", err)
 		}
@@ -343,12 +347,12 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	lastProvenBlock, toBlock uint64,
 	certBuildParams *types.CertificateBuildParams,
 ) (*types.AggchainProof, *treetypes.Root, error) {
-	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
+	proof, leaf, root, err := a.baseFlow.L1InfoTreeDataQuerier().GetFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
 	claims := certBuildParams.Claims
-	if err := a.l1InfoTreeDataQuerier.CheckIfClaimsArePartOfFinalizedL1InfoTree(
+	if err := a.baseFlow.L1InfoTreeDataQuerier().CheckIfClaimsArePartOfFinalizedL1InfoTree(
 		root, claims); err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
@@ -416,20 +420,20 @@ func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificat
 		// if this is the first certificate, we need to start from the starting L2 block
 		// that we got from the sovereign rollup
 		a.log.Infof("aggchainProverFlow - getLastProvenBlock - fromBlock is 0, returns startL2Block: %d",
-			a.startL2Block)
-		return a.startL2Block
+			a.baseFlow.StartL2Block())
+		return a.baseFlow.StartL2Block()
 	}
-	if lastCertificate != nil && lastCertificate.ToBlock < a.startL2Block {
+	if lastCertificate != nil && lastCertificate.ToBlock < a.baseFlow.StartL2Block() {
 		// if the last certificate is settled on PP, the last proven block is the starting L2 block
 		a.log.Infof("aggchainProverFlow - getLastProvenBlock. Last certificate block: %d < startL2Block: %d",
-			lastCertificate.ToBlock, a.startL2Block)
-		return a.startL2Block
+			lastCertificate.ToBlock, a.baseFlow.StartL2Block())
+		return a.baseFlow.StartL2Block()
 	}
-	if fromBlock-1 < a.startL2Block {
+	if fromBlock-1 < a.baseFlow.StartL2Block() {
 		// if the fromBlock is less than the starting L2 block, we need to start from the starting L2 block
 		a.log.Infof("aggchainProverFlow - getLastProvenBlock. FromBlock: %d < startL2Block: %d",
-			fromBlock, a.startL2Block)
-		return a.startL2Block
+			fromBlock, a.baseFlow.StartL2Block())
+		return a.baseFlow.StartL2Block()
 	}
 
 	return fromBlock - 1

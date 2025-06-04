@@ -15,7 +15,9 @@ import (
 
 // PPFlow is a struct that holds the logic for the regular pessimistic proof flow
 type PPFlow struct {
-	*baseFlow
+	baseFlow types.AggsenderFlowBaser
+	signer   signertypes.Signer
+	log      types.Logger
 }
 
 // NewPPFlow returns a new instance of the PPFlow
@@ -26,13 +28,16 @@ func NewPPFlow(log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
 	signer signertypes.Signer) *PPFlow {
 	return &PPFlow{
+		signer: signer,
+		log:    log,
 		baseFlow: &baseFlow{
 			log:                   log,
 			l2BridgeQuerier:       l2BridgeQuerier,
 			storage:               storage,
 			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
-			maxCertSize:           maxCertSize,
-			signer:                signer,
+			cfg: BaseFlowConfig{
+				MaxCertSize: maxCertSize,
+			},
 		},
 	}
 }
@@ -46,7 +51,7 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	buildParams, err := p.getCertificateBuildParamsInternal(ctx, false, types.CertificateTypePP)
+	buildParams, err := p.baseFlow.GetCertificateBuildParamsInternal(ctx, false, types.CertificateTypePP)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) || errors.Is(err, query.ErrNoBridgeExits) {
 			// no new blocks to send a certificate, or no bridge exits consumed
@@ -57,11 +62,11 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, err
 	}
 
-	if err := p.verifyBuildParams(buildParams); err != nil {
+	if err := p.baseFlow.VerifyBuildParams(buildParams); err != nil {
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
 	}
 
-	root, _, err := p.l1InfoTreeDataQuerier.GetLatestFinalizedL1InfoRoot(ctx)
+	root, _, err := p.baseFlow.L1InfoTreeDataQuerier().GetLatestFinalizedL1InfoRoot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error getting latest finalized L1 info root: %w", err)
 	}
@@ -76,7 +81,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	certificate, err := p.buildCertificate(ctx, buildParams, buildParams.LastSentCertificate, false)
+	certificate, err := p.baseFlow.BuildCertificate(ctx, buildParams, buildParams.LastSentCertificate, false)
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error building certificate: %w", err)
 	}

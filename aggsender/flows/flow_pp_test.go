@@ -15,7 +15,6 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
-	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
@@ -121,7 +120,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 			t.Parallel()
 
 			flow := &baseFlow{}
-			exit, err := flow.convertClaimToImportedBridgeExit(tt.claim)
+			exit, err := flow.ConvertClaimToImportedBridgeExit(tt.claim)
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -683,7 +682,7 @@ func TestBuildCertificate(t *testing.T) {
 				CertificateType:                types.CertificateTypePP,
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x7891"),
 			}
-			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificate, false)
+			cert, err := flow.BuildCertificate(context.Background(), certParam, &tt.lastSentCertificate, false)
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -985,11 +984,6 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			privateKey, err := crypto.GenerateKey()
-			require.NoError(t, err)
-
-			signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
@@ -999,7 +993,6 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					storage:               mockStorage,
 					l2BridgeQuerier:       mockL2BridgeQuerier,
 					l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
-					signer:                signer,
 				},
 			}
 
@@ -1147,8 +1140,7 @@ func Test_PPFlow_SignCertificate(t *testing.T) {
 
 			ppFlow := &PPFlow{
 				baseFlow: &baseFlow{
-					log:    log.WithFields("test", "Test_PPFlow_SignCertificate"),
-					signer: mockSigner,
+					log: log.WithFields("test", "Test_PPFlow_SignCertificate"),
 				},
 			}
 
