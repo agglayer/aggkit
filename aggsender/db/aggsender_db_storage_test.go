@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"path"
 	"testing"
@@ -10,9 +11,13 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
+	dbmocks "github.com/agglayer/aggkit/db/mocks"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -485,6 +490,10 @@ func (a *AggSenderSQLStorage) clean() error {
 		return err
 	}
 
+	if _, err := a.db.Exec(`DELETE FROM certificate_info_history;`); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -724,4 +733,245 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 		require.Equal(t, certificate.Header, header)
 		require.Equal(t, certificate.AggchainProof, proof)
 	})
+
+	t.Run("CertificateInErrorWithoutProof", func(t *testing.T) {
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           3,
+				CertificateID:    common.HexToHash("0x3"),
+				NewLocalExitRoot: common.HexToHash("0x4"),
+				FromBlock:        5,
+				ToBlock:          6,
+				Status:           agglayertypes.InError,
+				CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				UpdatedAt:        uint32(time.Now().UTC().UnixMilli()),
+				CertType:         types.CertificateTypeFEP,
+				CertSource:       types.CertificateSourceLocal,
+			},
+		}
+		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
+
+		header, proof, err := storage.GetLastSentCertificateHeaderWithProofIfInError(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, header)
+		require.Nil(t, proof)
+		require.Equal(t, certificate.Header, header)
+	})
+}
+
+func Test_SaveNonAcceptedCertificate(t *testing.T) {
+	ctx := context.Background()
+
+	bridgeExits := []*agglayertypes.BridgeExit{
+		{
+			LeafType: agglayertypes.LeafTypeAsset,
+			TokenInfo: &agglayertypes.TokenInfo{
+				OriginNetwork:      1,
+				OriginTokenAddress: common.HexToAddress("0x1"),
+			},
+			DestinationNetwork: 2,
+			DestinationAddress: common.HexToAddress("0x2"),
+			Amount:             big.NewInt(100),
+			Metadata:           []byte("metadata"),
+		},
+	}
+
+	importedBridgeExits := []*agglayertypes.ImportedBridgeExit{
+		{
+			BridgeExit: bridgeExits[0],
+			ClaimData:  &agglayertypes.ClaimFromRollup{},
+		},
+	}
+
+	createdAt := uint32(time.Now().UTC().UnixMilli())
+
+	testCases := []struct {
+		name          string
+		mockDBFn      func()
+		certificates  []*agglayertypes.Certificate
+		certError     string
+		expectedError string
+	}{
+		{
+			name: "SaveNonAcceptedCertificate_Success_PP_Certificate",
+			certificates: []*agglayertypes.Certificate{
+				{
+					Height:              1,
+					PrevLocalExitRoot:   common.HexToHash("0x1"),
+					NewLocalExitRoot:    common.HexToHash("0x2"),
+					Metadata:            common.HexToHash("0x3"),
+					NetworkID:           2,
+					BridgeExits:         bridgeExits,
+					ImportedBridgeExits: importedBridgeExits,
+					L1InfoTreeLeafCount: 19,
+					AggchainData: &agglayertypes.AggchainDataSignature{
+						Signature: common.Hex2Bytes("0x1234567890abcdef"),
+					},
+				},
+			},
+			certError: "some error happened on agglayer",
+		},
+		{
+			name: "SaveNonAcceptedCertificate_Success_FEP_Certificate",
+			certificates: []*agglayertypes.Certificate{
+				{
+					Height:              2,
+					PrevLocalExitRoot:   common.HexToHash("0x4"),
+					NewLocalExitRoot:    common.HexToHash("0x5"),
+					Metadata:            common.HexToHash("0x6"),
+					NetworkID:           3,
+					BridgeExits:         bridgeExits,
+					ImportedBridgeExits: importedBridgeExits,
+					L1InfoTreeLeafCount: 20,
+					AggchainData: &agglayertypes.AggchainDataProof{
+						Proof:          common.Hex2Bytes("abcdef1234567890"),
+						Version:        "0.1",
+						Vkey:           common.Hex2Bytes("bcdef1234567890abcdef1234567890"),
+						AggchainParams: common.HexToHash("0x7"),
+						Context: map[string][]byte{
+							"key1": {0x1, 0x2},
+							"key2": {0x3, 0x4},
+						},
+						Signature: common.Hex2Bytes("1234567890abcdef1234567890abcdef"),
+					},
+				},
+			},
+			certError: "another error occurred",
+		},
+		{
+			name: "SaveNonAcceptedCertificate_Multiple_Certificates",
+			certificates: []*agglayertypes.Certificate{
+				{
+					Height:              11,
+					PrevLocalExitRoot:   common.HexToHash("0x11"),
+					NewLocalExitRoot:    common.HexToHash("0x22"),
+					Metadata:            common.HexToHash("0x33"),
+					NetworkID:           2,
+					BridgeExits:         bridgeExits,
+					ImportedBridgeExits: importedBridgeExits,
+					L1InfoTreeLeafCount: 12,
+					AggchainData: &agglayertypes.AggchainDataSignature{
+						Signature: common.Hex2Bytes("0x1234567890abcdef"),
+					},
+				},
+				{
+					Height:              12,
+					PrevLocalExitRoot:   common.HexToHash("0x111"),
+					NewLocalExitRoot:    common.HexToHash("0x222"),
+					Metadata:            common.HexToHash("0x333"),
+					NetworkID:           2,
+					BridgeExits:         bridgeExits,
+					ImportedBridgeExits: importedBridgeExits,
+					L1InfoTreeLeafCount: 15,
+					AggchainData: &agglayertypes.AggchainDataSignature{
+						Signature: common.Hex2Bytes("0x1234567890abcdef"),
+					},
+				},
+			},
+			certError: "yet another error occurred",
+		},
+
+		{
+			name:         "SaveNonAcceptedCertificate_CommitAndRollbackFails",
+			certificates: []*agglayertypes.Certificate{{}},
+			mockDBFn: func() {
+				txnMock := dbmocks.NewTxer(t)
+				newTxer = func(_ context.Context, _ dbtypes.DBer) (dbtypes.Txer, error) {
+					return txnMock, nil
+				}
+				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil)
+				txnMock.EXPECT().Commit().Return(errors.New("failed to commit tx"))
+				txnMock.EXPECT().Rollback().Return(errors.New("failed to rollback tx"))
+			},
+			expectedError: "failed to commit tx",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var (
+				storage *AggSenderSQLStorage
+				err     error
+			)
+
+			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
+			log.Debugf("sqlite path: %s", path)
+			cfg := AggSenderSQLStorageConfig{
+				DBPath: path,
+			}
+			storage, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+			require.NoError(t, err)
+
+			if tc.mockDBFn != nil {
+				tc.mockDBFn()
+			}
+
+			for _, cert := range tc.certificates {
+				nonAcceptedCert, err := NewNonAcceptedCertificate(cert, createdAt, tc.certError)
+				require.NoError(t, err, "should create non-accepted certificate without error")
+				err = storage.SaveNonAcceptedCertificate(ctx, nonAcceptedCert)
+				if tc.expectedError != "" {
+					require.ErrorContains(t, err, tc.expectedError)
+				} else {
+					require.NoError(t, err, "should save non-accepted certificate without error")
+				}
+			}
+
+			if tc.expectedError == "" {
+				nonAcceptedCert, err := storage.GetNonAcceptedCertificate()
+				require.NoError(t, err, "should retrieve one non-accepted certificate from DB even though multiple were saved")
+
+				var certificate agglayertypes.Certificate
+				if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificate); err != nil {
+					t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+				}
+
+				require.Equal(t, tc.certificates[len(tc.certificates)-1], &certificate, "last saved certificate should match the one retrieved from DB")
+				require.Equal(t, tc.certError, nonAcceptedCert.Error, "error message should match the expected error")
+				require.Equal(t, createdAt, nonAcceptedCert.CreatedAt, "created at timestamp should match the expected value")
+			}
+		})
+	}
+}
+
+func Test_GetNonAcceptedCert(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
+	cfg := AggSenderSQLStorageConfig{
+		DBPath: dbPath,
+	}
+
+	newTxer = db.NewTx
+
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+
+	// Test with no non-accepted certificate
+	nonAcceptedCert, err := storage.GetNonAcceptedCertificate()
+	require.NoError(t, err)
+	require.Nil(t, nonAcceptedCert, "should return nil when no non-accepted certificate exists")
+
+	// Test with a non-accepted certificate
+	certificate := &agglayertypes.Certificate{
+		Height:              1,
+		PrevLocalExitRoot:   common.HexToHash("0x1"),
+		NewLocalExitRoot:    common.HexToHash("0x2"),
+		Metadata:            common.HexToHash("0x3"),
+		NetworkID:           2,
+		BridgeExits:         []*agglayertypes.BridgeExit{},
+		ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
+		L1InfoTreeLeafCount: 19,
+	}
+	nonAcceptedCert, err = NewNonAcceptedCertificate(certificate, uint32(time.Now().UTC().UnixMilli()), "test error")
+	require.NoError(t, err)
+
+	require.NoError(t, storage.SaveNonAcceptedCertificate(context.Background(), nonAcceptedCert))
+	nonAcceptedCert, err = storage.GetNonAcceptedCertificate()
+	require.NoError(t, err)
+	require.NotNil(t, nonAcceptedCert, "should return a non-nil non-accepted certificate")
+
+	var certificateFromDB agglayertypes.Certificate
+	if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificateFromDB); err != nil {
+		t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+	}
+	require.Equal(t, *certificate, certificateFromDB, "retrieved certificate should match the saved certificate")
 }

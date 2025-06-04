@@ -108,14 +108,14 @@ MaxRetryAttemptsAfterError=-1
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggOracle]
-TargetChainType="EVM"
-URLRPCL1="{{L1URL}}"
-BlockFinality="FinalizedBlock"
-WaitPeriodNextGER="100ms"
+TargetChainType = "EVM"
+URLRPCL1 = "{{L1URL}}"
+BlockFinality = "FinalizedBlock"
+WaitPeriodNextGER = "10s"
 	[AggOracle.EVMSender]
-		GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
-		GasOffset=0
-		WaitPeriodMonitorTx="100ms"
+		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+		GasOffset = 0
+		WaitPeriodMonitorTx = "1s"
 		[AggOracle.EVMSender.EthTxManager]
 				FrequencyToMonitorTxs = "1s"
 				WaitTxToBeMined = "2s"

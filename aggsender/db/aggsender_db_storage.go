@@ -3,21 +3,29 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db/migrations"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/db/compatibility"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
 
-const errWhileRollbackFormat = "error while rolling back tx: %w"
+const (
+	errWhileRollbackFormat = "error while rolling back tx: %w"
+	nonAcceptedCertKey     = "non_accepted_cert"
+)
+
+var newTxer = db.NewTx
 
 type RuntimeData struct {
 	NetworkID uint32
@@ -60,6 +68,10 @@ type AggSenderStorage interface {
 	// and the aggchain proof if the certificate is in error
 	GetLastSentCertificateHeaderWithProofIfInError(
 		ctx context.Context) (*types.CertificateHeader, *types.AggchainProof, error)
+	// SaveNonAcceptedCertificate saves a non-accepted certificate in the storage
+	SaveNonAcceptedCertificate(ctx context.Context, nonAcceptedCert *NonAcceptedCertificate) error
+	// GetNonAcceptedCertificate returns the last non-accepted certificate
+	GetNonAcceptedCertificate() (*NonAcceptedCertificate, error)
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -72,7 +84,7 @@ type AggSenderSQLStorageConfig struct {
 
 // AggSenderSQLStorage is the struct that implements the AggSenderStorage interface
 type AggSenderSQLStorage struct {
-	compatibility.KeyValueStorager
+	dbtypes.KeyValueStorager
 	logger *log.Logger
 	db     *sql.DB
 	cfg    AggSenderSQLStorageConfig
@@ -151,7 +163,7 @@ func (a *AggSenderSQLStorage) GetCertificateHeaderByHeight(height uint64) (*type
 }
 
 // getCertificateByHeight returns a certificate by its height using the provided db
-func getCertificateByHeight(db db.Querier,
+func getCertificateByHeight(db dbtypes.Querier,
 	height uint64) (*certificateInfo, error) {
 	var certificateInfo certificateInfo
 	if err := meddler.QueryRow(db, &certificateInfo,
@@ -198,25 +210,25 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 		}
 	}()
 
-	certificateInfo, err := convertCertificateToCertificateInfo(&certificate)
+	certInfo, err := convertCertificateToCertificateInfo(&certificate)
 	if err != nil {
 		return fmt.Errorf("error converting certificate to certificate info: %w", err)
 	}
 
-	cert, err := getCertificateByHeight(tx, certificateInfo.Height)
+	certInDB, err := getCertificateByHeight(tx, certInfo.Height)
 	if err != nil && !errors.Is(err, db.ErrNotFound) {
 		return fmt.Errorf("saveLastSentCertificate getCertificateByHeight. Err: %w", err)
 	}
 
-	if cert != nil {
+	if certInDB != nil {
 		// we already have a certificate with this height
 		// we need to delete it before inserting the new one
-		if err = a.moveCertificateToHistoryOrDelete(tx, cert); err != nil {
+		if err = a.moveCertificateToHistoryOrDelete(tx, certInDB); err != nil {
 			return fmt.Errorf("saveLastSentCertificate moveCertificateToHistory Err: %w", err)
 		}
 	}
 
-	if err = meddler.Insert(tx, "certificate_info", certificateInfo); err != nil {
+	if err = meddler.Insert(tx, "certificate_info", certInfo); err != nil {
 		return fmt.Errorf("error inserting certificate info: %w", err)
 	}
 
@@ -226,12 +238,12 @@ func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certi
 	shouldRollback = false
 
 	a.logger.Debugf("inserted certificate - Height: %d. Hash: %s",
-		certificateInfo.Height, certificateInfo.CertificateID)
+		certInfo.Height, certInfo.CertificateID)
 
 	return nil
 }
 
-func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx db.Querier,
+func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx dbtypes.Querier,
 	certificate *certificateInfo) error {
 	if a.cfg.KeepCertificatesHistory {
 		a.logger.Debugf("moving certificate to history - new CertificateID: %s", certificate.ID())
@@ -254,8 +266,9 @@ func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificate
 	if err != nil {
 		return err
 	}
+	shouldRollback := true
 	defer func() {
-		if err != nil {
+		if shouldRollback {
 			if errRllbck := tx.Rollback(); errRllbck != nil {
 				a.logger.Errorf(errWhileRollbackFormat, errRllbck)
 			}
@@ -269,12 +282,14 @@ func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificate
 	if err = tx.Commit(); err != nil {
 		return err
 	}
+	shouldRollback = false
+
 	a.logger.Debugf("deleted certificate - CertificateID: %s", certificateID)
 	return nil
 }
 
 // deleteCertificate deletes a certificate from the storage using the provided db
-func deleteCertificate(tx db.Querier, certificateID common.Hash) error {
+func deleteCertificate(tx dbtypes.Querier, certificateID common.Hash) error {
 	if _, err := tx.Exec(`DELETE FROM certificate_info WHERE certificate_id = $1;`, certificateID.String()); err != nil {
 		return fmt.Errorf("error deleting certificate info: %w", err)
 	}
@@ -341,13 +356,76 @@ func (a *AggSenderSQLStorage) GetLastSentCertificateHeaderWithProofIfInError(
 		if err := meddler.QueryRow(tx, &certWithOnlyProof,
 			"SELECT aggchain_proof FROM certificate_info WHERE height = $1;",
 			certificateHeader.Height); err != nil {
-			return nil, nil, getSelectQueryError(certificateHeader.Height, err)
+			// this has to exist since we where getting the certificate header
+			// for the same height from the same table
+			return nil, nil, err
 		}
 
 		return &certificateHeader, certWithOnlyProof.AggchainProof, nil
 	}
 
 	return &certificateHeader, nil, nil
+}
+
+// SaveNonAcceptedCertificate saves a non-accepted certificate in the storage in the key-value table
+// since we are only saving the last non-accepted certificate
+// This is used to keep track of the last non-accepted certificate
+// and to allow for debugging and analysis of why they were not accepted.
+func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
+	ctx context.Context, nonAcceptedCert *NonAcceptedCertificate) error {
+	tx, err := newTxer(ctx, a.db)
+	if err != nil {
+		return fmt.Errorf("failed to create db transaction for non-accepted certificate persistence: %w", err)
+	}
+
+	shouldRollback := true
+	defer func() {
+		if shouldRollback {
+			if errRllbck := tx.Rollback(); errRllbck != nil {
+				a.logger.Errorf(errWhileRollbackFormat, errRllbck)
+			}
+		}
+	}()
+
+	raw, err := json.Marshal(nonAcceptedCert)
+	if err != nil {
+		return fmt.Errorf("failed to marshal non-accepted certificate struct: %w", err)
+	}
+
+	// if the value already exists, the db will update it, if not, it will insert it
+	// it is all handled in the UpdateValue function
+	if err := a.UpdateValue(tx, aggkitcommon.AGGSENDER, nonAcceptedCertKey, string(raw)); err != nil {
+		return fmt.Errorf("failed to update non-accepted certificate value: %w", err)
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit db transaction for non-accepted certificate: %w", err)
+	}
+
+	shouldRollback = false
+
+	a.logger.Debugf("inserted non-accepted certificate - Height: %d. CreatedAt: %s",
+		nonAcceptedCert.Height, time.Unix(int64(nonAcceptedCert.CreatedAt), 0))
+
+	return nil
+}
+
+// GetNonAcceptedCertificates returns a list of non-accepted certificates
+func (a *AggSenderSQLStorage) GetNonAcceptedCertificate() (*NonAcceptedCertificate, error) {
+	val, err := a.GetValue(a.db, aggkitcommon.AGGSENDER, nonAcceptedCertKey)
+	if err != nil {
+		if errors.Is(err, db.ErrNotFound) {
+			return nil, nil // no non-accepted certificate found
+		}
+		return nil, fmt.Errorf("failed to get non-accepted certificate: %w", err)
+	}
+
+	var nonAcceptedCert NonAcceptedCertificate
+	if err := json.Unmarshal([]byte(val), &nonAcceptedCert); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal non-accepted certificate: %w", err)
+	}
+
+	return &nonAcceptedCert, nil
 }
 
 func getSelectQueryError(height uint64, err error) error {

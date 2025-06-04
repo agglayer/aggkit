@@ -3,16 +3,13 @@ package types
 import (
 	"fmt"
 
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const (
-	EstimatedSizeBridgeExit = 230
-	EstimatedSizeClaim      = 8000
-	byteArrayJSONSizeFactor = 1.5
-)
+const claimSizeFactor = 200 // Size factor for claims in bytes
 
 // CertificateBuildParams is a struct that holds the parameters to build a certificate
 type CertificateBuildParams struct {
@@ -106,18 +103,28 @@ func (c *CertificateBuildParams) EstimatedSize() uint {
 	if c == nil {
 		return 0
 	}
-	sizeBridges := int(0)
+	sizeBridges := float64(0)
 	for _, bridge := range c.Bridges {
-		sizeBridges += EstimatedSizeBridgeExit
-		sizeBridges += int(byteArrayJSONSizeFactor * float32(len(bridge.Metadata)))
+		sizeBridges += agglayertypes.EstimatedBridgeExitSize
+		sizeBridges += float64(len(bridge.Metadata))
 	}
 
-	sizeClaims := int(0)
+	sizeClaims := float64(0)
 	for _, claim := range c.Claims {
-		sizeClaims += EstimatedSizeClaim
-		sizeClaims += int(byteArrayJSONSizeFactor * float32(len(claim.Metadata)))
+		sizeClaims += agglayertypes.EstimatedImportedBridgeExitSize
+		sizeClaims += float64(len(claim.Metadata))
 	}
-	return uint(sizeBridges + sizeClaims)
+
+	sizeAggchainData := float64(0)
+	switch c.CertificateType {
+	case CertificateTypeFEP:
+		sizeAggchainData += agglayertypes.EstimatedAggchainProofSize
+		sizeAggchainData += float64(len(c.Claims) * claimSizeFactor) // for each claim the proof gets bigger by some size
+	default:
+		sizeAggchainData += agglayertypes.EstimatedAggchainSignatureSize
+	}
+
+	return uint(sizeBridges + sizeClaims + sizeAggchainData)
 }
 
 // IsEmpty returns true if the certificate is empty

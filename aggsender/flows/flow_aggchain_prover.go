@@ -283,7 +283,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
 		ctx, lastProvenBlock, buildParams.ToBlock, buildParams)
 	if err != nil {
-		if errors.As(err, errNoProofBuiltYet) {
+		if errors.Is(err, errNoProofBuiltYet) {
 			a.log.Infof("aggchainProverFlow - no proof built yet for lastProvenBlock: %d, maxEndBlock: %d",
 				lastProvenBlock, buildParams.ToBlock)
 			return nil, nil

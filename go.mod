@@ -10,7 +10,7 @@ require (
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250520163122-7efa0a2f81a8.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.4
 	github.com/0xPolygon/cdk-rpc v0.0.0-20241004114257-6c3cb6eebfb6
-	github.com/0xPolygon/zkevm-ethtx-manager v0.2.12
+	github.com/0xPolygon/zkevm-ethtx-manager v0.2.13
 	github.com/agglayer/go_signer v0.0.6
 	github.com/ethereum/go-ethereum v1.15.5
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
@@ -40,6 +40,7 @@ require (
 	golang.org/x/sync v0.14.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250218202821-56aae31c358a
 	google.golang.org/grpc v1.72.2
+	google.golang.org/protobuf v1.36.6
 	modernc.org/sqlite v1.37.1
 )
 
@@ -188,7 +189,6 @@ require (
 	google.golang.org/api v0.215.0 // indirect
 	google.golang.org/genproto v0.0.0-20241118233622-e639e219e697 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20250218202821-56aae31c358a // indirect
-	google.golang.org/protobuf v1.36.6 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	honnef.co/go/tools v0.0.1-2020.1.4 // indirect

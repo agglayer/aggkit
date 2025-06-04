@@ -107,6 +107,9 @@ packages:
       all: true
       exclude:
         - RuntimeDataGetterFunc
+  github.com/agglayer/aggkit/db/types:
+    config:
+      all: true
   github.com/agglayer/aggkit/etherman:
     config:
       dir: "{{ .InterfaceDir }}/mocks"

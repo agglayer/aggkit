@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/agglayer/aggkit/db"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/russross/meddler"
 )
 
-func processEventInitL1InfoRootMap(tx db.Txer, blockNumber uint64, event *InitL1InfoRootMap) error {
+func processEventInitL1InfoRootMap(tx dbtypes.Txer, blockNumber uint64, event *InitL1InfoRootMap) error {
 	if event == nil {
 		return nil
 	}
@@ -27,7 +27,7 @@ func processEventInitL1InfoRootMap(tx db.Txer, blockNumber uint64, event *InitL1
 }
 
 // GetInitL1InfoRootMap returns the initial L1 info root map, nil if no root map has been set
-func (p *processor) GetInitL1InfoRootMap(tx db.Txer) (*L1InfoTreeInitial, error) {
+func (p *processor) GetInitL1InfoRootMap(tx dbtypes.Txer) (*L1InfoTreeInitial, error) {
 	info := &L1InfoTreeInitial{}
 	err := meddler.QueryRow(p.getDBQuerier(tx), info, `SELECT block_num, leaf_count,l1_info_root  FROM l1info_initial`)
 	if errors.Is(err, sql.ErrNoRows) {

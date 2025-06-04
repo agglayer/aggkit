@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/db"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -33,7 +34,7 @@ func NewAppendOnlyTree(db *sql.DB, dbPrefix string) *AppendOnlyTree {
 	}
 }
 
-func (t *AppendOnlyTree) AddLeaf(tx db.Txer, blockNum, blockPosition uint64, leaf types.Leaf) error {
+func (t *AppendOnlyTree) AddLeaf(tx dbtypes.Txer, blockNum, blockPosition uint64, leaf types.Leaf) error {
 	if int64(leaf.Index) != t.lastIndex+1 {
 		// rebuild cache
 		if err := t.initCache(tx); err != nil {
@@ -87,7 +88,7 @@ func (t *AppendOnlyTree) AddLeaf(tx db.Txer, blockNum, blockPosition uint64, lea
 	return nil
 }
 
-func (t *AppendOnlyTree) initCache(tx db.Txer) error {
+func (t *AppendOnlyTree) initCache(tx dbtypes.Txer) error {
 	siblings := [types.DefaultHeight]common.Hash{}
 	lastRoot, err := t.getLastRootWithTx(tx)
 	if err != nil {

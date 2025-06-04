@@ -61,44 +61,9 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 // It returns the certificate ID
 func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 	certificate *types.Certificate) (common.Hash, error) {
-	if certificate.AggchainData == nil {
-		return common.Hash{}, errUndefinedAggchainData
-	}
-
-	var aggchainDataProto *v1types.AggchainData
-
-	switch ad := certificate.AggchainData.(type) {
-	case *types.AggchainDataProof:
-		aggchainDataProto = &v1types.AggchainData{
-			Data: &v1types.AggchainData_Generic{
-				Generic: &v1types.AggchainProof{
-					Proof: &v1types.AggchainProof_Sp1Stark{
-						Sp1Stark: &v1types.SP1StarkProof{
-							Version: ad.Version,
-							Proof:   ad.Proof,
-							Vkey:    ad.Vkey,
-						},
-					},
-					AggchainParams: &v1types.FixedBytes32{
-						Value: ad.AggchainParams.Bytes(),
-					},
-					Context: ad.Context,
-					Signature: &v1types.FixedBytes65{
-						Value: ad.Signature,
-					},
-				},
-			},
-		}
-	case *types.AggchainDataSignature:
-		aggchainDataProto = &v1types.AggchainData{
-			Data: &v1types.AggchainData_Signature{
-				Signature: &v1types.FixedBytes65{
-					Value: ad.Signature,
-				},
-			},
-		}
-	default:
-		return common.Hash{}, errUnknownAggchainData
+	aggchainDataProto, err := convertAggchainData(certificate.AggchainData)
+	if err != nil {
+		return common.Hash{}, err
 	}
 
 	protoCert := &v1nodetypes.Certificate{
@@ -193,6 +158,47 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(ctx context.Context,
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
+}
+
+// convertAggchainData converts the aggchain data to a proto aggchain data
+func convertAggchainData(aggchainData types.AggchainData) (*v1types.AggchainData, error) {
+	if aggchainData == nil {
+		return nil, errUndefinedAggchainData
+	}
+
+	switch ad := aggchainData.(type) {
+	case *types.AggchainDataProof:
+		return &v1types.AggchainData{
+			Data: &v1types.AggchainData_Generic{
+				Generic: &v1types.AggchainProof{
+					Proof: &v1types.AggchainProof_Sp1Stark{
+						Sp1Stark: &v1types.SP1StarkProof{
+							Version: ad.Version,
+							Proof:   ad.Proof,
+							Vkey:    ad.Vkey,
+						},
+					},
+					AggchainParams: &v1types.FixedBytes32{
+						Value: ad.AggchainParams.Bytes(),
+					},
+					Context: ad.Context,
+					Signature: &v1types.FixedBytes65{
+						Value: ad.Signature,
+					},
+				},
+			},
+		}, nil
+	case *types.AggchainDataSignature:
+		return &v1types.AggchainData{
+			Data: &v1types.AggchainData_Signature{
+				Signature: &v1types.FixedBytes65{
+					Value: ad.Signature,
+				},
+			},
+		}, nil
+	default:
+		return nil, errUnknownAggchainData
+	}
 }
 
 // convertProtoCertificateHeader converts a proto certificate header to a types certificate header
