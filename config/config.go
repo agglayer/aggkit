@@ -377,14 +377,25 @@ func checkDeprecatedFields(keysOnConfig []string) error {
 }
 
 func getDeprecatedField(fieldName string) *DeprecatedField {
+	field := strings.ToLower(fieldName)
 	for _, deprecatedField := range deprecatedFieldsOnConfig {
-		if strings.ToLower(deprecatedField.FieldNamePattern) == strings.ToLower(fieldName) {
+		pattern := strings.ToLower(deprecatedField.FieldNamePattern)
+
+		// Exact match
+		if pattern == field {
 			return &deprecatedField
 		}
-		// If the field name ends with a dot, it means FieldNamePattern*
-		if deprecatedField.FieldNamePattern[len(deprecatedField.FieldNamePattern)-1] == '.' &&
-			strings.HasPrefix(fieldName, deprecatedField.FieldNamePattern) {
-			return &deprecatedField
+
+		// Prefix match if the pattern represents a section
+		if strings.HasSuffix(pattern, ".") {
+			if strings.HasPrefix(field, pattern) {
+				return &deprecatedField
+			}
+		} else {
+			// If it's a section, match everything under it
+			if strings.HasPrefix(field, pattern+".") {
+				return &deprecatedField
+			}
 		}
 	}
 	return nil
