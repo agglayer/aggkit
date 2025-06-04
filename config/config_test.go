@@ -118,7 +118,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[Etherman.EthermanConfig]
 		URL = "{{L1URL}}"
 		MultiGasProvider = false
-		L1ChainID = {{NetworkConfig.L1.L1ChainID}}
+		L1ChainID = {{L1NetworkConfig.L1ChainID}}
 		HTTPHeaders = []
 		[Etherman.EthermanConfig.Etherscan]
 			ApiKey = ""

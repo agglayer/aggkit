@@ -59,7 +59,7 @@ func start(cliCtx *cli.Context) error {
 		prometheus.Init()
 	}
 	components := cliCtx.StringSlice(config.FlagComponents)
-	l1Client := runL1ClientIfNeeded(components, cfg.NetworkConfig.L1Config.URL)
+	l1Client := runL1ClientIfNeeded(components, cfg.L1NetworkConfig.URL)
 	l2Client := runL2ClientIfNeeded(components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
 	go func() {
@@ -75,7 +75,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	ethermanClient, err := etherman.NewClient(cfg.NetworkConfig.L1Config)
+	ethermanClient, err := etherman.NewClient(cfg.L1NetworkConfig)
 	if err != nil {
 		return errors.New("failed to create etherman client")
 	}
