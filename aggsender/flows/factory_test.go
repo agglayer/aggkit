@@ -19,8 +19,6 @@ import (
 
 func TestNewFlow(t *testing.T) {
 	t.Parallel()
-
-	ctx := context.Background()
 	keyConfig := signertypes.SignerConfig{
 		Method: signertypes.MethodLocal,
 		Config: map[string]any{
@@ -28,7 +26,6 @@ func TestNewFlow(t *testing.T) {
 			"path":     "../../test/config/key_trusted_sequencer.keystore",
 		},
 	}
-
 	testCases := []struct {
 		name          string
 		cfg           config.Config
@@ -95,6 +92,7 @@ func TestNewFlow(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			ctx := context.Background()
 
 			mockStorage := new(mocks.AggSenderStorage)
 			mockL1Client := new(mocks.EthClient)
