@@ -56,11 +56,13 @@ func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClien
 
 var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 
+// AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {
 	baseFlowConfig       BaseFlowConfig
 	requireNoFEPBlockGap bool
 }
 
+// NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
 func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		baseFlowConfig:       NewBaseFlowConfigDefault(),
@@ -68,6 +70,7 @@ func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	}
 }
 
+// NewAggchainProverFlowConfig creates a new AggchainProverFlowConfig with the given base flow config
 func NewAggchainProverFlowConfig(
 	baseFlowConfig BaseFlowConfig,
 	requireNoFEPBlockGap bool,
@@ -250,7 +253,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 		return buildParams, nil
 	}
-	// This line is just for emit a warning
+	// This line is just for emitting a warning
 	if lastSentCert != nil && lastSentCert.Status.IsInError() && lastSentCert.CertType != typeCert {
 		a.log.Warnf("aggchainProverFlow - next cert is a retry but type %s is != from current one %s. "+
 			" So it going to generate a totally new certificate",
