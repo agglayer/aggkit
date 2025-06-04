@@ -285,8 +285,8 @@ func (f *baseFlow) getImportedBridgeExits(
 			claim.GlobalExitRoot, rootFromWhichToProve)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"error getting L1 Info tree merkle proof for leaf index: %d and root: %s. Error: %w",
-				l1Info.L1InfoTreeIndex, rootFromWhichToProve, err,
+				"error getting L1 Info tree merkle proof for GER: %s and root: %s. Error: %w",
+				claim.GlobalExitRoot, rootFromWhichToProve, err,
 			)
 		}
 
