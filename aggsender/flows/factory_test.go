@@ -79,7 +79,7 @@ func TestNewFlow(t *testing.T) {
 			cfg: config.Config{
 				Mode:                string(types.AggchainProofMode),
 				AggsenderPrivateKey: keyConfig,
-				AggchainProofURL:    "http://aggchain-proof-url",
+				AggchainProofURL:    "http://127.0.0.1",
 				OptimisticModeConfig: optimistic.Config{
 					TrustedSequencerKey: keyConfig,
 				},
@@ -87,9 +87,14 @@ func TestNewFlow(t *testing.T) {
 			expectedError: "error aggchainFEPContract",
 		},
 	}
-
+	funcNewEVMChainGERReader = func(_ common.Address, _ aggoracletypes.EthClienter) (*chaingerreader.EVMChainGERReader, error) {
+		return &chaingerreader.EVMChainGERReader{}, nil
+	}
+	funcGetL2StartBlock = func(_ common.Address, _ types.EthClient) (uint64, error) {
+		return 100, nil
+	}
 	for _, tc := range testCases {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
@@ -101,12 +106,6 @@ func TestNewFlow(t *testing.T) {
 			mockL2BridgeSyncer := new(mocks.L2BridgeSyncer)
 			mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(1)
 			mockLogger := log.WithFields("test", "NewFlow")
-			funcNewEVMChainGERReader = func(_ common.Address, _ aggoracletypes.EthClienter) (*chaingerreader.EVMChainGERReader, error) {
-				return &chaingerreader.EVMChainGERReader{}, nil
-			}
-			funcGetL2StartBlock = func(_ common.Address, _ types.EthClient) (uint64, error) {
-				return 100, nil
-			}
 
 			mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
 			mockL1Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
