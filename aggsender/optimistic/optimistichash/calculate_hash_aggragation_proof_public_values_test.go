@@ -18,7 +18,6 @@ var aggregationProofPublicValuesTestExample = &AggregationProofPublicValues{
 }
 
 func TestAggregationProofPublicValues_Hash(t *testing.T) {
-
 	aggHash, err := aggregationProofPublicValuesTestExample.Hash()
 	require.NoError(t, err, "Hashing should not return an error")
 	expectedHash := common.HexToHash("0x8a357a4700f590c977d5b3c82448239d2a883fe51165abcab301ecbed9e2730b")

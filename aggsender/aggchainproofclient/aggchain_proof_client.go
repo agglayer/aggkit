@@ -68,7 +68,8 @@ func (c *AggchainProofClient) GenerateAggchainProof(req *types.AggchainProofRequ
 	}, nil
 }
 
-func (c *AggchainProofClient) GenerateOptimisticAggchainProof(req *types.AggchainProofRequest, signature []byte) (*types.AggchainProof, error) {
+func (c *AggchainProofClient) GenerateOptimisticAggchainProof(req *types.AggchainProofRequest,
+	signature []byte) (*types.AggchainProof, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), c.generateAggchainProofTimeout)
 	defer cancel()
 	request := &aggkitProverV1Proto.GenerateOptimisticAggchainProofRequest{
@@ -100,10 +101,11 @@ func (c *AggchainProofClient) GenerateOptimisticAggchainProof(req *types.Aggchai
 		AggchainParams:  common.BytesToHash(resp.AggchainProof.AggchainParams.Value),
 		Context:         resp.AggchainProof.Context,
 	}, nil
-
 }
 
-func convertAggchainProofRequestToGrpcRequest(req *types.AggchainProofRequest) *aggkitProverV1Proto.GenerateAggchainProofRequest {
+func convertAggchainProofRequestToGrpcRequest(
+	req *types.AggchainProofRequest,
+) *aggkitProverV1Proto.GenerateAggchainProofRequest {
 	convertedL1InfoTreeLeaf := &agglayerInteropTypesV1Proto.L1InfoTreeLeafWithContext{
 		Inner: &agglayerInteropTypesV1Proto.L1InfoTreeLeaf{
 			GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{Value: req.L1InfoTreeLeaf.GlobalExitRoot[:]},
@@ -117,7 +119,9 @@ func convertAggchainProofRequestToGrpcRequest(req *types.AggchainProofRequest) *
 
 	convertedMerkleProofSiblings := make([]*agglayerInteropTypesV1Proto.FixedBytes32, treetypes.DefaultHeight)
 	for i := 0; i < int(treetypes.DefaultHeight); i++ {
-		convertedMerkleProofSiblings[i] = &agglayerInteropTypesV1Proto.FixedBytes32{Value: req.L1InfoTreeMerkleProof.Proof[i][:]}
+		convertedMerkleProofSiblings[i] = &agglayerInteropTypesV1Proto.FixedBytes32{
+			Value: req.L1InfoTreeMerkleProof.Proof[i][:],
+		}
 	}
 	convertedMerkleProof := &agglayerInteropTypesV1Proto.MerkleProof{
 		Root:     &agglayerInteropTypesV1Proto.FixedBytes32{Value: req.L1InfoTreeMerkleProof.Root[:]},

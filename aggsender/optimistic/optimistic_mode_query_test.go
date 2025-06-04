@@ -11,7 +11,6 @@ import (
 )
 
 func TestIsOptimisticModeOn(t *testing.T) {
-
 	testCases := []struct {
 		name                  string
 		contractReturn        bool
@@ -58,5 +57,4 @@ func TestIsOptimisticModeOn(t *testing.T) {
 			}
 		})
 	}
-
 }

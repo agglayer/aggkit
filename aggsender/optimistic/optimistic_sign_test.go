@@ -18,7 +18,6 @@ import (
 )
 
 func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
-
 	aggchainReq := types.AggchainProofRequest{
 		LastProvenBlock:   100,
 		RequestedEndBlock: 200,

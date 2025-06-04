@@ -1,3 +1,4 @@
+//nolint:lll
 package config
 
 // This values doesnt have a default value because depend on the

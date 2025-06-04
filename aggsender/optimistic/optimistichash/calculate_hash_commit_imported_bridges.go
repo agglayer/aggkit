@@ -3,7 +3,6 @@ package optimistichash
 import (
 	"math/big"
 
-	"github.com/agglayer/aggkit/agglayer/types"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -12,7 +11,8 @@ import (
 )
 
 // This file calculate the hash for ImportedBridgeExitCommitmentValues
-// https://github.com/agglayer/interop/blob/4f3f5af54a0f962a67a2ba603bc5f84132592730/crates/unified-bridge/src/imported_bridge_exit.rs#L419-L429
+// https://github.com/agglayer/interop/blob/4f3f5af54a0f962a67a2ba603bc5f84132592730/
+//    crates/unified-bridge/src/imported_bridge_exit.rs#L419-L429
 // The public function is:
 // CalculateCommitImportedBrdigeExitsHashFromClaims(...)
 
@@ -56,7 +56,7 @@ func (o *optimisticCommitImportedBrigeData) setBridgeExitHash(claim *bridgesync.
 		leafType = agglayertypes.LeafTypeMessage
 	}
 
-	be := types.BridgeExit{
+	be := agglayertypes.BridgeExit{
 		LeafType: leafType,
 		TokenInfo: &agglayertypes.TokenInfo{
 			OriginNetwork:      claim.OriginNetwork,

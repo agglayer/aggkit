@@ -69,6 +69,7 @@ func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 }
 
 // NewAggchainProverFlow returns a new instance of the AggchainProverFlow
+// and create an instance of baseFlow with the given config
 func NewAggchainProverFlow(log types.Logger,
 	aggChainProverConfig AggchainProverFlowConfig,
 	aggkitProverClient types.AggchainProofClientInterface,
@@ -79,7 +80,8 @@ func NewAggchainProverFlow(log types.Logger,
 	l1Client types.EthClient,
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
-	optimisticSigner types.OptimisticSigner) *AggchainProverFlow {
+	optimisticSigner types.OptimisticSigner,
+) *AggchainProverFlow {
 	return &AggchainProverFlow{
 		log:                  log,
 		storage:              storage,
@@ -91,11 +93,38 @@ func NewAggchainProverFlow(log types.Logger,
 			l2BridgeQuerier:       l2BridgeQuerier,
 			storage:               storage,
 			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
-			BaseFlowConfig:        aggChainProverConfig.baseFlowConfig,
+			cfg:                   aggChainProverConfig.baseFlowConfig,
 		},
 		signer:                signer,
 		optimisticModeQuerier: optimisticModeQuerier,
 		optimisticSigner:      optimisticSigner,
+	}
+}
+
+// NewAggchainProverFlowInjectedBaseFlow returns a new instance of the AggchainProverFlow injecting baseFlow instead of
+// creating it
+func NewAggchainProverFlowInjectedBaseFlow(
+	log types.Logger,
+	aggChainProverConfig AggchainProverFlowConfig,
+	aggkitProverClient types.AggchainProofClientInterface,
+	storage db.AggSenderStorage,
+	gerQuerier types.GERQuerier,
+	l1Client types.EthClient,
+	signer signertypes.Signer,
+	optimisticModeQuerier types.OptimisticModeQuerier,
+	optimisticSigner types.OptimisticSigner,
+	baseFlow types.AggsenderFlowBaser,
+) *AggchainProverFlow {
+	return &AggchainProverFlow{
+		log:                   log,
+		storage:               storage,
+		aggchainProofClient:   aggkitProverClient,
+		gerQuerier:            gerQuerier,
+		requireNoFEPBlockGap:  aggChainProverConfig.requireNoFEPBlockGap,
+		signer:                signer,
+		optimisticModeQuerier: optimisticModeQuerier,
+		optimisticSigner:      optimisticSigner,
+		baseFlow:              baseFlow,
 	}
 }
 
@@ -140,7 +169,8 @@ func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateTy
 	// AggchainProverFlow only supports FEP certificates
 	optimisticMode, err := a.optimisticModeQuerier.IsOptimisticModeOn()
 	if err != nil {
-		return types.CertificateTypeUnknown, fmt.Errorf("getCertificateTypeToGenerate - error getting optimistic mode: %w", err)
+		return types.CertificateTypeUnknown,
+			fmt.Errorf("getCertificateTypeToGenerate - error getting optimistic mode: %w", err)
 	}
 	if optimisticMode {
 		return types.CertificateTypeOptimistic, nil
@@ -399,7 +429,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		certBuildParams.ExtraData = extraData
 		a.log.Infof("aggchainProverFlow - signed aggchain proof request with new local exit root: %s",
 			request.String())
-		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign[:])
+		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
 		if err != nil {
 			return nil, nil, fmt.Errorf("aggchainProverFlow - error generating optimistic aggchain proof: %w", err)
 		}
@@ -407,8 +437,8 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 			lastProvenBlock, toBlock)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf(`error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, maxEndBlock: %d: %w. 
-		Message sent: %s`, optimisticMode, lastProvenBlock, toBlock, err, request.String(),
+		return nil, nil, fmt.Errorf(`error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d,  
+		maxEndBlock: %d: %w. Message sent: %s`, optimisticMode, lastProvenBlock, toBlock, err, request.String(),
 		)
 	}
 

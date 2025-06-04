@@ -41,23 +41,28 @@ func NewOptimisticAggregationProofPublicValuesQuery(
 // LastProvenBlock =  req.LastProvenBlock
 // RequestedEndBlock = req.RequestedEndBlock
 // L1InfoTreeLeafHash = req.L1InfoTreeLeaf.Hash
-func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
+func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicValuesData(
+	lastProvenBlock, requestedEndBlock uint64,
 	l1InfoTreeLeafHash common.Hash) (*optimistichash.AggregationProofPublicValues, error) {
 	l2PreRoot, err := o.opNodeClient.OutputAtBlockRoot(lastProvenBlock)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get l2PreRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w", lastProvenBlock, err)
+		return nil, fmt.Errorf("optimisticModeSignQuery. l2PreRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w",
+			lastProvenBlock, err)
 	}
 	claimRoot, err := o.opNodeClient.OutputAtBlockRoot(requestedEndBlock)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get claimRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w", requestedEndBlock, err)
+		return nil, fmt.Errorf("optimisticModeSignQuery. claimRoot opNodeClient.OutputAtBlockRoot(%d). Err: %w",
+			requestedEndBlock, err)
 	}
 	rollupConfigHash, err := o.aggchainFEPContract.RollupConfigHash(nil)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get rollupConfigHash from contract %s. Err: %w", o.aggchainFEPAddr, err)
+		return nil, fmt.Errorf("optimisticModeSignQuery. rollupConfigHash from contract %s. Err: %w",
+			o.aggchainFEPAddr, err)
 	}
 	multiBlockVKey, err := o.aggchainFEPContract.RangeVkeyCommitment(nil)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeSignQuery. Fails to get multiBlockVKey(AggregationVkey) from contract %s. Err: %w", o.aggchainFEPAddr, err)
+		return nil, fmt.Errorf("optimisticModeSignQuery. multiBlockVKey(AggregationVkey) from contract %s. Err: %w",
+			o.aggchainFEPAddr, err)
 	}
 
 	return &optimistichash.AggregationProofPublicValues{

@@ -40,23 +40,24 @@ func NewOptimisticSignatureCalculatorImpl(
 	}
 	signer, err := signer.NewSigner(ctx, 0, cfg.TrustedSequencerKey, "optimistic", logger)
 	if err != nil {
-		return nil, fmt.Errorf("optimisitc. error NewSigner. Err: %w", err)
+		return nil, fmt.Errorf("optimistic. error NewSigner. Err: %w", err)
 	}
 
 	if err := signer.Initialize(ctx); err != nil {
-		return nil, fmt.Errorf("optimisitc. error signer.Initialize. Err: %w", err)
+		return nil, fmt.Errorf("optimistic. error signer.Initialize. Err: %w", err)
 	}
 	publicAddrSigner := signer.PublicAddress()
 	trustedSequencerAddr, err := aggchainFEPContract.TrustedSequencer(nil)
 	if err != nil {
-		return nil, fmt.Errorf("optimisitc. error aggchainFEPContract.TrustedSequencer. Err: %w", err)
+		return nil, fmt.Errorf("optimistic. error aggchainFEPContract.TrustedSequencer. Err: %w", err)
 	}
 	if publicAddrSigner != trustedSequencerAddr {
-		return nil, fmt.Errorf("optimisitc. error signer.PublicAddress() %s != aggchainFEPContract.TrustedSequencer %s",
+		return nil, fmt.Errorf("optimistic. error signer.PublicAddress() %s != aggchainFEPContract.TrustedSequencer %s",
 			publicAddrSigner.Hex(), trustedSequencerAddr.Hex())
 	}
 
-	logger.Infof("OptimisticSignatureCalculatorImpl.signerPublicKey: %s, trustedSequencerAddr: %s", signer.PublicAddress().Hex(),
+	logger.Infof("OptimisticSignatureCalculatorImpl.signerPublicKey: %s, trustedSequencerAddr: %s",
+		signer.PublicAddress().Hex(),
 		trustedSequencerAddr.Hex())
 	query := NewOptimisticAggregationProofPublicValuesQuery(
 		aggchainFEPContract,
@@ -69,7 +70,6 @@ func NewOptimisticSignatureCalculatorImpl(
 		Signer:                            signer,
 		Logger:                            logger,
 	}, nil
-
 }
 
 // Sign calculate hash and sign it.
@@ -79,7 +79,8 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	newLocalExitRoot common.Hash,
 	certBuildParams *types.CertificateBuildParams,
 ) ([]byte, string, error) {
-	o.Logger.Debugf("OptimisticSignatureCalculatorImpl.Sign. L1InfoTreeLeaf.BlockNumber=%d", aggchainReq.L1InfoTreeLeaf.BlockNumber)
+	o.Logger.Debugf("OptimisticSignatureCalculatorImpl.Sign. L1InfoTreeLeaf.BlockNumber=%d",
+		aggchainReq.L1InfoTreeLeaf.BlockNumber)
 	aggregationProofPublicValues, err := o.QueryAggregationProofPublicValues.GetAggregationProofPublicValuesData(
 		aggchainReq.LastProvenBlock,
 		aggchainReq.RequestedEndBlock,

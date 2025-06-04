@@ -40,8 +40,8 @@ func TestGetAggregationProofPublicValuesData_Success(t *testing.T) {
 	assert.Equal(t, expectedL2PreRoot, result.L2PreRoot)
 	assert.Equal(t, expectedClaimRoot, result.ClaimRoot)
 	assert.Equal(t, requestedEndBlock, result.L2BlockNumber)
-	assert.Equal(t, expectedRollupConfigHash[:], result.RollupConfigHash.Bytes()[:])
-	assert.Equal(t, expectedMultiBlockVKey[:], result.MultiBlockVKey.Bytes()[:])
+	assert.Equal(t, expectedRollupConfigHash[:], result.RollupConfigHash.Bytes())
+	assert.Equal(t, expectedMultiBlockVKey[:], result.MultiBlockVKey.Bytes())
 	assert.Equal(t, proverAddress, result.ProverAddress)
 }
 

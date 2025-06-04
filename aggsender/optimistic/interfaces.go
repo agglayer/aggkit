@@ -18,7 +18,8 @@ type FEPContractQuerier interface {
 	OptimisticMode(opts *bind.CallOpts) (bool, error)
 }
 
-// OptimisticAggregationProofPublicValuesQuerier defines an interface for querying aggregation proof public values in optimistic mode.
+// OptimisticAggregationProofPublicValuesQuerier defines an interface for
+// querying aggregation proof public values in optimistic mode.
 type OptimisticAggregationProofPublicValuesQuerier interface {
 	GetAggregationProofPublicValuesData(lastProvenBlock, requestedEndBlock uint64,
 		l1InfoTreeLeafHash common.Hash) (*optimistichash.AggregationProofPublicValues, error)

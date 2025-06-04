@@ -14,10 +14,12 @@ type OptimisticModeQuerierFromContract struct {
 	// op-node client
 }
 
-func NewOptimisticModeQuerierFromContract(aggchainFEPAddr common.Address, backend types.EthClienter) (*OptimisticModeQuerierFromContract, error) {
+func NewOptimisticModeQuerierFromContract(aggchainFEPAddr common.Address,
+	backend types.EthClienter) (*OptimisticModeQuerierFromContract, error) {
 	contract, err := aggchainfep.NewAggchainfep(aggchainFEPAddr, backend)
 	if err != nil {
-		return nil, fmt.Errorf("optimisticModeQuerierFromContract: error creating aggchainfep contract %s: %w", aggchainFEPAddr, err)
+		return nil, fmt.Errorf("optimisticModeQuerierFromContract: error creating aggchainfep contract %s: %w",
+			aggchainFEPAddr, err)
 	}
 	return &OptimisticModeQuerierFromContract{
 		aggchainFEPContract: contract,
@@ -27,7 +29,8 @@ func NewOptimisticModeQuerierFromContract(aggchainFEPAddr common.Address, backen
 func (q *OptimisticModeQuerierFromContract) IsOptimisticModeOn() (bool, error) {
 	optimisticMode, err := q.aggchainFEPContract.OptimisticMode(nil)
 	if err != nil {
-		return false, fmt.Errorf("optimisticModeQuerierFromContract: error checking optimisticMode in contract %s. Err: %w", q.aggchainFEPAddr, err)
+		return false, fmt.Errorf("optimisticModeQuerierFromContract: error checking optimisticMode in contract %s. Err: %w",
+			q.aggchainFEPAddr, err)
 	}
 	return optimisticMode, nil
 }

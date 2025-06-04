@@ -30,5 +30,4 @@ func TestSignatureOptimisticData_CommitImportedBrige(t *testing.T) {
 	}
 	expectedHash := common.HexToHash("0x1b2d35e62df05e64b5987fa70c318ccabb08ce181818c9c88851ac15da9d277a")
 	require.Equal(t, expectedHash, data.hash(), "Hash should match the expected value")
-
 }

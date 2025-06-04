@@ -25,5 +25,4 @@ func NewOptimistic(ctx context.Context,
 		return nil, nil, fmt.Errorf("error creating optimistic mode querier: %w", err)
 	}
 	return optimisticSigner, optimisticModeQuerier, nil
-
 }

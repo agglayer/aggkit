@@ -22,22 +22,22 @@ type AggregationProofPublicValues struct {
 }
 
 // String returns a string representation of the AggregationProofPublicValues.
-func (a *AggregationProofPublicValues) String() string {
+func (s *AggregationProofPublicValues) String() string {
 	return fmt.Sprintf(
-		"AggregationProofPublicValues{l1Head: %s, l2PreRoot: %s, claimRoot: %s, l2BlockNumber: %d, rollupConfigHash: %s, multiBlockVKey: %s, proverAddress: %s}",
-		a.L1Head.Hex(),
-		a.L2PreRoot.Hex(),
-		a.ClaimRoot.Hex(),
-		a.L2BlockNumber,
-		a.RollupConfigHash.Hex(),
-		a.MultiBlockVKey.Hex(),
-		a.ProverAddress.Hex(),
+		"AggregationProofPublicValues{l1Head: %s, l2PreRoot: %s, claimRoot: %s,"+
+			" l2BlockNumber: %d, rollupConfigHash: %s, multiBlockVKey: %s, proverAddress: %s}",
+		s.L1Head.Hex(),
+		s.L2PreRoot.Hex(),
+		s.ClaimRoot.Hex(),
+		s.L2BlockNumber,
+		s.RollupConfigHash.Hex(),
+		s.MultiBlockVKey.Hex(),
+		s.ProverAddress.Hex(),
 	)
 }
 
 // Hash calculates the hash of the AggregationProofPublicValues using ABI encoding.
 func (s *AggregationProofPublicValues) Hash() (common.Hash, error) {
-	// Crear tipos ABI uno por uno
 	tBytes32, err := abi.NewType("bytes32", "", nil)
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("failed to create bytes32 type: %w", err)
@@ -53,7 +53,6 @@ func (s *AggregationProofPublicValues) Hash() (common.Hash, error) {
 		return common.Hash{}, fmt.Errorf("failed to create address type: %w", err)
 	}
 
-	// Definir la secuencia de argumentos ABI
 	args := abi.Arguments{
 		{Type: tBytes32},
 		{Type: tBytes32},
