@@ -13,17 +13,14 @@
     "cdk_node_image": "aggkit:local",
     "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.0-rc.21",
     "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.61.19",
-    "pp_vkey_hash": "0x00e60517ac96bf6255d81083269e72c14ad006e5f336f852f7ee3efb91b966be",
     "zkevm_contracts_image": "jhkimqd/zkevm-contracts:v10.0.0-rc.6-fork.12",
     "additional_services": [],
     "consensus_contract_type": "pessimistic",
     "sequencer_type": "erigon",
     "erigon_strict_mode": false,
-    "gas_token_enabled": true,
-    "gas_token_address": "",
+    "gas_token_enabled": false,
     "zkevm_use_real_verifier": false,
     "enable_normalcy": true,
-    "verifier_program_vkey": "0x00766aa16a6efe4ac05c0fe21d4b50f9631dbd1a2663a982da861427085ea2ea",
     "binary_name": "aggkit",
     "enable_aggkit_claim_sponsor": false
   }
