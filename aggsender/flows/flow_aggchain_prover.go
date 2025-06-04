@@ -206,7 +206,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	if lastSentCert != nil && lastSentCert.Status.IsInError() && lastSentCert.CertType == typeCert {
 		a.log.Infof("resending the same InError certificate: %s", lastSentCert.String())
 		fromBlock := lastSentCert.FromBlock
-		ToBlock := lastSentCert.ToBlock
+		toBlock := lastSentCert.ToBlock
 		lastProvenBlock := a.getLastProvenBlock(fromBlock, lastSentCert)
 		if lastSentCert.FromBlock != lastProvenBlock+1 {
 			a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
@@ -215,7 +215,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 		bridges, claims, err := a.baseFlow.L2BridgeQuerier().GetBridgesAndClaims(
 			ctx, fromBlock,
-			ToBlock,
+			toBlock,
 			true,
 		)
 		if err != nil {
@@ -224,7 +224,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 
 		buildParams := &types.CertificateBuildParams{
 			FromBlock:           fromBlock,
-			ToBlock:             ToBlock,
+			ToBlock:             toBlock,
 			RetryCount:          lastSentCert.RetryCount + 1,
 			Bridges:             bridges,
 			Claims:              claims,

@@ -207,7 +207,3 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 	assert.Equal(t, "Generate error", err.Error())
 	mockClient.AssertExpectations(t)
 }
-
-func TestAggchainProofRequest_Hash(t *testing.T) {
-
-}

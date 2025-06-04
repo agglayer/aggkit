@@ -23,17 +23,25 @@ var (
 	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
+// BaseFlowConfig is a struct that holds the configuration for the base flow
 type BaseFlowConfig struct {
-	MaxCertSize  uint
+	// MaxCertSize is the maximum size of the certificate in bytes. 0 means no limit
+	MaxCertSize uint
+	// StartL2Block is the L2 block number from which to start sending certificates.
+	// It is used to determine the first block to include in the certificate.
+	// It can be 0
 	StartL2Block uint64
 }
 
+// NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
 func NewBaseFlowConfigDefault() BaseFlowConfig {
 	return BaseFlowConfig{
 		MaxCertSize:  0, // 0 means no limit
-		StartL2Block: 0,
+		StartL2Block: 0, // 0 means start from the first block
 	}
 }
+
+// // NewBaseFlowConfig returns a BaseFlowConfig with the specified maxCertSize and startL2Block
 func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64) BaseFlowConfig {
 	return BaseFlowConfig{
 		MaxCertSize:  maxCertSize,
@@ -50,6 +58,7 @@ type baseFlow struct {
 	log                   types.Logger
 }
 
+// NewBaseFlow creates a new instance of the base flow
 func NewBaseFlow(
 	log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
@@ -66,14 +75,17 @@ func NewBaseFlow(
 	}
 }
 
+// StartL2Block returns the L2 block number from which to start sending certificates.
 func (f *baseFlow) StartL2Block() uint64 {
 	return f.cfg.StartL2Block
 }
 
+// L1InfoTreeDataQuerier returns the L1InfoTreeDataQuerier used by the base flow
 func (f *baseFlow) L1InfoTreeDataQuerier() types.L1InfoTreeDataQuerier {
 	return f.l1InfoTreeDataQuerier
 }
 
+// L2BridgeQuerier returns the L2BridgeQuerier used by the base flow
 func (f *baseFlow) L2BridgeQuerier() types.BridgeQuerier {
 	return f.l2BridgeQuerier
 }

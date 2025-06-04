@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	agggchainproofclient "github.com/agglayer/aggkit/aggsender/aggchainproofclient"
+	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
@@ -54,7 +54,7 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
 		}
 
-		aggchainProofClient, err := agggchainproofclient.NewAggchainProofClient(
+		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(
 			cfg.AggchainProofURL,
 			cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
 		if err != nil {
