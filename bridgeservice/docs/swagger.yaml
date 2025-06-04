@@ -117,61 +117,6 @@ definitions:
           type: string
         type: array
     type: object
-  types.ClaimRequest:
-    description: Claim sponsoring structure
-    properties:
-      amount:
-        description: Amount in wei (or token's smallest unit)
-        example: "1000000000000000000"
-        type: string
-      destination_address:
-        description: Recipient address on destination network
-        example: 0x456...
-        type: string
-      destination_network:
-        description: ID of the network where the claim is being sent
-        example: 100
-        type: integer
-      global_index:
-        description: Global leaf index
-        example: "123456789012345678901234567890"
-        type: string
-      leaf_type:
-        description: Type of leaf node (e.g., asset or message)
-        example: 1
-        type: integer
-      mainnet_exit_root:
-        description: Mainnet exit root
-        example: 0xabc123...
-        type: string
-      metadata:
-        description: Optional metadata for the claim
-        items:
-          type: integer
-        type: array
-      origin_network:
-        description: Origin network ID where the claim originated
-        example: 1
-        type: integer
-      origin_token_address:
-        description: Origin token address
-        example: 0x123...
-        type: string
-      proof_local_exit_root:
-        description: Merkle proof for local exit root
-        items:
-          type: string
-        type: array
-      proof_rollup_exit_root:
-        description: Merkle proof for rollup exit root
-        items:
-          type: string
-        type: array
-      rollup_exit_root:
-        description: Rollup exit root
-        example: 0xdef456...
-        type: string
-    type: object
   types.ClaimResponse:
     description: Detailed information about a claim event
     properties:
@@ -682,64 +627,6 @@ paths:
       summary: Get legacy token migrations
       tags:
       - legacy-token-migrations
-  /sponsor-claim:
-    post:
-      consumes:
-      - application/json
-      description: Sponsors a claim to be processed by the bridge service.
-      parameters:
-      - description: Claim request
-        in: body
-        name: Claim
-        required: true
-        schema:
-          $ref: '#/definitions/types.ClaimRequest'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Claim is sponsored
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: Sponsor a claim
-      tags:
-      - claim-sponsoring
-  /sponsored-claim-status:
-    get:
-      description: Returns the sponsorship status of a claim identified by the given
-        global index.
-      parameters:
-      - description: Global index of the claim (big.Int format)
-        in: query
-        name: global_index
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: Claim sponsorship status
-          schema:
-            type: string
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-        "500":
-          description: Internal Server Error
-          schema:
-            $ref: '#/definitions/types.ErrorResponse'
-      summary: Get sponsored claim status
-      tags:
-      - claim-sponsoring
   /sync-status:
     get:
       description: Returns the sync status by comparing the deposit count
