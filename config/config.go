@@ -175,14 +175,17 @@ type Config struct {
 	// Configure Log level for all the services, allow also to store the logs in a file
 	Log log.Config
 
-	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
-	L1NetworkConfig L1NetworkConfig
-
 	// Common Config that affects all the services
 	Common common.Config
 
+	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
+	L1NetworkConfig L1NetworkConfig
+
 	// REST contains the configuration settings for the REST service in the Aggkit
 	REST common.RESTConfig
+
+	// RPC is the config for the RPC server
+	RPC jRPC.Config
 
 	// Configuration of the reorg detector service to be used for the L1
 	ReorgDetectorL1 reorgdetector.Config
@@ -195,9 +198,6 @@ type Config struct {
 
 	// Configuration of the L1 Info Treee Sync service
 	L1InfoTreeSync l1infotreesync.Config
-
-	// RPC is the config for the RPC server
-	RPC jRPC.Config
 
 	// ClaimSponsor is the config for the claim sponsor
 	ClaimSponsor claimsponsor.EVMClaimSponsorConfig
