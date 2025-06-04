@@ -1137,12 +1137,19 @@ func Test_PPFlow_SignCertificate(t *testing.T) {
 			if tt.mockSignerFn != nil {
 				tt.mockSignerFn(mockSigner)
 			}
-
-			ppFlow := &PPFlow{
-				baseFlow: &baseFlow{
-					log: log.WithFields("test", "Test_PPFlow_SignCertificate"),
-				},
-			}
+			ppFlow := NewPPFlow(
+				log.WithFields("test", "Test_PPFlow_SignCertificate"),
+				0,   //maxCertSize
+				nil, //storage
+				nil, //l1InfoTreeDataQuerier
+				nil, //l2BridgeQuerier
+				mockSigner,
+			)
+			// ppFlow := &PPFlow{
+			// 	baseFlow: &baseFlow{
+			// 		log: log.WithFields("test", "Test_PPFlow_SignCertificate"),
+			// 	},
+			// }
 
 			signedCert, err := ppFlow.signCertificate(ctx, tt.certificate)
 

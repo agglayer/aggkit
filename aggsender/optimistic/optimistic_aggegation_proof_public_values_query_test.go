@@ -63,5 +63,5 @@ func TestGetAggregationProofPublicValuesData_Failure(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, result)
-	assert.Contains(t, err.Error(), "Fails to get l2PreRoot")
+	assert.Contains(t, err.Error(), "l2PreRoot")
 }

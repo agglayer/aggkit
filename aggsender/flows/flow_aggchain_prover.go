@@ -68,6 +68,16 @@ func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	}
 }
 
+func NewAggchainProverFlowConfig(
+	baseFlowConfig BaseFlowConfig,
+	requireNoFEPBlockGap bool,
+) AggchainProverFlowConfig {
+	return AggchainProverFlowConfig{
+		baseFlowConfig:       baseFlowConfig,
+		requireNoFEPBlockGap: requireNoFEPBlockGap,
+	}
+}
+
 // NewAggchainProverFlow returns a new instance of the AggchainProverFlow
 // and create an instance of baseFlow with the given config
 func NewAggchainProverFlow(log types.Logger,
@@ -437,8 +447,8 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 			lastProvenBlock, toBlock)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf(`error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d,  
-		maxEndBlock: %d: %w. Message sent: %s`, optimisticMode, lastProvenBlock, toBlock, err, request.String(),
+		return nil, nil, fmt.Errorf("error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, "+
+			"maxEndBlock: %d: %w. Message sent: %s", optimisticMode, lastProvenBlock, toBlock, err, request.String(),
 		)
 	}
 
