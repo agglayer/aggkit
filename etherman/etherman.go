@@ -52,15 +52,9 @@ func NewClient(l1Config config.L1NetworkConfig) (*Client, error) {
 	}
 
 	// Populate rollup id
-	rollupID, err := rollupManagerSC.RollupAddressToID(&bind.CallOpts{Pending: false}, l1Config.RollupAddr)
+	rollupID, err := getRollupID(rollupManagerSC, l1Config.RollupAddr)
 	if err != nil {
-		log.Errorf("failed to retrieve rollup id from rollup manager contract: %+v", err)
-
 		return nil, err
-	}
-	if rollupID == 0 {
-		return nil, fmt.Errorf("invalid rollup id value (%d). Check if the rollup contract address is correct %s",
-			rollupID, l1Config.RollupAddr)
 	}
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 
@@ -68,6 +62,21 @@ func NewClient(l1Config config.L1NetworkConfig) (*Client, error) {
 		rollupManagerSC: rollupManagerSC,
 		RollupID:        rollupID,
 	}, nil
+}
+
+// getRollupID reads the rollup id from rollup manager contract based on provided rollup address
+func getRollupID(rollupManagerSC RollupManagerContract, rollupAddr common.Address) (uint32, error) {
+	rollupID, err := rollupManagerSC.RollupAddressToID(&bind.CallOpts{Pending: false}, rollupAddr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to retrieve rollup id from rollup manager contract: %+w", err)
+	}
+
+	if rollupID == 0 {
+		return 0, fmt.Errorf("invalid rollup id value (%d). Check if the rollup contract address is correct %s",
+			rollupID, rollupAddr)
+	}
+
+	return rollupID, nil
 }
 
 // GetL2ChainID returns L2 Chain ID

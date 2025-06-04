@@ -117,3 +117,70 @@ func TestClient_GetL2ChainID(t *testing.T) {
 		})
 	}
 }
+
+func TestGetRollupID(t *testing.T) {
+	testAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+	tests := []struct {
+		name           string
+		setupMock      func() *mocks.RollupManagerContract
+		expectedID     uint32
+		expectedErrMsg string
+	}{
+		{
+			name: "success",
+			setupMock: func() *mocks.RollupManagerContract {
+				mockRollupManager := mocks.NewRollupManagerContract(t)
+				mockRollupManager.EXPECT().
+					RollupAddressToID(mock.Anything, mock.Anything).
+					Return(uint32(42), nil)
+
+				return mockRollupManager
+			},
+			expectedID:     42,
+			expectedErrMsg: "",
+		},
+		{
+			name: "error from contract",
+			setupMock: func() *mocks.RollupManagerContract {
+				mockRollupManager := mocks.NewRollupManagerContract(t)
+				mockRollupManager.EXPECT().
+					RollupAddressToID(mock.Anything, mock.Anything).
+					Return(uint32(0), errors.New("contract call failed"))
+
+				return mockRollupManager
+			},
+			expectedID:     0,
+			expectedErrMsg: "failed to retrieve rollup id from rollup manager contract",
+		},
+		{
+			name: "zero rollup id",
+			setupMock: func() *mocks.RollupManagerContract {
+				mockRollupManager := mocks.NewRollupManagerContract(t)
+				mockRollupManager.EXPECT().
+					RollupAddressToID(mock.Anything, mock.Anything).
+					Return(uint32(0), nil)
+
+				return mockRollupManager
+			},
+			expectedID:     0,
+			expectedErrMsg: "invalid rollup id value",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mockRollupManager := tc.setupMock()
+
+			id, err := getRollupID(mockRollupManager, testAddr)
+
+			if tc.expectedErrMsg != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedID, id)
+			}
+		})
+	}
+}
