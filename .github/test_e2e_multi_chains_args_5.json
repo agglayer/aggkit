@@ -22,8 +22,8 @@
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
     "zkevm_rollup_chain_id": 2151908,
-    "deployment_suffix": "-001",
-    "zkevm_rollup_id": 1,
+    "deployment_suffix": "-003",
+    "zkevm_rollup_id": 3,
     "op_succinct_range_proof_interval": "60",
     "l1_seconds_per_slot": 2,
     "additional_services": [
