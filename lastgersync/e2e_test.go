@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/test/helpers"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -42,7 +42,7 @@ func TestLastGERSyncE2E(t *testing.T) {
 		setup.InfoTreeSync,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
-		etherman.LatestBlock,
+		aggkittypes.LatestBlock,
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,
@@ -78,7 +78,7 @@ func TestLastGERSync_GERRemoval(t *testing.T) {
 		setup.InfoTreeSync,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
-		etherman.LatestBlock,
+		aggkittypes.LatestBlock,
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,

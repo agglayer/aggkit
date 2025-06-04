@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	aggkittypes "github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/etherman"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	common "github.com/ethereum/go-ethereum/common"
 	types "github.com/ethereum/go-ethereum/core/types"
@@ -32,8 +32,8 @@ func Test_ReorgDetector(t *testing.T) {
 	reorgDetector, err := New(clientL1.Client(),
 		Config{
 			DBPath:              testDir,
-			CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100),
-			FinalizedBlock:      etherman.FinalizedBlock,
+			CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+			FinalizedBlock:      aggkittypes.FinalizedBlock,
 		}, L1)
 	require.NoError(t, err)
 
@@ -111,7 +111,7 @@ func TestGetTrackedBlocks(t *testing.T) {
 	testDir := path.Join(t.TempDir(), "reorgdetector_TestGetTrackedBlocks.sqlite")
 	reorgDetector, err := New(clientL1.Client(), Config{
 		DBPath:              testDir,
-		CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100),
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
 	}, L1)
 	require.NoError(t, err)
 
@@ -210,7 +210,7 @@ func TestGetTrackedBlocks(t *testing.T) {
 func TestNotSubscribed(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
 	testDir := path.Join(t.TempDir(), "reorgdetectorTestNotSubscribed.sqlite")
-	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)}, L1)
+	reorgDetector, err := New(clientL1.Client(), Config{DBPath: testDir, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100)}, L1)
 	require.NoError(t, err)
 	err = reorgDetector.AddBlockToTrack(context.Background(), "foo", 1, common.Hash{})
 	require.True(t, strings.Contains(err.Error(), "is not subscribed"))
@@ -232,7 +232,7 @@ func TestDetectReorgs(t *testing.T) {
 		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(trackedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")
-		reorgDetector, err := New(client, Config{DBPath: testDir, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)}, L1)
+		reorgDetector, err := New(client, Config{DBPath: testDir, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100)}, L1)
 		require.NoError(t, err)
 
 		_, err = reorgDetector.Subscribe(syncerID)
@@ -258,7 +258,7 @@ func TestDetectReorgs(t *testing.T) {
 		client.On("HeaderByNumber", ctx, big.NewInt(int64(rpc.FinalizedBlockNumber))).Return(lastFinalizedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")
-		reorgDetector, err := New(client, Config{DBPath: testDir, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)}, L1)
+		reorgDetector, err := New(client, Config{DBPath: testDir, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100)}, L1)
 		require.NoError(t, err)
 
 		_, err = reorgDetector.Subscribe(syncerID)
@@ -283,7 +283,7 @@ func TestDetectReorgs(t *testing.T) {
 		client.On("HeaderByNumber", ctx, trackedBlock.Number).Return(reorgedTrackedBlock, nil)
 
 		testDir := path.Join(t.TempDir(), "reorgdetectorTestDetectReorgs.sqlite")
-		reorgDetector, err := New(client, Config{DBPath: testDir, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)}, L1)
+		reorgDetector, err := New(client, Config{DBPath: testDir, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100)}, L1)
 		require.NoError(t, err)
 
 		subscription, err := reorgDetector.Subscribe(syncerID)

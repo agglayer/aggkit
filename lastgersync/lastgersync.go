@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -47,7 +46,7 @@ func New(
 	l1InfoTreeSync L1InfoTreeQuerier,
 	retryAfterErrorPeriod time.Duration,
 	maxRetryAttemptsAfterError int,
-	blockFinality etherman.BlockNumberFinality,
+	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 	downloadBufferSize int,
 	requireStorageContentCompatibility bool,

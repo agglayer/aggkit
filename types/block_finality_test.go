@@ -1,4 +1,4 @@
-package etherman
+package types
 
 import (
 	"fmt"

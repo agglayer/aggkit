@@ -10,12 +10,12 @@ type L1Config struct {
 	URL string `mapstructure:"URL"`
 	// Chain ID of the L1 network
 	L1ChainID uint64 `json:"chainId"`
-	// ZkEVMAddr Address of the L1 contract polygonZkEVMAddress
-	ZkEVMAddr common.Address `json:"polygonZkEVMAddress"`
+	// RollupAddr Address of the L1 rollup contract
+	RollupAddr common.Address `json:"polygonZkEVMAddress"`
 	// RollupManagerAddr Address of the L1 contract
 	RollupManagerAddr common.Address `json:"polygonRollupManagerAddress"`
-	// PolAddr Address of the L1 Pol token Contract
-	PolAddr common.Address `json:"polTokenAddress"`
+	// POLTokenAddr Address of the L1 POL token Contract
+	POLTokenAddr common.Address `json:"polTokenAddress"`
 	// GlobalExitRootManagerAddr Address of the L1 GlobalExitRootManager contract
 	GlobalExitRootManagerAddr common.Address `json:"polygonZkEVMGlobalExitRootAddress"`
 }
