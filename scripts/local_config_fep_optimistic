@@ -405,7 +405,7 @@ export_values_of_cdk_node_config $DEST/config.toml
 export_values_of_cdk_node_config_genesis  $DEST/config.toml
 export_forced_values
 
-ORIG_TEMPLATE_FILE=test/config/kurtosis-cdk-node-config.toml.template
+ORIG_TEMPLATE_FILE=test/config/fep_optimistic.toml.template
 DEST_TEMPLATE_FILE=$DEST/test.kurtosis.toml
 
 # Generate config file
