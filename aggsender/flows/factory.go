@@ -47,7 +47,7 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
-
+		logger.Infof("AggchainProverFlow - using AggsenderPrivateKey: %s", signer.PublicAddress())
 		if cfg.AggchainProofURL == "" {
 			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
 		}

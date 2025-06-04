@@ -314,9 +314,7 @@ function create_dest_folder() {
     mkdir $zkevm_path_rw_data
 }
 
-#KURTOSIS_ARTIFACT_AGGKIT_KEY="agglayer-keystore"
-#KURTOSIS_ARTIFACT_AGGKIT_CONFIG="cdk-node-config-artifact"
-#KURTOSIS_ARTIFACT_GENESIS="genesis"
+
 KURTOSIS_ARTIFACT_AGGKIT_KEY="sovereignadmin-keystore"
 KURTOSIS_ARTIFACT_AGGKIT_CONFIG="cdk-aggoracle-config-artifact"
 KURTOSIS_ARTIFACT_GENESIS="sovereign_genesis"
@@ -420,10 +418,8 @@ echo " "
 echo "file generated at:" $DEST/test.kurtosis.toml
 
 echo "- to restart kurtosis:"
-echo "    kurtosis clean --all; kurtosis run --enclave aggkit --args-file params.yml --image-download always ."
+echo "    kurtosis clean --all; kurtosis run --enclave $KURTOSIS_ENCLAVE --args-file params.yml --image-download always ."
 echo " "
-echo "- Stop aggkit:"
-echo "    kurtosis service stop aggkit cdk-node-001"
 echo " "
 echo "- Add next configuration to vscode launch.json"
 echo " -----------------------------------------------------------"
@@ -447,5 +443,8 @@ EOF
 
 echo " -----------------------------------------------------------"
 echo " "
-echo " - rembember to clean previous execution data: "
+echo " - Clean previous execution data if apply: "
 echo "     rm -Rf ${zkevm_path_rw_data}/*"
+echo " "
+echo " - Stop aggkit running on kurtosis: "
+echo "    kurtosis service stop $KURTOSIS_ENCLAVE aggkit-001"
