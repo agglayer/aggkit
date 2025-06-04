@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
@@ -188,7 +189,7 @@ func (p *processor) GetClaims(
 	return claims, nil
 }
 
-func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
+func (p *processor) queryBlockRange(tx dbtypes.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
 	if err := p.isBlockProcessed(tx, toBlock); err != nil {
 		return nil, err
 	}
@@ -205,7 +206,7 @@ func (p *processor) queryBlockRange(tx db.Querier, fromBlock, toBlock uint64, ta
 	return rows, nil
 }
 
-func (p *processor) isBlockProcessed(tx db.Querier, blockNum uint64) error {
+func (p *processor) isBlockProcessed(tx dbtypes.Querier, blockNum uint64) error {
 	lpb, err := p.getLastProcessedBlockWithTx(tx)
 	if err != nil {
 		return err
@@ -222,7 +223,7 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return p.getLastProcessedBlockWithTx(p.db)
 }
 
-func (p *processor) getLastProcessedBlockWithTx(tx db.Querier) (uint64, error) {
+func (p *processor) getLastProcessedBlockWithTx(tx dbtypes.Querier) (uint64, error) {
 	var lastProcessedBlockNum uint64
 
 	row := tx.QueryRow("SELECT num FROM block ORDER BY num DESC LIMIT 1;")
