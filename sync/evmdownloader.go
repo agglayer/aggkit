@@ -204,7 +204,7 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 
 func (d *EVMDownloader) reportBlocks(downloadedCh chan EVMBlock, blocks EVMBlocks, lastFinalizedBlock uint64) {
 	for _, block := range blocks {
-		d.log.Infof("sending block %d to the driver (with events)", block.Num)
+		d.log.Debugf("sending block %d to the driver (with events)", block.Num)
 		block.IsFinalizedBlock = d.finalizedBlockType.IsFinalized() && block.Num <= lastFinalizedBlock
 		downloadedCh <- *block
 	}
