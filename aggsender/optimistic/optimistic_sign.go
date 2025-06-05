@@ -7,6 +7,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
 	"github.com/agglayer/go_signer/signer"
@@ -19,7 +20,7 @@ type OptimisticSignatureCalculator interface {
 	Sign(ctx context.Context,
 		aggchainReq types.AggchainProofRequest,
 		newLocalExitRoot common.Hash,
-		certBuildParams *types.CertificateBuildParams,
+		claims []bridgesync.Claim,
 	) (common.Hash, error)
 }
 
@@ -80,7 +81,7 @@ func NewOptimisticSignatureCalculatorImpl(
 func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	aggchainReq types.AggchainProofRequest,
 	newLocalExitRoot common.Hash,
-	certBuildParams *types.CertificateBuildParams,
+	claims []bridgesync.Claim,
 ) ([]byte, string, error) {
 	o.logger.Debugf("OptimisticSignatureCalculatorImpl.Sign. L1InfoTreeLeaf.BlockNumber=%d",
 		aggchainReq.L1InfoTreeLeaf.BlockNumber)
@@ -97,7 +98,7 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	if err != nil {
 		return nil, "", fmt.Errorf("aggregationProofPublicValues.Hash: error hashing aggregationProofPublicValues: %w", err)
 	}
-	importedBridgesHash := optimistichash.CalculateCommitImportedBrdigeExitsHashFromClaims(certBuildParams.Claims)
+	importedBridgesHash := optimistichash.CalculateCommitImportedBrdigeExitsHashFromClaims(claims)
 
 	optimisticSignature := optimistichash.OptimisticSignatureData{
 		AggregationProofPublicValuesHash: aggregationProofPublicValuesHash,
@@ -116,7 +117,7 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 		"aggregationProofPublicValues: %s. signData:%s (num_claims: %d) "+
 			"hashToSign: %s",
 		aggregationProofPublicValues.String(), optimisticSignature.String(),
-		len(certBuildParams.Claims), hashToSign.Hex())
+		len(claims), hashToSign.Hex())
 
 	return signData, extraData, nil
 }
