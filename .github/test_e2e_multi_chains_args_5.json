@@ -18,8 +18,7 @@
     "consensus_contract_type": "pessimistic",
     "sequencer_type": "erigon",
     "erigon_strict_mode": false,
-    "gas_token_enabled": true,
-    "gas_token_address": "",
+    "gas_token_enabled": false,
     "enable_normalcy": true,
     "binary_name": "aggkit",
     "enable_aggkit_claim_sponsor": false

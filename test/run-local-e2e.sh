@@ -122,7 +122,7 @@ if [ -n "$E2E_FOLDER" ]; then
         ;;
     multi-l2-networks-3-chains)
         export DISABLE_L2_FUND="true"
-        bats ./tests/aggkit/bridge-e2e-3-chains.bats
+        bats ./tests/aggkit/bridge-e2e-2-chains.bats ./tests/aggkit/bridge-e2e-3-chains.bats
         ;;
     esac
     rm aggsender_find_imported_bridge combined.json rollup_params.json
