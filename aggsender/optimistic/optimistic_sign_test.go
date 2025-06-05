@@ -101,7 +101,7 @@ func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
 
 			mockSigner.On("SignHash", ctx, mock.Anything).Return(tc.mockSignerReturn, tc.mockSignerError).Maybe()
 
-			signData, extraData, err := calculator.Sign(ctx, aggchainReq, newLocalExitRoot, certBuildParams)
+			signData, extraData, err := calculator.Sign(ctx, aggchainReq, newLocalExitRoot, certBuildParams.Claims)
 
 			if tc.expectedErrorContains != "" {
 				require.Error(t, err)
