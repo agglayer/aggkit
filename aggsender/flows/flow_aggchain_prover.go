@@ -27,8 +27,10 @@ var errNoProofBuiltYet = &aggkitcommon.GRPCError{
 type AggchainProverFlow struct {
 	baseFlow types.AggsenderFlowBaser
 
-	log     types.Logger
-	storage db.AggSenderStorage
+	log                   types.Logger
+	storage               db.AggSenderStorage
+	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
+	l2BridgeQuerier       types.BridgeQuerier
 
 	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
@@ -58,32 +60,30 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 
 // AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {
-	baseFlowConfig       BaseFlowConfig
 	requireNoFEPBlockGap bool
 }
 
 // NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
 func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
-		baseFlowConfig:       NewBaseFlowConfigDefault(),
 		requireNoFEPBlockGap: true, // default to true, can be set to false for testing purposes
 	}
 }
 
 // NewAggchainProverFlowConfig creates a new AggchainProverFlowConfig with the given base flow config
 func NewAggchainProverFlowConfig(
-	baseFlowConfig BaseFlowConfig,
 	requireNoFEPBlockGap bool,
 ) AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
-		baseFlowConfig:       baseFlowConfig,
 		requireNoFEPBlockGap: requireNoFEPBlockGap,
 	}
 }
 
-// NewAggchainProverFlow returns a new instance of the AggchainProverFlow
-// and create an instance of baseFlow with the given config
-func NewAggchainProverFlow(log types.Logger,
+// NewAggchainProverFlow returns a new instance of the AggchainProverFlow injecting baseFlow instead of
+// creating it
+func NewAggchainProverFlow(
+	log types.Logger,
+	baseFlow types.AggsenderFlowBaser,
 	aggChainProverConfig AggchainProverFlowConfig,
 	aggkitProverClient types.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
@@ -96,41 +96,10 @@ func NewAggchainProverFlow(log types.Logger,
 	optimisticSigner types.OptimisticSigner,
 ) *AggchainProverFlow {
 	return &AggchainProverFlow{
-		log:                  log,
-		storage:              storage,
-		aggchainProofClient:  aggkitProverClient,
-		gerQuerier:           gerQuerier,
-		requireNoFEPBlockGap: aggChainProverConfig.requireNoFEPBlockGap,
-		baseFlow: &baseFlow{
-			log:                   log,
-			l2BridgeQuerier:       l2BridgeQuerier,
-			storage:               storage,
-			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
-			cfg:                   aggChainProverConfig.baseFlowConfig,
-		},
-		signer:                signer,
-		optimisticModeQuerier: optimisticModeQuerier,
-		optimisticSigner:      optimisticSigner,
-	}
-}
-
-// NewAggchainProverFlowInjectedBaseFlow returns a new instance of the AggchainProverFlow injecting baseFlow instead of
-// creating it
-func NewAggchainProverFlowInjectedBaseFlow(
-	log types.Logger,
-	aggChainProverConfig AggchainProverFlowConfig,
-	aggkitProverClient types.AggchainProofClientInterface,
-	storage db.AggSenderStorage,
-	gerQuerier types.GERQuerier,
-	l1Client types.EthClient,
-	signer signertypes.Signer,
-	optimisticModeQuerier types.OptimisticModeQuerier,
-	optimisticSigner types.OptimisticSigner,
-	baseFlow types.AggsenderFlowBaser,
-) *AggchainProverFlow {
-	return &AggchainProverFlow{
 		log:                   log,
 		storage:               storage,
+		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
+		l2BridgeQuerier:       l2BridgeQuerier,
 		aggchainProofClient:   aggkitProverClient,
 		gerQuerier:            gerQuerier,
 		requireNoFEPBlockGap:  aggChainProverConfig.requireNoFEPBlockGap,
@@ -216,7 +185,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 				"lastProvenBlock: %d + 1. Check update process 😅", lastSentCert.FromBlock, lastProvenBlock)
 		}
 
-		bridges, claims, err := a.baseFlow.L2BridgeQuerier().GetBridgesAndClaims(
+		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
 			ctx, fromBlock,
 			toBlock,
 			true,
@@ -390,12 +359,12 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	lastProvenBlock, toBlock uint64,
 	certBuildParams *types.CertificateBuildParams,
 ) (*types.AggchainProof, *treetypes.Root, error) {
-	proof, leaf, root, err := a.baseFlow.L1InfoTreeDataQuerier().GetFinalizedL1InfoTreeData(ctx)
+	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
 	}
 	claims := certBuildParams.Claims
-	if err := a.baseFlow.L1InfoTreeDataQuerier().CheckIfClaimsArePartOfFinalizedL1InfoTree(
+	if err := a.l1InfoTreeDataQuerier.CheckIfClaimsArePartOfFinalizedL1InfoTree(
 		root, claims); err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
 			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)

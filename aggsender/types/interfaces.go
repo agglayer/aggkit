@@ -40,8 +40,6 @@ type AggsenderFlowBaser interface {
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 
 	StartL2Block() uint64
-	L1InfoTreeDataQuerier() L1InfoTreeDataQuerier
-	L2BridgeQuerier() BridgeQuerier
 }
 
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement

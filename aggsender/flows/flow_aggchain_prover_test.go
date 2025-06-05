@@ -480,8 +480,17 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockOptimistic := mocks.NewOptimisticModeQuerier(t)
 			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 			mockSigner := mocks.NewSigner(t)
+			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams")
+			flowBase := NewBaseFlow(
+				logger,
+				mockL2BridgeQuerier,
+				mockStorage,
+				mockL1InfoTreeDataQuerier,
+				NewBaseFlowConfigDefault())
+
 			aggchainFlow := NewAggchainProverFlow(
-				log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
+				logger,
+				flowBase,
 				NewAggchainProverFlowConfigDefault(),
 				mockAggchainProofClient,
 				mockStorage,
@@ -711,14 +720,19 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams")
 
+			flowBase := NewBaseFlow(
+				logger,
+				nil, // l2BridgeQuerier
+				nil, // sotrage
+				nil, // l1InfoTreeDataQuerier
+				NewBaseFlowConfig(0, tc.startL2Block),
+			)
 			flow := NewAggchainProverFlow(
-				log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams"),
-				AggchainProverFlowConfig{
-					baseFlowConfig: BaseFlowConfig{
-						StartL2Block: tc.startL2Block,
-					},
-				},
+				logger,
+				flowBase,
+				NewAggchainProverFlowConfigDefault(),
 				nil, // mockAggchainProofClient
 				nil, // mockStorage
 				nil, // mockL1InfoTreeDataQuerier
@@ -822,14 +836,22 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
+			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_BuildCertificate")
 			mockSigner := mocks.NewSigner(t)
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			if tc.mockFn != nil {
 				tc.mockFn(mockL2BridgeQuerier, mockSigner)
 			}
+			flowBase := NewBaseFlow(
+				logger,
+				mockL2BridgeQuerier,
+				nil, // mockStorage
+				nil, // mockL1InfoTreeDataQuerier
+				NewBaseFlowConfigDefault(),
+			)
 			aggchainFlow := NewAggchainProverFlow(
-				log.WithFields("flowManager", "Test_AggchainProverFlow_BuildCertificate"),
+				logger,
+				flowBase,
 				NewAggchainProverFlowConfigDefault(),
 				nil, // mockAggchainProofClient
 				nil, // mockStorage
@@ -856,9 +878,18 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 
 func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 	mockStorage := mocks.NewAggSenderStorage(t)
+	logger := log.WithFields("flowManager", "Test_AggchainProverFlow_CheckInitialStatus")
+	flowBase := NewBaseFlow(
+		logger,
+		nil, // l2BridgeQuerier
+		nil, // sotrage
+		nil, // l1InfoTreeDataQuerier
+		NewBaseFlowConfig(0, 1234),
+	)
 	sut := NewAggchainProverFlow(
-		log.WithFields("flowManager", "Test_AggchainProverFlow_CheckInitialStatus"),
-		NewAggchainProverFlowConfig(NewBaseFlowConfig(0, 1234), false),
+		logger,
+		flowBase,
+		NewAggchainProverFlowConfigDefault(),
 		nil, // mockAggchainProofClient
 		mockStorage,
 		nil, // mockL1InfoTreeDataQuerier

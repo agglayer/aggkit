@@ -36,14 +36,19 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
+		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
-
+		baseFlow := NewBaseFlow(
+			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
+			NewBaseFlowConfig(cfg.MaxCertSize, 0),
+		)
 		return NewPPFlow(
 			logger,
-			cfg.MaxCertSize,
+			baseFlow,
 			storage,
-			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
-			query.NewBridgeDataQuerier(l2Syncer),
+			l1InfoTreeQuerier,
+			l2BridgeQuerier,
 			signer,
 		), nil
 	case types.AggchainProofMode:
@@ -80,20 +85,20 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
+		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+		baseFlow := NewBaseFlow(
+			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
+			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
+		)
 
 		return NewAggchainProverFlow(
 			logger,
-			AggchainProverFlowConfig{
-				baseFlowConfig: BaseFlowConfig{
-					MaxCertSize:  cfg.MaxCertSize,
-					StartL2Block: startL2Block,
-				},
-				requireNoFEPBlockGap: cfg.RequireNoFEPBlockGap,
-			},
+			baseFlow,
+			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap),
 			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,
-			query.NewBridgeDataQuerier(l2Syncer),
+			l2BridgeQuerier,
 			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 			l1Client,
 			signer,

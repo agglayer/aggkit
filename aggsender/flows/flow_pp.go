@@ -15,30 +15,24 @@ import (
 
 // PPFlow is a struct that holds the logic for the regular pessimistic proof flow
 type PPFlow struct {
-	baseFlow types.AggsenderFlowBaser
-	signer   signertypes.Signer
-	log      types.Logger
+	baseFlow              types.AggsenderFlowBaser
+	signer                signertypes.Signer
+	log                   types.Logger
+	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 }
 
 // NewPPFlow returns a new instance of the PPFlow
 func NewPPFlow(log types.Logger,
-	maxCertSize uint,
+	baseFlow types.AggsenderFlowBaser,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
 	signer signertypes.Signer) *PPFlow {
 	return &PPFlow{
-		signer: signer,
-		log:    log,
-		baseFlow: &baseFlow{
-			log:                   log,
-			l2BridgeQuerier:       l2BridgeQuerier,
-			storage:               storage,
-			l1InfoTreeDataQuerier: l1InfoTreeQuerier,
-			cfg: BaseFlowConfig{
-				MaxCertSize: maxCertSize,
-			},
-		},
+		signer:                signer,
+		log:                   log,
+		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
+		baseFlow:              baseFlow,
 	}
 }
 
@@ -66,7 +60,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
 	}
 
-	root, _, err := p.baseFlow.L1InfoTreeDataQuerier().GetLatestFinalizedL1InfoRoot(ctx)
+	root, _, err := p.l1InfoTreeDataQuerier.GetLatestFinalizedL1InfoRoot(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error getting latest finalized L1 info root: %w", err)
 	}

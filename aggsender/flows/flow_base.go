@@ -80,16 +80,6 @@ func (f *baseFlow) StartL2Block() uint64 {
 	return f.cfg.StartL2Block
 }
 
-// L1InfoTreeDataQuerier returns the L1InfoTreeDataQuerier used by the base flow
-func (f *baseFlow) L1InfoTreeDataQuerier() types.L1InfoTreeDataQuerier {
-	return f.l1InfoTreeDataQuerier
-}
-
-// L2BridgeQuerier returns the L2BridgeQuerier used by the base flow
-func (f *baseFlow) L2BridgeQuerier() types.BridgeQuerier {
-	return f.l2BridgeQuerier
-}
-
 // GetCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) GetCertificateBuildParamsInternal(
 	ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {

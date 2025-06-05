@@ -88,18 +88,28 @@ func NewAggchainProofGenerationTool(
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 	// TODO: the signer it's required?
+	l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+
+	baseFlow := flows.NewBaseFlow(
+		logger,
+		l2BridgeQuerier,
+		nil, // storage
+		l1InfoTreeQuerier,
+		flows.NewBaseFlowConfig(0, 0),
+	)
 	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,
+		baseFlow,
 		flows.NewAggchainProverFlowConfigDefault(),
 		aggchainProofClient,
-		nil,
+		nil, // storage
 		l1InfoTreeQuerier,
-		query.NewBridgeDataQuerier(l2Syncer),
+		l2BridgeQuerier,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
 		l1Client,
-		nil,
+		nil,                               // signer
 		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode,
-		nil,
+		nil,                               // optimisticSigner
 	)
 
 	return &AggchainProofGenerationTool{
