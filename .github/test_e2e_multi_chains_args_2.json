@@ -19,7 +19,6 @@
     "sequencer_type": "erigon",
     "erigon_strict_mode": false,
     "gas_token_enabled": false,
-    "zkevm_use_real_verifier": false,
     "enable_normalcy": true,
     "binary_name": "aggkit",
     "enable_aggkit_claim_sponsor": false
