@@ -2,6 +2,10 @@ name: Go Vulnerability Check
 
 on: [push]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   govulncheck_job:
     runs-on: ubuntu-latest
