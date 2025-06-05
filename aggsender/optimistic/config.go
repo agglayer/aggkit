@@ -13,4 +13,8 @@ type Config struct {
 	TrustedSequencerKey signertypes.SignerConfig `mapstructure:"TrustedSequencerKey"`
 	// OpNodeURL is the URL of the OpNode service used to fetch aggregation proof public value
 	OpNodeURL string `mapstructure:"OpNodeURL"`
+	// RequireKeyMatchTrustedSequencer Enable sanity check that the signer public key matches
+	// the trusted sequencer address.
+	// This is useful to ensure that the signer is the trusted sequencer, and not a random signer.
+	RequireKeyMatchTrustedSequencer bool `mapstructure:"RequireKeyMatchTrustedSequencer"`
 }

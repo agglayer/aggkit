@@ -53,11 +53,19 @@ func NewOptimisticSignatureCalculatorImpl(
 	publicAddrSigner := signer.PublicAddress()
 	trustedSequencerAddr, err := aggchainFEPContract.TrustedSequencer(nil)
 	if err != nil {
-		return nil, fmt.Errorf("optimistic. error aggchainFEPContract.TrustedSequencer. Err: %w", err)
+		err = fmt.Errorf("optimistic. error aggchainFEPContract.TrustedSequencer. Err: %w", err)
+		if cfg.RequireKeyMatchTrustedSequencer {
+			return nil, err
+		}
+		logger.Warn(err.Error())
 	}
-	if publicAddrSigner != trustedSequencerAddr {
-		return nil, fmt.Errorf("optimistic. error signer.PublicAddress() %s != aggchainFEPContract.TrustedSequencer %s",
+	if err == nil && publicAddrSigner != trustedSequencerAddr {
+		err := fmt.Errorf("optimistic. error signer.PublicAddress() %s != aggchainFEPContract.TrustedSequencer %s",
 			publicAddrSigner.Hex(), trustedSequencerAddr.Hex())
+		if cfg.RequireKeyMatchTrustedSequencer {
+			return nil, err
+		}
+		logger.Warn(err.Error())
 	}
 
 	logger.Infof("OptimisticSignatureCalculatorImpl.signerPublicKey: %s, trustedSequencerAddr: %s",

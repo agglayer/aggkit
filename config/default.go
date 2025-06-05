@@ -252,6 +252,7 @@ RequireNoFEPBlockGap = true
 		# By default use the same key that aggsender  sign certs
 		TrustedSequencerKey = {{AggSender.AggsenderPrivateKey}}
 		OpNodeURL = "{{OpNodeURL}}"
+		RequireKeyMatchTrustedSequencer = true
 [Prometheus]
 Enabled = true
 Host = "localhost"
