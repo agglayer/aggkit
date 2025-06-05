@@ -139,7 +139,7 @@ func Test_AggchainProverFlow_IfGenerateOptimisticCertCallsToAggkitProverSpecific
 	// Specific calls for a optmistic proof:
 	data.mockFlowBase.EXPECT().GetNewLocalExitRoot(data.ctx, nextCert).Return(common.Hash{}, nil).Once()
 	signature := []byte("signature")
-	data.mockOptimisticSigner.EXPECT().Sign(data.ctx, mock.Anything, mock.Anything, nextCert).Return(
+	data.mockOptimisticSigner.EXPECT().Sign(data.ctx, mock.Anything, mock.Anything, nextCert.Claims).Return(
 		signature, "extra_data", nil).Once()
 	// Now calls to aggkit-prover service:
 	data.mockAggchainProofClient.EXPECT().GenerateOptimisticAggchainProof(mock.Anything, signature).Return(&types.AggchainProof{

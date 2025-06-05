@@ -16,13 +16,13 @@ import (
 )
 
 // OptimisticSignatureCalculator is an interface that defines the method for signing optimistic aggregation proofs.
-type OptimisticSignatureCalculator interface {
-	Sign(ctx context.Context,
-		aggchainReq types.AggchainProofRequest,
-		newLocalExitRoot common.Hash,
-		claims []bridgesync.Claim,
-	) (common.Hash, error)
-}
+// type OptimisticSignatureCalculator interface {
+// 	Sign(ctx context.Context,
+// 		aggchainReq types.AggchainProofRequest,
+// 		newLocalExitRoot common.Hash,
+// 		claims []bridgesync.Claim,
+// 	) (common.Hash, error)
+// }
 
 // OptimisticSignatureCalculatorImpl implements the OptimisticSignatureCalculator interface.
 type OptimisticSignatureCalculatorImpl struct {
