@@ -400,31 +400,40 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	if !optimisticMode {
 		aggchainProof, err = a.aggchainProofClient.GenerateAggchainProof(request)
 	} else {
-		newLER, err := a.baseFlow.GetNewLocalExitRoot(ctx, certBuildParams)
-		if err != nil {
-			return nil, nil, fmt.Errorf("aggchainProverFlow - error getting new local exit root: %w", err)
-		}
-		sign, extraData, err := a.optimisticSigner.Sign(ctx, *request, newLER, certBuildParams)
-		if err != nil {
-			return nil, nil, fmt.Errorf("aggchainProverFlow - error signing aggchain proof request: %w", err)
-		}
-		certBuildParams.ExtraData = extraData
-		a.log.Infof("aggchainProverFlow - signed aggchain proof request with new local exit root: %s",
-			request.String())
-		aggchainProof, err = a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
-		if err != nil {
-			return nil, nil, fmt.Errorf("aggchainProverFlow - error generating optimistic aggchain proof: %w", err)
-		}
-		a.log.Infof("aggchainProverFlow - generated optimistic aggchain proof for lastProvenBlock: %d, maxEndBlock: %d",
-			lastProvenBlock, toBlock)
+		aggchainProof, err = a.generateOptimisticAggchainProof(ctx, certBuildParams, request)
 	}
 	if err != nil {
-		return nil, nil, fmt.Errorf("error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, "+
-			"maxEndBlock: %d: %w. Message sent: %s", optimisticMode, lastProvenBlock, toBlock, err, request.String(),
+		err := fmt.Errorf("aggchainProverFlow - error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, "+
+			"maxEndBlock: %d. Err: %w. Message sent: %s", optimisticMode, lastProvenBlock, toBlock, err, request.String(),
 		)
+		a.log.Error(err.Error())
+		return nil, nil, err
 	}
-
+	a.log.Infof("aggchainProverFlow - aggkit-prover fetched aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, "+
+		"maxEndBlock: %d. root: %s.Message sent: %s", optimisticMode, lastProvenBlock, toBlock, root.String(), request.String())
 	return aggchainProof, root, nil
+}
+
+// generateOptimisticAggchainProof fetch required data and call to aggkit-prover for optimistic aggchain proof
+func (a *AggchainProverFlow) generateOptimisticAggchainProof(ctx context.Context,
+	certBuildParams *types.CertificateBuildParams,
+	request *types.AggchainProofRequest) (*types.AggchainProof, error) {
+	newLER, err := a.baseFlow.GetNewLocalExitRoot(ctx, certBuildParams)
+	if err != nil {
+		return nil, fmt.Errorf("generateOptimisticAggchainProof - error getting new local exit root: %w", err)
+	}
+	sign, extraData, err := a.optimisticSigner.Sign(ctx, *request, newLER, certBuildParams)
+	if err != nil {
+		return nil, fmt.Errorf("generateOptimisticAggchainProof - error signing aggchain proof request: %w", err)
+	}
+	certBuildParams.ExtraData = extraData
+	a.log.Infof("generateOptimisticAggchainProof - signed aggchain proof request with new local exit root: %s",
+		request.String())
+	aggchainProof, err := a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
+	if err != nil {
+		return nil, fmt.Errorf("generateOptimisticAggchainProof - error request aggkit-prover optimistic: %w", err)
+	}
+	return aggchainProof, nil
 }
 
 func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificate *types.CertificateHeader) uint64 {
