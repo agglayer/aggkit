@@ -419,11 +419,14 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 func (a *AggchainProverFlow) generateOptimisticAggchainProof(ctx context.Context,
 	certBuildParams *types.CertificateBuildParams,
 	request *types.AggchainProofRequest) (*types.AggchainProof, error) {
+	if certBuildParams == nil {
+		return nil, fmt.Errorf("generateOptimisticAggchainProof - certBuildParams is nil")
+	}
 	newLER, err := a.baseFlow.GetNewLocalExitRoot(ctx, certBuildParams)
 	if err != nil {
 		return nil, fmt.Errorf("generateOptimisticAggchainProof - error getting new local exit root: %w", err)
 	}
-	sign, extraData, err := a.optimisticSigner.Sign(ctx, *request, newLER, certBuildParams)
+	sign, extraData, err := a.optimisticSigner.Sign(ctx, *request, newLER, certBuildParams.Claims)
 	if err != nil {
 		return nil, fmt.Errorf("generateOptimisticAggchainProof - error signing aggchain proof request: %w", err)
 	}

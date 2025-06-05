@@ -3,9 +3,10 @@
 package mocks
 
 import (
-	context "context"
-
+	bridgesync "github.com/agglayer/aggkit/bridgesync"
 	common "github.com/ethereum/go-ethereum/common"
+
+	context "context"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -25,9 +26,9 @@ func (_m *OptimisticSigner) EXPECT() *OptimisticSigner_Expecter {
 	return &OptimisticSigner_Expecter{mock: &_m.Mock}
 }
 
-// Sign provides a mock function with given fields: ctx, aggchainReq, newLocalExitRoot, certBuildParams
-func (_m *OptimisticSigner) Sign(ctx context.Context, aggchainReq types.AggchainProofRequest, newLocalExitRoot common.Hash, certBuildParams *types.CertificateBuildParams) ([]byte, string, error) {
-	ret := _m.Called(ctx, aggchainReq, newLocalExitRoot, certBuildParams)
+// Sign provides a mock function with given fields: ctx, aggchainReq, newLocalExitRoot, claims
+func (_m *OptimisticSigner) Sign(ctx context.Context, aggchainReq types.AggchainProofRequest, newLocalExitRoot common.Hash, claims []bridgesync.Claim) ([]byte, string, error) {
+	ret := _m.Called(ctx, aggchainReq, newLocalExitRoot, claims)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Sign")
@@ -36,25 +37,25 @@ func (_m *OptimisticSigner) Sign(ctx context.Context, aggchainReq types.Aggchain
 	var r0 []byte
 	var r1 string
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, types.AggchainProofRequest, common.Hash, *types.CertificateBuildParams) ([]byte, string, error)); ok {
-		return rf(ctx, aggchainReq, newLocalExitRoot, certBuildParams)
+	if rf, ok := ret.Get(0).(func(context.Context, types.AggchainProofRequest, common.Hash, []bridgesync.Claim) ([]byte, string, error)); ok {
+		return rf(ctx, aggchainReq, newLocalExitRoot, claims)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, types.AggchainProofRequest, common.Hash, *types.CertificateBuildParams) []byte); ok {
-		r0 = rf(ctx, aggchainReq, newLocalExitRoot, certBuildParams)
+	if rf, ok := ret.Get(0).(func(context.Context, types.AggchainProofRequest, common.Hash, []bridgesync.Claim) []byte); ok {
+		r0 = rf(ctx, aggchainReq, newLocalExitRoot, claims)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]byte)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, types.AggchainProofRequest, common.Hash, *types.CertificateBuildParams) string); ok {
-		r1 = rf(ctx, aggchainReq, newLocalExitRoot, certBuildParams)
+	if rf, ok := ret.Get(1).(func(context.Context, types.AggchainProofRequest, common.Hash, []bridgesync.Claim) string); ok {
+		r1 = rf(ctx, aggchainReq, newLocalExitRoot, claims)
 	} else {
 		r1 = ret.Get(1).(string)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, types.AggchainProofRequest, common.Hash, *types.CertificateBuildParams) error); ok {
-		r2 = rf(ctx, aggchainReq, newLocalExitRoot, certBuildParams)
+	if rf, ok := ret.Get(2).(func(context.Context, types.AggchainProofRequest, common.Hash, []bridgesync.Claim) error); ok {
+		r2 = rf(ctx, aggchainReq, newLocalExitRoot, claims)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -71,14 +72,14 @@ type OptimisticSigner_Sign_Call struct {
 //   - ctx context.Context
 //   - aggchainReq types.AggchainProofRequest
 //   - newLocalExitRoot common.Hash
-//   - certBuildParams *types.CertificateBuildParams
-func (_e *OptimisticSigner_Expecter) Sign(ctx interface{}, aggchainReq interface{}, newLocalExitRoot interface{}, certBuildParams interface{}) *OptimisticSigner_Sign_Call {
-	return &OptimisticSigner_Sign_Call{Call: _e.mock.On("Sign", ctx, aggchainReq, newLocalExitRoot, certBuildParams)}
+//   - claims []bridgesync.Claim
+func (_e *OptimisticSigner_Expecter) Sign(ctx interface{}, aggchainReq interface{}, newLocalExitRoot interface{}, claims interface{}) *OptimisticSigner_Sign_Call {
+	return &OptimisticSigner_Sign_Call{Call: _e.mock.On("Sign", ctx, aggchainReq, newLocalExitRoot, claims)}
 }
 
-func (_c *OptimisticSigner_Sign_Call) Run(run func(ctx context.Context, aggchainReq types.AggchainProofRequest, newLocalExitRoot common.Hash, certBuildParams *types.CertificateBuildParams)) *OptimisticSigner_Sign_Call {
+func (_c *OptimisticSigner_Sign_Call) Run(run func(ctx context.Context, aggchainReq types.AggchainProofRequest, newLocalExitRoot common.Hash, claims []bridgesync.Claim)) *OptimisticSigner_Sign_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(types.AggchainProofRequest), args[2].(common.Hash), args[3].(*types.CertificateBuildParams))
+		run(args[0].(context.Context), args[1].(types.AggchainProofRequest), args[2].(common.Hash), args[3].([]bridgesync.Claim))
 	})
 	return _c
 }
@@ -88,7 +89,7 @@ func (_c *OptimisticSigner_Sign_Call) Return(_a0 []byte, _a1 string, _a2 error) 
 	return _c
 }
 
-func (_c *OptimisticSigner_Sign_Call) RunAndReturn(run func(context.Context, types.AggchainProofRequest, common.Hash, *types.CertificateBuildParams) ([]byte, string, error)) *OptimisticSigner_Sign_Call {
+func (_c *OptimisticSigner_Sign_Call) RunAndReturn(run func(context.Context, types.AggchainProofRequest, common.Hash, []bridgesync.Claim) ([]byte, string, error)) *OptimisticSigner_Sign_Call {
 	_c.Call.Return(run)
 	return _c
 }
