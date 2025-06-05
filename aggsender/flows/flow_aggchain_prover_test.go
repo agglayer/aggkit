@@ -266,7 +266,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					}, make(map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, 0),
 					[]*agglayertypes.ImportedBridgeExitWithBlockNumber{{ImportedBridgeExit: ibe1}})).Return(nil, errors.New("some error"))
 			},
-			expectedError: "error generating aggchain proof: error fetching aggchain proof (optimisticMode: false) for lastProvenBlock: 0, maxEndBlock: 10: some error",
+			expectedError: "error fetching aggchain proof (optimisticMode: false) for lastProvenBlock: 0, maxEndBlock: 10. Err: some error.",
 		},
 		{
 			name: "error fetching aggchain proof for new certificate - no proofs built yet",
