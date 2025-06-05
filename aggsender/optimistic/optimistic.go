@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/log"
 )
 
+// NewOptimistic creates a new instance of OptimisticSignatureCalculatorImpl and OptimisticModeQuerierFromContract.
 func NewOptimistic(ctx context.Context,
 	logger *log.Logger,
 	l1Client types.EthClient,
