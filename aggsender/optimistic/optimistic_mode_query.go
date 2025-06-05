@@ -11,7 +11,6 @@ import (
 type OptimisticModeQuerierFromContract struct {
 	aggchainFEPContract FEPContractQuerier
 	aggchainFEPAddr     common.Address
-	// op-node client
 }
 
 func NewOptimisticModeQuerierFromContract(aggchainFEPAddr common.Address,

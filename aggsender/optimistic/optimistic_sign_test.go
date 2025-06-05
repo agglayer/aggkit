@@ -89,9 +89,9 @@ func TestOptimisticSignatureCalculatorImpl_Sign(t *testing.T) {
 			mockSigner := mocks.NewHashSigner(t)
 			mockQuery := optimisticmocks.NewOptimisticAggregationProofPublicValuesQuerier(t)
 			calculator := &OptimisticSignatureCalculatorImpl{
-				QueryAggregationProofPublicValues: mockQuery,
-				Signer:                            mockSigner,
-				Logger:                            realLogger, // Use realLogger here
+				queryAggregationProofPublicValues: mockQuery,
+				signer:                            mockSigner,
+				logger:                            realLogger, // Use realLogger here
 			}
 
 			ctx := context.Background()

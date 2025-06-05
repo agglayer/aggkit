@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// OptimisticSignatureCalculator is an interface that defines the method for signing optimistic aggregation proofs.
 type OptimisticSignatureCalculator interface {
 	Sign(ctx context.Context,
 		aggchainReq types.AggchainProofRequest,
@@ -22,12 +23,14 @@ type OptimisticSignatureCalculator interface {
 	) (common.Hash, error)
 }
 
+// OptimisticSignatureCalculatorImpl implements the OptimisticSignatureCalculator interface.
 type OptimisticSignatureCalculatorImpl struct {
-	QueryAggregationProofPublicValues OptimisticAggregationProofPublicValuesQuerier
-	Signer                            signertypes.HashSigner
-	Logger                            *log.Logger
+	queryAggregationProofPublicValues OptimisticAggregationProofPublicValuesQuerier
+	signer                            signertypes.HashSigner
+	logger                            *log.Logger
 }
 
+// NewOptimisticSignatureCalculatorImpl creates a new instance of OptimisticSignatureCalculatorImpl.
 func NewOptimisticSignatureCalculatorImpl(
 	ctx context.Context,
 	logger *log.Logger,
@@ -66,9 +69,9 @@ func NewOptimisticSignatureCalculatorImpl(
 		signer.PublicAddress())
 
 	return &OptimisticSignatureCalculatorImpl{
-		QueryAggregationProofPublicValues: query,
-		Signer:                            signer,
-		Logger:                            logger,
+		queryAggregationProofPublicValues: query,
+		signer:                            signer,
+		logger:                            logger,
 	}, nil
 }
 
@@ -79,9 +82,9 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	newLocalExitRoot common.Hash,
 	certBuildParams *types.CertificateBuildParams,
 ) ([]byte, string, error) {
-	o.Logger.Debugf("OptimisticSignatureCalculatorImpl.Sign. L1InfoTreeLeaf.BlockNumber=%d",
+	o.logger.Debugf("OptimisticSignatureCalculatorImpl.Sign. L1InfoTreeLeaf.BlockNumber=%d",
 		aggchainReq.L1InfoTreeLeaf.BlockNumber)
-	aggregationProofPublicValues, err := o.QueryAggregationProofPublicValues.GetAggregationProofPublicValuesData(
+	aggregationProofPublicValues, err := o.queryAggregationProofPublicValues.GetAggregationProofPublicValuesData(
 		aggchainReq.LastProvenBlock,
 		aggchainReq.RequestedEndBlock,
 		aggchainReq.L1InfoTreeLeaf.PreviousBlockHash,
@@ -89,7 +92,7 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 	if err != nil {
 		return nil, "", err
 	}
-	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign agg:%s", aggregationProofPublicValues.String())
+	o.logger.Infof("OptimisticSignatureCalculatorImpl.Sign agg:%s", aggregationProofPublicValues.String())
 	aggregationProofPublicValuesHash, err := aggregationProofPublicValues.Hash()
 	if err != nil {
 		return nil, "", fmt.Errorf("aggregationProofPublicValues.Hash: error hashing aggregationProofPublicValues: %w", err)
@@ -101,10 +104,10 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 		NewLocalExitRoot:                 newLocalExitRoot,
 		CommitImportedBridgeExits:        importedBridgesHash,
 	}
-	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign %s", optimisticSignature.String())
+	o.logger.Infof("OptimisticSignatureCalculatorImpl.Sign %s", optimisticSignature.String())
 	hashToSign := optimisticSignature.Hash()
-	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign signed_commitment:%s", hashToSign.Hex())
-	signData, err := o.Signer.SignHash(ctx, hashToSign)
+	o.logger.Infof("OptimisticSignatureCalculatorImpl.Sign signed_commitment:%s", hashToSign.Hex())
+	signData, err := o.signer.SignHash(ctx, hashToSign)
 	if err != nil {
 		return nil, "", fmt.Errorf("OptimisticSignatureData.Sign: Fails to sign. SignData:%s . Err: %w",
 			optimisticSignature.String(), err)

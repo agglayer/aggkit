@@ -9,13 +9,14 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// The real object that implements OpNodeClienter is opnode.OpNodeClient
-var _ OpNodeClienter = (*opnode.OpNodeClient)(nil)
+// This is just to check in build time that the expected objects fulfill the interfaces
+var (
+	_ OpNodeClienter                                = (*opnode.OpNodeClient)(nil)
+	_ FEPContractQuerier                            = (*aggchainfep.Aggchainfep)(nil)
+	_ OptimisticAggregationProofPublicValuesQuerier = (*OptimisticAggregationProofPublicValuesQuery)(nil)
+)
 
-var _ FEPContractQuerier = (*aggchainfep.Aggchainfep)(nil)
-
-var _ OptimisticAggregationProofPublicValuesQuerier = (*OptimisticAggregationProofPublicValuesQuery)(nil)
-
+// OptimisticAggregationProofPublicValuesQuery implements OptimisticAggregationProofPublicValuesQuerier
 type OptimisticAggregationProofPublicValuesQuery struct {
 	aggchainFEPContract FEPContractQuerier
 	aggchainFEPAddr     common.Address
@@ -23,6 +24,7 @@ type OptimisticAggregationProofPublicValuesQuery struct {
 	proverAddress       common.Address
 }
 
+// NewOptimisticAggregationProofPublicValuesQuery creates a new instance of OptimisticAggregationProofPublicValuesQuery
 func NewOptimisticAggregationProofPublicValuesQuery(
 	aggchainFEPContract FEPContractQuerier,
 	aggchainFEPAddr common.Address,
@@ -37,10 +39,8 @@ func NewOptimisticAggregationProofPublicValuesQuery(
 	}
 }
 
-// The parametameters are contained in the AggchainProofRequest struct
-// LastProvenBlock =  req.LastProvenBlock
-// RequestedEndBlock = req.RequestedEndBlock
-// L1InfoTreeLeafHash = req.L1InfoTreeLeaf.Hash
+// GetAggregationProofPublicValuesData retrieves the AggregationProofPublicValue required for
+// the optimistic aggregation proof
 func (o *OptimisticAggregationProofPublicValuesQuery) GetAggregationProofPublicValuesData(
 	lastProvenBlock, requestedEndBlock uint64,
 	l1InfoTreeLeafHash common.Hash) (*optimistichash.AggregationProofPublicValues, error) {
