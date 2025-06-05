@@ -128,12 +128,12 @@ func main() {
 			log.Errorf("Checked all certs and it's not found")
 			os.Exit(errLevelNotFound)
 		}
+		currentHeight--
 		log.Infof("Checking previous certificate, height: %v", currentHeight)
 		cert, err = aggsenderClient.GetCertificateHeaderPerHeight(&currentHeight)
 		if err != nil {
 			log.Errorf("Error: %v", err)
 			os.Exit(errLevelComms)
 		}
-		currentHeight--
 	}
 }
