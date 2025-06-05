@@ -208,7 +208,7 @@ func (c *ConfigRender) executeTemplate(tpl *fasttemplate.Template,
 			section := "{"
 			for _, subKey := range subKeys {
 				if v, ok := data[subKey]; ok {
-					tmp := ""
+					var tmp string
 					// remove prefix
 					key := subKey[len(tag)+1:] // +1 to remove the dot
 					// If the value is a string, we need to add quotes
@@ -237,7 +237,7 @@ func (c *ConfigRender) executeTemplate(tpl *fasttemplate.Template,
 // Check if the tag have subsections
 func isASection(tag string, data map[string]interface{}) bool {
 	// A.B.C -> A is a section, B is a section
-	for k, _ := range data {
+	for k := range data {
 		if strings.HasPrefix(k, tag+".") {
 			return true
 		}
@@ -247,7 +247,7 @@ func isASection(tag string, data map[string]interface{}) bool {
 
 func sectionKeys(tag string, data map[string]interface{}) []string {
 	res := []string{}
-	for k, _ := range data {
+	for k := range data {
 		if strings.HasPrefix(k, tag+".") {
 			res = append(res, k)
 		}

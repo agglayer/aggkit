@@ -81,7 +81,8 @@ func TestNewFlow(t *testing.T) {
 				AggsenderPrivateKey: keyConfig,
 				AggchainProofURL:    "http://127.0.0.1",
 				OptimisticModeConfig: optimistic.Config{
-					TrustedSequencerKey: keyConfig,
+					TrustedSequencerKey:             keyConfig,
+					RequireKeyMatchTrustedSequencer: true,
 				},
 			},
 			expectedError: "error aggchainFEPContract",
