@@ -109,19 +109,15 @@ if [ -n "$E2E_FOLDER" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-fork12-op-succinct)
-        export DISABLE_L2_FUND="false"
         bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
         ;;
     single-l2-network-fork12-pessimistic)
-        export DISABLE_L2_FUND="true"
         bats ./tests/aggkit/bridge-e2e-custom-gas.bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/e2e-pp.bats
         ;;
     multi-l2-networks-2-chains)
-        export DISABLE_L2_FUND="true"
         bats ./tests/aggkit/bridge-e2e-2-l2s.bats
         ;;
     multi-l2-networks-3-chains)
-        export DISABLE_L2_FUND="true"
         bats ./tests/aggkit/bridge-e2e-2-l2s.bats
         ;;
     esac
