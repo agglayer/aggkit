@@ -35,7 +35,7 @@ type AggchainProverFlow struct {
 	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
 	requireNoFEPBlockGap  bool
-	signer                signertypes.Signer
+	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	optimisticSigner      types.OptimisticSigner
 }
@@ -103,7 +103,7 @@ func NewAggchainProverFlow(
 		aggchainProofClient:   aggkitProverClient,
 		gerQuerier:            gerQuerier,
 		requireNoFEPBlockGap:  aggChainProverConfig.requireNoFEPBlockGap,
-		signer:                signer,
+		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
 		optimisticSigner:      optimisticSigner,
 		baseFlow:              baseFlow,
@@ -460,7 +460,7 @@ func (a *AggchainProverFlow) signCertificate(
 	}
 
 	hashToSign := cert.FEPHashToSign()
-	sig, err := a.signer.SignHash(ctx, hashToSign)
+	sig, err := a.certificateSigner.SignHash(ctx, hashToSign)
 	if err != nil {
 		return nil, err
 	}
@@ -469,7 +469,7 @@ func (a *AggchainProverFlow) signCertificate(
 
 	a.log.Infof("aggchainProverFlow - Signed certificate. Sequencer address: %s. "+
 		"New local exit root: %s. Aggchain Params: %s. Height: %d Hash signed: %s",
-		a.signer.PublicAddress().String(),
+		a.certificateSigner.PublicAddress().String(),
 		cert.NewLocalExitRoot.String(),
 		aggchainData.AggchainParams.String(),
 		cert.Height,
