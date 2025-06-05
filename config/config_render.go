@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/agglayer/aggkit/log"
@@ -202,10 +203,57 @@ func (c *ConfigRender) executeTemplate(tpl *fasttemplate.Template,
 			tmp := fmt.Sprintf("%v", v)
 			return w.Write([]byte(tmp))
 		}
+		if isASection(tag, data) {
+			subKeys := sectionKeys(tag, data)
+			section := "{"
+			for _, subKey := range subKeys {
+				if v, ok := data[subKey]; ok {
+					tmp := ""
+					// remove prefix
+					key := subKey[len(tag)+1:] // +1 to remove the dot
+					// If the value is a string, we need to add quotes
+					if str, isString := v.(string); isString {
+						tmp = fmt.Sprintf("%s=\"%v\"", key, str)
+					} else {
+						tmp = fmt.Sprintf("%s=%v", key, v)
+					}
+					if len(section) > 1 {
+						section += ", " // add comma if not first element
+					}
+					section += tmp
+				}
+			}
+			if len(section) > 1 {
+				section += "}" // close section only if there is content
+				return w.Write([]byte(section))
+			}
+		}
 
 		v := composeVarKeyForTemplate(tag)
 		return w.Write([]byte(v))
 	})
+}
+
+// Check if the tag have subsections
+func isASection(tag string, data map[string]interface{}) bool {
+	// A.B.C -> A is a section, B is a section
+	for k, _ := range data {
+		if strings.HasPrefix(k, tag+".") {
+			return true
+		}
+	}
+	return false
+}
+
+func sectionKeys(tag string, data map[string]interface{}) []string {
+	res := []string{}
+	for k, _ := range data {
+		if strings.HasPrefix(k, tag+".") {
+			res = append(res, k)
+		}
+	}
+	sort.Strings(res)
+	return res
 }
 
 // GetUnresolvedVars returns the vars in template that are no on data
@@ -218,6 +266,9 @@ func (c *ConfigRender) GetUnresolvedVars(tpl *fasttemplate.Template,
 			if v, ok := c.findTagInEnvironment(tag); ok {
 				return w.Write([]byte(v))
 			}
+		}
+		if isASection(tag, data) {
+			return w.Write([]byte(""))
 		}
 		if _, ok := data[tag]; !ok {
 			if !contains(unresolved, tag) {
