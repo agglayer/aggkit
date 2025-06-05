@@ -95,24 +95,25 @@ func (o *OptimisticSignatureCalculatorImpl) Sign(ctx context.Context,
 		return nil, "", fmt.Errorf("aggregationProofPublicValues.Hash: error hashing aggregationProofPublicValues: %w", err)
 	}
 	importedBridgesHash := optimistichash.CalculateCommitImportedBrdigeExitsHashFromClaims(certBuildParams.Claims)
-	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign aggHash:%s", aggregationProofPublicValuesHash.Hex())
-	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign newLocalExitRoot:%s", newLocalExitRoot.Hex())
-	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign commitImportedBridgeExits:%s", importedBridgesHash.Hex())
 
 	optimisticSignature := optimistichash.OptimisticSignatureData{
 		AggregationProofPublicValuesHash: aggregationProofPublicValuesHash,
 		NewLocalExitRoot:                 newLocalExitRoot,
 		CommitImportedBridgeExits:        importedBridgesHash,
 	}
+	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign %s", optimisticSignature.String())
 	hashToSign := optimisticSignature.Hash()
 	o.Logger.Infof("OptimisticSignatureCalculatorImpl.Sign signed_commitment:%s", hashToSign.Hex())
 	signData, err := o.Signer.SignHash(ctx, hashToSign)
 	if err != nil {
-		return nil, "", fmt.Errorf("OptimisticSignatureData.Sign: Fails to sign. Err: %w", err)
+		return nil, "", fmt.Errorf("OptimisticSignatureData.Sign: Fails to sign. SignData:%s . Err: %w",
+			optimisticSignature.String(), err)
 	}
 	extraData := fmt.Sprintf(
-		"aggregationProofPublicValues: %s, newLocalExitRoot: %s, commitImportedBridgeExits: %s (len: %d)",
-		aggregationProofPublicValues.String(), newLocalExitRoot.Hex(), importedBridgesHash.Hex(), len(certBuildParams.Claims))
+		"aggregationProofPublicValues: %s. signData:%s (num_claims: %d) "+
+			"hashToSign: %s",
+		aggregationProofPublicValues.String(), optimisticSignature.String(),
+		len(certBuildParams.Claims), hashToSign.Hex())
 
 	return signData, extraData, nil
 }

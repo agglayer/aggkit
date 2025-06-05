@@ -1,6 +1,8 @@
 package optimistichash
 
 import (
+	"fmt"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 )
@@ -20,5 +22,14 @@ func (o *OptimisticSignatureData) Hash() common.Hash {
 		o.AggregationProofPublicValuesHash.Bytes(),
 		o.NewLocalExitRoot.Bytes(),
 		o.CommitImportedBridgeExits.Bytes(),
+	)
+}
+
+func (o *OptimisticSignatureData) String() string {
+	return fmt.Sprintf(
+		"OptimisticSignatureData{AggregationProofPublicValuesHash: %s, NewLocalExitRoot: %s, CommitImportedBridgeExits: %s}",
+		o.AggregationProofPublicValuesHash.Hex(),
+		o.NewLocalExitRoot.Hex(),
+		o.CommitImportedBridgeExits.Hex(),
 	)
 }
