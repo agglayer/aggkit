@@ -241,18 +241,10 @@ func TestGetImportedBridgeExits(t *testing.T) {
 
 	mockProof := generateTestProof(t)
 
-	mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
-	mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(
-		&l1infotreesync.L1InfoTreeLeaf{
-			L1InfoTreeIndex:   1,
-			Timestamp:         123456789,
-			PreviousBlockHash: common.HexToHash("0xabc"),
-			GlobalExitRoot:    common.HexToHash("0x7891"),
-		}, mockProof, nil)
-
 	tests := []struct {
 		name          string
 		claims        []bridgesync.Claim
+		mockFn        func(*mocks.L1InfoTreeDataQuerier)
 		expectedError bool
 		expectedExits []*agglayertypes.ImportedBridgeExit
 	}{
@@ -274,6 +266,15 @@ func TestGetImportedBridgeExits(t *testing.T) {
 					ProofLocalExitRoot:  mockProof,
 					ProofRollupExitRoot: mockProof,
 				},
+			},
+			mockFn: func(mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex:   1,
+						Timestamp:         123456789,
+						PreviousBlockHash: common.HexToHash("0xabc"),
+						GlobalExitRoot:    common.HexToHash("0x7891"),
+					}, mockProof, nil)
 			},
 			expectedError: false,
 			expectedExits: []*agglayertypes.ImportedBridgeExit{
@@ -354,6 +355,15 @@ func TestGetImportedBridgeExits(t *testing.T) {
 					ProofLocalExitRoot:  mockProof,
 					ProofRollupExitRoot: mockProof,
 				},
+			},
+			mockFn: func(mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex:   1,
+						Timestamp:         123456789,
+						PreviousBlockHash: common.HexToHash("0xabc"),
+						GlobalExitRoot:    common.HexToHash("0x7891"),
+					}, mockProof, nil)
 			},
 			expectedError: false,
 			expectedExits: []*agglayertypes.ImportedBridgeExit{
@@ -445,6 +455,32 @@ func TestGetImportedBridgeExits(t *testing.T) {
 			expectedError: false,
 			expectedExits: []*agglayertypes.ImportedBridgeExit{},
 		},
+		{
+			name: "error getting proof for GER",
+			claims: []bridgesync.Claim{
+				{
+					IsMessage:           false,
+					OriginNetwork:       11,
+					OriginAddress:       common.HexToAddress("0x1234"),
+					DestinationNetwork:  22,
+					DestinationAddress:  common.HexToAddress("0x45678"),
+					Amount:              big.NewInt(1010),
+					Metadata:            []byte("metadata"),
+					GlobalIndex:         big.NewInt(11),
+					GlobalExitRoot:      common.HexToHash("0x78912"),
+					RollupExitRoot:      common.HexToHash("0xaaaa"),
+					MainnetExitRoot:     common.HexToHash("0xbbbb"),
+					ProofLocalExitRoot:  mockProof,
+					ProofRollupExitRoot: mockProof,
+				},
+			},
+			mockFn: func(mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(
+					nil, treetypes.Proof{}, errors.New("error getting proof for GER"),
+				)
+			},
+			expectedError: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -452,6 +488,11 @@ func TestGetImportedBridgeExits(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
+			if tt.mockFn != nil {
+				tt.mockFn(mockL1InfoTreeQuery)
+			}
 
 			flow := &baseFlow{
 				l1InfoTreeDataQuerier: mockL1InfoTreeQuery,

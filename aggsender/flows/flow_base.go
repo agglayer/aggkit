@@ -143,9 +143,9 @@ func (f *baseFlow) limitCertSize(
 	maxCertSize := f.cfg.MaxCertSize
 	for {
 		if currentCert.NumberOfBridges() == 0 && !allowEmptyCert {
-			f.log.Warnf("Minimum certificate size reached. Estimated size: %d > max size: %d",
-				currentCert.EstimatedSize(), maxCertSize)
-			return currentCert, nil
+			return nil, fmt.Errorf("error on reducing the certificate size. "+
+				"No bridge exits found in range from: %d, to: %d and empty certificate is not allowed",
+				currentCert.FromBlock, currentCert.ToBlock)
 		}
 
 		if maxCertSize == 0 || currentCert.EstimatedSize() <= maxCertSize {
@@ -346,8 +346,8 @@ func (f *baseFlow) getImportedBridgeExits(
 			claim.GlobalExitRoot, rootFromWhichToProve)
 		if err != nil {
 			return nil, fmt.Errorf(
-				"error getting L1 Info tree merkle proof for leaf index: %d and root: %s. Error: %w",
-				l1Info.L1InfoTreeIndex, rootFromWhichToProve, err,
+				"error getting L1 Info tree merkle proof for GER: %s and root: %s. Error: %w",
+				claim.GlobalExitRoot, rootFromWhichToProve, err,
 			)
 		}
 

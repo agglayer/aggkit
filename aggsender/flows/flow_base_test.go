@@ -41,7 +41,23 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 			},
 		},
 		{
-			name:        "certificate size exceeds limit",
+			name:        "certificate size exceeds limit - reducing with some bridges",
+			maxCertSize: 500,
+			fullCert: &types.CertificateBuildParams{
+				FromBlock: 1,
+				ToBlock:   10,
+				Bridges:   []bridgesync.Bridge{{BlockNum: 9}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}},
+			},
+			allowEmptyCert: false,
+			expectedCert: &types.CertificateBuildParams{
+				FromBlock: 1,
+				ToBlock:   9,
+				Bridges:   []bridgesync.Bridge{{BlockNum: 9}},
+				Claims:    []bridgesync.Claim{},
+			},
+		},
+		{
+			name:        "certificate size exceeds limit - reducing to no bridges",
 			maxCertSize: 500,
 			fullCert: &types.CertificateBuildParams{
 				FromBlock: 1,
@@ -49,12 +65,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				Bridges:   []bridgesync.Bridge{{BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}},
 			},
 			allowEmptyCert: false,
-			expectedCert: &types.CertificateBuildParams{
-				FromBlock: 1,
-				ToBlock:   9,
-				Bridges:   []bridgesync.Bridge{},
-				Claims:    []bridgesync.Claim{},
-			},
+			expectedError:  "error on reducing the certificate size. No bridge exits found",
 		},
 		{
 			name:        "certificate size exceeds limit with minimum blocks",
@@ -95,11 +106,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				Bridges:   []bridgesync.Bridge{},
 			},
 			allowEmptyCert: false,
-			expectedCert: &types.CertificateBuildParams{
-				FromBlock: 1,
-				ToBlock:   10,
-				Bridges:   []bridgesync.Bridge{},
-			},
+			expectedError:  "error on reducing the certificate size. No bridge exits found in range from: 1, to: 10 and empty certificate is not allowed",
 		},
 		{
 			name:        "maxCertSize is 0 with bridges and claims",
