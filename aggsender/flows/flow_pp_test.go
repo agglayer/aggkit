@@ -987,14 +987,12 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-			ppFlow := &PPFlow{
-				baseFlow: &baseFlow{
-					log:                   log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams"),
-					storage:               mockStorage,
-					l2BridgeQuerier:       mockL2BridgeQuerier,
-					l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
-				},
-			}
+			logger := log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams")
+			ppFlow := NewPPFlow(
+				logger,
+				NewBaseFlow(logger, mockL2BridgeQuerier,
+					mockStorage, mockL1InfoTreeQuerier, NewBaseFlowConfigDefault()),
+				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockL1InfoTreeQuerier)
 
