@@ -3,12 +3,11 @@ package etherman
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/banana/polygonrollupmanager"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
 // RollupManagerContract is an abstraction for RollupManager smart contract
@@ -30,23 +29,31 @@ type RollupManagerContract interface {
 	RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error)
 }
 
+// DialFunc is callback function that creates BaseEthereumClienter, used to interact with Ethereum nodes
+type DialFunc func(url string) (aggkittypes.BaseEthereumClienter, error)
+
+// RollupManagerFactoryFunc is a callback function that creates RollupManager contrat instance
+type RollupManagerFactoryFunc func(rollupAddress common.Address,
+	client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error)
+
 // Client is a simple implementation of Etherman.
 type Client struct {
 	rollupManagerSC RollupManagerContract
 	RollupID        uint32
 }
 
-// NewClient creates a new etherman.
-func NewClient(l1Config config.L1NetworkConfig) (*Client, error) {
-	// Connect to ethereum node
-	ethClient, err := ethclient.Dial(l1Config.URL)
+// NewClient creates a new etherman client instance
+func NewClient(l1Config config.L1NetworkConfig,
+	ethClientFactory DialFunc,
+	rollupManagerFactory RollupManagerFactoryFunc,
+) (*Client, error) {
+	ethClient, err := ethClientFactory(l1Config.URL)
 	if err != nil {
-		log.Errorf("error connecting to %s: %+v", l1Config.URL, err)
-
+		log.Errorf("error connecting to %s: %v", l1Config.URL, err)
 		return nil, err
 	}
 
-	rollupManagerSC, err := polygonrollupmanager.NewPolygonrollupmanager(l1Config.RollupManagerAddr, ethClient)
+	rollupManagerSC, err := rollupManagerFactory(l1Config.RollupManagerAddr, ethClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create rollup manager contract binding: %w", err)
 	}

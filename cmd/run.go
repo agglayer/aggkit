@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/banana/polygonrollupmanager"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
@@ -34,6 +35,7 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
@@ -74,7 +76,14 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	ethermanClient, err := etherman.NewClient(cfg.L1NetworkConfig)
+	ethermanClient, err := etherman.NewClient(cfg.L1NetworkConfig,
+		func(url string) (aggkittypes.BaseEthereumClienter, error) {
+			return ethclient.Dial(url)
+		},
+		func(rollupAddr common.Address,
+			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
+			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
+		})
 	if err != nil {
 		return fmt.Errorf("failed to create etherman client: %w", err)
 	}
