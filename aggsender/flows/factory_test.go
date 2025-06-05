@@ -75,7 +75,7 @@ func TestNewFlow(t *testing.T) {
 			expectedError: "unsupported Aggsender mode: unsupported-mode",
 		},
 		{
-			name: "error optmitiscmode creating TrustedSequenderContract AggchainProofMode",
+			name: "error optimistic mode creating TrustedSequencerContract AggchainProofMode",
 			cfg: config.Config{
 				Mode:                string(types.AggchainProofMode),
 				AggsenderPrivateKey: keyConfig,

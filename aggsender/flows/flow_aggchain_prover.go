@@ -410,7 +410,8 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 		return nil, nil, err
 	}
 	a.log.Infof("aggchainProverFlow - aggkit-prover fetched aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, "+
-		"maxEndBlock: %d. root: %s.Message sent: %s", optimisticMode, lastProvenBlock, toBlock, root.String(), request.String())
+		"maxEndBlock: %d. root: %s.Message sent: %s", optimisticMode, lastProvenBlock, toBlock,
+		root.String(), request.String())
 	return aggchainProof, root, nil
 }
 

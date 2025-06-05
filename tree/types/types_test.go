@@ -16,5 +16,4 @@ func TestRootString(t *testing.T) {
 	}
 	expected := "Root{Hash: 0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef, Index: 1, BlockNum: 100, BlockPosition: 10}"
 	require.Equal(t, expected, root.String(), "Root String method should return the expected string representation")
-
 }
