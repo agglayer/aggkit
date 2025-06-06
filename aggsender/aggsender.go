@@ -295,6 +295,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		},
 		SignedCertificate: &jsonCert,
 		AggchainProof:     certificateParams.AggchainProof,
+		ExtraData:         certificateParams.ExtraData,
 	}
 	// TODO: Improve this case, if a cert is not save in the storage, we are going to settle a unknown certificate
 	err = a.saveCertificateToStorage(ctx, certInfo, a.cfg.MaxRetriesStoreCertificate)

@@ -212,8 +212,11 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		aggLayerClient:  mockAggLayerClient,
 		epochNotifier:   mockEpochNotifier,
 		cfg:             config.Config{},
-		flow:            flows.NewPPFlow(logger, 0, mockStorage, mockL1Querier, mockL2BridgeQuerier, signer),
-		rateLimiter:     aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
+		flow: flows.NewPPFlow(logger,
+			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
+				mockL1Querier, flows.NewBaseFlowConfigDefault()),
+			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer),
+		rateLimiter: aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
 	mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&aggsendertypes.CertificateHeader{
@@ -674,7 +677,10 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
-		flow:          flows.NewPPFlow(logger, 0, storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer),
+		flow: flows.NewPPFlow(logger,
+			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
+				l1InfoTreeQuerierMock, flows.NewBaseFlowConfigDefault()),
+			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer),
 	}
 	var flowMock *mocks.AggsenderFlow
 	if creationFlags&testDataFlagMockFlow != 0 {

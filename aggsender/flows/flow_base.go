@@ -11,7 +11,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/tree"
-	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/crypto/sha3"
@@ -24,21 +23,65 @@ var (
 	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
+// BaseFlowConfig is a struct that holds the configuration for the base flow
+type BaseFlowConfig struct {
+	// MaxCertSize is the maximum size of the certificate in bytes. 0 means no limit
+	MaxCertSize uint
+	// StartL2Block is the L2 block number from which to start sending certificates.
+	// It is used to determine the first block to include in the certificate.
+	// It can be 0
+	StartL2Block uint64
+}
+
+// NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
+func NewBaseFlowConfigDefault() BaseFlowConfig {
+	return BaseFlowConfig{
+		MaxCertSize:  0, // 0 means no limit
+		StartL2Block: 0, // 0 means start from the first block
+	}
+}
+
+// // NewBaseFlowConfig returns a BaseFlowConfig with the specified maxCertSize and startL2Block
+func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64) BaseFlowConfig {
+	return BaseFlowConfig{
+		MaxCertSize:  maxCertSize,
+		StartL2Block: startL2Block,
+	}
+}
+
 // baseFlow is a struct that holds the common logic for the different prover types
 type baseFlow struct {
 	l2BridgeQuerier       types.BridgeQuerier
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-
-	log types.Logger
-
-	maxCertSize  uint
-	startL2Block uint64
-	signer       signertypes.Signer
+	cfg                   BaseFlowConfig
+	log                   types.Logger
 }
 
-// getCertificateBuildParamsInternal returns the parameters to build a certificate
-func (f *baseFlow) getCertificateBuildParamsInternal(
+// NewBaseFlow creates a new instance of the base flow
+func NewBaseFlow(
+	log types.Logger,
+	l2BridgeQuerier types.BridgeQuerier,
+	storage db.AggSenderStorage,
+	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
+	cfg BaseFlowConfig,
+) *baseFlow {
+	return &baseFlow{
+		log:                   log,
+		l2BridgeQuerier:       l2BridgeQuerier,
+		storage:               storage,
+		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
+		cfg:                   cfg,
+	}
+}
+
+// StartL2Block returns the L2 block number from which to start sending certificates.
+func (f *baseFlow) StartL2Block() uint64 {
+	return f.cfg.StartL2Block
+}
+
+// GetCertificateBuildParamsInternal returns the parameters to build a certificate
+func (f *baseFlow) GetCertificateBuildParamsInternal(
 	ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
@@ -85,8 +128,8 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 	return buildParams, nil
 }
 
-// verifyBuildParams verifies the build parameters
-func (f *baseFlow) verifyBuildParams(fullCert *types.CertificateBuildParams) error {
+// VerifyBuildParams verifies the build parameters
+func (f *baseFlow) VerifyBuildParams(fullCert *types.CertificateBuildParams) error {
 	// this will be a good place to add more verification checks in the future
 	return f.verifyClaimGERs(fullCert.Claims)
 }
@@ -97,7 +140,7 @@ func (f *baseFlow) limitCertSize(
 	fullCert *types.CertificateBuildParams, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
 	currentCert := fullCert
 	var err error
-
+	maxCertSize := f.cfg.MaxCertSize
 	for {
 		if currentCert.NumberOfBridges() == 0 && !allowEmptyCert {
 			return nil, fmt.Errorf("error on reducing the certificate size. "+
@@ -105,13 +148,13 @@ func (f *baseFlow) limitCertSize(
 				currentCert.FromBlock, currentCert.ToBlock)
 		}
 
-		if f.maxCertSize == 0 || currentCert.EstimatedSize() <= f.maxCertSize {
+		if maxCertSize == 0 || currentCert.EstimatedSize() <= maxCertSize {
 			return currentCert, nil
 		}
 
 		if currentCert.NumberOfBlocks() <= 1 {
 			f.log.Warnf("Minimum number of blocks reached [%d to %d]. Estimated size: %d > max size: %d",
-				currentCert.FromBlock, currentCert.ToBlock, currentCert.EstimatedSize(), f.maxCertSize)
+				currentCert.FromBlock, currentCert.ToBlock, currentCert.EstimatedSize(), maxCertSize)
 			return currentCert, nil
 		}
 
@@ -122,7 +165,25 @@ func (f *baseFlow) limitCertSize(
 	}
 }
 
-func (f *baseFlow) buildCertificate(ctx context.Context,
+// GetNewLocalExitRoot gets the new local exit root for the certificate
+func (f *baseFlow) GetNewLocalExitRoot(ctx context.Context,
+	certParams *types.CertificateBuildParams) (common.Hash, error) {
+	if certParams == nil {
+		return common.Hash{}, fmt.Errorf("baseFlow.GetNewLocalExitRoot. certificate build parameters cannot be nil")
+	}
+	_, previousLER, err := f.getNextHeightAndPreviousLER(certParams.LastSentCertificate)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("baseFlow.GetNewLocalExitRoot. error getting next height and previous LER: %w", err)
+	}
+
+	newLER, err := f.getNewLocalExitRoot(ctx, certParams, previousLER)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("baseFlow.GetNewLocalExitRoot. error getting new local exit root: %w", err)
+	}
+	return newLER, nil
+}
+
+func (f *baseFlow) BuildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
 	lastSentCertificate *types.CertificateHeader,
 	allowEmptyCert bool) (*agglayertypes.Certificate, error) {
@@ -201,8 +262,8 @@ func convertBridgeMetadata(metadata []byte) []byte {
 	return metaData
 }
 
-// convertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
+// ConvertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
+func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
 	leafType := agglayertypes.LeafTypeAsset
 	if claim.IsMessage {
 		leafType = agglayertypes.LeafTypeMessage
@@ -274,7 +335,7 @@ func (f *baseFlow) getImportedBridgeExits(
 		f.log.Debugf("claim[%d]: destAddr: %s GER: %s Block: %d Pos: %d GlobalIndex: 0x%x",
 			i, claim.DestinationAddress.String(), claim.GlobalExitRoot.String(),
 			claim.BlockNum, claim.BlockPos, claim.GlobalIndex)
-		ibe, err := f.convertClaimToImportedBridgeExit(claim)
+		ibe, err := f.ConvertClaimToImportedBridgeExit(claim)
 		if err != nil {
 			return nil, fmt.Errorf("error converting claim to imported bridge exit: %w", err)
 		}
@@ -405,7 +466,7 @@ func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateHeader) (uint64, int) {
 	if lastSentCertificateInfo == nil {
 		// this is the first certificate so we start from what we have set in start L2 block
-		return f.startL2Block, 0
+		return f.StartL2Block(), 0
 	}
 
 	retryCount := 0

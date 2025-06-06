@@ -6,11 +6,10 @@ import (
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
+	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/flows"
-	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
 	configtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -28,7 +27,7 @@ type AggchainProofFlow interface {
 	GenerateAggchainProof(
 		ctx context.Context,
 		lastProvenBlock, toBlock uint64,
-		claims []bridgesync.Claim) (*types.AggchainProof, *treetypes.Root, error)
+		certBuildParams *types.CertificateBuildParams) (*types.AggchainProof, *treetypes.Root, error)
 }
 
 // Config is the configuration for the AggchainProofGenerationTool
@@ -57,8 +56,14 @@ type AggchainProofGenerationTool struct {
 	logger   *log.Logger
 	l2Syncer types.L2BridgeSyncer
 
-	aggchainProofClient grpc.AggchainProofClientInterface
+	aggchainProofClient types.AggchainProofClientInterface
 	flow                AggchainProofFlow
+}
+
+type OptimisticModeQuerierAlwaysOff struct{}
+
+func (o *OptimisticModeQuerierAlwaysOff) IsOptimisticModeOn() (bool, error) {
+	return false, nil
 }
 
 // NewAggchainProofGenerationTool creates a new AggchainProofGenerationTool
@@ -70,7 +75,7 @@ func NewAggchainProofGenerationTool(
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l1Client types.EthClient,
 	l2Client types.EthClient) (*AggchainProofGenerationTool, error) {
-	aggchainProofClient, err := grpc.NewAggchainProofClient(
+	aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(
 		cfg.AggchainProofURL, cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
@@ -82,19 +87,28 @@ func NewAggchainProofGenerationTool(
 	}
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 
+	baseFlow := flows.NewBaseFlow(
+		logger,
+		l2BridgeQuerier,
+		nil, // storage
+		l1InfoTreeQuerier,
+		flows.NewBaseFlowConfig(0, 0),
+	)
 	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,
-		0,
-		0,
+		baseFlow,
+		flows.NewAggchainProverFlowConfigDefault(),
 		aggchainProofClient,
-		nil,
+		nil, // storage
 		l1InfoTreeQuerier,
-		query.NewBridgeDataQuerier(l2Syncer),
+		l2BridgeQuerier,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
 		l1Client,
-		false,
-		nil,
+		nil,                               // signer
+		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode,
+		nil,                               // optimisticSigner
 	)
 
 	return &AggchainProofGenerationTool{
@@ -156,11 +170,14 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	a.logger.Debugf("Calling AggchainProofClient to generate proof for block range [%d : %d]",
 		fromBlock, maxEndBlock)
 
+	certBuildParams := &types.CertificateBuildParams{
+		Claims: claims,
+	}
 	aggchainProof, _, err := a.flow.GenerateAggchainProof(
 		ctx,
 		lastProvenBlock,
 		maxEndBlock,
-		claims,
+		certBuildParams,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error generating Aggchain proof: %w", err)

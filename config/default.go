@@ -1,3 +1,4 @@
+//nolint:lll
 package config
 
 // This values doesnt have a default value because depend on the
@@ -5,11 +6,12 @@ package config
 const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
+OpNodeURL = "http://localhost:8080"
 
 
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
-GenerateAggchainProofTimeout = "1h"
+
 
 ForkId = 9
 ContractVersions = "elderberry"
@@ -18,6 +20,7 @@ IsValidiumMode = false
 L2Coinbase = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 SequencerPrivateKeyPath = "/app/sequencer.keystore"
 SequencerPrivateKeyPassword = "test"
+
 WitnessURL = "http://localhost:8123"
 
 # Who send Proof to L1? AggLayer addr, or aggregator addr?
@@ -35,6 +38,7 @@ genesisBlockNumber = 0
 	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
 	polTokenAddress = "0x0000000000000000000000000000000000000000"
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
+	AggchainFEPAddr = "0x0000000000000000000000000000000000000000"
 
 
 [L2Config]
@@ -49,13 +53,14 @@ PathRWData = "/tmp/aggkit"
 L1URLSyncChunkSize = 100
 RequireStorageContentCompatibility = true
 L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
+GenerateAggchainProofTimeout = "1h"
 `
 
 // DefaultValues is the default configuration
 const DefaultValues = `
 ForkUpgradeBatchNumber = 0
 ForkUpgradeNewForkId = 0
-
+AggsenderPrivateKey = "{Method =  \"local\", Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
 
 [Log]
 Environment = "development" # "production" or "development"
@@ -117,7 +122,7 @@ WaitPeriodNextGER = "10s"
 				GetReceiptMaxTime = "250ms"
 				GetReceiptWaitInterval = "1s"
 				PrivateKeys = [
-					{Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
+					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
 				]
 				ForcedGas = 0
 				GasPriceMarginFactor = 1
@@ -217,7 +222,7 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 AggLayerURL = "{{AggLayerURL}}"
-AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
+AggsenderPrivateKey = {{AggsenderPrivateKey}}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
@@ -242,7 +247,12 @@ RequireNoFEPBlockGap = true
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
-		
+	[AggSender.OptimisticModeConfig]
+		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
+		# By default use the same key that aggsender  sign certs
+		TrustedSequencerKey = {{AggSender.AggsenderPrivateKey}}
+		OpNodeURL = "{{OpNodeURL}}"
+		RequireKeyMatchTrustedSequencer = true
 [Prometheus]
 Enabled = true
 Host = "localhost"

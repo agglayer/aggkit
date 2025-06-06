@@ -15,7 +15,6 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
-	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
@@ -121,7 +120,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 			t.Parallel()
 
 			flow := &baseFlow{}
-			exit, err := flow.convertClaimToImportedBridgeExit(tt.claim)
+			exit, err := flow.ConvertClaimToImportedBridgeExit(tt.claim)
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -724,7 +723,7 @@ func TestBuildCertificate(t *testing.T) {
 				CertificateType:                types.CertificateTypePP,
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x7891"),
 			}
-			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificate, false)
+			cert, err := flow.BuildCertificate(context.Background(), certParam, &tt.lastSentCertificate, false)
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -1026,23 +1025,15 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			privateKey, err := crypto.GenerateKey()
-			require.NoError(t, err)
-
-			signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-			ppFlow := &PPFlow{
-				baseFlow: &baseFlow{
-					log:                   log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams"),
-					storage:               mockStorage,
-					l2BridgeQuerier:       mockL2BridgeQuerier,
-					l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
-					signer:                signer,
-				},
-			}
+			logger := log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams")
+			ppFlow := NewPPFlow(
+				logger,
+				NewBaseFlow(logger, mockL2BridgeQuerier,
+					mockStorage, mockL1InfoTreeQuerier, NewBaseFlowConfigDefault()),
+				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockL1InfoTreeQuerier)
 
@@ -1120,7 +1111,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			baseFlow := &baseFlow{startL2Block: tt.startL2Block}
+			baseFlow := &baseFlow{cfg: NewBaseFlowConfig(0, tt.startL2Block)}
 
 			block, retryCount := baseFlow.getLastSentBlockAndRetryCount(tt.lastSentCertificate)
 
@@ -1185,13 +1176,22 @@ func Test_PPFlow_SignCertificate(t *testing.T) {
 			if tt.mockSignerFn != nil {
 				tt.mockSignerFn(mockSigner)
 			}
+			logger := log.WithFields("test", "Test_PPFlow_SignCertificate")
+			flowBase := NewBaseFlow(
+				logger,
+				nil, // mockL2BridgeQuerier,
+				nil, // mockStorage,
+				nil, // mockL1InfoTreeDataQuerier,
+				NewBaseFlowConfigDefault())
 
-			ppFlow := &PPFlow{
-				baseFlow: &baseFlow{
-					log:    log.WithFields("test", "Test_PPFlow_SignCertificate"),
-					signer: mockSigner,
-				},
-			}
+			ppFlow := NewPPFlow(
+				logger,
+				flowBase,
+				nil, // storage
+				nil, // l1InfoTreeDataQuerier
+				nil, // l2BridgeQuerier
+				mockSigner,
+			)
 
 			signedCert, err := ppFlow.signCertificate(ctx, tt.certificate)
 

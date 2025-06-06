@@ -36,7 +36,10 @@ func TestGenerateAggchainProof(t *testing.T) {
 			) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), []bridgesync.Claim{}).Return(
+				certBuildParams := &types.CertificateBuildParams{
+					Claims: []bridgesync.Claim{},
+				}
+				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), certBuildParams).Return(
 					&types.AggchainProof{SP1StarkProof: &types.SP1StarkProof{Proof: []byte("proof")}}, nil, nil)
 			},
 			expectedProof: &types.SP1StarkProof{Proof: []byte("proof")},
@@ -73,7 +76,10 @@ func TestGenerateAggchainProof(t *testing.T) {
 			) {
 				mockL2Syncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(20), nil)
 				mockL2Syncer.EXPECT().GetClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Claim{}, nil)
-				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), []bridgesync.Claim{}).Return(
+				certBuildParams := &types.CertificateBuildParams{
+					Claims: []bridgesync.Claim{},
+				}
+				mockFlow.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), certBuildParams).Return(
 					nil, nil, errors.New("test error"))
 			},
 			expectedError: "error generating Aggchain proof",
