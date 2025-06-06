@@ -13,7 +13,6 @@ import (
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/common"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -186,9 +185,6 @@ type Config struct {
 
 	// RPC is the config for the RPC server
 	RPC jRPC.Config
-
-	// ClaimSponsor is the config for the claim sponsor
-	ClaimSponsor claimsponsor.EVMClaimSponsorConfig
 
 	// BridgeL1Sync is the configuration for the synchronizer of the bridge of the L1
 	BridgeL1Sync bridgesync.Config
