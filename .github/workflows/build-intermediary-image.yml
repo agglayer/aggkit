@@ -34,7 +34,8 @@ jobs:
       - name: Prepare platform-safe variable
         id: platform_vars
         run: |
-          echo "PLATFORM_PAIR=${{ matrix.platform }}" | tr '/' '-' >> $GITHUB_ENV
+          PLATFORM_PAIR=$(echo "${{ matrix.platform }}" | tr '/' '-')
+          echo "PLATFORM_PAIR=$PLATFORM_PAIR" >> $GITHUB_ENV
 
       - name: Set image tag components
         id: vars
@@ -70,12 +71,12 @@ jobs:
           push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          outputs: type=image,name=${{ steps.vars.outputs.FULL_IMAGE }},push-by-digest=true
+          outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true
 
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
-          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ env.PLATFORM_PAIR }}.txt"
+          echo "${{ env.REGISTRY_IMAGE }}@${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ env.PLATFORM_PAIR }}.txt"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
@@ -109,12 +110,13 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
+          TAG=${{ needs.build.outputs.IMAGE_NAME }}
           DIGEST_ARGS=""
           for file in *.txt; do
-            digest=$(cat "$file")
-            DIGEST_ARGS+=" ${{ needs.build.outputs.IMAGE_NAME }}@$digest"
+            ref=$(cat "$file")
+            DIGEST_ARGS+=" $ref"
           done
-          docker buildx imagetools create -t ${{ needs.build.outputs.IMAGE_NAME }} $DIGEST_ARGS
+          docker buildx imagetools create -t "$TAG" $DIGEST_ARGS
 
       - name: Inspect final image
         run: |
