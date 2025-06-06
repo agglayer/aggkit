@@ -43,6 +43,22 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 	return nil
 }
 
+func (p *PPFlow) GetCertificateBuildParamsWithEndBlock(
+	ctx context.Context, endBlock uint64) (*types.CertificateBuildParams, error) {
+	buildParams, err := p.getCertificateBuildParamsWithEndBlock(ctx, false, types.CertificateTypePP, endBlock)
+	if err != nil {
+		if errors.Is(err, errNoNewBlocks) || errors.Is(err, query.ErrNoBridgeExits) {
+			// no new blocks to send a certificate, or no bridge exits consumed
+			// this is a valid case, so just return nil without error
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	return p.updateCertBuildParams(ctx, buildParams)
+}
+
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
@@ -57,6 +73,11 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, err
 	}
 
+	return p.updateCertBuildParams(ctx, buildParams)
+}
+
+func (p *PPFlow) updateCertBuildParams(ctx context.Context,
+	buildParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	if err := p.verifyBuildParams(buildParams); err != nil {
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
 	}

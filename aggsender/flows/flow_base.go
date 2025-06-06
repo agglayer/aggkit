@@ -37,6 +37,63 @@ type baseFlow struct {
 	signer       signertypes.Signer
 }
 
+func (f *baseFlow) getCertificateBuildParamsWithEndBlock(
+	ctx context.Context, allowEmptyCert bool,
+	certType types.CertificateType, endBlock uint64) (*types.CertificateBuildParams, error) {
+	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
+	}
+
+	if endBlock > lastL2BlockSynced {
+		return nil, fmt.Errorf("end block %d is greater than last L2 block synced %d", endBlock, lastL2BlockSynced)
+	}
+
+	lastSentCertificate, err := f.storage.GetLastSentCertificateHeader()
+	if err != nil {
+		return nil, err
+	}
+
+	if lastSentCertificate.ToBlock >= endBlock {
+		return nil, fmt.Errorf("last sent certificate block %d is greater than or equal to end block %d",
+			lastSentCertificate.ToBlock, endBlock)
+	}
+
+	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
+
+	if previousToBlock >= lastL2BlockSynced {
+		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
+			previousToBlock, lastL2BlockSynced)
+		return nil, errNoNewBlocks
+	}
+
+	fromBlock := previousToBlock + 1
+	toBlock := endBlock
+
+	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
+	if err != nil {
+		return nil, err
+	}
+
+	buildParams := &types.CertificateBuildParams{
+		FromBlock:           fromBlock,
+		ToBlock:             toBlock,
+		RetryCount:          retryCount,
+		LastSentCertificate: lastSentCertificate,
+		Bridges:             bridges,
+		Claims:              claims,
+		CreatedAt:           uint32(time.Now().UTC().Unix()),
+		CertificateType:     certType,
+	}
+
+	buildParams, err = f.limitCertSize(buildParams, allowEmptyCert)
+	if err != nil {
+		return nil, fmt.Errorf("error limitCertSize: %w", err)
+	}
+
+	return buildParams, nil
+}
+
 // getCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) getCertificateBuildParamsInternal(
 	ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {

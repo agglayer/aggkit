@@ -188,6 +188,65 @@ func (_c *AggsenderFlow_GetCertificateBuildParams_Call) RunAndReturn(run func(co
 	return _c
 }
 
+// GetCertificateBuildParamsWithEndBlock provides a mock function with given fields: ctx, endBlock
+func (_m *AggsenderFlow) GetCertificateBuildParamsWithEndBlock(ctx context.Context, endBlock uint64) (*types.CertificateBuildParams, error) {
+	ret := _m.Called(ctx, endBlock)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetCertificateBuildParamsWithEndBlock")
+	}
+
+	var r0 *types.CertificateBuildParams
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) (*types.CertificateBuildParams, error)); ok {
+		return rf(ctx, endBlock)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) *types.CertificateBuildParams); ok {
+		r0 = rf(ctx, endBlock)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.CertificateBuildParams)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64) error); ok {
+		r1 = rf(ctx, endBlock)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetCertificateBuildParamsWithEndBlock'
+type AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call struct {
+	*mock.Call
+}
+
+// GetCertificateBuildParamsWithEndBlock is a helper method to define mock.On call
+//   - ctx context.Context
+//   - endBlock uint64
+func (_e *AggsenderFlow_Expecter) GetCertificateBuildParamsWithEndBlock(ctx interface{}, endBlock interface{}) *AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call {
+	return &AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call{Call: _e.mock.On("GetCertificateBuildParamsWithEndBlock", ctx, endBlock)}
+}
+
+func (_c *AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call) Run(run func(ctx context.Context, endBlock uint64)) *AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call) Return(_a0 *types.CertificateBuildParams, _a1 error) *AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call) RunAndReturn(run func(context.Context, uint64) (*types.CertificateBuildParams, error)) *AggsenderFlow_GetCertificateBuildParamsWithEndBlock_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewAggsenderFlow creates a new instance of AggsenderFlow. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewAggsenderFlow(t interface {
