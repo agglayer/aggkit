@@ -61,7 +61,7 @@ jobs:
          push: true
          cache-from: type=gha
          cache-to: type=gha,mode=max
-         outputs: type=image,name=${{ steps.vars.outputs.FULL_IMAGE }},push-by-digest=true
+         outputs: type=image,name=ghcr.io/${{ github.repository }}/${{ matrix.platform }},push-by-digest=true
 
       - name: Save digest as artifact
         run: |
