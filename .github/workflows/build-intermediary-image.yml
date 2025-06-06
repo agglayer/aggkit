@@ -1,6 +1,7 @@
 name: Build and push intermediary Docker image
 
 on:
+  pull_request:
   workflow_dispatch:
 
 permissions:
