@@ -2,6 +2,7 @@ package types
 
 import (
 	"math/big"
+	"time"
 
 	tree "github.com/agglayer/aggkit/tree/types"
 )
@@ -365,4 +366,14 @@ type NetworkSyncInfo struct {
 	ContractDepositCount uint32 `json:"contract_deposit_count"`
 	BridgeDepositCount   uint32 `json:"bridge_deposit_count"`
 	IsSynced             bool   `json:"is_synced"`
+}
+
+// HealthCheckResponse represents the JSON returned by HealthCheckHandler.
+// @Description Contains basic health‐check information for the bridge service
+// including service status, current time, and version.
+// @example {"status":"ok","time":"2025-06-05T07:30:00Z","version":"v0.4.0-beta9-tmp-bridge-6-g4d9b717"}
+type HealthCheckResponse struct {
+	Status  string    `json:"status"`
+	Time    time.Time `json:"time"`
+	Version string    `json:"version"`
 }
