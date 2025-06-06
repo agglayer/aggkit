@@ -1,11 +1,14 @@
 name: Build and Push Intermediary Docker Image
 
 on:
-  push:
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
 permissions:
-  contents: write
+  contents: read
   packages: write
 
 env:
@@ -22,13 +25,20 @@ jobs:
           - linux/amd64
           - linux/arm64
     outputs:
-      IMAGE_NAME: ${{ steps.vars.outputs.IMAGE_NAME }}
-      IMAGE_TAG: ${{ steps.vars.outputs.IMAGE_TAG }}
+      IMAGE_NAME: ${{ steps.image_builder.outputs.IMAGE }}
+      TAGS: ${{ steps.meta.outputs.tags }}
+      VERSION: ${{ steps.meta.outputs.version }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set image tag
+      - name: Prepare platform safe variable
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Set image tag components
         id: vars
         run: |
           BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
@@ -36,9 +46,24 @@ jobs:
           TIMESTAMP=$(date -u +'%d_%m_%Y_%H_%M')
           SHORT_SHA=$(git rev-parse --short HEAD)
           IMAGE_TAG="${BRANCH}_${TIMESTAMP}_${SHORT_SHA}"
-          IMAGE_NAME="${{ env.REGISTRY_IMAGE }}:${IMAGE_TAG}"
+          FULL_IMAGE="${{ env.REGISTRY_IMAGE }}:${IMAGE_TAG}"
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
-          echo "IMAGE_NAME=$IMAGE_NAME" >> $GITHUB_OUTPUT
+          echo "FULL_IMAGE=$FULL_IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            ${IMAGE_TAG}
+
+      - name: Image name builder
+        id: image_builder
+        run: |
+          # We override default jq usage to pick our custom IMAGE_TAG
+          IMAGE="${{ env.REGISTRY_IMAGE }}:${{ steps.vars.outputs.IMAGE_TAG }}"
+          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -46,7 +71,7 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -58,34 +83,26 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          push: false
           platforms: ${{ matrix.platform }}
+          push: true
+          labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          outputs: type=image,name=${{ steps.vars.outputs.IMAGE_NAME }},push-by-digest=true,push=true
+          outputs: type=image,name=${{ steps.image_builder.outputs.IMAGE }},push-by-digest=true
 
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Set digest file name
-        id: digest_vars
-        run: |
-          PLATFORM_SAFE=$(echo "${{ matrix.platform }}" | tr '/' '-')
-          echo "PLATFORM_SAFE=$PLATFORM_SAFE" >> $GITHUB_OUTPUT
+          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${PLATFORM_PAIR}.txt"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ steps.digest_vars.outputs.PLATFORM_SAFE }}
+          name: digests-${{ env.PLATFORM_PAIR }}
           path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
 
   merge:
-    runs-on: arm-runner-2204
+    runs-on: amd-runner-2204
     needs: build
     steps:
       - name: Download digests
@@ -98,19 +115,24 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GHCR
+      - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create and push manifest list
+      - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          IMAGE="${{ needs.build.outputs.IMAGE_NAME }}"
-          docker buildx imagetools create -t "$IMAGE" $(printf "${IMAGE}@sha256:%s " *)
+          # Compose manifest create arguments from digest files
+          DIGEST_ARGS=""
+          for file in digests-*.txt; do
+            digest=$(cat "$file")
+            DIGEST_ARGS+=" ${{ needs.build.outputs.IMAGE_NAME }}@$digest"
+          done
+          docker buildx imagetools create -t ${{ needs.build.outputs.IMAGE_NAME }} $DIGEST_ARGS
 
-      - name: Inspect image
+      - name: Inspect final image
         run: |
           docker buildx imagetools inspect ${{ needs.build.outputs.IMAGE_NAME }}
