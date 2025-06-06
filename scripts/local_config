@@ -163,7 +163,7 @@ function export_values_of_genesis() {
 ###############################################################################
 function export_values_of_cdk_node_config() {
     local _CDK_CONFIG_FILE=$1
-    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
+    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." AggSenderPrivateKeyPassword
     export_key_from_toml_file_or_fatal l1_chain_id $_CDK_CONFIG_FILE L1Config chainId
     export_key_from_toml_file zkevm_rollup_id $_CDK_CONFIG_FILE Common NetworkID
     if [ $? -ne 0 ]; then
@@ -176,7 +176,7 @@ function export_values_of_cdk_node_config() {
     fi
     export_key_from_toml_file zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE AggSender.SequencerPrivateKey Password
     if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
+        export_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE "." AggSenderPrivateKeyPassword
     fi
     export_key_from_toml_file zkevm_bridge_address $_CDK_CONFIG_FILE BridgeL1Sync BridgeAddr
     if [ $? -ne 0 ]; then

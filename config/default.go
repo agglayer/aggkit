@@ -6,14 +6,13 @@ const DefaultMandatoryVars = `
 L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
 
-
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
 GenerateAggchainProofTimeout = "1h"
 
 NetworkID = 1
-SequencerPrivateKeyPath = "/app/sequencer.keystore"
-SequencerPrivateKeyPassword = "test"
+AggSenderPrivateKeyPath = "/app/sequencer.keystore"
+AggSenderPrivateKeyPassword = "test"
 
 polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 
@@ -198,7 +197,7 @@ SyncMode = "FEP"
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
-AggsenderPrivateKey = {Path = "{{SequencerPrivateKeyPath}}", Password = "{{SequencerPrivateKeyPassword}}"}
+AggsenderPrivateKey = {Path = "{{AggSenderPrivateKeyPath}}", Password = "{{AggSenderPrivateKeyPassword}}"}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
