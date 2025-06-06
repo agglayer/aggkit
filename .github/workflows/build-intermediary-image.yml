@@ -25,18 +25,16 @@ jobs:
           - linux/amd64
           - linux/arm64
     outputs:
-      IMAGE_NAME: ${{ steps.image_builder.outputs.IMAGE }}
-      TAGS: ${{ steps.meta.outputs.tags }}
-      VERSION: ${{ steps.meta.outputs.version }}
+      IMAGE_NAME: ${{ steps.vars.outputs.FULL_IMAGE }}
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Prepare platform safe variable
+      - name: Prepare platform-safe variable
+        id: platform_vars
         run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+          echo "PLATFORM_PAIR=${{ matrix.platform }}" | tr '/' '-' >> $GITHUB_ENV
 
       - name: Set image tag components
         id: vars
@@ -49,21 +47,6 @@ jobs:
           FULL_IMAGE="${{ env.REGISTRY_IMAGE }}:${IMAGE_TAG}"
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "FULL_IMAGE=$FULL_IMAGE" >> $GITHUB_OUTPUT
-
-      - name: Docker metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY_IMAGE }}
-          tags: |
-            ${IMAGE_TAG}
-
-      - name: Image name builder
-        id: image_builder
-        run: |
-          # We override default jq usage to pick our custom IMAGE_TAG
-          IMAGE="${{ env.REGISTRY_IMAGE }}:${{ steps.vars.outputs.IMAGE_TAG }}"
-          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -84,22 +67,21 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          push: false
-          labels: ${{ steps.meta.outputs.labels }}
+          push: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          outputs: type=image,name=${{ steps.image_builder.outputs.IMAGE }},push-by-digest=true,push=true
+          outputs: type=image,name=${{ steps.vars.outputs.FULL_IMAGE }},push-by-digest=true
 
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
-          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${PLATFORM_PAIR}.txt"
+          echo "${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ env.PLATFORM_PAIR }}.txt"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
-          path: /tmp/digests/*
+          path: /tmp/digests/${{ env.PLATFORM_PAIR }}.txt
           if-no-files-found: error
           retention-days: 1
 
@@ -127,9 +109,8 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          # Compose manifest create arguments from digest files
           DIGEST_ARGS=""
-          for file in digests-*.txt; do
+          for file in *.txt; do
             digest=$(cat "$file")
             DIGEST_ARGS+=" ${{ needs.build.outputs.IMAGE_NAME }}@$digest"
           done
