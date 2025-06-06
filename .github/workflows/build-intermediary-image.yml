@@ -56,13 +56,12 @@ jobs:
         id: build
         uses: docker/build-push-action@v6
         with:
-          context: .
-          platforms: ${{ matrix.platform }}
-          push: true
-          tags: ${{ steps.vars.outputs.FULL_IMAGE }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          outputs: type=image,name=${{ steps.vars.outputs.FULL_IMAGE }},push-by-digest=true
+         context: .
+         platforms: ${{ matrix.platform }}
+         push: true
+         cache-from: type=gha
+         cache-to: type=gha,mode=max
+         outputs: type=image,name=${{ steps.vars.outputs.FULL_IMAGE }},push-by-digest=true
 
       - name: Save digest as artifact
         run: |
