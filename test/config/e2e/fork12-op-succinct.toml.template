@@ -22,7 +22,6 @@ SequencerPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
 polygonBridgeAddr = "{{.zkevm_bridge_address}}" 
 
 OpNodeURL = "{{.op_cl_rpc_url}}"
-AggchainProofURL="{{.aggkit_prover_grpc_url}}"
 
 # This values can be override directly from genesis.json
 rollupCreationBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
