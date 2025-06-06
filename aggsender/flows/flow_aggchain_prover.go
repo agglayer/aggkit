@@ -115,6 +115,12 @@ func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.C
 	return nil
 }
 
+func (a *AggchainProverFlow) GetCertificateBuildParamsWithEndBlock(
+	ctx context.Context, endBlock uint64) (*types.CertificateBuildParams, error) {
+	return nil, fmt.Errorf(
+		"aggchainProverFlow - GetCertificateBuildParamsWithEndBlock is not implemented for AggchainProverFlow")
+}
+
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 // What differentiates this function from the regular PP flow is that,

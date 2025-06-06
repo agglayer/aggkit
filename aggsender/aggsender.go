@@ -147,7 +147,90 @@ func (a *AggSender) Start(ctx context.Context) {
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
+
+	if a.cfg.UpgradeEndBlock > 0 {
+		a.upgradeUntilBlockAndHalt(ctx, a.cfg.UpgradeEndBlock)
+	}
+
 	a.sendCertificates(ctx, 0)
+}
+
+func (a *AggSender) upgradeUntilBlockAndHalt(ctx context.Context, endBlock uint64) {
+	a.log.Infof("AggSender will send one certificate until block %d and then halt", endBlock)
+
+reset:
+	a.sendCertificateUntilEndBlock(ctx, endBlock)
+
+	checkStatusTicker := time.NewTicker(2 * time.Second)
+	defer checkStatusTicker.Stop()
+
+	for {
+		select {
+		case <-checkStatusTicker.C:
+			a.log.Debug("Checking perodical certificate status")
+			checkResult := a.certStatusChecker.CheckPendingCertificatesStatus(ctx)
+			if !checkResult.ExistPendingCerts && !checkResult.ExistNewInErrorCert {
+				a.log.Infof("No pending certificates, stopping AggSender after sending certificate until block %d", endBlock)
+				a.log.Info("Halting aggsender since certificate got sent successfully for end block %d", endBlock)
+
+				panic("AggSender halted after sending certificate until end block " + fmt.Sprintf("%d", endBlock))
+			}
+
+			if checkResult.ExistNewInErrorCert {
+				checkStatusTicker.Stop()
+				goto reset
+			}
+		case <-ctx.Done():
+			a.log.Info("AggSender stopped")
+			return
+		}
+	}
+}
+
+func (a *AggSender) sendCertificateUntilEndBlock(ctx context.Context, endBlock uint64) {
+	sendTicker := time.NewTicker(10 * time.Second)
+	defer sendTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			a.log.Info("AggSender stopped")
+			return
+		case <-sendTicker.C:
+			buildParams, err := a.flow.GetCertificateBuildParamsWithEndBlock(ctx, endBlock)
+			if err != nil {
+				a.log.Errorf("error getting certificate build params with end block %d: %v", endBlock, err)
+				a.status.SetLastError(err)
+				continue
+			}
+
+			certificate, err := a.flow.BuildCertificate(ctx, buildParams)
+			if err != nil {
+				a.log.Errorf("error building certificate for end block %d: %v", endBlock, err)
+				a.status.SetLastError(err)
+				continue
+			}
+
+			certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
+			if err != nil {
+				a.saveNonAcceptedCert(ctx, certificate, buildParams.CreatedAt, err)
+				a.log.Errorf("error sending certificate for end block %d: %v", endBlock, err)
+				a.status.SetLastError(err)
+				continue
+			}
+
+			certificateInfo := a.createAggsenderCertificateType(certificate, buildParams, certificateHash)
+			if err := a.saveCertificateToStorage(ctx, certificateInfo, a.cfg.MaxRetriesStoreCertificate); err != nil {
+				// just log the error, we don't want to stop the process if we can't save the certificate
+				// to the storage, but we will log it for further investigation
+				a.log.Errorf("error saving certificate %s to storage: %v", certificateInfo.String(), err)
+				a.status.SetLastError(err)
+				continue
+			}
+
+			return
+		}
+	}
 }
 
 func (a *AggSender) checkDBCompatibility(ctx context.Context) {
@@ -269,33 +352,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	metrics.CertificateSent()
 	a.log.Debugf("certificate send: Height: %d cert: %s", certificate.Height, certificate.Brief())
 
-	raw, err := json.Marshal(certificate)
-	if err != nil {
-		return nil, fmt.Errorf("error marshalling signed certificate. Cert:%s. Err: %w", certificate.Brief(), err)
-	}
+	certInfo := a.createAggsenderCertificateType(certificate, certificateParams, certificateHash)
 
-	jsonCert := string(raw)
-	prevLER := common.BytesToHash(certificate.PrevLocalExitRoot[:])
-
-	certInfo := types.Certificate{
-		Header: &types.CertificateHeader{
-			Height:                  certificate.Height,
-			RetryCount:              certificateParams.RetryCount,
-			CertificateID:           certificateHash,
-			NewLocalExitRoot:        certificate.NewLocalExitRoot,
-			PreviousLocalExitRoot:   &prevLER,
-			FromBlock:               certificateParams.FromBlock,
-			ToBlock:                 certificateParams.ToBlock,
-			CreatedAt:               certificateParams.CreatedAt,
-			UpdatedAt:               certificateParams.CreatedAt,
-			FinalizedL1InfoTreeRoot: &certificateParams.L1InfoTreeRootFromWhichToProve,
-			L1InfoTreeLeafCount:     certificateParams.L1InfoTreeLeafCount,
-			CertType:                certificateParams.CertificateType,
-			CertSource:              types.CertificateSourceLocal,
-		},
-		SignedCertificate: &jsonCert,
-		AggchainProof:     certificateParams.AggchainProof,
-	}
 	// TODO: Improve this case, if a cert is not save in the storage, we are going to settle a unknown certificate
 	err = a.saveCertificateToStorage(ctx, certInfo, a.cfg.MaxRetriesStoreCertificate)
 	if err != nil {
@@ -343,5 +401,38 @@ func (a *AggSender) saveNonAcceptedCert(
 
 	if err := a.storage.SaveNonAcceptedCertificate(ctx, nonAcceptedCert); err != nil {
 		a.log.Errorf("error saving non accepted certificate: %s. Err: %v", cert.Brief(), err)
+	}
+}
+
+func (a *AggSender) createAggsenderCertificateType(
+	certificate *agglayertypes.Certificate,
+	certificateParams *types.CertificateBuildParams,
+	certificateHash common.Hash,
+) types.Certificate {
+	raw, err := json.Marshal(certificate)
+	if err != nil {
+		a.log.Errorf("error marshalling certificate: %w", err)
+	}
+
+	jsonCert := string(raw)
+	prevLER := common.BytesToHash(certificate.PrevLocalExitRoot[:])
+	return types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:                  certificate.Height,
+			RetryCount:              certificateParams.RetryCount,
+			CertificateID:           certificateHash,
+			NewLocalExitRoot:        certificate.NewLocalExitRoot,
+			PreviousLocalExitRoot:   &prevLER,
+			FromBlock:               certificateParams.FromBlock,
+			ToBlock:                 certificateParams.ToBlock,
+			CreatedAt:               certificateParams.CreatedAt,
+			UpdatedAt:               certificateParams.CreatedAt,
+			FinalizedL1InfoTreeRoot: &certificateParams.L1InfoTreeRootFromWhichToProve,
+			L1InfoTreeLeafCount:     certificateParams.L1InfoTreeLeafCount,
+			CertType:                certificateParams.CertificateType,
+			CertSource:              types.CertificateSourceLocal,
+		},
+		SignedCertificate: &jsonCert,
+		AggchainProof:     certificateParams.AggchainProof,
 	}
 }

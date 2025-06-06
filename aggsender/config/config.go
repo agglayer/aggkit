@@ -70,6 +70,8 @@ type Config struct {
 	// RequireNoFEPBlockGap is true if the AggSender should not accept a gap between
 	// lastBlock from lastCertificate and first block of FEP
 	RequireNoFEPBlockGap bool `mapstructure:"RequireNoFEPBlockGap"`
+	// UpgradeEndBlock is the block number at which the upgrade ends
+	UpgradeEndBlock uint64 `mapstructure:"UpgradeEndBlock"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

@@ -25,6 +25,9 @@ type AggsenderFlow interface {
 	// BuildCertificate builds a certificate based on the buildParams
 	BuildCertificate(ctx context.Context,
 		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
+
+	GetCertificateBuildParamsWithEndBlock(
+		ctx context.Context, endBlock uint64) (*CertificateBuildParams, error)
 }
 
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement

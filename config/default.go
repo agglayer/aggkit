@@ -238,6 +238,7 @@ SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 UseAgglayerTLS = false
 UseAggkitProverTLS = false
+UpgradeEndBlock = 0
 RequireNoFEPBlockGap = true
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
