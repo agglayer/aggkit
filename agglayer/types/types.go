@@ -879,6 +879,10 @@ type ImportedBridgeExit struct {
 }
 
 func (c *ImportedBridgeExit) String() string {
+	if c == nil {
+		return "ImportedBridgeExit{nil}"
+	}
+
 	var res string
 
 	if c.BridgeExit == nil {

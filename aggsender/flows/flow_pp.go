@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -15,24 +16,28 @@ import (
 
 // PPFlow is a struct that holds the logic for the regular pessimistic proof flow
 type PPFlow struct {
-	baseFlow              types.AggsenderFlowBaser
 	signer                signertypes.Signer
 	log                   types.Logger
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
+
+	certificateBuilder  types.CertificateBuilder
+	certificateVerifier types.CertificateBuildVerifier
 }
 
 // NewPPFlow returns a new instance of the PPFlow
 func NewPPFlow(log types.Logger,
-	baseFlow types.AggsenderFlowBaser,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
+	certificateBuilder types.CertificateBuilder,
+	certificateVerifier types.CertificateBuildVerifier,
 	signer signertypes.Signer) *PPFlow {
 	return &PPFlow{
 		signer:                signer,
 		log:                   log,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
-		baseFlow:              baseFlow,
+		certificateBuilder:    certificateBuilder,
+		certificateVerifier:   certificateVerifier,
 	}
 }
 
@@ -45,9 +50,9 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	buildParams, err := p.baseFlow.GetCertificateBuildParamsInternal(ctx, false, types.CertificateTypePP)
+	buildParams, err := p.certificateBuilder.GetCertificateBuildParams(ctx, false, types.CertificateTypePP)
 	if err != nil {
-		if errors.Is(err, errNoNewBlocks) || errors.Is(err, query.ErrNoBridgeExits) {
+		if errors.Is(err, certificatebuild.ErrNoNewBlocks) || errors.Is(err, query.ErrNoBridgeExits) {
 			// no new blocks to send a certificate, or no bridge exits consumed
 			// this is a valid case, so just return nil without error
 			return nil, nil
@@ -56,7 +61,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, err
 	}
 
-	if err := p.baseFlow.VerifyBuildParams(buildParams); err != nil {
+	if err := p.certificateVerifier.VerifyBuildParams(buildParams); err != nil {
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
 	}
 
@@ -75,7 +80,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	certificate, err := p.baseFlow.BuildCertificate(ctx, buildParams, buildParams.LastSentCertificate, false)
+	certificate, err := p.certificateBuilder.BuildCertificate(ctx, buildParams, buildParams.LastSentCertificate, false)
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error building certificate: %w", err)
 	}

@@ -185,7 +185,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			if !checkResult.ExistPendingCerts && checkResult.ExistNewInErrorCert {
 				if a.cfg.RetryCertAfterInError {
 					a.log.Infof("An InError cert exists. Sending a new one (%s)", a.cfg.CheckCertConfigBriefString())
-					_, err := a.sendCertificate(ctx)
+					err := a.sendCertificate(ctx)
 					a.status.SetLastError(err)
 					if err != nil {
 						a.log.Error(err)
@@ -203,7 +203,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			a.log.Infof("Epoch received: %s", epoch.String())
 			checkResult := a.certStatusChecker.CheckPendingCertificatesStatus(ctx)
 			if !checkResult.ExistPendingCerts {
-				_, err := a.sendCertificate(ctx)
+				err := a.sendCertificate(ctx)
 				a.status.SetLastError(err)
 				if err != nil {
 					a.log.Error(err)
@@ -225,7 +225,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 }
 
 // sendCertificate sends certificate for a network
-func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certificate, error) {
+func (a *AggSender) sendCertificate(ctx context.Context) error {
 	startEpochStatus := a.epochNotifier.GetEpochStatus()
 	a.log.Infof("trying to send a new certificate... %s", startEpochStatus.String())
 
@@ -233,16 +233,16 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 
 	certificateParams, err := a.flow.GetCertificateBuildParams(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error getting certificate build params: %w", err)
+		return fmt.Errorf("error getting certificate build params: %w", err)
 	}
 
 	if certificateParams == nil {
-		return nil, nil
+		return nil
 	}
 
 	certificate, err := a.flow.BuildCertificate(ctx, certificateParams)
 	if err != nil {
-		return nil, fmt.Errorf("error building certificate: %w", err)
+		return fmt.Errorf("error building certificate: %w", err)
 	}
 
 	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
@@ -257,13 +257,13 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
-		return certificate, nil
+		return nil
 	}
 	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 
-		return nil, fmt.Errorf("error sending certificate: %w", err)
+		return fmt.Errorf("error sending certificate: %w", err)
 	}
 
 	metrics.CertificateSent()
@@ -271,7 +271,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 
 	raw, err := json.Marshal(certificate)
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling signed certificate. Cert:%s. Err: %w", certificate.Brief(), err)
+		return fmt.Errorf("error marshalling signed certificate. Cert:%s. Err: %w", certificate.Brief(), err)
 	}
 
 	jsonCert := string(raw)
@@ -301,13 +301,13 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	err = a.saveCertificateToStorage(ctx, certInfo, a.cfg.MaxRetriesStoreCertificate)
 	if err != nil {
 		a.log.Errorf("error saving certificate  to storage. Cert:%s Err: %w", certInfo.String(), err)
-		return nil, fmt.Errorf("error saving last sent certificate %s in db: %w", certInfo.String(), err)
+		return fmt.Errorf("error saving last sent certificate %s in db: %w", certInfo.String(), err)
 	}
 
 	a.log.Infof("certificate: %s sent successfully for range of l2 blocks (from block: %d, to block: %d) cert:%s",
 		certInfo.Header.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
-	return certificate, nil
+	return nil
 }
 
 // saveCertificateToStorage saves the certificate to the storage

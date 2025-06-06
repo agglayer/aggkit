@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
+	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
@@ -32,31 +33,38 @@ func NewFlow(
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+		certificateSigner, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
 		if err != nil {
 			return nil, err
 		}
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
-		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
-		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, 0),
-		)
-		return NewPPFlow(
+		logger.Infof("Aggsender signer address: %s", certificateSigner.PublicAddress().Hex())
+
+		certificateBuilder := certificatebuild.NewCertificateBuilder(
 			logger,
-			baseFlow,
 			storage,
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
-			signer,
+			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, 0),
+		)
+		certificateVerifier := certificatebuild.NewCertificateBuildVerifier()
+
+		return NewPPFlow(
+			logger,
+			storage,
+			l1InfoTreeQuerier,
+			l2BridgeQuerier,
+			certificateBuilder,
+			certificateVerifier,
+			certificateSigner,
 		), nil
 	case types.AggchainProofMode:
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+		certificateSigner, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
 		if err != nil {
 			return nil, err
 		}
-		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
+		logger.Infof("Aggsender signer address: %s", certificateSigner.PublicAddress().Hex())
 
 		if cfg.AggchainProofURL == "" {
 			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
@@ -86,24 +94,35 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
-		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
+		certificateBuilder := certificatebuild.NewCertificateBuilder(
+			logger,
+			storage,
+			l1InfoTreeQuerier,
+			l2BridgeQuerier,
+			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, startL2Block),
+		)
+		certificateVerifier := certificatebuild.NewCertificateBuildVerifier()
+
+		aggchainProofQuerier := query.NewAggchainProofQuery(
+			logger,
+			aggchainProofClient,
+			certificateBuilder.GetImportedBridgeExitsConverter(),
+			l1InfoTreeQuerier,
+			optimisticSigner,
+			certificateBuilder,
+			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 		)
 
 		return NewAggchainProverFlow(
 			logger,
-			baseFlow,
-			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap),
-			aggchainProofClient,
+			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap, startL2Block),
 			storage,
-			l1InfoTreeQuerier,
 			l2BridgeQuerier,
-			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
-			l1Client,
-			signer,
+			certificateSigner,
 			optimisticModeQuerier,
-			optimisticSigner,
+			certificateBuilder,
+			certificateVerifier,
+			aggchainProofQuerier,
 		), nil
 
 	default:

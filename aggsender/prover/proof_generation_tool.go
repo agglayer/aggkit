@@ -7,7 +7,7 @@ import (
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
-	"github.com/agglayer/aggkit/aggsender/flows"
+	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	configtypes "github.com/agglayer/aggkit/config/types"
@@ -89,33 +89,29 @@ func NewAggchainProofGenerationTool(
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 	l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 
-	baseFlow := flows.NewBaseFlow(
+	certificateBuilder := certificatebuild.NewCertificateBuilder(
 		logger,
-		l2BridgeQuerier,
-		nil, // storage
+		nil, // storage is not used in the tool, so we pass nil
 		l1InfoTreeQuerier,
-		flows.NewBaseFlowConfig(0, 0),
+		l2BridgeQuerier,
+		certificatebuild.NewCertificateBuilderConfigDefault(),
 	)
-	aggchainProverFlow := flows.NewAggchainProverFlow(
+
+	aggchainProofQuerier := query.NewAggchainProofQuery(
 		logger,
-		baseFlow,
-		flows.NewAggchainProverFlowConfigDefault(),
 		aggchainProofClient,
-		nil, // storage
+		certificateBuilder.GetImportedBridgeExitsConverter(),
 		l1InfoTreeQuerier,
-		l2BridgeQuerier,
+		nil, // optimistic signer is not used in the tool, so we pass nil
+		certificateBuilder,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
-		l1Client,
-		nil,                               // signer
-		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode,
-		nil,                               // optimisticSigner
 	)
 
 	return &AggchainProofGenerationTool{
 		cfg:                 cfg,
 		logger:              logger,
 		l2Syncer:            l2Syncer,
-		flow:                aggchainProverFlow,
+		flow:                aggchainProofQuerier,
 		aggchainProofClient: aggchainProofClient,
 	}, nil
 }
