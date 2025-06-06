@@ -1,7 +1,7 @@
 name: Build and push intermediary Docker image
 
 on:
-  pull_request:
+  push:
   workflow_dispatch:
 
 permissions:
@@ -13,7 +13,7 @@ env:
   REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
-  build-and-push:
+  build:
     runs-on: amd-runner-2204
     strategy:
       fail-fast: false
@@ -21,6 +21,8 @@ jobs:
         platform:
           - linux/amd64
           - linux/arm64
+    outputs:
+      full_image: ${{ steps.vars.outputs.FULL_IMAGE }}
     steps:
       - name: Checkout source
         uses: actions/checkout@v4
@@ -51,13 +53,60 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and push image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: ${{ matrix.platform }}
           push: true
           tags: ${{ steps.vars.outputs.FULL_IMAGE }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          outputs: type=image,name=${{ steps.vars.outputs.FULL_IMAGE }},push-by-digest=true
 
-      - name: Output pushed image
+      - name: Save digest as artifact
         run: |
-           echo "Image pushed: ${{ steps.vars.outputs.FULL_IMAGE }}"
+          mkdir -p digests
+          echo "${{ steps.build.outputs.digest }}" > "digests/${{ matrix.platform }}.txt"
+        shell: bash
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-digest-${{ matrix.platform }}
+          path: digests/${{ matrix.platform }}.txt
+
+  create-manifest:
+    runs-on: amd-runner-2204
+    needs: build
+    steps:
+      - name: Download all digests
+        uses: actions/download-artifact@v4
+        with:
+          path: digests
+          pattern: image-digest-*
+          merge-multiple: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-platform manifest
+        run: |
+          FULL_IMAGE="${{ needs.build.outputs.full_image }}"
+          CREATE_ARGS=""
+          for digest_file in digests/*.txt; do
+            digest=$(cat "$digest_file")
+            CREATE_ARGS="$CREATE_ARGS ${FULL_IMAGE}@${digest}"
+          done
+          docker buildx imagetools create -t $FULL_IMAGE $CREATE_ARGS
+
+      - name: Inspect final image
+        run: |
+          docker buildx imagetools inspect ${{ needs.build.outputs.full_image }}
