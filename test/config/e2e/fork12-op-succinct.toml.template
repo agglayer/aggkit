@@ -51,3 +51,5 @@ CheckStatusCertificateInterval = "1s"
 		RequireKeyMatchTrustedSequencer = false
 
 
+[AggOracle.EVMSender.EthTxManager]
+PrivateKeys = [{Path = "/etc/aggkit/aggoracle.keystore", Password = "{{.zkevm_l2_keystore_password}}"}]

@@ -19,6 +19,8 @@ test-e2e-fork12-op-succinct: stop
 	# This is a temporary fix because there is a race condition in kurtosis somewhere
 	sleep 30
 	export BATS_TEST_TIMEOUT=1800
+	# This for fail fast is some service dead at start
+	./scripts/check_kurtosis_services_are_alive 60 aggkit aggkit-001 agglayer aggkit-prover-001
 	bats bats/pp/bridge-native-token-e2e.bats \
 	     bats/pp/bridge-e2e-msg.bats \
 	     bats/pp/e2e-pp.bats
