@@ -14,7 +14,7 @@ env:
 
 jobs:
   build-and-push:
-    runs-on: ubuntu-latest
+    runs-on: amd-runner-2204
     strategy:
       fail-fast: false
       matrix:
@@ -28,11 +28,12 @@ jobs:
       - name: Set image tag components
         id: vars
         run: |
-          BRANCH=$(echo "${GITHUB_REF##*/}" | tr '/' '-')
+          BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+          BRANCH=$(echo "$BRANCH_NAME" | tr '/' '-')
           TIMESTAMP=$(date -u +'%d_%m_%Y_%H_%M')
           SHORT_SHA=$(git rev-parse --short HEAD)
           IMAGE_TAG="${BRANCH}_${TIMESTAMP}_${SHORT_SHA}"
-          FULL_IMAGE="ghcr.io/${GITHUB_REPOSITORY}:$IMAGE_TAG"
+          FULL_IMAGE="ghcr.io/${GITHUB_REPOSITORY}:${IMAGE_TAG}"
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "FULL_IMAGE=$FULL_IMAGE" >> $GITHUB_OUTPUT
 
