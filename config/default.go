@@ -8,14 +8,13 @@ L1URL = "http://localhost:8545"
 L2URL = "http://localhost:8123"
 OpNodeURL = "http://localhost:8080"
 
-
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
 
 
 NetworkID = 1
-SequencerPrivateKeyPath = "/app/sequencer.keystore"
-SequencerPrivateKeyPassword = "test"
+AggSenderPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
+AggSenderPrivateKeyPassword = "test"
 
 polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 
