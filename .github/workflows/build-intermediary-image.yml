@@ -84,11 +84,11 @@ jobs:
         with:
           context: .
           platforms: ${{ matrix.platform }}
-          push: true
+          push: false
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          outputs: type=image,name=${{ steps.image_builder.outputs.IMAGE }},push-by-digest=true
+          outputs: type=image,name=${{ steps.image_builder.outputs.IMAGE }},push-by-digest=true,push=true
 
       - name: Export digest
         run: |
@@ -100,9 +100,11 @@ jobs:
         with:
           name: digests-${{ env.PLATFORM_PAIR }}
           path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
 
   merge:
-    runs-on: amd-runner-2204
+    runs-on: arm-runner-2204
     needs: build
     steps:
       - name: Download digests
