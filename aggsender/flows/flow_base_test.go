@@ -336,7 +336,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 		nil,
 		NewBaseFlowConfigDefault())
 
-	t.Run("we can't generate new cert because a peding cert (not inError not Settle) we don't known if is going to settle or not ",
+	t.Run("cannot generate new certificate because a pending certificate (neither InError nor Settled) has an unknown settlement status",
 		func(t *testing.T) {
 			t.Parallel()
 			height, ler, err := sut.getNextHeightAndPreviousLER(

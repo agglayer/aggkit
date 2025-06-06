@@ -25,7 +25,16 @@ fi
 
 kurtosis clean --all
 echo "Override aggkit config file" >&2
-cp $BASE_FOLDER/config/kurtosis-cdk-node-config.toml.template $KURTOSIS_FOLDER/templates/trusted-node/cdk-node-config.toml
+KURTOSIS_AGGKIT_CONFIG_FILE=$KURTOSIS_FOLDER/templates/aggkit/aggkit-config.toml
+OVERRIDE_AGGKIT_CONFIG_FILE="config/e2e/$FORK-$DATA_AVAILABILITY_MODE.toml.template"
+if [ -f $OVERRIDE_AGGKIT_CONFIG_FILE ]; then
+    echo "Using override config file $OVERRIDE_CONFIG_FILE" >&2
+    [ ! -f ${KURTOSIS_AGGKIT_CONFIG_FILE}.origin ] && cp $KURTOSIS_AGGKIT_CONFIG_FILE ${KURTOSIS_AGGKIT_CONFIG_FILE}.origin
+    echo "diff $KURTOSIS_AGGKIT_CONFIG_FILE ${KURTOSIS_AGGKIT_CONFIG_FILE}.origin"
+    cp $OVERRIDE_AGGKIT_CONFIG_FILE $KURTOSIS_AGGKIT_CONFIG_FILE
+else
+    echo "No override config file found: $OVERRIDE_AGGKIT_CONFIG_FILE" >&2
+fi
 KURTOSIS_CONFIG_FILE="combinations/$FORK-$DATA_AVAILABILITY_MODE.yml"
 TEMP_CONFIG_FILE=$(mktemp "aggkit-kurtosis.yml-XXXXX")
 echo "rendering $KURTOSIS_CONFIG_FILE to temp file $TEMP_CONFIG_FILE" >&2
