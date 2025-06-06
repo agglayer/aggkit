@@ -70,10 +70,16 @@ jobs:
           digest="${{ steps.build.outputs.digest }}"
           touch "/tmp/digests/${digest#sha256:}"
 
+      - name: Set digest file name
+        id: digest_vars
+        run: |
+          PLATFORM_SAFE=$(echo "${{ matrix.platform }}" | tr '/' '-')
+          echo "PLATFORM_SAFE=$PLATFORM_SAFE" >> $GITHUB_OUTPUT
+
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ matrix.platform // '/' '-'}}
+          name: digests-${{ steps.digest_vars.outputs.PLATFORM_SAFE }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
