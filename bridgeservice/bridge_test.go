@@ -2071,3 +2071,17 @@ func TestGetSyncStatusHandler(t *testing.T) {
 		})
 	}
 }
+
+func TestHealthCheckHandler(t *testing.T) {
+	b := newBridgeWithMocks(t, l2NetworkID)
+	w := performRequest(t, b.bridge.router, http.MethodGet, "/", nil)
+	require.Equal(t, http.StatusOK, w.Code)
+
+	var response bridgetypes.HealthCheckResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	require.Equal(t, "ok", response.Status)
+	require.NotEmpty(t, response.Time)
+	require.NotEmpty(t, response.Version)
+}

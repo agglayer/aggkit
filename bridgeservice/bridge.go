@@ -24,6 +24,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/agglayer/aggkit"
 	_ "github.com/agglayer/aggkit/bridgeservice/docs"
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -138,6 +139,9 @@ func New(
 
 // registerRoutes registers the routes for the bridge service
 func (b *BridgeService) registerRoutes() {
+	// Health check endpoint at root path
+	b.router.GET("/", b.HealthCheckHandler)
+
 	bridgeGroup := b.router.Group(BridgeV1Prefix)
 	{
 		bridgeGroup.GET("/bridges", b.GetBridgesHandler)
@@ -196,6 +200,24 @@ func (b *BridgeService) Start(ctx context.Context) {
 	}
 
 	b.logger.Info("Bridge service exited gracefully")
+}
+
+// HealthCheckHandler returns the health status and version information of the bridge service.
+//
+// @Summary Get health status
+// @Description Returns the health status and version information of the bridge service
+// @Tags health
+// @Produce json
+// @Success 200 {object} types.HealthCheckResponse "Health status and version information"
+// @Failure 500 {object} types.ErrorResponse "Internal Server Error"
+// @Router / [get]
+func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
+	version := aggkit.GetVersion()
+	c.JSON(http.StatusOK, types.HealthCheckResponse{
+		Status:  "ok",
+		Time:    time.Now().UTC(),
+		Version: version.Version,
+	})
 }
 
 // GetBridgesHandler retrieves paginated bridge data for the specified network.

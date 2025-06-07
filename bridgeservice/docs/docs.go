@@ -22,6 +22,32 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/": {
+            "get": {
+                "description": "Returns the health status and version information of the bridge service",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Get health status",
+                "responses": {
+                    "200": {
+                        "description": "Health status and version information",
+                        "schema": {
+                            "$ref": "#/definitions/types.HealthCheckResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/bridges": {
             "get": {
                 "description": "Returns a paginated list of bridge events for the specified network.",
@@ -888,6 +914,21 @@ const docTemplate = `{
                 "error": {
                     "type": "string",
                     "example": "Error message"
+                }
+            }
+        },
+        "types.HealthCheckResponse": {
+            "description": "Contains basic health‐check information for the bridge service",
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
                 }
             }
         },

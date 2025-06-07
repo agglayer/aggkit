@@ -236,6 +236,16 @@ definitions:
         example: Error message
         type: string
     type: object
+  types.HealthCheckResponse:
+    description: Contains basic health‐check information for the bridge service
+    properties:
+      status:
+        type: string
+      time:
+        type: string
+      version:
+        type: string
+    type: object
   types.L1InfoTreeLeafResponse:
     properties:
       block_num:
@@ -421,6 +431,24 @@ info:
   title: Bridge Service API
   version: "1.0"
 paths:
+  /:
+    get:
+      description: Returns the health status and version information of the bridge
+        service
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Health status and version information
+          schema:
+            $ref: '#/definitions/types.HealthCheckResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/types.ErrorResponse'
+      summary: Get health status
+      tags:
+      - health
   /bridges:
     get:
       description: Returns a paginated list of bridge events for the specified network.
