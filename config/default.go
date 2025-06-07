@@ -11,7 +11,7 @@ AggchainProofURL = "http://localhost:5576"
 GenerateAggchainProofTimeout = "1h"
 
 NetworkID = 1
-AggSenderPrivateKeyPath = "/app/sequencer.keystore"
+AggSenderPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
 AggSenderPrivateKeyPassword = "test"
 
 polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
