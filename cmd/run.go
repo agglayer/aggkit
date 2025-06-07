@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/banana/polygonrollupmanager"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
@@ -35,6 +36,7 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
@@ -59,7 +61,7 @@ func start(cliCtx *cli.Context) error {
 		prometheus.Init()
 	}
 	components := cliCtx.StringSlice(config.FlagComponents)
-	l1Client := runL1ClientIfNeeded(components, cfg.Etherman.URL)
+	l1Client := runL1ClientIfNeeded(components, cfg.L1NetworkConfig.URL)
 	l2Client := runL2ClientIfNeeded(components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
 	go func() {
@@ -75,13 +77,24 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	rollupID := getRollUpIDIfNeeded(components, cfg.NetworkConfig.L1Config, l1Client)
+	ethermanClient, err := etherman.NewClient(cfg.L1NetworkConfig,
+		func(url string) (aggkittypes.BaseEthereumClienter, error) {
+			return ethclient.Dial(url)
+		},
+		func(rollupAddr common.Address,
+			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
+			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
+		})
+	if err != nil {
+		return fmt.Errorf("failed to create etherman client: %w", err)
+	}
+
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
 	claimSponsor := runClaimSponsorIfNeeded(cliCtx.Context, components, l2Client, cfg.ClaimSponsor)
 	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupID)
+		l2Client, ethermanClient.RollupID)
 	lastGERSync := runLastGERSyncIfNeeded(
 		cliCtx.Context, components, cfg.LastGERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
@@ -89,7 +102,7 @@ func start(cliCtx *cli.Context) error {
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
-			aggOracle := createAggoracle(*cfg, l1Client, l2Client, l1InfoTreeSync)
+			aggOracle := createAggoracle(ethermanClient, *cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(cliCtx.Context)
 
 		case aggkitcommon.BRIDGE:
@@ -204,7 +217,7 @@ func createAggSender(
 
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
-			BlockFinalityType:     etherman.NewBlockNumberFinality(cfg.BlockFinality),
+			BlockFinalityType:     aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 			CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 		}, logger, nil)
 	if err != nil {
@@ -232,16 +245,13 @@ func createAggSender(
 }
 
 func createAggoracle(
+	ethermanClient *etherman.Client,
 	cfg config.Config,
 	l1Client,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
-	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config, cfg.Common)
-	if err != nil {
-		logger.Fatal(err)
-	}
 	l2ChainID, err := ethermanClient.GetL2ChainID()
 	if err != nil {
 		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
@@ -294,7 +304,7 @@ func createAggoracle(
 		sender,
 		l1Client,
 		l1InfoTreeSyncer,
-		etherman.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
 	if err != nil {
@@ -377,7 +387,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.GlobalExitRootAddr,
 		cfg.L1InfoTreeSync.RollupManagerAddr,
 		cfg.L1InfoTreeSync.SyncBlockChunkSize,
-		etherman.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
 		reorgDetector,
 		l1Client,
 		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
@@ -385,7 +395,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.RetryAfterErrorPeriod.Duration,
 		cfg.L1InfoTreeSync.MaxRetryAttemptsAfterError,
 		l1infotreesync.FlagNone,
-		etherman.FinalizedBlock,
+		aggkittypes.FinalizedBlock,
 		cfg.L1InfoTreeSync.RequireStorageContentCompatibility,
 	)
 	if err != nil {
@@ -413,18 +423,6 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) aggkittypes.EthCl
 	}
 
 	return aggkittypes.NewDefaultEthClient(l1Client, l1Client.Client())
-}
-
-func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Config,
-	l1Client aggkittypes.BaseEthereumClienter) uint32 {
-	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.BRIDGE}, components) {
-		return 0
-	}
-	rollupID, err := etherman.GetRollupID(networkConfig, networkConfig.ZkEVMAddr, l1Client)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return rollupID
 }
 
 func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
@@ -555,7 +553,7 @@ func runLastGERSyncIfNeeded(
 		l1InfoTreeSync,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
-		etherman.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
@@ -591,7 +589,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL1,
 		l1Client,
 		cfg.InitialBlockNum,
@@ -630,7 +628,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL2,
 		l2Client,
 		cfg.InitialBlockNum,

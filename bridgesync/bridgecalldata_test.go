@@ -9,7 +9,6 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridgev2"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -102,7 +101,7 @@ func TestBridgeCallData(t *testing.T) {
 	_, err = waitForReceipt(ctx, client, signedFundTx.Hash(), 20)
 	require.NoError(t, err)
 
-	userBalance, err := client.BalanceAt(ctx, userAuth.From, big.NewInt(int64(etherman.Latest)))
+	userBalance, err := client.BalanceAt(ctx, userAuth.From, big.NewInt(int64(aggkittypes.Latest)))
 	require.NoError(t, err)
 	require.True(t, userBalance.Cmp(fundAmount) >= 0)
 
@@ -113,12 +112,12 @@ func TestBridgeCallData(t *testing.T) {
 	reorgDetector, err := reorgdetector.New(client, reorgdetector.Config{
 		DBPath:              dbPathReorgDetectorL1,
 		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100},
-		FinalizedBlock:      etherman.LatestBlock,
+		FinalizedBlock:      aggkittypes.LatestBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
 	go reorgDetector.Start(ctx) //nolint:errcheck
 
-	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, etherman.LatestBlock, reorgDetector, ethClient,
+	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, aggkittypes.LatestBlock, reorgDetector, ethClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false, false)
 	require.NoError(t, err)
 	go bridgeSync.Start(ctx)

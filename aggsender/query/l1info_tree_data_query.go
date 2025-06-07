@@ -7,14 +7,13 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var finalizedBlockBigInt = big.NewInt(int64(etherman.Finalized))
+var finalizedBlockBigInt = big.NewInt(int64(aggkittypes.Finalized))
 
 var _ types.L1InfoTreeDataQuerier = (*L1InfoTreeDataQuerier)(nil)
 
