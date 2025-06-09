@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/db"
 	comptypes "github.com/agglayer/aggkit/db/compatibility/types"
+	"github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 )
 
@@ -22,7 +22,7 @@ The usage is:
 // CompatibilityChecker is the interface that defines the methods to check the compatibility
 // the object CompatibilityCheck[T] implements this interface
 type CompatibilityChecker interface {
-	Check(ctx context.Context, tx db.Querier) error
+	Check(ctx context.Context, tx types.Querier) error
 }
 
 // CompatibilityDataStorager is the interface that defines the methods to interact with the storage
@@ -31,10 +31,10 @@ type CompatibilityDataStorager[T any] interface {
 	// true -> if data is stored / false -> if data is not stored yet
 	// T -> the data stored
 	// error -> if there is an error
-	GetCompatibilityData(ctx context.Context, tx db.Querier) (bool, T, error)
+	GetCompatibilityData(ctx context.Context, tx types.Querier) (bool, T, error)
 	// SetCompatibilityData stores the compatibility data in the storage
 	// error -> if there is an error
-	SetCompatibilityData(ctx context.Context, tx db.Querier, data T) error
+	SetCompatibilityData(ctx context.Context, tx types.Querier, data T) error
 }
 
 // RuntimeDataGetterFunc is a function that returns the runtime data
@@ -62,7 +62,7 @@ func NewCompatibilityCheck[T comptypes.CompatibilityComparer[T]](
 }
 
 // Check checks the compatibility between the runtime data and the data stored in the storage
-func (s *CompatibilityCheck[T]) Check(ctx context.Context, tx db.Querier) error {
+func (s *CompatibilityCheck[T]) Check(ctx context.Context, tx types.Querier) error {
 	if err := s.initialize(); err != nil {
 		return fmt.Errorf("compatibilityCheck: fails to initialize. Err: %w", err)
 	}

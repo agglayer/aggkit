@@ -5,6 +5,7 @@ import (
 	"errors"
 
 	"github.com/agglayer/aggkit/db"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -23,7 +24,8 @@ func NewUpdatableTree(db *sql.DB, dbPrefix string) *UpdatableTree {
 	return ut
 }
 
-func (t *UpdatableTree) UpsertLeaf(tx db.Txer, blockNum, blockPosition uint64, leaf types.Leaf) (common.Hash, error) {
+func (t *UpdatableTree) UpsertLeaf(tx dbtypes.Txer,
+	blockNum, blockPosition uint64, leaf types.Leaf) (common.Hash, error) {
 	var rootHash common.Hash
 	root, err := t.getLastRootWithTx(tx)
 	if err != nil {

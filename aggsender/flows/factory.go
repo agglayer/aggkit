@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
-	"github.com/agglayer/aggkit/aggsender/grpc"
+	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
@@ -15,6 +16,9 @@ import (
 	"github.com/agglayer/go_signer/signer"
 	signerTypes "github.com/agglayer/go_signer/signer/types"
 )
+
+// funcGetL2StartBlock is a intermediate func that allow to override this call in UT
+var funcGetL2StartBlock = getL2StartBlock
 
 // NewFlow creates a new Aggsender flow based on the provided configuration.
 func NewFlow(
@@ -33,14 +37,19 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
+		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
-
+		baseFlow := NewBaseFlow(
+			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
+			NewBaseFlowConfig(cfg.MaxCertSize, 0),
+		)
 		return NewPPFlow(
 			logger,
-			cfg.MaxCertSize,
+			baseFlow,
 			storage,
-			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
-			query.NewBridgeDataQuerier(l2Syncer),
+			l1InfoTreeQuerier,
+			l2BridgeQuerier,
 			signer,
 		), nil
 	case types.AggchainProofMode:
@@ -54,35 +63,46 @@ func NewFlow(
 		}
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 
-		aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient)
+		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}
 
 		gerReader, err := funcNewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
 		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error creating L2Etherman: %w", err)
+			return nil, fmt.Errorf("aggchainProverFlow - error creating VMChainGERReader L2Etherman: %w", err)
 		}
 
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 
-		startL2Block, err := getL2StartBlock(cfg.SovereignRollupAddr, l1Client)
+		startL2Block, err := funcGetL2StartBlock(cfg.SovereignRollupAddr, l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 		}
+		optimisticSigner, optimisticModeQuerier, err := optimistic.NewOptimistic(
+			ctx, logger, l1Client, cfg.OptimisticModeConfig)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
+		}
+		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+		baseFlow := NewBaseFlow(
+			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
+			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
+		)
 
 		return NewAggchainProverFlow(
 			logger,
-			cfg.MaxCertSize,
-			startL2Block,
+			baseFlow,
+			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap),
 			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,
-			query.NewBridgeDataQuerier(l2Syncer),
+			l2BridgeQuerier,
 			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 			l1Client,
-			cfg.RequireNoFEPBlockGap,
 			signer,
+			optimisticModeQuerier,
+			optimisticSigner,
 		), nil
 
 	default:

@@ -25,6 +25,21 @@ type AggsenderFlow interface {
 		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
 }
 
+type AggsenderFlowBaser interface {
+	GetCertificateBuildParamsInternal(
+		ctx context.Context, allowEmptyCert bool, certType CertificateType) (*CertificateBuildParams, error)
+	BuildCertificate(ctx context.Context,
+		certParams *CertificateBuildParams,
+		lastSentCertificate *CertificateHeader,
+		allowEmptyCert bool) (*agglayertypes.Certificate, error)
+	GetNewLocalExitRoot(ctx context.Context,
+		certParams *CertificateBuildParams) (common.Hash, error)
+	VerifyBuildParams(fullCert *CertificateBuildParams) error
+	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
+
+	StartL2Block() uint64
+}
+
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
 type L1InfoTreeSyncer interface {
 	GetInfoByGlobalExitRoot(globalExitRoot common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)

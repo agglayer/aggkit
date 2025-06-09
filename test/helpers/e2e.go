@@ -63,7 +63,7 @@ type L2Environment struct {
 	CommonEnvironment
 	GERContract      *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
 	AggoracleSender  aggoracle.ChainSender
-	EthTxManagerMock *EthTxManagerMock
+	EthTxManagerMock *EthTxManager
 }
 
 type EnvironmentConfig struct {

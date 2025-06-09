@@ -21,13 +21,15 @@ const (
 type CertificateType uint8
 
 const (
-	CertificateTypeUnknownStr string = ""
-	CertificateTypePPStr      string = "pp"
-	CertificateTypeFEPStr     string = "fep"
+	CertificateTypeUnknownStr    string = ""
+	CertificateTypePPStr         string = "pp"
+	CertificateTypeFEPStr        string = "fep"
+	CertificateTypeOptimisticStr string = "optimistic"
 
-	CertificateTypeUnknown CertificateType = 0
-	CertificateTypePP      CertificateType = 1
-	CertificateTypeFEP     CertificateType = 2
+	CertificateTypeUnknown    CertificateType = 0
+	CertificateTypePP         CertificateType = 1
+	CertificateTypeFEP        CertificateType = 2
+	CertificateTypeOptimistic CertificateType = 3
 )
 
 func (c CertificateType) String() string {
@@ -36,6 +38,8 @@ func (c CertificateType) String() string {
 		return CertificateTypeFEPStr
 	case CertificateTypePP:
 		return CertificateTypePPStr
+	case CertificateTypeOptimistic:
+		return CertificateTypeOptimisticStr
 	default:
 		return CertificateTypeUnknownStr
 	}
@@ -74,6 +78,8 @@ func NewCertificateTypeFromStr(v string) (CertificateType, error) {
 		return CertificateTypePP, nil
 	case CertificateTypeFEPStr:
 		return CertificateTypeFEP, nil
+	case CertificateTypeOptimisticStr:
+		return CertificateTypeOptimistic, nil
 	case CertificateTypeUnknownStr:
 		return CertificateTypeUnknown, nil
 	default:
@@ -257,6 +263,8 @@ type Certificate struct {
 	Header            *CertificateHeader
 	SignedCertificate *string        `meddler:"signed_certificate"`
 	AggchainProof     *AggchainProof `meddler:"aggchain_proof,aggchainproof"`
+	// ExtraData is a no structured data used to debug or extra info for this certificate
+	ExtraData string `meddler:"extra_data"`
 }
 
 func (c *Certificate) DetermineCertType(startL2Block uint64) CertificateType {
