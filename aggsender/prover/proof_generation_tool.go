@@ -10,7 +10,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -40,9 +39,6 @@ type Config struct {
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
 	GlobalExitRootL2Addr common.Address `mapstructure:"GlobalExitRootL2"`
-
-	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
-	GenerateAggchainProofTimeout configtypes.Duration `mapstructure:"GenerateAggchainProofTimeout"`
 
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`

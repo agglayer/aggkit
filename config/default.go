@@ -274,10 +274,11 @@ RequireNoFEPBlockGap = true
 		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
 		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
-		# By default use the same key that aggsender  sign certs
+		# By default use the same key that aggsender signs certs
 		TrustedSequencerKey = {{AggSender.AggsenderPrivateKey}}
 		OpNodeURL = "{{OpNodeURL}}"
-		RequireKeyMatchTrustedSequencer = true
+		# TODO: For now set it to false, until it gets fixed on the contracts deployment end
+		RequireKeyMatchTrustedSequencer = false
 [Prometheus]
 Enabled = true
 Host = "localhost"
