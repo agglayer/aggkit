@@ -41,10 +41,10 @@ jobs:
         id: vars
         run: |
           BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
-          BRANCH=$(echo "$BRANCH_NAME" | tr '/' '-')
-          TIMESTAMP=$(date -u +'%d_%m_%Y_%H_%M')
+          FORMATTED_BRANCH_NAME=$(echo "$BRANCH_NAME" | tr '/_' '--')
+          TIMESTAMP=$(date -u +'%Y_%m_%d_%H_%M')
           SHORT_SHA=$(git rev-parse --short HEAD)
-          IMAGE_TAG="${BRANCH}_${TIMESTAMP}_${SHORT_SHA}"
+          IMAGE_TAG="${FORMATTED_BRANCH_NAME}_${TIMESTAMP}_${SHORT_SHA}"
           FULL_IMAGE="${{ env.REGISTRY_IMAGE }}:${IMAGE_TAG}"
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
           echo "FULL_IMAGE=$FULL_IMAGE" >> $GITHUB_OUTPUT
