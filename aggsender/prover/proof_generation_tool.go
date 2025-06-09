@@ -92,7 +92,7 @@ func NewAggchainProofGenerationTool(
 		l2BridgeQuerier,
 		nil, // storage
 		l1InfoTreeQuerier,
-		flows.NewBaseFlowConfig(0, 0),
+		flows.NewBaseFlowConfig(0, 0, common.Hash{}),
 	)
 	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,

@@ -10,11 +10,12 @@ import (
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signerTypes "github.com/agglayer/go_signer/signer/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 // funcGetL2StartBlock is a intermediate func that allow to override this call in UT
@@ -30,7 +31,9 @@ func NewFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	startLER common.Hash,
 ) (types.AggsenderFlow, error) {
+	logger.Infof("StartLER from rollup manager contract: %s", startLER.String())
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
 		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
@@ -42,7 +45,7 @@ func NewFlow(
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, 0),
+			NewBaseFlowConfig(cfg.MaxCertSize, 0, startLER),
 		)
 		return NewPPFlow(
 			logger,
@@ -88,7 +91,7 @@ func NewFlow(
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
+			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, startLER),
 		)
 
 		return NewAggchainProverFlow(
@@ -116,7 +119,7 @@ func initializeSigner(
 	signerCfg signerTypes.SignerConfig,
 	logger *log.Logger,
 ) (signerTypes.Signer, error) {
-	signer, err := signer.NewSigner(ctx, 0, signerCfg, common.AGGSENDER, logger)
+	signer, err := signer.NewSigner(ctx, 0, signerCfg, aggkitcommon.AGGSENDER, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
 	}

@@ -753,6 +753,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 
 	tests := []struct {
 		name                       string
+		startLER                   common.Hash
 		lastSentCertificate        *types.CertificateHeader
 		lastSettleCertificateCall  bool
 		lastSettledCertificate     *types.CertificateHeader
@@ -776,6 +777,13 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCertificate: nil,
 			expectedHeight:      0,
 			expectedPreviousLER: zeroLER,
+		},
+		{
+			name:                "First certificate, different starting LER",
+			lastSentCertificate: nil,
+			startLER:            common.HexToHash("0x123"),
+			expectedHeight:      0,
+			expectedPreviousLER: common.HexToHash("0x123"),
 		},
 		{
 			name: "First certificate error, with prevLER",
@@ -882,7 +890,11 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			storageMock := mocks.NewAggSenderStorage(t)
-			flow := &baseFlow{log: log.WithFields("aggsender-test", "getNextHeightAndPreviousLER"), storage: storageMock}
+			flow := &baseFlow{
+				log:     log.WithFields("aggsender-test", "getNextHeightAndPreviousLER"),
+				storage: storageMock,
+				cfg:     NewBaseFlowConfig(0, 0, tt.startLER),
+			}
 			if tt.lastSettleCertificateCall || tt.lastSettledCertificate != nil || tt.lastSettleCertificateError != nil {
 				storageMock.EXPECT().GetCertificateHeaderByHeight(mock.Anything).Return(tt.lastSettledCertificate, tt.lastSettleCertificateError).Once()
 			}
@@ -1175,7 +1187,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			baseFlow := &baseFlow{cfg: NewBaseFlowConfig(0, tt.startL2Block)}
+			baseFlow := &baseFlow{cfg: NewBaseFlowConfig(0, tt.startL2Block, common.Hash{})}
 
 			block, retryCount := baseFlow.getLastSentBlockAndRetryCount(tt.lastSentCertificate)
 

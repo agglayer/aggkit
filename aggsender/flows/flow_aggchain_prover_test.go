@@ -728,7 +728,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // l2BridgeQuerier
 				nil, // sotrage
 				nil, // l1InfoTreeDataQuerier
-				NewBaseFlowConfig(0, tc.startL2Block),
+				NewBaseFlowConfig(0, tc.startL2Block, common.Hash{}),
 			)
 			flow := NewAggchainProverFlow(
 				logger,
@@ -885,7 +885,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 		nil, // l2BridgeQuerier
 		nil, // sotrage
 		nil, // l1InfoTreeDataQuerier
-		NewBaseFlowConfig(0, 1234),
+		NewBaseFlowConfig(0, 1234, common.Hash{}),
 	)
 	sut := NewAggchainProverFlow(
 		logger,

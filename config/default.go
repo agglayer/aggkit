@@ -193,7 +193,8 @@ PolAddr = "{{L1Config.polTokenAddress}}"
 ZkEVMAddr = "{{L1Config.polygonZkEVMAddress}}"
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
-
+[NetworkConfig.Genesis]
+BlockNumber = {{genesisBlockNumber}}
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"

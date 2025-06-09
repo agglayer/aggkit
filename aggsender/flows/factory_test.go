@@ -130,6 +130,7 @@ func TestNewFlow(t *testing.T) {
 				mockL2Client,
 				mockL1InfoTreeSyncer,
 				mockL2BridgeSyncer,
+				common.Hash{},
 			)
 
 			if tc.expectedError != "" {

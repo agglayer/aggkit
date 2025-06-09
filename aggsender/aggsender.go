@@ -60,7 +60,8 @@ func New(
 	l2Syncer types.L2BridgeSyncer,
 	epochNotifier types.EpochNotifier,
 	l1Client aggkittypes.BaseEthereumClienter,
-	l2Client aggkittypes.BaseEthereumClienter) (*AggSender, error) {
+	l2Client aggkittypes.BaseEthereumClienter,
+	lastLER common.Hash) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
@@ -81,6 +82,7 @@ func New(
 		l2Client,
 		l1InfoTreeSyncer,
 		l2Syncer,
+		lastLER,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)
