@@ -76,16 +76,25 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	ethermanClient, err := etherman.NewClient(cfg.L1NetworkConfig,
-		func(url string) (aggkittypes.BaseEthereumClienter, error) {
-			return ethclient.Dial(url)
-		},
-		func(rollupAddr common.Address,
-			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
-			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
-		})
-	if err != nil {
-		return fmt.Errorf("failed to create etherman client: %w", err)
+	var ethermanClient *etherman.Client
+
+	if isNeeded([]string{
+		aggkitcommon.AGGORACLE,
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.BRIDGE,
+	}, components) {
+		ethermanClient, err = etherman.NewClient(cfg.L1NetworkConfig,
+			func(url string) (aggkittypes.BaseEthereumClienter, error) {
+				return ethclient.Dial(url)
+			},
+			func(rollupAddr common.Address,
+				client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
+				return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
+			})
+		if err != nil {
+			return fmt.Errorf("failed to create etherman client: %w", err)
+		}
 	}
 
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
