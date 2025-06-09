@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -40,7 +41,23 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 			},
 		},
 		{
-			name:        "certificate size exceeds limit",
+			name:        "certificate size exceeds limit - reducing with some bridges",
+			maxCertSize: 500,
+			fullCert: &types.CertificateBuildParams{
+				FromBlock: 1,
+				ToBlock:   10,
+				Bridges:   []bridgesync.Bridge{{BlockNum: 9}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}},
+			},
+			allowEmptyCert: false,
+			expectedCert: &types.CertificateBuildParams{
+				FromBlock: 1,
+				ToBlock:   9,
+				Bridges:   []bridgesync.Bridge{{BlockNum: 9}},
+				Claims:    []bridgesync.Claim{},
+			},
+		},
+		{
+			name:        "certificate size exceeds limit - reducing to no bridges",
 			maxCertSize: 500,
 			fullCert: &types.CertificateBuildParams{
 				FromBlock: 1,
@@ -48,12 +65,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				Bridges:   []bridgesync.Bridge{{BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}},
 			},
 			allowEmptyCert: false,
-			expectedCert: &types.CertificateBuildParams{
-				FromBlock: 1,
-				ToBlock:   9,
-				Bridges:   []bridgesync.Bridge{},
-				Claims:    []bridgesync.Claim{},
-			},
+			expectedError:  "error on reducing the certificate size. No bridge exits found",
 		},
 		{
 			name:        "certificate size exceeds limit with minimum blocks",
@@ -94,11 +106,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				Bridges:   []bridgesync.Bridge{},
 			},
 			allowEmptyCert: false,
-			expectedCert: &types.CertificateBuildParams{
-				FromBlock: 1,
-				ToBlock:   10,
-				Bridges:   []bridgesync.Bridge{},
-			},
+			expectedError:  "error on reducing the certificate size. No bridge exits found in range from: 1, to: 10 and empty certificate is not allowed",
 		},
 		{
 			name:        "maxCertSize is 0 with bridges and claims",
@@ -121,10 +129,12 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			f := &baseFlow{
-				maxCertSize: tt.maxCertSize,
-				log:         log.WithFields("test", t.Name()),
-			}
+			f := NewBaseFlow(
+				log.WithFields("test", t.Name()),
+				nil,
+				nil,
+				nil,
+				NewBaseFlowConfig(tt.maxCertSize, 0))
 
 			result, err := f.limitCertSize(tt.fullCert, tt.allowEmptyCert)
 
@@ -228,4 +238,136 @@ func Test_baseFlow_getNewLocalExitRoot(t *testing.T) {
 			}
 		})
 	}
+}
+func Test_baseFlow_GetNewLocalExitRoot(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name             string
+		certParams       *types.CertificateBuildParams
+		mockFn           func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockStorage *mocks.AggSenderStorage)
+		expectedLER      common.Hash
+		expectedError    string
+		getNextHeightErr error
+		getNewLERMockErr error
+	}{
+		{
+			name:          "certificate parameters are nil",
+			certParams:    nil,
+			expectedLER:   common.Hash{},
+			expectedError: "certificate build parameters cannot be nil",
+		},
+		{
+			name: "error getting next height and previous LER",
+			certParams: &types.CertificateBuildParams{
+				LastSentCertificate: &types.CertificateHeader{
+					Status: agglayertypes.Pending,
+				},
+			},
+			getNextHeightErr: errors.New("mock error"),
+			expectedLER:      common.Hash{},
+			expectedError:    "error getting next height and previous LER",
+		},
+		{
+			name: "error getting new local exit root",
+			certParams: &types.CertificateBuildParams{
+				LastSentCertificate: &types.CertificateHeader{
+					Status: agglayertypes.Settled,
+				},
+				Bridges: []bridgesync.Bridge{{}, {}},
+			},
+			getNewLERMockErr: errors.New("mock error"),
+			expectedLER:      common.Hash{},
+			expectedError:    "error getting new local exit root",
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, mock.Anything).
+					Return(common.Hash{}, errors.New("mock error"))
+			},
+		},
+		{
+			name: "successfully get new local exit root",
+			certParams: &types.CertificateBuildParams{
+				LastSentCertificate: &types.CertificateHeader{
+					Status: agglayertypes.Settled,
+				},
+			},
+			expectedLER: common.HexToHash("0x0000000000000000000000000000000000000000000000000000000000000000"),
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
+			mockStorage := mocks.NewAggSenderStorage(t)
+
+			if tt.mockFn != nil {
+				tt.mockFn(mockL2BridgeQuerier, mockStorage)
+			}
+
+			f := &baseFlow{
+				l2BridgeQuerier: mockL2BridgeQuerier,
+				storage:         mockStorage,
+			}
+			ctx := context.TODO()
+			result, err := f.GetNewLocalExitRoot(ctx, tt.certParams)
+
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedLER, result)
+			}
+		})
+	}
+}
+
+func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
+	t.Parallel()
+	mockStorage := mocks.NewAggSenderStorage(t)
+	sut := NewBaseFlow(
+		log.WithFields("test", t.Name()),
+		nil,
+		mockStorage,
+		nil,
+		NewBaseFlowConfigDefault())
+
+	t.Run("cannot generate new certificate because a pending certificate (neither InError nor Settled) has an unknown settlement status",
+		func(t *testing.T) {
+			t.Parallel()
+			height, ler, err := sut.getNextHeightAndPreviousLER(
+				&types.CertificateHeader{
+					Status: agglayertypes.Pending,
+				},
+			)
+			require.Equal(t, uint64(0), height, "Height should be 0 for pending certificate")
+			require.Equal(t, zeroLER, ler, "LER should be empty for pending certificate")
+			require.Error(t, err)
+			require.ErrorContains(t, err, "is not closed ")
+		})
+
+	t.Run("if last cert is inError, we need last settled cert",
+		func(t *testing.T) {
+			t.Parallel()
+			mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(9)).Return(
+				&types.CertificateHeader{
+					Status:           agglayertypes.Settled,
+					Height:           9,
+					NewLocalExitRoot: common.HexToHash("0xbeef"),
+				}, nil,
+			)
+			height, ler, err := sut.getNextHeightAndPreviousLER(
+				&types.CertificateHeader{
+					Status: agglayertypes.InError,
+					Height: 10,
+				},
+			)
+			require.Equal(t, uint64(10), height, "Height should be 10 for next certificate")
+			require.Equal(t, common.HexToHash("0xbeef"), ler, "LER should be from previous cert")
+			require.NoError(t, err)
+		})
 }

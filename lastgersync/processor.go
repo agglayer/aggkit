@@ -8,6 +8,7 @@ import (
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/lastgersync/migrations"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
@@ -118,7 +119,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 }
 
 // handleGERInsertion inserts the given global exit root entry to `imported_global_exit_root`
-func (*processor) handleGERInsertion(tx db.Txer, gerInfo *GEREvent) error {
+func (*processor) handleGERInsertion(tx dbtypes.Txer, gerInfo *GEREvent) error {
 	gerInfoWithBlockNum := &gerInfoWithBlockNum{
 		GlobalExitRoot:  gerInfo.GlobalExitRoot,
 		L1InfoTreeIndex: gerInfo.L1InfoTreeIndex,
@@ -133,7 +134,7 @@ func (*processor) handleGERInsertion(tx db.Txer, gerInfo *GEREvent) error {
 }
 
 // handleGEREvent either inserts or removes the global exit root entry from `imported_global_exit_root` table,
-func (p *processor) handleGEREvent(tx db.Txer, event *GEREvent) error {
+func (p *processor) handleGEREvent(tx dbtypes.Txer, event *GEREvent) error {
 	if event.IsRemove {
 		_, err := tx.Exec(deleteGERSql, event.GlobalExitRoot.Hex())
 		if err != nil {

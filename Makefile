@@ -21,24 +21,23 @@ LDFLAGS += -X 'github.com/agglayer/aggkit.GitBranch=$(GITBRANCH)'
 LDFLAGS += -X 'github.com/agglayer/aggkit.BuildDate=$(DATE)'
 
 # Check dependencies
-# Check for Go
 .PHONY: check-go
-check-go:
+check-go: ## Check if golang is installed
 	@which go > /dev/null || (echo "Error: Go is not installed" && exit 1)
 
 # Check for Docker
 .PHONY: check-docker
-check-docker:
+check-docker: ## Check if docker is installed
 	@which docker > /dev/null || (echo "Error: docker is not installed" && exit 1)
 
 # Check for Protoc
 .PHONY: check-protoc
-check-protoc:
+check-protoc: ## Check if protoc is installed
 	@which protoc > /dev/null || (echo "Error: Protoc is not installed" && exit 1)
 
 # Check for Curl
 .PHONY: check-curl
-check-curl:
+check-curl: ## Check if curl is installed
 	@which curl > /dev/null || (echo "Error: curl is not installed" && exit 1)
 
 # Check for Golangci-lint
@@ -65,7 +64,7 @@ generate-swagger-docs: check-swag
 build: build-aggkit build-tools
 
 .PHONY: build-aggkit
-build-aggkit:
+build-aggkit: ## Builds aggkit binary
 	GIN_MODE=release $(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
 
 .PHONY: build-tools
@@ -81,7 +80,7 @@ build-docker-nc: ## Builds a docker image with the aggkit binary - but without b
 	docker build --no-cache=true -t aggkit -f ./Dockerfile .
 
 .PHONY: test-unit
-test-unit:
+test-unit: ## Runs the unit tests
 	trap '$(STOP)' EXIT; MallocNanoZone=0 go test -count=1 -short -race -p 1 -covermode=atomic -coverprofile=coverage.out  -coverpkg ./... -timeout 15m ./...
 
 .PHONY: lint
@@ -95,6 +94,15 @@ generate-swagger-docs: ## Generates the swagger docs
 	@mkdir -p docs/assets/swagger/bridge_service
 	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
 	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"
+
+.PHONY: vulncheck
+vulncheck: ## Runs the vulnerability checker tool
+	@command -v govulncheck >/dev/null 2>&1 || { \
+		echo "govulncheck is not installed. Please run: go install golang.org/x/vuln/cmd/govulncheck@latest"; \
+		exit 1; \
+	}
+	@echo "Running govulncheck on all packages..."
+	@go list ./... | xargs -n1 govulncheck
 
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted

@@ -7,6 +7,10 @@ on:
       - '**'
   workflow_dispatch: {}
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-aggkit-image:
     uses: ./.github/workflows/build-aggkit-image.yml

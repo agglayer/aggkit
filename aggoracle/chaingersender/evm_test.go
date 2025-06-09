@@ -3,6 +3,7 @@ package chaingersender
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -84,12 +85,12 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 			defer cancelFn()
 
 			ethTxMan := mocks.NewEthTxManager(t)
-			ethTxMan.
-				On("Add", ctx, &l2GERManagerAddr, common.Big0, mock.Anything, mock.Anything, mock.Anything).
+			ethTxMan.EXPECT().
+				Add(ctx, &l2GERManagerAddr, common.Big0, mock.Anything, mock.Anything, mock.Anything).
 				Return(tt.addReturnTxID, tt.addReturnErr)
 			if tt.resultReturn != nil || tt.resultReturnErr != nil {
-				ethTxMan.
-					On("Result", ctx, tt.addReturnTxID).
+				ethTxMan.EXPECT().
+					Result(ctx, tt.addReturnTxID).
 					Return(*tt.resultReturn, tt.resultReturnErr)
 			}
 
@@ -146,7 +147,8 @@ func TestEVMChainGERSender_IsGERInjected(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockL2GERManager := mocks.NewL2GERManagerContract(t)
-			mockL2GERManager.On("GlobalExitRootMap", mock.Anything, mock.Anything).
+			mockL2GERManager.EXPECT().
+				GlobalExitRootMap(mock.Anything, mock.Anything).
 				Return(tt.mockReturn, tt.mockError)
 
 			evmChainGERSender := &EVMChainGERSender{
@@ -164,6 +166,58 @@ func TestEVMChainGERSender_IsGERInjected(t *testing.T) {
 			require.Equal(t, tt.expectedResult, result)
 
 			mockL2GERManager.AssertExpectations(t)
+		})
+	}
+}
+
+func TestValidateGERSender(t *testing.T) {
+	zeroAddr := common.Address{}
+	updaterAddr := common.HexToAddress("0x1111")
+	otherAddr := common.HexToAddress("0x9999")
+
+	tests := []struct {
+		name         string
+		gerSender    common.Address
+		setupMock    func(*mocks.L2GERManagerContract)
+		expectErrMsg string
+	}{
+		{
+			name:      "valid sender - matches updater and remover",
+			gerSender: updaterAddr,
+			setupMock: func(m *mocks.L2GERManagerContract) {
+				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(updaterAddr, nil)
+			},
+			expectErrMsg: "",
+		},
+		{
+			name:      "invalid updater sender",
+			gerSender: otherAddr,
+			setupMock: func(m *mocks.L2GERManagerContract) {
+				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(updaterAddr, nil)
+			},
+			expectErrMsg: "invalid GER sender provided (in the EthTxManager configuration), and it is not allowed to update GERs",
+		},
+		{
+			name:      "contract returns error on updater",
+			gerSender: updaterAddr,
+			setupMock: func(m *mocks.L2GERManagerContract) {
+				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(zeroAddr, fmt.Errorf("updater error"))
+			},
+			expectErrMsg: "updater error",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockGERManager := mocks.NewL2GERManagerContract(t)
+			tt.setupMock(mockGERManager)
+			err := validateGERSender(tt.gerSender, mockGERManager)
+			if tt.expectErrMsg == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.ErrorContains(t, err, tt.expectErrMsg)
+			}
 		})
 	}
 }

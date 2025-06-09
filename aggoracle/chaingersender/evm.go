@@ -52,6 +52,10 @@ func NewEVMChainGERSender(
 		return nil, err
 	}
 
+	if err := validateGERSender(ethTxMan.From(), l2GERManager); err != nil {
+		return nil, err
+	}
+
 	l2GERAbi, err := globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainMetaData.GetAbi()
 	if err != nil {
 		return nil, err
@@ -66,6 +70,22 @@ func NewEVMChainGERSender(
 		gasOffset:           gasOffset,
 		waitPeriodMonitorTx: waitPeriodMonitorTx,
 	}, nil
+}
+
+// validateGERSender validates whether the provided GER sender is allowed to send and remove GERs
+func validateGERSender(gerSender common.Address, l2GERManagerSC types.L2GERManagerContract) error {
+	zeroAddr := common.Address{}
+	gerUpdater, err := l2GERManagerSC.GlobalExitRootUpdater(nil)
+	if err != nil {
+		return err
+	}
+
+	if gerUpdater != zeroAddr && gerSender != gerUpdater {
+		return fmt.Errorf("invalid GER sender provided (in the EthTxManager configuration), "+
+			"and it is not allowed to update GERs. Expected GER updater by the L2 GER manager contract: %s", gerUpdater)
+	}
+
+	return nil
 }
 
 func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {

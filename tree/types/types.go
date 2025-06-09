@@ -1,6 +1,10 @@
 package types
 
-import "github.com/ethereum/go-ethereum/common"
+import (
+	"fmt"
+
+	"github.com/ethereum/go-ethereum/common"
+)
 
 const (
 	DefaultHeight uint8 = 32
@@ -25,3 +29,8 @@ type TreeNode struct {
 }
 
 type Proof [DefaultHeight]common.Hash
+
+func (r *Root) String() string {
+	return fmt.Sprintf("Root{Hash: %s, Index: %d, BlockNum: %d, BlockPosition: %d}",
+		r.Hash.Hex(), r.Index, r.BlockNum, r.BlockPosition)
+}

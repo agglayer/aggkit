@@ -24,6 +24,7 @@ type CertificateBuildParams struct {
 	L1InfoTreeLeafCount            uint32
 	AggchainProof                  *AggchainProof
 	CertificateType                CertificateType
+	ExtraData                      string
 }
 
 func (c *CertificateBuildParams) String() string {

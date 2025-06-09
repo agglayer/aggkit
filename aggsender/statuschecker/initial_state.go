@@ -97,6 +97,7 @@ func (i *initialStatus) logData() {
 // process checks the last certificates from agglayer vs local certificates and returns the action to take
 func (i *initialStatus) process() (*initialStatusResult, error) {
 	// Check that agglayer data is consistent.
+	i.logData()
 	if err := i.checkAgglayerConsistenceCerts(); err != nil {
 		return nil, err
 	}

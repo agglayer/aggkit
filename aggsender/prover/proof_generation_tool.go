@@ -6,12 +6,10 @@ import (
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
+	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/flows"
-	"github.com/agglayer/aggkit/aggsender/grpc"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
-	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -30,7 +28,7 @@ type AggchainProofFlow interface {
 	GenerateAggchainProof(
 		ctx context.Context,
 		lastProvenBlock, toBlock uint64,
-		claims []bridgesync.Claim) (*types.AggchainProof, *treetypes.Root, error)
+		certBuildParams *types.CertificateBuildParams) (*types.AggchainProof, *treetypes.Root, error)
 }
 
 // Config is the configuration for the AggchainProofGenerationTool
@@ -41,9 +39,6 @@ type Config struct {
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
 	GlobalExitRootL2Addr common.Address `mapstructure:"GlobalExitRootL2"`
-
-	// GenerateAggchainProofTimeout is the timeout to wait for the aggkit-prover to generate the AggchainProof
-	GenerateAggchainProofTimeout configtypes.Duration `mapstructure:"GenerateAggchainProofTimeout"`
 
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`
@@ -56,8 +51,14 @@ type AggchainProofGenerationTool struct {
 	logger   *log.Logger
 	l2Syncer types.L2BridgeSyncer
 
-	aggchainProofClient grpc.AggchainProofClientInterface
+	aggchainProofClient types.AggchainProofClientInterface
 	flow                AggchainProofFlow
+}
+
+type OptimisticModeQuerierAlwaysOff struct{}
+
+func (o *OptimisticModeQuerierAlwaysOff) IsOptimisticModeOn() (bool, error) {
+	return false, nil
 }
 
 // NewAggchainProofGenerationTool creates a new AggchainProofGenerationTool
@@ -73,7 +74,7 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
 	}
 
-	aggchainProofClient, err := grpc.NewAggchainProofClient(cfg.AggkitProverClient)
+	aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}
@@ -84,19 +85,28 @@ func NewAggchainProofGenerationTool(
 	}
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 
+	baseFlow := flows.NewBaseFlow(
+		logger,
+		l2BridgeQuerier,
+		nil, // storage
+		l1InfoTreeQuerier,
+		flows.NewBaseFlowConfig(0, 0),
+	)
 	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,
-		0,
-		0,
+		baseFlow,
+		flows.NewAggchainProverFlowConfigDefault(),
 		aggchainProofClient,
-		nil,
+		nil, // storage
 		l1InfoTreeQuerier,
-		query.NewBridgeDataQuerier(l2Syncer),
+		l2BridgeQuerier,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
 		l1Client,
-		false,
-		nil,
+		nil,                               // signer
+		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode,
+		nil,                               // optimisticSigner
 	)
 
 	return &AggchainProofGenerationTool{
@@ -158,11 +168,14 @@ func (a *AggchainProofGenerationTool) GenerateAggchainProof(
 	a.logger.Debugf("Calling AggchainProofClient to generate proof for block range [%d : %d]",
 		fromBlock, maxEndBlock)
 
+	certBuildParams := &types.CertificateBuildParams{
+		Claims: claims,
+	}
 	aggchainProof, _, err := a.flow.GenerateAggchainProof(
 		ctx,
 		lastProvenBlock,
 		maxEndBlock,
-		claims,
+		certBuildParams,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error generating Aggchain proof: %w", err)

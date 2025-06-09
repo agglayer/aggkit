@@ -42,7 +42,7 @@ func TestE2EL1toEVML2(t *testing.T) {
 
 			txMgrMock := setup.EthTxManagerMock
 			if tt.mockAddErr != nil {
-				txMgrMock = helpers.NewEthTxManagerMock(t)
+				txMgrMock = helpers.NewEthTxManager(t)
 				txMgrMock.On("Add", mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 					Return(common.Hash{}, tt.mockAddErr)
 			}

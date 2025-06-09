@@ -3,22 +3,33 @@ package flows
 import (
 	"context"
 	"testing"
+	"time"
 
+	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/types"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewFlow(t *testing.T) {
 	t.Parallel()
-
-	ctx := context.Background()
-
+	keyConfig := signertypes.SignerConfig{
+		Method: signertypes.MethodLocal,
+		Config: map[string]any{
+			"password": "password",
+			"path":     "../../test/config/key_trusted_sequencer.keystore",
+		},
+	}
 	testCases := []struct {
 		name          string
 		cfg           config.Config
@@ -70,12 +81,33 @@ func TestNewFlow(t *testing.T) {
 			},
 			expectedError: "unsupported Aggsender mode: unsupported-mode",
 		},
+		{
+			name: "error optimistic mode creating TrustedSequencerContract AggchainProofMode",
+			cfg: config.Config{
+				Mode:                string(types.AggchainProofMode),
+				AggsenderPrivateKey: keyConfig,
+				AggkitProverClient: &aggkitgrpc.ClientConfig{
+					URL:               "http://127.0.0.1",
+					MinConnectTimeout: cfgtypes.Duration{1 * time.Millisecond},
+				},
+				OptimisticModeConfig: optimistic.Config{
+					TrustedSequencerKey:             keyConfig,
+					RequireKeyMatchTrustedSequencer: true,
+				},
+			},
+			expectedError: "error aggchainFEPContract",
+		},
 	}
-
+	funcNewEVMChainGERReader = func(_ common.Address, _ aggkittypes.BaseEthereumClienter) (*chaingerreader.EVMChainGERReader, error) {
+		return &chaingerreader.EVMChainGERReader{}, nil
+	}
+	funcGetL2StartBlock = func(_ common.Address, _ aggkittypes.BaseEthereumClienter) (uint64, error) {
+		return 100, nil
+	}
 	for _, tc := range testCases {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+			ctx := context.Background()
 
 			mockStorage := new(mocks.AggSenderStorage)
 			mockL1Client := new(typesmocks.BaseEthereumClienter)
@@ -85,6 +117,10 @@ func TestNewFlow(t *testing.T) {
 			mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(1)
 			mockLogger := log.WithFields("test", "NewFlow")
 
+			mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
+			mockL1Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
+			mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
+			mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
 			flow, err := NewFlow(
 				ctx,
 				tc.cfg,

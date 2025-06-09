@@ -15,7 +15,6 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
-	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
@@ -121,7 +120,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 			t.Parallel()
 
 			flow := &baseFlow{}
-			exit, err := flow.convertClaimToImportedBridgeExit(tt.claim)
+			exit, err := flow.ConvertClaimToImportedBridgeExit(tt.claim)
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -242,18 +241,10 @@ func TestGetImportedBridgeExits(t *testing.T) {
 
 	mockProof := generateTestProof(t)
 
-	mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
-	mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(
-		&l1infotreesync.L1InfoTreeLeaf{
-			L1InfoTreeIndex:   1,
-			Timestamp:         123456789,
-			PreviousBlockHash: common.HexToHash("0xabc"),
-			GlobalExitRoot:    common.HexToHash("0x7891"),
-		}, mockProof, nil)
-
 	tests := []struct {
 		name          string
 		claims        []bridgesync.Claim
+		mockFn        func(*mocks.L1InfoTreeDataQuerier)
 		expectedError bool
 		expectedExits []*agglayertypes.ImportedBridgeExit
 	}{
@@ -275,6 +266,15 @@ func TestGetImportedBridgeExits(t *testing.T) {
 					ProofLocalExitRoot:  mockProof,
 					ProofRollupExitRoot: mockProof,
 				},
+			},
+			mockFn: func(mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex:   1,
+						Timestamp:         123456789,
+						PreviousBlockHash: common.HexToHash("0xabc"),
+						GlobalExitRoot:    common.HexToHash("0x7891"),
+					}, mockProof, nil)
 			},
 			expectedError: false,
 			expectedExits: []*agglayertypes.ImportedBridgeExit{
@@ -355,6 +355,15 @@ func TestGetImportedBridgeExits(t *testing.T) {
 					ProofLocalExitRoot:  mockProof,
 					ProofRollupExitRoot: mockProof,
 				},
+			},
+			mockFn: func(mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(
+					&l1infotreesync.L1InfoTreeLeaf{
+						L1InfoTreeIndex:   1,
+						Timestamp:         123456789,
+						PreviousBlockHash: common.HexToHash("0xabc"),
+						GlobalExitRoot:    common.HexToHash("0x7891"),
+					}, mockProof, nil)
 			},
 			expectedError: false,
 			expectedExits: []*agglayertypes.ImportedBridgeExit{
@@ -446,6 +455,32 @@ func TestGetImportedBridgeExits(t *testing.T) {
 			expectedError: false,
 			expectedExits: []*agglayertypes.ImportedBridgeExit{},
 		},
+		{
+			name: "error getting proof for GER",
+			claims: []bridgesync.Claim{
+				{
+					IsMessage:           false,
+					OriginNetwork:       11,
+					OriginAddress:       common.HexToAddress("0x1234"),
+					DestinationNetwork:  22,
+					DestinationAddress:  common.HexToAddress("0x45678"),
+					Amount:              big.NewInt(1010),
+					Metadata:            []byte("metadata"),
+					GlobalIndex:         big.NewInt(11),
+					GlobalExitRoot:      common.HexToHash("0x78912"),
+					RollupExitRoot:      common.HexToHash("0xaaaa"),
+					MainnetExitRoot:     common.HexToHash("0xbbbb"),
+					ProofLocalExitRoot:  mockProof,
+					ProofRollupExitRoot: mockProof,
+				},
+			},
+			mockFn: func(mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				mockL1InfoTreeQuery.EXPECT().GetProofForGER(mock.Anything, mock.Anything, mock.Anything).Return(
+					nil, treetypes.Proof{}, errors.New("error getting proof for GER"),
+				)
+			},
+			expectedError: true,
+		},
 	}
 
 	for _, tt := range tests {
@@ -453,6 +488,11 @@ func TestGetImportedBridgeExits(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
+
+			mockL1InfoTreeQuery := mocks.NewL1InfoTreeDataQuerier(t)
+			if tt.mockFn != nil {
+				tt.mockFn(mockL1InfoTreeQuery)
+			}
 
 			flow := &baseFlow{
 				l1InfoTreeDataQuerier: mockL1InfoTreeQuery,
@@ -683,7 +723,7 @@ func TestBuildCertificate(t *testing.T) {
 				CertificateType:                types.CertificateTypePP,
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x7891"),
 			}
-			cert, err := flow.buildCertificate(context.Background(), certParam, &tt.lastSentCertificate, false)
+			cert, err := flow.BuildCertificate(context.Background(), certParam, &tt.lastSentCertificate, false)
 
 			if tt.expectedError {
 				require.Error(t, err)
@@ -985,23 +1025,15 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
-			privateKey, err := crypto.GenerateKey()
-			require.NoError(t, err)
-
-			signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-			ppFlow := &PPFlow{
-				baseFlow: &baseFlow{
-					log:                   log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams"),
-					storage:               mockStorage,
-					l2BridgeQuerier:       mockL2BridgeQuerier,
-					l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
-					signer:                signer,
-				},
-			}
+			logger := log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams")
+			ppFlow := NewPPFlow(
+				logger,
+				NewBaseFlow(logger, mockL2BridgeQuerier,
+					mockStorage, mockL1InfoTreeQuerier, NewBaseFlowConfigDefault()),
+				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockL1InfoTreeQuerier)
 
@@ -1079,7 +1111,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			baseFlow := &baseFlow{startL2Block: tt.startL2Block}
+			baseFlow := &baseFlow{cfg: NewBaseFlowConfig(0, tt.startL2Block)}
 
 			block, retryCount := baseFlow.getLastSentBlockAndRetryCount(tt.lastSentCertificate)
 
@@ -1144,13 +1176,22 @@ func Test_PPFlow_SignCertificate(t *testing.T) {
 			if tt.mockSignerFn != nil {
 				tt.mockSignerFn(mockSigner)
 			}
+			logger := log.WithFields("test", "Test_PPFlow_SignCertificate")
+			flowBase := NewBaseFlow(
+				logger,
+				nil, // mockL2BridgeQuerier,
+				nil, // mockStorage,
+				nil, // mockL1InfoTreeDataQuerier,
+				NewBaseFlowConfigDefault())
 
-			ppFlow := &PPFlow{
-				baseFlow: &baseFlow{
-					log:    log.WithFields("test", "Test_PPFlow_SignCertificate"),
-					signer: mockSigner,
-				},
-			}
+			ppFlow := NewPPFlow(
+				logger,
+				flowBase,
+				nil, // storage
+				nil, // l1InfoTreeDataQuerier
+				nil, // l2BridgeQuerier
+				mockSigner,
+			)
 
 			signedCert, err := ppFlow.signCertificate(ctx, tt.certificate)
 

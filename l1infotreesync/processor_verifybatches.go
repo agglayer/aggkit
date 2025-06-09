@@ -5,13 +5,14 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/db"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
 
-func (p *processor) processVerifyBatches(tx db.Txer, blockNumber uint64, event *VerifyBatches) error {
+func (p *processor) processVerifyBatches(tx dbtypes.Txer, blockNumber uint64, event *VerifyBatches) error {
 	if event == nil {
 		return fmt.Errorf("processVerifyBatches: event is nil")
 	}
@@ -50,7 +51,7 @@ func (p *processor) processVerifyBatches(tx db.Txer, blockNumber uint64, event *
 	return nil
 }
 
-func (p *processor) isNewValueForRollupExitTree(tx db.Querier, event *VerifyBatches) (bool, error) {
+func (p *processor) isNewValueForRollupExitTree(tx dbtypes.Querier, event *VerifyBatches) (bool, error) {
 	currentRoot, err := p.rollupExitTree.GetLastRoot(tx)
 	if err != nil && errors.Is(err, db.ErrNotFound) {
 		// The tree is empty, so is a new value for sure
