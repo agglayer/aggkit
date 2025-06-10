@@ -264,11 +264,6 @@ RequireNoFEPBlockGap = true
 		MinConnectTimeout = "5s"
 		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 		UseTLS = false
-		[AggSender.AggkitProverClient.Retry]
-			InitialBackoff = "1s"
-			MaxBackoff = "10s"
-			BackoffMultiplier = 2.0
-			MaxAttempts = 1
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
