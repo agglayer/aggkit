@@ -121,7 +121,7 @@ if [ -n "$E2E_FOLDER" ]; then
         bats ./tests/aggkit/bridge-e2e-3-chains.bats
         ;;
     esac
-    rm aggsender_find_imported_bridge combined.json rollup_params.json
+    rm -f aggsender_find_imported_bridge combined.json rollup_params.json
     popd >/dev/null
     log_info "E2E tests executed. Logs saved to $LOG_FILE"
 else
