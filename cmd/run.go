@@ -76,25 +76,9 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	var ethermanClient *etherman.Client
-
-	if isNeeded([]string{
-		aggkitcommon.AGGORACLE,
-		aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.AGGSENDER,
-		aggkitcommon.BRIDGE,
-	}, components) {
-		ethermanClient, err = etherman.NewClient(cfg.L1NetworkConfig,
-			func(url string) (aggkittypes.BaseEthereumClienter, error) {
-				return ethclient.Dial(url)
-			},
-			func(rollupAddr common.Address,
-				client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
-				return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
-			})
-		if err != nil {
-			return fmt.Errorf("failed to create etherman client: %w", err)
-		}
+	ethermanClient, err := initEthermanClient(cfg.L1NetworkConfig, components)
+	if err != nil {
+		return fmt.Errorf("failed to create etherman client: %w", err)
 	}
 
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
@@ -675,4 +659,28 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 		log.Errorf("closed http connection for prometheus server: %v", err)
 		return
 	}
+}
+
+// initEthermanClient initializes and returns an etherman client if any of the required components
+// (AGGORACLE, AGGCHAINPROOFGEN, AGGSENDER, BRIDGE) are needed. The client is configured with
+// the provided L1 network configuration and uses default implementations for creating Ethereum
+// clients and rollup manager contracts. Returns nil if none of the required components are needed.
+func initEthermanClient(cfg config.L1NetworkConfig, components []string) (*etherman.Client, error) {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE,
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.BRIDGE,
+	}, components) {
+		return nil, nil
+	}
+
+	return etherman.NewClient(cfg,
+		func(url string) (aggkittypes.BaseEthereumClienter, error) {
+			return ethclient.Dial(url)
+		},
+		func(rollupAddr common.Address,
+			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
+			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
+		})
 }
