@@ -664,7 +664,7 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 // initEthermanClient initializes and returns an etherman client if any of the required components
 // (AGGORACLE, AGGCHAINPROOFGEN, AGGSENDER, BRIDGE) are needed. The client is configured with
 // the provided L1 network configuration and uses default implementations for creating Ethereum
-// clients and rollup manager contracts. Returns nil if none of the required components are needed.
+// clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
 func initEthermanClient(cfg config.L1NetworkConfig, components []string) (*etherman.Client, error) {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
