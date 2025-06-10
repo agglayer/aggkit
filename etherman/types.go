@@ -162,6 +162,10 @@ func (b BlockNumberFinality) IsFinalized() bool {
 	return b == FinalizedBlock
 }
 
+func (b BlockNumberFinality) IsSafe() bool {
+	return b == SafeBlock
+}
+
 type BlockNumber int64
 
 const (
