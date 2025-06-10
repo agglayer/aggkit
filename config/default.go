@@ -153,40 +153,6 @@ ReadTimeout = "2s"
 WriteTimeout = "2s"
 MaxRequestsPerIPAndSecond = 10
 
-[ClaimSponsor]
-DBPath = "{{PathRWData}}/claimsponsor.sqlite"
-Enabled = false
-SenderAddr = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
-BridgeAddrL2 = "0xB7098a13a48EcE087d3DA15b2D28eCE0f89819B8"
-MaxGas = 200000
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
-WaitTxToBeMinedPeriod = "3s"
-WaitOnEmptyQueue = "3s"
-GasOffset = 0
-	[ClaimSponsor.EthTxManager]
-		FrequencyToMonitorTxs = "1s"
-		WaitTxToBeMined = "2s"
-		GetReceiptMaxTime = "250ms"
-		GetReceiptWaitInterval = "1s"
-		PrivateKeys = [
-			{Path = "/etc/aggkit/claimtxmanager.keystore", Password = "pSnv6Dh5s9ahuzGzH9RoCDrKAMddaX3m"},
-		]
-		ForcedGas = 0
-		GasPriceMarginFactor = 1
-		MaxGasPriceLimit = 0
-		StoragePath = "{{PathRWData}}/ethtxmanager-claimsponsor.sqlite"
-		ReadPendingL1Txs = false
-		SafeStatusL1NumberOfBlocks = 5
-		FinalizedStatusL1NumberOfBlocks = 10
-			[ClaimSponsor.EthTxManager.Etherman]
-				URL = "{{L2URL}}"
-				MultiGasProvider = false
-				# L1ChainID = 0 indicates it will be set at runtime
-				# This field should be populated with L2ChainID 
-				L1ChainID = 0
-				HTTPHeaders = []
-
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
 BlockFinality = "LatestBlock"

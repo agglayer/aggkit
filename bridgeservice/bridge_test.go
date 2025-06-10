@@ -19,7 +19,6 @@ import (
 	mocks "github.com/agglayer/aggkit/bridgeservice/mocks"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
@@ -40,7 +39,6 @@ const (
 
 type bridgeWithMocks struct {
 	bridge       *BridgeService
-	sponsor      *mocks.ClaimSponsorer
 	l1InfoTree   *mocks.L1InfoTreer
 	injectedGERs *mocks.LastGERer
 	bridgeL1     *mocks.Bridger
@@ -50,7 +48,6 @@ type bridgeWithMocks struct {
 func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	t.Helper()
 	b := bridgeWithMocks{
-		sponsor:      mocks.NewClaimSponsorer(t),
 		l1InfoTree:   mocks.NewL1InfoTreer(t),
 		injectedGERs: mocks.NewLastGERer(t),
 		bridgeL1:     mocks.NewBridger(t),
@@ -64,7 +61,7 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 		WriteTimeout: 0,
 		NetworkID:    networkID,
 	}
-	b.bridge = New(cfg, b.sponsor, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
+	b.bridge = New(cfg, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
 	return b
 }
 
@@ -1677,174 +1674,6 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 		require.Equal(t, http.StatusBadRequest, response.Code)
 		require.Contains(t, response.Body.String(),
 			fmt.Sprintf("invalid %s parameter", networkIDParam))
-	})
-}
-
-func TestGetSponsoredClaimStatusHandler(t *testing.T) {
-	t.Run("Client does not support sponsored claims", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridge.sponsor = nil
-
-		queryParams := url.Values{
-			globalIndexParam: []string{"1"},
-		}
-
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/sponsored-claim-status?%s", BridgeV1Prefix, queryParams.Encode()), nil)
-		require.Equal(t, http.StatusBadRequest, response.Code)
-		require.Contains(t, response.Body.String(), "this client does not support claim sponsoring")
-	})
-
-	t.Run("Global index is missing", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/sponsored-claim-status", BridgeV1Prefix), nil)
-		require.Equal(t, http.StatusBadRequest, response.Code)
-		require.Contains(t, response.Body.String(), fmt.Sprintf("%s is mandatory", globalIndexParam))
-	})
-
-	t.Run("Failed to get claim status", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		bridgeMocks.sponsor.EXPECT().
-			GetClaim(mock.Anything).
-			Return(nil, fmt.Errorf(fooErrMsg))
-
-		queryParams := url.Values{
-			globalIndexParam: []string{"1"},
-		}
-
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/sponsored-claim-status?%s", BridgeV1Prefix, queryParams.Encode()), nil)
-		require.Equal(t, http.StatusInternalServerError, response.Code)
-		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get claim status for global index 1, error: %s", fooErrMsg))
-	})
-
-	t.Run("Claim status retrieval successful", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		expectedStatus := claimsponsor.PendingClaimStatus
-		bridgeMocks.sponsor.EXPECT().GetClaim(mock.Anything).
-			Return(&claimsponsor.Claim{
-				GlobalIndex: big.NewInt(1),
-				Status:      expectedStatus,
-			}, nil)
-
-		queryParams := url.Values{
-			globalIndexParam: []string{"1"},
-		}
-
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/sponsored-claim-status?%s", BridgeV1Prefix, queryParams.Encode()), nil)
-		require.Equal(t, http.StatusOK, response.Code)
-
-		var status claimsponsor.ClaimStatus
-		err := json.Unmarshal(response.Body.Bytes(), &status)
-		require.NoError(t, err)
-		require.Equal(t, expectedStatus, status)
-	})
-}
-
-func TestSponsorClaimHandler(t *testing.T) {
-	t.Run("Client does not support sponsored claims", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridge.sponsor = nil
-
-		claim := claimsponsor.Claim{
-			GlobalIndex:        common.Big1,
-			DestinationNetwork: l2NetworkID,
-		}
-
-		body, err := json.Marshal(claim)
-		require.NoError(t, err)
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, fmt.Sprintf("%s/sponsor-claim", BridgeV1Prefix), body)
-
-		require.Equal(t, http.StatusBadRequest, response.Code)
-		require.Contains(t, response.Body.String(), "this client does not support claim sponsoring")
-	})
-
-	t.Run("Unsupported network id:", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		claim := claimsponsor.Claim{
-			GlobalIndex:        common.Big1,
-			DestinationNetwork: 999,
-		}
-
-		body, err := json.Marshal(claim)
-		require.NoError(t, err)
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, fmt.Sprintf("%s/sponsor-claim", BridgeV1Prefix), body)
-
-		require.Equal(t, http.StatusBadRequest, response.Code)
-		require.Contains(t, response.Body.String(), fmt.Sprintf("this client only sponsors claims for destination network %d", l2NetworkID))
-	})
-
-	t.Run("Failed to add claim to the queue", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		claim := claimsponsor.Claim{
-			GlobalIndex:        common.Big1,
-			DestinationNetwork: l2NetworkID,
-		}
-
-		bridgeMocks.sponsor.EXPECT().AddClaimToQueue(mock.Anything).Return(fmt.Errorf(fooErrMsg))
-
-		body, err := json.Marshal(claim)
-		require.NoError(t, err)
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, fmt.Sprintf("%s/sponsor-claim", BridgeV1Prefix), body)
-
-		require.Equal(t, http.StatusInternalServerError, response.Code)
-		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to add claim to queue: %s", fooErrMsg))
-	})
-
-	t.Run("Claim is added to the queue", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		claim := claimsponsor.Claim{
-			GlobalIndex:        common.Big1,
-			DestinationNetwork: l2NetworkID,
-		}
-
-		bridgeMocks.sponsor.EXPECT().AddClaimToQueue(mock.Anything).Return(nil)
-
-		body, err := json.Marshal(claim)
-		require.NoError(t, err)
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, fmt.Sprintf("%s/sponsor-claim", BridgeV1Prefix), body)
-
-		require.Equal(t, http.StatusOK, response.Code)
-
-		var respBody map[string]string
-		err = json.Unmarshal(response.Body.Bytes(), &respBody)
-		require.NoError(t, err)
-		require.Equal(t, fmt.Sprintf("claim is sponsored (global index=%d)", claim.GlobalIndex), respBody["status"])
-	})
-
-	t.Run("Invalid request body - not JSON", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		// Invalid JSON (plain text, not JSON at all)
-		invalidBody := `foo`
-
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, fmt.Sprintf("%s/sponsor-claim", BridgeV1Prefix), invalidBody)
-		require.Equal(t, http.StatusBadRequest, response.Code)
-		require.Contains(t, response.Body.String(), "invalid request body")
-	})
-
-	t.Run("Invalid request body - malformed JSON", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		// Malformed JSON
-		invalidBody := `{"global_index": "123", "destination_network": }`
-
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, fmt.Sprintf("%s/sponsor-claim", BridgeV1Prefix), invalidBody)
-		require.Equal(t, http.StatusBadRequest, response.Code)
-		require.Contains(t, response.Body.String(), "invalid request body")
-	})
-
-	t.Run("Invalid request body - empty JSON", func(t *testing.T) {
-		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-
-		emptyBody := `{}`
-
-		response := performRequest(t, bridgeMocks.bridge.router, http.MethodPost, fmt.Sprintf("%s/sponsor-claim", BridgeV1Prefix), emptyBody)
-		require.Equal(t, http.StatusBadRequest, response.Code)
-		require.Contains(t, response.Body.String(), "global_index is mandatory")
 	})
 }
 
