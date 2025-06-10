@@ -88,7 +88,7 @@ func TestNewFlow(t *testing.T) {
 				AggsenderPrivateKey: keyConfig,
 				AggkitProverClient: &aggkitgrpc.ClientConfig{
 					URL:               "http://127.0.0.1",
-					MinConnectTimeout: cfgtypes.Duration{1 * time.Millisecond},
+					MinConnectTimeout: cfgtypes.Duration{Duration: 1 * time.Millisecond},
 				},
 				OptimisticModeConfig: optimistic.Config{
 					TrustedSequencerKey:             keyConfig,
