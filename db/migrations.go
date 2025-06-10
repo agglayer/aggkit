@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	upDownSeparator  = "-- +migrate Up"
+	UpDownSeparator  = "-- +migrate Up"
 	dbPrefixReplacer = "/*dbprefix*/"
 )
 
@@ -35,7 +35,7 @@ func RunMigrationsDB(logger *log.Logger, db *sql.DB, migrationsParam []types.Mig
 	fullmigrations = append(fullmigrations, migrations.GetBaseMigrations()...)
 	for _, m := range fullmigrations {
 		prefixed := strings.ReplaceAll(m.SQL, dbPrefixReplacer, m.Prefix)
-		splitted := strings.Split(prefixed, upDownSeparator)
+		splitted := strings.Split(prefixed, UpDownSeparator)
 		migs.Migrations = append(migs.Migrations, &migrate.Migration{
 			Id:   m.Prefix + m.ID,
 			Up:   []string{splitted[1]},
