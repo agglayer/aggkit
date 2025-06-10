@@ -9,27 +9,20 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var (
-	ErrNoBridgeExits        = fmt.Errorf("no bridge exits consumed")
-	ErrNoBridgeTransactions = fmt.Errorf("no bridge transactions found")
-)
-
 var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 
 // bridgeDataQuerier is a struct that holds the logic to query the bridge data
 type bridgeDataQuerier struct {
 	bridgeSyncer types.L2BridgeSyncer
 
-	originNetwork           uint32
-	forceOneBridgeExitForPP bool
+	originNetwork uint32
 }
 
 // NewBridgeDataQuerier returns a new instance of the BridgeDataQuerier
-func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer, forceOneBridgeExitForPP bool) *bridgeDataQuerier {
+func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer) *bridgeDataQuerier {
 	return &bridgeDataQuerier{
-		bridgeSyncer:            bridgeSyncer,
-		originNetwork:           bridgeSyncer.OriginNetwork(),
-		forceOneBridgeExitForPP: forceOneBridgeExitForPP,
+		bridgeSyncer:  bridgeSyncer,
+		originNetwork: bridgeSyncer.OriginNetwork(),
 	}
 }
 
@@ -39,11 +32,10 @@ func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer, forceOneBridgeExitF
 //   - ctx: The context for managing request deadlines and cancellations.
 //   - fromBlock: The starting block number for the query range.
 //   - toBlock: The ending block number for the query range.
-//   - allowEmptyCert: A flag indicating whether to retrieve claims even if certificates are empty.
 //
 // Returns:
 //   - []bridgesync.Bridge: A slice of Bridge objects retrieved within the specified block range.
-//   - []bridgesync.Claim: A slice of Claim objects retrieved within the specified block range (if allowEmptyCert).
+//   - []bridgesync.Claim: A slice of Claim objects retrieved within the specified block range.
 //   - error: An error if any occurs during the retrieval of bridges or claims.
 //
 // Errors:
@@ -51,30 +43,15 @@ func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer, forceOneBridgeExitF
 func (b *bridgeDataQuerier) GetBridgesAndClaims(
 	ctx context.Context,
 	fromBlock, toBlock uint64,
-	certType types.CertificateType,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
 	bridges, err := b.bridgeSyncer.GetBridges(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
 	}
 
-	if certType == types.CertificateTypePP {
-		if b.forceOneBridgeExitForPP && len(bridges) == 0 {
-			// If forceOneBridgeExitForPP is true and no bridges are found, return an error
-			return nil, nil, fmt.Errorf("%w, no need to send a certificate from block: %d to block: %d",
-				ErrNoBridgeExits, fromBlock, toBlock)
-		}
-	}
-
 	claims, err := b.bridgeSyncer.GetClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting claims: %w", err)
-	}
-
-	if certType == types.CertificateTypePP && len(bridges) == 0 && len(claims) == 0 {
-		// If no bridges and claims are found, return an error
-		return nil, nil, fmt.Errorf("%w, no need to send a certificate from block: %d to block: %d",
-			ErrNoBridgeTransactions, fromBlock, toBlock)
 	}
 
 	return bridges, claims, nil

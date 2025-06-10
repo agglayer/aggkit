@@ -27,7 +27,7 @@ type AggsenderFlow interface {
 
 type AggsenderFlowBaser interface {
 	GetCertificateBuildParamsInternal(
-		ctx context.Context, allowEmptyCert bool, certType CertificateType) (*CertificateBuildParams, error)
+		ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
 	BuildCertificate(ctx context.Context,
 		certParams *CertificateBuildParams,
 		lastSentCertificate *CertificateHeader,
@@ -68,7 +68,6 @@ type BridgeQuerier interface {
 	GetBridgesAndClaims(
 		ctx context.Context,
 		fromBlock, toBlock uint64,
-		certificateType CertificateType,
 	) ([]bridgesync.Bridge, []bridgesync.Claim, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)

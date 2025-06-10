@@ -189,7 +189,6 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
 			ctx, fromBlock,
 			toBlock,
-			typeCert,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
@@ -230,7 +229,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			lastSentCert.CertType, typeCert)
 	}
 
-	buildParams, err := a.baseFlow.GetCertificateBuildParamsInternal(ctx, true, typeCert)
+	buildParams, err := a.baseFlow.GetCertificateBuildParamsInternal(ctx, typeCert)
 	if err != nil {
 		if errors.Is(err, errNoNewBlocks) {
 			// no new blocks to send a certificate

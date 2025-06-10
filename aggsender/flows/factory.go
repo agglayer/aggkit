@@ -37,7 +37,7 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
-		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer, cfg.ForceOneBridgeExitForPP)
+		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 		baseFlow := NewBaseFlow(
@@ -51,6 +51,7 @@ func NewFlow(
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
 			signer,
+			cfg.ForceOneBridgeExitForPP,
 		), nil
 	case types.AggchainProofMode:
 		if err := cfg.AggkitProverClient.Validate(); err != nil {
@@ -84,7 +85,7 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
-		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer, false)
+		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
 			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
