@@ -65,9 +65,9 @@ multi-l2-networks-2-chains)
     ;;
 multi-l2-networks-3-chains)
     ENCLAVE_NAME="aggkit"
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1.json" .
-    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" .
     kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_4.json" .
+    kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_5.json" .
     ;;
 *)
     log_error "Unknown test type: $TEST_TYPE"
@@ -118,9 +118,10 @@ if [ -n "$E2E_FOLDER" ]; then
         bats ./tests/aggkit/bridge-e2e-2-l2s.bats
         ;;
     multi-l2-networks-3-chains)
-        bats ./tests/aggkit/bridge-e2e-2-l2s.bats
+        bats ./tests/aggkit/bridge-e2e-3-chains.bats
         ;;
     esac
+    rm -f aggsender_find_imported_bridge combined.json rollup_params.json
     popd >/dev/null
     log_info "E2E tests executed. Logs saved to $LOG_FILE"
 else

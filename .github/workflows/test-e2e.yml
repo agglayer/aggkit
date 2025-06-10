@@ -30,6 +30,8 @@ jobs:
       kurtosis-cdk-args-1: ${{ steps.read-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ steps.read-args.outputs.kurtosis-cdk-args-2 }}
       kurtosis-cdk-args-3: ${{ steps.read-args.outputs.kurtosis-cdk-args-3 }}
+      kurtosis-cdk-args-4: ${{ steps.read-args.outputs.kurtosis-cdk-args-4 }}
+      kurtosis-cdk-args-5: ${{ steps.read-args.outputs.kurtosis-cdk-args-5 }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -50,17 +52,21 @@ jobs:
           echo "kurtosis-cdk-args-2=${CONTENT}" >> $GITHUB_OUTPUT
           CONTENT=$(cat ./.github/test_e2e_multi_chains_args_3.json | jq -c .)
           echo "kurtosis-cdk-args-3=${CONTENT}" >> $GITHUB_OUTPUT
+          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_4.json | jq -c .)
+          echo "kurtosis-cdk-args-4=${CONTENT}" >> $GITHUB_OUTPUT
+          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_5.json | jq -c .)
+          echo "kurtosis-cdk-args-5=${CONTENT}" >> $GITHUB_OUTPUT
 
   test-single-l2-network-fork12-pessimistic:
     name: Single L2 chain tests (pessimistic)
     needs:
       - build-aggkit-image
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@44083e2c2d2a5e84164edbbda0128253f56a6f55
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@cc1b0657487f5c95e1e029a91896efce9f4f7888
     secrets: inherit
     with:
       kurtosis-cdk-ref: 5a27f467008ebe9ad97fc2b2ca315d6c48efc17a
-      agglayer-e2e-ref: 44083e2c2d2a5e84164edbbda0128253f56a6f55
+      agglayer-e2e-ref: cc1b0657487f5c95e1e029a91896efce9f4f7888
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
       test-name: "test-single-l2-network-fork12-pessimistic"
@@ -80,11 +86,11 @@ jobs:
     needs:
       - build-aggkit-image
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@44083e2c2d2a5e84164edbbda0128253f56a6f55
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@cc1b0657487f5c95e1e029a91896efce9f4f7888
     secrets: inherit
     with:
       kurtosis-cdk-ref: 5a27f467008ebe9ad97fc2b2ca315d6c48efc17a
-      agglayer-e2e-ref: 44083e2c2d2a5e84164edbbda0128253f56a6f55
+      agglayer-e2e-ref: cc1b0657487f5c95e1e029a91896efce9f4f7888
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
       test-name: "test-single-l2-network-fork12-op-succinct"
@@ -128,11 +134,11 @@ jobs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@44083e2c2d2a5e84164edbbda0128253f56a6f55
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@cc1b0657487f5c95e1e029a91896efce9f4f7888
     secrets: inherit
     with:
       kurtosis-cdk-ref: 5a27f467008ebe9ad97fc2b2ca315d6c48efc17a
-      agglayer-e2e-ref: 44083e2c2d2a5e84164edbbda0128253f56a6f55
+      agglayer-e2e-ref: cc1b0657487f5c95e1e029a91896efce9f4f7888
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
@@ -154,16 +160,16 @@ jobs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@44083e2c2d2a5e84164edbbda0128253f56a6f55
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@cc1b0657487f5c95e1e029a91896efce9f4f7888
     secrets: inherit
     with:
       kurtosis-cdk-ref: 5a27f467008ebe9ad97fc2b2ca315d6c48efc17a
-      agglayer-e2e-ref: 44083e2c2d2a5e84164edbbda0128253f56a6f55
+      agglayer-e2e-ref: cc1b0657487f5c95e1e029a91896efce9f4f7888
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
-      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
-      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
-      kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
+      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
+      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-4 }}
+      kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-5 }}
       number-of-chains: 3
 
   check-multi-l2-networks-3-chains-tests-result:
