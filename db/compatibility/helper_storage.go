@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/types"
 )
 
 /*
@@ -35,23 +36,15 @@ const (
 	compatibilityContentKey = "compatibility_content"
 )
 
-// KeyValueStorager is the interface that defines the methods to interact with the storage as a key/value
-type KeyValueStorager interface {
-	// InsertValue inserts the value of the key in the storage
-	InsertValue(tx db.Querier, owner, key, value string) error
-	// GetValue returns the value of the key from the storage
-	GetValue(tx db.Querier, owner, key string) (string, error)
-}
-
 // KeyValueToCompatibilityStorage is the object that implements the CompatibilityDataStorager interface
 // using a KeyValueStorager object
 type KeyValueToCompatibilityStorage[T any] struct {
-	KVStorage KeyValueStorager
+	KVStorage types.KeyValueStorager
 	OwnerName string
 }
 
 // NewKeyValueToCompatibilityStorage creates a new KeyValueToCompatibilityStorage object
-func NewKeyValueToCompatibilityStorage[T any](kvStorage KeyValueStorager,
+func NewKeyValueToCompatibilityStorage[T any](kvStorage types.KeyValueStorager,
 	ownerName string) *KeyValueToCompatibilityStorage[T] {
 	return &KeyValueToCompatibilityStorage[T]{
 		KVStorage: kvStorage,
@@ -63,7 +56,7 @@ func NewKeyValueToCompatibilityStorage[T any](kvStorage KeyValueStorager,
 // T -> the data stored
 // error -> if there is an error
 func (s *KeyValueToCompatibilityStorage[T]) GetCompatibilityData(ctx context.Context,
-	tx db.Querier) (bool, T, error) {
+	tx types.Querier) (bool, T, error) {
 	var runtimeDataUnmarshaled T
 	var err error
 	runtimeDataRaw, err := s.KVStorage.GetValue(tx, s.OwnerName, compatibilityContentKey)
@@ -84,7 +77,7 @@ func (s *KeyValueToCompatibilityStorage[T]) GetCompatibilityData(ctx context.Con
 
 // SetCompatibilityData stores the compatibility data in the storage
 // error -> if there is an error
-func (s *KeyValueToCompatibilityStorage[T]) SetCompatibilityData(ctx context.Context, tx db.Querier, data T) error {
+func (s *KeyValueToCompatibilityStorage[T]) SetCompatibilityData(ctx context.Context, tx types.Querier, data T) error {
 	dataStr, err := json.Marshal(data)
 	if err != nil {
 		return fmt.Errorf("compatibilityCheck: fails to marshal runtime data. Err: %w", err)

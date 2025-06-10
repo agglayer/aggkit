@@ -25,6 +25,7 @@ type EthTxManager interface {
 		gasOffset uint64,
 		sidecar *types.BlobTxSidecar,
 	) (common.Hash, error)
+	From() common.Address
 }
 
 // L2GERManagerContract is an interface to interact with the GlobalExitRootManager contract
@@ -40,4 +41,5 @@ type L2GERManagerContract interface {
 		*globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainUpdateRemovalHashChainValueIterator,
 		error,
 	)
+	GlobalExitRootUpdater(opts *bind.CallOpts) (common.Address, error)
 }

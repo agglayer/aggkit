@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/db"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -50,7 +51,7 @@ func newTree(db *sql.DB, tablePrefix string) *Tree {
 	return t
 }
 
-func (t *Tree) getSiblings(tx db.Querier, index uint32, root common.Hash) (
+func (t *Tree) getSiblings(tx dbtypes.Querier, index uint32, root common.Hash) (
 	siblings types.Proof,
 	hasUsedZeroHashes bool,
 	err error,
@@ -120,7 +121,7 @@ func (t *Tree) GetProof(ctx context.Context, index uint32, root common.Hash) (ty
 	return siblings, nil
 }
 
-func (t *Tree) getRHTNode(tx db.Querier, nodeHash common.Hash) (*types.TreeNode, error) {
+func (t *Tree) getRHTNode(tx dbtypes.Querier, nodeHash common.Hash) (*types.TreeNode, error) {
 	node := &types.TreeNode{}
 	err := meddler.QueryRow(
 		tx, node,
@@ -154,7 +155,7 @@ func generateZeroHashes(height uint8) []common.Hash {
 	return zeroHashes
 }
 
-func (t *Tree) storeNodes(tx db.Txer, nodes []types.TreeNode) error {
+func (t *Tree) storeNodes(tx dbtypes.Txer, nodes []types.TreeNode) error {
 	for i := 0; i < len(nodes); i++ {
 		if err := meddler.Insert(tx, t.rhtTable, &nodes[i]); err != nil {
 			if sqliteErr, ok := db.SQLiteErr(err); ok {
@@ -170,19 +171,19 @@ func (t *Tree) storeNodes(tx db.Txer, nodes []types.TreeNode) error {
 	return nil
 }
 
-func (t *Tree) storeRoot(tx db.Txer, root types.Root) error {
+func (t *Tree) storeRoot(tx dbtypes.Txer, root types.Root) error {
 	return meddler.Insert(tx, t.rootTable, &root)
 }
 
 // GetLastRoot returns the last processed root
-func (t *Tree) GetLastRoot(tx db.Querier) (types.Root, error) {
+func (t *Tree) GetLastRoot(tx dbtypes.Querier) (types.Root, error) {
 	if tx == nil {
 		tx = t.db
 	}
 	return t.getLastRootWithTx(tx)
 }
 
-func (t *Tree) getLastRootWithTx(tx db.Querier) (types.Root, error) {
+func (t *Tree) getLastRootWithTx(tx dbtypes.Querier) (types.Root, error) {
 	var root types.Root
 	err := meddler.QueryRow(
 		tx, &root,
@@ -230,7 +231,7 @@ func (t *Tree) GetRootByHash(ctx context.Context, hash common.Hash) (*types.Root
 	return &root, nil
 }
 
-func (t *Tree) GetLeaf(tx db.Querier, index uint32, root common.Hash) (common.Hash, error) {
+func (t *Tree) GetLeaf(tx dbtypes.Querier, index uint32, root common.Hash) (common.Hash, error) {
 	currentNodeHash := root
 	for h := int(types.DefaultHeight - 1); h >= 0; h-- {
 		currentNode, err := t.getRHTNode(tx, currentNodeHash)
@@ -248,7 +249,7 @@ func (t *Tree) GetLeaf(tx db.Querier, index uint32, root common.Hash) (common.Ha
 }
 
 // Reorg deletes all the data relevant from firstReorgedBlock (includded) and onwards
-func (t *Tree) Reorg(tx db.Txer, firstReorgedBlock uint64) error {
+func (t *Tree) Reorg(tx dbtypes.Txer, firstReorgedBlock uint64) error {
 	_, err := tx.Exec(
 		fmt.Sprintf(`DELETE FROM %s WHERE block_num >= $1`, t.rootTable),
 		firstReorgedBlock,

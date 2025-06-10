@@ -3,7 +3,7 @@
 package mocks
 
 import (
-	db "github.com/agglayer/aggkit/db"
+	types "github.com/agglayer/aggkit/db/types"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -21,7 +21,7 @@ func (_m *KeyValueStorager) EXPECT() *KeyValueStorager_Expecter {
 }
 
 // GetValue provides a mock function with given fields: tx, owner, key
-func (_m *KeyValueStorager) GetValue(tx db.Querier, owner string, key string) (string, error) {
+func (_m *KeyValueStorager) GetValue(tx types.Querier, owner string, key string) (string, error) {
 	ret := _m.Called(tx, owner, key)
 
 	if len(ret) == 0 {
@@ -30,16 +30,16 @@ func (_m *KeyValueStorager) GetValue(tx db.Querier, owner string, key string) (s
 
 	var r0 string
 	var r1 error
-	if rf, ok := ret.Get(0).(func(db.Querier, string, string) (string, error)); ok {
+	if rf, ok := ret.Get(0).(func(types.Querier, string, string) (string, error)); ok {
 		return rf(tx, owner, key)
 	}
-	if rf, ok := ret.Get(0).(func(db.Querier, string, string) string); ok {
+	if rf, ok := ret.Get(0).(func(types.Querier, string, string) string); ok {
 		r0 = rf(tx, owner, key)
 	} else {
 		r0 = ret.Get(0).(string)
 	}
 
-	if rf, ok := ret.Get(1).(func(db.Querier, string, string) error); ok {
+	if rf, ok := ret.Get(1).(func(types.Querier, string, string) error); ok {
 		r1 = rf(tx, owner, key)
 	} else {
 		r1 = ret.Error(1)
@@ -54,16 +54,16 @@ type KeyValueStorager_GetValue_Call struct {
 }
 
 // GetValue is a helper method to define mock.On call
-//   - tx db.Querier
+//   - tx types.Querier
 //   - owner string
 //   - key string
 func (_e *KeyValueStorager_Expecter) GetValue(tx interface{}, owner interface{}, key interface{}) *KeyValueStorager_GetValue_Call {
 	return &KeyValueStorager_GetValue_Call{Call: _e.mock.On("GetValue", tx, owner, key)}
 }
 
-func (_c *KeyValueStorager_GetValue_Call) Run(run func(tx db.Querier, owner string, key string)) *KeyValueStorager_GetValue_Call {
+func (_c *KeyValueStorager_GetValue_Call) Run(run func(tx types.Querier, owner string, key string)) *KeyValueStorager_GetValue_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(db.Querier), args[1].(string), args[2].(string))
+		run(args[0].(types.Querier), args[1].(string), args[2].(string))
 	})
 	return _c
 }
@@ -73,13 +73,13 @@ func (_c *KeyValueStorager_GetValue_Call) Return(_a0 string, _a1 error) *KeyValu
 	return _c
 }
 
-func (_c *KeyValueStorager_GetValue_Call) RunAndReturn(run func(db.Querier, string, string) (string, error)) *KeyValueStorager_GetValue_Call {
+func (_c *KeyValueStorager_GetValue_Call) RunAndReturn(run func(types.Querier, string, string) (string, error)) *KeyValueStorager_GetValue_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // InsertValue provides a mock function with given fields: tx, owner, key, value
-func (_m *KeyValueStorager) InsertValue(tx db.Querier, owner string, key string, value string) error {
+func (_m *KeyValueStorager) InsertValue(tx types.Querier, owner string, key string, value string) error {
 	ret := _m.Called(tx, owner, key, value)
 
 	if len(ret) == 0 {
@@ -87,7 +87,7 @@ func (_m *KeyValueStorager) InsertValue(tx db.Querier, owner string, key string,
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(db.Querier, string, string, string) error); ok {
+	if rf, ok := ret.Get(0).(func(types.Querier, string, string, string) error); ok {
 		r0 = rf(tx, owner, key, value)
 	} else {
 		r0 = ret.Error(0)
@@ -102,7 +102,7 @@ type KeyValueStorager_InsertValue_Call struct {
 }
 
 // InsertValue is a helper method to define mock.On call
-//   - tx db.Querier
+//   - tx types.Querier
 //   - owner string
 //   - key string
 //   - value string
@@ -110,9 +110,9 @@ func (_e *KeyValueStorager_Expecter) InsertValue(tx interface{}, owner interface
 	return &KeyValueStorager_InsertValue_Call{Call: _e.mock.On("InsertValue", tx, owner, key, value)}
 }
 
-func (_c *KeyValueStorager_InsertValue_Call) Run(run func(tx db.Querier, owner string, key string, value string)) *KeyValueStorager_InsertValue_Call {
+func (_c *KeyValueStorager_InsertValue_Call) Run(run func(tx types.Querier, owner string, key string, value string)) *KeyValueStorager_InsertValue_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(db.Querier), args[1].(string), args[2].(string), args[3].(string))
+		run(args[0].(types.Querier), args[1].(string), args[2].(string), args[3].(string))
 	})
 	return _c
 }
@@ -122,7 +122,56 @@ func (_c *KeyValueStorager_InsertValue_Call) Return(_a0 error) *KeyValueStorager
 	return _c
 }
 
-func (_c *KeyValueStorager_InsertValue_Call) RunAndReturn(run func(db.Querier, string, string, string) error) *KeyValueStorager_InsertValue_Call {
+func (_c *KeyValueStorager_InsertValue_Call) RunAndReturn(run func(types.Querier, string, string, string) error) *KeyValueStorager_InsertValue_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// UpdateValue provides a mock function with given fields: tx, owner, key, value
+func (_m *KeyValueStorager) UpdateValue(tx types.Querier, owner string, key string, value string) error {
+	ret := _m.Called(tx, owner, key, value)
+
+	if len(ret) == 0 {
+		panic("no return value specified for UpdateValue")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(types.Querier, string, string, string) error); ok {
+		r0 = rf(tx, owner, key, value)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// KeyValueStorager_UpdateValue_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateValue'
+type KeyValueStorager_UpdateValue_Call struct {
+	*mock.Call
+}
+
+// UpdateValue is a helper method to define mock.On call
+//   - tx types.Querier
+//   - owner string
+//   - key string
+//   - value string
+func (_e *KeyValueStorager_Expecter) UpdateValue(tx interface{}, owner interface{}, key interface{}, value interface{}) *KeyValueStorager_UpdateValue_Call {
+	return &KeyValueStorager_UpdateValue_Call{Call: _e.mock.On("UpdateValue", tx, owner, key, value)}
+}
+
+func (_c *KeyValueStorager_UpdateValue_Call) Run(run func(tx types.Querier, owner string, key string, value string)) *KeyValueStorager_UpdateValue_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(types.Querier), args[1].(string), args[2].(string), args[3].(string))
+	})
+	return _c
+}
+
+func (_c *KeyValueStorager_UpdateValue_Call) Return(_a0 error) *KeyValueStorager_UpdateValue_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *KeyValueStorager_UpdateValue_Call) RunAndReturn(run func(types.Querier, string, string, string) error) *KeyValueStorager_UpdateValue_Call {
 	_c.Call.Return(run)
 	return _c
 }

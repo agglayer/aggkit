@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
@@ -65,6 +66,8 @@ type Config struct {
 	// RequireNoFEPBlockGap is true if the AggSender should not accept a gap between
 	// lastBlock from lastCertificate and first block of FEP
 	RequireNoFEPBlockGap bool `mapstructure:"RequireNoFEPBlockGap"`
+	// OptimisticModeConfig is the configuration for optimistic mode (required by FEP mode)
+	OptimisticModeConfig optimistic.Config `mapstructure:"OptimisticModeConfig"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
