@@ -268,7 +268,7 @@ RequireNoFEPBlockGap = true
 			InitialBackoff = "1s"
 			MaxBackoff = "10s"
 			BackoffMultiplier = 2.0
-			MaxAttempts = 8
+			MaxAttempts = 1
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
@@ -296,7 +296,7 @@ GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 			InitialBackoff = "1s"
 			MaxBackoff = "10s"
 			BackoffMultiplier = 2.0
-			MaxAttempts = 8
+			MaxAttempts = 1
 
 [Profiling]
 ProfilingHost = "localhost"
