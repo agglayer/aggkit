@@ -68,6 +68,9 @@ type Config struct {
 	RequireNoFEPBlockGap bool `mapstructure:"RequireNoFEPBlockGap"`
 	// OptimisticModeConfig is the configuration for optimistic mode (required by FEP mode)
 	OptimisticModeConfig optimistic.Config `mapstructure:"OptimisticModeConfig"`
+	// ForceOneBridgeExitForPP is a flag to force the AggSender to have at least one bridge exit
+	// for the Pessimistic Proof certificates
+	ForceOneBridgeExitForPP bool `mapstructure:"ForceOneBridgeExitForPP"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

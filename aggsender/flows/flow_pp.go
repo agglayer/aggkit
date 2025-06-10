@@ -47,8 +47,12 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	buildParams, err := p.baseFlow.GetCertificateBuildParamsInternal(ctx, false, types.CertificateTypePP)
 	if err != nil {
-		if errors.Is(err, errNoNewBlocks) || errors.Is(err, query.ErrNoBridgeExits) {
-			// no new blocks to send a certificate, or no bridge exits consumed
+		if errors.Is(err, errNoNewBlocks) ||
+			errors.Is(err, query.ErrNoBridgeExits) ||
+			errors.Is(err, query.ErrNoBridgeTransactions) {
+			// no new blocks to send a certificate,
+			// or no bridge exits consumed if ForceOneBridgeExitForPP is set to true
+			// or no bridge transactions found, this means that there is nothing to do
 			// this is a valid case, so just return nil without error
 			return nil, nil
 		}

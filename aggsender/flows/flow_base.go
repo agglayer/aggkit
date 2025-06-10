@@ -104,7 +104,7 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 	fromBlock := previousToBlock + 1
 	toBlock := lastL2BlockSynced
 
-	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
+	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock, certType)
 	if err != nil {
 		return nil, err
 	}

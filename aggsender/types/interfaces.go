@@ -68,7 +68,7 @@ type BridgeQuerier interface {
 	GetBridgesAndClaims(
 		ctx context.Context,
 		fromBlock, toBlock uint64,
-		allowEmptyCert bool,
+		certificateType CertificateType,
 	) ([]bridgesync.Bridge, []bridgesync.Claim, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)

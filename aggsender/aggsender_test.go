@@ -226,7 +226,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	}, nil).Once()
 	mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(50), nil)
-	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50), false).Return([]bridgesync.Bridge{
+	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50), aggsendertypes.CertificateTypePP).Return([]bridgesync.Bridge{
 		{
 			BlockNum:           30,
 			BlockPos:           0,

@@ -85,7 +85,7 @@ func NewAggchainProofGenerationTool(
 	}
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
-	l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer, false)
 
 	baseFlow := flows.NewBaseFlow(
 		logger,

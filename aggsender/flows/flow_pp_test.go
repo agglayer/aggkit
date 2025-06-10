@@ -946,7 +946,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return(nil, nil, errors.New("some error"))
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), types.CertificateTypePP).Return(nil, nil, errors.New("some error"))
 			},
 			expectedError: "some error",
 		},
@@ -957,7 +957,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return(
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), types.CertificateTypePP).Return(
 					[]bridgesync.Bridge{{}}, []bridgesync.Claim{{GlobalExitRoot: common.HexToHash("0x1")}}, nil)
 			},
 			expectedError: "GER mismatch",
@@ -972,7 +972,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				ger := calculateGER(mer, rer)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), types.CertificateTypePP).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalExitRoot:  ger,
 						RollupExitRoot:  rer,
@@ -992,7 +992,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				ger := calculateGER(mer, rer)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), false).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), types.CertificateTypePP).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalExitRoot:  ger,
 						RollupExitRoot:  rer,

@@ -9,7 +9,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var ErrNoBridgeExits = fmt.Errorf("no bridge exits consumed")
+var (
+	ErrNoBridgeExits        = fmt.Errorf("no bridge exits consumed")
+	ErrNoBridgeTransactions = fmt.Errorf("no bridge transactions found")
+)
 
 var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 
@@ -17,14 +20,16 @@ var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 type bridgeDataQuerier struct {
 	bridgeSyncer types.L2BridgeSyncer
 
-	originNetwork uint32
+	originNetwork           uint32
+	forceOneBridgeExitForPP bool
 }
 
 // NewBridgeDataQuerier returns a new instance of the BridgeDataQuerier
-func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer) *bridgeDataQuerier {
+func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer, forceOneBridgeExitForPP bool) *bridgeDataQuerier {
 	return &bridgeDataQuerier{
-		bridgeSyncer:  bridgeSyncer,
-		originNetwork: bridgeSyncer.OriginNetwork(),
+		bridgeSyncer:            bridgeSyncer,
+		originNetwork:           bridgeSyncer.OriginNetwork(),
+		forceOneBridgeExitForPP: forceOneBridgeExitForPP,
 	}
 }
 
@@ -46,22 +51,30 @@ func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer) *bridgeDataQuerier 
 func (b *bridgeDataQuerier) GetBridgesAndClaims(
 	ctx context.Context,
 	fromBlock, toBlock uint64,
-	allowEmptyCert bool,
+	certType types.CertificateType,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
 	bridges, err := b.bridgeSyncer.GetBridges(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
 	}
 
-	if !allowEmptyCert && len(bridges) == 0 {
-		return nil, nil, fmt.Errorf("%w, no need to send a certificate from block: %d to block: %d",
-			ErrNoBridgeExits, fromBlock, toBlock)
+	if certType == types.CertificateTypePP {
+		if b.forceOneBridgeExitForPP && len(bridges) == 0 {
+			// If forceOneBridgeExitForPP is true and no bridges are found, return an error
+			return nil, nil, fmt.Errorf("%w, no need to send a certificate from block: %d to block: %d",
+				ErrNoBridgeExits, fromBlock, toBlock)
+		}
 	}
 
-	// If allowEmptyCert is true or if there are bridges, retrieve claims
 	claims, err := b.bridgeSyncer.GetClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting claims: %w", err)
+	}
+
+	if certType == types.CertificateTypePP && len(bridges) == 0 && len(claims) == 0 {
+		// If no bridges and claims are found, return an error
+		return nil, nil, fmt.Errorf("%w, no need to send a certificate from block: %d to block: %d",
+			ErrNoBridgeTransactions, fromBlock, toBlock)
 	}
 
 	return bridges, claims, nil

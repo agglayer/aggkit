@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,19 +18,21 @@ func TestGetBridgesAndClaims(t *testing.T) {
 
 	ctx := context.Background()
 	testCases := []struct {
-		name            string
-		fromBlock       uint64
-		toBlock         uint64
-		allowEmptyCert  bool
-		mockFn          func(*mocks.L2BridgeSyncer)
-		expectedBridges []bridgesync.Bridge
-		expectedClaims  []bridgesync.Claim
-		expectedError   string
+		name               string
+		fromBlock          uint64
+		toBlock            uint64
+		certType           types.CertificateType
+		forceOneBridgeExit bool
+		mockFn             func(*mocks.L2BridgeSyncer)
+		expectedBridges    []bridgesync.Bridge
+		expectedClaims     []bridgesync.Claim
+		expectedError      string
 	}{
 		{
 			name:      "success - valid bridges and claims - no empty cert",
 			fromBlock: 100,
 			toBlock:   200,
+			certType:  types.CertificateTypePP,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
 					{BlockNum: 100, BlockPos: 1},
@@ -49,6 +52,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "error - failed to fetch bridges",
 			fromBlock: 100,
 			toBlock:   200,
+			certType:  types.CertificateTypePP,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, errors.New("some error"))
 			},
@@ -60,6 +64,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			name:      "error - failed to fetch claims",
 			fromBlock: 100,
 			toBlock:   200,
+			certType:  types.CertificateTypePP,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
 					{BlockNum: 100, BlockPos: 1},
@@ -69,7 +74,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			expectedError: "error getting claims: some error",
 		},
 		{
-			name:      "no bridges and claims - empty cert",
+			name:      "no bridges and claims - empty cert - FEP",
 			fromBlock: 100,
 			toBlock:   200,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
@@ -78,21 +83,50 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			},
 			expectedBridges: nil,
 			expectedClaims:  nil,
-			allowEmptyCert:  true,
+			certType:        types.CertificateTypeFEP,
 		},
 		{
-			name:      "error - no bridges - no empty cert",
+			name:      "no bridges and claims - empty cert - PP",
 			fromBlock: 100,
 			toBlock:   200,
+			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
+				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, nil)
+				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, nil)
+			},
+			forceOneBridgeExit: false,
+			expectedBridges:    nil,
+			expectedClaims:     nil,
+			certType:           types.CertificateTypePP,
+			expectedError:      ErrNoBridgeTransactions.Error(),
+		},
+		{
+			name:               "error - no bridges - force one bridge exit for PP",
+			fromBlock:          100,
+			toBlock:            200,
+			certType:           types.CertificateTypePP,
+			forceOneBridgeExit: true,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, nil)
 			},
 			expectedBridges: nil,
 			expectedClaims:  nil,
-			expectedError:   "no bridge exits consumed, no need to send a certificate from block: 100 to block: 200",
+			expectedError:   ErrNoBridgeExits.Error(),
 		},
 		{
-			name:      "no bridges, has claims - empty cert",
+			name:               "error - no bridges - don't force one bridge exit for PP",
+			fromBlock:          100,
+			toBlock:            200,
+			certType:           types.CertificateTypePP,
+			forceOneBridgeExit: false,
+			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
+				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, nil)
+				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return([]bridgesync.Claim{{}}, nil)
+			},
+			expectedBridges: nil,
+			expectedClaims:  []bridgesync.Claim{{}},
+		},
+		{
+			name:      "no bridges, has claims - empty cert - FEP",
 			fromBlock: 100,
 			toBlock:   200,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
@@ -105,7 +139,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			expectedClaims: []bridgesync.Claim{
 				{BlockNum: 200, BlockPos: 1},
 			},
-			allowEmptyCert: true,
+			certType: types.CertificateTypeFEP,
 		},
 	}
 
@@ -119,9 +153,9 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(mockSyncer)
+			bridgeQuerier := NewBridgeDataQuerier(mockSyncer, tc.forceOneBridgeExit)
 
-			bridges, claims, err := bridgeQuerier.GetBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock, tc.allowEmptyCert)
+			bridges, claims, err := bridgeQuerier.GetBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock, tc.certType)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
@@ -177,7 +211,7 @@ func TestGetExitRootByIndex(t *testing.T) {
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(mockSyncer)
+			bridgeQuerier := NewBridgeDataQuerier(mockSyncer, false)
 
 			hash, err := bridgeQuerier.GetExitRootByIndex(ctx, tc.index)
 			if tc.expectedError != "" {
@@ -228,7 +262,7 @@ func TestGetLastProcessedBlock(t *testing.T) {
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(mockSyncer)
+			bridgeQuerier := NewBridgeDataQuerier(mockSyncer, false)
 
 			block, err := bridgeQuerier.GetLastProcessedBlock(ctx)
 			if tc.expectedError != "" {
@@ -249,7 +283,7 @@ func TestOriginNetwork(t *testing.T) {
 	mockSyncer := new(mocks.L2BridgeSyncer)
 	mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
 
-	bridgeQuerier := NewBridgeDataQuerier(mockSyncer)
+	bridgeQuerier := NewBridgeDataQuerier(mockSyncer, false)
 
 	originNetwork := bridgeQuerier.OriginNetwork()
 	require.Equal(t, uint32(1), originNetwork)

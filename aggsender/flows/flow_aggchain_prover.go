@@ -189,7 +189,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
 			ctx, fromBlock,
 			toBlock,
-			true,
+			typeCert,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
