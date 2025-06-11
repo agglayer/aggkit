@@ -149,34 +149,31 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 
 ## Configuration
 
-| Name                              | Type                  | Description                                                                                                     |
-|-----------------------------------|-----------------------|-----------------------------------------------------------------------------------------------------------------|
-| StoragePath                       | string                | Full file path (with file name) where to store Aggsender DB                                                     |
-| AggLayerURL                       | string                | URL to Agglayer                                                                                                |
-| AggsenderPrivateKey               | SignerConfig          | Configuration of the signer used to sign the certificate on the Aggsender before sending it to the Agglayer. It can be a local private key, or an external one. |
-| URLRPCL2                          | string                | L2 RPC                                                                                                          |
-| BlockFinality                     | string                | Indicates which finality the AggLayer follows (FinalizedBlock, SafeBlock, LatestBlock, PendingBlock, EarliestBlock) |
-| EpochNotificationPercentage       | uint                  | Indicates the percentage of the epoch on which the AggSender should send the certificate. 0 = begin, 50 = middle |
-| MaxRetriesStoreCertificate        | int                   | Number of retries if Aggsender fails to store certificates on DB. 0 = infinite retries                           |
-| DelayBeetweenRetries              | Duration              | Delay between retries for storing certificate and initial status check                                           |
-| KeepCertificatesHistory           | bool                  | If true, discarded certificates are moved to the `certificate_info_history` table instead of being deleted       |
-| MaxCertSize                       | uint                  | The maximum size of the certificate. 0 means infinite size                                                      |
-| DryRun                            | bool                  | If true, AggSender will not send certificates to Agglayer (for debugging)                                       |
-| EnableRPC                         | bool                  | Enable the Aggsender's RPC layer                                                                                |
-| AggchainProofURL                  | string                | URL to the Aggchain Prover                                                                                      |
-| Mode                              | string                | Defines the mode of the AggSender (PessimisticProof or AggchainProof)                                           |
-| CheckStatusCertificateInterval    | Duration              | Interval at which the AggSender will check the certificate status in Agglayer                                   |
-| RetryCertAfterInError             | bool                  | If true, Aggsender will re-send InError certificates immediately after status change                            |
-| MaxSubmitCertificateRate          | RateLimitConfig       | Maximum allowed rate of submission of certificates in a given time                                              |
-| GlobalExitRootL2Addr              | Address               | Address of the GlobalExitRootManager contract on L2 sovereign chain (needed for AggchainProof mode)             |
-| GenerateAggchainProofTimeout      | Duration              | Timeout to wait for the aggkit-prover to generate the AggchainProof                                             |
-| SovereignRollupAddr               | Address               | Address of the sovereign rollup contract on L1                                                                  |
-| RequireStorageContentCompatibility| bool                  | If true, data stored in the database must be compatible with the running environment                            |
-| UseAgglayerTLS                    | bool                  | Enable TLS handshake in the AggSender-Agglayer gRPC connection                                                  |
-| UseAggkitProverTLS                | bool                  | Enable TLS handshake in the AggSender-AggkitProver gRPC connection                                              |
-| RequireNoFEPBlockGap              | bool                  | If true, AggSender should not accept a gap between lastBlock from lastCertificate and first block of FEP        |
-| OptimisticModeConfig              | optimistic.Config     | Configuration for optimistic mode (required by FEP mode)                                                        |
-| RequireOneBridgeInPPCertificate   | bool                  | If true, AggSender requires at least one bridge exit for Pessimistic Proof certificates                         |
+| Name                              | Type                      | Description                                                                                                     |
+|-----------------------------------|---------------------------|-----------------------------------------------------------------------------------------------------------------|
+| StoragePath                       | string                    | Full file path (with file name) where to store Aggsender DB                                                     |
+| AgglayerClient                    | *aggkitgrpc.ClientConfig  | Agglayer gRPC client configuration                                                                              |
+| AggsenderPrivateKey               | SignerConfig              | Configuration of the signer used to sign the certificate on the Aggsender before sending it to the Agglayer. It can be a local private key, or an external one. |
+| URLRPCL2                          | string                    | L2 RPC                                                                                                          |
+| BlockFinality                     | string                    | Indicates which finality the AggLayer follows (FinalizedBlock, SafeBlock, LatestBlock, PendingBlock, EarliestBlock) |
+| EpochNotificationPercentage       | uint                      | Indicates the percentage of the epoch on which the AggSender should send the certificate. 0 = begin, 50 = middle |
+| MaxRetriesStoreCertificate        | int                       | Number of retries if Aggsender fails to store certificates on DB. 0 = infinite retries                           |
+| DelayBeetweenRetries              | Duration                  | Delay between retries for storing certificate and initial status check                                           |
+| KeepCertificatesHistory           | bool                      | If true, discarded certificates are moved to the `certificate_info_history` table instead of being deleted       |
+| MaxCertSize                       | uint                      | The maximum size of the certificate. 0 means infinite size                                                      |
+| DryRun                            | bool                      | If true, AggSender will not send certificates to Agglayer (for debugging)                                       |
+| EnableRPC                         | bool                      | Enable the Aggsender's RPC layer                                                                                |
+| AggkitProverClient                | *aggkitgrpc.ClientConfig  | Configuration for the AggkitProver gRPC client                                                                  |
+| Mode                              | string                    | Defines the mode of the AggSender (PessimisticProof or AggchainProof)                                           |
+| CheckStatusCertificateInterval    | Duration                  | Interval at which the AggSender will check the certificate status in Agglayer                                   |
+| RetryCertAfterInError             | bool                      | If true, Aggsender will re-send InError certificates immediately after status change                            |
+| MaxSubmitCertificateRate          | RateLimitConfig           | Maximum allowed rate of submission of certificates in a given time                                              |
+| GlobalExitRootL2Addr              | Address                   | Address of the GlobalExitRootManager contract on L2 sovereign chain (needed for AggchainProof mode)             |
+| SovereignRollupAddr               | Address                   | Address of the sovereign rollup contract on L1                                                                  |
+| RequireStorageContentCompatibility| bool                      | If true, data stored in the database must be compatible with the running environment                            |
+| RequireNoFEPBlockGap              | bool                      | If true, AggSender should not accept a gap between lastBlock from lastCertificate and first block of FEP        |
+| OptimisticModeConfig              | optimistic.Config         | Configuration for optimistic mode (required by FEP mode)                                                        |
+| RequireOneBridgeInPPCertificate   | bool                      | If true, AggSender requires at least one bridge exit for Pessimistic Proof certificates                         |
 
 ## Use Cases
 
