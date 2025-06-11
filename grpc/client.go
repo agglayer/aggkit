@@ -4,7 +4,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -97,18 +96,39 @@ func (c *ClientConfig) Validate() error {
 			return err
 		}
 
-		initialBackoffMillis := float64(c.Retry.InitialBackoff.Milliseconds())
-		attempts := float64(c.Retry.MaxAttempts)
-
-		// minTimeout = initialBackoff - (1 - backoffMultiplier ^ maxAttempts) / (1 - backoffMultiplier)
-		minTimeoutMillis := initialBackoffMillis *
-			(1 - math.Pow(c.Retry.BackoffMultiplier, attempts)) / (1 - c.Retry.BackoffMultiplier)
-
-		minRequestTimeout := time.Duration(minTimeoutMillis * float64(time.Millisecond))
-		if c.RequestTimeout.Duration < minRequestTimeout {
-			return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate retries",
-				c.RequestTimeout, minRequestTimeout)
+		if err := c.validateRequestTimeout(); err != nil {
+			return err
 		}
+	}
+
+	return nil
+}
+
+// validateRequestTimeout ensures that the configured request timeout is long enough
+// to accommodate all retry attempts, including exponential backoff delays and an
+// estimated execution time per call. This prevents premature request termination
+// during normal retry behavior.
+func (c *ClientConfig) validateRequestTimeout() error {
+	// Sum of backoff delays (excluding the first attempt, which doesn't delay)
+	var totalBackoff time.Duration
+	backoff := c.Retry.InitialBackoff.Duration
+	maxBackoff := c.Retry.MaxBackoff.Duration
+
+	for i := 1; i < c.Retry.MaxAttempts; i++ {
+		if backoff > maxBackoff {
+			backoff = maxBackoff
+		}
+		totalBackoff += backoff
+		backoff = time.Duration(float64(backoff) * c.Retry.BackoffMultiplier)
+	}
+
+	// Add per-attempt execution time buffer (optional)
+	avgCallBuffer := 1 * time.Second
+	expectedMinTimeout := totalBackoff + time.Duration(c.Retry.MaxAttempts)*avgCallBuffer
+
+	if c.RequestTimeout.Duration < expectedMinTimeout {
+		return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate retries",
+			c.RequestTimeout, expectedMinTimeout)
 	}
 
 	return nil
