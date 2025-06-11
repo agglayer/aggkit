@@ -51,7 +51,7 @@ func NewFlow(
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
 			signer,
-			cfg.ForceOneBridgeExitForPP,
+			cfg.RequireNoFEPBlockGap,
 		), nil
 	case types.AggchainProofMode:
 		if err := cfg.AggkitProverClient.Validate(); err != nil {
