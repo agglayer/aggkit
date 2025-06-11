@@ -22,7 +22,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/claimsponsor"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman"
@@ -77,7 +76,6 @@ func start(cliCtx *cli.Context) error {
 
 	rollupID := getRollUpIDIfNeeded(components, cfg.NetworkConfig.L1Config, l1Client)
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
-	claimSponsor := runClaimSponsorIfNeeded(cliCtx.Context, components, l2Client, cfg.ClaimSponsor)
 	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
@@ -96,7 +94,6 @@ func start(cliCtx *cli.Context) error {
 			b := createBridgeService(
 				cfg.REST,
 				cfg.Common.NetworkID,
-				claimSponsor,
 				l1InfoTreeSync,
 				lastGERSync,
 				l1BridgeSync,
@@ -495,46 +492,6 @@ func runReorgDetectorL2IfNeeded(
 	return rd, errChan
 }
 
-func runClaimSponsorIfNeeded(
-	ctx context.Context,
-	components []string,
-	l2Client aggkittypes.BaseEthereumClienter,
-	cfg claimsponsor.EVMClaimSponsorConfig,
-) *claimsponsor.ClaimSponsor {
-	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) || !cfg.Enabled {
-		return nil
-	}
-
-	logger := log.WithFields("module", aggkitcommon.CLAIM_SPONSOR)
-	// In the future there may support different backends other than EVM, and this will require different config.
-	// But today only EVM is supported
-	ethTxManagerL2, err := ethtxmanager.New(cfg.EthTxManager)
-	if err != nil {
-		logger.Fatal(err)
-	}
-	go ethTxManagerL2.Start()
-	cs, err := claimsponsor.NewEVMClaimSponsor(
-		logger,
-		cfg.DBPath,
-		l2Client,
-		cfg.BridgeAddrL2,
-		cfg.SenderAddr,
-		cfg.MaxGas,
-		cfg.GasOffset,
-		ethTxManagerL2,
-		cfg.RetryAfterErrorPeriod.Duration,
-		cfg.MaxRetryAttemptsAfterError,
-		cfg.WaitTxToBeMinedPeriod.Duration,
-		cfg.WaitTxToBeMinedPeriod.Duration,
-	)
-	if err != nil {
-		logger.Fatalf("error creating claim sponsor: %s", err)
-	}
-	go cs.Start(ctx)
-
-	return cs
-}
-
 func runLastGERSyncIfNeeded(
 	ctx context.Context,
 	components []string,
@@ -652,7 +609,6 @@ func runBridgeSyncL2IfNeeded(
 func createBridgeService(
 	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
-	sponsor *claimsponsor.ClaimSponsor,
 	l1InfoTree *l1infotreesync.L1InfoTreeSync,
 	injectedGERs *lastgersync.LastGERSync,
 	bridgeL1 *bridgesync.BridgeSync,
@@ -670,7 +626,6 @@ func createBridgeService(
 
 	return bridgeservice.New(
 		bridgeCfg,
-		sponsor,
 		l1InfoTree,
 		injectedGERs,
 		bridgeL1,

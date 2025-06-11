@@ -307,47 +307,6 @@ type L1InfoTreeLeafResponse struct {
 	Hash Hash `json:"hash" example:"0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
 }
 
-// Claim represents a bridge claim submitted for processing.
-// It includes proofs, root hashes, origin/destination networks, token info, and metadata.
-// @Description Claim sponsoring structure
-type ClaimRequest struct {
-	// Type of leaf node (e.g., asset or message)
-	LeafType uint8 `json:"leaf_type" example:"1"`
-
-	// Merkle proof for local exit root
-	ProofLocalExitRoot Proof `json:"proof_local_exit_root"`
-
-	// Merkle proof for rollup exit root
-	ProofRollupExitRoot Proof `json:"proof_rollup_exit_root"`
-
-	// Global leaf index
-	GlobalIndex BigIntString `json:"global_index" example:"123456789012345678901234567890"`
-
-	// Mainnet exit root
-	MainnetExitRoot Hash `json:"mainnet_exit_root" example:"0xabc123..."`
-
-	// Rollup exit root
-	RollupExitRoot Hash `json:"rollup_exit_root" example:"0xdef456..."`
-
-	// Origin network ID where the claim originated
-	OriginNetwork uint32 `json:"origin_network" example:"1"`
-
-	// Origin token address
-	OriginTokenAddress Address `json:"origin_token_address" example:"0x123..."`
-
-	// ID of the network where the claim is being sent
-	DestinationNetwork uint32 `json:"destination_network" example:"100"`
-
-	// Recipient address on destination network
-	DestinationAddress Address `json:"destination_address" example:"0x456..."`
-
-	// Amount in wei (or token's smallest unit)
-	Amount BigIntString `json:"amount" example:"1000000000000000000"`
-
-	// Optional metadata for the claim
-	Metadata []byte `json:"metadata"`
-}
-
 // SyncStatus represents the synchronization status of the bridge service for both L1 and L2 networks
 // @Description Contains synchronization information for both L1 and L2 networks
 // including deposit counts and sync status
