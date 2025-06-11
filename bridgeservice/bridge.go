@@ -588,7 +588,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 
 // @Summary Get injected L1 info tree leaf after a given L1 info tree index
 // @Description Returns the L1 info tree leaf either at the given index (for L1)
-// or the first injected global exit root after the given index (for L2).
+// @Description or the first injected global exit root after the given index (for L2).
 // @Tags l1-info-tree-leaf
 // @Param network_id query int true "Network ID"
 // @Param l1_info_tree_index query int true "L1 Info Tree Index"
@@ -669,7 +669,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 //
 // @Summary Get claim proof
 // @Description Returns the Merkle proofs (local and rollup exit root) and
-// the corresponding L1 info tree leaf needed to verify a claim.
+// @Description the corresponding L1 info tree leaf needed to verify a claim.
 // @Tags claims
 // @Param network_id query uint32 true "Target network ID"
 // @Param l1_info_tree_index query uint32 true "Index in the L1 info tree"
@@ -836,7 +836,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 //
 // @Summary Get bridge sync status
 // @Description Returns the sync status by comparing the deposit count
-// from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
+// @Description from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
 // @Tags sync
 // @Produce json
 // @Success 200 {object} types.SyncStatus "Bridge sync status for both L1 and L2 networks"
