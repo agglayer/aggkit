@@ -116,6 +116,33 @@ Implements `ChainSender` using Ethereum clients and transaction management.
 
 ---
 
+## Configuration
+
+| Name                                | Type               | Description                                                                                                     |
+|-------------------------------------|--------------------|-----------------------------------------------------------------------------------------------------------------|
+| TargetChainType                     | TargetChainType    | The type of target chain (e.g., `EVM`).                                                                         |
+| URLRPCL1                            | string             | RPC URL for Layer 1.                                                                                            |
+| BlockFinality                       | string             | The status of blocks to query for syncing. <br> Possible values: `LatestBlock`, `SafeBlock`, `PendingBlock`, `FinalizedBlock`, `EarliestBlock`. |
+| WaitPeriodNextGER                   | Duration           | Time interval to wait before checking the next Global Exit Root (GER).                                          |
+| EVMSender.GlobalExitRootL2          | string             | Address of the Global Exit Root on Layer 2.                                                                     |
+| EVMSender.URLRPCL2                  | string             | RPC URL for Layer 2.                                                                                            |
+| EVMSender.GasOffset                 | int                | Offset for gas calculations in Layer 2 transactions.                                                            |
+| EVMSender.WaitPeriodMonitorTx       | Duration           | Time interval to wait before monitoring Layer 2 transactions.                                                   |
+| EVMSender.EthTxManager              | EthTxManagerConfig | Configuration for the Ethereum Transaction Manager used to send Layer 2 transactions.                           |
+
+---
+
+For detailed configuration of the Ethereum Transaction Manager (`EthTxManager`), refer to [EthTxManager Configuration](./ethtxmanager.md).
+
+For detailed configuration of `Etherman`, refer to [Etherman Configuration](./etherman.md).
+
+> **Note:** A sample configuration file is available in [default.go](./../config/default.go).
+
+```go
+ EthTxManager.Etherman.L1ChainID
+```
+Set the `L1ChainID` field to the Layer 2 chain ID. If this value is set to `0`, the `EthTxManager` will automatically retrieve and assign the appropriate chain ID at runtime using the `getChainID` RPC method.
+
 ## Summary
 
 The **AggOracle** component automates the propagation of GERs from L1 to L2, enabling bridging across networks.
