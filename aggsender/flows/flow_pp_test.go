@@ -776,7 +776,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			name:                "First certificate",
 			lastSentCertificate: nil,
 			expectedHeight:      0,
-			expectedPreviousLER: zeroLER,
+			expectedPreviousLER: emptyLER,
 		},
 		{
 			name:                "First certificate, different starting LER",
@@ -804,7 +804,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 				Status:           agglayertypes.InError,
 			},
 			expectedHeight:      0,
-			expectedPreviousLER: zeroLER,
+			expectedPreviousLER: emptyLER,
 		},
 		{
 			name: "n certificate error, prevLER",

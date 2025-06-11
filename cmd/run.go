@@ -430,7 +430,7 @@ func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Con
 
 func getRollupLastExitRootIfNeeded(components []string,
 	l1NetworkConfig config.NetworkConfig,
-	l1Client etherman.EthClienter,
+	l1Client aggkittypes.BaseEthereumClienter,
 	rollupID uint32) common.Hash {
 	if !isNeeded([]string{
 		aggkitcommon.AGGSENDER,

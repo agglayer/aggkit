@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/etherman/config"
-	"github.com/agglayer/aggkit/etherman/mocks"
+	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -43,13 +43,13 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		mockFn        func(mockL1Client *mocks.EthClienter)
+		mockFn        func(mockL1Client *mocks.BaseEthereumClienter)
 		expectedLER   common.Hash
 		expectedError string
 	}{
 		{
 			name: "error on callContract",
-			mockFn: func(mockL1Client *mocks.EthClienter) {
+			mockFn: func(mockL1Client *mocks.BaseEthereumClienter) {
 				mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).
 					Return(nil, errors.New("some error"))
 			},
@@ -57,7 +57,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 		},
 		{
 			name: "success",
-			mockFn: func(mockL1Client *mocks.EthClienter) {
+			mockFn: func(mockL1Client *mocks.BaseEthereumClienter) {
 				returnBytes, err := args.Pack(
 					common.HexToAddress("0x1234567890123456789012345678901234567890"), // rollupContract
 					uint64(1), // chainID
@@ -87,7 +87,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockL1Client := mocks.NewEthClienter(t)
+			mockL1Client := mocks.NewBaseEthereumClienter(t)
 			mockL1Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
 
 			if tc.mockFn != nil {

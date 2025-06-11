@@ -332,7 +332,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 				},
 			)
 			require.Equal(t, uint64(0), height, "Height should be 0 for pending certificate")
-			require.Equal(t, zeroLER, ler, "LER should be empty for pending certificate")
+			require.Equal(t, emptyLER, ler, "LER should be empty for pending certificate")
 			require.Error(t, err)
 			require.ErrorContains(t, err, "is not closed ")
 		})

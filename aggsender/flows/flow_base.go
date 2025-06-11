@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -20,7 +21,7 @@ var (
 	errNoBridgesAndClaims = errors.New("no bridges and claims to build certificate")
 	errNoNewBlocks        = errors.New("no new blocks to send a certificate")
 
-	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+	emptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
 // BaseFlowConfig is a struct that holds the configuration for the base flow
@@ -406,8 +407,8 @@ func (f *baseFlow) getImportedBridgeExits(
 
 // getStartLER returns the last local exit root (LER) based on the configuration
 func (f *baseFlow) getStartLER() common.Hash {
-	if f.cfg.StartLER == (common.Hash{}) {
-		return zeroLER
+	if f.cfg.StartLER == aggkitcommon.ZeroHash {
+		return emptyLER
 	}
 	return f.cfg.StartLER
 }
