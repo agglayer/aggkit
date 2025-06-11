@@ -97,21 +97,49 @@ func (c *ClientConfig) Validate() error {
 			return err
 		}
 
-		initialBackoffMillis := float64(c.Retry.InitialBackoff.Milliseconds())
-		attempts := float64(c.Retry.MaxAttempts)
-
-		// minTimeout = initialBackoff - (1 - backoffMultiplier ^ maxAttempts) / (1 - backoffMultiplier)
-		minTimeoutMillis := initialBackoffMillis *
-			(1 - math.Pow(c.Retry.BackoffMultiplier, attempts)) / (1 - c.Retry.BackoffMultiplier)
-
-		minRequestTimeout := time.Duration(minTimeoutMillis * float64(time.Millisecond))
-		if c.RequestTimeout.Duration < minRequestTimeout {
-			return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate retries",
-				c.RequestTimeout, minRequestTimeout)
+		if err := c.validateRequestTimeout(); err != nil {
+			return err
 		}
 	}
 
 	return nil
+}
+
+// validateRequestTimeout ensures that the configured request timeout is long enough
+// to accommodate all retry attempts, including exponential backoff delays and an
+// estimated execution time per call. This prevents premature request termination
+// during normal retry behavior.
+func (c *ClientConfig) validateRequestTimeout() error {
+	totalBackoff := c.calculateTotalBackoff()
+
+	if c.RequestTimeout.Duration < totalBackoff {
+		return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate the worst case retries",
+			c.RequestTimeout, totalBackoff)
+	}
+
+	return nil
+}
+
+// calculateTotalBackoff computes the total accumulated backoff duration
+// over all retry attempts, applying exponential backoff with an upper
+// limit (MaxBackoff). It sums delays for attempts through MaxAttempts.
+// Returns 0 if MaxAttempts is 1 or less (no retries).
+func (c *ClientConfig) calculateTotalBackoff() time.Duration {
+	maxAttempts := c.Retry.MaxAttempts
+	if maxAttempts <= 1 {
+		return 0
+	}
+
+	var total float64
+	for i := 1; i < maxAttempts; i++ {
+		// Exponential backoff for attempt i (0-based in exponent)
+		delay := float64(c.Retry.InitialBackoff.Duration) * math.Pow(c.Retry.BackoffMultiplier, float64(i-1))
+
+		// Clamp delay to MaxBackoff
+		total += math.Min(delay, float64(c.Retry.MaxBackoff.Duration))
+	}
+
+	return time.Duration(total)
 }
 
 // RetryConfig denotes the gRPC retry policy

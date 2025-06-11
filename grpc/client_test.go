@@ -426,3 +426,99 @@ func TestGRPCError_Is(t *testing.T) {
 		})
 	}
 }
+
+func TestValidateRequestTimeout(t *testing.T) {
+	tests := []struct {
+		name         string
+		timeout      types.Duration
+		retryConfig  *RetryConfig
+		expectError  bool
+		errorMessage string
+	}{
+		{
+			name:    "valid - enough timeout for backoff and calls",
+			timeout: types.NewDuration(30 * time.Second),
+			retryConfig: &RetryConfig{
+				InitialBackoff:    types.NewDuration(1 * time.Second),
+				MaxBackoff:        types.NewDuration(10 * time.Second),
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       5,
+			},
+			expectError: false,
+		},
+		{
+			name:    "valid - just enough for backoff",
+			timeout: types.NewDuration(7 * time.Second),
+			retryConfig: &RetryConfig{
+				InitialBackoff:    types.NewDuration(1 * time.Second),
+				MaxBackoff:        types.NewDuration(10 * time.Second),
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       4,
+			},
+			expectError: false,
+		},
+		{
+			name:    "invalid - timeout too short for retry backoff",
+			timeout: types.NewDuration(2 * time.Second),
+			retryConfig: &RetryConfig{
+				InitialBackoff:    types.NewDuration(1 * time.Second),
+				MaxBackoff:        types.NewDuration(10 * time.Second),
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       4,
+			},
+			expectError:  true,
+			errorMessage: "RequestTimeout",
+		},
+		{
+			name:    "valid - single attempt, no retry",
+			timeout: types.NewDuration(1 * time.Second),
+			retryConfig: &RetryConfig{
+				InitialBackoff:    types.NewDuration(1 * time.Second),
+				MaxBackoff:        types.NewDuration(1 * time.Second),
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       1,
+			},
+			expectError: false,
+		},
+		{
+			name:    "invalid - zero timeout",
+			timeout: types.NewDuration(0),
+			retryConfig: &RetryConfig{
+				InitialBackoff:    types.NewDuration(1 * time.Second),
+				MaxBackoff:        types.NewDuration(10 * time.Second),
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       3,
+			},
+			expectError:  true,
+			errorMessage: "RequestTimeout",
+		},
+		{
+			name:    "valid - large timeout with high retries",
+			timeout: types.NewDuration(2 * time.Minute),
+			retryConfig: &RetryConfig{
+				InitialBackoff:    types.NewDuration(2 * time.Second),
+				MaxBackoff:        types.NewDuration(15 * time.Second),
+				BackoffMultiplier: 1.5,
+				MaxAttempts:       10,
+			},
+			expectError: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clientCfg := &ClientConfig{
+				RequestTimeout: tt.timeout,
+				Retry:          tt.retryConfig,
+			}
+			err := clientCfg.validateRequestTimeout()
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorMessage)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
