@@ -4,6 +4,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 	"time"
 	"unicode"
@@ -109,18 +110,7 @@ func (c *ClientConfig) Validate() error {
 // estimated execution time per call. This prevents premature request termination
 // during normal retry behavior.
 func (c *ClientConfig) validateRequestTimeout() error {
-	// Sum of backoff delays (excluding the first attempt, which doesn't delay)
-	var totalBackoff time.Duration
-	backoff := c.Retry.InitialBackoff.Duration
-	maxBackoff := c.Retry.MaxBackoff.Duration
-
-	for i := 1; i < c.Retry.MaxAttempts; i++ {
-		if backoff > maxBackoff {
-			backoff = maxBackoff
-		}
-		totalBackoff += backoff
-		backoff = time.Duration(float64(backoff) * c.Retry.BackoffMultiplier)
-	}
+	totalBackoff := c.calculateTotalBackoff()
 
 	if c.RequestTimeout.Duration < totalBackoff {
 		return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate the worst case retries",
@@ -128,6 +118,28 @@ func (c *ClientConfig) validateRequestTimeout() error {
 	}
 
 	return nil
+}
+
+// calculateTotalBackoff computes the total accumulated backoff duration
+// over all retry attempts, applying exponential backoff with an upper
+// limit (MaxBackoff). It sums delays for attempts through MaxAttempts.
+// Returns 0 if MaxAttempts is 1 or less (no retries).
+func (c *ClientConfig) calculateTotalBackoff() time.Duration {
+	maxAttempts := c.Retry.MaxAttempts
+	if maxAttempts <= 1 {
+		return 0
+	}
+
+	var total float64
+	for i := 1; i < maxAttempts; i++ {
+		// Exponential backoff for attempt i (0-based in exponent)
+		delay := float64(c.Retry.InitialBackoff.Duration) * math.Pow(c.Retry.BackoffMultiplier, float64(i-1))
+
+		// Clamp delay to MaxBackoff
+		total += math.Min(delay, float64(c.Retry.MaxBackoff.Duration))
+	}
+
+	return time.Duration(total)
 }
 
 // RetryConfig denotes the gRPC retry policy
