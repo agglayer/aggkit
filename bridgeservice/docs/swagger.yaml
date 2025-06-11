@@ -446,7 +446,9 @@ paths:
       - bridges
   /claim-proof:
     get:
-      description: Returns the Merkle proofs (local and rollup exit root) and
+      description: |-
+        Returns the Merkle proofs (local and rollup exit root) and
+        the corresponding L1 info tree leaf needed to verify a claim.
       parameters:
       - description: Target network ID
         in: query
@@ -529,7 +531,9 @@ paths:
       - claims
   /injected-l1-info-leaf:
     get:
-      description: Returns the L1 info tree leaf either at the given index (for L1)
+      description: |-
+        Returns the L1 info tree leaf either at the given index (for L1)
+        or the first injected global exit root after the given index (for L2).
       parameters:
       - description: Network ID
         in: query
@@ -657,7 +661,9 @@ paths:
       - legacy-token-migrations
   /sync-status:
     get:
-      description: Returns the sync status by comparing the deposit count
+      description: |-
+        Returns the sync status by comparing the deposit count
+        from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
       produces:
       - application/json
       responses:
