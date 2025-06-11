@@ -12,11 +12,12 @@ import (
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
 const (
-	reorgDetectorID    = "l1infotreesync"
+	reorgDetectorID    = "l1InfoTreeSyncer"
 	downloadBufferSize = 1000
 )
 
@@ -45,7 +46,7 @@ func New(
 	syncBlockChunkSize uint64,
 	blockFinalityType etherman.BlockNumberFinality,
 	rd sync.ReorgDetector,
-	l1Client EthClienter,
+	l1Client aggkittypes.BaseEthereumClienter,
 	waitForNewBlocksPeriod time.Duration,
 	initialBlock uint64,
 	retryAfterErrorPeriod time.Duration,
@@ -183,7 +184,7 @@ func (s *L1InfoTreeSync) GetLastRollupExitRoot(ctx context.Context) (types.Root,
 	if s.processor.isHalted() {
 		return types.Root{}, sync.ErrInconsistentState
 	}
-	return s.processor.rollupExitTree.GetLastRoot(nil)
+	return s.processor.rollupExitTree.GetLastRoot(s.processor.db)
 }
 
 // GetLastL1InfoTreeRoot return the last root and index processed from the L1 Info tree
@@ -191,7 +192,7 @@ func (s *L1InfoTreeSync) GetLastL1InfoTreeRoot(ctx context.Context) (types.Root,
 	if s.processor.isHalted() {
 		return types.Root{}, sync.ErrInconsistentState
 	}
-	return s.processor.l1InfoTree.GetLastRoot(nil)
+	return s.processor.l1InfoTree.GetLastRoot(s.processor.db)
 }
 
 // GetLastProcessedBlock return the last processed block
@@ -212,7 +213,7 @@ func (s *L1InfoTreeSync) GetLocalExitRoot(
 		return common.Hash{}, errors.New("network 0 is not a rollup, and it's not part of the rollup exit tree")
 	}
 
-	return s.processor.rollupExitTree.GetLeaf(nil, networkID-1, rollupExitRoot)
+	return s.processor.rollupExitTree.GetLeaf(s.processor.db, networkID-1, rollupExitRoot)
 }
 
 func (s *L1InfoTreeSync) GetLastVerifiedBatches(rollupID uint32) (*VerifyBatches, error) {

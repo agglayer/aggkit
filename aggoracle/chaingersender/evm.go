@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/types"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -40,7 +41,7 @@ type EVMChainGERSender struct {
 func NewEVMChainGERSender(
 	logger *log.Logger,
 	l2GERManagerAddr common.Address,
-	l2Client types.EthClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	ethTxMan types.EthTxManager,
 	gasOffset uint64,
 	waitPeriodMonitorTx time.Duration,

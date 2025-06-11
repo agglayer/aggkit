@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
+	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
 var (
@@ -35,7 +36,7 @@ type ConfigBlockNotifierPolling struct {
 }
 
 type BlockNotifierPolling struct {
-	ethClient     types.EthClient
+	ethClient     aggkittypes.BaseEthereumClienter
 	blockFinality *big.Int
 	logger        aggkitcommon.Logger
 	config        ConfigBlockNotifierPolling
@@ -49,7 +50,7 @@ type BlockNotifierPolling struct {
 // To use this class you need to subscribe and each time that a new block appear the subscriber
 // will be notified through the channel. (check unit tests TestExploratoryBlockNotifierPolling
 // for more information)
-func NewBlockNotifierPolling(ethClient types.EthClient,
+func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 	config ConfigBlockNotifierPolling,
 	logger aggkitcommon.Logger,
 	subscriber types.GenericSubscriber[types.EventNewBlock]) (*BlockNotifierPolling, error) {

@@ -16,6 +16,7 @@ AggchainProofURL = "http://localhost:5576"
 ForkId = 9
 ContractVersions = "elderberry"
 IsValidiumMode = false
+NetworkID = 1
 
 L2Coinbase = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
 SequencerPrivateKeyPath = "/app/sequencer.keystore"
@@ -68,43 +69,42 @@ Level = "info"
 Outputs = ["stderr"]
 
 [Etherman]
-	URL="{{L1URL}}"
-	ForkIDChunkSize={{L1URLSyncChunkSize}}
+	URL = "{{L1URL}}"
+	ForkIDChunkSize = {{L1URLSyncChunkSize}}
 	[Etherman.EthermanConfig]
-		URL="{{L1URL}}"
-		MultiGasProvider=false
-		L1ChainID={{NetworkConfig.L1.L1ChainID}}
-		HTTPHeaders=[]
+		URL = "{{L1URL}}"
+		MultiGasProvider = false
+		L1ChainID = {{NetworkConfig.L1.L1ChainID}}
+		HTTPHeaders = []
 		[Etherman.EthermanConfig.Etherscan]
-			ApiKey=""
-			Url="https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
+			ApiKey = ""
+			Url = "https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
 
 [Common]
-NetworkID = 1
+NetworkID = {{NetworkID}}
 IsValidiumMode = {{IsValidiumMode}}
 ContractVersions = "{{ContractVersions}}"
 L2RPC = {{L2RPC}}
 
-
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
-FinalizedBlock="FinalizedBlock"
+FinalizedBlock = "FinalizedBlock"
 
 [ReorgDetectorL2]
 DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
-FinalizedBlock="LatestBlock"
+FinalizedBlock = "LatestBlock"
 
 [L1InfoTreeSync]
 DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
-GlobalExitRootAddr="{{NetworkConfig.L1.GlobalExitRootManagerAddr}}"
+GlobalExitRootAddr = "{{NetworkConfig.L1.GlobalExitRootManagerAddr}}"
 RollupManagerAddr = "{{NetworkConfig.L1.RollupManagerAddr}}"
-SyncBlockChunkSize=100
-BlockFinality="LatestBlock"
-URLRPCL1="{{L1URL}}"
-WaitForNewBlocksPeriod="100ms"
-InitialBlock={{genesisBlockNumber}}
-RetryAfterErrorPeriod="1s"
-MaxRetryAttemptsAfterError=-1
+SyncBlockChunkSize = 100
+BlockFinality = "LatestBlock"
+URLRPCL1 = "{{L1URL}}"
+WaitForNewBlocksPeriod = "100ms"
+InitialBlock = {{genesisBlockNumber}}
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggOracle]
@@ -146,37 +146,12 @@ ReadTimeout = "2s"
 WriteTimeout = "2s"
 MaxRequestsPerIPAndSecond = 10
 
-[ClaimSponsor]
-DBPath = "{{PathRWData}}/claimsponsor.sqlite"
-Enabled = false
-SenderAddr = "0xfa3b44587990f97ba8b6ba7e230a5f0e95d14b3d"
-BridgeAddrL2 = "0xB7098a13a48EcE087d3DA15b2D28eCE0f89819B8"
-MaxGas = 200000
-RetryAfterErrorPeriod = "1s"
-MaxRetryAttemptsAfterError = -1
-WaitTxToBeMinedPeriod = "3s"
-WaitOnEmptyQueue = "3s"
-GasOffset = 0
-	[ClaimSponsor.EthTxManager]
-		FrequencyToMonitorTxs = "1s"
-		WaitTxToBeMined = "2s"
-		GetReceiptMaxTime = "250ms"
-		GetReceiptWaitInterval = "1s"
-		PrivateKeys = [
-			{Path = "/app/keystore/claimsponsor.keystore", Password = "testonly"},
-		]
-		ForcedGas = 0
-		GasPriceMarginFactor = 1
-		MaxGasPriceLimit = 0
-		StoragePath = "{{PathRWData}}/ethtxmanager-claimsponsor.sqlite"
-		ReadPendingL1Txs = false
-		SafeStatusL1NumberOfBlocks = 5
-		FinalizedStatusL1NumberOfBlocks = 10
-			[ClaimSponsor.EthTxManager.Etherman]
-				URL = "{{L2URL}}"
-				MultiGasProvider = false
-				L1ChainID = {{NetworkConfig.L1.L1ChainID}}
-				HTTPHeaders = []
+[REST]
+Host = "0.0.0.0"
+Port = 5577
+ReadTimeout = "2s"
+WriteTimeout = "2s"
+MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
@@ -210,6 +185,7 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+SyncMode = "FEP"
 
 [NetworkConfig.L1]
 L1ChainID = {{L1Config.chainId}}
@@ -221,7 +197,6 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
-AggLayerURL = "{{AggLayerURL}}"
 AggsenderPrivateKey = {{AggsenderPrivateKey}}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
@@ -232,38 +207,52 @@ KeepCertificatesHistory = true
 MaxCertSize = 8388608
 DryRun = false
 EnableRPC = true
-AggchainProofURL = "{{AggchainProofURL}}"
 # PessimisticProof or AggchainProver
 Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
-GlobalExitRootL2="{{L2Config.GlobalExitRootAddr}}"
-GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
+GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-UseAgglayerTLS = false
-UseAggkitProverTLS = false
 RequireNoFEPBlockGap = true
+	[AggSender.AgglayerClient]
+		URL = "{{AggLayerURL}}"
+		MinConnectTimeout = "5s"
+		RequestTimeout = "300s" 
+		UseTLS = false
+		[AggSender.AgglayerClient.Retry]
+			InitialBackoff = "1s"
+			MaxBackoff = "10s"
+			BackoffMultiplier = 2.0
+			MaxAttempts = 16
+	[AggSender.AggkitProverClient]
+		URL = "{{AggchainProofURL}}"
+		MinConnectTimeout = "5s"
+		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
+		UseTLS = false
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
 		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
-		# By default use the same key that aggsender  sign certs
+		# By default use the same key that aggsender signs certs
 		TrustedSequencerKey = {{AggSender.AggsenderPrivateKey}}
 		OpNodeURL = "{{OpNodeURL}}"
-		RequireKeyMatchTrustedSequencer = true
+		# TODO: For now set it to false, until it gets fixed on the contracts deployment end
+		RequireKeyMatchTrustedSequencer = false
 [Prometheus]
 Enabled = true
 Host = "localhost"
 Port = 9091
 
 [AggchainProofGen]
-AggchainProofURL = "{{AggchainProofURL}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
-GenerateAggchainProofTimeout="{{GenerateAggchainProofTimeout}}"
-UseAggkitProverTLS = false
+	[AggchainProofGen.AggkitProverClient]
+		URL = "{{AggchainProofURL}}"
+		MinConnectTimeout = "5s"
+		UseTLS = false
+		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 
 [Profiling]
 ProfilingHost = "localhost"

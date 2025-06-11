@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signerTypes "github.com/agglayer/go_signer/signer/types"
 )
@@ -25,8 +26,8 @@ func NewFlow(
 	cfg config.Config,
 	logger *log.Logger,
 	storage db.AggSenderStorage,
-	l1Client types.EthClient,
-	l2Client types.EthClient,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 ) (types.AggsenderFlow, error) {
@@ -52,19 +53,17 @@ func NewFlow(
 			signer,
 		), nil
 	case types.AggchainProofMode:
+		if err := cfg.AggkitProverClient.Validate(); err != nil {
+			return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
+		}
+
 		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
 		if err != nil {
 			return nil, err
 		}
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 
-		if cfg.AggchainProofURL == "" {
-			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
-		}
-
-		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(
-			cfg.AggchainProofURL,
-			cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
+		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}

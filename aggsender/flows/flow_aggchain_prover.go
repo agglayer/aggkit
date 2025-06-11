@@ -11,14 +11,15 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	aggkitcommon "github.com/agglayer/aggkit/common"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
 )
 
-var errNoProofBuiltYet = &aggkitcommon.GRPCError{
+var errNoProofBuiltYet = &aggkitgrpc.GRPCError{
 	Code:    codes.Unavailable,
 	Message: "Proposer service has not built any proof yet",
 }
@@ -40,7 +41,7 @@ type AggchainProverFlow struct {
 	optimisticSigner      types.OptimisticSigner
 }
 
-func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
+func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (uint64, error) {
 	aggChainFEPContract, err := aggchainfep.NewAggchainfepCaller(sovereignRollupAddr, l1Client)
 	if err != nil {
 		return 0, fmt.Errorf("aggchainProverFlow - error creating sovereign rollup caller (%s): %w",
@@ -90,7 +91,7 @@ func NewAggchainProverFlow(
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
 	gerQuerier types.GERQuerier,
-	l1Client types.EthClient,
+	l1Client aggkittypes.BaseEthereumClienter,
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	optimisticSigner types.OptimisticSigner,
@@ -398,7 +399,7 @@ func (a *AggchainProverFlow) GenerateAggchainProof(
 	a.log.Infof("aggchainProverFlow - requesting proof lastProvenBlock: %d, maxEndBlock: %d, optimisticMode: %t",
 		lastProvenBlock, toBlock, optimisticMode)
 	if !optimisticMode {
-		aggchainProof, err = a.aggchainProofClient.GenerateAggchainProof(request)
+		aggchainProof, err = a.aggchainProofClient.GenerateAggchainProof(ctx, request)
 	} else {
 		aggchainProof, err = a.generateOptimisticAggchainProof(ctx, certBuildParams, request)
 	}

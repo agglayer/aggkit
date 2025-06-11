@@ -1,0 +1,994 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "description": "API documentation for the bridge service",
+        "title": "Bridge Service API",
+        "contact": {
+            "name": "API Support",
+            "url": "https://polygon.technology/"
+        },
+        "license": {
+            "name": "MIT",
+            "url": "https://opensource.org/licenses/MIT"
+        },
+        "version": "1.0"
+    },
+    "basePath": "/bridge/v1",
+    "paths": {
+        "/": {
+            "get": {
+                "description": "Returns the health status and version information of the bridge service",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "health"
+                ],
+                "summary": "Get health status",
+                "responses": {
+                    "200": {
+                        "description": "Health status and version information",
+                        "schema": {
+                            "$ref": "#/definitions/types.HealthCheckResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/bridges": {
+            "get": {
+                "description": "Returns a paginated list of bridge events for the specified network.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "bridges"
+                ],
+                "summary": "Get bridges",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Target network ID",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default 1)",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 100)",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by deposit count",
+                        "name": "deposit_count",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by from address",
+                        "name": "from_address",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Filter by one or more network IDs",
+                        "name": "network_ids",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.BridgesResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/claim-proof": {
+            "get": {
+                "description": "Returns the Merkle proofs (local and rollup exit root) and\nthe corresponding L1 info tree leaf needed to verify a claim.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "claims"
+                ],
+                "summary": "Get claim proof",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Target network ID",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Index in the L1 info tree",
+                        "name": "l1_info_tree_index",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Number of deposits in the bridge",
+                        "name": "deposit_count",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Merkle proofs and L1 info tree leaf",
+                        "schema": {
+                            "$ref": "#/definitions/types.ClaimProof"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/claims": {
+            "get": {
+                "description": "Returns a paginated list of claims for the specified network.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "claims"
+                ],
+                "summary": "Get claims",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Target network ID",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default 1)",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default 100)",
+                        "name": "page_size",
+                        "in": "query"
+                    },
+                    {
+                        "type": "array",
+                        "items": {
+                            "type": "integer"
+                        },
+                        "collectionFormat": "csv",
+                        "description": "Filter by one or more network IDs",
+                        "name": "network_ids",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by from address",
+                        "name": "from_address",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.ClaimsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/injected-l1-info-leaf": {
+            "get": {
+                "description": "Returns the L1 info tree leaf either at the given index (for L1)\nor the first injected global exit root after the given index (for L2).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "l1-info-tree-leaf"
+                ],
+                "summary": "Get injected L1 info tree leaf after a given L1 info tree index",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Network ID",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "L1 Info Tree Index",
+                        "name": "l1_info_tree_index",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.L1InfoTreeLeafResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/l1-info-tree-index": {
+            "get": {
+                "description": "Returns the first L1 Info Tree index after a given deposit count for the specified network",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "l1-info-tree-leaf"
+                ],
+                "summary": "Get L1 Info Tree index for a bridge",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Network ID",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Deposit count",
+                        "name": "deposit_count",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/last-reorg-event": {
+            "get": {
+                "description": "Retrieves the last known reorg event for either L1 or L2, based on the provided network ID.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "reorgs"
+                ],
+                "summary": "Get last reorg event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Network ID (e.g., 0 for L1, or the ID of the L2 network)",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Details of the last reorg event",
+                        "schema": {
+                            "$ref": "#/definitions/bridgesync.LastReorg"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/legacy-token-migrations": {
+            "get": {
+                "description": "Returns legacy token migrations for the given network, paginated",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "legacy-token-migrations"
+                ],
+                "summary": "Get legacy token migrations",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Network ID",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.LegacyTokenMigrationsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/sync-status": {
+            "get": {
+                "description": "Returns the sync status by comparing the deposit count\nfrom the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "sync"
+                ],
+                "summary": "Get bridge sync status",
+                "responses": {
+                    "200": {
+                        "description": "Bridge sync status for both L1 and L2 networks",
+                        "schema": {
+                            "$ref": "#/definitions/types.SyncStatus"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/token-mappings": {
+            "get": {
+                "description": "Returns token mappings for the given network, paginated",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "token-mappings"
+                ],
+                "summary": "Get token mappings",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Network ID",
+                        "name": "network_id",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number",
+                        "name": "page_number",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/types.TokenMappingsResult"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/types.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "bridgesync.LastReorg": {
+            "type": "object",
+            "properties": {
+                "detected_at": {
+                    "type": "integer"
+                },
+                "from_block": {
+                    "type": "integer"
+                },
+                "to_block": {
+                    "type": "integer"
+                }
+            }
+        },
+        "types.BridgeResponse": {
+            "description": "Detailed information about a bridge event",
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "description": "Amount of tokens being bridged",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "block_num": {
+                    "description": "Block number where the bridge event was recorded",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "block_pos": {
+                    "description": "Position of the bridge event within the block",
+                    "type": "integer",
+                    "example": 1
+                },
+                "block_timestamp": {
+                    "description": "Timestamp of the block containing the bridge event",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "bridge_hash": {
+                    "description": "Unique hash representing the bridge event, often used as an identifier",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"
+                },
+                "calldata": {
+                    "description": "Raw calldata submitted in the transaction",
+                    "type": "string",
+                    "example": "deadbeef"
+                },
+                "deposit_count": {
+                    "description": "Count of total deposits processed so far for the given token/address",
+                    "type": "integer",
+                    "example": 10
+                },
+                "destination_address": {
+                    "description": "Address of the token receiver on the destination network",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef12345678"
+                },
+                "destination_network": {
+                    "description": "ID of the network where the bridge transaction is destined",
+                    "type": "integer",
+                    "example": 42161
+                },
+                "from_address": {
+                    "description": "Address that initiated the bridge transaction",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                },
+                "is_native_token": {
+                    "description": "Indicates whether the bridged token is a native token (true) or wrapped (false)",
+                    "type": "boolean",
+                    "example": true
+                },
+                "leaf_type": {
+                    "description": "Type of leaf (bridge event type) used in the tree structure",
+                    "type": "integer",
+                    "example": 1
+                },
+                "metadata": {
+                    "description": "Optional metadata attached to the bridge event",
+                    "type": "string",
+                    "example": "0xdeadbeef"
+                },
+                "origin_address": {
+                    "description": "Address of the token sender on the origin network",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                },
+                "origin_network": {
+                    "description": "ID of the network where the bridge transaction originated",
+                    "type": "integer",
+                    "example": 10
+                },
+                "tx_hash": {
+                    "description": "Hash of the transaction that included the bridge event",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                }
+            }
+        },
+        "types.BridgesResult": {
+            "description": "Paginated response of bridge events",
+            "type": "object",
+            "properties": {
+                "bridges": {
+                    "description": "List of bridge events",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.BridgeResponse"
+                    }
+                },
+                "count": {
+                    "description": "Total number of bridge events",
+                    "type": "integer",
+                    "example": 42
+                }
+            }
+        },
+        "types.ClaimProof": {
+            "description": "Claim proof structure for verifying claims in the bridge",
+            "type": "object",
+            "properties": {
+                "l1_info_tree_leaf": {
+                    "description": "L1 info tree leaf data associated with the claim",
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/types.L1InfoTreeLeafResponse"
+                        }
+                    ]
+                },
+                "proof_local_exit_root": {
+                    "description": "Merkle proof for the local exit root",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[0x1",
+                        " 0x2",
+                        " 0x3...]"
+                    ]
+                },
+                "proof_rollup_exit_root": {
+                    "description": "Merkle proof for the rollup exit root",
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "example": [
+                        "[0x4",
+                        " 0x5",
+                        " 0x6...]"
+                    ]
+                }
+            }
+        },
+        "types.ClaimResponse": {
+            "description": "Detailed information about a claim event",
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "description": "Amount claimed",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "block_num": {
+                    "description": "Block number where the claim was processed",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "block_timestamp": {
+                    "description": "Timestamp of the block containing the claim",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "destination_address": {
+                    "description": "Address receiving the claim on the destination network",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef12345678"
+                },
+                "destination_network": {
+                    "description": "Destination network ID where the claim was processed",
+                    "type": "integer",
+                    "example": 42161
+                },
+                "from_address": {
+                    "description": "Address from which the claim originated",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                },
+                "global_index": {
+                    "description": "Global index of the claim",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "origin_address": {
+                    "description": "Address initiating the claim on the origin network",
+                    "type": "string",
+                    "example": "0xabc1234567890abcdef1234567890abcdef1234"
+                },
+                "origin_network": {
+                    "description": "Origin network ID where the claim was initiated",
+                    "type": "integer",
+                    "example": 10
+                },
+                "tx_hash": {
+                    "description": "Transaction hash associated with the claim",
+                    "type": "string",
+                    "example": "0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                }
+            }
+        },
+        "types.ClaimsResult": {
+            "description": "Paginated response containing claim events and total count",
+            "type": "object",
+            "properties": {
+                "claims": {
+                    "description": "List of claims matching the query",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.ClaimResponse"
+                    }
+                },
+                "count": {
+                    "description": "Total number of matching claims",
+                    "type": "integer",
+                    "example": 42
+                }
+            }
+        },
+        "types.ErrorResponse": {
+            "description": "Generic error response structure",
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "example": "Error message"
+                }
+            }
+        },
+        "types.HealthCheckResponse": {
+            "description": "Contains basic health‐check information for the bridge service",
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
+        "types.L1InfoTreeLeafResponse": {
+            "type": "object",
+            "properties": {
+                "block_num": {
+                    "description": "Block number where the leaf was recorded",
+                    "type": "integer",
+                    "example": 123456
+                },
+                "block_pos": {
+                    "description": "Position of the leaf in the block (used for ordering)",
+                    "type": "integer",
+                    "example": 5
+                },
+                "global_exit_root": {
+                    "description": "Global exit root computed from mainnet and rollup roots\n@example \"0x4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef123\"",
+                    "type": "string"
+                },
+                "hash": {
+                    "description": "Unique hash identifying this leaf node",
+                    "type": "string",
+                    "example": "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+                },
+                "l1_info_tree_index": {
+                    "description": "Index of this leaf in the L1 info tree",
+                    "type": "integer",
+                    "example": 42
+                },
+                "mainnet_exit_root": {
+                    "description": "Mainnet exit root at this leaf",
+                    "type": "string",
+                    "example": "0xdefc...789"
+                },
+                "previous_block_hash": {
+                    "description": "Hash of the previous block in the tree",
+                    "type": "string",
+                    "example": "0xabc1...bcd"
+                },
+                "rollup_exit_root": {
+                    "description": "Rollup exit root at this leaf",
+                    "type": "string",
+                    "example": "0x7890...123"
+                },
+                "timestamp": {
+                    "description": "Timestamp of the block in seconds since the Unix epoch",
+                    "type": "integer",
+                    "example": 1684500000
+                }
+            }
+        },
+        "types.LegacyTokenMigrationResponse": {
+            "description": "Details of a legacy token migration event",
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "description": "Amount of tokens migrated",
+                    "type": "string",
+                    "example": "1000000000000000000"
+                },
+                "block_num": {
+                    "description": "Block number where the migration occurred",
+                    "type": "integer",
+                    "example": 1234
+                },
+                "block_pos": {
+                    "description": "Position of the transaction in the block",
+                    "type": "integer",
+                    "example": 1
+                },
+                "block_timestamp": {
+                    "description": "Timestamp of the block",
+                    "type": "integer",
+                    "example": 1684500000
+                },
+                "calldata": {
+                    "description": "Raw calldata included in the migration transaction",
+                    "type": "string",
+                    "example": "0xdeadbeef"
+                },
+                "legacy_token_address": {
+                    "description": "Legacy token address being migrated",
+                    "type": "string",
+                    "example": "0xdef456..."
+                },
+                "sender": {
+                    "description": "Address of the sender initiating the migration",
+                    "type": "string",
+                    "example": "0xabc123..."
+                },
+                "tx_hash": {
+                    "description": "Transaction hash of the migration event",
+                    "type": "string",
+                    "example": "0xabc123..."
+                },
+                "updated_token_address": {
+                    "description": "New updated token address after migration",
+                    "type": "string",
+                    "example": "0xfeed789..."
+                }
+            }
+        },
+        "types.LegacyTokenMigrationsResult": {
+            "description": "Paginated response of legacy token migrations",
+            "type": "object",
+            "properties": {
+                "count": {
+                    "description": "Total number of legacy token migration events",
+                    "type": "integer",
+                    "example": 12
+                },
+                "legacy_token_migrations": {
+                    "description": "List of legacy token migration events",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.LegacyTokenMigrationResponse"
+                    }
+                }
+            }
+        },
+        "types.NetworkSyncInfo": {
+            "description": "Contains network-specific synchronization information",
+            "type": "object",
+            "properties": {
+                "bridge_deposit_count": {
+                    "type": "integer"
+                },
+                "contract_deposit_count": {
+                    "type": "integer"
+                },
+                "is_synced": {
+                    "type": "boolean"
+                }
+            }
+        },
+        "types.SyncStatus": {
+            "description": "Contains synchronization information for both L1 and L2 networks",
+            "type": "object",
+            "properties": {
+                "l1_info": {
+                    "$ref": "#/definitions/types.NetworkSyncInfo"
+                },
+                "l2_info": {
+                    "$ref": "#/definitions/types.NetworkSyncInfo"
+                }
+            }
+        },
+        "types.TokenMappingResponse": {
+            "description": "Detailed information about a token mapping between origin and wrapped networks",
+            "type": "object",
+            "properties": {
+                "block_num": {
+                    "description": "Block number where the token mapping was recorded",
+                    "type": "integer",
+                    "example": 123456
+                },
+                "block_pos": {
+                    "description": "Position of the mapping event within the block",
+                    "type": "integer",
+                    "example": 2
+                },
+                "block_timestamp": {
+                    "description": "Timestamp of the block containing the mapping event",
+                    "type": "integer",
+                    "example": 1684501234
+                },
+                "calldata": {
+                    "description": "Raw calldata submitted during the mapping",
+                    "type": "string",
+                    "example": "0xfeedface"
+                },
+                "is_not_mintable": {
+                    "description": "Indicates whether the wrapped token is not mintable (true = not mintable)",
+                    "type": "boolean",
+                    "example": false
+                },
+                "metadata": {
+                    "description": "Optional metadata associated with the token mapping",
+                    "type": "string",
+                    "example": "0xdeadbeef"
+                },
+                "origin_network": {
+                    "description": "ID of the origin network where the original token resides",
+                    "type": "integer",
+                    "example": 1
+                },
+                "origin_token_address": {
+                    "description": "Address of the token on the origin network",
+                    "type": "string",
+                    "example": "0x1234567890abcdef1234567890abcdef12345678"
+                },
+                "token_type": {
+                    "description": "Type of the token mapping: 0 = WrappedToken, 1 = SovereignToken",
+                    "type": "integer",
+                    "example": 0
+                },
+                "tx_hash": {
+                    "description": "Transaction hash associated with the mapping event",
+                    "type": "string",
+                    "example": "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd"
+                },
+                "wrapped_token_address": {
+                    "description": "Address of the wrapped token on the destination network",
+                    "type": "string",
+                    "example": "0xabcdef1234567890abcdef1234567890abcdef12"
+                }
+            }
+        },
+        "types.TokenMappingsResult": {
+            "description": "Paginated response of token mapping records",
+            "type": "object",
+            "properties": {
+                "count": {
+                    "description": "Total number of token mapping records",
+                    "type": "integer",
+                    "example": 27
+                },
+                "token_mappings": {
+                    "description": "List of token mapping entries",
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/types.TokenMappingResponse"
+                    }
+                }
+            }
+        }
+    }
+}

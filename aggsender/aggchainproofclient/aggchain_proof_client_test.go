@@ -1,6 +1,7 @@
 package aggchainproofclient
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -9,16 +10,20 @@ import (
 	agglayer "github.com/agglayer/aggkit/agglayer/types"
 	aggkitProverMocks "github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 func TestGenerateAggchainProof_Success(t *testing.T) {
 	mockClient := aggkitProverMocks.NewAggchainProofServiceClient(t)
-	client := &AggchainProofClient{client: mockClient}
+	client := &AggchainProofClient{
+		client:        mockClient,
+		grpcClientCfg: aggkitgrpc.DefaultConfig(),
+	}
 
 	expectedResponse := &aggkitProverV1Proto.GenerateAggchainProofResponse{
 		AggchainProof: &agglayerInteropTypesV1Proto.AggchainProof{
@@ -57,22 +62,25 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		ImportedBridgeExitsWithBlockNumber: nil,
 	}
 
-	result, err := client.GenerateAggchainProof(request)
+	result, err := client.GenerateAggchainProof(context.Background(), request)
 
-	assert.NoError(t, err)
-	assert.Equal(t, []byte("dummy-proof"), result.SP1StarkProof.Proof)
-	assert.Equal(t, uint64(100), result.LastProvenBlock)
-	assert.Equal(t, uint64(200), result.EndBlock)
-	assert.Equal(t, common.Hash{}, result.LocalExitRoot)
-	assert.Equal(t, []byte{}, result.CustomChainData)
-	assert.Equal(t, map[string][]byte{"key1": []byte("value1")}, result.Context)
-	assert.Equal(t, common.HexToHash("0x1").Bytes(), result.AggchainParams.Bytes())
+	require.NoError(t, err)
+	require.Equal(t, []byte("dummy-proof"), result.SP1StarkProof.Proof)
+	require.Equal(t, uint64(100), result.LastProvenBlock)
+	require.Equal(t, uint64(200), result.EndBlock)
+	require.Equal(t, common.Hash{}, result.LocalExitRoot)
+	require.Equal(t, []byte{}, result.CustomChainData)
+	require.Equal(t, map[string][]byte{"key1": []byte("value1")}, result.Context)
+	require.Equal(t, common.HexToHash("0x1").Bytes(), result.AggchainParams.Bytes())
 	mockClient.AssertExpectations(t)
 }
 
 func TestGenerateAggchainProof_Error(t *testing.T) {
 	mockClient := aggkitProverMocks.NewAggchainProofServiceClient(t)
-	client := &AggchainProofClient{client: mockClient}
+	client := &AggchainProofClient{
+		client:        mockClient,
+		grpcClientCfg: aggkitgrpc.DefaultConfig(),
+	}
 
 	expectedError := errors.New("Generate error")
 
@@ -201,9 +209,9 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 		},
 	}
 
-	result, err := client.GenerateAggchainProof(request)
-	assert.Error(t, err)
-	assert.Nil(t, result)
-	assert.Equal(t, "Generate error", err.Error())
+	result, err := client.GenerateAggchainProof(context.Background(), request)
+	require.Error(t, err)
+	require.Nil(t, result)
+	require.Equal(t, "Generate error", err.Error())
 	mockClient.AssertExpectations(t)
 }

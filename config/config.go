@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
@@ -12,7 +13,6 @@ import (
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/claimsponsor"
 	"github.com/agglayer/aggkit/common"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -48,7 +48,22 @@ const (
 	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of " +
 		"config file as polygonBridgeAddr."
 	specificL2URLDeprecated        = "Use L2URL instead"
-	bridgeMetadataAsHashDeprecated = "BridgeMetaDataAsHash is deprecated, bridge metadata is always stored as hash."
+	bridgeMetadataAsHashDeprecated = "BridgeMetaDataAsHash is deprecated, " +
+		"bridge metadata is always stored as hash."
+	aggsenderAgglayerURLDeprecated = "AggSender.AggLayerURL is deprecated, " +
+		"use AggSender.AgglayerClient instead"
+	aggsenderAggchainProofURLDeprecated = "AggSender.AggchainProofURL is deprecated, " +
+		"use AggSender.AggkitProverClient instead"
+	aggchainProofGenAggchainProofURLDeprecated = "AggchainProofGen.AggchainProofURL is deprecated, " +
+		"use AggSender.AggkitProverClient instead"
+	aggsenderUseAgglayerTLSDeprecated = "AggSender.UseAgglayerTLS is deprecated, " +
+		"use AggSender.AgglayerClient.UseTLS instead"
+	aggsenderUseAggkitProverTLSDeprecated = "AggSender.UseAggkitProverTLS is deprecated, " +
+		"use AggSender.AggkitProverClient.UseTLS instead"
+	aggsenderAggchainProofTimeoutDeprecated = "AggSender.GenerateAggchainProofTimeout is deprecated, " +
+		"use AggSender.AggkitProverClient.RequestTimeout instead"
+	aggchainProofGenAggchainProofTimeoutDeprecated = "AggchainProofGen.GenerateAggchainProofTimeout is deprecated, " +
+		"use AggchainProofGen.AggkitProverClient.RequestTimeout instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -103,6 +118,34 @@ var (
 			FieldNamePattern: "AggSender.BridgeMetadataAsHash",
 			Reason:           bridgeMetadataAsHashDeprecated,
 		},
+		{
+			FieldNamePattern: "AggSender.AggLayerURL",
+			Reason:           aggsenderAgglayerURLDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.AggchainProofURL",
+			Reason:           aggsenderAggchainProofURLDeprecated,
+		},
+		{
+			FieldNamePattern: "AggchainProofGen.AggchainProofURL",
+			Reason:           aggchainProofGenAggchainProofURLDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.UseAgglayerTLS",
+			Reason:           aggsenderUseAgglayerTLSDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.UseAggkitProverTLS",
+			Reason:           aggsenderUseAggkitProverTLSDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.GenerateAggchainProofTimeout",
+			Reason:           aggsenderAggchainProofTimeoutDeprecated,
+		},
+		{
+			FieldNamePattern: "AggchainProofGen.GenerateAggchainProofTimeout",
+			Reason:           aggchainProofGenAggchainProofTimeoutDeprecated,
+		},
 	}
 )
 
@@ -115,26 +158,33 @@ The file is [TOML format]
 type Config struct {
 	// Configuration of the etherman (client for access L1)
 	Etherman ethermanconfig.Config
+
 	// Configure Log level for all the services, allow also to store the logs in a file
 	Log log.Config
+
 	// Configuration of the genesis of the network. This is used to known the initial state of the network
 	NetworkConfig NetworkConfig
+
 	// Common Config that affects all the services
 	Common common.Config
+
+	// REST contains the configuration settings for the REST service in the Aggkit
+	REST common.RESTConfig
+
 	// Configuration of the reorg detector service to be used for the L1
 	ReorgDetectorL1 reorgdetector.Config
+
 	// Configuration of the reorg detector service to be used for the L2
 	ReorgDetectorL2 reorgdetector.Config
+
 	// Configuration of the aggOracle service
 	AggOracle aggoracle.Config
+
 	// Configuration of the L1 Info Treee Sync service
 	L1InfoTreeSync l1infotreesync.Config
 
 	// RPC is the config for the RPC server
 	RPC jRPC.Config
-
-	// ClaimSponsor is the config for the claim sponsor
-	ClaimSponsor claimsponsor.EVMClaimSponsorConfig
 
 	// BridgeL1Sync is the configuration for the synchronizer of the bridge of the L1
 	BridgeL1Sync bridgesync.Config
@@ -246,7 +296,7 @@ func LoadFile(files []FileData, saveConfigPath string,
 		return nil, err
 	}
 	if saveConfigPath != "" {
-		fullPath := saveConfigPath + "/" + SaveConfigFileName + ".merged"
+		fullPath := filepath.Join(saveConfigPath, fmt.Sprintf("%s.merged", SaveConfigFileName))
 		err = SaveDataToFile(fullPath, "merged config file", []byte(renderedCfg))
 		if err != nil {
 			return nil, err

@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -102,7 +103,7 @@ func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *
 	data.mockGERQuerier.EXPECT().GetInjectedGERsProofs(data.ctx, mock.Anything, nextCert.FromBlock, nextCert.ToBlock).
 		Return(nil, nil)
 	// Now calls to aggkit-prover service:
-	data.mockAggchainProofClient.EXPECT().GenerateAggchainProof(mock.Anything).Return(&types.AggchainProof{
+	data.mockAggchainProofClient.EXPECT().GenerateAggchainProof(data.ctx, mock.Anything).Return(&types.AggchainProof{
 		SP1StarkProof: &types.SP1StarkProof{
 			Proof: []byte("proof"),
 		},
@@ -160,7 +161,7 @@ type AggchainProverFlowTestData struct {
 	mockL2BridgeQuerier       *mocks.BridgeQuerier
 	mockL1InfoTreeQuerier     *mocks.L1InfoTreeDataQuerier
 	mockGERQuerier            *mocks.GERQuerier
-	mockL1Client              *mocks.EthClient
+	mockL1Client              *aggkittypesmocks.BaseEthereumClienter
 	mockOptimisticModeQuerier *mocks.OptimisticModeQuerier
 	mockSigner                *mocks.Signer
 	mockOptimisticSigner      *mocks.OptimisticSigner
@@ -180,7 +181,7 @@ func NewAggchainProverFlowTestData(t *testing.T,
 		mockL2BridgeQuerier:       mocks.NewBridgeQuerier(t),
 		mockL1InfoTreeQuerier:     mocks.NewL1InfoTreeDataQuerier(t),
 		mockGERQuerier:            mocks.NewGERQuerier(t),
-		mockL1Client:              mocks.NewEthClient(t),
+		mockL1Client:              aggkittypesmocks.NewBaseEthereumClienter(t),
 		mockOptimisticModeQuerier: mocks.NewOptimisticModeQuerier(t),
 		mockSigner:                mocks.NewSigner(t),
 		mockOptimisticSigner:      mocks.NewOptimisticSigner(t),
