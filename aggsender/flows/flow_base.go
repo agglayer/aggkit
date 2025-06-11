@@ -54,7 +54,7 @@ func (f *baseFlow) getCertificateBuildParamsWithEndBlock(
 		return nil, err
 	}
 
-	if lastSentCertificate.ToBlock >= endBlock {
+	if lastSentCertificate != nil && lastSentCertificate.ToBlock >= endBlock {
 		return nil, fmt.Errorf("last sent certificate block %d is greater than or equal to end block %d",
 			lastSentCertificate.ToBlock, endBlock)
 	}
