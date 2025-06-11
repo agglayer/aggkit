@@ -11,7 +11,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
@@ -109,7 +108,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 			},
 			mockLoggerFn: func() aggkitcommon.Logger {
 				mockLogger := mocks.NewLogger(t)
-				mockLogger.EXPECT().Warnf("Missed block(s) [finality:%s]: %d -> %d", etherman.LatestBlock, uint64(100), uint64(105)).Once()
+				mockLogger.EXPECT().Warnf("Missed block(s) [finality:%s]: %d -> %d", aggkittypes.LatestBlock, uint64(100), uint64(105)).Once()
 				return mockLogger
 			},
 			headerByNumberError:       false,
@@ -127,7 +126,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 		{
 			name: "missed blocks - BlockFinalityType=FinalizedBlock",
 			cfg: &ConfigBlockNotifierPolling{
-				BlockFinalityType: etherman.FinalizedBlock,
+				BlockFinalityType: aggkittypes.FinalizedBlock,
 			},
 			previousStatus: &blockNotifierPollingInternalStatus{
 				lastBlockSeen:     100,
