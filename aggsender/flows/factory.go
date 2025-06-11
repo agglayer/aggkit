@@ -15,7 +15,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signerTypes "github.com/agglayer/go_signer/signer/types"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 // funcGetL2StartBlock is a intermediate func that allow to override this call in UT
@@ -31,21 +30,25 @@ func NewFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
-	startLER common.Hash,
 ) (types.AggsenderFlow, error) {
-	logger.Infof("StartLER from rollup manager contract: %s", startLER.String())
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
 		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
 		if err != nil {
 			return nil, err
 		}
+		lerQuerier, err := query.NewLERDataQuerier(
+			cfg.RollupManagerAddr, cfg.L1GenesisBlock, l2Syncer.OriginNetwork(), l1Client)
+		if err != nil {
+			return nil, fmt.Errorf("error creating LER data querier: %w", err)
+		}
+
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, 0, startLER),
+			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
+			NewBaseFlowConfig(cfg.MaxCertSize, 0),
 		)
 		return NewPPFlow(
 			logger,
@@ -88,10 +91,17 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
+
+		lerQuerier, err := query.NewLERDataQuerier(
+			cfg.RollupManagerAddr, cfg.L1GenesisBlock, l2Syncer.OriginNetwork(), l1Client)
+		if err != nil {
+			return nil, fmt.Errorf("error creating LER data querier: %w", err)
+		}
+
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, startLER),
+			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
+			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
 		)
 
 		return NewAggchainProverFlow(

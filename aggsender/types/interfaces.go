@@ -4,12 +4,14 @@ import (
 	"context"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -134,4 +136,15 @@ type CertificateStatusChecker interface {
 		ctx context.Context,
 		delayBetweenRetries time.Duration,
 		aggsenderStatus *AggsenderStatus)
+}
+
+// RollupManagerContract is an interface defining functions that a RollupManager contract should implement
+type RollupManagerContract interface {
+	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (
+		polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
+}
+
+// LERQuerier is an interface defining functions that a Local Exit Root querier should implement
+type LERQuerier interface {
+	GetLastLocalExitRoot() (common.Hash, error)
 }

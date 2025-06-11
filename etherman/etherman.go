@@ -103,34 +103,6 @@ func GetRollupID(l1Config config.L1Config, rollupAddr common.Address, ethClient 
 	return rollupID, nil
 }
 
-func GetLastLocalExitRoot(
-	l1Config config.L1Config,
-	rollupID uint32,
-	genesisBlockNumber uint64,
-	ethClient bind.ContractBackend) (common.Hash, error) {
-	contracts, err := contracts.NewContracts(l1Config, ethClient)
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("error creating contracts. Err: %w", err)
-	}
-	rollupData, err := contracts.Banana.RollupManager.RollupIDToRollupData(
-		&bind.CallOpts{
-			Pending:     false,
-			BlockNumber: new(big.Int).SetUint64(genesisBlockNumber),
-		},
-		rollupID,
-	)
-	if err != nil {
-		log.Errorf("error getting rollupData from %s: %v", contracts.Banana.RollupManager.String(), err)
-
-		return common.Hash{},
-			fmt.Errorf("error calling contract RollupManager.RollupIDToRollupData(%d). Err: %w", rollupID, err)
-	}
-	log.Infof("rollupData from rollupID: %d (obtained from contract: %s )",
-		rollupID, contracts.Banana.RollupManager.String())
-
-	return rollupData.LastLocalExitRoot, nil
-}
-
 // NewClient creates a new etherman.
 func NewClient(cfg config.Config, l1Config config.L1Config, commonConfig aggkitcommon.Config) (*Client, error) {
 	// Connect to ethereum node

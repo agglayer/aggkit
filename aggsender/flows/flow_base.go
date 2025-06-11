@@ -32,27 +32,21 @@ type BaseFlowConfig struct {
 	// It is used to determine the first block to include in the certificate.
 	// It can be 0
 	StartL2Block uint64
-	// StartLER is the starting local exit root on the rollup manager contract.
-	// It is used to determine the first local exit root to include in the certificate.
-	// If the network is starting from scratch, it should be set to the zero hash.
-	StartLER common.Hash
 }
 
 // NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
 func NewBaseFlowConfigDefault() BaseFlowConfig {
 	return BaseFlowConfig{
-		MaxCertSize:  0,             // 0 means no limit
-		StartL2Block: 0,             // 0 means start from the first block
-		StartLER:     common.Hash{}, // zero hash means starting from scratch
+		MaxCertSize:  0, // 0 means no limit
+		StartL2Block: 0, // 0 means start from the first block
 	}
 }
 
 // NewBaseFlowConfig returns a BaseFlowConfig with the specified maxCertSize and startL2Block
-func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64, startLER common.Hash) BaseFlowConfig {
+func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64) BaseFlowConfig {
 	return BaseFlowConfig{
 		MaxCertSize:  maxCertSize,
 		StartL2Block: startL2Block,
-		StartLER:     startLER,
 	}
 }
 
@@ -61,6 +55,7 @@ type baseFlow struct {
 	l2BridgeQuerier       types.BridgeQuerier
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
+	lerQuerier            types.LERQuerier
 	cfg                   BaseFlowConfig
 	log                   types.Logger
 }
@@ -71,6 +66,7 @@ func NewBaseFlow(
 	l2BridgeQuerier types.BridgeQuerier,
 	storage db.AggSenderStorage,
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
+	lerQuerier types.LERQuerier,
 	cfg BaseFlowConfig,
 ) *baseFlow {
 	return &baseFlow{
@@ -78,6 +74,7 @@ func NewBaseFlow(
 		l2BridgeQuerier:       l2BridgeQuerier,
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
+		lerQuerier:            lerQuerier,
 		cfg:                   cfg,
 	}
 }
@@ -406,21 +403,28 @@ func (f *baseFlow) getImportedBridgeExits(
 }
 
 // getStartLER returns the last local exit root (LER) based on the configuration
-func (f *baseFlow) getStartLER() common.Hash {
-	if f.cfg.StartLER == aggkitcommon.ZeroHash {
-		return emptyLER
+func (f *baseFlow) getStartLER() (common.Hash, error) {
+	ler, err := f.lerQuerier.GetLastLocalExitRoot()
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("error getting last local exit root: %w", err)
 	}
-	return f.cfg.StartLER
+
+	if ler == aggkitcommon.ZeroHash {
+		return emptyLER, nil
+	}
+
+	return ler, nil
 }
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		return 0, f.getStartLER(), nil
+		ler, err := f.getStartLER()
+		return uint64(0), ler, err
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
-		return 0, f.getStartLER(), fmt.Errorf("last certificate %s is not closed (status: %s)",
+		return 0, aggkitcommon.ZeroHash, fmt.Errorf("last certificate %s is not closed (status: %s)",
 			lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 	}
 	if lastSentCertificateInfo.Status.IsSettled() {
@@ -434,26 +438,27 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			return 0, f.getStartLER(), nil
+			ler, err := f.getStartLER()
+			return uint64(0), ler, err
 		}
 		// We get previous certificate that must be settled
 		f.log.Debugf("last certificate %s is in error, getting previous settled certificate height:%d",
 			lastSentCertificateInfo.Height-1)
 		lastSettleCert, err := f.storage.GetCertificateHeaderByHeight(lastSentCertificateInfo.Height - 1)
 		if err != nil {
-			return 0, common.Hash{}, fmt.Errorf("error getting last settled certificate: %w", err)
+			return 0, aggkitcommon.ZeroHash, fmt.Errorf("error getting last settled certificate: %w", err)
 		}
 		if lastSettleCert == nil {
-			return 0, common.Hash{}, fmt.Errorf("none settled certificate: %w", err)
+			return 0, aggkitcommon.ZeroHash, fmt.Errorf("none settled certificate: %w", err)
 		}
 		if !lastSettleCert.Status.IsSettled() {
-			return 0, common.Hash{}, fmt.Errorf("last settled certificate %s is not settled (status: %s)",
+			return 0, aggkitcommon.ZeroHash, fmt.Errorf("last settled certificate %s is not settled (status: %s)",
 				lastSettleCert.ID(), lastSettleCert.Status.String())
 		}
 
 		return lastSentCertificateInfo.Height, lastSettleCert.NewLocalExitRoot, nil
 	}
-	return 0, f.getStartLER(), fmt.Errorf("last certificate %s has an unknown status: %s",
+	return 0, aggkitcommon.ZeroHash, fmt.Errorf("last certificate %s has an unknown status: %s",
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 }
 

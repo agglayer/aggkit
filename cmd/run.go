@@ -34,7 +34,6 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
@@ -76,7 +75,6 @@ func start(cliCtx *cli.Context) error {
 	}()
 
 	rollupID := getRollUpIDIfNeeded(components, cfg.NetworkConfig.L1Config, l1Client)
-	lastLER := getRollupLastExitRootIfNeeded(components, cfg.NetworkConfig, l1Client, rollupID)
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
 	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0)
@@ -111,7 +109,6 @@ func start(cliCtx *cli.Context) error {
 				l1InfoTreeSync,
 				l2BridgeSync,
 				l2Client,
-				lastLER,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -190,8 +187,7 @@ func createAggSender(
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
-	l2Client aggkittypes.BaseEthereumClienter,
-	lastLER common.Hash) (*aggsender.AggSender, error) {
+	l2Client aggkittypes.BaseEthereumClienter) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	if err := cfg.AgglayerClient.Validate(); err != nil {
@@ -229,7 +225,7 @@ func createAggSender(
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
 	return aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, lastLER)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client)
 }
 
 func createAggoracle(
@@ -426,29 +422,6 @@ func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Con
 		log.Fatal(err)
 	}
 	return rollupID
-}
-
-func getRollupLastExitRootIfNeeded(components []string,
-	l1NetworkConfig config.NetworkConfig,
-	l1Client aggkittypes.BaseEthereumClienter,
-	rollupID uint32) common.Hash {
-	if !isNeeded([]string{
-		aggkitcommon.AGGSENDER,
-	}, components) {
-		return common.Hash{}
-	}
-
-	lastExitRoot, err := etherman.GetLastLocalExitRoot(
-		l1NetworkConfig.L1Config,
-		rollupID,
-		l1NetworkConfig.Genesis.BlockNumber,
-		l1Client,
-	)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	return lastExitRoot
 }
 
 func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {

@@ -71,6 +71,10 @@ type Config struct {
 	// RequireOneBridgeInPPCertificate is a flag to force the AggSender to have at least one bridge exit
 	// for the Pessimistic Proof certificates
 	RequireOneBridgeInPPCertificate bool `mapstructure:"RequireOneBridgeInPPCertificate"`
+	// RollupManagerAddr is the address of the RollupManager contract on L1
+	RollupManagerAddr ethCommon.Address `mapstructure:"RollupManagerAddr"`
+	// L1GenesisBlock is the genesis block number of the L1 chain
+	L1GenesisBlock uint64 `mapstructure:"L1GenesisBlock"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
