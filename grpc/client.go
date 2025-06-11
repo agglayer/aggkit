@@ -122,13 +122,9 @@ func (c *ClientConfig) validateRequestTimeout() error {
 		backoff = time.Duration(float64(backoff) * c.Retry.BackoffMultiplier)
 	}
 
-	// Add per-attempt execution time buffer (optional)
-	avgCallBuffer := 1 * time.Second
-	expectedMinTimeout := totalBackoff + time.Duration(c.Retry.MaxAttempts)*avgCallBuffer
-
-	if c.RequestTimeout.Duration < expectedMinTimeout {
-		return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate retries",
-			c.RequestTimeout, expectedMinTimeout)
+	if c.RequestTimeout.Duration < totalBackoff {
+		return fmt.Errorf("RequestTimeout (%s) is too short; expected at least %s to accommodate the worst case retries",
+			c.RequestTimeout, totalBackoff)
 	}
 
 	return nil

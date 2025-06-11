@@ -447,6 +447,17 @@ func TestValidateRequestTimeout(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name:    "valid - just enough for backoff",
+			timeout: types.NewDuration(7 * time.Second),
+			retryConfig: &RetryConfig{
+				InitialBackoff:    types.NewDuration(1 * time.Second),
+				MaxBackoff:        types.NewDuration(10 * time.Second),
+				BackoffMultiplier: 2.0,
+				MaxAttempts:       4,
+			},
+			expectError: false,
+		},
+		{
 			name:    "invalid - timeout too short for retry backoff",
 			timeout: types.NewDuration(2 * time.Second),
 			retryConfig: &RetryConfig{
