@@ -59,7 +59,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, err
 	}
 
-	if p.forceOneBridgeExit && len(buildParams.Bridges) == 0 {
+	if p.forceOneBridgeExit && buildParams.NumberOfBridges() == 0 {
 		// if forceOneBridgeExit is true, we need to ensure that there is at least one bridge exit
 		p.log.Infof("PPFlow - forceOneBridgeExit is true, but no bridges found, "+
 			"so no certificate will be built for range: %d - %d",
@@ -67,7 +67,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, nil
 	}
 
-	if len(buildParams.Bridges) == 0 && len(buildParams.Claims) == 0 {
+	if buildParams.IsEmpty() {
 		p.log.Infof("PPFlow - no bridges or claims found for range: %d - %d, so no certificate will be built",
 			buildParams.FromBlock, buildParams.ToBlock)
 		return nil, nil
