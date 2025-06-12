@@ -64,7 +64,7 @@ The `ClientConfig` structure configures the gRPC client connection. It includes 
 | MinConnectTimeout  | types.Duration | Minimum time to wait for a connection to be established                                    |
 | RequestTimeout     | types.Duration | Timeout for individual requests                                                            |
 | UseTLS             | bool           | Whether to use TLS for the gRPC connection                                                 |
-| Retry              | *RetryConfig   | Retry configuration for failed requests                                                    |
+| Retry              | *[RetryConfig](#retryconfig)   | Retry configuration for failed requests                                                    |
 
 ### RetryConfig
 
@@ -76,7 +76,19 @@ The `RetryConfig` structure configures the retry behavior for failed gRPC reques
 | MaxBackoff         | types.Duration | Maximum backoff duration for retries                                                       |
 | BackoffMultiplier  | float64        | Multiplier for the backoff duration                                                        |
 | MaxAttempts        | int            | Maximum number of retries for a request                                                    |
-| Excluded           | []Method       | List of methods excluded from retry policies                                               |
+| Excluded           | [][Method](#method)       | List of methods excluded from retry policies                                               |
+
+### Method
+
+The `Method` type represents a gRPC method name that can be excluded from retry policies. This is typically the full method name in the format `package.Service/Method`. For example, `agglayer.Agglayer/SubmitCertificate`.
+
+Example:
+```
+[AggSender]
+    [AggSender.AgglayerClient]
+        [AggSender.AgglayerClient.Retry]
+            Excluded = ["agglayer.Agglayer/SubmitCertificate", "agglayer.Agglayer/GetStatus"]
+```
 
 Example:
 ```
