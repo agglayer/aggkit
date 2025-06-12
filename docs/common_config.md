@@ -126,7 +126,7 @@ Example:
 [AggSender]
 OptimisticModeConfig = {
     SovereignRollupAddr = "0x1234...",
-    TrustedSequencerKey = { Method="local", Path="/opt/private_key.kestore", Password="password" },
+    TrustedSequencerKey = { Method="local", Path="/opt/private_key.keystore", Password="password" },
     OpNodeURL = "http://localhost:8080",
     RequireKeyMatchTrustedSequencer = true
 }
