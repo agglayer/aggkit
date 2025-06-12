@@ -215,7 +215,7 @@ SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = true
 RequireOneBridgeInPPCertificate = false
-RollbackManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
+RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 L1GenesisBlockNumber = {{genesisBlockNumber}}
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
