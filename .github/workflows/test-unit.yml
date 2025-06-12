@@ -18,7 +18,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        go-version: [1.24.2]
+        go-version: [1.24.4]
         goarch: ["amd64"]
     runs-on: amd-runner-2204
     steps:
