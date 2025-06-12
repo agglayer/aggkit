@@ -1,5 +1,5 @@
 # CONTAINER FOR BUILDING BINARY
-FROM --platform=${BUILDPLATFORM} golang:1.24.2 AS build
+FROM --platform=${BUILDPLATFORM} golang:1.24.4 AS build
 
 WORKDIR /app
 
