@@ -1,6 +1,6 @@
 # AggSender component
 
-`AggSender` is in charge to build and pack the information required to prove a target chain’s bridge state into a certificate. This certificate provides the inputs needed to build a pessimistic proof.
+`AggSender` is in charge to build and pack the information required to prove a target chain's bridge state into a certificate. This certificate provides the inputs needed to build a pessimistic proof.
 
 ## Component Diagram
 
@@ -140,7 +140,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | `network_id`               | This is the id of the rollup (>0)                                                       |
 | `height`                   | Order of certificates. First one is 0                                                   |
 | `prev_local_exit_root`     | The first one must be the one in smart contract (currently is a 0x000…00)                          |
-| `new_local_exit_root`      | It’s the root after bridge_exits                                                        |
+| `new_local_exit_root`      | It's the root after bridge_exits                                                        |
 | `bridge_exits`             | These are the leaves of the LER tree included in this certificate. (bridgeAssert calls) |
 | `imported_bridge_exits`    | These are the claims done in this network                                               |
 | `aggchain_params`          | Aggchain params returned by the aggchain prover                                         |
@@ -152,7 +152,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | Name                              | Type                      | Description                                                                                                     |
 |-----------------------------------|---------------------------|-----------------------------------------------------------------------------------------------------------------|
 | StoragePath                       | string                    | Full file path (with file name) where to store Aggsender DB                                                     |
-| AgglayerClient                    | *aggkitgrpc.ClientConfig  | Agglayer gRPC client configuration                                                                              |
+| AgglayerClient                    | *aggkitgrpc.ClientConfig  | Agglayer gRPC client configuration. See [ClientConfig](./common_config.md#clientconfig) for details.                             |
 | AggsenderPrivateKey               | [SignerConfig](./common_config.md#signerconfig)             | Configuration of the signer used to sign the certificate on the Aggsender before sending it to the Agglayer. It can be a local private key, or an external one. |
 | URLRPCL2                          | string                    | L2 RPC                                                                                                          |
 | BlockFinality                     | string                    | Indicates which finality the AggLayer follows (FinalizedBlock, SafeBlock, LatestBlock, PendingBlock, EarliestBlock) |
@@ -167,14 +167,13 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | Mode                              | string                    | Defines the mode of the AggSender (PessimisticProof or AggchainProof)                                           |
 | CheckStatusCertificateInterval    | Duration                  | Interval at which the AggSender will check the certificate status in Agglayer                                   |
 | RetryCertAfterInError             | bool                      | If true, Aggsender will re-send InError certificates immediately after status change                            |
-| MaxSubmitCertificateRate          | RateLimitConfig           | Maximum allowed rate of submission of certificates in a given time                                              |
+| MaxSubmitCertificateRate          | RateLimitConfig           | Maximum allowed rate of submission of certificates in a given time. See [RateLimitConfig](./common_config.md#ratelimitconfig) for details. |
 | GlobalExitRootL2Addr              | Address                   | Address of the GlobalExitRootManager contract on L2 sovereign chain (needed for AggchainProof mode)             |
 | SovereignRollupAddr               | Address                   | Address of the sovereign rollup contract on L1                                                                  |
 | RequireStorageContentCompatibility| bool                      | If true, data stored in the database must be compatible with the running environment                            |
 | RequireNoFEPBlockGap              | bool                      | If true, AggSender should not accept a gap between lastBlock from lastCertificate and first block of FEP        |
-| OptimisticModeConfig              | optimistic.Config         | Configuration for optimistic mode (required by FEP mode)                                                        |
+| OptimisticModeConfig              | optimistic.Config         | Configuration for optimistic mode (required by FEP mode). See [OptimisticConfig](./common_config.md#optimisticconfig) for details. |
 | RequireOneBridgeInPPCertificate   | bool                      | If true, AggSender requires at least one bridge exit for Pessimistic Proof certificates                         |
-                                                                                              |
 
 ## Use Cases
 
