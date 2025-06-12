@@ -10,7 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
@@ -37,11 +37,19 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
+		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1)
+		lerQuerier, err := query.NewLERDataQuerier(
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
+		if err != nil {
+			return nil, fmt.Errorf("error creating LER data querier: %w", err)
+		}
+
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
+			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
 			NewBaseFlowConfig(cfg.MaxCertSize, 0),
 		)
 		return NewPPFlow(
@@ -51,7 +59,7 @@ func NewFlow(
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
 			signer,
-			cfg.RequireNoFEPBlockGap,
+			cfg.RequireOneBridgeInPPCertificate,
 		), nil
 	case types.AggchainProofMode:
 		if err := cfg.AggkitProverClient.Validate(); err != nil {
@@ -85,9 +93,16 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
+
+		lerQuerier, err := query.NewLERDataQuerier(
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
+		if err != nil {
+			return nil, fmt.Errorf("error creating LER data querier: %w", err)
+		}
+
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier,
+			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
 			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
 		)
 
@@ -116,7 +131,7 @@ func initializeSigner(
 	signerCfg signerTypes.SignerConfig,
 	logger *log.Logger,
 ) (signerTypes.Signer, error) {
-	signer, err := signer.NewSigner(ctx, 0, signerCfg, common.AGGSENDER, logger)
+	signer, err := signer.NewSigner(ctx, 0, signerCfg, aggkitcommon.AGGSENDER, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
 	}

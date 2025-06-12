@@ -194,7 +194,6 @@ ZkEVMAddr = "{{L1Config.polygonZkEVMAddress}}"
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 
-
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 AggsenderPrivateKey = {{AggsenderPrivateKey}}
@@ -216,6 +215,8 @@ SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = true
 RequireOneBridgeInPPCertificate = false
+RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
+RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectTimeout = "5s"

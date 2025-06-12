@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
@@ -118,6 +119,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			f := NewBaseFlow(
 				log.WithFields("test", t.Name()),
+				nil,
 				nil,
 				nil,
 				nil,
@@ -315,46 +317,180 @@ func Test_baseFlow_GetNewLocalExitRoot(t *testing.T) {
 
 func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 	t.Parallel()
-	mockStorage := mocks.NewAggSenderStorage(t)
-	sut := NewBaseFlow(
-		log.WithFields("test", t.Name()),
-		nil,
-		mockStorage,
-		nil,
-		NewBaseFlowConfigDefault())
 
-	t.Run("cannot generate new certificate because a pending certificate (neither InError nor Settled) has an unknown settlement status",
-		func(t *testing.T) {
-			t.Parallel()
-			height, ler, err := sut.getNextHeightAndPreviousLER(
-				&types.CertificateHeader{
-					Status: agglayertypes.Pending,
-				},
-			)
-			require.Equal(t, uint64(0), height, "Height should be 0 for pending certificate")
-			require.Equal(t, zeroLER, ler, "LER should be empty for pending certificate")
-			require.Error(t, err)
-			require.ErrorContains(t, err, "is not closed ")
-		})
+	previousLER := common.HexToHash("0x123")
 
-	t.Run("if last cert is inError, we need last settled cert",
-		func(t *testing.T) {
+	testCases := []struct {
+		name           string
+		lastSentCert   *types.CertificateHeader
+		expectedHeight uint64
+		expectedLER    common.Hash
+		expectedError  string
+		mockFn         func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage)
+	}{
+		{
+			name:           "no last sent certificate - zero start LER",
+			lastSentCert:   nil,
+			expectedHeight: 0,
+			expectedLER:    emptyLER,
+			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(aggkitcommon.ZeroHash, nil)
+			},
+		},
+		{
+			name:           "no last sent certificate - has start LER",
+			lastSentCert:   nil,
+			expectedHeight: 0,
+			expectedLER:    common.HexToHash("0x1"),
+			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(common.HexToHash("0x1"), nil)
+			},
+		},
+		{
+			name:           "ler querier returns error",
+			lastSentCert:   nil,
+			expectedHeight: 0,
+			expectedLER:    aggkitcommon.ZeroHash,
+			expectedError:  "error getting last local exit root: some error",
+			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(common.Hash{}, errors.New("some error"))
+			},
+		},
+		{
+			name: "last sent certificate is not Closed",
+			lastSentCert: &types.CertificateHeader{
+				Status: agglayertypes.Pending,
+			},
+			expectedHeight: 0,
+			expectedLER:    common.Hash{},
+			expectedError:  "is not closed",
+		},
+		{
+			name: "last sent certificate is Settled",
+			lastSentCert: &types.CertificateHeader{
+				Status:           agglayertypes.Settled,
+				Height:           2,
+				NewLocalExitRoot: common.HexToHash("0x123"),
+			},
+			expectedHeight: 3,
+			expectedLER:    common.HexToHash("0x123"),
+		},
+		{
+			name: "last sent certificate is InError, has previous LER",
+			lastSentCert: &types.CertificateHeader{
+				Status:                agglayertypes.InError,
+				Height:                5,
+				PreviousLocalExitRoot: &previousLER,
+				NewLocalExitRoot:      common.HexToHash("0x789"),
+			},
+			expectedHeight: 5,
+			expectedLER:    previousLER,
+		},
+		{
+			name: "first certificate InError",
+			lastSentCert: &types.CertificateHeader{
+				Status:                agglayertypes.InError,
+				Height:                0,
+				PreviousLocalExitRoot: nil,
+				NewLocalExitRoot:      common.HexToHash("0x789"),
+			},
+			expectedHeight: 0,
+			expectedLER:    emptyLER,
+			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(emptyLER, nil)
+			},
+		},
+		{
+			name: "error getting previously sent certificate",
+			lastSentCert: &types.CertificateHeader{
+				Status:           agglayertypes.InError,
+				Height:           5,
+				NewLocalExitRoot: common.HexToHash("0x789"),
+			},
+			expectedHeight: 0,
+			expectedLER:    aggkitcommon.ZeroHash,
+			expectedError:  "error getting last settled certificate: some error",
+			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
+					Return(nil, errors.New("some error"))
+			},
+		},
+		{
+			name: "previously sent certificate not found",
+			lastSentCert: &types.CertificateHeader{
+				Status:           agglayertypes.InError,
+				Height:           5,
+				NewLocalExitRoot: common.HexToHash("0x789"),
+			},
+			expectedHeight: 0,
+			expectedLER:    aggkitcommon.ZeroHash,
+			expectedError:  "none settled certificate",
+			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
+					Return(nil, nil)
+			},
+		},
+		{
+			name: "previously sent certificate is not Settled",
+			lastSentCert: &types.CertificateHeader{
+				Status:           agglayertypes.InError,
+				Height:           5,
+				NewLocalExitRoot: common.HexToHash("0x789"),
+			},
+			expectedHeight: 0,
+			expectedLER:    aggkitcommon.ZeroHash,
+			expectedError:  "is not settled",
+			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
+					Return(&types.CertificateHeader{Status: agglayertypes.Pending}, nil)
+			},
+		},
+		{
+			name: "previously sent certificate is Settled",
+			lastSentCert: &types.CertificateHeader{
+				Status:           agglayertypes.InError,
+				Height:           5,
+				NewLocalExitRoot: common.HexToHash("0x789"),
+			},
+			expectedHeight: 5,
+			expectedLER:    common.HexToHash("0x789"),
+			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
+					Return(&types.CertificateHeader{
+						Status:           agglayertypes.Settled,
+						NewLocalExitRoot: common.HexToHash("0x789"),
+					}, nil)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(9)).Return(
-				&types.CertificateHeader{
-					Status:           agglayertypes.Settled,
-					Height:           9,
-					NewLocalExitRoot: common.HexToHash("0xbeef"),
-				}, nil,
-			)
-			height, ler, err := sut.getNextHeightAndPreviousLER(
-				&types.CertificateHeader{
-					Status: agglayertypes.InError,
-					Height: 10,
-				},
-			)
-			require.Equal(t, uint64(10), height, "Height should be 10 for next certificate")
-			require.Equal(t, common.HexToHash("0xbeef"), ler, "LER should be from previous cert")
-			require.NoError(t, err)
+
+			mockLERQuerier := mocks.NewLERQuerier(t)
+			mockStorage := mocks.NewAggSenderStorage(t)
+			if tc.mockFn != nil {
+				tc.mockFn(mockLERQuerier, mockStorage)
+			}
+
+			log := log.WithFields("test", t.Name())
+			f := &baseFlow{
+				lerQuerier: mockLERQuerier,
+				storage:    mockStorage,
+				log:        log,
+			}
+
+			height, ler, err := f.getNextHeightAndPreviousLER(tc.lastSentCert)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedHeight, height)
+				require.Equal(t, tc.expectedLER, ler)
+			}
 		})
+	}
 }
