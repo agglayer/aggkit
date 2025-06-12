@@ -20,11 +20,7 @@ import (
 func TestNewFlow(t *testing.T) {
 	t.Parallel()
 	keyConfig := signertypes.SignerConfig{
-		Method: signertypes.MethodLocal,
-		Config: map[string]any{
-			"password": "password",
-			"path":     "../../test/config/key_trusted_sequencer.keystore",
-		},
+		Method: signertypes.MethodMock,
 	}
 	testCases := []struct {
 		name          string
