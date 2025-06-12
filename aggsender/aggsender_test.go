@@ -21,6 +21,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -36,34 +37,31 @@ const (
 
 func TestConfigString(t *testing.T) {
 	config := config.Config{
-		StoragePath:                  "/path/to/storage",
-		AggLayerURL:                  "http://agglayer.url",
-		AggsenderPrivateKey:          signer.NewLocalSignerConfig("/path/to/key", "password"),
-		URLRPCL2:                     "http://l2.rpc.url",
-		BlockFinality:                "latestBlock",
-		EpochNotificationPercentage:  50,
-		Mode:                         "PP",
-		GenerateAggchainProofTimeout: types.Duration{Duration: time.Second},
-		SovereignRollupAddr:          common.HexToAddress("0x1"),
+		StoragePath:                 "/path/to/storage",
+		AgglayerClient:              &aggkitgrpc.ClientConfig{URL: "http://agglayer.url"},
+		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
+		URLRPCL2:                    "http://l2.rpc.url",
+		BlockFinality:               "latestBlock",
+		EpochNotificationPercentage: 50,
+		Mode:                        "PP",
+		SovereignRollupAddr:         common.HexToAddress("0x1"),
 	}
 
-	expected := "StoragePath: /path/to/storage\n" +
-		"AggLayerURL: http://agglayer.url\n" +
-		"AggsenderPrivateKey: local\n" +
-		"BlockFinality: latestBlock\n" +
-		"EpochNotificationPercentage: 50\n" +
-		"DryRun: false\n" +
-		"EnableRPC: false\n" +
-		"AggchainProofURL: \n" +
-		"Mode: PP\n" +
-		"CheckStatusCertificateInterval: 0s\n" +
-		"RetryCertAfterInError: false\n" +
-		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
-		"GenerateAggchainProofTimeout: 1s\n" +
-		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n" +
-		"UseAgglayerTLS: false\n" +
-		"UseAggkitProverTLS: false\n" +
-		"RequireNoFEPBlockGap: false\n"
+	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
+		"AgglayerClient: %s\n"+
+		"AggsenderPrivateKey: local\n"+
+		"BlockFinality: latestBlock\n"+
+		"EpochNotificationPercentage: 50\n"+
+		"DryRun: false\n"+
+		"EnableRPC: false\n"+
+		"AggkitProverClient: none\n"+
+		"Mode: PP\n"+
+		"CheckStatusCertificateInterval: 0s\n"+
+		"RetryCertAfterInError: false\n"+
+		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
+		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
+		"RequireNoFEPBlockGap: false\n",
+		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
 }
@@ -370,7 +368,7 @@ func TestSendCertificate(t *testing.T) {
 
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
-	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Twice()
+	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(3)
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,

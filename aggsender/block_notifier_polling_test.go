@@ -10,8 +10,10 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/mock"
@@ -45,9 +47,11 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 	tests := []struct {
 		name                      string
 		previousStatus            *blockNotifierPollingInternalStatus
-		HeaderByNumberError       bool
-		HeaderByNumberErrorNumber uint64
+		cfg                       *ConfigBlockNotifierPolling
+		headerByNumberError       bool
+		headerByNumberErrorNumber uint64
 		forcedTime                time.Time
+		mockLoggerFn              func() aggkitcommon.Logger
 		expectedStatus            *blockNotifierPollingInternalStatus
 		expectedDelay             time.Duration
 		expectedEvent             *aggsendertypes.EventNewBlock
@@ -55,8 +59,8 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 		{
 			name:                      "initial->receive block",
 			previousStatus:            nil,
-			HeaderByNumberError:       false,
-			HeaderByNumberErrorNumber: 100,
+			headerByNumberError:       false,
+			headerByNumberErrorNumber: 100,
 			forcedTime:                time0,
 			expectedStatus: &blockNotifierPollingInternalStatus{
 				lastBlockSeen: 100,
@@ -68,7 +72,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 		{
 			name:                "received block->error",
 			previousStatus:      nil,
-			HeaderByNumberError: true,
+			headerByNumberError: true,
 			forcedTime:          time0,
 			expectedStatus:      &blockNotifierPollingInternalStatus{},
 			expectedDelay:       minBlockInterval,
@@ -82,8 +86,8 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 				lastBlockTime:     time0,
 				previousBlockTime: &period0,
 			},
-			HeaderByNumberError:       false,
-			HeaderByNumberErrorNumber: 101,
+			headerByNumberError:       false,
+			headerByNumberErrorNumber: 101,
 			forcedTime:                time1,
 			expectedStatus: &blockNotifierPollingInternalStatus{
 				lastBlockSeen:     101,
@@ -95,24 +99,81 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 				BlockNumber: 101,
 			},
 		},
+		{
+			name: "missed blocks - BlockFinalityType=LatestBlock",
+			previousStatus: &blockNotifierPollingInternalStatus{
+				lastBlockSeen:     100,
+				lastBlockTime:     time0,
+				previousBlockTime: &period0,
+			},
+			mockLoggerFn: func() aggkitcommon.Logger {
+				mockLogger := mocks.NewLogger(t)
+				mockLogger.EXPECT().Warnf("Missed block(s) [finality:%s]: %d -> %d", etherman.LatestBlock, uint64(100), uint64(105)).Once()
+				return mockLogger
+			},
+			headerByNumberError:       false,
+			headerByNumberErrorNumber: 105,
+			forcedTime:                time1,
+			expectedStatus: &blockNotifierPollingInternalStatus{
+				lastBlockSeen: 105,
+				lastBlockTime: time1,
+			},
+			expectedDelay: time.Second,
+			expectedEvent: &aggsendertypes.EventNewBlock{
+				BlockNumber: 105,
+			},
+		},
+		{
+			name: "missed blocks - BlockFinalityType=FinalizedBlock",
+			cfg: &ConfigBlockNotifierPolling{
+				BlockFinalityType: etherman.FinalizedBlock,
+			},
+			previousStatus: &blockNotifierPollingInternalStatus{
+				lastBlockSeen:     100,
+				lastBlockTime:     time0,
+				previousBlockTime: &period0,
+			},
+			mockLoggerFn: func() aggkitcommon.Logger {
+				// we do not expect any warning here
+				// if the code logs a warning, it will fail the test
+				// because we didn't mock it
+				return mocks.NewLogger(t)
+			},
+			headerByNumberError:       false,
+			headerByNumberErrorNumber: 105,
+			forcedTime:                time1,
+			expectedStatus: &blockNotifierPollingInternalStatus{
+				lastBlockSeen: 105,
+				lastBlockTime: time1,
+			},
+			expectedDelay: time.Second,
+			expectedEvent: &aggsendertypes.EventNewBlock{
+				BlockNumber: 105,
+			},
+		},
 	}
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			testData := newBlockNotifierPollingTestData(t, nil)
+			testData := newBlockNotifierPollingTestData(t, tt.cfg)
 
 			timeNowFunc = func() time.Time {
 				return tt.forcedTime
 			}
 
-			if tt.HeaderByNumberError == false {
+			if tt.headerByNumberError == false {
 				hdr1 := &types.Header{
-					Number: big.NewInt(int64(tt.HeaderByNumberErrorNumber)),
+					Number: big.NewInt(int64(tt.headerByNumberErrorNumber)),
 				}
 				testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(hdr1, nil).Once()
 			} else {
 				testData.ethClientMock.EXPECT().HeaderByNumber(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("error")).Once()
 			}
+
+			if tt.mockLoggerFn != nil {
+				testData.sut.logger = tt.mockLoggerFn()
+			}
+
 			delay, newStatus, event := testData.sut.step(context.TODO(), tt.previousStatus)
 			require.Equal(t, tt.expectedDelay, delay, "delay")
 			require.Equal(t, tt.expectedStatus, newStatus, "new_status")
@@ -205,7 +266,7 @@ func TestBlockGetCurrentBlockNumber(t *testing.T) {
 
 type blockNotifierPollingTestData struct {
 	sut           *BlockNotifierPolling
-	ethClientMock *mocks.EthClient
+	ethClientMock *aggkittypesmocks.BaseEthereumClienter
 	ctx           context.Context
 }
 
@@ -217,7 +278,7 @@ func newBlockNotifierPollingTestData(t *testing.T, config *ConfigBlockNotifierPo
 			CheckNewBlockInterval: 0,
 		}
 	}
-	ethClientMock := mocks.NewEthClient(t)
+	ethClientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
 	logger := log.WithFields("test", "BlockNotifierPolling")
 	sut, err := NewBlockNotifierPolling(ethClientMock, *config, logger, nil)
 	require.NoError(t, err)

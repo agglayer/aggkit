@@ -12,7 +12,7 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector/migrations"
-	"github.com/ethereum/go-ethereum"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"golang.org/x/sync/errgroup"
@@ -29,14 +29,8 @@ func (n Network) String() string {
 	return string(n)
 }
 
-type EthClient interface {
-	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
-	HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error)
-	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
-}
-
 type ReorgDetector struct {
-	client               EthClient
+	client               aggkittypes.BaseEthereumClienter
 	db                   *sql.DB
 	checkReorgInterval   time.Duration
 	finalizedBlockType   etherman.BlockNumberFinality
@@ -52,7 +46,7 @@ type ReorgDetector struct {
 	log *log.Logger
 }
 
-func New(client EthClient, cfg Config, network Network) (*ReorgDetector, error) {
+func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (*ReorgDetector, error) {
 	log := log.WithFields("reorg-detector", network.String())
 	err := migrations.RunMigrations(cfg.DBPath)
 	if err != nil {

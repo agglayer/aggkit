@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -26,7 +27,7 @@ type OptimisticSignatureCalculatorImpl struct {
 func NewOptimisticSignatureCalculatorImpl(
 	ctx context.Context,
 	logger *log.Logger,
-	l1Client types.EthClient,
+	l1Client aggkittypes.BaseEthereumClienter,
 	cfg Config,
 ) (*OptimisticSignatureCalculatorImpl, error) {
 	aggchainFEPContract, err := aggchainfep.NewAggchainfep(cfg.SovereignRollupAddr, l1Client)

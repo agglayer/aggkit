@@ -21,6 +21,7 @@ import (
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -58,8 +59,8 @@ func New(
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 	l2Syncer types.L2BridgeSyncer,
 	epochNotifier types.EpochNotifier,
-	l1Client types.EthClient,
-	l2Client types.EthClient) (*AggSender, error) {
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		KeepCertificatesHistory: cfg.KeepCertificatesHistory,

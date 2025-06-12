@@ -137,7 +137,7 @@ func NewClient(cfg config.Config, l1Config config.L1Config, commonConfig aggkitc
 				l1Config.ZkEVMAddr.String(),
 		)
 	}
-	log.Infof("rollupID: %d (obtenied from SMC: %s )", rollupID, contracts.Banana.RollupManager.String())
+	log.Infof("rollupID: %d (obtained from SMC: %s )", rollupID, contracts.Banana.RollupManager.String())
 
 	client := &Client{
 		EthClient: ethClient,

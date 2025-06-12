@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -17,7 +18,7 @@ var (
 	errNoBridgesAndClaims = errors.New("no bridges and claims to build a certificate")
 	ErrNoNewBlocks        = errors.New("no new blocks to send a certificate")
 
-	ZeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+	EmptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
 // CertificateBuilderConfig is a struct that holds the configuration for the certificate builder
@@ -56,6 +57,7 @@ type CertificateBuilder struct {
 	log                          types.Logger
 	storage                      db.AggSenderStorage
 	l2BridgeQuerier              types.BridgeQuerier
+	rollupManagerQuerier         types.RollupManagerQuerier
 	bridgeExitsConverter         *converters.BridgeExitConverter
 	importedBridgeExitsConverter *converters.ImportedBridgeExitConverter
 
@@ -68,6 +70,7 @@ func NewCertificateBuilder(
 	storage db.AggSenderStorage,
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
+	rollupManagerQuerier types.RollupManagerQuerier,
 	cfg CertificateBuilderConfig,
 ) *CertificateBuilder {
 	return &CertificateBuilder{
@@ -75,6 +78,7 @@ func NewCertificateBuilder(
 		cfg:                  cfg,
 		storage:              storage,
 		l2BridgeQuerier:      l2BridgeQuerier,
+		rollupManagerQuerier: rollupManagerQuerier,
 		bridgeExitsConverter: converters.NewBridgeExitConverter(),
 		importedBridgeExitsConverter: converters.NewImportedBridgeExitConverter(
 			log,
@@ -104,7 +108,6 @@ func (b *CertificateBuilder) GetImportedBridgeExitsConverter() *converters.Impor
 //   - error: An error if any step fails, or if there are no new blocks to include in the certificate.
 func (b *CertificateBuilder) GetCertificateBuildParams(
 	ctx context.Context,
-	allowEmptyCert bool,
 	certType types.CertificateType,
 ) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := b.l2BridgeQuerier.GetLastProcessedBlock(ctx)
@@ -128,7 +131,7 @@ func (b *CertificateBuilder) GetCertificateBuildParams(
 	fromBlock := previousToBlock + 1
 	toBlock := lastL2BlockSynced
 
-	bridges, claims, err := b.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
+	bridges, claims, err := b.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, err
 	}
@@ -144,7 +147,7 @@ func (b *CertificateBuilder) GetCertificateBuildParams(
 		CertificateType:     certType,
 	}
 
-	buildParams, err = b.limitCertSize(buildParams, allowEmptyCert)
+	buildParams, err = b.limitCertSize(buildParams)
 	if err != nil {
 		return nil, fmt.Errorf("error limitCertSize: %w", err)
 	}
@@ -219,17 +222,11 @@ func (b *CertificateBuilder) BuildCertificate(ctx context.Context,
 // limitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
 func (b *CertificateBuilder) limitCertSize(
-	fullCert *types.CertificateBuildParams, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
+	fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	currentCert := fullCert
 	var err error
 	maxCertSize := b.cfg.MaxCertSize
 	for {
-		if currentCert.NumberOfBridges() == 0 && !allowEmptyCert {
-			return nil, fmt.Errorf("error on reducing the certificate size. "+
-				"No bridge exits found in range from: %d, to: %d and empty certificate is not allowed",
-				currentCert.FromBlock, currentCert.ToBlock)
-		}
-
 		if maxCertSize == 0 || currentCert.EstimatedSize() <= maxCertSize {
 			return currentCert, nil
 		}
@@ -271,14 +268,29 @@ func (b *CertificateBuilder) getLastSentBlockAndRetryCount(
 	return lastSentBlock, retryCount
 }
 
+// getStartLER returns the last local exit root (LER) based on the configuration
+func (b *CertificateBuilder) getStartLER() (common.Hash, error) {
+	ler, err := b.rollupManagerQuerier.GetLastLocalExitRoot()
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("error getting last local exit root: %w", err)
+	}
+
+	if ler == aggkitcommon.ZeroHash {
+		return EmptyLER, nil
+	}
+
+	return ler, nil
+}
+
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
 func (b *CertificateBuilder) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		return 0, ZeroLER, nil
+		ler, err := b.getStartLER()
+		return uint64(0), ler, err
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
-		return 0, ZeroLER, fmt.Errorf("last certificate %s is not closed (status: %s)",
+		return 0, EmptyLER, fmt.Errorf("last certificate %s is not closed (status: %s)",
 			lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 	}
 	if lastSentCertificateInfo.Status.IsSettled() {
@@ -292,7 +304,8 @@ func (b *CertificateBuilder) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			return 0, ZeroLER, nil
+			ler, err := b.getStartLER()
+			return uint64(0), ler, err
 		}
 		// We get previous certificate that must be settled
 		b.log.Debugf("last certificate %s is in error, getting previous settled certificate height:%d",
@@ -311,7 +324,7 @@ func (b *CertificateBuilder) getNextHeightAndPreviousLER(
 
 		return lastSentCertificateInfo.Height, lastSettleCert.NewLocalExitRoot, nil
 	}
-	return 0, ZeroLER, fmt.Errorf("last certificate %s has an unknown status: %s",
+	return 0, EmptyLER, fmt.Errorf("last certificate %s has an unknown status: %s",
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 }
 

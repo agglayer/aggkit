@@ -3,14 +3,18 @@ package flows
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
-	aggoracletypes "github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/types"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
+	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -37,6 +41,7 @@ func TestNewFlow(t *testing.T) {
 				Mode:                string(types.PessimisticProofMode),
 				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
 				MaxCertSize:         100,
+				AggkitProverClient:  aggkitgrpc.DefaultConfig(),
 			},
 		},
 		{
@@ -46,6 +51,7 @@ func TestNewFlow(t *testing.T) {
 				AggsenderPrivateKey: signertypes.SignerConfig{
 					Method: signertypes.MethodLocal,
 				},
+				AggkitProverClient: aggkitgrpc.DefaultConfig(),
 			},
 			expectedError: "error signer.Initialize",
 		},
@@ -56,16 +62,17 @@ func TestNewFlow(t *testing.T) {
 				AggsenderPrivateKey: signertypes.SignerConfig{
 					Method: signertypes.MethodLocal,
 				},
+				AggkitProverClient: aggkitgrpc.DefaultConfig(),
 			},
 			expectedError: "error signer.Initialize",
 		},
 		{
-			name: "error missing AggchainProofURL in AggchainProofMode",
+			name: "error missing AggkitProverClient in AggchainProofMode",
 			cfg: config.Config{
 				Mode:                string(types.AggchainProofMode),
 				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
 			},
-			expectedError: "aggchain prover mode requires AggchainProofURL",
+			expectedError: "error creating aggkit prover client: gRPC client configuration cannot be nil",
 		},
 		{
 			name: "unsupported Aggsender mode",
@@ -79,7 +86,10 @@ func TestNewFlow(t *testing.T) {
 			cfg: config.Config{
 				Mode:                string(types.AggchainProofMode),
 				AggsenderPrivateKey: keyConfig,
-				AggchainProofURL:    "http://127.0.0.1",
+				AggkitProverClient: &aggkitgrpc.ClientConfig{
+					URL:               "http://127.0.0.1",
+					MinConnectTimeout: cfgtypes.Duration{Duration: 1 * time.Millisecond},
+				},
 				OptimisticModeConfig: optimistic.Config{
 					TrustedSequencerKey:             keyConfig,
 					RequireKeyMatchTrustedSequencer: true,
@@ -88,10 +98,10 @@ func TestNewFlow(t *testing.T) {
 			expectedError: "error aggchainFEPContract",
 		},
 	}
-	funcNewEVMChainGERReader = func(_ common.Address, _ aggoracletypes.EthClienter) (*chaingerreader.EVMChainGERReader, error) {
+	funcNewEVMChainGERReader = func(_ common.Address, _ aggkittypes.BaseEthereumClienter) (*chaingerreader.EVMChainGERReader, error) {
 		return &chaingerreader.EVMChainGERReader{}, nil
 	}
-	funcGetL2StartBlock = func(_ common.Address, _ types.EthClient) (uint64, error) {
+	funcGetL2StartBlock = func(_ common.Address, _ aggkittypes.BaseEthereumClienter) (uint64, error) {
 		return 100, nil
 	}
 	for _, tc := range testCases {
@@ -100,8 +110,8 @@ func TestNewFlow(t *testing.T) {
 			ctx := context.Background()
 
 			mockStorage := new(mocks.AggSenderStorage)
-			mockL1Client := new(mocks.EthClient)
-			mockL2Client := new(mocks.EthClient)
+			mockL1Client := new(typesmocks.BaseEthereumClienter)
+			mockL2Client := new(typesmocks.BaseEthereumClienter)
 			mockL1InfoTreeSyncer := new(mocks.L1InfoTreeSyncer)
 			mockL2BridgeSyncer := new(mocks.L2BridgeSyncer)
 			mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(1)

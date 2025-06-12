@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/etherman"
+	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
 var (
@@ -35,7 +36,7 @@ type ConfigBlockNotifierPolling struct {
 }
 
 type BlockNotifierPolling struct {
-	ethClient     types.EthClient
+	ethClient     aggkittypes.BaseEthereumClienter
 	blockFinality *big.Int
 	logger        aggkitcommon.Logger
 	config        ConfigBlockNotifierPolling
@@ -49,7 +50,7 @@ type BlockNotifierPolling struct {
 // To use this class you need to subscribe and each time that a new block appear the subscriber
 // will be notified through the channel. (check unit tests TestExploratoryBlockNotifierPolling
 // for more information)
-func NewBlockNotifierPolling(ethClient types.EthClient,
+func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 	config ConfigBlockNotifierPolling,
 	logger aggkitcommon.Logger,
 	subscriber types.GenericSubscriber[types.EventNewBlock]) (*BlockNotifierPolling, error) {
@@ -167,8 +168,11 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 	}
 
 	if currentBlock.Number.Uint64()-previousState.lastBlockSeen != 1 {
-		b.logger.Warnf("Missed block(s) [finality:%s]: %d -> %d",
-			b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock.Number.Uint64())
+		if !b.config.BlockFinalityType.IsSafe() && !b.config.BlockFinalityType.IsFinalized() {
+			b.logger.Warnf("Missed block(s) [finality:%s]: %d -> %d",
+				b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock.Number.Uint64())
+		}
+
 		// It start from scratch because something fails in calculation of block period
 		newState := previousState.intialBlock(currentBlock.Number.Uint64())
 		return b.nextBlockRequestDelay(nil, nil), newState, eventToEmit

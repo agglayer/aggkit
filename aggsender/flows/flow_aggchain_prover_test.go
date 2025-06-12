@@ -17,6 +17,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -85,7 +86,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					CertType:         types.CertificateTypeFEP,
 				}, nil, nil).Once()
 				mockOptimisticQuerier.EXPECT().IsOptimisticModeOn().Return(false, nil).Once()
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(100), true).Return(nil, nil, nil).Once()
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(100)).Return(nil, nil, nil).Once()
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(100), mock.Anything).Return(&types.AggchainProof{
 					SP1StarkProof: &types.SP1StarkProof{
 						Proof: []byte("some-proof"),
@@ -143,7 +144,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					EndBlock:       100,
 				}, nil).Once()
 				mockOptimisticQuerier.EXPECT().IsOptimisticModeOn().Return(false, nil).Once()
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(100), true).Return(nil, nil, nil).Once()
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(100)).Return(nil, nil, nil).Once()
 			},
 			expectedBuildParams: &types.CertificateBuildParams{
 				FromBlock:           1,
@@ -180,7 +181,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockOptimisticQuerier *mocks.OptimisticModeQuerier) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockOptimisticQuerier.EXPECT().IsOptimisticModeOn().Return(false, nil).Once()
-				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, true, types.CertificateTypeFEP).Return(nil, certificatebuild.ErrNoNewBlocks).Once()
+				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, types.CertificateTypeFEP).Return(nil, certificatebuild.ErrNoNewBlocks).Once()
 			},
 		},
 		{
@@ -194,7 +195,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockOptimisticQuerier *mocks.OptimisticModeQuerier) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockOptimisticQuerier.EXPECT().IsOptimisticModeOn().Return(false, nil).Once()
-				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, true, types.CertificateTypeFEP).Return(nil, errors.New("some error")).Once()
+				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, types.CertificateTypeFEP).Return(nil, errors.New("some error")).Once()
 			},
 			expectedError: "some error",
 		},
@@ -209,7 +210,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockOptimisticQuerier *mocks.OptimisticModeQuerier) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockOptimisticQuerier.EXPECT().IsOptimisticModeOn().Return(false, nil).Once()
-				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, true, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
+				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
 					FromBlock: 1,
 					ToBlock:   100,
 				}, nil).Once()
@@ -234,7 +235,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					CertType:  types.CertificateTypePP,
 				}, nil, nil).Once()
 				mockOptimisticQuerier.EXPECT().IsOptimisticModeOn().Return(false, nil).Once()
-				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, true, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
+				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
 					FromBlock: 100,
 					ToBlock:   200,
 					LastSentCertificate: &types.CertificateHeader{
@@ -259,7 +260,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockOptimisticQuerier *mocks.OptimisticModeQuerier) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockOptimisticQuerier.EXPECT().IsOptimisticModeOn().Return(false, nil).Once()
-				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, true, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
+				mockCertBuilder.EXPECT().GetCertificateBuildParams(ctx, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
 					FromBlock:       1,
 					ToBlock:         200,
 					CertificateType: types.CertificateTypeFEP,
@@ -476,11 +477,11 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				mockCertBuilder.EXPECT().BuildCertificate(ctx, mock.Anything, mock.Anything, true).Return(&agglayertypes.Certificate{
 					NetworkID:           1,
 					Height:              0,
-					NewLocalExitRoot:    certificatebuild.ZeroLER,
+					NewLocalExitRoot:    certificatebuild.EmptyLER,
 					Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix()), types.CertificateTypeFEP.ToInt()).ToHash(),
 					BridgeExits:         []*agglayertypes.BridgeExit{},
 					ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
-					PrevLocalExitRoot:   certificatebuild.ZeroLER,
+					PrevLocalExitRoot:   certificatebuild.EmptyLER,
 					L1InfoTreeLeafCount: 0,
 				}, nil)
 				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0x123"))
@@ -489,12 +490,12 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			expectedResult: &agglayertypes.Certificate{
 				NetworkID:           1,
 				Height:              0,
-				NewLocalExitRoot:    certificatebuild.ZeroLER,
+				NewLocalExitRoot:    certificatebuild.EmptyLER,
 				CustomChainData:     []byte("some-data"),
 				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix()), types.CertificateTypeFEP.ToInt()).ToHash(),
 				BridgeExits:         []*agglayertypes.BridgeExit{},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
-				PrevLocalExitRoot:   certificatebuild.ZeroLER,
+				PrevLocalExitRoot:   certificatebuild.EmptyLER,
 				L1InfoTreeLeafCount: 0,
 				AggchainData: &agglayertypes.AggchainDataProof{
 					Proof:          []byte("some-proof"),
@@ -548,7 +549,6 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 	mockStorage := mocks.NewAggSenderStorage(t)
 	logger := log.WithFields("flowManager", "Test_AggchainProverFlow_CheckInitialStatus")
-
 	sut := NewAggchainProverFlow(
 		logger,
 		NewAggchainProverFlowConfig(false, 1234),
@@ -661,20 +661,20 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 
 	testCases := []struct {
 		name          string
-		mockFn        func(mockEthClient *mocks.EthClient)
+		mockFn        func(mockEthClient *aggkittypesmocks.BaseEthereumClienter)
 		expectedBlock uint64
 		expectedError string
 	}{
 		{
 			name: "error creating sovereign rollup caller",
-			mockFn: func(mockEthClient *mocks.EthClient) {
+			mockFn: func(mockEthClient *aggkittypesmocks.BaseEthereumClienter) {
 				mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
 			},
 			expectedError: "aggchainProverFlow",
 		},
 		{
 			name: "ok fetching starting block number",
-			mockFn: func(mockEthClient *mocks.EthClient) {
+			mockFn: func(mockEthClient *aggkittypesmocks.BaseEthereumClienter) {
 				encodedReturnValue, err := getResponseContractCallStartingBlockNumber(12345)
 				if err != nil {
 					t.Fatalf("failed to pack method: %v", err)
@@ -692,7 +692,7 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockEthClient := mocks.NewEthClient(t)
+			mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
 
 			tc.mockFn(mockEthClient)
 

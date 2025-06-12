@@ -11,13 +11,14 @@ import (
 	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
-	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/grpc"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
 )
 
-var errNoProofBuiltYet = &aggkitcommon.GRPCError{
+var errNoProofBuiltYet = &grpc.GRPCError{
 	Code:    codes.Unavailable,
 	Message: "Proposer service has not built any proof yet",
 }
@@ -38,7 +39,7 @@ type AggchainProverFlow struct {
 	aggchainProofQuerier  types.AggchainProofQuerier
 }
 
-func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
+func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (uint64, error) {
 	aggChainFEPContract, err := aggchainfep.NewAggchainfepCaller(sovereignRollupAddr, l1Client)
 	if err != nil {
 		return 0, fmt.Errorf("aggchainProverFlow - error creating sovereign rollup caller (%s): %w",
@@ -172,11 +173,7 @@ func (a *AggchainProverFlow) getCertificateBuildParamsToResend(
 			"lastProvenBlock: %d + 1. Check update process 😅", lastSentCert.FromBlock, lastProvenBlock)
 	}
 
-	bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(
-		ctx, fromBlock,
-		toBlock,
-		true,
-	)
+	bridges, claims, err := a.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error getting bridges and claims: %w", err)
 	}
@@ -240,7 +237,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			lastSentCert.CertType, typeCert)
 	}
 
-	buildParams, err := a.certificateBuilder.GetCertificateBuildParams(ctx, true, typeCert)
+	buildParams, err := a.certificateBuilder.GetCertificateBuildParams(ctx, typeCert)
 	if err != nil {
 		if errors.Is(err, certificatebuild.ErrNoNewBlocks) {
 			// no new blocks to send a certificate

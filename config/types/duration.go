@@ -33,7 +33,7 @@ func (Duration) JSONSchema() *jsonschema.Schema {
 		Type:        "string",
 		Title:       "Duration",
 		Description: "Duration expressed in units: [ns, us, ms, s, m, h, d]",
-		Examples: []interface{}{
+		Examples: []any{
 			"1m",
 			"300ms",
 		},

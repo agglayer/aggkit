@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
@@ -25,12 +26,11 @@ var ler1 = common.HexToHash("0x123")
 
 func Test_limitCertSize(t *testing.T) {
 	tests := []struct {
-		name           string
-		maxCertSize    uint
-		fullCert       *types.CertificateBuildParams
-		allowEmptyCert bool
-		expectedCert   *types.CertificateBuildParams
-		expectedError  string
+		name          string
+		maxCertSize   uint
+		fullCert      *types.CertificateBuildParams
+		expectedCert  *types.CertificateBuildParams
+		expectedError string
 	}{
 		{
 			name:        "certificate size within limit",
@@ -40,7 +40,6 @@ func Test_limitCertSize(t *testing.T) {
 				ToBlock:   10,
 				Bridges:   []bridgesync.Bridge{{}, {}},
 			},
-			allowEmptyCert: false,
 			expectedCert: &types.CertificateBuildParams{
 				FromBlock: 1,
 				ToBlock:   10,
@@ -55,7 +54,6 @@ func Test_limitCertSize(t *testing.T) {
 				ToBlock:   10,
 				Bridges:   []bridgesync.Bridge{{BlockNum: 9}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}},
 			},
-			allowEmptyCert: false,
 			expectedCert: &types.CertificateBuildParams{
 				FromBlock: 1,
 				ToBlock:   9,
@@ -71,8 +69,12 @@ func Test_limitCertSize(t *testing.T) {
 				ToBlock:   10,
 				Bridges:   []bridgesync.Bridge{{BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}, {BlockNum: 10}},
 			},
-			allowEmptyCert: false,
-			expectedError:  "error on reducing the certificate size. No bridge exits found",
+			expectedCert: &types.CertificateBuildParams{
+				FromBlock: 1,
+				ToBlock:   9,
+				Bridges:   []bridgesync.Bridge{},
+				Claims:    []bridgesync.Claim{},
+			},
 		},
 		{
 			name:        "certificate size exceeds limit with minimum blocks",
@@ -82,7 +84,6 @@ func Test_limitCertSize(t *testing.T) {
 				ToBlock:   2,
 				Bridges:   []bridgesync.Bridge{{}},
 			},
-			allowEmptyCert: false,
 			expectedCert: &types.CertificateBuildParams{
 				FromBlock: 1,
 				ToBlock:   2,
@@ -90,30 +91,18 @@ func Test_limitCertSize(t *testing.T) {
 			},
 		},
 		{
-			name:        "empty certificate allowed",
+			name:        "empty certificate",
 			maxCertSize: 500,
 			fullCert: &types.CertificateBuildParams{
 				FromBlock: 1,
 				ToBlock:   10,
 				Bridges:   []bridgesync.Bridge{},
 			},
-			allowEmptyCert: true,
 			expectedCert: &types.CertificateBuildParams{
 				FromBlock: 1,
 				ToBlock:   10,
 				Bridges:   []bridgesync.Bridge{},
 			},
-		},
-		{
-			name:        "empty certificate not allowed",
-			maxCertSize: 500,
-			fullCert: &types.CertificateBuildParams{
-				FromBlock: 1,
-				ToBlock:   10,
-				Bridges:   []bridgesync.Bridge{},
-			},
-			allowEmptyCert: false,
-			expectedError:  "error on reducing the certificate size. No bridge exits found in range from: 1, to: 10 and empty certificate is not allowed",
 		},
 		{
 			name:        "maxCertSize is 0 with bridges and claims",
@@ -124,7 +113,6 @@ func Test_limitCertSize(t *testing.T) {
 				Bridges:   []bridgesync.Bridge{{}, {}},
 				Claims:    []bridgesync.Claim{{}, {}},
 			},
-			allowEmptyCert: false,
 			expectedCert: &types.CertificateBuildParams{
 				FromBlock: 1,
 				ToBlock:   10,
@@ -141,10 +129,11 @@ func Test_limitCertSize(t *testing.T) {
 				nil, // storage
 				nil, // l1InfoTreeDataQuerier
 				nil, // l2BridgeQuerier
+				nil, // rollupManagerQuerier
 				NewCertificateBuilderConfig(tt.maxCertSize, 0),
 			)
 
-			result, err := builder.limitCertSize(tt.fullCert, tt.allowEmptyCert)
+			result, err := builder.limitCertSize(tt.fullCert)
 
 			if tt.expectedError != "" {
 				require.Error(t, err)
@@ -225,6 +214,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 				nil, // storage
 				nil, // l1InfoTreeDataQuerier
 				nil, // l2BridgeQuerier
+				nil, // rollupManagerQuerier
 				NewCertificateBuilderConfig(0, tt.startL2Block),
 			)
 
@@ -330,151 +320,178 @@ func Test_getNewLocalExitRoot(t *testing.T) {
 func TestGetNextHeightAndPreviousLER(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name                       string
-		lastSentCertificate        *types.CertificateHeader
-		lastSettleCertificateCall  bool
-		lastSettledCertificate     *types.CertificateHeader
-		lastSettleCertificateError error
-		expectedHeight             uint64
-		expectedPreviousLER        common.Hash
-		expectedError              bool
+	previousLER := common.HexToHash("0x123")
+
+	testCases := []struct {
+		name           string
+		lastSentCert   *types.CertificateHeader
+		expectedHeight uint64
+		expectedLER    common.Hash
+		expectedError  string
+		mockFn         func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage)
 	}{
 		{
-			name: "Normal case",
-			lastSentCertificate: &types.CertificateHeader{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayertypes.Settled,
+			name:           "no last sent certificate - zero start LER",
+			lastSentCert:   nil,
+			expectedHeight: 0,
+			expectedLER:    EmptyLER,
+			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockRollupManagerQuerier.EXPECT().GetLastLocalExitRoot().Return(aggkitcommon.ZeroHash, nil)
 			},
-			expectedHeight:      11,
-			expectedPreviousLER: common.HexToHash("0x123"),
 		},
 		{
-			name:                "First certificate",
-			lastSentCertificate: nil,
-			expectedHeight:      0,
-			expectedPreviousLER: ZeroLER,
+			name:           "no last sent certificate - has start LER",
+			lastSentCert:   nil,
+			expectedHeight: 0,
+			expectedLER:    common.HexToHash("0x1"),
+			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockRollupManagerQuerier.EXPECT().GetLastLocalExitRoot().Return(common.HexToHash("0x1"), nil)
+			},
 		},
 		{
-			name: "First certificate error, with prevLER",
-			lastSentCertificate: &types.CertificateHeader{
+			name:           "ler querier returns error",
+			lastSentCert:   nil,
+			expectedHeight: 0,
+			expectedLER:    aggkitcommon.ZeroHash,
+			expectedError:  "error getting last local exit root: some error",
+			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockRollupManagerQuerier.EXPECT().GetLastLocalExitRoot().Return(common.Hash{}, errors.New("some error"))
+			},
+		},
+		{
+			name: "last sent certificate is not Closed",
+			lastSentCert: &types.CertificateHeader{
+				Status: agglayertypes.Pending,
+			},
+			expectedHeight: 0,
+			expectedLER:    common.Hash{},
+			expectedError:  "is not closed",
+		},
+		{
+			name: "last sent certificate is Settled",
+			lastSentCert: &types.CertificateHeader{
+				Status:           agglayertypes.Settled,
+				Height:           2,
+				NewLocalExitRoot: common.HexToHash("0x123"),
+			},
+			expectedHeight: 3,
+			expectedLER:    common.HexToHash("0x123"),
+		},
+		{
+			name: "last sent certificate is InError, has previous LER",
+			lastSentCert: &types.CertificateHeader{
+				Status:                agglayertypes.InError,
+				Height:                5,
+				PreviousLocalExitRoot: &previousLER,
+				NewLocalExitRoot:      common.HexToHash("0x789"),
+			},
+			expectedHeight: 5,
+			expectedLER:    previousLER,
+		},
+		{
+			name: "first certificate InError",
+			lastSentCert: &types.CertificateHeader{
+				Status:                agglayertypes.InError,
 				Height:                0,
-				NewLocalExitRoot:      common.HexToHash("0x123"),
-				Status:                agglayertypes.InError,
-				PreviousLocalExitRoot: &ler1,
+				PreviousLocalExitRoot: nil,
+				NewLocalExitRoot:      common.HexToHash("0x789"),
 			},
-			expectedHeight:      0,
-			expectedPreviousLER: ler1,
+			expectedHeight: 0,
+			expectedLER:    EmptyLER,
+			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockRollupManagerQuerier.EXPECT().GetLastLocalExitRoot().Return(EmptyLER, nil)
+			},
 		},
 		{
-			name: "First certificate error, no prevLER",
-			lastSentCertificate: &types.CertificateHeader{
-				Height:           0,
-				NewLocalExitRoot: common.HexToHash("0x123"),
+			name: "error getting previously sent certificate",
+			lastSentCert: &types.CertificateHeader{
 				Status:           agglayertypes.InError,
+				Height:           5,
+				NewLocalExitRoot: common.HexToHash("0x789"),
 			},
-			expectedHeight:      0,
-			expectedPreviousLER: ZeroLER,
+			expectedHeight: 0,
+			expectedLER:    aggkitcommon.ZeroHash,
+			expectedError:  "error getting last settled certificate: some error",
+			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
+					Return(nil, errors.New("some error"))
+			},
 		},
 		{
-			name: "n certificate error, prevLER",
-			lastSentCertificate: &types.CertificateHeader{
-				Height:                10,
-				NewLocalExitRoot:      common.HexToHash("0x123"),
-				PreviousLocalExitRoot: &ler1,
-				Status:                agglayertypes.InError,
-			},
-			expectedHeight:      10,
-			expectedPreviousLER: ler1,
-		},
-		{
-			name: "last cert not closed, error",
-			lastSentCertificate: &types.CertificateHeader{
-				Height:                10,
-				NewLocalExitRoot:      common.HexToHash("0x123"),
-				PreviousLocalExitRoot: &ler1,
-				Status:                agglayertypes.Pending,
-			},
-			expectedHeight:      10,
-			expectedPreviousLER: ler1,
-			expectedError:       true,
-		},
-		{
-			name: "Previous certificate in error, no prevLER",
-			lastSentCertificate: &types.CertificateHeader{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
+			name: "previously sent certificate not found",
+			lastSentCert: &types.CertificateHeader{
 				Status:           agglayertypes.InError,
+				Height:           5,
+				NewLocalExitRoot: common.HexToHash("0x789"),
 			},
-			lastSettledCertificate: &types.CertificateHeader{
-				Height:           9,
-				NewLocalExitRoot: common.HexToHash("0x3456"),
-				Status:           agglayertypes.Settled,
+			expectedHeight: 0,
+			expectedLER:    aggkitcommon.ZeroHash,
+			expectedError:  "none settled certificate",
+			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
+					Return(nil, nil)
 			},
-			expectedHeight:      10,
-			expectedPreviousLER: common.HexToHash("0x3456"),
 		},
 		{
-			name: "Previous certificate in error, no prevLER. Error getting previous cert",
-			lastSentCertificate: &types.CertificateHeader{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
+			name: "previously sent certificate is not Settled",
+			lastSentCert: &types.CertificateHeader{
 				Status:           agglayertypes.InError,
+				Height:           5,
+				NewLocalExitRoot: common.HexToHash("0x789"),
 			},
-			lastSettledCertificate:     nil,
-			lastSettleCertificateError: errors.New("error getting last settle certificate"),
-			expectedError:              true,
+			expectedHeight: 0,
+			expectedLER:    aggkitcommon.ZeroHash,
+			expectedError:  "is not settled",
+			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
+					Return(&types.CertificateHeader{Status: agglayertypes.Pending}, nil)
+			},
 		},
 		{
-			name: "Previous certificate in error, no prevLER. prev cert not available on storage",
-			lastSentCertificate: &types.CertificateHeader{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
+			name: "previously sent certificate is Settled",
+			lastSentCert: &types.CertificateHeader{
 				Status:           agglayertypes.InError,
+				Height:           5,
+				NewLocalExitRoot: common.HexToHash("0x789"),
 			},
-			lastSettleCertificateCall:  true,
-			lastSettledCertificate:     nil,
-			lastSettleCertificateError: nil,
-			expectedError:              true,
-		},
-		{
-			name: "Previous certificate in error, no prevLER. prev cert not available on storage",
-			lastSentCertificate: &types.CertificateHeader{
-				Height:           10,
-				NewLocalExitRoot: common.HexToHash("0x123"),
-				Status:           agglayertypes.InError,
+			expectedHeight: 5,
+			expectedLER:    common.HexToHash("0x789"),
+			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
+					Return(&types.CertificateHeader{
+						Status:           agglayertypes.Settled,
+						NewLocalExitRoot: common.HexToHash("0x789"),
+					}, nil)
 			},
-			lastSettledCertificate: &types.CertificateHeader{
-				Height:           9,
-				NewLocalExitRoot: common.HexToHash("0x3456"),
-				Status:           agglayertypes.InError,
-			},
-			lastSettleCertificateError: nil,
-			expectedError:              true,
 		},
 	}
 
-	for _, tt := range tests {
-		tt := tt
+	for _, tc := range testCases {
+		tc := tc
 
-		t.Run(tt.name, func(t *testing.T) {
+		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			storageMock := mocks.NewAggSenderStorage(t)
-
-			builder := &CertificateBuilder{log: log.WithFields("aggsender-test", "getNextHeightAndPreviousLER"), storage: storageMock}
-			if tt.lastSettleCertificateCall || tt.lastSettledCertificate != nil || tt.lastSettleCertificateError != nil {
-				storageMock.EXPECT().GetCertificateHeaderByHeight(mock.Anything).Return(tt.lastSettledCertificate, tt.lastSettleCertificateError).Once()
+			mockRollupManagerQuerier := mocks.NewRollupManagerQuerier(t)
+			mockStorage := mocks.NewAggSenderStorage(t)
+			if tc.mockFn != nil {
+				tc.mockFn(mockRollupManagerQuerier, mockStorage)
 			}
 
-			height, previousLER, err := builder.getNextHeightAndPreviousLER(tt.lastSentCertificate)
-			if tt.expectedError {
-				require.Error(t, err)
+			log := log.WithFields("test", t.Name())
+			f := &CertificateBuilder{
+				rollupManagerQuerier: mockRollupManagerQuerier,
+				storage:              mockStorage,
+				log:                  log,
+			}
+
+			height, ler, err := f.getNextHeightAndPreviousLER(tc.lastSentCert)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tt.expectedHeight, height)
-				require.Equal(t, tt.expectedPreviousLER, previousLER)
+				require.Equal(t, tc.expectedHeight, height)
+				require.Equal(t, tc.expectedLER, ler)
 			}
 		})
 	}
@@ -684,6 +701,7 @@ func TestBuildCertificate(t *testing.T) {
 				nil, // storage
 				mockL1InfoTreeQuerier,
 				mockL2BridgeQuerier,
+				nil, // rollupManagerQuerier
 				NewCertificateBuilderConfigDefault(),
 			)
 

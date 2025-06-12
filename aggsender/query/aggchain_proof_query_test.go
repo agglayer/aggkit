@@ -370,7 +370,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 				).Return(nil)
 				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1}, uint64(101), uint64(200)).Return(nil, nil)
 				importedBridgeExitsConverter.EXPECT().ConvertToImportedBridgeExitWithoutClaimData(mock.Anything).Return(nil, nil)
-				aggchainProofClient.EXPECT().GenerateAggchainProof(mock.Anything).
+				aggchainProofClient.EXPECT().GenerateAggchainProof(ctx, mock.Anything).
 					Return(nil, errors.New("aggchain proof error"))
 			},
 			expectedError: "aggchainProverFlow - error fetching aggchain proof",
@@ -394,7 +394,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 				).Return(nil)
 				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1}, uint64(101), uint64(200)).Return(nil, nil)
 				importedBridgeExitsConverter.EXPECT().ConvertToImportedBridgeExitWithoutClaimData(mock.Anything).Return(nil, nil)
-				aggchainProofClient.EXPECT().GenerateAggchainProof(mock.Anything).
+				aggchainProofClient.EXPECT().GenerateAggchainProof(ctx, mock.Anything).
 					Return(&types.AggchainProof{
 						LastProvenBlock: 100,
 						EndBlock:        200,

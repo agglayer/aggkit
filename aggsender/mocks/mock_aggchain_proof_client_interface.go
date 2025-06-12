@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	context "context"
+
 	types "github.com/agglayer/aggkit/aggsender/types"
 	mock "github.com/stretchr/testify/mock"
 )
@@ -20,9 +22,9 @@ func (_m *AggchainProofClientInterface) EXPECT() *AggchainProofClientInterface_E
 	return &AggchainProofClientInterface_Expecter{mock: &_m.Mock}
 }
 
-// GenerateAggchainProof provides a mock function with given fields: req
-func (_m *AggchainProofClientInterface) GenerateAggchainProof(req *types.AggchainProofRequest) (*types.AggchainProof, error) {
-	ret := _m.Called(req)
+// GenerateAggchainProof provides a mock function with given fields: ctx, req
+func (_m *AggchainProofClientInterface) GenerateAggchainProof(ctx context.Context, req *types.AggchainProofRequest) (*types.AggchainProof, error) {
+	ret := _m.Called(ctx, req)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GenerateAggchainProof")
@@ -30,19 +32,19 @@ func (_m *AggchainProofClientInterface) GenerateAggchainProof(req *types.Aggchai
 
 	var r0 *types.AggchainProof
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*types.AggchainProofRequest) (*types.AggchainProof, error)); ok {
-		return rf(req)
+	if rf, ok := ret.Get(0).(func(context.Context, *types.AggchainProofRequest) (*types.AggchainProof, error)); ok {
+		return rf(ctx, req)
 	}
-	if rf, ok := ret.Get(0).(func(*types.AggchainProofRequest) *types.AggchainProof); ok {
-		r0 = rf(req)
+	if rf, ok := ret.Get(0).(func(context.Context, *types.AggchainProofRequest) *types.AggchainProof); ok {
+		r0 = rf(ctx, req)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.AggchainProof)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(*types.AggchainProofRequest) error); ok {
-		r1 = rf(req)
+	if rf, ok := ret.Get(1).(func(context.Context, *types.AggchainProofRequest) error); ok {
+		r1 = rf(ctx, req)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -56,14 +58,15 @@ type AggchainProofClientInterface_GenerateAggchainProof_Call struct {
 }
 
 // GenerateAggchainProof is a helper method to define mock.On call
+//   - ctx context.Context
 //   - req *types.AggchainProofRequest
-func (_e *AggchainProofClientInterface_Expecter) GenerateAggchainProof(req interface{}) *AggchainProofClientInterface_GenerateAggchainProof_Call {
-	return &AggchainProofClientInterface_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", req)}
+func (_e *AggchainProofClientInterface_Expecter) GenerateAggchainProof(ctx interface{}, req interface{}) *AggchainProofClientInterface_GenerateAggchainProof_Call {
+	return &AggchainProofClientInterface_GenerateAggchainProof_Call{Call: _e.mock.On("GenerateAggchainProof", ctx, req)}
 }
 
-func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) Run(run func(req *types.AggchainProofRequest)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
+func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) Run(run func(ctx context.Context, req *types.AggchainProofRequest)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*types.AggchainProofRequest))
+		run(args[0].(context.Context), args[1].(*types.AggchainProofRequest))
 	})
 	return _c
 }
@@ -73,7 +76,7 @@ func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) Return(_a0 *t
 	return _c
 }
 
-func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) RunAndReturn(run func(*types.AggchainProofRequest) (*types.AggchainProof, error)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
+func (_c *AggchainProofClientInterface_GenerateAggchainProof_Call) RunAndReturn(run func(context.Context, *types.AggchainProofRequest) (*types.AggchainProof, error)) *AggchainProofClientInterface_GenerateAggchainProof_Call {
 	_c.Call.Return(run)
 	return _c
 }

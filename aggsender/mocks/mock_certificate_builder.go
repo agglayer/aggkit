@@ -87,9 +87,9 @@ func (_c *CertificateBuilder_BuildCertificate_Call) RunAndReturn(run func(contex
 	return _c
 }
 
-// GetCertificateBuildParams provides a mock function with given fields: ctx, allowEmptyCert, certType
-func (_m *CertificateBuilder) GetCertificateBuildParams(ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {
-	ret := _m.Called(ctx, allowEmptyCert, certType)
+// GetCertificateBuildParams provides a mock function with given fields: ctx, certType
+func (_m *CertificateBuilder) GetCertificateBuildParams(ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
+	ret := _m.Called(ctx, certType)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetCertificateBuildParams")
@@ -97,19 +97,19 @@ func (_m *CertificateBuilder) GetCertificateBuildParams(ctx context.Context, all
 
 	var r0 *types.CertificateBuildParams
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, bool, types.CertificateType) (*types.CertificateBuildParams, error)); ok {
-		return rf(ctx, allowEmptyCert, certType)
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType) (*types.CertificateBuildParams, error)); ok {
+		return rf(ctx, certType)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, bool, types.CertificateType) *types.CertificateBuildParams); ok {
-		r0 = rf(ctx, allowEmptyCert, certType)
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType) *types.CertificateBuildParams); ok {
+		r0 = rf(ctx, certType)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.CertificateBuildParams)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, bool, types.CertificateType) error); ok {
-		r1 = rf(ctx, allowEmptyCert, certType)
+	if rf, ok := ret.Get(1).(func(context.Context, types.CertificateType) error); ok {
+		r1 = rf(ctx, certType)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -124,15 +124,14 @@ type CertificateBuilder_GetCertificateBuildParams_Call struct {
 
 // GetCertificateBuildParams is a helper method to define mock.On call
 //   - ctx context.Context
-//   - allowEmptyCert bool
 //   - certType types.CertificateType
-func (_e *CertificateBuilder_Expecter) GetCertificateBuildParams(ctx interface{}, allowEmptyCert interface{}, certType interface{}) *CertificateBuilder_GetCertificateBuildParams_Call {
-	return &CertificateBuilder_GetCertificateBuildParams_Call{Call: _e.mock.On("GetCertificateBuildParams", ctx, allowEmptyCert, certType)}
+func (_e *CertificateBuilder_Expecter) GetCertificateBuildParams(ctx interface{}, certType interface{}) *CertificateBuilder_GetCertificateBuildParams_Call {
+	return &CertificateBuilder_GetCertificateBuildParams_Call{Call: _e.mock.On("GetCertificateBuildParams", ctx, certType)}
 }
 
-func (_c *CertificateBuilder_GetCertificateBuildParams_Call) Run(run func(ctx context.Context, allowEmptyCert bool, certType types.CertificateType)) *CertificateBuilder_GetCertificateBuildParams_Call {
+func (_c *CertificateBuilder_GetCertificateBuildParams_Call) Run(run func(ctx context.Context, certType types.CertificateType)) *CertificateBuilder_GetCertificateBuildParams_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(bool), args[2].(types.CertificateType))
+		run(args[0].(context.Context), args[1].(types.CertificateType))
 	})
 	return _c
 }
@@ -142,7 +141,7 @@ func (_c *CertificateBuilder_GetCertificateBuildParams_Call) Return(_a0 *types.C
 	return _c
 }
 
-func (_c *CertificateBuilder_GetCertificateBuildParams_Call) RunAndReturn(run func(context.Context, bool, types.CertificateType) (*types.CertificateBuildParams, error)) *CertificateBuilder_GetCertificateBuildParams_Call {
+func (_c *CertificateBuilder_GetCertificateBuildParams_Call) RunAndReturn(run func(context.Context, types.CertificateType) (*types.CertificateBuildParams, error)) *CertificateBuilder_GetCertificateBuildParams_Call {
 	_c.Call.Return(run)
 	return _c
 }

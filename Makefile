@@ -40,20 +40,32 @@ check-protoc: ## Check if protoc is installed
 check-curl: ## Check if curl is installed
 	@which curl > /dev/null || (echo "Error: curl is not installed" && exit 1)
 
+# Check for Golangci-lint
+.PHONY: check-golangci-lint
+check-golangci-lint:
+	@which golangci-lint > /dev/null || (echo "Error: golangci-lint is not installed" && exit 1)
+
+# Check for Swag
+.PHONY: check-swag
+check-swag:
+	@command -v swag >/dev/null 2>&1 || { \
+		echo >&2 "swag not installed. Please install it: https://github.com/swaggo/swag"; \
+		exit 1; \
+	}
+
 # Targets that require the checks
 build: check-go
-lint: check-go
+lint: check-go check-golangci-lint
 build-docker: check-docker
 build-docker-nc: check-docker
-install-linter: check-go check-curl
-generate-code-from-proto: check-protoc
+generate-swagger-docs: check-swag
 
 .PHONY: build ## Builds the binaries locally into ./target
 build: build-aggkit build-tools
 
 .PHONY: build-aggkit
 build-aggkit: ## Builds aggkit binary
-	$(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
+	GIN_MODE=release $(GOENVVARS) go build -ldflags "all=$(LDFLAGS)" -o $(GOBIN)/$(GOBINARY) $(GOCMD)
 
 .PHONY: build-tools
 build-tools: ## Builds the tools
@@ -74,6 +86,14 @@ test-unit: ## Runs the unit tests
 .PHONY: lint
 lint: ## Runs the linter
 	export "GOROOT=$$(go env GOROOT)" && $$(go env GOPATH)/bin/golangci-lint run --timeout 5m
+
+.PHONY: generate-swagger-docs
+generate-swagger-docs: ## Generates the swagger docs
+	@echo "Generating swagger docs"
+	@swag init -g bridgeservice/bridge.go -o bridgeservice/docs
+	@mkdir -p docs/assets/swagger/bridge_service
+	@cp bridgeservice/docs/swagger.json docs/assets/swagger/bridge_service/swagger.json
+	@echo "Copied swagger.json to docs/assets/swagger/bridge_service/"
 
 .PHONY: vulncheck
 vulncheck: ## Runs the vulnerability checker tool

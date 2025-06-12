@@ -8,7 +8,6 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/db"
-	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -22,6 +21,7 @@ type PPFlow struct {
 
 	certificateBuilder  types.CertificateBuilder
 	certificateVerifier types.CertificateBuildVerifier
+	forceOneBridgeExit  bool
 }
 
 // NewPPFlow returns a new instance of the PPFlow
@@ -31,13 +31,15 @@ func NewPPFlow(log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
 	certificateBuilder types.CertificateBuilder,
 	certificateVerifier types.CertificateBuildVerifier,
-	signer signertypes.Signer) *PPFlow {
+	signer signertypes.Signer,
+	forceOneBridgeExit bool) *PPFlow {
 	return &PPFlow{
 		signer:                signer,
 		log:                   log,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		certificateBuilder:    certificateBuilder,
 		certificateVerifier:   certificateVerifier,
+		forceOneBridgeExit:    forceOneBridgeExit,
 	}
 }
 
@@ -50,15 +52,29 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
-	buildParams, err := p.certificateBuilder.GetCertificateBuildParams(ctx, false, types.CertificateTypePP)
+	buildParams, err := p.certificateBuilder.GetCertificateBuildParams(ctx, types.CertificateTypePP)
 	if err != nil {
-		if errors.Is(err, certificatebuild.ErrNoNewBlocks) || errors.Is(err, query.ErrNoBridgeExits) {
-			// no new blocks to send a certificate, or no bridge exits consumed
+		if errors.Is(err, certificatebuild.ErrNoNewBlocks) {
+			// no new blocks to send a certificate
 			// this is a valid case, so just return nil without error
 			return nil, nil
 		}
 
 		return nil, err
+	}
+
+	if p.forceOneBridgeExit && buildParams.NumberOfBridges() == 0 {
+		// if forceOneBridgeExit is true, we need to ensure that there is at least one bridge exit
+		p.log.Infof("PPFlow - forceOneBridgeExit is true, but no bridges found, "+
+			"so no certificate will be built for range: %d - %d",
+			buildParams.FromBlock, buildParams.ToBlock)
+		return nil, nil
+	}
+
+	if buildParams.IsEmpty() {
+		p.log.Infof("PPFlow - no bridges or claims found for range: %d - %d, so no certificate will be built",
+			buildParams.FromBlock, buildParams.ToBlock)
+		return nil, nil
 	}
 
 	if err := p.certificateVerifier.VerifyBuildParams(buildParams); err != nil {

@@ -1,6 +1,7 @@
 package types
 
 import (
+	"context"
 	"fmt"
 
 	agglayer "github.com/agglayer/aggkit/agglayer/types"
@@ -10,7 +11,7 @@ import (
 
 // AggchainProofClientInterface defines an interface for aggchain proof client
 type AggchainProofClientInterface interface {
-	GenerateAggchainProof(req *AggchainProofRequest) (*AggchainProof, error)
+	GenerateAggchainProof(ctx context.Context, req *AggchainProofRequest) (*AggchainProof, error)
 	GenerateOptimisticAggchainProof(req *AggchainProofRequest, signature []byte) (*AggchainProof, error)
 }
 

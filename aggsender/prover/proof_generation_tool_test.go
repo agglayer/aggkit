@@ -8,7 +8,9 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -145,13 +147,13 @@ func TestGetRPCServices(t *testing.T) {
 
 func TestNewAggchainProofGenerationTool(t *testing.T) {
 	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
-	mockL1Client := mocks.NewEthClient(t)
-	mockL2Client := mocks.NewEthClient(t)
+	mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 	mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL1Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
-		Config{}, mockL2Syncer, nil, mockL1Client, mockL2Client)
+		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL2Syncer, nil, mockL1Client, mockL2Client)
 	require.Error(t, err)
 }

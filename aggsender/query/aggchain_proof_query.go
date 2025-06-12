@@ -107,7 +107,7 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 	a.log.Infof("aggchainProverFlow - requesting proof lastProvenBlock: %d, maxEndBlock: %d, optimisticMode: %t",
 		lastProvenBlock, toBlock, optimisticMode)
 	if !optimisticMode {
-		aggchainProof, err = a.aggchainProofClient.GenerateAggchainProof(request)
+		aggchainProof, err = a.aggchainProofClient.GenerateAggchainProof(ctx, request)
 	} else {
 		aggchainProof, err = a.generateOptimisticAggchainProof(ctx, certBuildParams, request)
 	}

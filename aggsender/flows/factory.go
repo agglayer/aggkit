@@ -11,8 +11,9 @@ import (
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/common"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signerTypes "github.com/agglayer/go_signer/signer/types"
 )
@@ -26,8 +27,8 @@ func NewFlow(
 	cfg config.Config,
 	logger *log.Logger,
 	storage db.AggSenderStorage,
-	l1Client types.EthClient,
-	l2Client types.EthClient,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 ) (types.AggsenderFlow, error) {
@@ -37,6 +38,14 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
+		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1)
+		rollupManagerQuerier, err := query.NewRollupManagerQuerier(
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
+		if err != nil {
+			return nil, fmt.Errorf("error creating RollupManager data querier: %w", err)
+		}
+
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", certificateSigner.PublicAddress().Hex())
@@ -46,6 +55,7 @@ func NewFlow(
 			storage,
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
+			rollupManagerQuerier,
 			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, 0),
 		)
 		certificateVerifier := certificatebuild.NewCertificateBuildVerifier()
@@ -58,6 +68,7 @@ func NewFlow(
 			certificateBuilder,
 			certificateVerifier,
 			certificateSigner,
+			cfg.RequireOneBridgeInPPCertificate,
 		), nil
 	case types.AggchainProofMode:
 		certificateSigner, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
@@ -66,13 +77,7 @@ func NewFlow(
 		}
 		logger.Infof("Aggsender signer address: %s", certificateSigner.PublicAddress().Hex())
 
-		if cfg.AggchainProofURL == "" {
-			return nil, fmt.Errorf("aggchain prover mode requires AggchainProofURL")
-		}
-
-		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(
-			cfg.AggchainProofURL,
-			cfg.GenerateAggchainProofTimeout.Duration, cfg.UseAggkitProverTLS)
+		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {
 			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
 		}
@@ -93,12 +98,20 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
+
+		rollupManagerQuerier, err := query.NewRollupManagerQuerier(
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
+		if err != nil {
+			return nil, fmt.Errorf("error creating RollupManager data querier: %w", err)
+		}
+
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		certificateBuilder := certificatebuild.NewCertificateBuilder(
 			logger,
 			storage,
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
+			rollupManagerQuerier,
 			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, startL2Block),
 		)
 		certificateVerifier := certificatebuild.NewCertificateBuildVerifier()
@@ -135,7 +148,7 @@ func initializeSigner(
 	signerCfg signerTypes.SignerConfig,
 	logger *log.Logger,
 ) (signerTypes.Signer, error) {
-	signer, err := signer.NewSigner(ctx, 0, signerCfg, common.AGGSENDER, logger)
+	signer, err := signer.NewSigner(ctx, 0, signerCfg, aggkitcommon.AGGSENDER, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
 	}

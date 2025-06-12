@@ -1,0 +1,26 @@
+{
+  "deployment_stages": {
+    "deploy_l1": false,
+    "deploy_agglayer": false,
+    "deploy_cdk_bridge_infra": false,
+    "deploy_optimism_rollup": false
+  },
+  "args": {
+    "verbosity": "debug",
+    "deployment_suffix": "-002",
+    "zkevm_rollup_chain_id": 20202,
+    "zkevm_rollup_id": 2,
+    "cdk_node_image": "aggkit:local",
+    "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.0-rc.21",
+    "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.61.19",
+    "zkevm_contracts_image": "jhkimqd/zkevm-contracts:v10.0.0-rc.6-fork.12",
+    "additional_services": [],
+    "consensus_contract_type": "pessimistic",
+    "sequencer_type": "erigon",
+    "erigon_strict_mode": false,
+    "gas_token_enabled": false,
+    "enable_normalcy": true,
+    "binary_name": "aggkit",
+    "enable_aggkit_claim_sponsor": false
+  }
+}

@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
-	"github.com/agglayer/aggkit/aggoracle/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -14,12 +14,13 @@ type OptimisticModeQuerierFromContract struct {
 }
 
 func NewOptimisticModeQuerierFromContract(aggchainFEPAddr common.Address,
-	backend types.EthClienter) (*OptimisticModeQuerierFromContract, error) {
+	backend aggkittypes.BaseEthereumClienter) (*OptimisticModeQuerierFromContract, error) {
 	contract, err := aggchainfep.NewAggchainfep(aggchainFEPAddr, backend)
 	if err != nil {
 		return nil, fmt.Errorf("optimisticModeQuerierFromContract: error creating aggchainfep contract %s: %w",
 			aggchainFEPAddr, err)
 	}
+
 	return &OptimisticModeQuerierFromContract{
 		aggchainFEPContract: contract,
 	}, nil
