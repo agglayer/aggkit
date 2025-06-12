@@ -1,10 +1,10 @@
-# AggSender component
+# AggSender Component
 
-`AggSender` is in charge to build and pack the information required to prove a target chain's bridge state into a certificate. This certificate provides the inputs needed to build a pessimistic proof.
+`AggSender` is responsible for building and packing the information required to prove a target chain's bridge state into a certificate. This certificate provides the inputs needed to build a pessimistic proof.
 
 ## Component Diagram
 
-The image below, depicts the `Aggsender` components (the editable link of the diagram is found [here](https://excalidraw.com/#room=d3c9f86992bc6ef07529,UwmF_vvcS6hApBljm_B2EQ)).
+The image below depicts the `Aggsender` components (the editable link of the diagram is found [here](https://excalidraw.com/#room=d3c9f86992bc6ef07529,UwmF_vvcS6hApBljm_B2EQ)).
 
 ![image.png](assets/aggsender_components.png)
 
@@ -12,12 +12,12 @@ The image below, depicts the `Aggsender` components (the editable link of the di
 
 ### Starting the AggSender
 
-`Aggsender` gets the epoch configuration from the `Agglayer`.
-It checks the last certificate in DB (if exists) against the `Agglayer`, to be sure that both are on the same page:
-    - If the DB is empty then get, as starting point, the last certificate `Agglayer` has.
-    - If it is a fresh start, and there are no certificates before this, it will set its starting block to 1 and start polling bridges and claims from the syncer from that block.
-    - If `Aggsender` is not on the same page as `Agglayer` it will log error and not proceed with the process of building new certificates, because this case means that there was another player involved that sent a certificate in place of the `Aggsender` which is an invalid case since `Aggsender` is a single instance per L2 network. It can also happen if we put a different `Aggsender` db (from a different network).
-    - If both `Aggsender` and `Agglayer` have the same certificate, then `Aggsender` will start the certificate monitoring and build process since this is a valid use case.
+`Aggsender` gets the epoch configuration from the `Agglayer`. It checks the last certificate in DB (if exists) against the `Agglayer`, to be sure that both are on the same page:
+
+- If the DB is empty then get, as starting point, the last certificate `Agglayer` has.
+- If it is a fresh start, and there are no certificates before this, it will set its starting block to 1 and start polling bridges and claims from the syncer from that block.
+- If `Aggsender` is not on the same page as `Agglayer` it will log error and not proceed with the process of building new certificates, because this case means that there was another player involved that sent a certificate in place of the `Aggsender` which is an invalid case since `Aggsender` is a single instance per L2 network. It can also happen if we put a different `Aggsender` db (from a different network).
+- If both `Aggsender` and `Agglayer` have the same certificate, then `Aggsender` will start the certificate monitoring and build process since this is a valid use case.
 
 ```mermaid
 sequenceDiagram
@@ -46,7 +46,7 @@ It is important to mention that, in the case of resending the certificate, the c
 
 Suppose the previously sent certificate was not marked as `InError`, or `Settled` on the `Agglayer`. In that case, we can not send/resend the certificate, even though a new epoch event is handled since it was not processed yet by the `Agglayer` (neither `Settled` nor marked as `InError`).
 
-The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer` in the `PessimisticProof` mode.
+The image below depicts the interaction between different components when building and sending a certificate to the `Agglayer` in the `PessimisticProof` mode.
 
 ```mermaid
 sequenceDiagram
@@ -79,20 +79,21 @@ sequenceDiagram
     AggSender->>AggLayer: send certificate
 ```
 
-### AggchainProof mode
+### AggchainProof Mode
 
 In essence, the `AggchainProof` mode follows the same logic and flow as `PessimisticProof` mode. Only difference is in two points:
-- calling the `aggchain prover` to generate an `aggchain proof` that will be sent in the certfiicate to the `Agglayer`.
-- resending an `InError` certficate does not expand it with new bridges and events that the syncer might have gotten in the meantime. This is done because `aggchain prover` already generated a proof for a given block range, and since proof generation can be a long process, this is a small optimization. Note that 
-this might change in the future.
+
+- Calling the `aggchain prover` to generate an `aggchain proof` that will be sent in the certfiicate to the `Agglayer`.
+- Resending an `InError` certficate does not expand it with new bridges and events that the syncer might have gotten in the meantime. This is done because `aggchain prover` already generated a proof for a given block range, and since proof generation can be a long process, this is a small optimization. Note that this might change in the future.
 
 Calling the `aggchain prover` is done right before signing and sending the certificate to the `Agglayer`. To generate an `aggchain proof` prover needs couple of things:
-- block range on L2 for which we are trying to generate a certificate.
-- finalized L1 info tree root, leaf, and proof on the L1 info tree. Basically, this is the latest finalized l1 info tree root needed by the prover to generate the proof. This root is also use to generate merkle proof for every imported bridge exit (claim) in certificate.
-- injected GlobalExitRoot's on L2 and their leaves and proofs. Merkle proofs of the injected GERs are calculated based on the finalized L1 info tree root.
-- imported bridge exits (claims) we intend to include in the certificate for the given block range.
 
-The image below, depicts the interaction between different components when building and sending a certificate to the `Agglayer` in the `AggchainProof` mode.
+- Block range on L2 for which we are trying to generate a certificate.
+- Finalized L1 info tree root, leaf, and proof on the L1 info tree. Basically, this is the latest finalized l1 info tree root needed by the prover to generate the proof. This root is also use to generate merkle proof for every imported bridge exit (claim) in certificate.
+- Injected GlobalExitRoot's on L2 and their leaves and proofs. Merkle proofs of the injected GERs are calculated based on the finalized L1 info tree root.
+- Imported bridge exits (claims) we intend to include in the certificate for the given block range.
+
+The image below depicts the interaction between different components when building and sending a certificate to the `Agglayer` in the `AggchainProof` mode.
 
 ```mermaid
 sequenceDiagram
@@ -131,7 +132,7 @@ sequenceDiagram
     AggSender->>AggLayer: send certificate
 ```
 
-## Certificate data
+## Certificate Data
 
 The certificate is the data submitted to `Agglayer`. Must be signed to be accepted by `Agglayer`. `Agglayer` responds with a `certificateID` (hash)
 
@@ -163,7 +164,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | MaxCertSize                       | uint                                                      | The maximum size of the certificate. 0 means infinite size                                                      |
 | DryRun                            | bool                                                      | If true, AggSender will not send certificates to Agglayer (for debugging)                                       |
 | EnableRPC                         | bool                                                      | Enable the Aggsender's RPC layer                                                                                |
-| AggkitProverClient                | *aggkitgrpc.ClientConfig                                  | Configuration for the AggkitProver gRPC client                                                                  |
+| AggkitProverClient                | [*aggkitgrpc.ClientConfig](./common_config.md#clientconfig) | Configuration for the AggkitProver gRPC client                                                                  |
 | Mode                              | string                                                    | Defines the mode of the AggSender (PessimisticProof or AggchainProof)                                           |
 | CheckStatusCertificateInterval    | Duration                                                  | Interval at which the AggSender will check the certificate status in Agglayer                                   |
 | RetryCertAfterInError             | bool                                                      | If true, Aggsender will re-send InError certificates immediately after status change                            |
@@ -182,12 +183,12 @@ The `OptimisticConfig` structure configures the optimistic mode for the AggSende
 | Field Name                    | Type                | Description                                                                                                     |
 |-------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
 | SovereignRollupAddr          | Address             | The L1 address of the AggchainFEP contract                                                                      |
-| TrustedSequencerKey          | [SignerConfig](#signerconfig) | The private key used to sign optimistic proofs. Must be the trusted sequencer's key.                            |
+| TrustedSequencerKey          | [SignerConfig](./common_config.md#signerconfig) | The private key used to sign optimistic proofs. Must be the trusted sequencer's key.                            |
 | OpNodeURL                    | string              | The URL of the OpNode service used to fetch aggregation proof public values                                     |
 | RequireKeyMatchTrustedSequencer | bool             | If true, enables a sanity check that the signer's public key matches the trusted sequencer address. This ensures the signer is the trusted sequencer and not a random signer. |
 
 Example:
-```
+```ini
 [AggSender]
     [AggSender.OptimisticModeConfig]
         SovereignRollupAddr = "0x1234..."
@@ -196,11 +197,11 @@ Example:
         RequireKeyMatchTrustedSequencer = true
 ```
 
-The optimistic mode is used in FEP (Fast Exit Protocol) to enable faster exit processing by allowing optimistic proofs to be submitted before full verification. The trusted sequencer is responsible for signing these proofs, and this configuration ensures that only the authorized trusted sequencer can submit proofs.  
+The optimistic mode is used in FEP (Fast Exit Protocol) to enable faster exit processing by allowing optimistic proofs to be submitted before full verification. The trusted sequencer is responsible for signing these proofs, and this configuration ensures that only the authorized trusted sequencer can submit proofs.
 
 ## Use Cases
 
-This paragraph explains different use cases with outcomes.
+This paragraph explains different use cases with outcomes:
 
 - No bridges from L2 -> L1 means no certificate will be built.
 - Having bridges without claims, means a certificate will be built and sent.
@@ -208,17 +209,14 @@ This paragraph explains different use cases with outcomes.
 - If the previous certificate we sent is `InError`, we need to resend that certificate with all the previous sent data, plus new bridges and claims we saw after that.
 - If the previously sent certificate is not `InError` or `Settled`, no new certificate will be sent/resent. The `AggSender` waits for one of these two statuses on the `Agglayer`.
 
-## Debugging in local with bats e2e tests
+## Debugging in Local with Bats E2E Tests
 
-1. Start kurtosis with pessimistic proof yml file (`kurtosis run --enclave aggkit --args-file .github/tests/fork12-pessimistic.yml .`) Change `gas_token_enabled` to true.
+1. Start kurtosis with pessimistic proof yml file (`kurtosis run --enclave aggkit --args-file .github/tests/fork12-pessimistic.yml .`). Change `gas_token_enabled` to true.
 2. After kurtosis is started, stop the `cdk-node-001` service (`kurtosis service stop aggkit cdk-node-001`).
 3. Open the repo in an IDE (like Visual Studio), and run `./scripts/local_config` from the main repo folder. This will generate a `./tmp` folder in which `Aggsender` storage will be saved, and other aggkit node data, and will print a `launch.json`:
 
 ```json
 {
-   // Use IntelliSense to learn about possible attributes.
-   // Hover to view descriptions of existing attributes.
-   // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
    "version": "0.2.0",
    "configurations": [
        {
@@ -233,7 +231,7 @@ This paragraph explains different use cases with outcomes.
                "-cfg", "tmp/aggkit/local_config/test.kurtosis.toml",
                "-components", "aggsender",
            ]
-       },
+       }
    ]
 }
 ```
@@ -247,11 +245,11 @@ This paragraph explains different use cases with outcomes.
 
 If enabled in the configuration, Aggsender exposes the following Prometheus metrics:
 
-- Total number of certificates sent  
-- Number of sending errors  
-- Number of successful sends  
-- Certificate build time  
-- Prover execution time  
+- Total number of certificates sent
+- Number of sending errors
+- Number of successful sends
+- Certificate build time
+- Prover execution time
 
 ### Configuration Example
 
@@ -269,6 +267,6 @@ http://localhost:9091/metrics
 
 ## Additional Documentation
 
-[1] https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html 
-[2] initial PR: https://github.com/0xPolygon/cdk/pull/22 
-[3] https://agglayer.github.io/agglayer/pessimistic_proof/index.html
+1. [Protocol Workflow](https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html)
+2. [Initial PR](https://github.com/0xPolygon/cdk/pull/22)
+3. [Pessimistic Proof Documentation](https://agglayer.github.io/agglayer/pessimistic_proof/index.html)
