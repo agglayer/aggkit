@@ -78,18 +78,6 @@ The `RetryConfig` structure configures the retry behavior for failed gRPC reques
 | MaxAttempts        | int            | Maximum number of retries for a request                                                    |
 | Excluded           | [][Method](#method)       | List of methods excluded from retry policies                                               |
 
-### Method
-
-The `Method` type represents a gRPC method name that can be excluded from retry policies. This is typically the full method name in the format `package.Service/Method`. For example, `agglayer.Agglayer/SubmitCertificate`.
-
-Example:
-```
-[AggSender]
-    [AggSender.AgglayerClient]
-        [AggSender.AgglayerClient.Retry]
-            Excluded = ["agglayer.Agglayer/SubmitCertificate", "agglayer.Agglayer/GetStatus"]
-```
-
 Example:
 ```
 [AggSender]
@@ -103,7 +91,19 @@ Example:
 			MaxBackoff = "10s"
 			BackoffMultiplier = 2.0
 			MaxAttempts = 16
-```  
+```
+
+### Method
+
+The `Method` type represents a gRPC method name that can be excluded from retry policies. This is typically the full method name in the format `package.Service/Method`. For example, `agglayer.Agglayer/SubmitCertificate`.
+
+Example:
+```
+[AggSender]
+    [AggSender.AgglayerClient]
+        [AggSender.AgglayerClient.Retry]
+            Excluded = ["agglayer.Agglayer/SubmitCertificate", "agglayer.Agglayer/GetStatus"]
+```
 
 ## RateLimitConfig
 
