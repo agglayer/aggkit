@@ -95,14 +95,24 @@ Example:
 
 ### Method
 
-The `Method` type represents a gRPC method name that can be excluded from retry policies. This is typically the full method name in the format `package.Service/Method`. For example, `agglayer.Agglayer/SubmitCertificate`.
+The `Method` type represents a gRPC method configuration with the following fields:
+
+| Field Name    | Type   | Description                                                                                |
+|---------------|--------|--------------------------------------------------------------------------------------------|
+| ServiceName   | string | The gRPC service name (including package)                                                  |
+| MethodName    | string | The specific gRPC function name (optional)                                                 |
+
+This type is used to specify methods that should be excluded from retry policies. The `ServiceName` field is required and should include both the package and service name.
 
 Example:
 ```
 [AggSender]
     [AggSender.AgglayerClient]
         [AggSender.AgglayerClient.Retry]
-            Excluded = ["agglayer.Agglayer/SubmitCertificate", "agglayer.Agglayer/GetStatus"]
+            Excluded = [
+                { Service = "agglayer.Agglayer", Method = "SubmitCertificate" },
+                { Service = "agglayer.Agglayer", Method = "GetStatus" }
+            ]
 ```
 
 ## RateLimitConfig
