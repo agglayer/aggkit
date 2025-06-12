@@ -203,7 +203,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockEpochNotifier := mocks.NewEpochNotifier(t)
 	mockLERQuerier := mocks.NewLERQuerier(t)
 	logger := log.WithFields("aggsender-test", "no claims test")
-	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
+	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey, 0)
 	aggSender := &AggSender{
 		log:             logger,
 		storage:         mockStorage,
@@ -662,7 +662,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	}
 	privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	require.NoError(t, err)
-	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
+	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey, 0)
 	ctx := context.TODO()
 
 	sut := &AggSender{

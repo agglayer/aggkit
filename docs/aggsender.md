@@ -153,7 +153,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 |-----------------------------------|---------------------------|-----------------------------------------------------------------------------------------------------------------|
 | StoragePath                       | string                    | Full file path (with file name) where to store Aggsender DB                                                     |
 | AgglayerClient                    | *aggkitgrpc.ClientConfig  | Agglayer gRPC client configuration                                                                              |
-| AggsenderPrivateKey               | SignerConfig              | Configuration of the signer used to sign the certificate on the Aggsender before sending it to the Agglayer. It can be a local private key, or an external one. |
+| AggsenderPrivateKey               | [SignerConfig](./common_config.md#signerconfig)             | Configuration of the signer used to sign the certificate on the Aggsender before sending it to the Agglayer. It can be a local private key, or an external one. |
 | URLRPCL2                          | string                    | L2 RPC                                                                                                          |
 | BlockFinality                     | string                    | Indicates which finality the AggLayer follows (FinalizedBlock, SafeBlock, LatestBlock, PendingBlock, EarliestBlock) |
 | EpochNotificationPercentage       | uint                      | Indicates the percentage of the epoch on which the AggSender should send the certificate. 0 = begin, 50 = middle |
@@ -174,6 +174,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | RequireNoFEPBlockGap              | bool                      | If true, AggSender should not accept a gap between lastBlock from lastCertificate and first block of FEP        |
 | OptimisticModeConfig              | optimistic.Config         | Configuration for optimistic mode (required by FEP mode)                                                        |
 | RequireOneBridgeInPPCertificate   | bool                      | If true, AggSender requires at least one bridge exit for Pessimistic Proof certificates                         |
+                                                                                              |
 
 ## Use Cases
 
