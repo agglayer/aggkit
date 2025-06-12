@@ -2,9 +2,15 @@
 
 
 ## SignerConfig
+<<<<<<< arpit/629
 The `SignerConfig` struct is the  configuration object used to initialize a signer. It's defined in [go_signer](https://github.com/agglayer/go_signer) library. It defines how and where the cryptographic signing will be performed.
 
 It supports several type of signers. You must specify the desired method in the  `Method` field, the remaining parameters will depend on this selection.
+=======
+The `SignerConfig` struct is the primary configuration object used to initialize a signer. It's defined in the [go_signer](https://github.com/agglayer/go_signer) library and specifies how and where cryptographic signing operations are performed.
+
+The configuration supports multiple signer types. To use it, set the desired signer type in the `Method` field. The remaining configuration parameters will vary depending on the selected method.
+>>>>>>> develop
 
 The main methods are: 
 
@@ -52,6 +58,7 @@ AggsenderPrivateKey = { Method="AWS", KeyName="a47c263b-6575-4835-8721-af0bbb97X
 ```
 ## Others
 Additional signing methods are available.
+<<<<<<< arpit/629
 For a complete list and detailed configuration options, please refer to the [go_signer library documentation (v0.0.7)](https://github.com/agglayer/go_signer/blob/v0.0.7/README.md)  
 
 ## ClientConfig
@@ -133,3 +140,6 @@ OptimisticModeConfig = {
 ```
 
 The optimistic mode is used in FEP (Fast Exit Protocol) to enable faster exit processing by allowing optimistic proofs to be submitted before full verification. The trusted sequencer is responsible for signing these proofs, and this configuration ensures that only the authorized trusted sequencer can submit proofs.  
+=======
+For a complete list and detailed configuration options, please refer to the [go_signer library documentation (v0.0.7)](https://github.com/agglayer/go_signer/blob/v0.0.7/README.md)  
+>>>>>>> develop
