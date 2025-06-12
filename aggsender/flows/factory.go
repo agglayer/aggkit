@@ -37,6 +37,8 @@ func NewFlow(
 		if err != nil {
 			return nil, err
 		}
+		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
+			cfg.RollupManagerAddr, cfg.L1GenesisBlock)
 		lerQuerier, err := query.NewLERDataQuerier(
 			cfg.RollupManagerAddr, cfg.L1GenesisBlock, l2Syncer.OriginNetwork(), l1Client)
 		if err != nil {
