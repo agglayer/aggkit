@@ -7,6 +7,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -27,7 +28,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 				rmc.EXPECT().RollupIDToRollupData(mock.Anything, mock.Anything).
 					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{}, errors.New("some error"))
 			},
-			expectedLER:   common.Hash{},
+			expectedLER:   aggkitcommon.ZeroHash,
 			expectedError: "failed to get rollup data: some error",
 		},
 		{
@@ -66,6 +67,51 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tc.expectedLER, result)
+			}
+		})
+	}
+}
+
+func TestNewLERDataQuerier(t *testing.T) {
+	mockL1Client := &aggkittypesmocks.BaseEthereumClienter{}
+	mockRollupManagerContract := &mocks.RollupManagerContract{}
+
+	testCases := []struct {
+		name   string
+		mockFn func(
+			rollupManagerAddr common.Address,
+			l1Client aggkittypes.BaseEthereumClienter) (types.RollupManagerContract, error)
+		expectedError string
+	}{
+		{
+			name: "successful creation of LERDataQuerier",
+			mockFn: func(
+				_ common.Address,
+				_ aggkittypes.BaseEthereumClienter) (types.RollupManagerContract, error) {
+				return mockRollupManagerContract, nil
+			},
+			expectedError: "",
+		},
+		{
+			name: "error creating RollupManager contract",
+			mockFn: func(
+				_ common.Address,
+				_ aggkittypes.BaseEthereumClienter) (types.RollupManagerContract, error) {
+				return nil, errors.New("some error")
+			},
+			expectedError: "failed to create PolygonRollupManager contract caller: some error",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			funcCreateRollupManagerContract = tc.mockFn
+			_, err := NewLERDataQuerier(common.Address{}, 0, 0, mockL1Client)
+
+			if tc.expectedError == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.expectedError)
 			}
 		})
 	}
