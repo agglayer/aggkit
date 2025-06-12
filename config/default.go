@@ -216,7 +216,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = true
 RequireOneBridgeInPPCertificate = false
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
-L1GenesisBlockNumber = {{genesisBlockNumber}}
+RollupCreationBlock = {{rollupCreationBlockNumber}}
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectTimeout = "5s"

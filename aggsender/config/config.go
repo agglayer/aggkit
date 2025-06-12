@@ -73,8 +73,8 @@ type Config struct {
 	RequireOneBridgeInPPCertificate bool `mapstructure:"RequireOneBridgeInPPCertificate"`
 	// RollupManagerAddr is the address of the RollupManager contract on L1
 	RollupManagerAddr ethCommon.Address `mapstructure:"RollupManagerAddr"`
-	// L1GenesisBlock is the genesis block number of the L1 chain
-	L1GenesisBlock uint64 `mapstructure:"L1GenesisBlock"`
+	// RollupCreationBlock is the block number when the rollup was created on L1
+	RollupCreationBlock uint64 `mapstructure:"RollupCreationBlock"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

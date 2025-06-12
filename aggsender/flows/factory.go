@@ -38,9 +38,9 @@ func NewFlow(
 			return nil, err
 		}
 		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
-			cfg.RollupManagerAddr, cfg.L1GenesisBlock)
+			cfg.RollupManagerAddr, cfg.RollupCreationBlock)
 		lerQuerier, err := query.NewLERDataQuerier(
-			cfg.RollupManagerAddr, cfg.L1GenesisBlock, l2Syncer.OriginNetwork(), l1Client)
+			cfg.RollupManagerAddr, cfg.RollupCreationBlock, l2Syncer.OriginNetwork(), l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("error creating LER data querier: %w", err)
 		}
@@ -95,7 +95,7 @@ func NewFlow(
 		}
 
 		lerQuerier, err := query.NewLERDataQuerier(
-			cfg.RollupManagerAddr, cfg.L1GenesisBlock, l2Syncer.OriginNetwork(), l1Client)
+			cfg.RollupManagerAddr, cfg.RollupCreationBlock, l2Syncer.OriginNetwork(), l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("error creating LER data querier: %w", err)
 		}
