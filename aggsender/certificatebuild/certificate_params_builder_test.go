@@ -22,8 +22,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var ler1 = common.HexToHash("0x123")
-
 func Test_limitCertSize(t *testing.T) {
 	tests := []struct {
 		name          string
