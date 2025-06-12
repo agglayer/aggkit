@@ -82,9 +82,9 @@ sequenceDiagram
 ### AggchainProof Mode
 
 In essence, the `AggchainProof` mode follows the same logic and flow as `PessimisticProof` mode. Only difference is in two points:
-
 - Calling the `aggchain prover` to generate an `aggchain proof` that will be sent in the certfiicate to the `Agglayer`.
-- Resending an `InError` certficate does not expand it with new bridges and events that the syncer might have gotten in the meantime. This is done because `aggchain prover` already generated a proof for a given block range, and since proof generation can be a long process, this is a small optimization. Note that this might change in the future.
+- Resending an `InError` certficate does not expand it with new bridges and events that the syncer might have gotten in the meantime. This is done because `aggchain prover` already generated a proof for a given block range, and since proof generation can be a long process, this is a small optimization.
+- Note that this might change in the future.
 
 Calling the `aggchain prover` is done right before signing and sending the certificate to the `Agglayer`. To generate an `aggchain proof` prover needs couple of things:
 
@@ -188,7 +188,7 @@ The `OptimisticConfig` structure configures the optimistic mode for the AggSende
 | RequireKeyMatchTrustedSequencer | bool             | If true, enables a sanity check that the signer's public key matches the trusted sequencer address. This ensures the signer is the trusted sequencer and not a random signer. |
 
 Example:
-```ini
+```
 [AggSender]
     [AggSender.OptimisticModeConfig]
         SovereignRollupAddr = "0x1234..."
@@ -255,7 +255,7 @@ If enabled in the configuration, Aggsender exposes the following Prometheus metr
 
 To enable Prometheus metrics, configure Aggsender as follows:
 
-```ini
+```
 [Prometheus]
 Enabled = true
 Host = "localhost"
@@ -267,6 +267,6 @@ http://localhost:9091/metrics
 
 ## Additional Documentation
 
-1. [Protocol Workflow](https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html)
+1. (https://potential-couscous-4gw6qyo.pages.github.io/protocol/workflow_centralized.html)
 2. [Initial PR](https://github.com/0xPolygon/cdk/pull/22)
-3. [Pessimistic Proof Documentation](https://agglayer.github.io/agglayer/pessimistic_proof/index.html)
+3. (https://agglayer.github.io/agglayer/pessimistic_proof/index.html)
