@@ -78,19 +78,19 @@ The `RetryConfig` structure configures the retry behavior for failed gRPC reques
 | MaxAttempts        | int            | Maximum number of retries for a request                                                    |
 | Excluded           | []Method       | List of methods excluded from retry policies                                               |
 
-### Method
-
-The `Method` structure identifies a gRPC service and method:
-
-| Field Name    | Type   | Description                                                                                |
-|---------------|--------|--------------------------------------------------------------------------------------------|
-| ServiceName   | string | The gRPC service name (including package)                                                  |
-| MethodName    | string | The gRPC function name (optional)                                                          |
-
 Example:
 ```
 [AggSender]
-AgglayerClient = { URL="localhost:50051", MinConnectTimeout="5s", RequestTimeout="5s", UseTLS=false, Retry={ InitialBackoff="100ms", MaxBackoff="10s", BackoffMultiplier=2.0, MaxAttempts=3 } }
+    [AggSender.AgglayerClient]
+		URL = "http://localhost:9000"
+		MinConnectTimeout = "5s"
+		RequestTimeout = "300s" 
+		UseTLS = false
+		[AggSender.AgglayerClient.Retry]
+			InitialBackoff = "1s"
+			MaxBackoff = "10s"
+			BackoffMultiplier = 2.0
+			MaxAttempts = 16
 ```  
 
 ## RateLimitConfig
