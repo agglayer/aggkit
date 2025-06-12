@@ -147,9 +147,9 @@ func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) RunAndReturn
 	return _c
 }
 
-// GetCertificateBuildParamsInternal provides a mock function with given fields: ctx, allowEmptyCert, certType
-func (_m *AggsenderFlowBaser) GetCertificateBuildParamsInternal(ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {
-	ret := _m.Called(ctx, allowEmptyCert, certType)
+// GetCertificateBuildParamsInternal provides a mock function with given fields: ctx, certType
+func (_m *AggsenderFlowBaser) GetCertificateBuildParamsInternal(ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
+	ret := _m.Called(ctx, certType)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetCertificateBuildParamsInternal")
@@ -157,19 +157,19 @@ func (_m *AggsenderFlowBaser) GetCertificateBuildParamsInternal(ctx context.Cont
 
 	var r0 *types.CertificateBuildParams
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, bool, types.CertificateType) (*types.CertificateBuildParams, error)); ok {
-		return rf(ctx, allowEmptyCert, certType)
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType) (*types.CertificateBuildParams, error)); ok {
+		return rf(ctx, certType)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, bool, types.CertificateType) *types.CertificateBuildParams); ok {
-		r0 = rf(ctx, allowEmptyCert, certType)
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType) *types.CertificateBuildParams); ok {
+		r0 = rf(ctx, certType)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).(*types.CertificateBuildParams)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, bool, types.CertificateType) error); ok {
-		r1 = rf(ctx, allowEmptyCert, certType)
+	if rf, ok := ret.Get(1).(func(context.Context, types.CertificateType) error); ok {
+		r1 = rf(ctx, certType)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -184,15 +184,14 @@ type AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call struct {
 
 // GetCertificateBuildParamsInternal is a helper method to define mock.On call
 //   - ctx context.Context
-//   - allowEmptyCert bool
 //   - certType types.CertificateType
-func (_e *AggsenderFlowBaser_Expecter) GetCertificateBuildParamsInternal(ctx interface{}, allowEmptyCert interface{}, certType interface{}) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
-	return &AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call{Call: _e.mock.On("GetCertificateBuildParamsInternal", ctx, allowEmptyCert, certType)}
+func (_e *AggsenderFlowBaser_Expecter) GetCertificateBuildParamsInternal(ctx interface{}, certType interface{}) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
+	return &AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call{Call: _e.mock.On("GetCertificateBuildParamsInternal", ctx, certType)}
 }
 
-func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) Run(run func(ctx context.Context, allowEmptyCert bool, certType types.CertificateType)) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
+func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) Run(run func(ctx context.Context, certType types.CertificateType)) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(bool), args[2].(types.CertificateType))
+		run(args[0].(context.Context), args[1].(types.CertificateType))
 	})
 	return _c
 }
@@ -202,7 +201,7 @@ func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) Return(_a0 
 	return _c
 }
 
-func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) RunAndReturn(run func(context.Context, bool, types.CertificateType) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
+func (_c *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call) RunAndReturn(run func(context.Context, types.CertificateType) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_GetCertificateBuildParamsInternal_Call {
 	_c.Call.Return(run)
 	return _c
 }

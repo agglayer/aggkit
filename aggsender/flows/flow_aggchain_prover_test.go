@@ -99,7 +99,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 						LastProvenBlock: 1,
 						EndBlock:        10,
 					}, nil).Once()
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
 						GlobalExitRoot:  ger,
@@ -154,7 +154,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					CertificateID: common.HexToHash("0x1"),
 					CertType:      types.CertificateTypeFEP,
 				}, nil, nil).Once()
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
 						GlobalExitRoot:  ger,
@@ -232,7 +232,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
 						GlobalExitRoot:  ger,
@@ -280,7 +280,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10), true).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
 				mockL1InfoDataQuery.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
 					treetypes.Proof{},
 					&l1infotreesync.L1InfoTreeLeaf{
@@ -329,7 +329,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{ToBlock: 5, Status: agglayertypes.Settled}, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{{
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{{
 					GlobalIndex:     big.NewInt(1),
 					GlobalExitRoot:  ger,
 					MainnetExitRoot: mer,
@@ -403,7 +403,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{ToBlock: 5, Status: agglayertypes.Settled}, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
 				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10), true).Return(
+				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return(
 					[]bridgesync.Bridge{{BlockNum: 6}, {BlockNum: 10}},
 					[]bridgesync.Claim{
 						{BlockNum: 8, GlobalIndex: big.NewInt(1), GlobalExitRoot: ger, MainnetExitRoot: mer, RollupExitRoot: rer},

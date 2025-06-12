@@ -82,7 +82,7 @@ func (f *baseFlow) StartL2Block() uint64 {
 
 // GetCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) GetCertificateBuildParamsInternal(
-	ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {
+	ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -104,7 +104,7 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 	fromBlock := previousToBlock + 1
 	toBlock := lastL2BlockSynced
 
-	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
+	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +120,7 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 		CertificateType:     certType,
 	}
 
-	buildParams, err = f.limitCertSize(buildParams, allowEmptyCert)
+	buildParams, err = f.limitCertSize(buildParams)
 	if err != nil {
 		return nil, fmt.Errorf("error limitCertSize: %w", err)
 	}
@@ -137,17 +137,11 @@ func (f *baseFlow) VerifyBuildParams(fullCert *types.CertificateBuildParams) err
 // limitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
 func (f *baseFlow) limitCertSize(
-	fullCert *types.CertificateBuildParams, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
+	fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	currentCert := fullCert
 	var err error
 	maxCertSize := f.cfg.MaxCertSize
 	for {
-		if currentCert.NumberOfBridges() == 0 && !allowEmptyCert {
-			return nil, fmt.Errorf("error on reducing the certificate size. "+
-				"No bridge exits found in range from: %d, to: %d and empty certificate is not allowed",
-				currentCert.FromBlock, currentCert.ToBlock)
-		}
-
 		if maxCertSize == 0 || currentCert.EstimatedSize() <= maxCertSize {
 			return currentCert, nil
 		}

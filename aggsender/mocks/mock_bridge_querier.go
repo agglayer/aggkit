@@ -24,9 +24,9 @@ func (_m *BridgeQuerier) EXPECT() *BridgeQuerier_Expecter {
 	return &BridgeQuerier_Expecter{mock: &_m.Mock}
 }
 
-// GetBridgesAndClaims provides a mock function with given fields: ctx, fromBlock, toBlock, allowEmptyCert
-func (_m *BridgeQuerier) GetBridgesAndClaims(ctx context.Context, fromBlock uint64, toBlock uint64, allowEmptyCert bool) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
-	ret := _m.Called(ctx, fromBlock, toBlock, allowEmptyCert)
+// GetBridgesAndClaims provides a mock function with given fields: ctx, fromBlock, toBlock
+func (_m *BridgeQuerier) GetBridgesAndClaims(ctx context.Context, fromBlock uint64, toBlock uint64) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
+	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetBridgesAndClaims")
@@ -35,27 +35,27 @@ func (_m *BridgeQuerier) GetBridgesAndClaims(ctx context.Context, fromBlock uint
 	var r0 []bridgesync.Bridge
 	var r1 []bridgesync.Claim
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, bool) ([]bridgesync.Bridge, []bridgesync.Claim, error)); ok {
-		return rf(ctx, fromBlock, toBlock, allowEmptyCert)
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]bridgesync.Bridge, []bridgesync.Claim, error)); ok {
+		return rf(ctx, fromBlock, toBlock)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, bool) []bridgesync.Bridge); ok {
-		r0 = rf(ctx, fromBlock, toBlock, allowEmptyCert)
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []bridgesync.Bridge); ok {
+		r0 = rf(ctx, fromBlock, toBlock)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]bridgesync.Bridge)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64, bool) []bridgesync.Claim); ok {
-		r1 = rf(ctx, fromBlock, toBlock, allowEmptyCert)
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64) []bridgesync.Claim); ok {
+		r1 = rf(ctx, fromBlock, toBlock)
 	} else {
 		if ret.Get(1) != nil {
 			r1 = ret.Get(1).([]bridgesync.Claim)
 		}
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint64, uint64, bool) error); ok {
-		r2 = rf(ctx, fromBlock, toBlock, allowEmptyCert)
+	if rf, ok := ret.Get(2).(func(context.Context, uint64, uint64) error); ok {
+		r2 = rf(ctx, fromBlock, toBlock)
 	} else {
 		r2 = ret.Error(2)
 	}
@@ -72,14 +72,13 @@ type BridgeQuerier_GetBridgesAndClaims_Call struct {
 //   - ctx context.Context
 //   - fromBlock uint64
 //   - toBlock uint64
-//   - allowEmptyCert bool
-func (_e *BridgeQuerier_Expecter) GetBridgesAndClaims(ctx interface{}, fromBlock interface{}, toBlock interface{}, allowEmptyCert interface{}) *BridgeQuerier_GetBridgesAndClaims_Call {
-	return &BridgeQuerier_GetBridgesAndClaims_Call{Call: _e.mock.On("GetBridgesAndClaims", ctx, fromBlock, toBlock, allowEmptyCert)}
+func (_e *BridgeQuerier_Expecter) GetBridgesAndClaims(ctx interface{}, fromBlock interface{}, toBlock interface{}) *BridgeQuerier_GetBridgesAndClaims_Call {
+	return &BridgeQuerier_GetBridgesAndClaims_Call{Call: _e.mock.On("GetBridgesAndClaims", ctx, fromBlock, toBlock)}
 }
 
-func (_c *BridgeQuerier_GetBridgesAndClaims_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64, allowEmptyCert bool)) *BridgeQuerier_GetBridgesAndClaims_Call {
+func (_c *BridgeQuerier_GetBridgesAndClaims_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *BridgeQuerier_GetBridgesAndClaims_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64), args[3].(bool))
+		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
 	})
 	return _c
 }
@@ -89,7 +88,7 @@ func (_c *BridgeQuerier_GetBridgesAndClaims_Call) Return(_a0 []bridgesync.Bridge
 	return _c
 }
 
-func (_c *BridgeQuerier_GetBridgesAndClaims_Call) RunAndReturn(run func(context.Context, uint64, uint64, bool) ([]bridgesync.Bridge, []bridgesync.Claim, error)) *BridgeQuerier_GetBridgesAndClaims_Call {
+func (_c *BridgeQuerier_GetBridgesAndClaims_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]bridgesync.Bridge, []bridgesync.Claim, error)) *BridgeQuerier_GetBridgesAndClaims_Call {
 	_c.Call.Return(run)
 	return _c
 }
