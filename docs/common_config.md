@@ -4,7 +4,7 @@
 ## SignerConfig
 The `SignerConfig` struct is the primary configuration object used to initialize a signer. It's defined in the [go_signer](https://github.com/agglayer/go_signer) library and specifies how and where cryptographic signing operations are performed.
 
-It supports several type of signers. You must specify the desired method in the  `Method` field, the remaining parameters will depend on this selection.
+The configuration supports multiple signer types. To use it, set the desired signer type in the `Method` field. The remaining configuration parameters will vary depending on the selected method.
 
 The main methods are: 
 
