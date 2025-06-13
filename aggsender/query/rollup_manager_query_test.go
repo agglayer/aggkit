@@ -58,7 +58,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 				return mockRollupManagerContract, nil
 			}
 
-			querier, err := NewLERDataQuerier(common.Address{}, 0, 0, mockL1Client)
+			querier, err := NewRollupManagerQuerier(common.Address{}, 0, 0, mockL1Client)
 			require.NoError(t, err)
 
 			result, err := querier.GetLastLocalExitRoot()
@@ -106,7 +106,7 @@ func TestNewLERDataQuerier(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			funcCreateRollupManagerContract = tc.mockFn
-			_, err := NewLERDataQuerier(common.Address{}, 0, 0, mockL1Client)
+			_, err := NewRollupManagerQuerier(common.Address{}, 0, 0, mockL1Client)
 
 			if tc.expectedError == "" {
 				require.NoError(t, err)

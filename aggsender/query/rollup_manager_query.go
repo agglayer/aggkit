@@ -22,7 +22,7 @@ var funcCreateRollupManagerContract = func(
 	return rollupManagerContract, nil
 }
 
-var _ types.LERQuerier = (*lerDataQuerier)(nil)
+var _ types.RollupManagerQuerier = (*lerDataQuerier)(nil)
 
 // lerDataQuerier is responsible for querying Layer 1 (L1) genesis block data and managing
 // rollup-specific information using the provided RollupManagerContract. It stores the L1
@@ -35,7 +35,7 @@ type lerDataQuerier struct {
 	rollupManagerContract types.RollupManagerContract
 }
 
-// NewLERDataQuerier creates a new instance of LERQuerier for querying Layer 1 Ethereum Rollup data.
+// NewRollupManagerQuerier creates a new instance of LERQuerier for querying Layer 1 Ethereum Rollup data.
 // It initializes the RollupManager contract using the provided address and Ethereum client.
 //
 // Parameters:
@@ -47,11 +47,11 @@ type lerDataQuerier struct {
 // Returns:
 //   - types.LERQuerier: An initialized LERQuerier for querying rollup data.
 //   - error: An error if the RollupManager contract could not be created.
-func NewLERDataQuerier(
+func NewRollupManagerQuerier(
 	rollupManagerAddr common.Address,
 	l1GenesisBlock uint64,
 	rollupID uint32,
-	l1Client aggkittypes.BaseEthereumClienter) (types.LERQuerier, error) {
+	l1Client aggkittypes.BaseEthereumClienter) (types.RollupManagerQuerier, error) {
 	rollupManagerContract, err := funcCreateRollupManagerContract(
 		rollupManagerAddr, l1Client)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
+	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
@@ -33,44 +34,48 @@ func NewFlow(
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+		certificateSigner, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
 		if err != nil {
 			return nil, err
 		}
 		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
 			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1)
-		lerQuerier, err := query.NewLERDataQuerier(
+		rollupManagerQuerier, err := query.NewRollupManagerQuerier(
 			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
 		if err != nil {
-			return nil, fmt.Errorf("error creating LER data querier: %w", err)
+			return nil, fmt.Errorf("error creating RollupManager data querier: %w", err)
 		}
 
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
-		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
-		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, 0),
-		)
-		return NewPPFlow(
+		logger.Infof("Aggsender signer address: %s", certificateSigner.PublicAddress().Hex())
+
+		certificateBuilder := certificatebuild.NewCertificateBuilder(
 			logger,
-			baseFlow,
 			storage,
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
-			signer,
+			rollupManagerQuerier,
+			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, 0),
+		)
+		certificateVerifier := certificatebuild.NewCertificateBuildVerifier()
+
+		return NewPPFlow(
+			logger,
+			storage,
+			l1InfoTreeQuerier,
+			l2BridgeQuerier,
+			certificateBuilder,
+			certificateVerifier,
+			certificateSigner,
 			cfg.RequireOneBridgeInPPCertificate,
 		), nil
 	case types.AggchainProofMode:
-		if err := cfg.AggkitProverClient.Validate(); err != nil {
-			return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
-		}
-
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+		certificateSigner, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
 		if err != nil {
 			return nil, err
 		}
-		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
+		logger.Infof("Aggsender signer address: %s", certificateSigner.PublicAddress().Hex())
 
 		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {
@@ -94,31 +99,43 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
 
-		lerQuerier, err := query.NewLERDataQuerier(
+		rollupManagerQuerier, err := query.NewRollupManagerQuerier(
 			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
 		if err != nil {
-			return nil, fmt.Errorf("error creating LER data querier: %w", err)
+			return nil, fmt.Errorf("error creating RollupManager data querier: %w", err)
 		}
 
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
-		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
+		certificateBuilder := certificatebuild.NewCertificateBuilder(
+			logger,
+			storage,
+			l1InfoTreeQuerier,
+			l2BridgeQuerier,
+			rollupManagerQuerier,
+			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, startL2Block),
+		)
+		certificateVerifier := certificatebuild.NewCertificateBuildVerifier()
+
+		aggchainProofQuerier := query.NewAggchainProofQuery(
+			logger,
+			aggchainProofClient,
+			certificateBuilder.GetImportedBridgeExitsConverter(),
+			l1InfoTreeQuerier,
+			optimisticSigner,
+			certificateBuilder,
+			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
 		)
 
 		return NewAggchainProverFlow(
 			logger,
-			baseFlow,
-			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap),
-			aggchainProofClient,
+			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap, startL2Block),
 			storage,
-			l1InfoTreeQuerier,
 			l2BridgeQuerier,
-			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
-			l1Client,
-			signer,
+			certificateSigner,
 			optimisticModeQuerier,
-			optimisticSigner,
+			certificateBuilder,
+			certificateVerifier,
+			aggchainProofQuerier,
 		), nil
 
 	default:

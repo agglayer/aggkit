@@ -58,6 +58,7 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		L1InfoTreeRootFromWhichToProve: c.L1InfoTreeRootFromWhichToProve,
 		L1InfoTreeLeafCount:            c.L1InfoTreeLeafCount,
 		CertificateType:                c.CertificateType,
+		ExtraData:                      c.ExtraData,
 	}
 
 	for _, bridge := range c.Bridges {

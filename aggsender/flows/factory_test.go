@@ -68,7 +68,7 @@ func TestNewFlow(t *testing.T) {
 				Mode:                string(types.AggchainProofMode),
 				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
 			},
-			expectedError: "invalid aggkit prover client config: gRPC client configuration cannot be nil",
+			expectedError: "error creating aggkit prover client: gRPC client configuration cannot be nil",
 		},
 		{
 			name: "unsupported Aggsender mode",
