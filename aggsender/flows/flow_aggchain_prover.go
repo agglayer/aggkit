@@ -253,17 +253,22 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 	// We adjust the block range to don't exceed the maxL2BlockNumber
 	if a.maxL2BlockNumber > 0 && buildParams.ToBlock > a.maxL2BlockNumber {
+		if buildParams.FromBlock > a.maxL2BlockNumber {
+			a.noMoreCertsArePossibleDueMaxL2BlockNumber(buildParams, "perfect match")
+			return nil, nil
+		}
 		// if the toBlock is greater than the maxL2BlockNumber, we need to adjust it
 		a.log.Warnf("aggchainProverFlow - getCertificateBuildParams - adjusting the toBlock from %d to maxL2BlockNumber: %d",
 			buildParams.ToBlock, a.maxL2BlockNumber)
+
 		buildParams, err = buildParams.Range(buildParams.FromBlock, a.maxL2BlockNumber)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error adjusting the range of the certificate,"+
 				" due maxL2BlockNumber: %w", err)
 		}
 		if buildParams.IsEmpty() {
-			a.log.Warnf("Nothing to do. We have submitted all permitted certificate for maxL2BlockNumber: %d",
-				a.maxL2BlockNumber)
+			a.noMoreCertsArePossibleDueMaxL2BlockNumber(buildParams, "no more certs")
+
 			return nil, nil
 		}
 	}
@@ -276,6 +281,13 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
+}
+
+func (a *AggchainProverFlow) noMoreCertsArePossibleDueMaxL2BlockNumber(
+	cert *types.CertificateBuildParams, desc string) {
+	a.log.Warnf("Nothing to do. We have submitted all permitted certificate for maxL2BlockNumber: %d. %s. Next cert: %s",
+		a.maxL2BlockNumber, desc, cert.String())
+	// we can stop here the aggkit if it's required
 }
 
 // verifyBuildParams verifies the certificate build params and returns an error if they are not valid

@@ -61,6 +61,11 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 
 	// We adjust the block range to don't exceed the maxL2BlockNumber
 	if p.maxL2BlockNumber > 0 && buildParams.ToBlock > p.maxL2BlockNumber {
+		if buildParams.FromBlock > p.maxL2BlockNumber {
+			p.noMoreCertsArePossibleDueMaxL2BlockNumber(buildParams, "perfect match")
+			return nil, nil
+		}
+
 		// if the toBlock is greater than the maxL2BlockNumber, we need to adjust it
 		p.log.Warnf("PPFlow - getCertificateBuildParams - adjusting the toBlock from %d to maxL2BlockNumber: %d",
 			buildParams.ToBlock, p.maxL2BlockNumber)
@@ -96,6 +101,13 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 	buildParams.L1InfoTreeLeafCount = root.Index + 1
 
 	return buildParams, nil
+}
+
+func (p *PPFlow) noMoreCertsArePossibleDueMaxL2BlockNumber(
+	cert *types.CertificateBuildParams, desc string) {
+	p.log.Warnf("Nothing to do. We have submitted all permitted certificate for maxL2BlockNumber: %d. %s. Next cert: %s",
+		p.maxL2BlockNumber, desc, cert.String())
+	// we can stop here the aggkit if it's required
 }
 
 // BuildCertificate builds a certificate based on the buildParams
