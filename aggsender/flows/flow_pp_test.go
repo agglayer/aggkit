@@ -1018,11 +1018,6 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 	}
 }
 
-func Test_PPFlow_CheckInitialStatus(t *testing.T) {
-	sut := &PPFlow{}
-	require.Nil(t, sut.CheckInitialStatus(context.TODO()))
-}
-
 func Test_PPFlow_SignCertificate(t *testing.T) {
 	t.Parallel()
 

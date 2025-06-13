@@ -61,7 +61,8 @@ const (
 	ethermanDeprecatedHint                = "Etherman config is deprecated, remove it from configuration"
 	networkConfigDeprecatedHint           = "NetworkConfig is deprecated, use L1NetworkConfig instead"
 	l1NetworkConfigUsePolTokenAddrHint    = "Use L1NetworkConfig.POLTokenAddr instead"
-	l1NetworkConfigUseRollupAddrrHint     = "Use L1NetworkConfig.RollupAddr instead"
+	l1NetworkConfigUseRollupAddrHint      = "Use L1NetworkConfig.RollupAddr instead"
+	aggsenderRequireNoFEPBlockGapHint     = "AggSender.RequireNoFEPBlockGap is deprecated and no longer used"
 )
 
 type DeprecatedFieldsError struct {
@@ -165,11 +166,15 @@ var (
 		},
 		{
 			FieldNamePattern: "NetworkConfig.L1.ZkEVMAddr",
-			Reason:           l1NetworkConfigUseRollupAddrrHint,
+			Reason:           l1NetworkConfigUseRollupAddrHint,
 		},
 		{
 			FieldNamePattern: "NetworkConfig",
 			Reason:           networkConfigDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "AggSender.RequireNoFEPBlockGap",
+			Reason:           aggsenderRequireNoFEPBlockGapHint,
 		},
 	}
 )

@@ -173,7 +173,7 @@ AggsenderPrivateKey = {{AggsenderPrivateKey}}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
-DelayBeetweenRetries = "60s"
+DelayBeetweenRetries = "5s"
 KeepCertificatesHistory = true
 # MaxSize of the certificate to 8Mb
 MaxCertSize = 8388608
@@ -186,7 +186,6 @@ RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-RequireNoFEPBlockGap = true
 RequireOneBridgeInPPCertificate = false
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 RollupCreationBlockL1 = {{rollupCreationBlockNumber}}

@@ -208,6 +208,72 @@ func (_c *BridgeQuerier_GetLastProcessedBlock_Call) RunAndReturn(run func(contex
 	return _c
 }
 
+// NumOfBridgeTransactions provides a mock function with given fields: ctx, fromBlock, toBlock, waitForSyncerToCatchUp
+func (_m *BridgeQuerier) NumOfBridgeTransactions(ctx context.Context, fromBlock uint64, toBlock uint64, waitForSyncerToCatchUp bool) (int, int, error) {
+	ret := _m.Called(ctx, fromBlock, toBlock, waitForSyncerToCatchUp)
+
+	if len(ret) == 0 {
+		panic("no return value specified for NumOfBridgeTransactions")
+	}
+
+	var r0 int
+	var r1 int
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, bool) (int, int, error)); ok {
+		return rf(ctx, fromBlock, toBlock, waitForSyncerToCatchUp)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64, bool) int); ok {
+		r0 = rf(ctx, fromBlock, toBlock, waitForSyncerToCatchUp)
+	} else {
+		r0 = ret.Get(0).(int)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64, bool) int); ok {
+		r1 = rf(ctx, fromBlock, toBlock, waitForSyncerToCatchUp)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, uint64, uint64, bool) error); ok {
+		r2 = rf(ctx, fromBlock, toBlock, waitForSyncerToCatchUp)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// BridgeQuerier_NumOfBridgeTransactions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'NumOfBridgeTransactions'
+type BridgeQuerier_NumOfBridgeTransactions_Call struct {
+	*mock.Call
+}
+
+// NumOfBridgeTransactions is a helper method to define mock.On call
+//   - ctx context.Context
+//   - fromBlock uint64
+//   - toBlock uint64
+//   - waitForSyncerToCatchUp bool
+func (_e *BridgeQuerier_Expecter) NumOfBridgeTransactions(ctx interface{}, fromBlock interface{}, toBlock interface{}, waitForSyncerToCatchUp interface{}) *BridgeQuerier_NumOfBridgeTransactions_Call {
+	return &BridgeQuerier_NumOfBridgeTransactions_Call{Call: _e.mock.On("NumOfBridgeTransactions", ctx, fromBlock, toBlock, waitForSyncerToCatchUp)}
+}
+
+func (_c *BridgeQuerier_NumOfBridgeTransactions_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64, waitForSyncerToCatchUp bool)) *BridgeQuerier_NumOfBridgeTransactions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64), args[3].(bool))
+	})
+	return _c
+}
+
+func (_c *BridgeQuerier_NumOfBridgeTransactions_Call) Return(_a0 int, _a1 int, _a2 error) *BridgeQuerier_NumOfBridgeTransactions_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *BridgeQuerier_NumOfBridgeTransactions_Call) RunAndReturn(run func(context.Context, uint64, uint64, bool) (int, int, error)) *BridgeQuerier_NumOfBridgeTransactions_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // OriginNetwork provides a mock function with no fields
 func (_m *BridgeQuerier) OriginNetwork() uint32 {
 	ret := _m.Called()

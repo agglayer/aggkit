@@ -63,8 +63,7 @@ func TestConfigString(t *testing.T) {
 		"CheckStatusCertificateInterval: 0s\n"+
 		"RetryCertAfterInError: false\n"+
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
-		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
-		"RequireNoFEPBlockGap: false\n",
+		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
@@ -456,17 +455,6 @@ func TestCheckDBCompatibility(t *testing.T) {
 	testData := newAggsenderTestData(t, testDataFlagMockStorage)
 	testData.sut.cfg.RequireStorageContentCompatibility = false
 	testData.sut.checkDBCompatibility(testData.ctx)
-}
-
-func TestAggSenderStartFailFlowCheckInitialStatus(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow|testDataFlagMockStatusChecker)
-	testData.sut.cfg.RequireStorageContentCompatibility = false
-	testData.certStatusCheckerMock.EXPECT().CheckInitialStatus(mock.Anything, mock.Anything, testData.sut.status).Once()
-	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(fmt.Errorf("error")).Once()
-
-	require.Panics(t, func() {
-		testData.sut.Start(testData.ctx)
-	}, "Expected panic when starting AggSender")
 }
 
 func TestAggSenderStartFailsCompatibilityChecker(t *testing.T) {

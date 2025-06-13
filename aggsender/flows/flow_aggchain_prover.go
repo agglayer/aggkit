@@ -62,26 +62,20 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 
 // AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {
-	requireNoFEPBlockGap bool
-	maxL2BlockNumber     uint64
+	maxL2BlockNumber uint64
 }
 
 // NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
 func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
-		requireNoFEPBlockGap: true, // default to true, can be set to false for testing purposes
-		maxL2BlockNumber:     0,
+		maxL2BlockNumber: 0,
 	}
 }
 
 // NewAggchainProverFlowConfig creates a new AggchainProverFlowConfig with the given base flow config
-func NewAggchainProverFlowConfig(
-	requireNoFEPBlockGap bool,
-	maxL2BlockNumber uint64,
-) AggchainProverFlowConfig {
+func NewAggchainProverFlowConfig(maxL2BlockNumber uint64) AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
-		requireNoFEPBlockGap: requireNoFEPBlockGap,
-		maxL2BlockNumber:     maxL2BlockNumber,
+		maxL2BlockNumber: maxL2BlockNumber,
 	}
 }
 
@@ -89,8 +83,8 @@ func NewAggchainProverFlowConfig(
 // creating it
 func NewAggchainProverFlow(
 	log types.Logger,
-	baseFlow types.AggsenderFlowBaser,
 	aggChainProverConfig AggchainProverFlowConfig,
+	baseFlow types.AggsenderFlowBaser,
 	aggkitProverClient types.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
@@ -121,42 +115,6 @@ func NewAggchainProverFlow(
 		baseFlow:              baseFlow,
 		featureMaxL2Block:     feature,
 	}
-}
-
-// CheckInitialStatus checks that initial status is correct.
-// For AggchainProverFlow checks that starting block and last certificate match
-func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
-	lastSentCertificate, err := a.storage.GetLastSentCertificateHeader()
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
-	}
-	return a.sanityCheckNoBlockGaps(lastSentCertificate)
-}
-
-// sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate
-// #436. Don't allow gaps updating from PP to FEP
-func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.CertificateHeader) error {
-	lastSentCertficateStr := types.NilStr
-	if lastSentCertificate != nil {
-		lastSentCertficateStr = fmt.Sprintf("cert from:%d, to:%d", lastSentCertificate.FromBlock, lastSentCertificate.ToBlock)
-	}
-	msg := fmt.Sprintf("aggchainProverFlow - sanityCheckNoBlockGaps - last sent certificate: %s, startL2Block:%d",
-		lastSentCertficateStr, a.baseFlow.StartL2Block())
-
-	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.baseFlow.StartL2Block() {
-		err := fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
-			lastSentCertificate.ToBlock, a.baseFlow.StartL2Block())
-		if a.config.requireNoFEPBlockGap {
-			a.log.Error("%s. Err: %s", msg+" fails!", err.Error())
-			return err
-		}
-		// The sanity check is disabled
-		a.log.Warnf("%s. Ignoring block gaps due to RequireNoFEPBlockGap. Err: %w", msg, err)
-		return nil
-	}
-	a.log.Infof("%s. Passed check.", msg)
-
-	return nil
 }
 
 // getCertificateTypeToGenerate returns the type of certificate to generate
@@ -280,11 +238,8 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 // it also calls the prover to get the aggchain proof
 func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	ctx context.Context, buildParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
-	if err := a.baseFlow.VerifyBuildParams(buildParams); err != nil {
+	if err := a.baseFlow.VerifyBuildParams(ctx, buildParams); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
-	}
-	if err := a.sanityCheckNoBlockGaps(buildParams.LastSentCertificate); err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error checking for block gaps: %w", err)
 	}
 
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, buildParams.LastSentCertificate)

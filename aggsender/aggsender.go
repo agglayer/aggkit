@@ -148,9 +148,6 @@ func (a *AggSender) Start(ctx context.Context) {
 
 	a.checkDBCompatibility(ctx)
 	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBeetweenRetries.Duration, a.status)
-	if err := a.flow.CheckInitialStatus(ctx); err != nil {
-		a.log.Panicf("error checking flow Initial Status: %v", err)
-	}
 	a.sendCertificates(ctx, 0)
 }
 

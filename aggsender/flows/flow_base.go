@@ -133,9 +133,20 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 }
 
 // VerifyBuildParams verifies the build parameters
-func (f *baseFlow) VerifyBuildParams(fullCert *types.CertificateBuildParams) error {
-	// this will be a good place to add more verification checks in the future
-	return f.verifyClaimGERs(fullCert.Claims)
+func (f *baseFlow) VerifyBuildParams(ctx context.Context, fullCert *types.CertificateBuildParams) error {
+	if err := f.verifyRetryCertStartingBlock(fullCert); err != nil {
+		return fmt.Errorf("error verifying retry certificate starting block: %w", err)
+	}
+
+	if err := f.verifyBlockRangeGaps(ctx, fullCert); err != nil {
+		return fmt.Errorf("error verifying block range gaps: %w", err)
+	}
+
+	if err := f.verifyClaimGERs(fullCert.Claims); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // limitCertSize limits certificate size based on the max size configuration parameter
@@ -472,6 +483,59 @@ func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 		}
 	}
 
+	return nil
+}
+
+// verifyRetryCertStartingBlock verifies that the starting block of a retry certificate
+// matches the last sent (InError) certificate's starting block.
+func (f *baseFlow) verifyRetryCertStartingBlock(buildParams *types.CertificateBuildParams) error {
+	if buildParams.IsARetry() && buildParams.FromBlock != buildParams.LastSentCertificate.FromBlock {
+		return fmt.Errorf("retry certificate fromBlock %d != last sent certificate fromBlock %d",
+			buildParams.FromBlock, buildParams.LastSentCertificate.FromBlock)
+	}
+
+	return nil
+}
+
+// verifyBlockRangeGaps checks if there are any gaps in the block range of the certificate
+// and verifies that there are no new bridges or claims in the gap.
+func (f *baseFlow) verifyBlockRangeGaps(ctx context.Context, buildParams *types.CertificateBuildParams) error {
+	if buildParams.LastSentCertificate == nil {
+		return nil
+	}
+
+	lastSettledFromBlock := uint64(0)
+	lastSettledToBlock := uint64(0)
+	if buildParams.LastSentCertificate.Status.IsInError() {
+		// if the last certificate was in error, we need to check the last
+		// settled range to be correct
+		// we will leave the from block as 0, since we only require the to block
+		// to check the gap between the last sent certificate and the new one
+		if buildParams.LastSentCertificate.FromBlock > 0 {
+			lastSettledToBlock = buildParams.LastSentCertificate.FromBlock - 1
+		}
+	} else {
+		lastSettledFromBlock = buildParams.LastSentCertificate.FromBlock
+		lastSettledToBlock = buildParams.LastSentCertificate.ToBlock
+	}
+
+	nextBlockRange := types.NewBlockRange(buildParams.FromBlock, buildParams.ToBlock)
+	lastBlockRange := types.NewBlockRange(lastSettledFromBlock, lastSettledToBlock)
+
+	// case 2: is a new cert but is not contiguous to previous one
+	gap := nextBlockRange.Gap(lastBlockRange)
+	if gap.IsEmpty() {
+		return nil
+	}
+	bridgeDataInTheGap, claimDataInTheGap, err := f.l2BridgeQuerier.NumOfBridgeTransactions(
+		ctx, gap.FromBlock, gap.ToBlock, true)
+	if err != nil {
+		return fmt.Errorf("error getting bridges and claims in the gap %s: %w", gap.String(), err)
+	}
+	if bridgeDataInTheGap > 0 || claimDataInTheGap > 0 {
+		return fmt.Errorf("there are new bridges or claims in the gap %s, len(bridges)=%d. len(claims)=%d",
+			gap.String(), bridgeDataInTheGap, claimDataInTheGap)
+	}
 	return nil
 }
 

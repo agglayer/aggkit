@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -13,16 +14,24 @@ var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 
 // bridgeDataQuerier is a struct that holds the logic to query the bridge data
 type bridgeDataQuerier struct {
-	bridgeSyncer types.L2BridgeSyncer
+	log                 types.Logger
+	bridgeSyncer        types.L2BridgeSyncer
+	delayBetweenRetries time.Duration
 
 	originNetwork uint32
 }
 
 // NewBridgeDataQuerier returns a new instance of the BridgeDataQuerier
-func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer) *bridgeDataQuerier {
+func NewBridgeDataQuerier(
+	log types.Logger,
+	bridgeSyncer types.L2BridgeSyncer,
+	delayBetweenRetries time.Duration,
+) *bridgeDataQuerier {
 	return &bridgeDataQuerier{
-		bridgeSyncer:  bridgeSyncer,
-		originNetwork: bridgeSyncer.OriginNetwork(),
+		log:                 log,
+		bridgeSyncer:        bridgeSyncer,
+		delayBetweenRetries: delayBetweenRetries,
+		originNetwork:       bridgeSyncer.OriginNetwork(),
 	}
 }
 
@@ -57,6 +66,26 @@ func (b *bridgeDataQuerier) GetBridgesAndClaims(
 	return bridges, claims, nil
 }
 
+// NumOfBridgeTransactions checks the number of bridge transactions within a specified block range.
+func (b *bridgeDataQuerier) NumOfBridgeTransactions(
+	ctx context.Context,
+	fromBlock, toBlock uint64,
+	waitForSyncerToCatchUp bool,
+) (int, int, error) {
+	if waitForSyncerToCatchUp {
+		if err := b.waitForSyncerToCatchUp(ctx, toBlock); err != nil {
+			return 0, 0, fmt.Errorf("error waiting for syncer to catch up: %w", err)
+		}
+	}
+
+	bridges, claims, err := b.GetBridgesAndClaims(ctx, fromBlock, toBlock)
+	if err != nil {
+		return 0, 0, fmt.Errorf("error getting bridges: %w", err)
+	}
+
+	return len(bridges), len(claims), nil
+}
+
 // GetExitRootByIndex retrieves the local exit root hash for a given index from the bridge syncer.
 // Returns:
 //   - common.Hash: The hash of the exit root corresponding to the given index.
@@ -86,4 +115,31 @@ func (b *bridgeDataQuerier) GetLastProcessedBlock(ctx context.Context) (uint64, 
 // OriginNetwork returns the origin network id related to given bridge syncer.
 func (b *bridgeDataQuerier) OriginNetwork() uint32 {
 	return b.originNetwork
+}
+
+func (b *bridgeDataQuerier) waitForSyncerToCatchUp(ctx context.Context, block uint64) error {
+	ticker := time.NewTicker(b.delayBetweenRetries)
+	defer ticker.Stop()
+
+	for {
+		lastProcessedBlock, err := b.bridgeSyncer.GetLastProcessedBlock(ctx)
+		if err != nil {
+			return fmt.Errorf("bridgeDataQuerier - error getting last processed block: %w", err)
+		}
+
+		if lastProcessedBlock >= block {
+			b.log.Infof("bridgeDataQuerier - L2 syncer caught up to block: %d", block)
+			return nil
+		}
+
+		b.log.Debugf("bridgeDataQuerier - waiting for L2 syncer to catch up to block: %d, current last processed block: %d",
+			block, lastProcessedBlock)
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			continue // Keep checking until the condition is met
+		}
+	}
 }
