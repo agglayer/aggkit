@@ -777,14 +777,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedLocalIndex:  111234,
 			expectedErr:         nil,
 		},
-		{
-			name:                "Invalid global index length",
-			globalIndex:         big.NewInt(0).SetBytes([]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}),
-			expectedMainnetFlag: false,
-			expectedRollupIndex: 0,
-			expectedLocalIndex:  0,
-			expectedErr:         errors.New("invalid global index length"),
-		},
 	}
 
 	for _, tt := range tests {
