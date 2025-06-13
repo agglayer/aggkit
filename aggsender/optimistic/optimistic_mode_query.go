@@ -20,6 +20,7 @@ func NewOptimisticModeQuerierFromContract(aggchainFEPAddr common.Address,
 		return nil, fmt.Errorf("optimisticModeQuerierFromContract: error creating aggchainfep contract %s: %w",
 			aggchainFEPAddr, err)
 	}
+
 	return &OptimisticModeQuerierFromContract{
 		aggchainFEPContract: contract,
 	}, nil

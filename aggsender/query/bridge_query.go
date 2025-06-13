@@ -9,8 +9,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-var ErrNoBridgeExits = fmt.Errorf("no bridge exits consumed")
-
 var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 
 // bridgeDataQuerier is a struct that holds the logic to query the bridge data
@@ -34,11 +32,10 @@ func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer) *bridgeDataQuerier 
 //   - ctx: The context for managing request deadlines and cancellations.
 //   - fromBlock: The starting block number for the query range.
 //   - toBlock: The ending block number for the query range.
-//   - allowEmptyCert: A flag indicating whether to retrieve claims even if certificates are empty.
 //
 // Returns:
 //   - []bridgesync.Bridge: A slice of Bridge objects retrieved within the specified block range.
-//   - []bridgesync.Claim: A slice of Claim objects retrieved within the specified block range (if allowEmptyCert).
+//   - []bridgesync.Claim: A slice of Claim objects retrieved within the specified block range.
 //   - error: An error if any occurs during the retrieval of bridges or claims.
 //
 // Errors:
@@ -46,19 +43,12 @@ func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer) *bridgeDataQuerier 
 func (b *bridgeDataQuerier) GetBridgesAndClaims(
 	ctx context.Context,
 	fromBlock, toBlock uint64,
-	allowEmptyCert bool,
 ) ([]bridgesync.Bridge, []bridgesync.Claim, error) {
 	bridges, err := b.bridgeSyncer.GetBridges(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting bridges: %w", err)
 	}
 
-	if !allowEmptyCert && len(bridges) == 0 {
-		return nil, nil, fmt.Errorf("%w, no need to send a certificate from block: %d to block: %d",
-			ErrNoBridgeExits, fromBlock, toBlock)
-	}
-
-	// If allowEmptyCert is true or if there are bridges, retrieve claims
 	claims, err := b.bridgeSyncer.GetClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, nil, fmt.Errorf("error getting claims: %w", err)

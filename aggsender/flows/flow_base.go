@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -20,7 +21,7 @@ var (
 	errNoBridgesAndClaims = errors.New("no bridges and claims to build certificate")
 	errNoNewBlocks        = errors.New("no new blocks to send a certificate")
 
-	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+	emptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
 // BaseFlowConfig is a struct that holds the configuration for the base flow
@@ -41,7 +42,7 @@ func NewBaseFlowConfigDefault() BaseFlowConfig {
 	}
 }
 
-// // NewBaseFlowConfig returns a BaseFlowConfig with the specified maxCertSize and startL2Block
+// NewBaseFlowConfig returns a BaseFlowConfig with the specified maxCertSize and startL2Block
 func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64) BaseFlowConfig {
 	return BaseFlowConfig{
 		MaxCertSize:  maxCertSize,
@@ -54,6 +55,7 @@ type baseFlow struct {
 	l2BridgeQuerier       types.BridgeQuerier
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
+	lerQuerier            types.LERQuerier
 	cfg                   BaseFlowConfig
 	log                   types.Logger
 }
@@ -64,6 +66,7 @@ func NewBaseFlow(
 	l2BridgeQuerier types.BridgeQuerier,
 	storage db.AggSenderStorage,
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
+	lerQuerier types.LERQuerier,
 	cfg BaseFlowConfig,
 ) *baseFlow {
 	return &baseFlow{
@@ -71,6 +74,7 @@ func NewBaseFlow(
 		l2BridgeQuerier:       l2BridgeQuerier,
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
+		lerQuerier:            lerQuerier,
 		cfg:                   cfg,
 	}
 }
@@ -82,7 +86,7 @@ func (f *baseFlow) StartL2Block() uint64 {
 
 // GetCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) GetCertificateBuildParamsInternal(
-	ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {
+	ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -104,7 +108,7 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 	fromBlock := previousToBlock + 1
 	toBlock := lastL2BlockSynced
 
-	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
+	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, err
 	}
@@ -120,7 +124,7 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 		CertificateType:     certType,
 	}
 
-	buildParams, err = f.limitCertSize(buildParams, allowEmptyCert)
+	buildParams, err = f.limitCertSize(buildParams)
 	if err != nil {
 		return nil, fmt.Errorf("error limitCertSize: %w", err)
 	}
@@ -137,17 +141,11 @@ func (f *baseFlow) VerifyBuildParams(fullCert *types.CertificateBuildParams) err
 // limitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
 func (f *baseFlow) limitCertSize(
-	fullCert *types.CertificateBuildParams, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
+	fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	currentCert := fullCert
 	var err error
 	maxCertSize := f.cfg.MaxCertSize
 	for {
-		if currentCert.NumberOfBridges() == 0 && !allowEmptyCert {
-			return nil, fmt.Errorf("error on reducing the certificate size. "+
-				"No bridge exits found in range from: %d, to: %d and empty certificate is not allowed",
-				currentCert.FromBlock, currentCert.ToBlock)
-		}
-
 		if maxCertSize == 0 || currentCert.EstimatedSize() <= maxCertSize {
 			return currentCert, nil
 		}
@@ -404,14 +402,29 @@ func (f *baseFlow) getImportedBridgeExits(
 	return importedBridgeExits, nil
 }
 
+// getStartLER returns the last local exit root (LER) based on the configuration
+func (f *baseFlow) getStartLER() (common.Hash, error) {
+	ler, err := f.lerQuerier.GetLastLocalExitRoot()
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("error getting last local exit root: %w", err)
+	}
+
+	if ler == aggkitcommon.ZeroHash {
+		return emptyLER, nil
+	}
+
+	return ler, nil
+}
+
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		return 0, zeroLER, nil
+		ler, err := f.getStartLER()
+		return uint64(0), ler, err
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
-		return 0, zeroLER, fmt.Errorf("last certificate %s is not closed (status: %s)",
+		return 0, aggkitcommon.ZeroHash, fmt.Errorf("last certificate %s is not closed (status: %s)",
 			lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 	}
 	if lastSentCertificateInfo.Status.IsSettled() {
@@ -425,26 +438,27 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			return 0, zeroLER, nil
+			ler, err := f.getStartLER()
+			return uint64(0), ler, err
 		}
 		// We get previous certificate that must be settled
 		f.log.Debugf("last certificate %s is in error, getting previous settled certificate height:%d",
 			lastSentCertificateInfo.Height-1)
 		lastSettleCert, err := f.storage.GetCertificateHeaderByHeight(lastSentCertificateInfo.Height - 1)
 		if err != nil {
-			return 0, common.Hash{}, fmt.Errorf("error getting last settled certificate: %w", err)
+			return 0, aggkitcommon.ZeroHash, fmt.Errorf("error getting last settled certificate: %w", err)
 		}
 		if lastSettleCert == nil {
-			return 0, common.Hash{}, fmt.Errorf("none settled certificate: %w", err)
+			return 0, aggkitcommon.ZeroHash, fmt.Errorf("none settled certificate: %w", err)
 		}
 		if !lastSettleCert.Status.IsSettled() {
-			return 0, common.Hash{}, fmt.Errorf("last settled certificate %s is not settled (status: %s)",
+			return 0, aggkitcommon.ZeroHash, fmt.Errorf("last settled certificate %s is not settled (status: %s)",
 				lastSettleCert.ID(), lastSettleCert.Status.String())
 		}
 
 		return lastSentCertificateInfo.Height, lastSettleCert.NewLocalExitRoot, nil
 	}
-	return 0, zeroLER, fmt.Errorf("last certificate %s has an unknown status: %s",
+	return 0, aggkitcommon.ZeroHash, fmt.Errorf("last certificate %s has an unknown status: %s",
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 }
 
