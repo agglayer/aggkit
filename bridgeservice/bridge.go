@@ -130,6 +130,42 @@ func New(
 	return b
 }
 
+// GinZapLogger returns a Gin middleware that logs HTTP requests using zap at DEBUG level.
+func GinZapLogger(logger aggkitcommon.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		raw := c.Request.URL.RawQuery
+
+		c.Next()
+
+		latency := time.Since(start)
+		if latency > time.Minute {
+			latency = latency.Truncate(time.Second)
+		}
+
+		clientIP := c.ClientIP()
+		method := c.Request.Method
+		statusCode := c.Writer.Status()
+		errorMessage := c.Errors.ByType(gin.ErrorTypePrivate).String()
+
+		if raw != "" {
+			path += "?" + raw
+		}
+
+		logger.Debugf(
+			"[GIN] %v | %3d | %13v | %15s | %-7s %#v\n%s",
+			start.Format("2006/01/02 - 15:04:05"),
+			statusCode,
+			latency,
+			clientIP,
+			method,
+			path,
+			errorMessage,
+		)
+	}
+}
+
 // registerRoutes registers the routes for the bridge service
 func (b *BridgeService) registerRoutes() {
 	// Health check endpoint at root path
