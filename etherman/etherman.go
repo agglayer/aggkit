@@ -13,7 +13,8 @@ import (
 
 // RollupManagerContract is an abstraction for RollupManager smart contract
 type RollupManagerContract interface {
-	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
+	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (
+		polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
 	RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error)
 }
 
