@@ -76,7 +76,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	ethermanClient, err := initEthermanClient(cfg.L1NetworkConfig, components)
+	rollupDataQuerier, err := createRollupDataQuerier(cfg.L1NetworkConfig, components)
 	if err != nil {
 		return fmt.Errorf("failed to create etherman client: %w", err)
 	}
@@ -85,7 +85,7 @@ func start(cliCtx *cli.Context) error {
 	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, ethermanClient.RollupID)
+		l2Client, rollupDataQuerier.RollupID)
 	lastGERSync := runLastGERSyncIfNeeded(
 		cliCtx.Context, components, cfg.LastGERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
@@ -93,7 +93,7 @@ func start(cliCtx *cli.Context) error {
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
-			aggOracle := createAggoracle(ethermanClient, *cfg, l1Client, l2Client, l1InfoTreeSync)
+			aggOracle := createAggoracle(rollupDataQuerier, *cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(cliCtx.Context)
 
 		case aggkitcommon.BRIDGE:
@@ -115,6 +115,7 @@ func start(cliCtx *cli.Context) error {
 				l1InfoTreeSync,
 				l2BridgeSync,
 				l2Client,
+				rollupDataQuerier,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -193,7 +194,8 @@ func createAggSender(
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
-	l2Client aggkittypes.BaseEthereumClienter) (*aggsender.AggSender, error) {
+	l2Client aggkittypes.BaseEthereumClienter,
+	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	if err := cfg.AgglayerClient.Validate(); err != nil {
@@ -231,18 +233,18 @@ func createAggSender(
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
 	return aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
 }
 
 func createAggoracle(
-	ethermanClient *etherman.Client,
+	ethermanClient *etherman.RollupDataQuerier,
 	cfg config.Config,
 	l1Client,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
-	l2ChainID, err := ethermanClient.GetL2ChainID()
+	l2ChainID, err := ethermanClient.GetRollupChainID()
 	if err != nil {
 		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
 	}
@@ -661,11 +663,11 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 	}
 }
 
-// initEthermanClient initializes and returns an etherman client if any of the required components
+// createRollupDataQuerier initializes and returns the rollup data querier if any of the required components
 // (AGGORACLE, AGGCHAINPROOFGEN, AGGSENDER, BRIDGE) are needed. The client is configured with
 // the provided L1 network configuration and uses default implementations for creating Ethereum
 // clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
-func initEthermanClient(cfg config.L1NetworkConfig, components []string) (*etherman.Client, error) {
+func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*etherman.RollupDataQuerier, error) {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.AGGCHAINPROOFGEN,
@@ -675,7 +677,7 @@ func initEthermanClient(cfg config.L1NetworkConfig, components []string) (*ether
 		return nil, nil
 	}
 
-	return etherman.NewClient(cfg,
+	return etherman.NewRollupDataQuerier(cfg,
 		func(url string) (aggkittypes.BaseEthereumClienter, error) {
 			return ethclient.Dial(url)
 		},

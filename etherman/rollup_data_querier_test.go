@@ -85,7 +85,7 @@ func TestNewClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewClient(tt.cfg, tt.mockDial, tt.mockFactory)
+			client, err := NewRollupDataQuerier(tt.cfg, tt.mockDial, tt.mockFactory)
 
 			if tt.expectedErr != "" {
 				require.Error(t, err)
@@ -126,7 +126,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{ChainID: 999}, errors.New("call failed"))
 			},
 			expectedID:  0,
-			expectedErr: "call failed",
+			expectedErr: "failed to retrieve rollup data for rollup id 2: call failed",
 		},
 		{
 			name:     "returns error if ChainID is 0",
@@ -146,12 +146,12 @@ func TestClient_GetL2ChainID(t *testing.T) {
 			mockRM := mocks.NewRollupManagerContract(t)
 			tt.mockSetup(mockRM)
 
-			client := &Client{
+			client := &RollupDataQuerier{
 				rollupManagerSC: mockRM,
 				RollupID:        tt.rollupID,
 			}
 
-			id, err := client.GetL2ChainID()
+			id, err := client.GetRollupChainID()
 
 			require.Equal(t, tt.expectedID, id)
 			if tt.expectedErr == "" {

@@ -3,6 +3,7 @@ package etherman
 import (
 	"errors"
 	"fmt"
+	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	"github.com/agglayer/aggkit/config"
@@ -24,25 +25,27 @@ type RollupManagerContract interface {
 	RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error)
 }
 
+// mockery:ignore
 // DialFunc is callback function that creates BaseEthereumClienter, used to interact with Ethereum nodes
 type DialFunc func(url string) (aggkittypes.BaseEthereumClienter, error)
 
+// mockery:ignore
 // RollupManagerFactoryFunc is a callback function that creates RollupManager contrat instance
 type RollupManagerFactoryFunc func(rollupAddress common.Address,
 	client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error)
 
-// Client is a simple implementation of Etherman.
-type Client struct {
+// RollupDataQuerier is a simple implementation of Etherman.
+type RollupDataQuerier struct {
 	rollupManagerSC RollupManagerContract
 	RollupID        uint32
 }
 
-// NewClient creates a new etherman client instance
-func NewClient(
+// NewRollupDataQuerier creates a new rollup data querier instance
+func NewRollupDataQuerier(
 	l1Config config.L1NetworkConfig,
 	ethClientFactory DialFunc,
 	rollupManagerFactory RollupManagerFactoryFunc,
-) (*Client, error) {
+) (*RollupDataQuerier, error) {
 	ethClient, err := dialRPC(l1Config.URL, ethClientFactory)
 	if err != nil {
 		return nil, err
@@ -60,7 +63,7 @@ func NewClient(
 
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 
-	return &Client{
+	return &RollupDataQuerier{
 		rollupManagerSC: rmContract,
 		RollupID:        rollupID,
 	}, nil
@@ -98,17 +101,18 @@ func fetchRollupID(rm RollupManagerContract, rollupAddr common.Address) (uint32,
 	if err != nil {
 		return 0, fmt.Errorf("failed to retrieve rollup id from rollup manager contract: %w", err)
 	}
+
 	if rollupID == 0 {
 		return 0, fmt.Errorf("%w: (check the rollup address %s)", ErrInvalidRollupID, rollupAddr)
 	}
+
 	return rollupID, nil
 }
 
-// GetL2ChainID returns L2 Chain ID
-func (c *Client) GetL2ChainID() (uint64, error) {
-	rollupData, err := c.rollupManagerSC.RollupIDToRollupData(&bind.CallOpts{Pending: false}, c.RollupID)
+// GetRollupChainID returns rollup chain id (L2 network)
+func (r *RollupDataQuerier) GetRollupChainID() (uint64, error) {
+	rollupData, err := r.GetRollupData(nil)
 	if err != nil {
-		log.Debug("error from rollupManager: ", err)
 		return 0, err
 	}
 
@@ -118,4 +122,21 @@ func (c *Client) GetL2ChainID() (uint64, error) {
 
 	log.Infof("rollup chain id (read from rollup manager): %d", rollupData.ChainID)
 	return rollupData.ChainID, nil
+}
+
+// GetRollupData returns rollup data based on the provided rollup id
+func (r *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (
+	polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error) {
+	rollupData, err := r.rollupManagerSC.RollupIDToRollupData(
+		&bind.CallOpts{
+			Pending:     false,
+			BlockNumber: blockNumber,
+		}, r.RollupID)
+	if err != nil {
+		log.Debug("error from rollupManager: ", err)
+		return polygonrollupmanager.PolygonRollupManagerRollupDataReturn{},
+			fmt.Errorf("failed to retrieve rollup data for rollup id %d: %w", r.RollupID, err)
+	}
+
+	return rollupData, nil
 }
