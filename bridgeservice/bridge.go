@@ -110,6 +110,10 @@ func New(
 		gin.SetMode(gin.ReleaseMode) // fallback to release mode
 	}
 
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(LoggerHandler(cfg.Logger))
+
 	b := &BridgeService{
 		logger:       cfg.Logger,
 		address:      cfg.Address,
@@ -121,7 +125,7 @@ func New(
 		injectedGERs: injectedGERs,
 		bridgeL1:     bridgeL1,
 		bridgeL2:     bridgeL2,
-		router:       gin.Default(),
+		router:       router,
 	}
 
 	b.registerRoutes()
@@ -130,8 +134,8 @@ func New(
 	return b
 }
 
-// GinZapLogger returns a Gin middleware that logs HTTP requests using zap at DEBUG level.
-func GinZapLogger(logger aggkitcommon.Logger) gin.HandlerFunc {
+// LoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.
+func LoggerHandler(logger aggkitcommon.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		start := time.Now()
 		path := c.Request.URL.Path
