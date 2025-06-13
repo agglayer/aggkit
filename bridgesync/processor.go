@@ -896,9 +896,6 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 	rollupIndex uint32, localExitRootIndex uint32, err error) {
 	globalIndexBytes := globalIndex.Bytes()
 	l := len(globalIndexBytes)
-	if l > globalIndexMaxSize {
-		return false, 0, 0, errors.New("invalid global index length")
-	}
 
 	if l == 0 {
 		// false, 0, 0
