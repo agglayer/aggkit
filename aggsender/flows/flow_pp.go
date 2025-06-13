@@ -19,6 +19,7 @@ type PPFlow struct {
 	signer                signertypes.Signer
 	log                   types.Logger
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
+	maxL2BlockNumber      uint64
 }
 
 // NewPPFlow returns a new instance of the PPFlow
@@ -27,12 +28,14 @@ func NewPPFlow(log types.Logger,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
-	signer signertypes.Signer) *PPFlow {
+	signer signertypes.Signer,
+	maxL2BlockNumber uint64) *PPFlow {
 	return &PPFlow{
 		signer:                signer,
 		log:                   log,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		baseFlow:              baseFlow,
+		maxL2BlockNumber:      maxL2BlockNumber,
 	}
 }
 
@@ -54,6 +57,30 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		}
 
 		return nil, err
+	}
+
+	// We adjust the block range to don't exceed the maxL2BlockNumber
+	if p.maxL2BlockNumber > 0 && buildParams.ToBlock > p.maxL2BlockNumber {
+		// if the toBlock is greater than the maxL2BlockNumber, we need to adjust it
+		p.log.Warnf("PPFlow - getCertificateBuildParams - adjusting the toBlock from %d to maxL2BlockNumber: %d",
+			buildParams.ToBlock, p.maxL2BlockNumber)
+		buildParams, err = buildParams.Range(buildParams.FromBlock, p.maxL2BlockNumber)
+		if err != nil {
+			return nil, fmt.Errorf("PPFlow - error adjusting the range of the certificate, due maxL2BlockNumber: %w", err)
+		}
+		if buildParams.IsEmpty() || buildParams.NumberOfBridges() == 0 {
+			if buildParams.NumberOfClaims() > 0 {
+				err = fmt.Errorf("PPFlow - Can't send cert. We have submitted all permitted certificate for maxL2BlockNumber: %d"+
+					"but the current reduced range [%d to %d] has claims only but have %d of ImportedBridges",
+					p.maxL2BlockNumber, buildParams.FromBlock, buildParams.ToBlock, buildParams.NumberOfClaims())
+				p.log.Error(err)
+				return nil, err
+			} else {
+				p.log.Warnf("PPFlow - Nothing to do. We have submitted all permitted certificate for maxL2BlockNumber: %d",
+					p.maxL2BlockNumber)
+			}
+			return nil, nil
+		}
 	}
 
 	if err := p.baseFlow.VerifyBuildParams(buildParams); err != nil {

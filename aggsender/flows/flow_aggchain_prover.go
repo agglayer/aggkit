@@ -35,6 +35,7 @@ type AggchainProverFlow struct {
 	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
 	requireNoFEPBlockGap  bool
+	maxL2BlockNumber      uint64
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	optimisticSigner      types.OptimisticSigner
@@ -61,21 +62,25 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 // AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {
 	requireNoFEPBlockGap bool
+	maxL2BlockNumber     uint64
 }
 
 // NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
 func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		requireNoFEPBlockGap: true, // default to true, can be set to false for testing purposes
+		maxL2BlockNumber:     0,
 	}
 }
 
 // NewAggchainProverFlowConfig creates a new AggchainProverFlowConfig with the given base flow config
 func NewAggchainProverFlowConfig(
 	requireNoFEPBlockGap bool,
+	maxL2BlockNumber uint64,
 ) AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		requireNoFEPBlockGap: requireNoFEPBlockGap,
+		maxL2BlockNumber:     maxL2BlockNumber,
 	}
 }
 
@@ -103,6 +108,7 @@ func NewAggchainProverFlow(
 		aggchainProofClient:   aggkitProverClient,
 		gerQuerier:            gerQuerier,
 		requireNoFEPBlockGap:  aggChainProverConfig.requireNoFEPBlockGap,
+		maxL2BlockNumber:      aggChainProverConfig.maxL2BlockNumber,
 		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
 		optimisticSigner:      optimisticSigner,
@@ -179,6 +185,13 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		a.log.Infof("resending the same InError certificate: %s", lastSentCert.String())
 		fromBlock := lastSentCert.FromBlock
 		toBlock := lastSentCert.ToBlock
+		if a.maxL2BlockNumber > 0 && toBlock > a.maxL2BlockNumber {
+			err := fmt.Errorf("can't retry InError certificate: %s, because is beyond maxL2BlockNumber: %d",
+				lastSentCert.String(),
+				a.maxL2BlockNumber)
+			a.log.Error(err.Error())
+			return nil, err
+		}
 		lastProvenBlock := a.getLastProvenBlock(fromBlock, lastSentCert)
 		if lastSentCert.FromBlock != lastProvenBlock+1 {
 			a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
@@ -236,9 +249,25 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			// this is a valid case, so just return nil without error
 			return nil, nil
 		}
-
 		return nil, err
 	}
+	// We adjust the block range to don't exceed the maxL2BlockNumber
+	if a.maxL2BlockNumber > 0 && buildParams.ToBlock > a.maxL2BlockNumber {
+		// if the toBlock is greater than the maxL2BlockNumber, we need to adjust it
+		a.log.Warnf("aggchainProverFlow - getCertificateBuildParams - adjusting the toBlock from %d to maxL2BlockNumber: %d",
+			buildParams.ToBlock, a.maxL2BlockNumber)
+		buildParams, err = buildParams.Range(buildParams.FromBlock, a.maxL2BlockNumber)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error adjusting the range of the certificate,"+
+				" due maxL2BlockNumber: %w", err)
+		}
+		if buildParams.IsEmpty() {
+			a.log.Warnf("Nothing to do. We have submitted all permitted certificate for maxL2BlockNumber: %d",
+				a.maxL2BlockNumber)
+			return nil, nil
+		}
+	}
+
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, lastSentCert)
 	if buildParams.FromBlock != lastProvenBlock+1 {
 		a.log.Infof("aggchainProverFlow - getCertificateBuildParams - setting fromBlock to %d instead of %d",
@@ -270,8 +299,9 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 				lastProvenBlock, buildParams.ToBlock)
 			return nil, nil
 		}
-
-		return nil, fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
+		errNew := fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
+		a.log.Error(errNew.Error())
+		return nil, errNew
 	}
 
 	a.log.Infof("aggchainProverFlow - fetched auth proof for lastProvenBlock: %d, maxEndBlock: %d "+
