@@ -19,7 +19,7 @@ type PPFlow struct {
 	signer                signertypes.Signer
 	log                   types.Logger
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-	maxL2BlockNumber      uint64
+	featureMaxL2Block     types.FeatureMaxL2BlockNumberInterface
 }
 
 // NewPPFlow returns a new instance of the PPFlow
@@ -30,12 +30,18 @@ func NewPPFlow(log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
 	signer signertypes.Signer,
 	maxL2BlockNumber uint64) *PPFlow {
+	feature := &FeatureMaxL2BlockNumber{
+		maxL2BlockNumber:         maxL2BlockNumber,
+		log:                      log,
+		allowToResizeRetryCert:   true,
+		allowToSendNoBridgesCert: false,
+	}
 	return &PPFlow{
 		signer:                signer,
 		log:                   log,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		baseFlow:              baseFlow,
-		maxL2BlockNumber:      maxL2BlockNumber,
+		featureMaxL2Block:     feature,
 	}
 }
 
@@ -59,32 +65,11 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		return nil, err
 	}
 
-	// We adjust the block range to don't exceed the maxL2BlockNumber
-	if p.maxL2BlockNumber > 0 && buildParams.ToBlock > p.maxL2BlockNumber {
-		if buildParams.FromBlock > p.maxL2BlockNumber {
-			p.noMoreCertsArePossibleDueMaxL2BlockNumber(buildParams, "perfect match")
-			return nil, nil
-		}
-
-		// if the toBlock is greater than the maxL2BlockNumber, we need to adjust it
-		p.log.Warnf("PPFlow - getCertificateBuildParams - adjusting the toBlock from %d to maxL2BlockNumber: %d",
-			buildParams.ToBlock, p.maxL2BlockNumber)
-		buildParams, err = buildParams.Range(buildParams.FromBlock, p.maxL2BlockNumber)
+	if p.featureMaxL2Block != nil {
+		// If the feature is enabled, we need to adapt the build params
+		buildParams, err = p.featureMaxL2Block.AdaptCertificate(buildParams)
 		if err != nil {
-			return nil, fmt.Errorf("PPFlow - error adjusting the range of the certificate, due maxL2BlockNumber: %w", err)
-		}
-		if buildParams.IsEmpty() || buildParams.NumberOfBridges() == 0 {
-			if buildParams.NumberOfClaims() > 0 {
-				err = fmt.Errorf("PPFlow - Can't send cert. We have submitted all permitted certificate for maxL2BlockNumber: %d"+
-					"but the current reduced range [%d to %d] has claims only but have %d of ImportedBridges",
-					p.maxL2BlockNumber, buildParams.FromBlock, buildParams.ToBlock, buildParams.NumberOfClaims())
-				p.log.Error(err)
-				return nil, err
-			} else {
-				p.log.Warnf("PPFlow - Nothing to do. We have submitted all permitted certificate for maxL2BlockNumber: %d",
-					p.maxL2BlockNumber)
-			}
-			return nil, nil
+			return nil, fmt.Errorf("ppFlow - error adapting MaxL2Block certificate: %w", err)
 		}
 	}
 
@@ -101,13 +86,6 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 	buildParams.L1InfoTreeLeafCount = root.Index + 1
 
 	return buildParams, nil
-}
-
-func (p *PPFlow) noMoreCertsArePossibleDueMaxL2BlockNumber(
-	cert *types.CertificateBuildParams, desc string) {
-	p.log.Warnf("Nothing to do. We have submitted all permitted certificate for maxL2BlockNumber: %d. %s. Next cert: %s",
-		p.maxL2BlockNumber, desc, cert.String())
-	// we can stop here the aggkit if it's required
 }
 
 // BuildCertificate builds a certificate based on the buildParams

@@ -146,3 +146,8 @@ type CertificateStatusChecker interface {
 		delayBetweenRetries time.Duration,
 		aggsenderStatus *AggsenderStatus)
 }
+
+type FeatureMaxL2BlockNumberInterface interface {
+	AdaptCertificate(
+		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
+}

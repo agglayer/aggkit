@@ -34,11 +34,11 @@ type AggchainProverFlow struct {
 
 	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
-	requireNoFEPBlockGap  bool
-	maxL2BlockNumber      uint64
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	optimisticSigner      types.OptimisticSigner
+	config                AggchainProverFlowConfig
+	featureMaxL2Block     types.FeatureMaxL2BlockNumberInterface
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
@@ -100,6 +100,12 @@ func NewAggchainProverFlow(
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	optimisticSigner types.OptimisticSigner,
 ) *AggchainProverFlow {
+	feature := &FeatureMaxL2BlockNumber{
+		maxL2BlockNumber:         aggChainProverConfig.maxL2BlockNumber,
+		log:                      log,
+		allowToResizeRetryCert:   false, // AggchainProverFlow allows to resize retry certs
+		allowToSendNoBridgesCert: true,  // AggchainProverFlow allows to send no bridges certs
+	}
 	return &AggchainProverFlow{
 		log:                   log,
 		storage:               storage,
@@ -107,12 +113,12 @@ func NewAggchainProverFlow(
 		l2BridgeQuerier:       l2BridgeQuerier,
 		aggchainProofClient:   aggkitProverClient,
 		gerQuerier:            gerQuerier,
-		requireNoFEPBlockGap:  aggChainProverConfig.requireNoFEPBlockGap,
-		maxL2BlockNumber:      aggChainProverConfig.maxL2BlockNumber,
+		config:                aggChainProverConfig,
 		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
 		optimisticSigner:      optimisticSigner,
 		baseFlow:              baseFlow,
+		featureMaxL2Block:     feature,
 	}
 }
 
@@ -139,7 +145,7 @@ func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.C
 	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.baseFlow.StartL2Block() {
 		err := fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
 			lastSentCertificate.ToBlock, a.baseFlow.StartL2Block())
-		if a.requireNoFEPBlockGap {
+		if a.config.requireNoFEPBlockGap {
 			a.log.Error("%s. Err: %s", msg+" fails!", err.Error())
 			return err
 		}
@@ -185,13 +191,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		a.log.Infof("resending the same InError certificate: %s", lastSentCert.String())
 		fromBlock := lastSentCert.FromBlock
 		toBlock := lastSentCert.ToBlock
-		if a.maxL2BlockNumber > 0 && toBlock > a.maxL2BlockNumber {
-			err := fmt.Errorf("can't retry InError certificate: %s, because is beyond maxL2BlockNumber: %d",
-				lastSentCert.String(),
-				a.maxL2BlockNumber)
-			a.log.Error(err.Error())
-			return nil, err
-		}
+
 		lastProvenBlock := a.getLastProvenBlock(fromBlock, lastSentCert)
 		if lastSentCert.FromBlock != lastProvenBlock+1 {
 			a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
@@ -216,6 +216,13 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			LastSentCertificate: lastSentCert,
 			CreatedAt:           lastSentCert.CreatedAt,
 			CertificateType:     typeCert,
+		}
+		if a.featureMaxL2Block != nil {
+			// If the feature is enabled, we need to adapt the build params
+			buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
+			if err != nil {
+				return nil, fmt.Errorf("aggchainProverFlow - error adapting MaxL2Block certificate: %w", err)
+			}
 		}
 
 		if proof == nil {
@@ -251,25 +258,11 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		}
 		return nil, err
 	}
-	// We adjust the block range to don't exceed the maxL2BlockNumber
-	if a.maxL2BlockNumber > 0 && buildParams.ToBlock > a.maxL2BlockNumber {
-		if buildParams.FromBlock > a.maxL2BlockNumber {
-			a.noMoreCertsArePossibleDueMaxL2BlockNumber(buildParams, "perfect match")
-			return nil, nil
-		}
-		// if the toBlock is greater than the maxL2BlockNumber, we need to adjust it
-		a.log.Warnf("aggchainProverFlow - getCertificateBuildParams - adjusting the toBlock from %d to maxL2BlockNumber: %d",
-			buildParams.ToBlock, a.maxL2BlockNumber)
-
-		buildParams, err = buildParams.Range(buildParams.FromBlock, a.maxL2BlockNumber)
+	if a.featureMaxL2Block != nil {
+		// If the feature is enabled, we need to adapt the build params
+		buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
 		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error adjusting the range of the certificate,"+
-				" due maxL2BlockNumber: %w", err)
-		}
-		if buildParams.IsEmpty() {
-			a.noMoreCertsArePossibleDueMaxL2BlockNumber(buildParams, "no more certs")
-
-			return nil, nil
+			return nil, fmt.Errorf("aggchainProverFlow - error adapting MaxL2Block certificate: %w", err)
 		}
 	}
 
@@ -281,13 +274,6 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 	}
 
 	return a.verifyBuildParamsAndGenerateProof(ctx, buildParams)
-}
-
-func (a *AggchainProverFlow) noMoreCertsArePossibleDueMaxL2BlockNumber(
-	cert *types.CertificateBuildParams, desc string) {
-	a.log.Warnf("Nothing to do. We have submitted all permitted certificate for maxL2BlockNumber: %d. %s. Next cert: %s",
-		a.maxL2BlockNumber, desc, cert.String())
-	// we can stop here the aggkit if it's required
 }
 
 // verifyBuildParams verifies the certificate build params and returns an error if they are not valid
