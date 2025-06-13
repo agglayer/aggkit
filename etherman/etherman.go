@@ -1,6 +1,7 @@
 package etherman
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
@@ -9,6 +10,11 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
+)
+
+var (
+	ErrInvalidRollupID = errors.New("invalid rollup id (0)")
+	ErrInvalidChainID  = errors.New("invalid chain id (0)")
 )
 
 // RollupManagerContract is an abstraction for RollupManager smart contract
@@ -93,8 +99,7 @@ func fetchRollupID(rm RollupManagerContract, rollupAddr common.Address) (uint32,
 		return 0, fmt.Errorf("failed to retrieve rollup id from rollup manager contract: %w", err)
 	}
 	if rollupID == 0 {
-		return 0, fmt.Errorf("invalid rollup id value (%d). Check if the rollup contract address is correct %s",
-			rollupID, rollupAddr)
+		return 0, fmt.Errorf("%w: (check the rollup address %s)", ErrInvalidRollupID, rollupAddr)
 	}
 	return rollupID, nil
 }
@@ -108,7 +113,7 @@ func (c *Client) GetL2ChainID() (uint64, error) {
 	}
 
 	if rollupData.ChainID == 0 {
-		return 0, fmt.Errorf("error: chainID received is 0")
+		return 0, ErrInvalidChainID
 	}
 
 	log.Infof("rollup chain id (read from rollup manager): %d", rollupData.ChainID)

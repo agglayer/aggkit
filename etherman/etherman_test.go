@@ -79,7 +79,7 @@ func TestNewClient(t *testing.T) {
 				rm.EXPECT().RollupAddressToID(mock.Anything, mock.Anything).Return(uint32(0), nil)
 				return rm, nil
 			},
-			expectedErr: "invalid rollup id value (0)",
+			expectedErr: ErrInvalidRollupID.Error(),
 		},
 	}
 
@@ -137,7 +137,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{ChainID: 0}, nil)
 			},
 			expectedID:  0,
-			expectedErr: "error: chainID received is 0",
+			expectedErr: ErrInvalidChainID.Error(),
 		},
 	}
 
@@ -209,7 +209,7 @@ func TestFetchRollupID(t *testing.T) {
 				return mockRollupManager
 			},
 			expectedID:     0,
-			expectedErrMsg: "invalid rollup id value",
+			expectedErrMsg: ErrInvalidRollupID.Error(),
 		},
 	}
 
