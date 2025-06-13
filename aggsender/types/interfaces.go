@@ -18,8 +18,6 @@ import (
 // AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender
 // based on the different prover types
 type AggsenderFlow interface {
-	// CheckInitialStatus checks the initial status for the flow it's ok
-	CheckInitialStatus(ctx context.Context) error
 	// GetCertificateBuildParams returns the parameters to build a certificate
 	GetCertificateBuildParams(ctx context.Context) (*CertificateBuildParams, error)
 	// BuildCertificate builds a certificate based on the buildParams
@@ -36,9 +34,8 @@ type AggsenderFlowBaser interface {
 		allowEmptyCert bool) (*agglayertypes.Certificate, error)
 	GetNewLocalExitRoot(ctx context.Context,
 		certParams *CertificateBuildParams) (common.Hash, error)
-	VerifyBuildParams(fullCert *CertificateBuildParams) error
+	VerifyBuildParams(ctx context.Context, fullCert *CertificateBuildParams) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
-
 	StartL2Block() uint64
 }
 
@@ -74,6 +71,11 @@ type BridgeQuerier interface {
 	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	OriginNetwork() uint32
+	NumOfBridgeTransactions(
+		ctx context.Context,
+		fromBlock, toBlock uint64,
+		waitForSyncerToCatchUp bool,
+	) (int, int, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement

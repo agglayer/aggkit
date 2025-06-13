@@ -35,7 +35,6 @@ type AggchainProverFlow struct {
 
 	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
-	requireNoFEPBlockGap  bool
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	optimisticSigner      types.OptimisticSigner
@@ -59,33 +58,11 @@ func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.Ba
 
 var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 
-// AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
-type AggchainProverFlowConfig struct {
-	requireNoFEPBlockGap bool
-}
-
-// NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
-func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
-	return AggchainProverFlowConfig{
-		requireNoFEPBlockGap: true, // default to true, can be set to false for testing purposes
-	}
-}
-
-// NewAggchainProverFlowConfig creates a new AggchainProverFlowConfig with the given base flow config
-func NewAggchainProverFlowConfig(
-	requireNoFEPBlockGap bool,
-) AggchainProverFlowConfig {
-	return AggchainProverFlowConfig{
-		requireNoFEPBlockGap: requireNoFEPBlockGap,
-	}
-}
-
 // NewAggchainProverFlow returns a new instance of the AggchainProverFlow injecting baseFlow instead of
 // creating it
 func NewAggchainProverFlow(
 	log types.Logger,
 	baseFlow types.AggsenderFlowBaser,
-	aggChainProverConfig AggchainProverFlowConfig,
 	aggkitProverClient types.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
@@ -103,48 +80,11 @@ func NewAggchainProverFlow(
 		l2BridgeQuerier:       l2BridgeQuerier,
 		aggchainProofClient:   aggkitProverClient,
 		gerQuerier:            gerQuerier,
-		requireNoFEPBlockGap:  aggChainProverConfig.requireNoFEPBlockGap,
 		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
 		optimisticSigner:      optimisticSigner,
 		baseFlow:              baseFlow,
 	}
-}
-
-// CheckInitialStatus checks that initial status is correct.
-// For AggchainProverFlow checks that starting block and last certificate match
-func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
-	lastSentCertificate, err := a.storage.GetLastSentCertificateHeader()
-	if err != nil {
-		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
-	}
-	return a.sanityCheckNoBlockGaps(lastSentCertificate)
-}
-
-// sanityCheckNoBlockGaps checks that there are no gaps in the block range for next certificate
-// #436. Don't allow gaps updating from PP to FEP
-func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.CertificateHeader) error {
-	lastSentCertficateStr := types.NilStr
-	if lastSentCertificate != nil {
-		lastSentCertficateStr = fmt.Sprintf("cert from:%d, to:%d", lastSentCertificate.FromBlock, lastSentCertificate.ToBlock)
-	}
-	msg := fmt.Sprintf("aggchainProverFlow - sanityCheckNoBlockGaps - last sent certificate: %s, startL2Block:%d",
-		lastSentCertficateStr, a.baseFlow.StartL2Block())
-
-	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.baseFlow.StartL2Block() {
-		err := fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
-			lastSentCertificate.ToBlock, a.baseFlow.StartL2Block())
-		if a.requireNoFEPBlockGap {
-			a.log.Error("%s. Err: %s", msg+" fails!", err.Error())
-			return err
-		}
-		// The sanity check is disabled
-		a.log.Warnf("%s. Ignoring block gaps due to RequireNoFEPBlockGap. Err: %w", msg, err)
-		return nil
-	}
-	a.log.Infof("%s. Passed check.", msg)
-
-	return nil
 }
 
 // getCertificateTypeToGenerate returns the type of certificate to generate
@@ -253,11 +193,8 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 // it also calls the prover to get the aggchain proof
 func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	ctx context.Context, buildParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
-	if err := a.baseFlow.VerifyBuildParams(buildParams); err != nil {
+	if err := a.baseFlow.VerifyBuildParams(ctx, buildParams); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
-	}
-	if err := a.sanityCheckNoBlockGaps(buildParams.LastSentCertificate); err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error checking for block gaps: %w", err)
 	}
 
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, buildParams.LastSentCertificate)
