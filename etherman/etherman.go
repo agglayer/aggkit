@@ -3,6 +3,7 @@ package etherman
 import (
 	"fmt"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -12,20 +13,7 @@ import (
 
 // RollupManagerContract is an abstraction for RollupManager smart contract
 type RollupManagerContract interface {
-	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (struct {
-		RollupContract                 common.Address
-		ChainID                        uint64
-		Verifier                       common.Address
-		ForkID                         uint64
-		LastLocalExitRoot              [32]byte
-		LastBatchSequenced             uint64
-		LastVerifiedBatch              uint64
-		LastPendingState               uint64
-		LastPendingStateConsolidated   uint64
-		LastVerifiedBatchBeforeUpgrade uint64
-		RollupTypeID                   uint64
-		RollupCompatibilityID          uint8
-	}, error)
+	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
 	RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error)
 }
 

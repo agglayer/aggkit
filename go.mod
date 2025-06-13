@@ -1,6 +1,6 @@
 module github.com/agglayer/aggkit
 
-go 1.24.2
+go 1.24.4
 
 require (
 	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250520190516-57743a879f16.2
@@ -10,8 +10,8 @@ require (
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250520163122-7efa0a2f81a8.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.4
 	github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229
-	github.com/0xPolygon/zkevm-ethtx-manager v0.2.13
-	github.com/agglayer/go_signer v0.0.6
+	github.com/0xPolygon/zkevm-ethtx-manager v0.2.14
+	github.com/agglayer/go_signer v0.0.7
 	github.com/ethereum/go-ethereum v1.15.5
 	github.com/gin-gonic/gin v1.10.0
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
@@ -40,7 +40,7 @@ require (
 	go.opentelemetry.io/otel/metric v1.36.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.39.0
-	golang.org/x/net v0.40.0
+	golang.org/x/net v0.41.0
 	golang.org/x/sync v0.15.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250324211829-b45e905df463
 	google.golang.org/grpc v1.73.0

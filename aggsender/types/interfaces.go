@@ -4,12 +4,14 @@ import (
 	"context"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -27,7 +29,7 @@ type AggsenderFlow interface {
 
 type AggsenderFlowBaser interface {
 	GetCertificateBuildParamsInternal(
-		ctx context.Context, allowEmptyCert bool, certType CertificateType) (*CertificateBuildParams, error)
+		ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
 	BuildCertificate(ctx context.Context,
 		certParams *CertificateBuildParams,
 		lastSentCertificate *CertificateHeader,
@@ -68,7 +70,6 @@ type BridgeQuerier interface {
 	GetBridgesAndClaims(
 		ctx context.Context,
 		fromBlock, toBlock uint64,
-		allowEmptyCert bool,
 	) ([]bridgesync.Bridge, []bridgesync.Claim, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
@@ -135,4 +136,15 @@ type CertificateStatusChecker interface {
 		ctx context.Context,
 		delayBetweenRetries time.Duration,
 		aggsenderStatus *AggsenderStatus)
+}
+
+// RollupManagerContract is an interface defining functions that a RollupManager contract should implement
+type RollupManagerContract interface {
+	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (
+		polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
+}
+
+// LERQuerier is an interface defining functions that a Local Exit Root querier should implement
+type LERQuerier interface {
+	GetLastLocalExitRoot() (common.Hash, error)
 }

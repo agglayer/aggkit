@@ -201,8 +201,9 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL1Querier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
 	mockEpochNotifier := mocks.NewEpochNotifier(t)
+	mockLERQuerier := mocks.NewLERQuerier(t)
 	logger := log.WithFields("aggsender-test", "no claims test")
-	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
+	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey, 0)
 	aggSender := &AggSender{
 		log:             logger,
 		storage:         mockStorage,
@@ -212,8 +213,8 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		cfg:             config.Config{},
 		flow: flows.NewPPFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
-				mockL1Querier, flows.NewBaseFlowConfigDefault()),
-			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer),
+				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
+			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true),
 		rateLimiter: aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
@@ -226,7 +227,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	}, nil).Once()
 	mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(50), nil)
-	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50), false).Return([]bridgesync.Bridge{
+	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50)).Return([]bridgesync.Bridge{
 		{
 			BlockNum:           30,
 			BlockPos:           0,
@@ -439,7 +440,7 @@ func TestSendCertificate(t *testing.T) {
 
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
-	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Twice()
+	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(3)
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
@@ -641,6 +642,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	l2BridgeQuerier := mocks.NewBridgeQuerier(t)
 	agglayerClientMock := agglayer.NewAgglayerClientMock(t)
 	l1InfoTreeQuerierMock := mocks.NewL1InfoTreeDataQuerier(t)
+	lerQuerier := mocks.NewLERQuerier(t)
 	epochNotifierMock := mocks.NewEpochNotifier(t)
 	logger := log.WithFields("aggsender-test", "checkLastCertificateFromAgglayer")
 	var storageMock *mocks.AggSenderStorage
@@ -660,7 +662,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	}
 	privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	require.NoError(t, err)
-	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
+	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey, 0)
 	ctx := context.TODO()
 
 	sut := &AggSender{
@@ -677,8 +679,8 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		epochNotifier: epochNotifierMock,
 		flow: flows.NewPPFlow(logger,
 			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
-				l1InfoTreeQuerierMock, flows.NewBaseFlowConfigDefault()),
-			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer),
+				l1InfoTreeQuerierMock, lerQuerier, flows.NewBaseFlowConfigDefault()),
+			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true),
 	}
 	var flowMock *mocks.AggsenderFlow
 	if creationFlags&testDataFlagMockFlow != 0 {

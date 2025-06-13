@@ -204,7 +204,8 @@ func (p *processor) GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64
 	info := &L1InfoTreeLeaf{}
 	err = meddler.QueryRow(
 		tx, info,
-		`SELECT * FROM l1info_leaf ORDER BY block_num DESC, block_pos DESC LIMIT 1;`,
+		`SELECT * FROM l1info_leaf WHERE block_num <= $1 ORDER BY block_num DESC, block_pos DESC LIMIT 1;`,
+		blockNum,
 	)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

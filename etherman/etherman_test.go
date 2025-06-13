@@ -4,6 +4,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman/mocks"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -111,22 +112,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 			mockSetup: func(m *mocks.RollupManagerContract) {
 				m.EXPECT().
 					RollupIDToRollupData(mock.Anything, mock.Anything).
-					Return(struct {
-						RollupContract                 common.Address
-						ChainID                        uint64
-						Verifier                       common.Address
-						ForkID                         uint64
-						LastLocalExitRoot              [32]byte
-						LastBatchSequenced             uint64
-						LastVerifiedBatch              uint64
-						LastPendingState               uint64
-						LastPendingStateConsolidated   uint64
-						LastVerifiedBatchBeforeUpgrade uint64
-						RollupTypeID                   uint64
-						RollupCompatibilityID          uint8
-					}{
-						ChainID: 999,
-					}, nil)
+					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{ChainID: 999}, nil)
 			},
 			expectedID:  999,
 			expectedErr: "",
@@ -137,20 +123,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 			mockSetup: func(m *mocks.RollupManagerContract) {
 				m.EXPECT().
 					RollupIDToRollupData(mock.Anything, mock.Anything).
-					Return(struct {
-						RollupContract                 common.Address
-						ChainID                        uint64
-						Verifier                       common.Address
-						ForkID                         uint64
-						LastLocalExitRoot              [32]byte
-						LastBatchSequenced             uint64
-						LastVerifiedBatch              uint64
-						LastPendingState               uint64
-						LastPendingStateConsolidated   uint64
-						LastVerifiedBatchBeforeUpgrade uint64
-						RollupTypeID                   uint64
-						RollupCompatibilityID          uint8
-					}{}, errors.New("call failed"))
+					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{ChainID: 999}, errors.New("call failed"))
 			},
 			expectedID:  0,
 			expectedErr: "call failed",
@@ -161,22 +134,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 			mockSetup: func(m *mocks.RollupManagerContract) {
 				m.EXPECT().
 					RollupIDToRollupData(mock.Anything, mock.Anything).
-					Return(struct {
-						RollupContract                 common.Address
-						ChainID                        uint64
-						Verifier                       common.Address
-						ForkID                         uint64
-						LastLocalExitRoot              [32]byte
-						LastBatchSequenced             uint64
-						LastVerifiedBatch              uint64
-						LastPendingState               uint64
-						LastPendingStateConsolidated   uint64
-						LastVerifiedBatchBeforeUpgrade uint64
-						RollupTypeID                   uint64
-						RollupCompatibilityID          uint8
-					}{
-						ChainID: 0,
-					}, nil)
+					Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{ChainID: 0}, nil)
 			},
 			expectedID:  0,
 			expectedErr: "error: chainID received is 0",

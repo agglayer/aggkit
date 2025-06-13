@@ -20,14 +20,13 @@ func TestGetBridgesAndClaims(t *testing.T) {
 		name            string
 		fromBlock       uint64
 		toBlock         uint64
-		allowEmptyCert  bool
 		mockFn          func(*mocks.L2BridgeSyncer)
 		expectedBridges []bridgesync.Bridge
 		expectedClaims  []bridgesync.Claim
 		expectedError   string
 	}{
 		{
-			name:      "success - valid bridges and claims - no empty cert",
+			name:      "success - valid bridges and claims",
 			fromBlock: 100,
 			toBlock:   200,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
@@ -78,34 +77,6 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			},
 			expectedBridges: nil,
 			expectedClaims:  nil,
-			allowEmptyCert:  true,
-		},
-		{
-			name:      "error - no bridges - no empty cert",
-			fromBlock: 100,
-			toBlock:   200,
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, nil)
-			},
-			expectedBridges: nil,
-			expectedClaims:  nil,
-			expectedError:   "no bridge exits consumed, no need to send a certificate from block: 100 to block: 200",
-		},
-		{
-			name:      "no bridges, has claims - empty cert",
-			fromBlock: 100,
-			toBlock:   200,
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return([]bridgesync.Claim{
-					{BlockNum: 200, BlockPos: 1},
-				}, nil)
-			},
-			expectedBridges: nil,
-			expectedClaims: []bridgesync.Claim{
-				{BlockNum: 200, BlockPos: 1},
-			},
-			allowEmptyCert: true,
 		},
 	}
 
@@ -121,7 +92,7 @@ func TestGetBridgesAndClaims(t *testing.T) {
 
 			bridgeQuerier := NewBridgeDataQuerier(mockSyncer)
 
-			bridges, claims, err := bridgeQuerier.GetBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock, tc.allowEmptyCert)
+			bridges, claims, err := bridgeQuerier.GetBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

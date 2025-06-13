@@ -187,6 +187,9 @@ GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = true
+RequireOneBridgeInPPCertificate = false
+RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
+RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectTimeout = "5s"
