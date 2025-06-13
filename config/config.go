@@ -64,6 +64,7 @@ const (
 		"use AggSender.AggkitProverClient.RequestTimeout instead"
 	aggchainProofGenAggchainProofTimeoutDeprecated = "AggchainProofGen.GenerateAggchainProofTimeout is deprecated, " +
 		"use AggchainProofGen.AggkitProverClient.RequestTimeout instead"
+	aggsenderRequireNoFEPBlockGapDeprecated = "AggSender.RequireNoFEPBlockGap is deprecated and no longer used"
 )
 
 type DeprecatedFieldsError struct {
@@ -145,6 +146,10 @@ var (
 		{
 			FieldNamePattern: "AggchainProofGen.GenerateAggchainProofTimeout",
 			Reason:           aggchainProofGenAggchainProofTimeoutDeprecated,
+		},
+		{
+			FieldNamePattern: "AggSender.RequireNoFEPBlockGap",
+			Reason:           aggsenderRequireNoFEPBlockGapDeprecated,
 		},
 	}
 )

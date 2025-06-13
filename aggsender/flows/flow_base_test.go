@@ -494,3 +494,116 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 		})
 	}
 }
+
+func Test_baseFlow_VerifyBuildParams(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	testCases := []struct {
+		name          string
+		buildParams   *types.CertificateBuildParams
+		mockFn        func(*mocks.BridgeQuerier)
+		expectedError string
+	}{
+		{
+			name: "invalid retry starting block",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock:  10,
+				ToBlock:    15,
+				RetryCount: 1,
+				LastSentCertificate: &types.CertificateHeader{
+					Height:    1,
+					Status:    agglayertypes.InError,
+					FromBlock: 5,
+					ToBlock:   10,
+				},
+			},
+			expectedError: "retry certificate fromBlock 10 != last sent certificate fromBlock 5",
+		},
+		{
+			name: "error getting number of bridge transactions",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 10,
+				ToBlock:   15,
+				LastSentCertificate: &types.CertificateHeader{
+					Height:    1,
+					Status:    agglayertypes.Settled,
+					FromBlock: 5,
+					ToBlock:   7,
+				},
+			},
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+				mockL2BridgeQuerier.EXPECT().NumOfBridgeTransactions(ctx, uint64(8), uint64(9), true).
+					Return(0, 0, errors.New("some error"))
+			},
+			expectedError: "error getting bridges and claims in the gap FromBlock: 8, ToBlock: 9: some error",
+		},
+		{
+			name: "non empty gap",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 15,
+				ToBlock:   20,
+				LastSentCertificate: &types.CertificateHeader{
+					Height:    1,
+					Status:    agglayertypes.Settled,
+					FromBlock: 10,
+					ToBlock:   12,
+				},
+			},
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+				mockL2BridgeQuerier.EXPECT().NumOfBridgeTransactions(ctx, uint64(13), uint64(14), true).Return(3, 2, nil)
+			},
+			expectedError: " there are new bridges or claims in the gap FromBlock: 13, ToBlock: 14, len(bridges)=3. len(claims)=2",
+		},
+		{
+			name: "empty gap - last sent certificate is InError",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 15,
+				ToBlock:   20,
+				LastSentCertificate: &types.CertificateHeader{
+					Height:    1,
+					Status:    agglayertypes.InError,
+					FromBlock: 15,
+					ToBlock:   20,
+				},
+			},
+		},
+		{
+			name: "invalid claim GER",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 1,
+				ToBlock:   10,
+				Claims: []bridgesync.Claim{
+					{GlobalExitRoot: common.HexToHash("0x123"), MainnetExitRoot: common.HexToHash("0x456"), RollupExitRoot: common.HexToHash("0x789")},
+				},
+			},
+			expectedError: "GER mismatch",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
+			if tc.mockFn != nil {
+				tc.mockFn(mockL2BridgeQuerier)
+			}
+
+			log := log.WithFields("test", t.Name())
+			f := &baseFlow{
+				log:             log,
+				l2BridgeQuerier: mockL2BridgeQuerier,
+			}
+
+			err := f.VerifyBuildParams(ctx, tc.buildParams)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

@@ -139,3 +139,8 @@ func (c *CertificateBuildParams) MaxDepositCount() uint32 {
 	}
 	return c.Bridges[len(c.Bridges)-1].DepositCount
 }
+
+// IsARetry returns true if the certificate build params is a retry
+func (c *CertificateBuildParams) IsARetry() bool {
+	return c != nil && c.RetryCount > 0 && c.LastSentCertificate != nil
+}
