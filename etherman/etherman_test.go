@@ -163,7 +163,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 	}
 }
 
-func TestGetRollupID(t *testing.T) {
+func TestFetchRollupID(t *testing.T) {
 	testAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
 
 	tests := []struct {
@@ -217,8 +217,7 @@ func TestGetRollupID(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			mockRollupManager := tc.setupMock()
 
-			id, err := getRollupID(mockRollupManager, testAddr)
-
+			id, err := fetchRollupID(mockRollupManager, testAddr)
 			if tc.expectedErrMsg != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tc.expectedErrMsg)

@@ -32,60 +32,85 @@ type Client struct {
 }
 
 // NewClient creates a new etherman client instance
-func NewClient(l1Config config.L1NetworkConfig,
+func NewClient(
+	l1Config config.L1NetworkConfig,
 	ethClientFactory DialFunc,
 	rollupManagerFactory RollupManagerFactoryFunc,
 ) (*Client, error) {
-	ethClient, err := ethClientFactory(l1Config.URL)
-	if err != nil {
-		log.Errorf("error connecting to %s: %v", l1Config.URL, err)
-		return nil, err
-	}
-
-	rollupManagerSC, err := rollupManagerFactory(l1Config.RollupManagerAddr, ethClient)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create rollup manager contract binding: %w", err)
-	}
-
-	// Populate rollup id
-	rollupID, err := getRollupID(rollupManagerSC, l1Config.RollupAddr)
+	ethClient, err := dialRPC(l1Config.URL, ethClientFactory)
 	if err != nil {
 		return nil, err
 	}
+
+	rmContract, err := bindRollupManagerContract(l1Config.RollupManagerAddr, ethClient, rollupManagerFactory)
+	if err != nil {
+		return nil, err
+	}
+
+	rollupID, err := fetchRollupID(rmContract, l1Config.RollupAddr)
+	if err != nil {
+		return nil, err
+	}
+
 	log.Infof("retrieved rollup id %d from rollup manager", rollupID)
 
 	return &Client{
-		rollupManagerSC: rollupManagerSC,
+		rollupManagerSC: rmContract,
 		RollupID:        rollupID,
 	}, nil
 }
 
-// getRollupID reads the rollup id from rollup manager contract based on provided rollup address
-func getRollupID(rollupManagerSC RollupManagerContract, rollupAddr common.Address) (uint32, error) {
-	rollupID, err := rollupManagerSC.RollupAddressToID(&bind.CallOpts{Pending: false}, rollupAddr)
+// dialRPC creates an Ethereum RPC client by invoking the provided DialFunc with the given URL.
+// It logs and returns an error if the connection attempt fails.
+func dialRPC(url string, dial DialFunc) (aggkittypes.BaseEthereumClienter, error) {
+	client, err := dial(url)
 	if err != nil {
-		return 0, fmt.Errorf("failed to retrieve rollup id from rollup manager contract: %+w", err)
+		log.Errorf("error connecting to %s: %v", url, err)
+		return nil, err
 	}
+	return client, nil
+}
 
+// bindRollupManagerContract creates a RollupManager smart contract binding using the provided factory function.
+// It takes a contract address and an Ethereum client, and returns an initialized RollupManagerContract instance.
+// Returns an error if the contract binding cannot be created.
+func bindRollupManagerContract(
+	addr common.Address,
+	client aggkittypes.BaseEthereumClienter,
+	factory RollupManagerFactoryFunc,
+) (RollupManagerContract, error) {
+	contract, err := factory(addr, client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create rollup manager contract binding: %w", err)
+	}
+	return contract, nil
+}
+
+// fetchRollupID reads the rollup id from rollup manager contract based on provided rollup address
+func fetchRollupID(rm RollupManagerContract, rollupAddr common.Address) (uint32, error) {
+	rollupID, err := rm.RollupAddressToID(&bind.CallOpts{Pending: false}, rollupAddr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to retrieve rollup id from rollup manager contract: %w", err)
+	}
 	if rollupID == 0 {
 		return 0, fmt.Errorf("invalid rollup id value (%d). Check if the rollup contract address is correct %s",
 			rollupID, rollupAddr)
 	}
-
 	return rollupID, nil
 }
 
 // GetL2ChainID returns L2 Chain ID
 func (c *Client) GetL2ChainID() (uint64, error) {
 	rollupData, err := c.rollupManagerSC.RollupIDToRollupData(&bind.CallOpts{Pending: false}, c.RollupID)
-	log.Infof("rollup chain id (read from rollup manager): %d", rollupData.ChainID)
 	if err != nil {
 		log.Debug("error from rollupManager: ", err)
-
 		return 0, err
-	} else if rollupData.ChainID == 0 {
+	}
+
+	if rollupData.ChainID == 0 {
 		return 0, fmt.Errorf("error: chainID received is 0")
 	}
 
+	log.Infof("rollup chain id (read from rollup manager): %d", rollupData.ChainID)
 	return rollupData.ChainID, nil
 }
