@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
 )
@@ -30,7 +30,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfg, err := Load(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
-	require.Equal(t, etherman.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
+	require.Equal(t, aggkittypes.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
 	require.Equal(t, cfg.AggSender.RequireNoFEPBlockGap, true)
@@ -92,6 +92,11 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.NoError(t, err)
 	defer os.Remove(tmpFile.Name())
 	_, err = tmpFile.Write([]byte(`
+	[Common]
+	IsValidiumMode = true
+	ContractVersions="banana"
+	Translator = ""
+
 	[L1Config]
 	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 
@@ -106,18 +111,42 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
 	GenerateAggchainProofTimeout = "1h"
+
+	[NetworkConfig.L1]
+	URL="{{L1URL}}"
+	PolAddr="{{L1Config.polTokenAddress}}"
+	ZkEVMAddr="{{L1Config.polygonZkEVMAddress}}"
+
+	[Etherman]
+	URL = "{{L1URL}}"
+	ForkIDChunkSize = 100
+	[Etherman.EthermanConfig]
+		URL = "{{L1URL}}"
+		MultiGasProvider = false
+		L1ChainID = {{L1NetworkConfig.L1ChainID}}
+		HTTPHeaders = []
+		[Etherman.EthermanConfig.Etherscan]
+			ApiKey = ""
+			Url = "https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
 	_, err = Load(ctx)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), bridgeMetadataAsHashDeprecated)
-	require.Contains(t, err.Error(), bridgeAddrSetOnWrongSection)
-	require.Contains(t, err.Error(), aggsenderAgglayerURLDeprecated)
-	require.Contains(t, err.Error(), aggsenderAggchainProofURLDeprecated)
-	require.Contains(t, err.Error(), aggchainProofGenAggchainProofURLDeprecated)
-	require.Contains(t, err.Error(), aggsenderUseAgglayerTLSDeprecated)
-	require.Contains(t, err.Error(), aggsenderUseAggkitProverTLSDeprecated)
-	require.Contains(t, err.Error(), aggsenderAggchainProofTimeoutDeprecated)
-	require.Contains(t, err.Error(), aggchainProofGenAggchainProofTimeoutDeprecated)
+	require.ErrorContains(t, err, bridgeMetadataAsHashHint)
+	require.ErrorContains(t, err, bridgeAddrSetOnWrongSection)
+	require.ErrorContains(t, err, aggsenderAgglayerClientHint)
+	require.ErrorContains(t, err, aggsenderAggkitProverClientHint)
+	require.ErrorContains(t, err, aggsenderAggkitProverClientHint)
+	require.ErrorContains(t, err, aggsenderAgglayerClientUseTLSHint)
+	require.ErrorContains(t, err, aggsenderAggkitProverClientUseTLSHint)
+	require.ErrorContains(t, err, aggsenderUseRequestTimeoutHint)
+	require.ErrorContains(t, err, aggchainProofGenUseRequestTimeoutHint)
+	require.ErrorContains(t, err, contractVersionsDeprecatedHint)
+	require.ErrorContains(t, err, isValidiumModeDeprecatedHint)
+	require.ErrorContains(t, err, translatorDeprecatedHint)
+	require.ErrorContains(t, err, ethermanDeprecatedHint)
+	require.ErrorContains(t, err, networkConfigDeprecatedHint)
+	require.ErrorContains(t, err, l1NetworkConfigUsePolTokenAddrHint)
+	require.ErrorContains(t, err, l1NetworkConfigUseRollupAddrrHint)
 }

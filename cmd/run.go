@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
@@ -34,6 +35,7 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
@@ -58,7 +60,7 @@ func start(cliCtx *cli.Context) error {
 		prometheus.Init()
 	}
 	components := cliCtx.StringSlice(config.FlagComponents)
-	l1Client := runL1ClientIfNeeded(components, cfg.Etherman.URL)
+	l1Client := runL1ClientIfNeeded(components, cfg.L1NetworkConfig.URL)
 	l2Client := runL2ClientIfNeeded(components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
 	go func() {
@@ -74,12 +76,16 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	rollupID := getRollUpIDIfNeeded(components, cfg.NetworkConfig.L1Config, l1Client)
+	rollupDataQuerier, err := createRollupDataQuerier(cfg.L1NetworkConfig, components)
+	if err != nil {
+		return fmt.Errorf("failed to create etherman client: %w", err)
+	}
+
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
 	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, reorgDetectorL1,
 		l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupID)
+		l2Client, rollupDataQuerier.RollupID)
 	lastGERSync := runLastGERSyncIfNeeded(
 		cliCtx.Context, components, cfg.LastGERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
@@ -87,7 +93,7 @@ func start(cliCtx *cli.Context) error {
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
-			aggOracle := createAggoracle(*cfg, l1Client, l2Client, l1InfoTreeSync)
+			aggOracle := createAggoracle(rollupDataQuerier, *cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(cliCtx.Context)
 
 		case aggkitcommon.BRIDGE:
@@ -109,6 +115,7 @@ func start(cliCtx *cli.Context) error {
 				l1InfoTreeSync,
 				l2BridgeSync,
 				l2Client,
+				rollupDataQuerier,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -187,7 +194,8 @@ func createAggSender(
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
-	l2Client aggkittypes.BaseEthereumClienter) (*aggsender.AggSender, error) {
+	l2Client aggkittypes.BaseEthereumClienter,
+	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	if err := cfg.AgglayerClient.Validate(); err != nil {
@@ -201,7 +209,7 @@ func createAggSender(
 
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
-			BlockFinalityType:     etherman.NewBlockNumberFinality(cfg.BlockFinality),
+			BlockFinalityType:     aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 			CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 		}, logger, nil)
 	if err != nil {
@@ -225,21 +233,18 @@ func createAggSender(
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
 	return aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
 }
 
 func createAggoracle(
+	ethermanClient *etherman.RollupDataQuerier,
 	cfg config.Config,
 	l1Client,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
 ) *aggoracle.AggOracle {
 	logger := log.WithFields("module", aggkitcommon.AGGORACLE)
-	ethermanClient, err := etherman.NewClient(cfg.Etherman, cfg.NetworkConfig.L1Config, cfg.Common)
-	if err != nil {
-		logger.Fatal(err)
-	}
-	l2ChainID, err := ethermanClient.GetL2ChainID()
+	l2ChainID, err := ethermanClient.GetRollupChainID()
 	if err != nil {
 		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
 	}
@@ -291,7 +296,7 @@ func createAggoracle(
 		sender,
 		l1Client,
 		l1InfoTreeSyncer,
-		etherman.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
 	if err != nil {
@@ -374,7 +379,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.GlobalExitRootAddr,
 		cfg.L1InfoTreeSync.RollupManagerAddr,
 		cfg.L1InfoTreeSync.SyncBlockChunkSize,
-		etherman.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
 		reorgDetector,
 		l1Client,
 		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
@@ -382,7 +387,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.RetryAfterErrorPeriod.Duration,
 		cfg.L1InfoTreeSync.MaxRetryAttemptsAfterError,
 		l1infotreesync.FlagNone,
-		etherman.FinalizedBlock,
+		aggkittypes.FinalizedBlock,
 		cfg.L1InfoTreeSync.RequireStorageContentCompatibility,
 	)
 	if err != nil {
@@ -410,18 +415,6 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) aggkittypes.EthCl
 	}
 
 	return aggkittypes.NewDefaultEthClient(l1Client, l1Client.Client())
-}
-
-func getRollUpIDIfNeeded(components []string, networkConfig ethermanconfig.L1Config,
-	l1Client aggkittypes.BaseEthereumClienter) uint32 {
-	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.BRIDGE}, components) {
-		return 0
-	}
-	rollupID, err := etherman.GetRollupID(networkConfig, networkConfig.ZkEVMAddr, l1Client)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return rollupID
 }
 
 func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
@@ -512,7 +505,7 @@ func runLastGERSyncIfNeeded(
 		l1InfoTreeSync,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
-		etherman.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
@@ -548,7 +541,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL1,
 		l1Client,
 		cfg.InitialBlockNum,
@@ -587,7 +580,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		etherman.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
 		reorgDetectorL2,
 		l2Client,
 		cfg.InitialBlockNum,
@@ -668,4 +661,28 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 		log.Errorf("closed http connection for prometheus server: %v", err)
 		return
 	}
+}
+
+// createRollupDataQuerier initializes and returns the rollup data querier if any of the required components
+// (AGGORACLE, AGGCHAINPROOFGEN, AGGSENDER, BRIDGE) are needed. The client is configured with
+// the provided L1 network configuration and uses default implementations for creating Ethereum
+// clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
+func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*etherman.RollupDataQuerier, error) {
+	if !isNeeded([]string{
+		aggkitcommon.AGGORACLE,
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.AGGSENDER,
+		aggkitcommon.BRIDGE,
+	}, components) {
+		return nil, nil
+	}
+
+	return etherman.NewRollupDataQuerier(cfg,
+		func(url string) (aggkittypes.BaseEthereumClienter, error) {
+			return ethclient.Dial(url)
+		},
+		func(rollupAddr common.Address,
+			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
+			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
+		})
 }

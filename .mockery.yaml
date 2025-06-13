@@ -104,5 +104,3 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
-      exclude:
-        - RuntimeDataGetterFunc

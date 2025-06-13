@@ -7,9 +7,9 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -37,7 +37,7 @@ func New(
 	chainSender ChainSender,
 	l1Client ethereum.ChainReader,
 	l1InfoTreeSyncer L1InfoTreer,
-	blockFinalityType etherman.BlockNumberFinality,
+	blockFinalityType aggkittypes.BlockNumberFinality,
 	waitPeriodNextGER time.Duration,
 ) (*AggOracle, error) {
 	finality, err := blockFinalityType.ToBlockNum()
