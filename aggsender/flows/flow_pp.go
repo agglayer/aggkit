@@ -30,12 +30,12 @@ func NewPPFlow(log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
 	signer signertypes.Signer,
 	maxL2BlockNumber uint64) *PPFlow {
-	feature := &FeatureMaxL2BlockNumber{
-		maxL2BlockNumber:         maxL2BlockNumber,
-		log:                      log,
-		allowToResizeRetryCert:   true,
-		allowToSendNoBridgesCert: false,
-	}
+	feature := NewFeatureMaxL2BlockNumber(
+		maxL2BlockNumber,
+		log,
+		true,
+		false,
+	)
 	return &PPFlow{
 		signer:                signer,
 		log:                   log,
@@ -69,7 +69,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		// If the feature is enabled, we need to adapt the build params
 		buildParams, err = p.featureMaxL2Block.AdaptCertificate(buildParams)
 		if err != nil {
-			return nil, fmt.Errorf("ppFlow - error adapting MaxL2Block certificate: %w", err)
+			return nil, fmt.Errorf("ppFlow - error adapting  certificate to MaxL2Block. Err: %w", err)
 		}
 	}
 

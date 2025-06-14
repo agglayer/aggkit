@@ -100,12 +100,12 @@ func NewAggchainProverFlow(
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	optimisticSigner types.OptimisticSigner,
 ) *AggchainProverFlow {
-	feature := &FeatureMaxL2BlockNumber{
-		maxL2BlockNumber:         aggChainProverConfig.maxL2BlockNumber,
-		log:                      log,
-		allowToResizeRetryCert:   false, // AggchainProverFlow allows to resize retry certs
-		allowToSendNoBridgesCert: true,  // AggchainProverFlow allows to send no bridges certs
-	}
+	feature := NewFeatureMaxL2BlockNumber(
+		aggChainProverConfig.maxL2BlockNumber,
+		log,
+		false, // AggchainProverFlow allows to resize retry certs
+		true,  // AggchainProverFlow allows to send no bridges certs
+	)
 	return &AggchainProverFlow{
 		log:                   log,
 		storage:               storage,
@@ -221,7 +221,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			// If the feature is enabled, we need to adapt the build params
 			buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
 			if err != nil {
-				return nil, fmt.Errorf("aggchainProverFlow - error adapting MaxL2Block certificate: %w", err)
+				return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block.Err: %w", err)
 			}
 		}
 
@@ -262,7 +262,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		// If the feature is enabled, we need to adapt the build params
 		buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
 		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error adapting MaxL2Block certificate: %w", err)
+			return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block. Err: %w", err)
 		}
 	}
 

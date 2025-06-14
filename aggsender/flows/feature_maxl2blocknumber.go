@@ -54,10 +54,7 @@ func (f *FeatureMaxL2BlockNumber) isUpcomingNextRange(
 	// e.g: max= 150
 	// last sent cert: fromBlock= 100, toBlock= 150
 	// upcoming next range: fromBlock= 151, toBlock= 200
-	if fromBlock == f.maxL2BlockNumber+1 && toBlock > f.maxL2BlockNumber {
-		return true
-	}
-	return false
+	return fromBlock == f.maxL2BlockNumber+1 && toBlock > f.maxL2BlockNumber
 }
 
 // AdaptCertificate adjusts the certificate build parameters to ensure that
