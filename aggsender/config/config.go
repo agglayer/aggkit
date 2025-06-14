@@ -73,6 +73,9 @@ type Config struct {
 	RequireNoFEPBlockGap bool `mapstructure:"RequireNoFEPBlockGap"`
 	// OptimisticModeConfig is the configuration for optimistic mode (required by FEP mode)
 	OptimisticModeConfig optimistic.Config `mapstructure:"OptimisticModeConfig"`
+	// MaxL2BlockNumber is the last L2 block number that is going to be included in a certificate
+	// 0 means disabled
+	MaxL2BlockNumber uint64 `mapstructure:"MaxL2BlockNumber"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

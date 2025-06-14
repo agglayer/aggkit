@@ -50,6 +50,7 @@ func NewFlow(
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
 			signer,
+			cfg.MaxL2BlockNumber,
 		), nil
 	case types.AggchainProofMode:
 		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
@@ -94,7 +95,7 @@ func NewFlow(
 		return NewAggchainProverFlow(
 			logger,
 			baseFlow,
-			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap),
+			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap, cfg.MaxL2BlockNumber),
 			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,

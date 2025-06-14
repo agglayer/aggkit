@@ -132,6 +132,11 @@ func (c *CertificateBuildParams) IsEmpty() bool {
 	return c.NumberOfBridges() == 0 && c.NumberOfClaims() == 0
 }
 
+// IsARetry returns true if the certificate is a retry
+func (c *CertificateBuildParams) IsARetry() bool {
+	return c != nil && c.RetryCount > 0
+}
+
 // MaxDepoitCount returns the maximum deposit count in the certificate
 func (c *CertificateBuildParams) MaxDepositCount() uint32 {
 	if c == nil || c.NumberOfBridges() == 0 {

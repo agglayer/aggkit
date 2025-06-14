@@ -244,6 +244,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 UseAgglayerTLS = false
 UseAggkitProverTLS = false
 RequireNoFEPBlockGap = true
+MaxL2BlockNumber = 0
 	[AggSender.MaxSubmitCertificateRate]
 		NumRequests = 20
 		Interval = "1h"
