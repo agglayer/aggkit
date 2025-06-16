@@ -298,7 +298,6 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 			return nil, nil
 		}
 		errNew := fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
-		a.log.Error(errNew.Error())
 		return nil, errNew
 	}
 
