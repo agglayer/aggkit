@@ -103,6 +103,7 @@ func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *
 		Return(nil, nil)
 	// Now calls to aggkit-prover service:
 	data.mockAggchainProofClient.EXPECT().GenerateAggchainProof(mock.Anything).Return(&types.AggchainProof{
+		EndBlock: 60,
 		SP1StarkProof: &types.SP1StarkProof{
 			Proof: []byte("proof"),
 		},

@@ -74,6 +74,17 @@ func TestAdaptCertificateForFEP(t *testing.T) {
 			expectetErrorContain: "upcoming next range",
 		},
 		{
+			name:             "exceeded the maximum block",
+			maxL2BlockNumber: 150,
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 251,
+				ToBlock:   300,
+			},
+			expectedBuildParams:  nil,
+			expectedError:        ErrComplete,
+			expectetErrorContain: "exceeded the maximum block",
+		},
+		{
 			name:             "Adjust range successfully",
 			maxL2BlockNumber: 150,
 			buildParams: &types.CertificateBuildParams{
@@ -195,7 +206,7 @@ func TestAdaptCertificateForPP(t *testing.T) {
 				tt.maxL2BlockNumber,
 				log.WithFields("module", "feature_maxl2blocknumber_test"),
 				true,
-				false,
+				true,
 			)
 			result, err := sut.AdaptCertificate(tt.buildParams)
 			log.Infof("Test [%s]: maxL2BlockNumber: %d, buildParam:%+v, Result: %+v, Error: %v",

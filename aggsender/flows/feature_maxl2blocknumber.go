@@ -72,7 +72,7 @@ func (f *FeatureMaxL2BlockNumber) AdaptCertificate(
 	if f.IsAllowedBlockNumber(buildParams.ToBlock) {
 		return buildParams, nil
 	}
-	f.log.Infof("Adapting certificate build params. "+
+	f.log.Infof("featureMaxL2BlockNumber. Adapting certificate build params. "+
 		"maxL2BlockNumber: %d, FromBlock: %d, ToBlock: %d",
 		f.maxL2BlockNumber, buildParams.FromBlock, buildParams.ToBlock)
 	if buildParams.IsARetry() && !f.allowToResizeRetryCert {
@@ -97,6 +97,9 @@ func (f *FeatureMaxL2BlockNumber) AdaptCertificate(
 			"maxL2BlockNumber: %d. but the current buildParams has FromBlock: %d. Err: %w",
 			f.maxL2BlockNumber, buildParams.FromBlock, ErrComplete)
 	}
+	f.log.Infof("featureMaxL2BlockNumber. Adjusting the certificate build params ToBlock: %d to "+
+		"maxL2BlockNumber: %d",
+		buildParams.ToBlock, f.maxL2BlockNumber)
 	newBuildParams, err := buildParams.Range(buildParams.FromBlock, f.maxL2BlockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("featureMaxL2BlockNumber error adjusting the ToBlock of the certificate  %d -> %d: %w",

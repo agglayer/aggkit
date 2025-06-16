@@ -38,7 +38,8 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		return c, nil
 	}
 	if c.FromBlock > fromBlock || c.ToBlock < toBlock {
-		return nil, fmt.Errorf("invalid range. FromBlock %d and ToBlock %d are not within the certificate range FromBlock %d and ToBlock %d",
+		return nil, fmt.Errorf("invalid range. FromBlock %d and ToBlock %d are not within "+
+			"the certificate range FromBlock %d and ToBlock %d",
 			fromBlock, toBlock, c.FromBlock, c.ToBlock)
 	}
 
