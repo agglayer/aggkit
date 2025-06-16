@@ -88,6 +88,15 @@ func (f *FeatureMaxL2BlockNumber) AdaptCertificate(
 			"after the last sent certificate. FromBlock: %d, ToBlock: %d, maxL2BlockNumber: %d. Err: %w",
 			buildParams.FromBlock, buildParams.ToBlock, f.maxL2BlockNumber, ErrComplete)
 	}
+	if buildParams.FromBlock > f.maxL2BlockNumber {
+		// If the FromBlock is greater than the maxL2BlockNumber, we can't send this certificate
+		f.log.Warnf("featureMaxL2BlockNumber. NextCert is not the upcoming next range, but is far from it."+
+			" maxL2BlockNumber: %d, FromBlock: %d. Can be more blocks that expected in a certificate. ",
+			f.maxL2BlockNumber, buildParams.FromBlock)
+		return nil, fmt.Errorf("featureMaxL2BlockNumber. Cert has exceeded the maximum block. "+
+			"maxL2BlockNumber: %d. but the current buildParams has FromBlock: %d. Err: %w",
+			f.maxL2BlockNumber, buildParams.FromBlock, ErrComplete)
+	}
 	newBuildParams, err := buildParams.Range(buildParams.FromBlock, f.maxL2BlockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("featureMaxL2BlockNumber error adjusting the ToBlock of the certificate  %d -> %d: %w",
