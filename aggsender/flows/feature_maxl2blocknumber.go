@@ -42,7 +42,7 @@ func (f *FeatureMaxL2BlockNumber) IsEnabled() bool {
 
 func (f *FeatureMaxL2BlockNumber) IsAllowedBlockNumber(toBlock uint64) bool {
 	if !f.IsEnabled() {
-		return false
+		return true
 	}
 	return toBlock <= f.maxL2BlockNumber
 }

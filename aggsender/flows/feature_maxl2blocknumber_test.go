@@ -249,4 +249,30 @@ func TestIsUpcomingNextRange(t *testing.T) {
 
 	require.True(t, sut.isUpcomingNextRange(101, 102))
 	require.False(t, sut.isUpcomingNextRange(100, 102))
+	sutDisabled := NewFeatureMaxL2BlockNumber(
+		0,
+		log.WithFields("module", "feature_maxl2blocknumber_test"),
+		false,
+		false,
+	)
+	require.False(t, sutDisabled.isUpcomingNextRange(1, 2))
+}
+
+func TestIsAllowedBlockNumber(t *testing.T) {
+	sut := NewFeatureMaxL2BlockNumber(
+		100,
+		log.WithFields("module", "feature_maxl2blocknumber_test"),
+		false,
+		false,
+	)
+	require.True(t, sut.IsAllowedBlockNumber(100))
+	require.True(t, sut.IsAllowedBlockNumber(50))
+	require.False(t, sut.IsAllowedBlockNumber(101))
+	sutDisabled := NewFeatureMaxL2BlockNumber(
+		0,
+		log.WithFields("module", "feature_maxl2blocknumber_test"),
+		false,
+		false,
+	)
+	require.True(t, sutDisabled.IsAllowedBlockNumber(1))
 }
