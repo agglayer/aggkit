@@ -13,7 +13,7 @@ require (
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.14
 	github.com/agglayer/go_signer v0.0.7
 	github.com/ethereum/go-ethereum v1.15.5
-	github.com/gin-gonic/gin v1.10.0
+	github.com/gin-gonic/gin v1.10.1
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 	github.com/hermeznetwork/tracerr v0.3.2
 	github.com/iden3/go-iden3-crypto v0.0.17
