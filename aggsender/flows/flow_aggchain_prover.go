@@ -104,7 +104,7 @@ func NewAggchainProverFlow(
 		aggChainProverConfig.maxL2BlockNumber,
 		log,
 		false, // AggchainProverFlow allows to resize retry certs
-		true,  // AggchainProverFlow allows to send no bridges certs
+		false, // AggchainProverFlow allows to send no bridges certs
 	)
 	return &AggchainProverFlow{
 		log:                   log,

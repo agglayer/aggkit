@@ -94,7 +94,7 @@ func TestAdaptCertificateForFEP(t *testing.T) {
 				tt.maxL2BlockNumber,
 				log.WithFields("module", "feature_maxl2blocknumber_test"),
 				false,
-				true,
+				false,
 			)
 			result, err := sut.AdaptCertificate(tt.buildParams)
 			log.Infof("Test [%s]: maxL2BlockNumber: %d, buildParam:%+v, Result: %+v, Error: %v",
@@ -233,7 +233,7 @@ func TestIsUpcomingNextRange(t *testing.T) {
 		100,
 		log.WithFields("module", "feature_maxl2blocknumber_test"),
 		false,
-		true,
+		false,
 	)
 
 	require.True(t, sut.isUpcomingNextRange(101, 102))

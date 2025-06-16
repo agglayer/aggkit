@@ -34,7 +34,7 @@ func NewPPFlow(log types.Logger,
 		maxL2BlockNumber,
 		log,
 		true,
-		false,
+		true,
 	)
 	return &PPFlow{
 		signer:                signer,

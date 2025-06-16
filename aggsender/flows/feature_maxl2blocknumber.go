@@ -14,23 +14,23 @@ var (
 )
 
 type FeatureMaxL2BlockNumber struct {
-	maxL2BlockNumber         uint64
-	log                      types.Logger
-	allowToResizeRetryCert   bool
-	allowToSendNoBridgesCert bool
+	maxL2BlockNumber              uint64
+	log                           types.Logger
+	allowToResizeRetryCert        bool
+	requireOneBridgeInCertificate bool
 }
 
 func NewFeatureMaxL2BlockNumber(
 	maxL2BlockNumber uint64,
 	log types.Logger,
 	allowToResizeRetryCert bool,
-	allowToSendNoBridgesCert bool,
+	requireOneBridgeInCertificate bool,
 ) *FeatureMaxL2BlockNumber {
 	return &FeatureMaxL2BlockNumber{
-		maxL2BlockNumber:         maxL2BlockNumber,
-		log:                      log,
-		allowToResizeRetryCert:   allowToResizeRetryCert,
-		allowToSendNoBridgesCert: allowToSendNoBridgesCert,
+		maxL2BlockNumber:              maxL2BlockNumber,
+		log:                           log,
+		allowToResizeRetryCert:        allowToResizeRetryCert,
+		requireOneBridgeInCertificate: requireOneBridgeInCertificate,
 	}
 }
 
@@ -96,12 +96,12 @@ func (f *FeatureMaxL2BlockNumber) AdaptCertificate(
 			buildParams.ToBlock, f.maxL2BlockNumber,
 			err)
 	}
-	if f.allowToSendNoBridgesCert && newBuildParams.IsEmpty() {
+	if !f.requireOneBridgeInCertificate && newBuildParams.IsEmpty() {
 		// If we allow to send a certificate with no bridges, we can return the newBuildParams
 		// even if it has no bridges or claims.
 		return newBuildParams, nil
 	}
-	if !f.allowToSendNoBridgesCert && newBuildParams.NumberOfBridges() == 0 {
+	if f.requireOneBridgeInCertificate && newBuildParams.NumberOfBridges() == 0 {
 		// Here it's a problem because we cant send this cert, but maybe it's empty
 		if newBuildParams.NumberOfClaims() > 0 {
 			err = fmt.Errorf("can't send cert.  maxL2BlockNumber: %d"+
