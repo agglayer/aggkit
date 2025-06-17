@@ -1652,7 +1652,7 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 			name: "Invalid GlobalIndex Type",
 			data: []any{
 				[types.DefaultHeight][common.HashLength]byte{},
-				invalidTypePlaceholder, // Invalid GlobalIndex type (should be uint32)
+				invalidTypePlaceholder, // Invalid GlobalIndex type
 				[common.HashLength]byte(mainnetExitRoot.Bytes()),
 				[common.HashLength]byte(rollupExitRoot.Bytes()),
 				uint32(1),
@@ -1970,4 +1970,79 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 			require.Equal(t, tt.expectedIsDecoded, isDecoded)
 		})
 	}
+}
+
+func TestQueryBlockRangeOrdering(t *testing.T) {
+	path := path.Join(t.TempDir(), "bridgeSyncerProcessorOrdering.db")
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger)
+	require.NoError(t, err)
+
+	// Create test data with events in different blocks and positions
+	events := []Event{
+		{
+			Pos: 0,
+			Bridge: &Bridge{
+				BlockNum:     1,
+				BlockPos:     0,
+				DepositCount: 0,
+			},
+		},
+		{
+			Pos: 1,
+			Bridge: &Bridge{
+				BlockNum:     1,
+				BlockPos:     1,
+				DepositCount: 1,
+			},
+		},
+		{
+			Pos: 2,
+			Bridge: &Bridge{
+				BlockNum:     1,
+				BlockPos:     2,
+				DepositCount: 2,
+			},
+		},
+		{
+			Pos: 0,
+			Bridge: &Bridge{
+				BlockNum:     2,
+				BlockPos:     0,
+				DepositCount: 3,
+			},
+		},
+	}
+
+	// Process blocks with events
+	block1 := sync.Block{
+		Num:    1,
+		Hash:   common.HexToHash("0x1"),
+		Events: []interface{}{events[0], events[1], events[2]},
+	}
+	block2 := sync.Block{
+		Num:    2,
+		Hash:   common.HexToHash("0x2"),
+		Events: []interface{}{events[3]},
+	}
+
+	err = p.ProcessBlock(context.Background(), block1)
+	require.NoError(t, err)
+	err = p.ProcessBlock(context.Background(), block2)
+	require.NoError(t, err)
+
+	// Test descending order
+	bridges, err := p.GetBridges(context.Background(), 1, 2)
+	require.NoError(t, err)
+	require.Len(t, bridges, 4)
+
+	// Verify ordering by block_num DESC, block_pos DESC
+	require.Equal(t, uint64(2), bridges[0].BlockNum)
+	require.Equal(t, uint64(0), bridges[0].BlockPos)
+	require.Equal(t, uint64(1), bridges[1].BlockNum)
+	require.Equal(t, uint64(2), bridges[1].BlockPos)
+	require.Equal(t, uint64(1), bridges[2].BlockNum)
+	require.Equal(t, uint64(1), bridges[2].BlockPos)
+	require.Equal(t, uint64(1), bridges[3].BlockNum)
+	require.Equal(t, uint64(0), bridges[3].BlockPos)
 }
