@@ -52,6 +52,9 @@ const (
 
 	// callTracerType is the name of the call tracer
 	callTracerType = "callTracer"
+
+	// methodIDLength is the length of the method ID in bytes
+	methodIDLength = 4
 )
 
 func buildAppender(
@@ -409,10 +412,10 @@ func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.A
 // If a match is found, it decodes the calldata using the ABI of the bridge contract and updates the claim object.
 // Returns true if the calldata is successfully decoded and matches the expected format, otherwise returns false.
 func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) (bool, error) {
-	if len(input) < 4 {
+	if len(input) < methodIDLength {
 		return false, nil
 	}
-	methodID := input[:4]
+	methodID := input[:methodIDLength]
 	switch {
 	case bytes.Equal(methodID, claimAssetEtrogMethodID):
 		fallthrough
@@ -427,7 +430,7 @@ func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) 
 			return false, err
 		}
 
-		data, err := method.Inputs.Unpack(input[4:])
+		data, err := method.Inputs.Unpack(input[methodIDLength:])
 		if err != nil {
 			return false, err
 		}
@@ -457,7 +460,7 @@ func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) 
 			return false, err
 		}
 
-		data, err := method.Inputs.Unpack(input[4:])
+		data, err := method.Inputs.Unpack(input[methodIDLength:])
 		if err != nil {
 			return false, err
 		}
