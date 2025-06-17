@@ -296,7 +296,7 @@ func TestFindCall(t *testing.T) {
 		From: fromAddr,
 		Err:  strPtr("reverted"),
 	}
-	found, err = findCall(root, bridgeAddr, nil)
+	_, err = findCall(root, bridgeAddr, nil)
 	require.Error(t, err)
 
 	// Nested call, only inner is not reverted
@@ -366,7 +366,8 @@ func TestSetClaimCalldata(t *testing.T) {
 		},
 	}
 	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
-		arg := args.Get(0).(*call)
+		arg, ok := args.Get(0).(*call)
+		require.True(t, ok)
 		*arg = *rootCall
 	}).Return(nil)
 
@@ -381,7 +382,8 @@ func TestSetClaimCalldata(t *testing.T) {
 		Err: strPtr("reverted"),
 	}
 	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
-		arg := args.Get(0).(*call)
+		arg, ok := args.Get(0).(*call)
+		require.True(t, ok)
 		*arg = *rootCall
 	}).Return(nil)
 
@@ -402,7 +404,8 @@ func TestSetClaimCalldata(t *testing.T) {
 		},
 	}
 	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
-		arg := args.Get(0).(*call)
+		arg, ok := args.Get(0).(*call)
+		require.True(t, ok)
 		*arg = *rootCall
 	}).Return(nil)
 
@@ -418,7 +421,8 @@ func TestSetClaimCalldata(t *testing.T) {
 		Calls: []call{},
 	}
 	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
-		arg := args.Get(0).(*call)
+		arg, ok := args.Get(0).(*call)
+		require.True(t, ok)
 		*arg = *rootCall
 	}).Return(nil)
 
