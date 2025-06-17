@@ -2036,13 +2036,13 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, bridges, 4)
 
-	// Verify ordering by block_num DESC, block_pos DESC
-	require.Equal(t, uint64(2), bridges[0].BlockNum)
+	// Verify ordering by block_num ASC, block_pos ASC
+	require.Equal(t, uint64(1), bridges[0].BlockNum)
 	require.Equal(t, uint64(0), bridges[0].BlockPos)
 	require.Equal(t, uint64(1), bridges[1].BlockNum)
-	require.Equal(t, uint64(2), bridges[1].BlockPos)
+	require.Equal(t, uint64(1), bridges[1].BlockPos)
 	require.Equal(t, uint64(1), bridges[2].BlockNum)
-	require.Equal(t, uint64(1), bridges[2].BlockPos)
-	require.Equal(t, uint64(1), bridges[3].BlockNum)
+	require.Equal(t, uint64(2), bridges[2].BlockPos)
+	require.Equal(t, uint64(2), bridges[3].BlockNum)
 	require.Equal(t, uint64(0), bridges[3].BlockPos)
 }
