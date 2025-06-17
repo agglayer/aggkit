@@ -19,7 +19,7 @@ type PPFlow struct {
 	signer                signertypes.Signer
 	log                   types.Logger
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-	featureMaxL2Block     types.FeatureMaxL2BlockNumberInterface
+	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
 }
 
 // NewPPFlow returns a new instance of the PPFlow
@@ -30,7 +30,7 @@ func NewPPFlow(log types.Logger,
 	l2BridgeQuerier types.BridgeQuerier,
 	signer signertypes.Signer,
 	maxL2BlockNumber uint64) *PPFlow {
-	feature := NewFeatureMaxL2BlockNumber(
+	feature := NewMaxL2BlockNumberLimiter(
 		maxL2BlockNumber,
 		log,
 		true,

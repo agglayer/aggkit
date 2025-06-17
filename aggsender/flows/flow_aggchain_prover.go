@@ -38,7 +38,7 @@ type AggchainProverFlow struct {
 	optimisticModeQuerier types.OptimisticModeQuerier
 	optimisticSigner      types.OptimisticSigner
 	config                AggchainProverFlowConfig
-	featureMaxL2Block     types.FeatureMaxL2BlockNumberInterface
+	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client types.EthClient) (uint64, error) {
@@ -100,7 +100,7 @@ func NewAggchainProverFlow(
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	optimisticSigner types.OptimisticSigner,
 ) *AggchainProverFlow {
-	feature := NewFeatureMaxL2BlockNumber(
+	feature := NewMaxL2BlockNumberLimiter(
 		aggChainProverConfig.maxL2BlockNumber,
 		log,
 		false, // AggchainProverFlow allows to resize retry certs

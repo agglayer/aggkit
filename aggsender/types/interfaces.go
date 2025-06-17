@@ -147,7 +147,9 @@ type CertificateStatusChecker interface {
 		aggsenderStatus *AggsenderStatus)
 }
 
-type FeatureMaxL2BlockNumberInterface interface {
+// MaxL2BlockNumberLimiterInterface is an interface defining functions that a MaxL2BlockNumberLimiter should implement
+type MaxL2BlockNumberLimiterInterface interface {
+	// AdaptCertificate adjusts the certificate build parameters to ensure that and return it the new buildParams
 	AdaptCertificate(
 		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }
