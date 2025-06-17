@@ -29,7 +29,7 @@ Use this method to sign using the Google Cloud KMS infrastructure.
 | Name | Type | Example | Description |
 | -----|------|---------|-------------|
 | Method | string | `GCP` | Must be `GCP` |
-| KeyName | string |  | id of the key in Google Cloud |
+| KeyName | string |  | ID of the key in Google Cloud |
 
 Example: 
 ```
