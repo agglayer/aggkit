@@ -274,3 +274,160 @@ func TestBuildAppender(t *testing.T) {
 		})
 	}
 }
+
+func TestFindCall(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	fromAddr := common.HexToAddress("0x20")
+
+	// Simple direct call
+	root := call{
+		To:   bridgeAddr,
+		From: fromAddr,
+		Err:  nil,
+	}
+	found, err := findCall(root, bridgeAddr, nil)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	require.Equal(t, bridgeAddr, found.To)
+
+	// Reverted call should be skipped
+	root = call{
+		To:   bridgeAddr,
+		From: fromAddr,
+		Err:  strPtr("reverted"),
+	}
+	found, err = findCall(root, bridgeAddr, nil)
+	require.Error(t, err)
+
+	// Nested call, only inner is not reverted
+	root = call{
+		To:   common.HexToAddress("0x01"),
+		From: fromAddr,
+		Err:  nil,
+		Calls: []call{
+			{
+				To:   bridgeAddr,
+				From: fromAddr,
+				Err:  nil,
+			},
+			{
+				To:   bridgeAddr,
+				From: fromAddr,
+				Err:  strPtr("reverted"),
+			},
+		},
+	}
+	found, err = findCall(root, bridgeAddr, nil)
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	require.Equal(t, bridgeAddr, found.To)
+}
+
+func TestTryDecodeClaimCalldata(t *testing.T) {
+	c := &Claim{}
+	fromAddr := common.HexToAddress("0x20")
+
+	// Short input should return false, nil
+	found, err := c.tryDecodeClaimCalldata(fromAddr, []byte{0x01, 0x02, 0x03})
+	require.NoError(t, err)
+	require.False(t, found)
+
+	// Unknown method ID should return false, nil
+	input := make([]byte, methodIDLength)
+	copy(input, []byte{0xaa, 0xbb, 0xcc, 0xdd})
+	found, err = c.tryDecodeClaimCalldata(fromAddr, input)
+	require.NoError(t, err)
+	require.False(t, found)
+
+	// Valid method ID (simulate claimAssetEtrogMethodID)
+	copy(input, claimAssetEtrogMethodID)
+	// The rest of the input is not valid ABI, so it will error on unpack
+	found, err = c.tryDecodeClaimCalldata(fromAddr, input)
+	require.Error(t, err)
+	require.False(t, found)
+}
+
+func TestSetClaimCalldata(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	txHash := common.HexToHash("0x1234")
+	client := &mocks.RPCClienter{}
+
+	// Case 1: Root call successful, valid internal call
+	rootCall := &call{
+		To:  common.HexToAddress("0x01"),
+		Err: nil,
+		Calls: []call{
+			{
+				To:    bridgeAddr,
+				From:  common.HexToAddress("0x20"),
+				Err:   nil,
+				Input: append(claimAssetEtrogMethodID, []byte{0x00, 0x01, 0x02, 0x03}...), // not valid ABI, but triggers methodID match
+			},
+		},
+	}
+	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
+		arg := args.Get(0).(*call)
+		*arg = *rootCall
+	}).Return(nil)
+
+	claim := &Claim{}
+	err := claim.setClaimCalldata(client, bridgeAddr, txHash)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "length insufficient")
+
+	// Case 2: Root call reverted
+	rootCall = &call{
+		To:  bridgeAddr,
+		Err: strPtr("reverted"),
+	}
+	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
+		arg := args.Get(0).(*call)
+		*arg = *rootCall
+	}).Return(nil)
+
+	claim = &Claim{}
+	err = claim.setClaimCalldata(client, bridgeAddr, txHash)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "root call reverted")
+
+	// Case 3: All internal calls reverted
+	rootCall = &call{
+		To:  common.HexToAddress("0x01"),
+		Err: nil,
+		Calls: []call{
+			{
+				To:  bridgeAddr,
+				Err: strPtr("reverted"),
+			},
+		},
+	}
+	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
+		arg := args.Get(0).(*call)
+		*arg = *rootCall
+	}).Return(nil)
+
+	claim = &Claim{}
+	err = claim.setClaimCalldata(client, bridgeAddr, txHash)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
+
+	// Case 4: No matching call
+	rootCall = &call{
+		To:    common.HexToAddress("0x01"),
+		Err:   nil,
+		Calls: []call{},
+	}
+	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
+		arg := args.Get(0).(*call)
+		*arg = *rootCall
+	}).Return(nil)
+
+	claim = &Claim{}
+	err = claim.setClaimCalldata(client, bridgeAddr, txHash)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "not found")
+}
+
+func strPtr(s string) *string {
+	return &s
+}
