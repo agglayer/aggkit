@@ -173,7 +173,7 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | RequireStorageContentCompatibility| bool                      | If true, data stored in the database must be compatible with the running environment                            |
 | RequireNoFEPBlockGap              | bool                      | If true, AggSender should not accept a gap between lastBlock from lastCertificate and first block of FEP        |
 | OptimisticModeConfig              | optimistic.Config         | Configuration for optimistic mode (required by FEP mode)                                                        |
-| MaxL2BlockNumber                  | uint64                    | Set the last block the be included in a certificate (0 disabled)
+| MaxL2BlockNumber                  | uint64                    | Set the last block to be included in a certificate (0 = disabled)
 |StopOnFinishedSendingAllCertificates| bool                      | When there are no more certificates to be send due MaxL2BlockNumber stop
                                                                                               |
 
