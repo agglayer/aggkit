@@ -19,6 +19,7 @@ type PPFlow struct {
 	signer                signertypes.Signer
 	log                   types.Logger
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
+	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
 }
 
 // NewPPFlow returns a new instance of the PPFlow
@@ -27,12 +28,20 @@ func NewPPFlow(log types.Logger,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
-	signer signertypes.Signer) *PPFlow {
+	signer signertypes.Signer,
+	maxL2BlockNumber uint64) *PPFlow {
+	feature := NewMaxL2BlockNumberLimiter(
+		maxL2BlockNumber,
+		log,
+		true,
+		true,
+	)
 	return &PPFlow{
 		signer:                signer,
 		log:                   log,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		baseFlow:              baseFlow,
+		featureMaxL2Block:     feature,
 	}
 }
 
@@ -54,6 +63,14 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		}
 
 		return nil, err
+	}
+
+	if p.featureMaxL2Block != nil {
+		// If the feature is enabled, we need to adapt the build params
+		buildParams, err = p.featureMaxL2Block.AdaptCertificate(buildParams)
+		if err != nil {
+			return nil, fmt.Errorf("ppFlow - error adapting  certificate to MaxL2Block. Err: %w", err)
+		}
 	}
 
 	if err := p.baseFlow.VerifyBuildParams(buildParams); err != nil {
