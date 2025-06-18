@@ -152,13 +152,45 @@ func (b MerkleProofMeddler) PreWrite(fieldPtr interface{}) (saveValue interface{
 type HashMeddler struct{}
 
 // PreRead is called before a Scan operation for fields that have the HashMeddler
-func (b HashMeddler) PreRead(fieldAddr interface{}) (scanTarget interface{}, err error) {
+func (m HashMeddler) PreRead(fieldAddr interface{}) (scanTarget interface{}, err error) {
 	// give a pointer to a byte buffer to grab the raw data
+	_, ok := fieldAddr.(**common.Hash)
+	if ok {
+		// This is becase if not the rows.Scan fails 'converting NULL to string is unsupported'
+		return new(*string), nil
+	}
 	return new(string), nil
+}
+func (m HashMeddler) postReadDoublePtr(fieldPtr, scanTarget interface{}) error {
+	rawHashPtr, ok := scanTarget.(**string)
+	if !ok {
+		return errors.New("scanTarget is not **string")
+	}
+	// Handle the case where fieldPtr is a **common.Hash (nullable field)
+	hashPtr, ok := fieldPtr.(**common.Hash)
+	if ok {
+		if rawHashPtr == nil || *rawHashPtr == nil {
+			return nil
+		}
+		// If the string is empty, set the hash to nil
+		if len(**rawHashPtr) == 0 {
+			*hashPtr = nil
+			// Otherwise, convert the string to a common.Hash and assign it
+		} else {
+			tmp := common.HexToHash(**rawHashPtr)
+			*hashPtr = &tmp
+		}
+		return nil
+	}
+	return errors.New("fieldPtr is not **common.Hash")
 }
 
 // PostRead is called after a Scan operation for fields that have the HashMeddler
-func (b HashMeddler) PostRead(fieldPtr, scanTarget interface{}) error {
+func (m HashMeddler) PostRead(fieldPtr, scanTarget interface{}) error {
+	_, ok := scanTarget.(**string)
+	if ok {
+		return m.postReadDoublePtr(fieldPtr, scanTarget)
+	}
 	rawHashPtr, ok := scanTarget.(*string)
 	if !ok {
 		return errors.New("scanTarget is not *string")
@@ -170,27 +202,12 @@ func (b HashMeddler) PostRead(fieldPtr, scanTarget interface{}) error {
 		*field = common.HexToHash(*rawHashPtr)
 		return nil
 	}
-
-	// Handle the case where fieldPtr is a **common.Hash (nullable field)
-	hashPtr, ok := fieldPtr.(**common.Hash)
-	if ok {
-		// If the string is empty, set the hash to nil
-		if len(*rawHashPtr) == 0 {
-			*hashPtr = nil
-			// Otherwise, convert the string to a common.Hash and assign it
-		} else {
-			tmp := common.HexToHash(*rawHashPtr)
-			*hashPtr = &tmp
-		}
-		return nil
-	}
-
-	// If fieldPtr is neither a *common.Hash nor a **common.Hash, return an error
-	return errors.New("fieldPtr is not *common.Hash or **common.Hash")
+	// If fieldPtr is neither a *common.Hash, return an error
+	return errors.New("fieldPtr is not *common.Hash")
 }
 
 // PreWrite is called before an Insert or Update operation for fields that have the HashMeddler
-func (b HashMeddler) PreWrite(fieldPtr interface{}) (saveValue interface{}, err error) {
+func (m HashMeddler) PreWrite(fieldPtr interface{}) (saveValue interface{}, err error) {
 	field, ok := fieldPtr.(common.Hash)
 	if !ok {
 		hashPtr, ok := fieldPtr.(*common.Hash)
