@@ -33,7 +33,6 @@ const (
 	// - Bit 191: mainnet flag
 	// - Bits 192-223: rollup index (32 bits)
 	// - Bits 224-255: local exit root index (32 bits)
-	globalIndexTotalBits         = 256
 	globalIndexUnusedBits        = 191
 	globalIndexMainnetFlagBit    = 191
 	globalIndexRollupIndexBits   = 32
@@ -903,12 +902,6 @@ func GenerateGlobalIndex(first191Bits *big.Int, mainnetFlag bool, rollupIndex ui
 	localExitRootIndexShifted := localExitRootIndexBig.Lsh(localExitRootIndexBig, globalIndexUnusedBits+1+globalIndexRollupIndexBits)
 	result.Or(result, localExitRootIndexShifted)
 
-	fmt.Println("----------- globalIndex", result)
-	fmt.Println("----------- first191Bits", first191Bits)
-	fmt.Println("----------- mainnetFlag", mainnetFlag)
-	fmt.Println("----------- rollupIndex", rollupIndex)
-	fmt.Println("----------- localExitRootIndex", localExitRootIndex)
-
 	return result
 }
 
@@ -919,11 +912,6 @@ func GenerateGlobalIndex(first191Bits *big.Int, mainnetFlag bool, rollupIndex ui
 // 4. localExitRootIndex - bits 224-255 (32 bits)
 func DecodeGlobalIndex(globalIndex *big.Int) (first191Bits *big.Int, mainnetFlag bool,
 	rollupIndex uint32, localExitRootIndex uint32, err error) {
-
-	// Check if the global index is within the expected 256-bit range
-	if globalIndex.BitLen() > globalIndexTotalBits {
-		return nil, false, 0, 0, fmt.Errorf("global index exceeds %d bits", globalIndexTotalBits)
-	}
 
 	// Extract first 191 bits (0-190)
 	first191BitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
@@ -943,12 +931,6 @@ func DecodeGlobalIndex(globalIndex *big.Int) (first191Bits *big.Int, mainnetFlag
 	localExitRootIndexShifted := new(big.Int).Rsh(globalIndex, globalIndexUnusedBits+1+globalIndexRollupIndexBits)
 	localExitRootIndexBig := new(big.Int).And(localExitRootIndexShifted, localExitRootIndexMask)
 	localExitRootIndex = uint32(localExitRootIndexBig.Uint64())
-
-	fmt.Println("----------- globalIndex", globalIndex)
-	fmt.Println("----------- first191Bits", first191Bits)
-	fmt.Println("----------- mainnetFlag", mainnetFlag)
-	fmt.Println("----------- rollupIndex", rollupIndex)
-	fmt.Println("----------- localExitRootIndex", localExitRootIndex)
 
 	return first191Bits, mainnetFlag, rollupIndex, localExitRootIndex, nil
 }

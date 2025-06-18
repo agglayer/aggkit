@@ -480,7 +480,6 @@ func (g *GlobalIndex) UnmarshalFromMap(data map[string]interface{}) error {
 		return err
 	}
 
-	// Handle first_191_bits field (optional)
 	var first191Bits *big.Int
 	if first191BitsValue, exists := data["first_191_bits"]; exists && first191BitsValue != nil {
 		switch v := first191BitsValue.(type) {
