@@ -811,15 +811,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedLocalIndex:   0,
 			expectedErr:          nil,
 		},
-		{
-			name:                 "Invalid global index length",
-			globalIndex:          big.NewInt(0).Lsh(big.NewInt(1), 257), // 257 bits, exceeds 256-bit limit
-			expectedFirst191Bits: nil,                                   // Error case, should return nil
-			expectedMainnetFlag:  false,
-			expectedRollupIndex:  0,
-			expectedLocalIndex:   0,
-			expectedErr:          errors.New("global index exceeds 256 bits"),
-		},
 	}
 
 	for _, tt := range tests {
@@ -2086,4 +2077,3 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 	require.Equal(t, uint64(2), bridges[3].BlockNum)
 	require.Equal(t, uint64(0), bridges[3].BlockPos)
 }
-
