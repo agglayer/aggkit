@@ -161,7 +161,7 @@ func (m HashMeddler) PreRead(fieldAddr interface{}) (scanTarget interface{}, err
 	}
 	return new(string), nil
 }
-func (b HashMeddler) postReadDoulePtr(fieldPtr, scanTarget interface{}) error {
+func (m HashMeddler) postReadDoulePtr(fieldPtr, scanTarget interface{}) error {
 	rawHashPtr, ok := scanTarget.(**string)
 	if !ok {
 		return errors.New("scanTarget is not **string")
@@ -186,10 +186,10 @@ func (b HashMeddler) postReadDoulePtr(fieldPtr, scanTarget interface{}) error {
 }
 
 // PostRead is called after a Scan operation for fields that have the HashMeddler
-func (b HashMeddler) PostRead(fieldPtr, scanTarget interface{}) error {
+func (m HashMeddler) PostRead(fieldPtr, scanTarget interface{}) error {
 	_, ok := scanTarget.(**string)
 	if ok {
-		return b.postReadDoulePtr(fieldPtr, scanTarget)
+		return m.postReadDoulePtr(fieldPtr, scanTarget)
 	}
 	rawHashPtr, ok := scanTarget.(*string)
 	if !ok {
@@ -207,7 +207,7 @@ func (b HashMeddler) PostRead(fieldPtr, scanTarget interface{}) error {
 }
 
 // PreWrite is called before an Insert or Update operation for fields that have the HashMeddler
-func (b HashMeddler) PreWrite(fieldPtr interface{}) (saveValue interface{}, err error) {
+func (m HashMeddler) PreWrite(fieldPtr interface{}) (saveValue interface{}, err error) {
 	field, ok := fieldPtr.(common.Hash)
 	if !ok {
 		hashPtr, ok := fieldPtr.(*common.Hash)
