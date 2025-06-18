@@ -160,7 +160,7 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 		a.log.Panicf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
 	}
 }
-func (a *AggSender) checkSendCertificateStopConfidition(err error) {
+func (a *AggSender) checkSendCertificateStopCondition(err error) {
 	if errors.Is(err, flows.ErrComplete) {
 		a.log.Infof("AggSender reached the end of the certificates to send")
 		if a.cfg.StopOnFinishedSendingAllCertificates {
@@ -202,7 +202,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 					if err != nil {
 						a.log.Error(err)
 					}
-					a.checkSendCertificateStopConfidition(err)
+					a.checkSendCertificateStopCondition(err)
 				} else {
 					a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
 				}
@@ -221,7 +221,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 				if err != nil {
 					a.log.Error(err)
 				}
-				a.checkSendCertificateStopConfidition(err)
+				a.checkSendCertificateStopCondition(err)
 			} else {
 				log.Infof("Skipping epoch %s because there are pending certificates",
 					epoch.String())

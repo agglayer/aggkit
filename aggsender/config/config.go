@@ -77,7 +77,7 @@ type Config struct {
 	// 0 means disabled
 	MaxL2BlockNumber uint64 `mapstructure:"MaxL2BlockNumber"`
 	// StopOnFinishedSendingAllCertificates is a flag to stop the AggSender when it finishes sending all certificates
-	//  up to MaxL2BlockNumber
+	// up to MaxL2BlockNumber
 	StopOnFinishedSendingAllCertificates bool `mapstructure:"StopOnFinishedSendingAllCertificates"`
 }
 

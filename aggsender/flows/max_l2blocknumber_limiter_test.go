@@ -16,7 +16,7 @@ func TestAdaptCertificateForFEP(t *testing.T) {
 		buildParams          *types.CertificateBuildParams
 		expectedBuildParams  *types.CertificateBuildParams
 		expectedError        error
-		expectetErrorContain string
+		expectedErrorContain string
 	}{
 		{
 			name:             "Feature disabled",
@@ -71,7 +71,7 @@ func TestAdaptCertificateForFEP(t *testing.T) {
 			},
 			expectedBuildParams:  nil,
 			expectedError:        ErrComplete,
-			expectetErrorContain: "upcoming next range",
+			expectedErrorContain: "upcoming next range",
 		},
 		{
 			name:             "exceeded the maximum block",
@@ -82,7 +82,7 @@ func TestAdaptCertificateForFEP(t *testing.T) {
 			},
 			expectedBuildParams:  nil,
 			expectedError:        ErrComplete,
-			expectetErrorContain: "exceeded the maximum block",
+			expectedErrorContain: "exceeded the maximum block",
 		},
 		{
 			name:             "Adjust range successfully",
@@ -122,16 +122,16 @@ func TestAdaptCertificateForFEP(t *testing.T) {
 				require.Equal(t, tt.expectedBuildParams.FromBlock, result.FromBlock)
 				require.Equal(t, tt.expectedBuildParams.ToBlock, result.ToBlock)
 			}
-			if tt.expectedError == nil && tt.expectetErrorContain == "" {
+			if tt.expectedError == nil && tt.expectedErrorContain == "" {
 				require.NoError(t, err)
 			} else {
 				if tt.expectedError != nil {
 					require.Error(t, err)
 					require.Contains(t, err.Error(), tt.expectedError.Error())
 				}
-				if tt.expectetErrorContain != "" {
+				if tt.expectedErrorContain != "" {
 					require.Error(t, err)
-					require.Contains(t, err.Error(), tt.expectetErrorContain)
+					require.Contains(t, err.Error(), tt.expectedErrorContain)
 				}
 			}
 		})
