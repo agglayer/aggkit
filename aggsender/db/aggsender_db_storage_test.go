@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"math/big"
 	"os"
 	"path"
@@ -37,7 +36,7 @@ func Test_StorageExploratory(t *testing.T) {
 	require.NoError(t, err)
 	cert, err := storage.GetLastSentCertificate()
 	require.NoError(t, err)
-	fmt.Print(cert)
+	require.NotNil(t, cert)
 }
 func Test_Storage(t *testing.T) {
 	ctx := context.Background()

@@ -100,12 +100,11 @@ func TestMeddlerHashPointerIsNotNull(t *testing.T) {
 	err := meddler.QueryRow(db, &certificateInfo, "SELECT * FROM certificate_info where height=1;")
 	require.NoError(t, err, "data case")
 	require.NotNil(t, certificateInfo.FinalizedL1InfoTreeRoot, "FinalizedL1InfoTreeRoot should not be nil for height 1")
-	fmt.Print(certificateInfo)
 }
 
-func TestMeddlerHashpostReadDoulePtrBadParms(t *testing.T) {
+func TestMeddlerHashpostReadDoublePtrBadParams(t *testing.T) {
 	h := HashMeddler{}
-	err := h.postReadDoulePtr(nil, nil)
+	err := h.postReadDoublePtr(nil, nil)
 	require.Error(t, err)
 }
 
