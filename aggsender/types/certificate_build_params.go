@@ -38,7 +38,13 @@ func (c *CertificateBuildParams) Range(fromBlock, toBlock uint64) (*CertificateB
 		return c, nil
 	}
 	if c.FromBlock > fromBlock || c.ToBlock < toBlock {
-		return nil, fmt.Errorf("invalid range")
+		return nil, fmt.Errorf("invalid range. FromBlock %d and ToBlock %d are not within "+
+			"the certificate range FromBlock %d and ToBlock %d",
+			fromBlock, toBlock, c.FromBlock, c.ToBlock)
+	}
+
+	if fromBlock > toBlock {
+		return nil, fmt.Errorf("invalid range. FromBlock %d is greater than toBlock %d", fromBlock, toBlock)
 	}
 
 	span := toBlock - fromBlock + 1
@@ -130,6 +136,11 @@ func (c *CertificateBuildParams) EstimatedSize() uint {
 // IsEmpty returns true if the certificate is empty
 func (c *CertificateBuildParams) IsEmpty() bool {
 	return c.NumberOfBridges() == 0 && c.NumberOfClaims() == 0
+}
+
+// IsARetry returns true if the certificate is a retry
+func (c *CertificateBuildParams) IsARetry() bool {
+	return c != nil && c.RetryCount > 0
 }
 
 // MaxDepoitCount returns the maximum deposit count in the certificate

@@ -3,6 +3,7 @@ package aggsender
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -162,6 +163,17 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 		a.log.Panicf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
 	}
 }
+func (a *AggSender) checkSendCertificateStopCondition(err error) {
+	if errors.Is(err, flows.ErrComplete) {
+		a.log.Infof("AggSender reached the end of the certificates to send")
+		if a.cfg.StopOnFinishedSendingAllCertificates {
+			a.log.Info("Stopping AggSender because StopOnFinishedSendingAllCertificates is true")
+			// That is the fastest way to stop the process. Currently there are no way of gracefully stopping the AggSender
+			// because the run.go launch the components with a goroutine but doesn't check any return value
+			panic("Stopping AggSender because StopOnFinishedSendingAllCertificates is true")
+		}
+	}
+}
 
 // sendCertificates sends certificates to the aggLayer
 func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations int) {
@@ -193,6 +205,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 					if err != nil {
 						a.log.Error(err)
 					}
+					a.checkSendCertificateStopCondition(err)
 				} else {
 					a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
 				}
@@ -211,6 +224,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 				if err != nil {
 					a.log.Error(err)
 				}
+				a.checkSendCertificateStopCondition(err)
 			} else {
 				log.Infof("Skipping epoch %s because there are pending certificates",
 					epoch.String())

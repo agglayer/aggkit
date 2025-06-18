@@ -962,7 +962,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			mockStorage.EXPECT().GetLastSentCertificateHeader().Return(tc.cert, tc.getLastSentCertificateError).Once()
-			sut.requireNoFEPBlockGap = tc.requireNoFEPBlockGap
+			sut.config.requireNoFEPBlockGap = tc.requireNoFEPBlockGap
 			err := sut.CheckInitialStatus(context.TODO())
 			if tc.expectedError {
 				require.Error(t, err)
