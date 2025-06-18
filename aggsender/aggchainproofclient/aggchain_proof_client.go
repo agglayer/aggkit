@@ -168,7 +168,7 @@ func convertAggchainProofRequestToGrpcRequest(
 		convertedImportedBridgeExitsWithBlockNumber[i] = &aggkitProverV1Proto.ImportedBridgeExitWithBlockNumber{
 			BlockNumber: importedBridgeExitWithBlockNumber.BlockNumber,
 			GlobalIndex: &agglayerInteropTypesV1Proto.FixedBytes32{
-				Value: common.BigToHash(bridgesync.GenerateGlobalIndex(
+				Value: common.BigToHash(bridgesync.GenerateGlobalIndex(nil,
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.MainnetFlag,
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.RollupIndex,
 					importedBridgeExitWithBlockNumber.ImportedBridgeExit.GlobalIndex.LeafIndex,

@@ -280,7 +280,7 @@ func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 		Metadata:           metaData,
 	}
 
-	mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
+	_, mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding global index: %w", err)
 	}

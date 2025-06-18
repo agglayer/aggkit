@@ -13,7 +13,6 @@ import (
 
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
-	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	dbtypes "github.com/agglayer/aggkit/db/types"
@@ -29,6 +28,18 @@ import (
 )
 
 const (
+	// Global index structure (256 bits total):
+	// - Bits 0-190: unused (preserved)
+	// - Bit 191: mainnet flag
+	// - Bits 192-223: rollup index (32 bits)
+	// - Bits 224-255: local exit root index (32 bits)
+	globalIndexTotalBits         = 256
+	globalIndexUnusedBits        = 191
+	globalIndexMainnetFlagBit    = 191
+	globalIndexRollupIndexBits   = 32
+	globalIndexLocalExitRootBits = 32
+
+	// Legacy constants for backward compatibility
 	globalIndexPartSize = 4
 	globalIndexMaxSize  = 9
 
@@ -865,59 +876,81 @@ func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
 	return fmt.Sprintf("%s IN (%s)", networkIDColumn, strings.Join(placeholders, ", "))
 }
 
-func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
-	var (
-		globalIndexBytes []byte
-		buf              [globalIndexPartSize]byte
-	)
-	if mainnetFlag {
-		globalIndexBytes = append(globalIndexBytes, big.NewInt(1).Bytes()...)
-		ri := new(big.Int).FillBytes(buf[:])
-		globalIndexBytes = append(globalIndexBytes, ri...)
-	} else {
-		ri := new(big.Int).SetUint64(uint64(rollupIndex)).FillBytes(buf[:])
-		globalIndexBytes = append(globalIndexBytes, ri...)
-	}
-	leri := new(big.Int).SetUint64(uint64(localExitRootIndex)).FillBytes(buf[:])
-	globalIndexBytes = append(globalIndexBytes, leri...)
+// GenerateGlobalIndex creates a global index from the given components, including the first 191 bits.
+func GenerateGlobalIndex(first191Bits *big.Int, mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
+	// Create a 256-bit big.Int initialized to 0
+	result := new(big.Int)
 
-	result := new(big.Int).SetBytes(globalIndexBytes)
+	// Set the first 191 bits (0-190) if provided
+	if first191Bits != nil {
+		first191BitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
+		first191BitsPreserved := new(big.Int).And(first191Bits, first191BitsMask)
+		result.Or(result, first191BitsPreserved)
+	}
+
+	// Set the mainnet flag at bit 191
+	if mainnetFlag {
+		result.SetBit(result, globalIndexMainnetFlagBit, 1)
+	}
+
+	// Set the rollup index at bits 192-223
+	rollupIndexBig := new(big.Int).SetUint64(uint64(rollupIndex))
+	rollupIndexShifted := rollupIndexBig.Lsh(rollupIndexBig, globalIndexUnusedBits+1) // +1 for mainnet flag bit
+	result.Or(result, rollupIndexShifted)
+
+	// Set the local exit root index at bits 224-255
+	localExitRootIndexBig := new(big.Int).SetUint64(uint64(localExitRootIndex))
+	localExitRootIndexShifted := localExitRootIndexBig.Lsh(localExitRootIndexBig, globalIndexUnusedBits+1+globalIndexRollupIndexBits)
+	result.Or(result, localExitRootIndexShifted)
+
+	fmt.Println("----------- globalIndex", result)
+	fmt.Println("----------- first191Bits", first191Bits)
+	fmt.Println("----------- mainnetFlag", mainnetFlag)
+	fmt.Println("----------- rollupIndex", rollupIndex)
+	fmt.Println("----------- localExitRootIndex", localExitRootIndex)
 
 	return result
 }
 
-// Decodes global index to its three parts:
-// 1. mainnetFlag - first byte
-// 2. rollupIndex - next 4 bytes
-// 3. localExitRootIndex - last 4 bytes
-// NOTE - mainnet flag is not in the global index bytes if it is false
-// NOTE - rollup index is 0 if mainnet flag is true
-// NOTE - rollup index is not in the global index bytes if mainnet flag is false and rollup index is 0
-func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
+// DecodeGlobalIndex decodes global index to its four parts (backward compatible version):
+// 1. first191Bits - bits 0-190 (191 bits)
+// 2. mainnetFlag - bit 191
+// 3. rollupIndex - bits 192-223 (32 bits)
+// 4. localExitRootIndex - bits 224-255 (32 bits)
+func DecodeGlobalIndex(globalIndex *big.Int) (first191Bits *big.Int, mainnetFlag bool,
 	rollupIndex uint32, localExitRootIndex uint32, err error) {
-	globalIndexBytes := globalIndex.Bytes()
-	l := len(globalIndexBytes)
-	if l > globalIndexMaxSize {
-		return false, 0, 0, errors.New("invalid global index length")
+
+	// Check if the global index is within the expected 256-bit range
+	if globalIndex.BitLen() > globalIndexTotalBits {
+		return nil, false, 0, 0, fmt.Errorf("global index exceeds %d bits", globalIndexTotalBits)
 	}
 
-	if l == 0 {
-		// false, 0, 0
-		return
-	}
+	// Extract first 191 bits (0-190)
+	first191BitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
+	first191Bits = new(big.Int).And(globalIndex, first191BitsMask)
 
-	if l == globalIndexMaxSize {
-		// true, rollupIndex, localExitRootIndex
-		mainnetFlag = true
-	}
+	// Extract mainnet flag from bit 191
+	mainnetFlag = globalIndex.Bit(globalIndexMainnetFlagBit) == 1
 
-	localExitRootFromIdx := max(l-globalIndexPartSize, 0)
-	rollupIndexFromIdx := max(localExitRootFromIdx-globalIndexPartSize, 0)
+	// Extract rollup index from bits 192-223
+	rollupIndexMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexRollupIndexBits), big.NewInt(1))
+	rollupIndexShifted := new(big.Int).Rsh(globalIndex, globalIndexUnusedBits+1) // +1 for mainnet flag bit
+	rollupIndexBig := new(big.Int).And(rollupIndexShifted, rollupIndexMask)
+	rollupIndex = uint32(rollupIndexBig.Uint64())
 
-	rollupIndex = aggkitcommon.BytesToUint32(globalIndexBytes[rollupIndexFromIdx:localExitRootFromIdx])
-	localExitRootIndex = aggkitcommon.BytesToUint32(globalIndexBytes[localExitRootFromIdx:])
+	// Extract local exit root index from bits 224-255
+	localExitRootIndexMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexLocalExitRootBits), big.NewInt(1))
+	localExitRootIndexShifted := new(big.Int).Rsh(globalIndex, globalIndexUnusedBits+1+globalIndexRollupIndexBits)
+	localExitRootIndexBig := new(big.Int).And(localExitRootIndexShifted, localExitRootIndexMask)
+	localExitRootIndex = uint32(localExitRootIndexBig.Uint64())
 
-	return
+	fmt.Println("----------- globalIndex", globalIndex)
+	fmt.Println("----------- first191Bits", first191Bits)
+	fmt.Println("----------- mainnetFlag", mainnetFlag)
+	fmt.Println("----------- rollupIndex", rollupIndex)
+	fmt.Println("----------- localExitRootIndex", localExitRootIndex)
+
+	return first191Bits, mainnetFlag, rollupIndex, localExitRootIndex, nil
 }
 
 //nolint:unparam
