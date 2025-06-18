@@ -28,6 +28,11 @@ var (
 	claimEventSignaturePreEtrog = crypto.Keccak256Hash([]byte("ClaimEvent(uint32,uint32,address,address,uint256)"))
 	tokenMappingEventSignature  = crypto.Keccak256Hash([]byte("NewWrappedToken(uint32,address,address,bytes)"))
 
+	// Added var for UpdatedClaimedGlobalIndexHashChain event
+	updatedClaimedGlobalIndexHashChainEventSignature = crypto.Keccak256Hash([]byte(
+		"UpdatedClaimedGlobalIndexHashChain(bytes32,bytes32)",
+	))
+
 	// sovereign chain contract events
 	setSovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"SetSovereignTokenAddress(uint32,address,address,bool)",
@@ -88,6 +93,7 @@ func buildAppender(
 	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeSovereignChain, client, bridgeAddr)
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeSovereignChain, client, bridgeAddr)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(bridgeSovereignChain)
+	appender[updatedClaimedGlobalIndexHashChainEventSignature] = buildUpdatedClaimedGlobalIndexHashChainHandler(bridgeSovereignChain)
 
 	return appender, nil
 }
@@ -301,6 +307,31 @@ func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 			BlockTimestamp:     b.Timestamp,
 			TxHash:             l.TxHash,
 			LegacyTokenAddress: event.SovereignTokenAddress,
+		}})
+		return nil
+	}
+}
+
+// buildUpdatedClaimedGlobalIndexHashChainHandler creates a handler for the UpdatedClaimedGlobalIndexHashChain event log.
+func buildUpdatedClaimedGlobalIndexHashChainHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain) func(*sync.EVMBlock,
+	types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseUpdatedClaimedGlobalIndexHashChain(l)
+		if err != nil {
+			return fmt.Errorf("error parsing UpdatedClaimedGlobalIndexHashChain event log %+v: %w", l, err)
+		}
+
+		b.Events = append(b.Events, Event{UpdatedClaimedGlobalIndexHashChain: &UpdatedClaimedGlobalIndexHashChain{
+			// Event fields
+			ClaimedGlobalIndex:             new(big.Int).SetBytes(event.ClaimedGlobalIndex[:]),
+			NewClaimedGlobalIndexHashChain: new(big.Int).SetBytes(event.NewClaimedGlobalIndexHashChain[:]),
+			// Log context fields
+			BlockNum:       b.Num,
+			BlockPos:       uint64(l.Index),
+			BlockTimestamp: b.Timestamp,
+			TxHash:         l.TxHash,
+			LogIndex:       l.Index,
+			Contract:       l.Address,
 		}})
 		return nil
 	}

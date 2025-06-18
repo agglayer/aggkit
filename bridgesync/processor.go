@@ -298,14 +298,28 @@ type RemoveLegacyToken struct {
 	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address"`
 }
 
+// UpdatedClaimedGlobalIndexHashChain representation of an UpdatedClaimedGlobalIndexHashChain event,
+// that is emitted by the bridge contract.
+type UpdatedClaimedGlobalIndexHashChain struct {
+	ClaimedGlobalIndex             *big.Int       `meddler:"claimed_global_index,bigint"`
+	NewClaimedGlobalIndexHashChain *big.Int       `meddler:"new_global_index_hash_chain,bigint"`
+	BlockNum                       uint64         `meddler:"block_num"`
+	BlockPos                       uint64         `meddler:"block_pos"`
+	BlockTimestamp                 uint64         `meddler:"block_timestamp"`
+	TxHash                         common.Hash    `meddler:"tx_hash,hash"`
+	LogIndex                       uint           `meddler:"log_index"`
+	Contract                       common.Address `meddler:"contract,address"`
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
-	Pos                  uint64
-	Bridge               *Bridge
-	Claim                *Claim
-	TokenMapping         *TokenMapping
-	LegacyTokenMigration *LegacyTokenMigration
-	RemoveLegacyToken    *RemoveLegacyToken
+	Pos                                uint64
+	Bridge                             *Bridge
+	Claim                              *Claim
+	TokenMapping                       *TokenMapping
+	LegacyTokenMigration               *LegacyTokenMigration
+	RemoveLegacyToken                  *RemoveLegacyToken
+	UpdatedClaimedGlobalIndexHashChain *UpdatedClaimedGlobalIndexHashChain
 }
 
 type processor struct {
