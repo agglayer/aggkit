@@ -282,14 +282,18 @@ func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 
 	firstUnusedBits, mainnetFlag, rollupIndex, leafIndex := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
 
+	globalIndex := &agglayertypes.GlobalIndex{
+		MainnetFlag: mainnetFlag,
+		RollupIndex: rollupIndex,
+		LeafIndex:   leafIndex,
+	}
+	if firstUnusedBits != nil {
+		globalIndex.FirstUnusedBits = firstUnusedBits
+	}
+
 	return &agglayertypes.ImportedBridgeExit{
-		BridgeExit: bridgeExit,
-		GlobalIndex: &agglayertypes.GlobalIndex{
-			MainnetFlag:     mainnetFlag,
-			RollupIndex:     rollupIndex,
-			LeafIndex:       leafIndex,
-			FirstUnusedBits: firstUnusedBits,
-		},
+		BridgeExit:  bridgeExit,
+		GlobalIndex: globalIndex,
 	}, nil
 }
 

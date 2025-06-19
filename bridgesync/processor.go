@@ -880,69 +880,64 @@ func GenerateGlobalIndex(
 	// Create a 256-bit big.Int initialized to 0
 	result := new(big.Int)
 
-	// Set the first 191 bits (0-190) if provided
+	// Set the first 191 bits on the left (bits 65-255, most significant bits) if provided
 	if firstUnusedBits != nil {
 		firstUnusedBitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
-		firstUnusedBits := new(big.Int).And(firstUnusedBits, firstUnusedBitsMask)
-		result.Or(result, firstUnusedBits)
+		firstUnusedBitsMasked := new(big.Int).And(firstUnusedBits, firstUnusedBitsMask)
+		firstUnusedBitsShifted := new(big.Int).Lsh(firstUnusedBitsMasked, 64) // Shift left by 64 bits to place at bits 65-255
+		result.Or(result, firstUnusedBitsShifted)
 	}
 
-	// Set the mainnet flag at bit 191
+	// Set the mainnet flag at bit 64
 	if mainnetFlag {
-		result.SetBit(result, globalIndexMainnetFlagBit, 1)
+		result.SetBit(result, 64, 1)
 	}
 
-	// Set the rollup index at bits 192-223
+	// Set the rollup index at bits 32-63
 	rollupIndexBig := new(big.Int).SetUint64(uint64(rollupIndex))
-	rollupIndexShifted := rollupIndexBig.Lsh(rollupIndexBig, globalIndexUnusedBits+1) // +1 for mainnet flag bit
+	rollupIndexShifted := rollupIndexBig.Lsh(rollupIndexBig, 32)
 	result.Or(result, rollupIndexShifted)
 
-	// Set the local exit root index at bits 224-255
+	// Set the local exit root index at bits 0-31 (least significant bits)
 	localExitRootIndexBig := new(big.Int).SetUint64(uint64(localExitRootIndex))
-	localExitRootIndexShifted := localExitRootIndexBig.Lsh(
-		localExitRootIndexBig,
-		globalIndexUnusedBits+1+globalIndexRollupIndexBits,
-	)
-	result.Or(result, localExitRootIndexShifted)
+	result.Or(result, localExitRootIndexBig)
 
 	return result
 }
 
 // DecodeGlobalIndex decodes global index to its four parts (backward compatible version):
-// 1. firstUnusedBits - bits 0-190 (191 bits)
-// 2. mainnetFlag - bit 191
-// 3. rollupIndex - bits 192-223 (32 bits)
-// 4. localExitRootIndex - bits 224-255 (32 bits)
+// 1. firstUnusedBits - bits 65-255 (191 bits, most significant bits from left)
+// 2. mainnetFlag - bit 64
+// 3. rollupIndex - bits 32-63 (32 bits)
+// 4. localExitRootIndex - bits 0-31 (32 bits, least significant bits)
 func DecodeGlobalIndex(globalIndex *big.Int) (firstUnusedBits *big.Int, mainnetFlag bool,
 	rollupIndex uint32, localExitRootIndex uint32) {
-	// Extract first 191 bits (0-190)
+	// Extract first 191 bits from the left (bits 65-255, most significant bits)
+	// Shift right by 64 bits to get the upper 192 bits, then mask to get 191 bits
+	firstUnusedBitsShifted := new(big.Int).Rsh(globalIndex, 64)
 	firstUnusedBitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
-	firstUnusedBits = new(big.Int).And(globalIndex, firstUnusedBitsMask)
+	firstUnusedBits = new(big.Int).And(firstUnusedBitsShifted, firstUnusedBitsMask)
 
 	// If firstUnusedBits is 0, set it to nil
 	if firstUnusedBits.Sign() == 0 {
 		firstUnusedBits = nil
 	}
 
-	// Extract mainnet flag from bit 191
-	mainnetFlag = globalIndex.Bit(globalIndexMainnetFlagBit) == 1
+	// Extract mainnet flag from bit 64
+	mainnetFlag = globalIndex.Bit(64) == 1
 
-	// Extract rollup index from bits 192-223
+	// Extract rollup index from bits 32-63
 	rollupIndexMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexRollupIndexBits), big.NewInt(1))
-	rollupIndexShifted := new(big.Int).Rsh(globalIndex, globalIndexUnusedBits+1) // +1 for mainnet flag bit
+	rollupIndexShifted := new(big.Int).Rsh(globalIndex, 32)
 	rollupIndexBig := new(big.Int).And(rollupIndexShifted, rollupIndexMask)
 	rollupIndex = uint32(rollupIndexBig.Uint64())
 
-	// Extract local exit root index from bits 224-255
+	// Extract local exit root index from bits 0-31 (least significant bits)
 	localExitRootIndexMask := new(big.Int).Sub(
 		new(big.Int).Lsh(big.NewInt(1), globalIndexLocalExitRootBits),
 		big.NewInt(1),
 	)
-	localExitRootIndexShifted := new(big.Int).Rsh(
-		globalIndex,
-		globalIndexUnusedBits+1+globalIndexRollupIndexBits,
-	)
-	localExitRootIndexBig := new(big.Int).And(localExitRootIndexShifted, localExitRootIndexMask)
+	localExitRootIndexBig := new(big.Int).And(globalIndex, localExitRootIndexMask)
 	localExitRootIndex = uint32(localExitRootIndexBig.Uint64())
 
 	return firstUnusedBits, mainnetFlag, rollupIndex, localExitRootIndex
