@@ -882,9 +882,9 @@ func GenerateGlobalIndex(firstUnusedBits *big.Int, mainnetFlag bool, rollupIndex
 
 	// Set the first 191 bits (0-190) if provided
 	if firstUnusedBits != nil {
-		first191BitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
-		first191BitsPreserved := new(big.Int).And(firstUnusedBits, first191BitsMask)
-		result.Or(result, first191BitsPreserved)
+		firstUnusedBitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
+		firstUnusedBitsPreserved := new(big.Int).And(firstUnusedBits, firstUnusedBitsMask)
+		result.Or(result, firstUnusedBitsPreserved)
 	}
 
 	// Set the mainnet flag at bit 191
@@ -914,8 +914,8 @@ func DecodeGlobalIndex(globalIndex *big.Int) (firstUnusedBits *big.Int, mainnetF
 	rollupIndex uint32, localExitRootIndex uint32, err error) {
 
 	// Extract first 191 bits (0-190)
-	first191BitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
-	firstUnusedBits = new(big.Int).And(globalIndex, first191BitsMask)
+	firstUnusedBitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
+	firstUnusedBits = new(big.Int).And(globalIndex, firstUnusedBitsMask)
 
 	// Extract mainnet flag from bit 191
 	mainnetFlag = globalIndex.Bit(globalIndexMainnetFlagBit) == 1

@@ -448,12 +448,12 @@ type GlobalIndex struct {
 
 // String returns a string representation of the GlobalIndex struct
 func (g *GlobalIndex) String() string {
-	first191BitsStr := "nil"
+	firstUnusedBitsStr := "nil"
 	if g.FirstUnusedBits != nil {
-		first191BitsStr = g.FirstUnusedBits.String()
+		firstUnusedBitsStr = g.FirstUnusedBits.String()
 	}
 	return fmt.Sprintf("FirstUnusedBits: %s, MainnetFlag: %t, RollupIndex: %d, LeafIndex: %d",
-		first191BitsStr, g.MainnetFlag, g.RollupIndex, g.LeafIndex)
+		firstUnusedBitsStr, g.MainnetFlag, g.RollupIndex, g.LeafIndex)
 }
 
 func (g *GlobalIndex) Hash() common.Hash {
@@ -481,8 +481,8 @@ func (g *GlobalIndex) UnmarshalFromMap(data map[string]interface{}) error {
 	}
 
 	var firstUnusedBits *big.Int
-	if first191BitsValue, exists := data["first_unused_bits"]; exists && first191BitsValue != nil {
-		switch v := first191BitsValue.(type) {
+	if firstUnusedBitsValue, exists := data["first_unused_bits"]; exists && firstUnusedBitsValue != nil {
+		switch v := firstUnusedBitsValue.(type) {
 		case string:
 			// Try to parse as a decimal string
 			if parsed, ok := new(big.Int).SetString(v, 10); ok {
