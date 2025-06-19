@@ -260,3 +260,59 @@ func TestMigrations0003(t *testing.T) {
 	require.Equal(t, common.HexToAddress("0x7"), legacyTokenMigration.UpdatedTokenAddress)
 	require.Equal(t, big.NewInt(1000), legacyTokenMigration.Amount)
 }
+
+func TestMigrations0004(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "bridgesyncTest0004.sqlite")
+
+	err := RunMigrations(dbPath)
+	require.NoError(t, err)
+	db, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	var updatedChain struct {
+		ClaimedGlobalIndex             string `meddler:"claimed_global_index"`
+		NewClaimedGlobalIndexHashChain string `meddler:"new_global_index_hash_chain"`
+		BlockNum                       uint64 `meddler:"block_num"`
+		BlockPos                       uint64 `meddler:"block_pos"`
+		BlockTimestamp                 uint64 `meddler:"block_timestamp"`
+		TxHash                         string `meddler:"tx_hash"`
+		ContractAddress                string `meddler:"contract_address"`
+		NetworkID                      int64  `meddler:"network_id"`
+	}
+
+	_, err = tx.Exec(`
+		INSERT INTO block (num, hash) VALUES (1, '0xC0DE');
+		INSERT INTO updated_claimed_global_index_hash_chain (
+			claimed_global_index,
+			new_global_index_hash_chain,
+			block_num,
+			block_pos,
+			block_timestamp,
+			tx_hash,
+			contract_address,
+			network_id
+		) VALUES ('123', '456', 1, 2, 1739270804, '0xdeadbeef', '0xabc123', 42);
+	`)
+	require.NoError(t, err)
+
+	err = tx.Commit()
+	require.NoError(t, err)
+
+	err = meddler.QueryRow(db, &updatedChain,
+		`SELECT * FROM updated_claimed_global_index_hash_chain`)
+	require.NoError(t, err)
+	require.NotNil(t, updatedChain)
+	require.Equal(t, "123", updatedChain.ClaimedGlobalIndex)
+	require.Equal(t, "456", updatedChain.NewClaimedGlobalIndexHashChain)
+	require.Equal(t, uint64(1), updatedChain.BlockNum)
+	require.Equal(t, uint64(2), updatedChain.BlockPos)
+	require.Equal(t, uint64(1739270804), updatedChain.BlockTimestamp)
+	require.Equal(t, "0xdeadbeef", updatedChain.TxHash)
+	require.Equal(t, "0xabc123", updatedChain.ContractAddress)
+	require.Equal(t, int64(42), updatedChain.NetworkID)
+}

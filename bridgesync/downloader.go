@@ -330,8 +330,6 @@ func buildUpdatedClaimedGlobalIndexHashChainHandler(contract *bridgel2sovereignc
 			BlockPos:       uint64(l.Index),
 			BlockTimestamp: b.Timestamp,
 			TxHash:         l.TxHash,
-			LogIndex:       l.Index,
-			Contract:       l.Address,
 		}})
 		return nil
 	}
