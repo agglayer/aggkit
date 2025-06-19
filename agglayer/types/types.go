@@ -485,7 +485,7 @@ func (g *GlobalIndex) UnmarshalFromMap(data map[string]interface{}) error {
 		switch v := firstUnusedBitsValue.(type) {
 		case string:
 			// Try to parse as a decimal string
-			if parsed, ok := new(big.Int).SetString(v, 10); ok {
+			if parsed, ok := new(big.Int).SetString(v, base10); ok {
 				firstUnusedBits = parsed
 			} else {
 				return fmt.Errorf("invalid first_unused_bits string value: %s", v)
@@ -957,7 +957,12 @@ func (c *ImportedBridgeExit) Hash() common.Hash {
 // GlobalIndexToLittleEndianBytes converts the global index to a byte slice in little-endian format
 func (c *ImportedBridgeExit) GlobalIndexToLittleEndianBytes() []byte {
 	return aggkitcommon.BigIntToLittleEndianBytes(
-		bridgesync.GenerateGlobalIndex(c.GlobalIndex.FirstUnusedBits, c.GlobalIndex.MainnetFlag, c.GlobalIndex.RollupIndex, c.GlobalIndex.LeafIndex),
+		bridgesync.GenerateGlobalIndex(
+			c.GlobalIndex.FirstUnusedBits,
+			c.GlobalIndex.MainnetFlag,
+			c.GlobalIndex.RollupIndex,
+			c.GlobalIndex.LeafIndex,
+		),
 	)
 }
 
