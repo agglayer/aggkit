@@ -930,7 +930,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				logger,
 				NewBaseFlow(logger, mockL2BridgeQuerier,
 					mockStorage, mockL1InfoTreeQuerier, mockLERQuerier, NewBaseFlowConfigDefault()),
-				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil, tc.forceOneBridgeExit, nil, 0)
+				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil, tc.forceOneBridgeExit, 0)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockL1InfoTreeQuerier)
 
