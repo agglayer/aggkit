@@ -310,7 +310,6 @@ type RemoveLegacyToken struct {
 
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
-	Pos                  uint64
 	Bridge               *Bridge
 	Claim                *Claim
 	TokenMapping         *TokenMapping
@@ -731,7 +730,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.Bridge != nil {
-			if err = p.exitTree.AddLeaf(tx, block.Num, event.Pos, types.Leaf{
+			if err = p.exitTree.AddLeaf(tx, block.Num, event.Bridge.BlockPos, types.Leaf{
 				Index: event.Bridge.DepositCount,
 				Hash:  event.Bridge.Hash(),
 			}); err != nil {
