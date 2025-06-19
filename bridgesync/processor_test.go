@@ -1973,7 +1973,6 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 	// Create test data with events in different blocks and positions
 	events := []Event{
 		{
-			Pos: 0,
 			Bridge: &Bridge{
 				BlockNum:     1,
 				BlockPos:     0,
@@ -1981,7 +1980,6 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 			},
 		},
 		{
-			Pos: 1,
 			Bridge: &Bridge{
 				BlockNum:     1,
 				BlockPos:     1,
@@ -1989,7 +1987,6 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 			},
 		},
 		{
-			Pos: 2,
 			Bridge: &Bridge{
 				BlockNum:     1,
 				BlockPos:     2,
@@ -1997,7 +1994,6 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 			},
 		},
 		{
-			Pos: 0,
 			Bridge: &Bridge{
 				BlockNum:     2,
 				BlockPos:     0,
