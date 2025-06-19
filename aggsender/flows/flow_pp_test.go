@@ -930,7 +930,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				logger,
 				NewBaseFlow(logger, mockL2BridgeQuerier,
 					mockStorage, mockL1InfoTreeQuerier, mockLERQuerier, NewBaseFlowConfigDefault()),
-				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil, tc.forceOneBridgeExit)
+				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil, tc.forceOneBridgeExit, 0)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockL1InfoTreeQuerier)
 
@@ -1090,6 +1090,7 @@ func Test_PPFlow_SignCertificate(t *testing.T) {
 				nil, // l2BridgeQuerier
 				mockSigner,
 				false, // forceOneBridgeExit
+				0,     // maxL2BlockNumber
 			)
 
 			signedCert, err := ppFlow.signCertificate(ctx, tt.certificate)

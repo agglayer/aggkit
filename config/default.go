@@ -190,6 +190,8 @@ RequireNoFEPBlockGap = true
 RequireOneBridgeInPPCertificate = false
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
+MaxL2BlockNumber = 0
+StopOnFinishedSendingAllCertificates = false
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectTimeout = "5s"

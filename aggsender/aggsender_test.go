@@ -214,7 +214,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		flow: flows.NewPPFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
 				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
-			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true),
+			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
 		rateLimiter: aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
@@ -680,7 +680,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		flow: flows.NewPPFlow(logger,
 			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
 				l1InfoTreeQuerierMock, lerQuerier, flows.NewBaseFlowConfigDefault()),
-			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true),
+			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0),
 	}
 	var flowMock *mocks.AggsenderFlow
 	if creationFlags&testDataFlagMockFlow != 0 {

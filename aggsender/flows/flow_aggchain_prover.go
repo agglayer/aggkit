@@ -35,10 +35,11 @@ type AggchainProverFlow struct {
 
 	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
-	requireNoFEPBlockGap  bool
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	optimisticSigner      types.OptimisticSigner
+	config                AggchainProverFlowConfig
+	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (uint64, error) {
@@ -62,21 +63,25 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 // AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {
 	requireNoFEPBlockGap bool
+	maxL2BlockNumber     uint64
 }
 
 // NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
 func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		requireNoFEPBlockGap: true, // default to true, can be set to false for testing purposes
+		maxL2BlockNumber:     0,
 	}
 }
 
 // NewAggchainProverFlowConfig creates a new AggchainProverFlowConfig with the given base flow config
 func NewAggchainProverFlowConfig(
 	requireNoFEPBlockGap bool,
+	maxL2BlockNumber uint64,
 ) AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		requireNoFEPBlockGap: requireNoFEPBlockGap,
+		maxL2BlockNumber:     maxL2BlockNumber,
 	}
 }
 
@@ -96,6 +101,12 @@ func NewAggchainProverFlow(
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	optimisticSigner types.OptimisticSigner,
 ) *AggchainProverFlow {
+	feature := NewMaxL2BlockNumberLimiter(
+		aggChainProverConfig.maxL2BlockNumber,
+		log,
+		false, // AggchainProverFlow allows to resize retry certs
+		false, // AggchainProverFlow allows to send no bridges certs
+	)
 	return &AggchainProverFlow{
 		log:                   log,
 		storage:               storage,
@@ -103,11 +114,12 @@ func NewAggchainProverFlow(
 		l2BridgeQuerier:       l2BridgeQuerier,
 		aggchainProofClient:   aggkitProverClient,
 		gerQuerier:            gerQuerier,
-		requireNoFEPBlockGap:  aggChainProverConfig.requireNoFEPBlockGap,
+		config:                aggChainProverConfig,
 		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
 		optimisticSigner:      optimisticSigner,
 		baseFlow:              baseFlow,
+		featureMaxL2Block:     feature,
 	}
 }
 
@@ -134,7 +146,7 @@ func (a *AggchainProverFlow) sanityCheckNoBlockGaps(lastSentCertificate *types.C
 	if lastSentCertificate != nil && lastSentCertificate.ToBlock+1 < a.baseFlow.StartL2Block() {
 		err := fmt.Errorf("gap of blocks detected: lastSentCertificate.ToBlock: %d, startL2Block: %d",
 			lastSentCertificate.ToBlock, a.baseFlow.StartL2Block())
-		if a.requireNoFEPBlockGap {
+		if a.config.requireNoFEPBlockGap {
 			a.log.Error("%s. Err: %s", msg+" fails!", err.Error())
 			return err
 		}
@@ -180,6 +192,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 		a.log.Infof("resending the same InError certificate: %s", lastSentCert.String())
 		fromBlock := lastSentCert.FromBlock
 		toBlock := lastSentCert.ToBlock
+
 		lastProvenBlock := a.getLastProvenBlock(fromBlock, lastSentCert)
 		if lastSentCert.FromBlock != lastProvenBlock+1 {
 			a.log.Warnf("aggchainProverFlow - last sent certificate is InError and its fromBlock: %d doesn't match "+
@@ -203,6 +216,13 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			LastSentCertificate: lastSentCert,
 			CreatedAt:           lastSentCert.CreatedAt,
 			CertificateType:     typeCert,
+		}
+		if a.featureMaxL2Block != nil {
+			// If the feature is enabled, we need to adapt the build params
+			buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
+			if err != nil {
+				return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block.Err: %w", err)
+			}
 		}
 
 		if proof == nil {
@@ -236,9 +256,16 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			// this is a valid case, so just return nil without error
 			return nil, nil
 		}
-
 		return nil, err
 	}
+	if a.featureMaxL2Block != nil {
+		// If the feature is enabled, we need to adapt the build params
+		buildParams, err = a.featureMaxL2Block.AdaptCertificate(buildParams)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block. Err: %w", err)
+		}
+	}
+
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, lastSentCert)
 	if buildParams.FromBlock != lastProvenBlock+1 {
 		a.log.Infof("aggchainProverFlow - getCertificateBuildParams - setting fromBlock to %d instead of %d",
@@ -270,8 +297,8 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 				lastProvenBlock, buildParams.ToBlock)
 			return nil, nil
 		}
-
-		return nil, fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
+		errNew := fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
+		return nil, errNew
 	}
 
 	a.log.Infof("aggchainProverFlow - fetched auth proof for lastProvenBlock: %d, maxEndBlock: %d "+

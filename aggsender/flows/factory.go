@@ -61,6 +61,7 @@ func NewFlow(
 			l2BridgeQuerier,
 			signer,
 			cfg.RequireOneBridgeInPPCertificate,
+			cfg.MaxL2BlockNumber,
 		), nil
 	case types.AggchainProofMode:
 		if err := cfg.AggkitProverClient.Validate(); err != nil {
@@ -110,7 +111,7 @@ func NewFlow(
 		return NewAggchainProverFlow(
 			logger,
 			baseFlow,
-			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap),
+			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap, cfg.MaxL2BlockNumber),
 			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,
