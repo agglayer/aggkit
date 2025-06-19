@@ -184,6 +184,9 @@ type ClaimResponse struct {
 
 	// Address from which the claim originated
 	FromAddress Address `json:"from_address" example:"0xabc1234567890abcdef1234567890abcdef1234"`
+
+	// Mainnet exit root associated with the claim
+	MainnetExitRoot Hash `json:"mainnet_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"`
 }
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings

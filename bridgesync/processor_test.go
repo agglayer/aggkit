@@ -404,6 +404,7 @@ var (
 				OriginAddress:      common.HexToAddress("01"),
 				DestinationAddress: common.HexToAddress("01"),
 				Amount:             big.NewInt(1),
+				MainnetExitRoot:    common.Hash{},
 			}},
 			Event{TokenMapping: &TokenMapping{
 				BlockNum:            1,
@@ -475,6 +476,7 @@ var (
 				OriginAddress:      common.HexToAddress("04"),
 				DestinationAddress: common.HexToAddress("04"),
 				Amount:             big.NewInt(4),
+				MainnetExitRoot:    common.Hash{},
 			}},
 			Event{Claim: &Claim{
 				BlockNum:           5,
@@ -484,6 +486,7 @@ var (
 				OriginAddress:      common.HexToAddress("05"),
 				DestinationAddress: common.HexToAddress("05"),
 				Amount:             big.NewInt(5),
+				MainnetExitRoot:    common.Hash{},
 			}},
 			Event{LegacyTokenMigration: &LegacyTokenMigration{
 				BlockNum:            5,
@@ -1189,12 +1192,12 @@ func TestGetClaimsPaged(t *testing.T) {
 	num2.SetString("18446744073709551618", 10)
 
 	claims := []*Claim{
-		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4, FromAddress: common.HexToAddress("0xd34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4, FromAddress: common.HexToAddress("0xd34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
 	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
