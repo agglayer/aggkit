@@ -287,7 +287,7 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*v1types.I
 		BridgeExit: convertToProtoBridgeExit(ibe.BridgeExit),
 		GlobalIndex: &v1types.FixedBytes32{
 			Value: common.BigToHash(bridgesync.GenerateGlobalIndex(
-				ibe.GlobalIndex.First191Bits,
+				ibe.GlobalIndex.FirstUnusedBits,
 				ibe.GlobalIndex.MainnetFlag,
 				ibe.GlobalIndex.RollupIndex,
 				ibe.GlobalIndex.LeafIndex)).Bytes(),

@@ -440,26 +440,26 @@ func (t *TokenInfo) String() string {
 
 // GlobalIndex represents the global index of an imported bridge exit
 type GlobalIndex struct {
-	First191Bits *big.Int `json:"first_191_bits,omitempty"`
-	MainnetFlag  bool     `json:"mainnet_flag"`
-	RollupIndex  uint32   `json:"rollup_index"`
-	LeafIndex    uint32   `json:"leaf_index"`
+	FirstUnusedBits *big.Int `json:"first_unused_bits,omitempty"`
+	MainnetFlag     bool     `json:"mainnet_flag"`
+	RollupIndex     uint32   `json:"rollup_index"`
+	LeafIndex       uint32   `json:"leaf_index"`
 }
 
 // String returns a string representation of the GlobalIndex struct
 func (g *GlobalIndex) String() string {
 	first191BitsStr := "nil"
-	if g.First191Bits != nil {
-		first191BitsStr = g.First191Bits.String()
+	if g.FirstUnusedBits != nil {
+		first191BitsStr = g.FirstUnusedBits.String()
 	}
-	return fmt.Sprintf("First191Bits: %s, MainnetFlag: %t, RollupIndex: %d, LeafIndex: %d",
+	return fmt.Sprintf("FirstUnusedBits: %s, MainnetFlag: %t, RollupIndex: %d, LeafIndex: %d",
 		first191BitsStr, g.MainnetFlag, g.RollupIndex, g.LeafIndex)
 }
 
 func (g *GlobalIndex) Hash() common.Hash {
 	return crypto.Keccak256Hash(
 		aggkitcommon.BigIntToLittleEndianBytes(
-			bridgesync.GenerateGlobalIndex(g.First191Bits, g.MainnetFlag, g.RollupIndex, g.LeafIndex),
+			bridgesync.GenerateGlobalIndex(g.FirstUnusedBits, g.MainnetFlag, g.RollupIndex, g.LeafIndex),
 		),
 	)
 }
@@ -480,32 +480,32 @@ func (g *GlobalIndex) UnmarshalFromMap(data map[string]interface{}) error {
 		return err
 	}
 
-	var first191Bits *big.Int
-	if first191BitsValue, exists := data["first_191_bits"]; exists && first191BitsValue != nil {
+	var firstUnusedBits *big.Int
+	if first191BitsValue, exists := data["first_unused_bits"]; exists && first191BitsValue != nil {
 		switch v := first191BitsValue.(type) {
 		case string:
 			// Try to parse as a decimal string
 			if parsed, ok := new(big.Int).SetString(v, 10); ok {
-				first191Bits = parsed
+				firstUnusedBits = parsed
 			} else {
-				return fmt.Errorf("invalid first_191_bits string value: %s", v)
+				return fmt.Errorf("invalid first_unused_bits string value: %s", v)
 			}
 		case float64:
 			// Convert from JSON number
-			first191Bits = new(big.Int).SetInt64(int64(v))
+			firstUnusedBits = new(big.Int).SetInt64(int64(v))
 		case int64:
-			first191Bits = new(big.Int).SetInt64(v)
+			firstUnusedBits = new(big.Int).SetInt64(v)
 		case uint64:
-			first191Bits = new(big.Int).SetUint64(v)
+			firstUnusedBits = new(big.Int).SetUint64(v)
 		default:
-			return fmt.Errorf("unsupported type for first_191_bits: %T", v)
+			return fmt.Errorf("unsupported type for first_unused_bits: %T", v)
 		}
 	}
 
 	g.RollupIndex = rollupIndex
 	g.LeafIndex = leafIndex
 	g.MainnetFlag = mainnetFlag
-	g.First191Bits = first191Bits
+	g.FirstUnusedBits = firstUnusedBits
 
 	return nil
 }
@@ -957,7 +957,7 @@ func (c *ImportedBridgeExit) Hash() common.Hash {
 // GlobalIndexToLittleEndianBytes converts the global index to a byte slice in little-endian format
 func (c *ImportedBridgeExit) GlobalIndexToLittleEndianBytes() []byte {
 	return aggkitcommon.BigIntToLittleEndianBytes(
-		bridgesync.GenerateGlobalIndex(c.GlobalIndex.First191Bits, c.GlobalIndex.MainnetFlag, c.GlobalIndex.RollupIndex, c.GlobalIndex.LeafIndex),
+		bridgesync.GenerateGlobalIndex(c.GlobalIndex.FirstUnusedBits, c.GlobalIndex.MainnetFlag, c.GlobalIndex.RollupIndex, c.GlobalIndex.LeafIndex),
 	)
 }
 

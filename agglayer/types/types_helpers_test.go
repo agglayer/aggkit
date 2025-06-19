@@ -23,7 +23,7 @@ func createDummyGlobalIndex(t *testing.T) *GlobalIndex {
 	t.Helper()
 
 	return &GlobalIndex{
-		First191Bits: nil,
+		FirstUnusedBits: nil,
 		MainnetFlag:  false,
 		RollupIndex:  10,
 		LeafIndex:    1,

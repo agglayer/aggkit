@@ -280,7 +280,7 @@ func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 		Metadata:           metaData,
 	}
 
-	first191Bits, mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
+	firstUnusedBits, mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding global index: %w", err)
 	}
@@ -288,10 +288,10 @@ func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 	return &agglayertypes.ImportedBridgeExit{
 		BridgeExit: bridgeExit,
 		GlobalIndex: &agglayertypes.GlobalIndex{
-			MainnetFlag:  mainnetFlag,
-			RollupIndex:  rollupIndex,
-			LeafIndex:    leafIndex,
-			First191Bits: first191Bits,
+			MainnetFlag:     mainnetFlag,
+			RollupIndex:     rollupIndex,
+			LeafIndex:       leafIndex,
+			FirstUnusedBits: firstUnusedBits,
 		},
 	}, nil
 }

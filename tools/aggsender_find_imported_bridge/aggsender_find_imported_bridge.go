@@ -34,14 +34,14 @@ func unmarshalGlobalIndex(globalIndex string) (*agglayertypes.GlobalIndex, error
 		if !ok {
 			return nil, fmt.Errorf("invalid global index: %v", globalIndex)
 		}
-		first191Bits, mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(bigInt)
+		firstUnusedBits, mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(bigInt)
 		if err != nil {
 			return nil, fmt.Errorf("invalid global index, fail to decode: %v", globalIndex)
 		}
 		globalIndexParsed.MainnetFlag = mainnetFlag
 		globalIndexParsed.RollupIndex = rollupIndex
 		globalIndexParsed.LeafIndex = leafIndex
-		globalIndexParsed.First191Bits = first191Bits
+		globalIndexParsed.FirstUnusedBits = firstUnusedBits
 	}
 	return &globalIndexParsed, nil
 }

@@ -876,14 +876,14 @@ func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
 }
 
 // GenerateGlobalIndex creates a global index from the given components, including the first 191 bits.
-func GenerateGlobalIndex(first191Bits *big.Int, mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
+func GenerateGlobalIndex(firstUnusedBits *big.Int, mainnetFlag bool, rollupIndex uint32, localExitRootIndex uint32) *big.Int {
 	// Create a 256-bit big.Int initialized to 0
 	result := new(big.Int)
 
 	// Set the first 191 bits (0-190) if provided
-	if first191Bits != nil {
+	if firstUnusedBits != nil {
 		first191BitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
-		first191BitsPreserved := new(big.Int).And(first191Bits, first191BitsMask)
+		first191BitsPreserved := new(big.Int).And(firstUnusedBits, first191BitsMask)
 		result.Or(result, first191BitsPreserved)
 	}
 
@@ -906,16 +906,16 @@ func GenerateGlobalIndex(first191Bits *big.Int, mainnetFlag bool, rollupIndex ui
 }
 
 // DecodeGlobalIndex decodes global index to its four parts (backward compatible version):
-// 1. first191Bits - bits 0-190 (191 bits)
+// 1. firstUnusedBits - bits 0-190 (191 bits)
 // 2. mainnetFlag - bit 191
 // 3. rollupIndex - bits 192-223 (32 bits)
 // 4. localExitRootIndex - bits 224-255 (32 bits)
-func DecodeGlobalIndex(globalIndex *big.Int) (first191Bits *big.Int, mainnetFlag bool,
+func DecodeGlobalIndex(globalIndex *big.Int) (firstUnusedBits *big.Int, mainnetFlag bool,
 	rollupIndex uint32, localExitRootIndex uint32, err error) {
 
 	// Extract first 191 bits (0-190)
 	first191BitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
-	first191Bits = new(big.Int).And(globalIndex, first191BitsMask)
+	firstUnusedBits = new(big.Int).And(globalIndex, first191BitsMask)
 
 	// Extract mainnet flag from bit 191
 	mainnetFlag = globalIndex.Bit(globalIndexMainnetFlagBit) == 1
@@ -932,7 +932,7 @@ func DecodeGlobalIndex(globalIndex *big.Int) (first191Bits *big.Int, mainnetFlag
 	localExitRootIndexBig := new(big.Int).And(localExitRootIndexShifted, localExitRootIndexMask)
 	localExitRootIndex = uint32(localExitRootIndexBig.Uint64())
 
-	return first191Bits, mainnetFlag, rollupIndex, localExitRootIndex, nil
+	return firstUnusedBits, mainnetFlag, rollupIndex, localExitRootIndex, nil
 }
 
 //nolint:unparam
