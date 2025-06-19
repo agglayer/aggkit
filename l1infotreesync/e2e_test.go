@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
-	aggkittypes "github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/etherman"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	mocks_l1infotreesync "github.com/agglayer/aggkit/l1infotreesync/mocks"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/verifybatchesmock"
 	"github.com/agglayer/aggkit/test/helpers"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -70,8 +70,8 @@ func TestE2E(t *testing.T) {
 	rdm.On("AddBlockToTrack", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
-	syncer, err := l1infotreesync.New(ctx, dbPath, gerAddr, verifyAddr, 10, etherman.LatestBlock, rdm, client.Client(), time.Millisecond, 0, 100*time.Millisecond, 25,
-		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock, true)
+	syncer, err := l1infotreesync.New(ctx, dbPath, gerAddr, verifyAddr, 10, aggkittypes.LatestBlock, rdm, client.Client(), time.Millisecond, 0, 100*time.Millisecond, 25,
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock, true)
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -154,12 +154,12 @@ func TestWithReorgs(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 30)}, reorgdetector.L1)
+	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 30)}, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
-	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, etherman.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 25,
-		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock, true)
+	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, aggkittypes.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 25,
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock, true)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 
@@ -274,12 +274,12 @@ func TestStressAndReorgs(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)}, reorgdetector.L1)
+	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100)}, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
-	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, etherman.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 100,
-		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock, true)
+	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, aggkittypes.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 100,
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock, true)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 

@@ -9,7 +9,6 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/etherman"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
@@ -29,7 +28,7 @@ const (
 
 type ConfigBlockNotifierPolling struct {
 	// BlockFinalityType is the finality of the block to be notified
-	BlockFinalityType etherman.BlockNumberFinality
+	BlockFinalityType aggkittypes.BlockNumberFinality
 	// CheckNewBlockInterval is the interval at which the AggSender will check for new blocks
 	// if is 0 it will be calculated automatically
 	CheckNewBlockInterval time.Duration

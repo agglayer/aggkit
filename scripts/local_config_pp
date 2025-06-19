@@ -163,31 +163,20 @@ function export_values_of_genesis() {
 ###############################################################################
 function export_values_of_cdk_node_config() {
     local _CDK_CONFIG_FILE=$1
-    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_address $_CDK_CONFIG_FILE "." L2Coinbase
-    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
+    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." AggSenderPrivateKeyPassword
     export_key_from_toml_file_or_fatal l1_chain_id $_CDK_CONFIG_FILE L1Config chainId
-    export_key_from_toml_file zkevm_is_validium $_CDK_CONFIG_FILE Common IsValidiumMode
-    if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_is_validium $_CDK_CONFIG_FILE "." IsValidiumMode
-    fi
     export_key_from_toml_file zkevm_rollup_id $_CDK_CONFIG_FILE Common NetworkID
     if [ $? -ne 0 ]; then
         export_key_from_toml_file_or_fatal zkevm_rollup_id $_CDK_CONFIG_FILE "." NetworkID
-    fi
-    export_key_from_toml_file zkevm_contract_versions $_CDK_CONFIG_FILE Common ContractVersions
-    if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_contract_versions $_CDK_CONFIG_FILE "." ContractVersions
     fi
     export_key_from_toml_file l2_chain_id $_CDK_CONFIG_FILE Aggregator ChainID
     if [ $? -ne 0 ]; then
         log_debug "l2_chain_id not found in Aggregator section, using 0"
         export l2_chain_id="0"
     fi
-    export_key_from_toml_file_or_fatal zkevm_l2_agglayer_address $_CDK_CONFIG_FILE "." SenderProofToL1Addr
-    export_key_from_toml_file_or_fatal zkevm_rollup_fork_id $_CDK_CONFIG_FILE "." ForkId
     export_key_from_toml_file zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE AggSender.SequencerPrivateKey Password
     if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
+        export_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE "." AggSenderPrivateKeyPassword
     fi
     export_key_from_toml_file zkevm_bridge_address $_CDK_CONFIG_FILE BridgeL1Sync BridgeAddr
     if [ $? -ne 0 ]; then
@@ -319,18 +308,6 @@ function download_kurtosis_artifacts() {
     export zkevm_l2_agglayer_keystore_file=$DEST/agglayer.keystore
 }
 ###############################################################################
-function add_translation_rules_for_validium() {
-    if [ $is_cdk_validium != "true" ]; then
-        return
-    fi
-    log_debug " For Validium mode, we need to reach the DAC SERVER: adding translation rules"
-
-    echo "[Aggregator.Synchronizer.Etherman.Validium.Translator]"
-    echo "FullMatchRules = ["
-    echo "			{Old=\"http://zkevm-dac-001:8484\", New=\"http://127.0.0.1:${dac_port}\"},"
-    echo "		]"
-}
-###############################################################################
 function check_generated_config_file() {
     grep "<no value>" $DEST_TEMPLATE_FILE >/dev/null
     if [ $? -ne 1 ]; then
@@ -386,8 +363,6 @@ go run scripts/run_template.go $ORIG_TEMPLATE_FILE >$DEST_TEMPLATE_FILE
 ok_or_fatal "Error generating template"
 
 check_generated_config_file
-
-add_translation_rules_for_validium
 
 echo " "
 echo "file generated at:" $DEST/test.kurtosis.toml

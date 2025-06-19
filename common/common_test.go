@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -299,47 +298,6 @@ func TestUint32ToBytes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			result := Uint32ToBytes(tt.input)
 			require.Equal(t, tt.expected, hex.EncodeToString(result))
-		})
-	}
-}
-
-func TestCalculateAccInputHash(t *testing.T) {
-	logger := log.WithFields("module", "common_test")
-
-	tests := []struct {
-		name              string
-		oldAccInputHash   common.Hash
-		batchData         []byte
-		l1InfoRoot        common.Hash
-		timestampLimit    uint64
-		sequencerAddr     common.Address
-		forcedBlockhashL1 common.Hash
-		expectedHash      common.Hash
-	}{
-		{
-			name:              "Test case 1",
-			oldAccInputHash:   common.HexToHash("0x1"),
-			batchData:         []byte("batch data"),
-			l1InfoRoot:        common.HexToHash("0x2"),
-			timestampLimit:    1234567890,
-			sequencerAddr:     common.HexToAddress("0x3"),
-			forcedBlockhashL1: common.HexToHash("0x4"),
-			expectedHash:      common.HexToHash("0xc52fa6fdbba28ac34f02f3ca08c35b719239033028e49e28ba996a5fc75096e9"),
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := CalculateAccInputHash(
-				logger,
-				tt.oldAccInputHash,
-				tt.batchData,
-				tt.l1InfoRoot,
-				tt.timestampLimit,
-				tt.sequencerAddr,
-				tt.forcedBlockhashL1,
-			)
-			require.Equal(t, tt.expectedHash, result)
 		})
 	}
 }

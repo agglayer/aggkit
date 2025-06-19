@@ -30,6 +30,7 @@ func NewFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	rollupDataQuerier types.RollupDataQuerier,
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
@@ -40,7 +41,7 @@ func NewFlow(
 		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
 			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1)
 		lerQuerier, err := query.NewLERDataQuerier(
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, rollupDataQuerier)
 		if err != nil {
 			return nil, fmt.Errorf("error creating LER data querier: %w", err)
 		}
@@ -95,7 +96,7 @@ func NewFlow(
 		}
 
 		lerQuerier, err := query.NewLERDataQuerier(
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, rollupDataQuerier)
 		if err != nil {
 			return nil, fmt.Errorf("error creating LER data querier: %w", err)
 		}

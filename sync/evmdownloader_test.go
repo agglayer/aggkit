@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -365,9 +365,9 @@ func NewTestDownloader(t *testing.T, retryPeriod time.Duration) (*EVMDownloader,
 	}
 	clientMock := aggkittypesmocks.NewBaseEthereumClienter(t)
 	d, err := NewEVMDownloader("test",
-		clientMock, syncBlockChunck, etherman.LatestBlock, time.Millisecond,
+		clientMock, syncBlockChunck, aggkittypes.LatestBlock, time.Millisecond,
 		buildAppender(), []common.Address{contractAddr}, rh,
-		etherman.FinalizedBlock,
+		aggkittypes.FinalizedBlock,
 	)
 	require.NoError(t, err)
 	return d, clientMock
