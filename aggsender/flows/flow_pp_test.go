@@ -1090,7 +1090,7 @@ func Test_PPFlow_SignCertificate(t *testing.T) {
 				nil, // l2BridgeQuerier
 				mockSigner,
 				false, // forceOneBridgeExit
-				0,     //maxL2BlockNumber
+				0,     // maxL2BlockNumber
 			)
 
 			signedCert, err := ppFlow.signCertificate(ctx, tt.certificate)
