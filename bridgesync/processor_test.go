@@ -728,7 +728,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 		expectedMainnetFlag     bool
 		expectedRollupIndex     uint32
 		expectedLocalIndex      uint32
-		expectedErr             error
 	}{
 		{
 			name:                    "Mainnet flag true, rollup index 0",
@@ -737,7 +736,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag:     true,
 			expectedRollupIndex:     0,
 			expectedLocalIndex:      2,
-			expectedErr:             nil,
 		},
 		{
 			name:                    "Mainnet flag true, indexes 0",
@@ -746,7 +744,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag:     true,
 			expectedRollupIndex:     0,
 			expectedLocalIndex:      0,
-			expectedErr:             nil,
 		},
 		{
 			name:                    "Mainnet flag false, rollup index 0",
@@ -755,7 +752,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag:     false,
 			expectedRollupIndex:     0,
 			expectedLocalIndex:      2,
-			expectedErr:             nil,
 		},
 		{
 			name:                    "Mainnet flag false, rollup index non-zero",
@@ -764,7 +760,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag:     false,
 			expectedRollupIndex:     11,
 			expectedLocalIndex:      0,
-			expectedErr:             nil,
 		},
 		{
 			name:                    "Mainnet flag false, indexes 0",
@@ -773,7 +768,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag:     false,
 			expectedRollupIndex:     0,
 			expectedLocalIndex:      0,
-			expectedErr:             nil,
 		},
 		{
 			name:                    "Mainnet flag false, indexes non zero",
@@ -782,7 +776,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag:     false,
 			expectedRollupIndex:     1231,
 			expectedLocalIndex:      111234,
-			expectedErr:             nil,
 		},
 		{
 			name:                    "Mainnet flag true, rollup index 0, with first 191 bits",
@@ -791,7 +784,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag:     true,
 			expectedRollupIndex:     0,
 			expectedLocalIndex:      2,
-			expectedErr:             nil,
 		},
 		{
 			name:                    "Mainnet flag false, rollup index non-zero, with first 191 bits",
@@ -800,7 +792,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag:     false,
 			expectedRollupIndex:     11,
 			expectedLocalIndex:      0,
-			expectedErr:             nil,
 		},
 		{
 			name:                    "Large first 191 bits value",
@@ -809,7 +800,6 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag:     false,
 			expectedRollupIndex:     0,
 			expectedLocalIndex:      0,
-			expectedErr:             nil,
 		},
 	}
 
@@ -819,12 +809,7 @@ func TestDecodeGlobalIndex(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			firstUnusedBits, mainnetFlag, rollupIndex, localExitRootIndex, err := DecodeGlobalIndex(tt.globalIndex)
-			if tt.expectedErr != nil {
-				require.EqualError(t, err, tt.expectedErr.Error())
-			} else {
-				require.NoError(t, err)
-			}
+			firstUnusedBits, mainnetFlag, rollupIndex, localExitRootIndex := DecodeGlobalIndex(tt.globalIndex)
 			if tt.expectedFirstUnusedBits == nil {
 				require.Nil(t, firstUnusedBits)
 			} else {

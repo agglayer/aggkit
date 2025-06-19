@@ -914,10 +914,15 @@ func GenerateGlobalIndex(
 // 3. rollupIndex - bits 192-223 (32 bits)
 // 4. localExitRootIndex - bits 224-255 (32 bits)
 func DecodeGlobalIndex(globalIndex *big.Int) (firstUnusedBits *big.Int, mainnetFlag bool,
-	rollupIndex uint32, localExitRootIndex uint32, err error) {
+	rollupIndex uint32, localExitRootIndex uint32) {
 	// Extract first 191 bits (0-190)
 	firstUnusedBitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
 	firstUnusedBits = new(big.Int).And(globalIndex, firstUnusedBitsMask)
+
+	// If firstUnusedBits is 0, set it to nil
+	if firstUnusedBits.Sign() == 0 {
+		firstUnusedBits = nil
+	}
 
 	// Extract mainnet flag from bit 191
 	mainnetFlag = globalIndex.Bit(globalIndexMainnetFlagBit) == 1
@@ -940,7 +945,7 @@ func DecodeGlobalIndex(globalIndex *big.Int) (firstUnusedBits *big.Int, mainnetF
 	localExitRootIndexBig := new(big.Int).And(localExitRootIndexShifted, localExitRootIndexMask)
 	localExitRootIndex = uint32(localExitRootIndexBig.Uint64())
 
-	return firstUnusedBits, mainnetFlag, rollupIndex, localExitRootIndex, nil
+	return firstUnusedBits, mainnetFlag, rollupIndex, localExitRootIndex
 }
 
 //nolint:unparam
