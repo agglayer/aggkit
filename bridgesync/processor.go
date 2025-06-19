@@ -29,7 +29,7 @@ import (
 
 const (
 	// Global index structure (256 bits total):
-	// - Bits 0-190: unused (preserved)
+	// - Bits 0-190: unused
 	// - Bit 191: mainnet flag
 	// - Bits 192-223: rollup index (32 bits)
 	// - Bits 224-255: local exit root index (32 bits)
@@ -883,8 +883,8 @@ func GenerateGlobalIndex(
 	// Set the first 191 bits (0-190) if provided
 	if firstUnusedBits != nil {
 		firstUnusedBitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
-		firstUnusedBitsPreserved := new(big.Int).And(firstUnusedBits, firstUnusedBitsMask)
-		result.Or(result, firstUnusedBitsPreserved)
+		firstUnusedBits := new(big.Int).And(firstUnusedBits, firstUnusedBitsMask)
+		result.Or(result, firstUnusedBits)
 	}
 
 	// Set the mainnet flag at bit 191
