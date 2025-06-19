@@ -582,7 +582,8 @@ func (p *processor) queryBlockRange(tx dbtypes.Querier, fromBlock, toBlock uint6
 	}
 	rows, err := tx.Query(fmt.Sprintf(`
 		SELECT * FROM %s
-		WHERE block_num >= $1 AND block_num <= $2;
+		WHERE block_num >= $1 AND block_num <= $2
+		ORDER BY block_num ASC, block_pos ASC;
 	`, table), fromBlock, toBlock)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
