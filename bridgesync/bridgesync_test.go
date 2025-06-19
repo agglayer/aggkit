@@ -167,7 +167,7 @@ func TestGetExitRootByIndex(t *testing.T) {
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
-func TestGetClaims(t *testing.T) {
+func TestGetClaimsHalted(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
 	_, err := s.GetClaims(context.Background(), 0, 0)
 	require.ErrorIs(t, err, sync.ErrInconsistentState)

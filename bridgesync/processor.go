@@ -392,7 +392,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	rows, err := tx.Query(`
 		SELECT claim.*
 		FROM claim
-		INNER JOIN updated_claimed_global_index_hash_chain
+		LEFT JOIN updated_claimed_global_index_hash_chain
 			ON claim.global_index = updated_claimed_global_index_hash_chain.claimed_global_index
 		WHERE claim.block_num >= $1 AND claim.block_num <= $2
 		ORDER BY updated_claimed_global_index_hash_chain.id ASC;

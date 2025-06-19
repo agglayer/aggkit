@@ -1754,6 +1754,8 @@ func TestDecodePreEtrogCalldata(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
 			claim := &Claim{
 				GlobalIndex:        new(big.Int).SetUint64(uint64(globalIndex)),
 				MainnetExitRoot:    common.Hash{},
@@ -1970,4 +1972,86 @@ func TestDecodeEtrogCalldata(t *testing.T) {
 			require.Equal(t, tt.expectedIsDecoded, isDecoded)
 		})
 	}
+}
+
+func TestGetClaims(t *testing.T) {
+	path := path.Join(t.TempDir(), "bridgesyncTestGetClaims.sqlite")
+	require.NoError(t, migrations.RunMigrations(path))
+	logger := log.WithFields("bridge-syncer", "test")
+	p, err := newProcessor(path, "test", logger)
+	require.NoError(t, err)
+
+	tx, err := p.db.BeginTx(context.Background(), nil)
+	require.NoError(t, err)
+
+	// Insert a block
+	blockNum := uint64(1)
+	_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, blockNum, fmt.Sprintf("0x%x", blockNum))
+	require.NoError(t, err)
+
+	// Insert multiple claims
+	claim1 := &Claim{
+		BlockNum:           blockNum,
+		BlockPos:           0,
+		GlobalIndex:        big.NewInt(12345),
+		OriginNetwork:      1,
+		OriginAddress:      common.HexToAddress("0x11"),
+		DestinationAddress: common.HexToAddress("0x22"),
+		Amount:             big.NewInt(100),
+	}
+	claim2 := &Claim{
+		BlockNum:           blockNum,
+		BlockPos:           1,
+		GlobalIndex:        big.NewInt(23456),
+		OriginNetwork:      2,
+		OriginAddress:      common.HexToAddress("0x12"),
+		DestinationAddress: common.HexToAddress("0x23"),
+		Amount:             big.NewInt(200),
+	}
+	claim3 := &Claim{
+		BlockNum:           blockNum,
+		BlockPos:           2,
+		GlobalIndex:        big.NewInt(34567),
+		OriginNetwork:      3,
+		OriginAddress:      common.HexToAddress("0x13"),
+		DestinationAddress: common.HexToAddress("0x24"),
+		Amount:             big.NewInt(300),
+	}
+	require.NoError(t, meddler.Insert(tx, "claim", claim1))
+	require.NoError(t, meddler.Insert(tx, "claim", claim2))
+	require.NoError(t, meddler.Insert(tx, "claim", claim3))
+
+	// Insert into updated_claimed_global_index_hash_chain in a specific order
+	_, err = tx.Exec(`INSERT INTO updated_claimed_global_index_hash_chain (block_num, block_pos, block_timestamp, tx_hash, claimed_global_index, new_global_index_hash_chain) VALUES ($1, $2, $3, $4, $5, $6)`,
+		blockNum, 2, 0, "0x2", claim3.GlobalIndex.String(), "hashchain3")
+	require.NoError(t, err)
+	_, err = tx.Exec(`INSERT INTO updated_claimed_global_index_hash_chain (block_num, block_pos, block_timestamp, tx_hash, claimed_global_index, new_global_index_hash_chain) VALUES ($1, $2, $3, $4, $5, $6)`,
+		blockNum, 0, 0, "0x0", claim1.GlobalIndex.String(), "hashchain1")
+	require.NoError(t, err)
+	_, err = tx.Exec(`INSERT INTO updated_claimed_global_index_hash_chain (block_num, block_pos, block_timestamp, tx_hash, claimed_global_index, new_global_index_hash_chain) VALUES ($1, $2, $3, $4, $5, $6)`,
+		blockNum, 1, 0, "0x1", claim2.GlobalIndex.String(), "hashchain2")
+	require.NoError(t, err)
+
+	require.NoError(t, tx.Commit())
+
+	claims, err := p.GetClaims(context.Background(), blockNum, blockNum)
+	require.NoError(t, err)
+	require.Len(t, claims, 3)
+
+	// The order should match the order of updated_claimed_global_index_hash_chain inserts: claim3, claim1, claim2
+	require.Equal(t, claim3.GlobalIndex, claims[0].GlobalIndex)
+	require.Equal(t, claim1.GlobalIndex, claims[1].GlobalIndex)
+	require.Equal(t, claim2.GlobalIndex, claims[2].GlobalIndex)
+
+	// Remove the last two updated_claimed_global_index_hash_chain records
+	_, err = p.db.Exec(`DELETE FROM updated_claimed_global_index_hash_chain WHERE block_num = $1 AND block_pos IN ($2, $3)`, blockNum, 0, 1)
+
+	claims, err = p.GetClaims(context.Background(), blockNum, blockNum)
+	require.NoError(t, err)
+	require.Len(t, claims, 3)
+
+	// They should be ordered in claims table order, which is by insertion order
+	require.Equal(t, claim1.GlobalIndex, claims[0].GlobalIndex)
+	require.Equal(t, claim2.GlobalIndex, claims[1].GlobalIndex)
+	require.Equal(t, claim3.GlobalIndex, claims[2].GlobalIndex)
 }
