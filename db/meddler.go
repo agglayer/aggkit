@@ -156,7 +156,7 @@ func (m HashMeddler) PreRead(fieldAddr interface{}) (scanTarget interface{}, err
 	// give a pointer to a byte buffer to grab the raw data
 	_, ok := fieldAddr.(**common.Hash)
 	if ok {
-		// This is becase if not the rows.Scan fails 'converting NULL to string is unsupported'
+		// This is because if not the rows.Scan fails 'converting NULL to string is unsupported'
 		return new(*string), nil
 	}
 	return new(string), nil

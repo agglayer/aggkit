@@ -1,4 +1,4 @@
---- Fix migration from 0001 to 0002 that field l1_inffo_tree_leaf_count can't be read
+--- Fix migration from 0001 to 0002 that field l1_info_tree_leaf_count can't be read
 -- +migrate Down
 
 
