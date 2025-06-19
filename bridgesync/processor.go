@@ -29,12 +29,12 @@ import (
 
 const (
 	// Global index structure (256 bits total):
-	// - Bits 0-190: unused
-	// - Bit 191: mainnet flag
-	// - Bits 192-223: rollup index (32 bits)
-	// - Bits 224-255: local exit root index (32 bits)
+	// - Bits 0-31: local exit root index (32 bits, least significant bits)
+	// - Bits 32-63: rollup index (32 bits)
+	// - Bit 64: mainnet flag
+	// - Bits 65-255: unused bits (191 bits, most significant bits)
 	globalIndexUnusedBits        = 191
-	globalIndexMainnetFlagBit    = 191
+	globalIndexMainnetFlagBit    = 64
 	globalIndexRollupIndexBits   = 32
 	globalIndexLocalExitRootBits = 32
 
@@ -871,6 +871,8 @@ func buildNetworkIDsFilter(networkIDs []uint32, networkIDColumn string) string {
 }
 
 // GenerateGlobalIndex creates a global index from the given components, including the first 191 bits.
+//
+//nolint:mnd
 func GenerateGlobalIndex(
 	firstUnusedBits *big.Int,
 	mainnetFlag bool,
@@ -884,13 +886,13 @@ func GenerateGlobalIndex(
 	if firstUnusedBits != nil {
 		firstUnusedBitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
 		firstUnusedBitsMasked := new(big.Int).And(firstUnusedBits, firstUnusedBitsMask)
-		firstUnusedBitsShifted := new(big.Int).Lsh(firstUnusedBitsMasked, 64) // Shift left by 64 bits to place at bits 65-255
+		firstUnusedBitsShifted := new(big.Int).Lsh(firstUnusedBitsMasked, 65) // Shift left by 65 bits to place at bits 65-255
 		result.Or(result, firstUnusedBitsShifted)
 	}
 
 	// Set the mainnet flag at bit 64
 	if mainnetFlag {
-		result.SetBit(result, 64, 1)
+		result.SetBit(result, globalIndexMainnetFlagBit, 1)
 	}
 
 	// Set the rollup index at bits 32-63
@@ -910,11 +912,16 @@ func GenerateGlobalIndex(
 // 2. mainnetFlag - bit 64
 // 3. rollupIndex - bits 32-63 (32 bits)
 // 4. localExitRootIndex - bits 0-31 (32 bits, least significant bits)
+//
+//nolint:mnd
 func DecodeGlobalIndex(globalIndex *big.Int) (firstUnusedBits *big.Int, mainnetFlag bool,
 	rollupIndex uint32, localExitRootIndex uint32) {
+	// Extract mainnet flag from bit 64 first
+	mainnetFlag = globalIndex.Bit(globalIndexMainnetFlagBit) == 1
+
 	// Extract first 191 bits from the left (bits 65-255, most significant bits)
-	// Shift right by 64 bits to get the upper 192 bits, then mask to get 191 bits
 	firstUnusedBitsShifted := new(big.Int).Rsh(globalIndex, 64)
+	firstUnusedBitsShifted.Rsh(firstUnusedBitsShifted, 1)
 	firstUnusedBitsMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexUnusedBits), big.NewInt(1))
 	firstUnusedBits = new(big.Int).And(firstUnusedBitsShifted, firstUnusedBitsMask)
 
@@ -922,9 +929,6 @@ func DecodeGlobalIndex(globalIndex *big.Int) (firstUnusedBits *big.Int, mainnetF
 	if firstUnusedBits.Sign() == 0 {
 		firstUnusedBits = nil
 	}
-
-	// Extract mainnet flag from bit 64
-	mainnetFlag = globalIndex.Bit(64) == 1
 
 	// Extract rollup index from bits 32-63
 	rollupIndexMask := new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), globalIndexRollupIndexBits), big.NewInt(1))
