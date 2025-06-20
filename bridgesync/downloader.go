@@ -52,6 +52,9 @@ const (
 
 	// callTracerType is the name of the call tracer
 	callTracerType = "callTracer"
+
+	// methodIDLength is the length of the method ID in bytes
+	methodIDLength = 4
 )
 
 func buildAppender(
@@ -331,6 +334,11 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 			return nil, fmt.Errorf("unexpected type for 'currentCall'. Expected 'call', got '%T'", currentCallInterface)
 		}
 
+		// Skip reverted calls
+		if currentCall.Err != nil {
+			continue
+		}
+
 		if currentCall.To == targetAddr {
 			if callback != nil {
 				found, err := callback(currentCall)
@@ -345,8 +353,11 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 			}
 		}
 
+		// Add non-reverted calls to the stack
 		for _, c := range currentCall.Calls {
-			callStack.Push(c)
+			if c.Err == nil {
+				callStack.Push(c)
+			}
 		}
 	}
 	return nil, db.ErrNotFound
@@ -379,8 +390,17 @@ func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.A
 		return err
 	}
 
+	// Check if the root call was successful
+	if callFrame.Err != nil {
+		return fmt.Errorf("root call reverted: %s", *callFrame.Err)
+	}
+
 	_, err = findCall(*callFrame, bridge,
 		func(call call) (bool, error) {
+			// Skip reverted calls
+			if call.Err != nil {
+				return false, nil
+			}
 			return c.tryDecodeClaimCalldata(call.From, call.Input)
 		})
 
@@ -392,7 +412,10 @@ func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.A
 // If a match is found, it decodes the calldata using the ABI of the bridge contract and updates the claim object.
 // Returns true if the calldata is successfully decoded and matches the expected format, otherwise returns false.
 func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) (bool, error) {
-	methodID := input[:4]
+	if len(input) < methodIDLength {
+		return false, nil
+	}
+	methodID := input[:methodIDLength]
 	switch {
 	case bytes.Equal(methodID, claimAssetEtrogMethodID):
 		fallthrough
@@ -407,7 +430,7 @@ func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) 
 			return false, err
 		}
 
-		data, err := method.Inputs.Unpack(input[4:])
+		data, err := method.Inputs.Unpack(input[methodIDLength:])
 		if err != nil {
 			return false, err
 		}
@@ -437,7 +460,7 @@ func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) 
 			return false, err
 		}
 
-		data, err := method.Inputs.Unpack(input[4:])
+		data, err := method.Inputs.Unpack(input[methodIDLength:])
 		if err != nil {
 			return false, err
 		}

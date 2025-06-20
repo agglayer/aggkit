@@ -630,6 +630,7 @@ func TestGetClaimsHandler(t *testing.T) {
 				DestinationNetwork: 10,
 				DestinationAddress: common.HexToAddress("0x2"),
 				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
 			},
 		}
 		claimsResp := aggkitcommon.MapSlice(expectedClaims, NewClaimResponse)
@@ -669,6 +670,7 @@ func TestGetClaimsHandler(t *testing.T) {
 				DestinationNetwork: 10,
 				DestinationAddress: common.HexToAddress("0x2"),
 				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
 			},
 		}
 		claimsResp := aggkitcommon.MapSlice(expectedClaims, NewClaimResponse)

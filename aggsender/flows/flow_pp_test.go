@@ -41,6 +41,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 				Amount:             big.NewInt(100),
 				Metadata:           []byte("metadata"),
 				GlobalIndex:        big.NewInt(1),
+				MainnetExitRoot:    common.Hash{},
 			},
 			expectedError: false,
 			expectedExit: &agglayertypes.ImportedBridgeExit{
@@ -73,6 +74,7 @@ func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 				Amount:             big.NewInt(100),
 				Metadata:           []byte("metadata"),
 				GlobalIndex:        big.NewInt(2),
+				MainnetExitRoot:    common.Hash{},
 			},
 			expectedError: false,
 			expectedExit: &agglayertypes.ImportedBridgeExit{

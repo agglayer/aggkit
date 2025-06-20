@@ -126,6 +126,7 @@ func NewClaimResponse(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
 		OriginAddress:      bridgetypes.Address(claim.OriginAddress.Hex()),
 		OriginNetwork:      claim.OriginNetwork,
 		BlockTimestamp:     claim.BlockTimestamp,
+		MainnetExitRoot:    bridgetypes.Hash(claim.MainnetExitRoot.Hex()),
 	}
 }
 
