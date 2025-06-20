@@ -17,6 +17,8 @@ import (
 )
 
 const insertGERFuncName = "insertGlobalExitRoot"
+const acceptGERUpdaterFuncName = "acceptGlobalExitRootUpdater"
+const acceptGERRemoverFuncName = "acceptGlobalExitRootRemover"
 
 type EVMConfig struct {
 	GlobalExitRootL2Addr common.Address      `mapstructure:"GlobalExitRootL2"`
@@ -51,16 +53,12 @@ func NewEVMChainGERSender(
 		return nil, err
 	}
 
-	if err := validateGERSender(ethTxMan.From(), l2GERManager); err != nil {
-		return nil, err
-	}
-
 	l2GERAbi, err := globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainMetaData.GetAbi()
 	if err != nil {
 		return nil, err
 	}
 
-	return &EVMChainGERSender{
+	r := &EVMChainGERSender{
 		logger:              logger,
 		l2GERManager:        l2GERManager,
 		l2GERManagerAddr:    l2GERManagerAddr,
@@ -68,7 +66,16 @@ func NewEVMChainGERSender(
 		ethTxMan:            ethTxMan,
 		gasOffset:           gasOffset,
 		waitPeriodMonitorTx: waitPeriodMonitorTx,
-	}, nil
+	}
+	log.Warn("!!accepting GER update and remover!!")
+	ctx := context.Background()
+	if err := r.AcceptGERUpdate(ctx); err != nil {
+		return nil, err
+	}
+	if err := r.AcceptGERRemover(ctx); err != nil {
+		return nil, err
+	}
+	return r, nil
 }
 
 // validateGERSender validates whether the provided GER sender is allowed to send and remove GERs
@@ -134,6 +141,100 @@ func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) erro
 				ethtxtypes.MonitoredTxStatusSafe,
 				ethtxtypes.MonitoredTxStatusFinalized:
 				c.logger.Debugf("inject GER tx %s was successfully mined at block %d", id.Hex(), res.MinedAtBlockNumber)
+
+				return nil
+			default:
+				c.logger.Error("unexpected tx status:", res.Status)
+			}
+		}
+	}
+}
+
+func (c *EVMChainGERSender) AcceptGERRemover(ctx context.Context) error {
+	ticker := time.NewTicker(c.waitPeriodMonitorTx)
+	defer ticker.Stop()
+
+	acceptGERRemoverTxInput, err := c.l2GERManagerAbi.Pack(acceptGERRemoverFuncName)
+	if err != nil {
+		return err
+	}
+
+	id, err := c.ethTxMan.Add(ctx, &c.l2GERManagerAddr, common.Big0, acceptGERRemoverTxInput, c.gasOffset, nil)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Infof("context cancelled")
+			return nil
+
+		case <-ticker.C:
+			c.logger.Debugf("waiting for tx %s to be mined", id.Hex())
+			res, err := c.ethTxMan.Result(ctx, id)
+			if err != nil {
+				c.logger.Errorf("failed to check the transaction %s status: %s", id.Hex(), err)
+				return err
+			}
+
+			switch res.Status {
+			case ethtxtypes.MonitoredTxStatusCreated,
+				ethtxtypes.MonitoredTxStatusSent:
+				continue
+			case ethtxtypes.MonitoredTxStatusFailed:
+				return fmt.Errorf("accept GER remover tx %s failed", id.Hex())
+			case ethtxtypes.MonitoredTxStatusMined,
+				ethtxtypes.MonitoredTxStatusSafe,
+				ethtxtypes.MonitoredTxStatusFinalized:
+				c.logger.Debugf("accept GER remover tx %s was successfully mined at block %d", id.Hex(), res.MinedAtBlockNumber)
+
+				return nil
+			default:
+				c.logger.Error("unexpected tx status:", res.Status)
+			}
+		}
+	}
+}
+
+func (c *EVMChainGERSender) AcceptGERUpdate(ctx context.Context) error {
+	ticker := time.NewTicker(c.waitPeriodMonitorTx)
+	defer ticker.Stop()
+
+	acceptGERUpdaterTxInput, err := c.l2GERManagerAbi.Pack(acceptGERUpdaterFuncName)
+	if err != nil {
+		return err
+	}
+
+	id, err := c.ethTxMan.Add(ctx, &c.l2GERManagerAddr, common.Big0, acceptGERUpdaterTxInput, c.gasOffset, nil)
+	if err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Infof("context cancelled")
+			return nil
+
+		case <-ticker.C:
+			c.logger.Debugf("waiting for tx %s to be mined", id.Hex())
+			res, err := c.ethTxMan.Result(ctx, id)
+			if err != nil {
+				c.logger.Errorf("failed to check the transaction %s status: %s", id.Hex(), err)
+				return err
+			}
+
+			switch res.Status {
+			case ethtxtypes.MonitoredTxStatusCreated,
+				ethtxtypes.MonitoredTxStatusSent:
+				continue
+			case ethtxtypes.MonitoredTxStatusFailed:
+				return fmt.Errorf("accept GER updater tx %s failed", id.Hex())
+			case ethtxtypes.MonitoredTxStatusMined,
+				ethtxtypes.MonitoredTxStatusSafe,
+				ethtxtypes.MonitoredTxStatusFinalized:
+				c.logger.Debugf("accept GER updater tx %s was successfully mined at block %d", id.Hex(), res.MinedAtBlockNumber)
 
 				return nil
 			default:
