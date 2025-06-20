@@ -19,9 +19,7 @@
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
     "l1_seconds_per_slot": 2,
-    "additional_services": [
-      "bridge_spammer"
-    ],
+    "additional_services": [],
     "enable_aggkit_claim_sponsor": false
   },
   "optimism_package": {

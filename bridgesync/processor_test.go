@@ -27,7 +27,7 @@ import (
 )
 
 func TestBigIntString(t *testing.T) {
-	globalIndex := GenerateGlobalIndex(true, 0, 1093)
+	globalIndex := GenerateGlobalIndex(nil, true, 0, 1093)
 	fmt.Println(globalIndex.String())
 
 	_, ok := new(big.Int).SetString(globalIndex.String(), 10)
@@ -47,7 +47,7 @@ func TestBigIntString(t *testing.T) {
 	claim := &Claim{
 		BlockNum:            1,
 		BlockPos:            0,
-		GlobalIndex:         GenerateGlobalIndex(true, 0, 1093),
+		GlobalIndex:         GenerateGlobalIndex(nil, true, 0, 1093),
 		OriginNetwork:       11,
 		Amount:              big.NewInt(11),
 		OriginAddress:       common.HexToAddress("0x11"),
@@ -722,60 +722,84 @@ func TestDecodeGlobalIndex(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		name                string
-		globalIndex         *big.Int
-		expectedMainnetFlag bool
-		expectedRollupIndex uint32
-		expectedLocalIndex  uint32
-		expectedErr         error
+		name                    string
+		globalIndex             *big.Int
+		expectedFirstUnusedBits *big.Int
+		expectedMainnetFlag     bool
+		expectedRollupIndex     uint32
+		expectedLocalIndex      uint32
 	}{
 		{
-			name:                "Mainnet flag true, rollup index 0",
-			globalIndex:         GenerateGlobalIndex(true, 0, 2),
-			expectedMainnetFlag: true,
-			expectedRollupIndex: 0,
-			expectedLocalIndex:  2,
-			expectedErr:         nil,
+			name:                    "Mainnet flag true, rollup index 0",
+			globalIndex:             GenerateGlobalIndex(nil, true, 0, 2),
+			expectedFirstUnusedBits: nil, // When no firstUnusedBits provided, it defaults to 0
+			expectedMainnetFlag:     true,
+			expectedRollupIndex:     0,
+			expectedLocalIndex:      2,
 		},
 		{
-			name:                "Mainnet flag true, indexes 0",
-			globalIndex:         GenerateGlobalIndex(true, 0, 0),
-			expectedMainnetFlag: true,
-			expectedRollupIndex: 0,
-			expectedLocalIndex:  0,
-			expectedErr:         nil,
+			name:                    "Mainnet flag true, indexes 0",
+			globalIndex:             GenerateGlobalIndex(nil, true, 0, 0),
+			expectedFirstUnusedBits: nil, // When no firstUnusedBits provided, it defaults to 0
+			expectedMainnetFlag:     true,
+			expectedRollupIndex:     0,
+			expectedLocalIndex:      0,
 		},
 		{
-			name:                "Mainnet flag false, rollup index 0",
-			globalIndex:         GenerateGlobalIndex(false, 0, 2),
-			expectedMainnetFlag: false,
-			expectedRollupIndex: 0,
-			expectedLocalIndex:  2,
-			expectedErr:         nil,
+			name:                    "Mainnet flag false, rollup index 0",
+			globalIndex:             GenerateGlobalIndex(nil, false, 0, 2),
+			expectedFirstUnusedBits: nil, // When no firstUnusedBits provided, it defaults to 0
+			expectedMainnetFlag:     false,
+			expectedRollupIndex:     0,
+			expectedLocalIndex:      2,
 		},
 		{
-			name:                "Mainnet flag false, rollup index non-zero",
-			globalIndex:         GenerateGlobalIndex(false, 11, 0),
-			expectedMainnetFlag: false,
-			expectedRollupIndex: 11,
-			expectedLocalIndex:  0,
-			expectedErr:         nil,
+			name:                    "Mainnet flag false, rollup index non-zero",
+			globalIndex:             GenerateGlobalIndex(nil, false, 11, 0),
+			expectedFirstUnusedBits: nil, // When no firstUnusedBits provided, it defaults to 0
+			expectedMainnetFlag:     false,
+			expectedRollupIndex:     11,
+			expectedLocalIndex:      0,
 		},
 		{
-			name:                "Mainnet flag false, indexes 0",
-			globalIndex:         GenerateGlobalIndex(false, 0, 0),
-			expectedMainnetFlag: false,
-			expectedRollupIndex: 0,
-			expectedLocalIndex:  0,
-			expectedErr:         nil,
+			name:                    "Mainnet flag false, indexes 0",
+			globalIndex:             GenerateGlobalIndex(nil, false, 0, 0),
+			expectedFirstUnusedBits: nil, // When no firstUnusedBits provided, it defaults to 0
+			expectedMainnetFlag:     false,
+			expectedRollupIndex:     0,
+			expectedLocalIndex:      0,
 		},
 		{
-			name:                "Mainnet flag false, indexes non zero",
-			globalIndex:         GenerateGlobalIndex(false, 1231, 111234),
-			expectedMainnetFlag: false,
-			expectedRollupIndex: 1231,
-			expectedLocalIndex:  111234,
-			expectedErr:         nil,
+			name:                    "Mainnet flag false, indexes non zero",
+			globalIndex:             GenerateGlobalIndex(nil, false, 1231, 111234),
+			expectedFirstUnusedBits: nil, // When no firstUnusedBits provided, it defaults to 0
+			expectedMainnetFlag:     false,
+			expectedRollupIndex:     1231,
+			expectedLocalIndex:      111234,
+		},
+		{
+			name:                    "Mainnet flag true, rollup index 0, with first 191 bits",
+			globalIndex:             GenerateGlobalIndex(big.NewInt(12345), true, 0, 2),
+			expectedFirstUnusedBits: big.NewInt(12345),
+			expectedMainnetFlag:     true,
+			expectedRollupIndex:     0,
+			expectedLocalIndex:      2,
+		},
+		{
+			name:                    "Mainnet flag false, rollup index non-zero, with first 191 bits",
+			globalIndex:             GenerateGlobalIndex(big.NewInt(67890), false, 11, 0),
+			expectedFirstUnusedBits: big.NewInt(67890),
+			expectedMainnetFlag:     false,
+			expectedRollupIndex:     11,
+			expectedLocalIndex:      0,
+		},
+		{
+			name:                    "Large first 191 bits value",
+			globalIndex:             GenerateGlobalIndex(big.NewInt(0).Lsh(big.NewInt(1), 190), false, 0, 0),
+			expectedFirstUnusedBits: big.NewInt(0).Lsh(big.NewInt(1), 190),
+			expectedMainnetFlag:     false,
+			expectedRollupIndex:     0,
+			expectedLocalIndex:      0,
 		},
 	}
 
@@ -785,17 +809,19 @@ func TestDecodeGlobalIndex(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			mainnetFlag, rollupIndex, localExitRootIndex, err := DecodeGlobalIndex(tt.globalIndex)
-			if tt.expectedErr != nil {
-				require.EqualError(t, err, tt.expectedErr.Error())
+			firstUnusedBits, mainnetFlag, rollupIndex, localExitRootIndex := DecodeGlobalIndex(tt.globalIndex)
+			if tt.expectedFirstUnusedBits == nil {
+				require.Nil(t, firstUnusedBits)
 			} else {
-				require.NoError(t, err)
+				require.Zero(t, firstUnusedBits.Cmp(tt.expectedFirstUnusedBits))
 			}
 			require.Equal(t, tt.expectedMainnetFlag, mainnetFlag)
 			require.Equal(t, tt.expectedRollupIndex, rollupIndex)
 			require.Equal(t, tt.expectedLocalIndex, localExitRootIndex)
 		})
 	}
+
+	// Remove debug test
 }
 
 func TestInsertAndGetClaim(t *testing.T) {
@@ -814,7 +840,7 @@ func TestInsertAndGetClaim(t *testing.T) {
 	testClaim := &Claim{
 		BlockNum:            1,
 		BlockPos:            0,
-		GlobalIndex:         GenerateGlobalIndex(true, 0, 1093),
+		GlobalIndex:         GenerateGlobalIndex(nil, true, 0, 1093),
 		OriginNetwork:       11,
 		OriginAddress:       common.HexToAddress("0x11"),
 		DestinationAddress:  common.HexToAddress("0x11"),

@@ -778,7 +778,7 @@ func TestGlobalIndexString(t *testing.T) {
 				RollupIndex: 0,
 				LeafIndex:   0,
 			},
-			expected: "MainnetFlag: false, RollupIndex: 0, LeafIndex: 0",
+			expected: "FirstUnusedBits: nil, MainnetFlag: false, RollupIndex: 0, LeafIndex: 0",
 		},
 		{
 			name: "MainnetFlag true, non-zero indices",
@@ -787,7 +787,7 @@ func TestGlobalIndexString(t *testing.T) {
 				RollupIndex: 123,
 				LeafIndex:   456,
 			},
-			expected: "MainnetFlag: true, RollupIndex: 123, LeafIndex: 456",
+			expected: "FirstUnusedBits: nil, MainnetFlag: true, RollupIndex: 123, LeafIndex: 456",
 		},
 		{
 			name: "MainnetFlag false, large indices",
@@ -796,7 +796,7 @@ func TestGlobalIndexString(t *testing.T) {
 				RollupIndex: 4294967295, // Maximum value of uint32
 				LeafIndex:   2147483647, // Large but within uint32 range
 			},
-			expected: "MainnetFlag: false, RollupIndex: 4294967295, LeafIndex: 2147483647",
+			expected: "FirstUnusedBits: nil, MainnetFlag: false, RollupIndex: 4294967295, LeafIndex: 2147483647",
 		},
 	}
 
@@ -1229,7 +1229,7 @@ func TestCertificate_FEPHashToSign(t *testing.T) {
 			expectedHash: crypto.Keccak256Hash(
 				common.HexToHash("0xdef456").Bytes(),
 				crypto.Keccak256(aggkitcommon.BigIntToLittleEndianBytes(
-					bridgesync.GenerateGlobalIndex(true, 0, 1),
+					bridgesync.GenerateGlobalIndex(nil, true, 0, 1),
 				), bridgeExit.Hash().Bytes()),
 				aggkitcommon.Uint64ToLittleEndianBytes(100),
 				common.HexToHash("0x123abc").Bytes(),
