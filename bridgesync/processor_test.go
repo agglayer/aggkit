@@ -2023,13 +2023,13 @@ func TestGetClaims(t *testing.T) {
 
 	// Insert into updated_claimed_global_index_hash_chain in a specific order
 	_, err = tx.Exec(`INSERT INTO updated_claimed_global_index_hash_chain (block_num, block_pos, block_timestamp, tx_hash, claimed_global_index, new_global_index_hash_chain) VALUES ($1, $2, $3, $4, $5, $6)`,
-		blockNum, 2, 0, "0x2", claim3.GlobalIndex.String(), "hashchain3")
+		blockNum, 0, 0, "0x2", claim3.GlobalIndex.String(), "hashchain3")
 	require.NoError(t, err)
 	_, err = tx.Exec(`INSERT INTO updated_claimed_global_index_hash_chain (block_num, block_pos, block_timestamp, tx_hash, claimed_global_index, new_global_index_hash_chain) VALUES ($1, $2, $3, $4, $5, $6)`,
-		blockNum, 0, 0, "0x0", claim1.GlobalIndex.String(), "hashchain1")
+		blockNum, 1, 0, "0x0", claim1.GlobalIndex.String(), "hashchain1")
 	require.NoError(t, err)
 	_, err = tx.Exec(`INSERT INTO updated_claimed_global_index_hash_chain (block_num, block_pos, block_timestamp, tx_hash, claimed_global_index, new_global_index_hash_chain) VALUES ($1, $2, $3, $4, $5, $6)`,
-		blockNum, 1, 0, "0x1", claim2.GlobalIndex.String(), "hashchain2")
+		blockNum, 2, 0, "0x1", claim2.GlobalIndex.String(), "hashchain2")
 	require.NoError(t, err)
 
 	require.NoError(t, tx.Commit())
@@ -2038,13 +2038,25 @@ func TestGetClaims(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, claims, 3)
 
-	// The order should match the order of updated_claimed_global_index_hash_chain inserts: claim3, claim1, claim2
-	require.Equal(t, claim3.GlobalIndex, claims[0].GlobalIndex)
+	// The order should match the order of updated_claimed_global_index_hash_chain.block_pos inserts: claim3, claim1, claim2
 	require.Equal(t, claim1.GlobalIndex, claims[1].GlobalIndex)
 	require.Equal(t, claim2.GlobalIndex, claims[2].GlobalIndex)
+	require.Equal(t, claim3.GlobalIndex, claims[0].GlobalIndex)
 
 	// Remove the last two updated_claimed_global_index_hash_chain records
 	_, err = p.db.Exec(`DELETE FROM updated_claimed_global_index_hash_chain WHERE block_num = $1 AND block_pos IN ($2, $3)`, blockNum, 0, 1)
+
+	claims, err = p.GetClaims(context.Background(), blockNum, blockNum)
+	require.NoError(t, err)
+	require.Len(t, claims, 3)
+
+	// They should be ordered in claims table order, which is by insertion order
+	require.Equal(t, claim1.GlobalIndex, claims[0].GlobalIndex)
+	require.Equal(t, claim2.GlobalIndex, claims[2].GlobalIndex)
+	require.Equal(t, claim3.GlobalIndex, claims[1].GlobalIndex)
+
+	// Remove all records in updated_claimed_global_index_hash_chain
+	_, err = p.db.Exec(`DELETE FROM updated_claimed_global_index_hash_chain`)
 
 	claims, err = p.GetClaims(context.Background(), blockNum, blockNum)
 	require.NoError(t, err)
