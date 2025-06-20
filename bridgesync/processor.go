@@ -397,11 +397,14 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 		WHERE claim.block_num >= $1 AND claim.block_num <= $2
 		ORDER BY updated_claimed_global_index_hash_chain.block_num ASC, updated_claimed_global_index_hash_chain.block_pos ASC;
 	`, fromBlock, toBlock)
+	if rows != nil {
+		defer func() {
+			if err := rows.Close(); err != nil {
+				p.log.Warnf("error closing rows: %v", err)
+			}
+		}()
+	}
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
-			return []Claim{}, nil
-		}
 		return nil, err
 	}
 	claimPtrs := []*Claim{}
