@@ -118,6 +118,12 @@ func (b *bridgeDataQuerier) OriginNetwork() uint32 {
 }
 
 func (b *bridgeDataQuerier) waitForSyncerToCatchUp(ctx context.Context, block uint64) error {
+	if b.delayBetweenRetries <= 0 {
+		b.log.Warnf("bridgeDataQuerier - invalid delayBetweenRetries: %v, falling back to default value of 1s",
+			b.delayBetweenRetries)
+		b.delayBetweenRetries = time.Second
+	}
+
 	ticker := time.NewTicker(b.delayBetweenRetries)
 	defer ticker.Stop()
 

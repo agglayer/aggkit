@@ -238,6 +238,7 @@ func TestNumOfBridgeTransactions(t *testing.T) {
 		fromBlock              uint64
 		toBlock                uint64
 		waitForSyncerToCatchUp bool
+		delayBetweenRetries    time.Duration
 	}
 
 	testCases := []struct {
@@ -274,6 +275,7 @@ func TestNumOfBridgeTransactions(t *testing.T) {
 				fromBlock:              100,
 				toBlock:                200,
 				waitForSyncerToCatchUp: true,
+				delayBetweenRetries:    time.Second,
 			},
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
@@ -296,6 +298,7 @@ func TestNumOfBridgeTransactions(t *testing.T) {
 				fromBlock:              100,
 				toBlock:                200,
 				waitForSyncerToCatchUp: true,
+				delayBetweenRetries:    time.Second,
 			},
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
@@ -317,6 +320,27 @@ func TestNumOfBridgeTransactions(t *testing.T) {
 			expectedError: "error getting bridges: error getting bridges: bridges error",
 		},
 		{
+			name: "delayBetweenRetries is 0",
+			args: args{
+				fromBlock:              100,
+				toBlock:                200,
+				waitForSyncerToCatchUp: true,
+				delayBetweenRetries:    0,
+			},
+			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
+				mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(200), nil)
+				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
+					{BlockNum: 100, BlockPos: 1},
+				}, nil)
+				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return([]bridgesync.Claim{
+					{BlockNum: 200, BlockPos: 1},
+				}, nil)
+			},
+			expectedBridges: 1,
+			expectedClaims:  1,
+		},
+		{
 			name: "success - no bridges or claims",
 			args: args{
 				fromBlock:              100,
@@ -335,11 +359,13 @@ func TestNumOfBridgeTransactions(t *testing.T) {
 
 	for _, tc := range testCases {
 		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			mockSyncer := mocks.NewL2BridgeSyncer(t)
 			tc.mockFn(mockSyncer)
-			bridgeQuerier := NewBridgeDataQuerier(log.WithFields("test", t.Name()), mockSyncer, time.Second)
+			bridgeQuerier := NewBridgeDataQuerier(log.WithFields("test", t.Name()), mockSyncer, tc.args.delayBetweenRetries)
 
 			bridges, claims, err := bridgeQuerier.NumOfBridgeTransactions(
 				ctx,
