@@ -144,7 +144,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "description": "Index in the L1 info tree",
-                        "name": "l1_info_tree_index",
+                        "name": "leaf_index",
                         "in": "query",
                         "required": true
                     },
@@ -268,7 +268,7 @@ const docTemplate = `{
                     {
                         "type": "integer",
                         "description": "L1 Info Tree Index",
-                        "name": "l1_info_tree_index",
+                        "name": "leaf_index",
                         "in": "query",
                         "required": true
                     }

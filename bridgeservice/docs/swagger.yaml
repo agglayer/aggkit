@@ -461,7 +461,7 @@ paths:
         type: integer
       - description: Index in the L1 info tree
         in: query
-        name: l1_info_tree_index
+        name: leaf_index
         required: true
         type: integer
       - description: Number of deposits in the bridge
@@ -546,7 +546,7 @@ paths:
         type: integer
       - description: L1 Info Tree Index
         in: query
-        name: l1_info_tree_index
+        name: leaf_index
         required: true
         type: integer
       produces:
