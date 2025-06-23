@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector/migrations"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -33,7 +32,7 @@ type ReorgDetector struct {
 	client               aggkittypes.BaseEthereumClienter
 	db                   *sql.DB
 	checkReorgInterval   time.Duration
-	finalizedBlockType   etherman.BlockNumberFinality
+	finalizedBlockType   aggkittypes.BlockNumberFinality
 	finalizedBlockNumber *big.Int
 	network              Network
 
@@ -58,7 +57,7 @@ func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (
 	}
 	if cfg.FinalizedBlock.IsEmpty() {
 		log.Warnf("Finalized block is not set. Setting to finalized block")
-		cfg.FinalizedBlock = etherman.FinalizedBlock
+		cfg.FinalizedBlock = aggkittypes.FinalizedBlock
 	}
 
 	finalizedBlockNumber, err := cfg.FinalizedBlock.ToBlockNum()
@@ -80,7 +79,7 @@ func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (
 }
 
 func (rd *ReorgDetector) IsDisabled() bool {
-	return rd.finalizedBlockType == etherman.LatestBlock
+	return rd.finalizedBlockType == aggkittypes.LatestBlock
 }
 
 // Start starts the reorg detector
@@ -118,7 +117,7 @@ func (rd *ReorgDetector) String() string {
 }
 
 // GetFinalizedBlockType returns the finalized block name
-func (rd *ReorgDetector) GetFinalizedBlockType() etherman.BlockNumberFinality {
+func (rd *ReorgDetector) GetFinalizedBlockType() aggkittypes.BlockNumberFinality {
 	return rd.finalizedBlockType
 }
 

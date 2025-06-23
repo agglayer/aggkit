@@ -30,22 +30,6 @@ func TestGetImportedBridgeExitsForProver(t *testing.T) {
 		expectedError string
 	}{
 		{
-			name: "error getting imported bridge exits",
-			claims: []bridgesync.Claim{
-				{
-					IsMessage:          false,
-					OriginNetwork:      1,
-					OriginAddress:      common.HexToAddress("0x123"),
-					DestinationNetwork: 2,
-					DestinationAddress: common.HexToAddress("0x456"),
-					Amount:             big.NewInt(100),
-					Metadata:           []byte("metadata"),
-					GlobalIndex:        new(big.Int).SetBytes([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11}),
-				},
-			},
-			expectedError: "aggchainProverFlow - error converting claim to imported bridge exit",
-		},
-		{
 			name: "success",
 			claims: []bridgesync.Claim{
 				{

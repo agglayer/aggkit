@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -128,7 +129,7 @@ func Test_limitCertSize(t *testing.T) {
 				nil, // l1InfoTreeDataQuerier
 				nil, // l2BridgeQuerier
 				nil, // rollupManagerQuerier
-				NewCertificateBuilderConfig(tt.maxCertSize, 0),
+				NewCertificateBuilderConfig(tt.maxCertSize, 0, 0),
 			)
 
 			result, err := builder.limitCertSize(tt.fullCert)
@@ -213,7 +214,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 				nil, // l1InfoTreeDataQuerier
 				nil, // l2BridgeQuerier
 				nil, // rollupManagerQuerier
-				NewCertificateBuilderConfig(0, tt.startL2Block),
+				NewCertificateBuilderConfig(0, tt.startL2Block, 0),
 			)
 
 			block, retryCount := builder.getLastSentBlockAndRetryCount(tt.lastSentCertificate)
@@ -326,15 +327,17 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		expectedHeight uint64
 		expectedLER    common.Hash
 		expectedError  string
-		mockFn         func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage)
+		mockFn         func(mockRollupDataQuerier *mocks.RollupDataQuerier, mockStorage *mocks.AggSenderStorage)
 	}{
 		{
 			name:           "no last sent certificate - zero start LER",
 			lastSentCert:   nil,
 			expectedHeight: 0,
 			expectedLER:    EmptyLER,
-			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockRollupManagerQuerier.EXPECT().GetLastLocalExitRoot().Return(aggkitcommon.ZeroHash, nil)
+			mockFn: func(mockRollupDataQuerier *mocks.RollupDataQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockRollupDataQuerier.EXPECT().GetRollupData(mock.Anything).Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{
+					LastLocalExitRoot: aggkitcommon.ZeroHash,
+				}, nil)
 			},
 		},
 		{
@@ -342,8 +345,10 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCert:   nil,
 			expectedHeight: 0,
 			expectedLER:    common.HexToHash("0x1"),
-			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockRollupManagerQuerier.EXPECT().GetLastLocalExitRoot().Return(common.HexToHash("0x1"), nil)
+			mockFn: func(mockRollupDataQuerier *mocks.RollupDataQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockRollupDataQuerier.EXPECT().GetRollupData(mock.Anything).Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{
+					LastLocalExitRoot: common.HexToHash("0x1"),
+				}, nil)
 			},
 		},
 		{
@@ -352,8 +357,8 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    aggkitcommon.ZeroHash,
 			expectedError:  "error getting last local exit root: some error",
-			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockRollupManagerQuerier.EXPECT().GetLastLocalExitRoot().Return(common.Hash{}, errors.New("some error"))
+			mockFn: func(mockRollupDataQuerier *mocks.RollupDataQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockRollupDataQuerier.EXPECT().GetRollupData(mock.Anything).Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{}, errors.New("some error"))
 			},
 		},
 		{
@@ -396,8 +401,10 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			},
 			expectedHeight: 0,
 			expectedLER:    EmptyLER,
-			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockRollupManagerQuerier.EXPECT().GetLastLocalExitRoot().Return(EmptyLER, nil)
+			mockFn: func(mockRollupDataQuerier *mocks.RollupDataQuerier, mockStorage *mocks.AggSenderStorage) {
+				mockRollupDataQuerier.EXPECT().GetRollupData(mock.Anything).Return(polygonrollupmanager.PolygonRollupManagerRollupDataReturn{
+					LastLocalExitRoot: aggkitcommon.ZeroHash,
+				}, nil)
 			},
 		},
 		{
@@ -410,7 +417,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    aggkitcommon.ZeroHash,
 			expectedError:  "error getting last settled certificate: some error",
-			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockRollupDataQuerier *mocks.RollupDataQuerier, mockStorage *mocks.AggSenderStorage) {
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
 					Return(nil, errors.New("some error"))
 			},
@@ -425,7 +432,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    aggkitcommon.ZeroHash,
 			expectedError:  "none settled certificate",
-			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockRollupDataQuerier *mocks.RollupDataQuerier, mockStorage *mocks.AggSenderStorage) {
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
 					Return(nil, nil)
 			},
@@ -440,7 +447,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    aggkitcommon.ZeroHash,
 			expectedError:  "is not settled",
-			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockRollupDataQuerier *mocks.RollupDataQuerier, mockStorage *mocks.AggSenderStorage) {
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
 					Return(&types.CertificateHeader{Status: agglayertypes.Pending}, nil)
 			},
@@ -454,7 +461,7 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 			},
 			expectedHeight: 5,
 			expectedLER:    common.HexToHash("0x789"),
-			mockFn: func(mockRollupManagerQuerier *mocks.RollupManagerQuerier, mockStorage *mocks.AggSenderStorage) {
+			mockFn: func(mockRollupDataQuerier *mocks.RollupDataQuerier, mockStorage *mocks.AggSenderStorage) {
 				mockStorage.EXPECT().GetCertificateHeaderByHeight(uint64(4)).
 					Return(&types.CertificateHeader{
 						Status:           agglayertypes.Settled,
@@ -470,17 +477,17 @@ func TestGetNextHeightAndPreviousLER(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockRollupManagerQuerier := mocks.NewRollupManagerQuerier(t)
+			mockRollupDataQuerier := mocks.NewRollupDataQuerier(t)
 			mockStorage := mocks.NewAggSenderStorage(t)
 			if tc.mockFn != nil {
-				tc.mockFn(mockRollupManagerQuerier, mockStorage)
+				tc.mockFn(mockRollupDataQuerier, mockStorage)
 			}
 
 			log := log.WithFields("test", t.Name())
 			f := &CertificateBuilder{
-				rollupManagerQuerier: mockRollupManagerQuerier,
-				storage:              mockStorage,
-				log:                  log,
+				rollupDataQuerier: mockRollupDataQuerier,
+				storage:           mockStorage,
+				log:               log,
 			}
 
 			height, ler, err := f.getNextHeightAndPreviousLER(tc.lastSentCert)

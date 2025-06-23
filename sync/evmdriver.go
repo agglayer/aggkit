@@ -7,9 +7,9 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -81,7 +81,7 @@ type processorInterface interface {
 type ReorgDetector interface {
 	Subscribe(id string) (*reorgdetector.Subscription, error)
 	AddBlockToTrack(ctx context.Context, id string, blockNum uint64, blockHash common.Hash) error
-	GetFinalizedBlockType() etherman.BlockNumberFinality
+	GetFinalizedBlockType() aggkittypes.BlockNumberFinality
 	String() string
 }
 

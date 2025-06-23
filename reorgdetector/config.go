@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/etherman"
+	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
 const (
@@ -20,7 +20,7 @@ type Config struct {
 	CheckReorgsInterval types.Duration `mapstructure:"CheckReorgsInterval"`
 	// FinalizedBlockType indicates the status of the blocks that will be queried in order to sync
 	// if finalizedBlock == "LatestBlock" then it's disabled and we assume the network has no chances of reorgs
-	FinalizedBlock etherman.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"FinalizedBlock"` //nolint:lll
+	FinalizedBlock aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"FinalizedBlock"` //nolint:lll
 }
 
 // GetCheckReorgsInterval returns the interval to check for reorgs in tracked blocks

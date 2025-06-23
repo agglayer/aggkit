@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -29,21 +30,28 @@ type CertificateBuilderConfig struct {
 	// It is used to determine the first block to include in the certificate.
 	// It can be 0
 	StartL2Block uint64
+	// Rollup creation block number, used to get the first LER for the certificate.
+	RollupCreationBlock uint64
 }
 
 // NewCertificateBuilderConfigDefault returns a CertificateBuilderConfig with default values
 func NewCertificateBuilderConfigDefault() CertificateBuilderConfig {
 	return CertificateBuilderConfig{
-		MaxCertSize:  0, // 0 means no limit
-		StartL2Block: 0, // 0 means start from the first block
+		MaxCertSize:         0, // 0 means no limit
+		StartL2Block:        0, // 0 means start from the first block
+		RollupCreationBlock: 0, // 0 means start from the first block
 	}
 }
 
 // NewCertificateBuilderConfig returns a CertificateBuilderConfig with the specified maxCertSize and startL2Block
-func NewCertificateBuilderConfig(maxCertSize uint, startL2Block uint64) CertificateBuilderConfig {
+func NewCertificateBuilderConfig(
+	maxCertSize uint,
+	startL2Block uint64,
+	rollupCreationBlock uint64) CertificateBuilderConfig {
 	return CertificateBuilderConfig{
-		MaxCertSize:  maxCertSize,
-		StartL2Block: startL2Block,
+		MaxCertSize:         maxCertSize,
+		StartL2Block:        startL2Block,
+		RollupCreationBlock: rollupCreationBlock,
 	}
 }
 
@@ -57,7 +65,7 @@ type CertificateBuilder struct {
 	log                          types.Logger
 	storage                      db.AggSenderStorage
 	l2BridgeQuerier              types.BridgeQuerier
-	rollupManagerQuerier         types.RollupManagerQuerier
+	rollupDataQuerier            types.RollupDataQuerier
 	bridgeExitsConverter         *converters.BridgeExitConverter
 	importedBridgeExitsConverter *converters.ImportedBridgeExitConverter
 
@@ -70,7 +78,7 @@ func NewCertificateBuilder(
 	storage db.AggSenderStorage,
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
-	rollupManagerQuerier types.RollupManagerQuerier,
+	rollupDataQuerier types.RollupDataQuerier,
 	cfg CertificateBuilderConfig,
 ) *CertificateBuilder {
 	return &CertificateBuilder{
@@ -78,7 +86,7 @@ func NewCertificateBuilder(
 		cfg:                  cfg,
 		storage:              storage,
 		l2BridgeQuerier:      l2BridgeQuerier,
-		rollupManagerQuerier: rollupManagerQuerier,
+		rollupDataQuerier:    rollupDataQuerier,
 		bridgeExitsConverter: converters.NewBridgeExitConverter(),
 		importedBridgeExitsConverter: converters.NewImportedBridgeExitConverter(
 			log,
@@ -270,16 +278,16 @@ func (b *CertificateBuilder) getLastSentBlockAndRetryCount(
 
 // getStartLER returns the last local exit root (LER) based on the configuration
 func (b *CertificateBuilder) getStartLER() (common.Hash, error) {
-	ler, err := b.rollupManagerQuerier.GetLastLocalExitRoot()
+	rollupData, err := b.rollupDataQuerier.GetRollupData(new(big.Int).SetUint64(b.cfg.RollupCreationBlock))
 	if err != nil {
 		return common.Hash{}, fmt.Errorf("error getting last local exit root: %w", err)
 	}
 
-	if ler == aggkitcommon.ZeroHash {
+	if rollupData.LastLocalExitRoot == aggkitcommon.ZeroHash {
 		return EmptyLER, nil
 	}
 
-	return ler, nil
+	return rollupData.LastLocalExitRoot, nil
 }
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate

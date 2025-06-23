@@ -31,19 +31,13 @@ func NewFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	rollupDataQuerier types.RollupDataQuerier,
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
 		certificateSigner, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
 		if err != nil {
 			return nil, err
-		}
-		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1)
-		rollupManagerQuerier, err := query.NewRollupManagerQuerier(
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
-		if err != nil {
-			return nil, fmt.Errorf("error creating RollupManager data querier: %w", err)
 		}
 
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
@@ -55,8 +49,8 @@ func NewFlow(
 			storage,
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
-			rollupManagerQuerier,
-			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, 0),
+			rollupDataQuerier,
+			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, 0, cfg.RollupCreationBlockL1),
 		)
 		certificateVerifier := certificatebuild.NewCertificateBuildVerifier()
 
@@ -99,20 +93,14 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
 
-		rollupManagerQuerier, err := query.NewRollupManagerQuerier(
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
-		if err != nil {
-			return nil, fmt.Errorf("error creating RollupManager data querier: %w", err)
-		}
-
 		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
 		certificateBuilder := certificatebuild.NewCertificateBuilder(
 			logger,
 			storage,
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
-			rollupManagerQuerier,
-			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, startL2Block),
+			rollupDataQuerier,
+			certificatebuild.NewCertificateBuilderConfig(cfg.MaxCertSize, startL2Block, cfg.RollupCreationBlockL1),
 		)
 		certificateVerifier := certificatebuild.NewCertificateBuildVerifier()
 

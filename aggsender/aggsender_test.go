@@ -70,6 +70,7 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock := agglayer.NewAgglayerClientMock(t)
 	epochNotifierMock := mocks.NewEpochNotifier(t)
 	bridgeL2SyncerMock := mocks.NewL2BridgeSyncer(t)
+	rollupQuerierMock := mocks.NewRollupDataQuerier(t)
 	ch := make(chan aggsendertypes.EpochEvent)
 	epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch)
 	epochNotifierMock.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{}).Once()
@@ -78,8 +79,7 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	aggSender, err := New(
 		ctx,
 		log.WithFields("test", "unittest"),
@@ -94,7 +94,7 @@ func TestAggSenderStart(t *testing.T) {
 		aggLayerMock,
 		nil,
 		bridgeL2SyncerMock,
-		epochNotifierMock, nil, nil)
+		epochNotifierMock, nil, nil, rollupQuerierMock)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 
@@ -368,13 +368,13 @@ func TestSendCertificate(t *testing.T) {
 
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
-	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(3)
+	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
 		},
 		Mode: "PessimisticProof",
-	}, nil, nil, mockBridgeSyncer, nil, nil, nil)
+	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
