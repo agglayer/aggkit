@@ -68,7 +68,6 @@ esac
 log_info "$ENCLAVE_NAME enclave started successfully."
 popd >/dev/null
 
-ENCLAVE_NAME=aggkit
 if [ -n "$E2E_FOLDER" ]; then
     if [ ! -d "$E2E_FOLDER" ]; then
         log_error "The provided E2E folder does not exist: $E2E_FOLDER"

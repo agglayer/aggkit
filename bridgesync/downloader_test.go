@@ -350,7 +350,7 @@ func TestTryDecodeClaimCalldata(t *testing.T) {
 func TestSetClaimCalldata(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	txHash := common.HexToHash("0x1234")
-	client := &mocks.RPCClienter{}
+	client := mocks.NewRPCClienter(t)
 
 	// Case 1: Root call successful, valid internal call
 	rootCall := &call{
@@ -365,8 +365,8 @@ func TestSetClaimCalldata(t *testing.T) {
 			},
 		},
 	}
-	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
-		arg, ok := args.Get(0).(*call)
+	client.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(result any, method string, args ...any) {
+		arg, ok := result.(*call)
 		require.True(t, ok)
 		*arg = *rootCall
 	}).Return(nil)
@@ -381,8 +381,8 @@ func TestSetClaimCalldata(t *testing.T) {
 		To:  bridgeAddr,
 		Err: strPtr("reverted"),
 	}
-	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
-		arg, ok := args.Get(0).(*call)
+	client.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(result any, method string, args ...any) {
+		arg, ok := result.(*call)
 		require.True(t, ok)
 		*arg = *rootCall
 	}).Return(nil)
@@ -403,8 +403,8 @@ func TestSetClaimCalldata(t *testing.T) {
 			},
 		},
 	}
-	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
-		arg, ok := args.Get(0).(*call)
+	client.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(result any, method string, args ...any) {
+		arg, ok := result.(*call)
 		require.True(t, ok)
 		*arg = *rootCall
 	}).Return(nil)
@@ -420,8 +420,8 @@ func TestSetClaimCalldata(t *testing.T) {
 		Err:   nil,
 		Calls: []call{},
 	}
-	client.On("Call", mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(args mock.Arguments) {
-		arg, ok := args.Get(0).(*call)
+	client.EXPECT().Call(mock.Anything, debugTraceTxEndpoint, txHash, mock.Anything).Run(func(result any, method string, args ...any) {
+		arg, ok := result.(*call)
 		require.True(t, ok)
 		*arg = *rootCall
 	}).Return(nil)
