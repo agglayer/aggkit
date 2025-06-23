@@ -405,7 +405,11 @@ func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, tx
 // - logger: Logger instance for debug logging.
 //
 // Returns an error if tracing fails or calldata isn't found.
-func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.Address, txHash common.Hash, logger *logger.Logger,
+func (c *Claim) setClaimCalldata(
+	client aggkittypes.RPCClienter,
+	bridge common.Address,
+	txHash common.Hash,
+	logger *logger.Logger,
 ) error {
 	callFrame := &call{}
 	err := client.Call(callFrame, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
