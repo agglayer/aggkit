@@ -631,7 +631,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Description or the first injected global exit root after the given index (for L2).
 // @Tags l1-info-tree-leaf
 // @Param network_id query int true "Network ID"
-// @Param l1_info_tree_index query int true "L1 Info Tree Index"
+// @Param leaf_index query int true "L1 Info Tree Index"
 // @Produce json
 // @Success 200 {object} types.L1InfoTreeLeafResponse
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
@@ -712,7 +712,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 // @Description the corresponding L1 info tree leaf needed to verify a claim.
 // @Tags claims
 // @Param network_id query uint32 true "Target network ID"
-// @Param l1_info_tree_index query uint32 true "Index in the L1 info tree"
+// @Param leaf_index query uint32 true "Index in the L1 info tree"
 // @Param deposit_count query uint32 true "Number of deposits in the bridge"
 // @Produce json
 // @Success 200 {object} types.ClaimProof "Merkle proofs and L1 info tree leaf"
