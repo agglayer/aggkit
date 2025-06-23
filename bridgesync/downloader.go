@@ -11,6 +11,7 @@ import (
 	rpctypes "github.com/0xPolygon/cdk-rpc/types"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/db"
+	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -62,6 +63,7 @@ func buildAppender(
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	logger *logger.Logger,
 ) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
@@ -82,14 +84,14 @@ func buildAppender(
 	appender := make(sync.LogAppenderMap)
 
 	// Add event handlers for the bridge contract
-	appender[bridgeEventSignature] = buildBridgeEventHandler(bridgeContractV2, client, bridgeAddr, gasTokenAddress)
-	appender[claimEventSignature] = buildClaimEventHandler(bridgeContractV2, client, bridgeAddr, syncFullClaims)
+	appender[bridgeEventSignature] = buildBridgeEventHandler(bridgeContractV2, client, bridgeAddr, gasTokenAddress, logger)
+	appender[claimEventSignature] = buildClaimEventHandler(bridgeContractV2, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
 		bridgeContractV1, client,
-		bridgeAddr, syncFullClaims)
-	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeContractV2, client, bridgeAddr)
-	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeSovereignChain, client, bridgeAddr)
-	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeSovereignChain, client, bridgeAddr)
+		bridgeAddr, syncFullClaims, logger)
+	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeContractV2, client, bridgeAddr, logger)
+	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeSovereignChain, client, bridgeAddr, logger)
+	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeSovereignChain, client, bridgeAddr, logger)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(bridgeSovereignChain)
 
 	return appender, nil
@@ -98,14 +100,14 @@ func buildAppender(
 // buildBridgeEventHandler creates a handler for the Bridge event log.
 func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 	client aggkittypes.EthClienter,
-	bridgeAddr common.Address, gasTokenAddress common.Address) func(*sync.EVMBlock, types.Log) error {
+	bridgeAddr common.Address, gasTokenAddress common.Address, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)
 		if err != nil {
 			return fmt.Errorf("error parsing BridgeEvent log %+v: %w", l, err)
 		}
 
-		foundCall, err := extractCall(client, bridgeAddr, l.TxHash)
+		foundCall, err := extractCall(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract bridge event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -135,7 +137,7 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 
 // buildClaimEventHandler creates a handler for the Claim event log.
 func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
@@ -156,7 +158,7 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 		}
 
 		if syncFullClaims {
-			if err := claim.setClaimCalldata(client, bridgeAddr, l.TxHash); err != nil {
+			if err := claim.setClaimCalldata(client, bridgeAddr, l.TxHash, logger); err != nil {
 				return err
 			}
 		}
@@ -168,7 +170,7 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 
 // buildClaimEventHandlerPreEtrog creates a handler for the Claim event log for pre-Etrog contracts.
 func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbridge,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
@@ -186,7 +188,7 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 		}
 
 		if syncFullClaims {
-			if err := claim.setClaimCalldata(client, bridgeAddr, l.TxHash); err != nil {
+			if err := claim.setClaimCalldata(client, bridgeAddr, l.TxHash, logger); err != nil {
 				return err
 			}
 		}
@@ -200,14 +202,14 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 //
 //nolint:dupl
 func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
-	client aggkittypes.EthClienter, bridgeAddr common.Address) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		tokenMappingEvent, err := contract.ParseNewWrappedToken(l)
 		if err != nil {
 			return fmt.Errorf("error parsing NewWrappedToken event log %+v: %w", l, err)
 		}
 
-		foundCall, err := extractCall(client, bridgeAddr, l.TxHash)
+		foundCall, err := extractCall(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract the NewWrappedToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -232,14 +234,14 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 //
 //nolint:dupl
 func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
-	client aggkittypes.EthClienter, bridgeAddr common.Address) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseSetSovereignTokenAddress(l)
 		if err != nil {
 			return fmt.Errorf("error parsing SetSovereignTokenAddress event log %+v: %w", l, err)
 		}
 
-		foundCall, err := extractCall(client, bridgeAddr, l.TxHash)
+		foundCall, err := extractCall(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract the SetSovereignTokenAddress event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -262,14 +264,14 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 
 // buildMigrateLegacyTokenHandler creates a handler for the MigrateLegacyToken event log.
 func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
-	client aggkittypes.EthClienter, bridgeAddr common.Address) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseMigrateLegacyToken(l)
 		if err != nil {
 			return fmt.Errorf("error parsing MigrateLegacyToken event log %+v: %w", l, err)
 		}
 
-		foundCall, err := extractCall(client, bridgeAddr, l.TxHash)
+		foundCall, err := extractCall(client, bridgeAddr, l.TxHash, logger)
 		if err != nil {
 			return fmt.Errorf("failed to extract the MigrateLegacyToken event calldata (tx hash: %s): %w", l.TxHash, err)
 		}
@@ -323,7 +325,7 @@ type tracerCfg struct {
 }
 
 // findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
-func findCall(rootCall call, targetAddr common.Address, callback func(call) (bool, error)) (*call, error) {
+func findCall(rootCall call, targetAddr common.Address, callback func(call) (bool, error), logger *logger.Logger) (*call, error) {
 	callStack := stack.New()
 	callStack.Push(rootCall)
 
@@ -336,6 +338,7 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 
 		// Skip reverted calls
 		if currentCall.Err != nil {
+			logger.Debugf("skipping reverted call to %s from %s: %s", currentCall.To.Hex(), currentCall.From.Hex(), *currentCall.Err)
 			continue
 		}
 
@@ -357,6 +360,8 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 		for _, c := range currentCall.Calls {
 			if c.Err == nil {
 				callStack.Push(c)
+			} else {
+				logger.Debugf("skipping reverted nested call to %s from %s: %s", c.To.Hex(), c.From.Hex(), *c.Err)
 			}
 		}
 	}
@@ -365,14 +370,14 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 
 // extractCall tries to extract the call for the transaction identified by transaction hash.
 // It relies on debug_traceTransaction JSON RPC function.
-func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash) (*call, error) {
+func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash, logger *logger.Logger) (*call, error) {
 	c := &call{To: contractAddr}
 	err := client.Call(c, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
 		return nil, err
 	}
 
-	return findCall(*c, contractAddr, nil)
+	return findCall(*c, contractAddr, nil, logger)
 }
 
 // setClaimCalldata traces the transaction to find and decode calldata for the given bridge address.
@@ -381,9 +386,10 @@ func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, tx
 // - client: RPC client to fetch the transaction trace.
 // - bridge: Target contract address.
 // - txHash: Transaction hash to trace.
+// - logger: Logger instance for debug logging.
 //
 // Returns an error if tracing fails or calldata isn't found.
-func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.Address, txHash common.Hash) error {
+func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.Address, txHash common.Hash, logger *logger.Logger) error {
 	callFrame := &call{}
 	err := client.Call(callFrame, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
@@ -402,7 +408,7 @@ func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.A
 				return false, nil
 			}
 			return c.tryDecodeClaimCalldata(call.From, call.Input)
-		})
+		}, logger)
 
 	return err
 }

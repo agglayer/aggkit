@@ -7,6 +7,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	logger "github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
@@ -259,7 +260,8 @@ func TestBuildAppender(t *testing.T) {
 			bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
 			require.NoError(t, err)
 
-			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeContractV2)
+			logger := logger.WithFields("module", "test")
+			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeContractV2, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 
@@ -278,6 +280,7 @@ func TestBuildAppender(t *testing.T) {
 func TestFindCall(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	fromAddr := common.HexToAddress("0x20")
+	logger := logger.WithFields("module", "test")
 
 	// Simple direct call
 	root := call{
@@ -285,7 +288,7 @@ func TestFindCall(t *testing.T) {
 		From: fromAddr,
 		Err:  nil,
 	}
-	found, err := findCall(root, bridgeAddr, nil)
+	found, err := findCall(root, bridgeAddr, nil, logger)
 	require.NoError(t, err)
 	require.NotNil(t, found)
 	require.Equal(t, bridgeAddr, found.To)
@@ -296,7 +299,7 @@ func TestFindCall(t *testing.T) {
 		From: fromAddr,
 		Err:  strPtr("reverted"),
 	}
-	_, err = findCall(root, bridgeAddr, nil)
+	_, err = findCall(root, bridgeAddr, nil, logger)
 	require.Error(t, err)
 
 	// Nested call, only inner is not reverted
@@ -317,7 +320,7 @@ func TestFindCall(t *testing.T) {
 			},
 		},
 	}
-	found, err = findCall(root, bridgeAddr, nil)
+	found, err = findCall(root, bridgeAddr, nil, logger)
 	require.NoError(t, err)
 	require.NotNil(t, found)
 	require.Equal(t, bridgeAddr, found.To)
@@ -351,6 +354,7 @@ func TestSetClaimCalldata(t *testing.T) {
 	bridgeAddr := common.HexToAddress("0x10")
 	txHash := common.HexToHash("0x1234")
 	client := mocks.NewRPCClienter(t)
+	logger := logger.WithFields("module", "test")
 
 	// Case 1: Root call successful, valid internal call
 	rootCall := &call{
@@ -372,7 +376,7 @@ func TestSetClaimCalldata(t *testing.T) {
 	}).Return(nil)
 
 	claim := &Claim{}
-	err := claim.setClaimCalldata(client, bridgeAddr, txHash)
+	err := claim.setClaimCalldata(client, bridgeAddr, txHash, logger)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "length insufficient")
 
@@ -388,7 +392,7 @@ func TestSetClaimCalldata(t *testing.T) {
 	}).Return(nil)
 
 	claim = &Claim{}
-	err = claim.setClaimCalldata(client, bridgeAddr, txHash)
+	err = claim.setClaimCalldata(client, bridgeAddr, txHash, logger)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "root call reverted")
 
@@ -410,7 +414,7 @@ func TestSetClaimCalldata(t *testing.T) {
 	}).Return(nil)
 
 	claim = &Claim{}
-	err = claim.setClaimCalldata(client, bridgeAddr, txHash)
+	err = claim.setClaimCalldata(client, bridgeAddr, txHash, logger)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not found")
 
@@ -427,7 +431,7 @@ func TestSetClaimCalldata(t *testing.T) {
 	}).Return(nil)
 
 	claim = &Claim{}
-	err = claim.setClaimCalldata(client, bridgeAddr, txHash)
+	err = claim.setClaimCalldata(client, bridgeAddr, txHash, logger)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "not found")
 }

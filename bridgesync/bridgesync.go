@@ -189,7 +189,7 @@ func newBridgeSync(
 		RetryAfterErrorPeriod:      retryAfterErrorPeriod,
 	}
 
-	appender, err := buildAppender(ethClient, bridge, syncFullClaims, bridgeContractV2)
+	appender, err := buildAppender(ethClient, bridge, syncFullClaims, bridgeContractV2, logger)
 	if err != nil {
 		return nil, err
 	}
