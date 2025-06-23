@@ -311,7 +311,6 @@ type UpdatedClaimedGlobalIndexHashChain struct {
 
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
-	Pos                                uint64
 	Bridge                             *Bridge
 	Claim                              *Claim
 	TokenMapping                       *TokenMapping
@@ -605,7 +604,8 @@ func (p *processor) queryBlockRange(tx dbtypes.Querier, fromBlock, toBlock uint6
 	}
 	rows, err := tx.Query(fmt.Sprintf(`
 		SELECT * FROM %s
-		WHERE block_num >= $1 AND block_num <= $2;
+		WHERE block_num >= $1 AND block_num <= $2
+		ORDER BY block_num ASC, block_pos ASC;
 	`, table), fromBlock, toBlock)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -743,7 +743,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.Bridge != nil {
-			if err = p.exitTree.AddLeaf(tx, block.Num, event.Pos, types.Leaf{
+			if err = p.exitTree.AddLeaf(tx, block.Num, event.Bridge.BlockPos, types.Leaf{
 				Index: event.Bridge.DepositCount,
 				Hash:  event.Bridge.Hash(),
 			}); err != nil {
@@ -926,9 +926,6 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 	rollupIndex uint32, localExitRootIndex uint32, err error) {
 	globalIndexBytes := globalIndex.Bytes()
 	l := len(globalIndexBytes)
-	if l > globalIndexMaxSize {
-		return false, 0, 0, errors.New("invalid global index length")
-	}
 
 	if l == 0 {
 		// false, 0, 0
