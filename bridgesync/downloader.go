@@ -84,15 +84,21 @@ func buildAppender(
 	appender := make(sync.LogAppenderMap)
 
 	// Add event handlers for the bridge contract
-	appender[bridgeEventSignature] = buildBridgeEventHandler(bridgeContractV2, client, bridgeAddr, gasTokenAddress, logger)
-	appender[claimEventSignature] = buildClaimEventHandler(bridgeContractV2, client, bridgeAddr, syncFullClaims, logger)
+	appender[bridgeEventSignature] = buildBridgeEventHandler(
+		bridgeContractV2, client, bridgeAddr, gasTokenAddress, logger)
+	appender[claimEventSignature] = buildClaimEventHandler(
+		bridgeContractV2, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
 		bridgeContractV1, client,
 		bridgeAddr, syncFullClaims, logger)
-	appender[tokenMappingEventSignature] = buildTokenMappingHandler(bridgeContractV2, client, bridgeAddr, logger)
-	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeSovereignChain, client, bridgeAddr, logger)
-	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeSovereignChain, client, bridgeAddr, logger)
-	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(bridgeSovereignChain)
+	appender[tokenMappingEventSignature] = buildTokenMappingHandler(
+		bridgeContractV2, client, bridgeAddr, logger)
+	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(
+		bridgeSovereignChain, client, bridgeAddr, logger)
+	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(
+		bridgeSovereignChain, client, bridgeAddr, logger)
+	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(
+		bridgeSovereignChain)
 
 	return appender, nil
 }
@@ -100,7 +106,8 @@ func buildAppender(
 // buildBridgeEventHandler creates a handler for the Bridge event log.
 func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 	client aggkittypes.EthClienter,
-	bridgeAddr common.Address, gasTokenAddress common.Address, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
+	bridgeAddr common.Address, gasTokenAddress common.Address, logger *logger.Logger,
+) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)
 		if err != nil {
@@ -137,7 +144,8 @@ func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 
 // buildClaimEventHandler creates a handler for the Claim event log.
 func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool, logger *logger.Logger,
+) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
@@ -170,7 +178,8 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 
 // buildClaimEventHandlerPreEtrog creates a handler for the Claim event log for pre-Etrog contracts.
 func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbridge,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, syncFullClaims bool, logger *logger.Logger,
+) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		claimEvent, err := contract.ParseClaimEvent(l)
 		if err != nil {
@@ -202,7 +211,8 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 //
 //nolint:dupl
 func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
+) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		tokenMappingEvent, err := contract.ParseNewWrappedToken(l)
 		if err != nil {
@@ -234,7 +244,8 @@ func buildTokenMappingHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev
 //
 //nolint:dupl
 func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
+) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseSetSovereignTokenAddress(l)
 		if err != nil {
@@ -264,7 +275,8 @@ func buildSetSovereignTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 
 // buildMigrateLegacyTokenHandler creates a handler for the MigrateLegacyToken event log.
 func buildMigrateLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain,
-	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger) func(*sync.EVMBlock, types.Log) error {
+	client aggkittypes.EthClienter, bridgeAddr common.Address, logger *logger.Logger,
+) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseMigrateLegacyToken(l)
 		if err != nil {
@@ -325,7 +337,8 @@ type tracerCfg struct {
 }
 
 // findCall traverses the call trace using DFS and either returns the call or stops when a callback succeeds.
-func findCall(rootCall call, targetAddr common.Address, callback func(call) (bool, error), logger *logger.Logger) (*call, error) {
+func findCall(rootCall call, targetAddr common.Address, callback func(call) (bool, error), logger *logger.Logger,
+) (*call, error) {
 	callStack := stack.New()
 	callStack.Push(rootCall)
 
@@ -338,7 +351,8 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 
 		// Skip reverted calls
 		if currentCall.Err != nil {
-			logger.Debugf("skipping reverted call to %s from %s: %s", currentCall.To.Hex(), currentCall.From.Hex(), *currentCall.Err)
+			logger.Debugf("skipping reverted call to %s from %s: %s",
+				currentCall.To.Hex(), currentCall.From.Hex(), *currentCall.Err)
 			continue
 		}
 
@@ -361,7 +375,8 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 			if c.Err == nil {
 				callStack.Push(c)
 			} else {
-				logger.Debugf("skipping reverted nested call to %s from %s: %s", c.To.Hex(), c.From.Hex(), *c.Err)
+				logger.Debugf("skipping reverted nested call to %s from %s: %s",
+					c.To.Hex(), c.From.Hex(), *c.Err)
 			}
 		}
 	}
@@ -370,7 +385,8 @@ func findCall(rootCall call, targetAddr common.Address, callback func(call) (boo
 
 // extractCall tries to extract the call for the transaction identified by transaction hash.
 // It relies on debug_traceTransaction JSON RPC function.
-func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash, logger *logger.Logger) (*call, error) {
+func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, txHash common.Hash, logger *logger.Logger,
+) (*call, error) {
 	c := &call{To: contractAddr}
 	err := client.Call(c, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
@@ -389,7 +405,8 @@ func extractCall(client aggkittypes.RPCClienter, contractAddr common.Address, tx
 // - logger: Logger instance for debug logging.
 //
 // Returns an error if tracing fails or calldata isn't found.
-func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.Address, txHash common.Hash, logger *logger.Logger) error {
+func (c *Claim) setClaimCalldata(client aggkittypes.RPCClienter, bridge common.Address, txHash common.Hash, logger *logger.Logger,
+) error {
 	callFrame := &call{}
 	err := client.Call(callFrame, debugTraceTxEndpoint, txHash, tracerCfg{Tracer: callTracerType})
 	if err != nil {
