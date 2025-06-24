@@ -324,7 +324,10 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 	return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0)
 }
 
-func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(ctx context.Context, fromBlock, toBlock uint64, retryCount int) EVMBlocks {
+func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
+	ctx context.Context,
+	fromBlock, toBlock uint64, retryCount int,
+) EVMBlocks {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -347,7 +350,10 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(ctx context
 					)
 					if retryCount >= MaxRetryCountBlockHashMismatch {
 						// Log an error and return nil if the maximum retry count is reached.
-						d.log.Errorf("max retry attempts %d reached for block hash mismatch on block %d, returning nil", MaxRetryCountBlockHashMismatch, l.BlockNumber)
+						d.log.Errorf(
+							"max retry attempts %d reached for block hash mismatch on block %d, returning nil",
+							MaxRetryCountBlockHashMismatch, l.BlockNumber,
+						)
 						return nil
 					}
 					// Retry the operation with an incremented retry count.
