@@ -150,7 +150,8 @@ type LERQuerier interface {
 
 // MaxL2BlockNumberLimiterInterface is an interface defining functions that a MaxL2BlockNumberLimiter should implement
 type MaxL2BlockNumberLimiterInterface interface {
-	// AdaptCertificate adjusts the certificate build parameters to ensure that and return it the new buildParams
+	// AdaptCertificate is a custom handler that adjusts the certificate build parameters
+	//  and return it through a new buildParams
 	AdaptCertificate(
 		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }
