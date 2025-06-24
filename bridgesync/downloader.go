@@ -93,7 +93,8 @@ func buildAppender(
 	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(bridgeSovereignChain, client, bridgeAddr)
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(bridgeSovereignChain, client, bridgeAddr)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(bridgeSovereignChain)
-	appender[updatedClaimedGlobalIndexHashChainEventSignature] = buildUpdatedClaimedGlobalIndexHashChainHandler(bridgeSovereignChain)
+	appender[updatedClaimedGlobalIndexHashChainEventSignature] =
+		buildUpdatedClaimedGlobalIndexHashChainHandler(bridgeSovereignChain)
 
 	return appender, nil
 }
@@ -312,8 +313,10 @@ func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 	}
 }
 
-// buildUpdatedClaimedGlobalIndexHashChainHandler creates a handler for the UpdatedClaimedGlobalIndexHashChain event log.
-func buildUpdatedClaimedGlobalIndexHashChainHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain) func(*sync.EVMBlock,
+// buildUpdatedClaimedGlobalIndexHashChainHandler creates a handler
+// for the UpdatedClaimedGlobalIndexHashChain event log.
+func buildUpdatedClaimedGlobalIndexHashChainHandler(
+	contract *bridgel2sovereignchain.Bridgel2sovereignchain) func(*sync.EVMBlock,
 	types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseUpdatedClaimedGlobalIndexHashChain(l)

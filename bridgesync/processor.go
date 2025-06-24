@@ -792,7 +792,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		}
 
 		if event.UpdatedClaimedGlobalIndexHashChain != nil {
-			if err = meddler.Insert(tx, "updated_claimed_global_index_hash_chain", event.UpdatedClaimedGlobalIndexHashChain); err != nil {
+			if err = meddler.Insert(tx,
+				"updated_claimed_global_index_hash_chain", event.UpdatedClaimedGlobalIndexHashChain); err != nil {
 				p.log.Errorf("failed to insert updated_claimed_global_index_hash_chain event at block %d: %v", block.Num, err)
 				return err
 			}

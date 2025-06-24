@@ -1590,6 +1590,8 @@ func TestTokenMappingTypeString(t *testing.T) {
 }
 
 func TestDecodePreEtrogCalldata(t *testing.T) {
+	t.Parallel()
+
 	var (
 		globalIndex            = uint32(12345)
 		mainnetExitRoot        = common.HexToHash("0x11")
@@ -2108,6 +2110,7 @@ func TestGetClaims(t *testing.T) {
 
 	// Remove the last two updated_claimed_global_index_hash_chain records
 	_, err = p.db.Exec(`DELETE FROM updated_claimed_global_index_hash_chain WHERE block_num = $1 AND block_pos IN ($2, $3)`, blockNum, 0, 1)
+	require.NoError(t, err)
 
 	claims, err = p.GetClaims(context.Background(), blockNum, blockNum)
 	require.NoError(t, err)
@@ -2120,6 +2123,7 @@ func TestGetClaims(t *testing.T) {
 
 	// Remove all records in updated_claimed_global_index_hash_chain
 	_, err = p.db.Exec(`DELETE FROM updated_claimed_global_index_hash_chain`)
+	require.NoError(t, err)
 
 	claims, err = p.GetClaims(context.Background(), blockNum, blockNum)
 	require.NoError(t, err)
