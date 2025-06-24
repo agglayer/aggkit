@@ -17,6 +17,7 @@ import (
 
 const (
 	DefaultWaitPeriodBlockNotFound = time.Millisecond * 100
+	MaxRetryCountBlockHashMismatch = 5
 )
 
 var (
@@ -320,6 +321,13 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 }
 
 func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) EVMBlocks {
+	return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0)
+}
+
+func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
+	ctx context.Context,
+	fromBlock, toBlock uint64, retryCount int,
+) EVMBlocks {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -337,10 +345,19 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 				if b.Hash != l.BlockHash {
 					d.log.Infof(
 						"there has been a block hash change between the event query and the block query "+
-							"for block %d: %s vs %s. Retrying.",
-						l.BlockNumber, b.Hash, l.BlockHash,
+							"for block %d: %s vs %s. Retrying attempt %d/%d.",
+						l.BlockNumber, b.Hash, l.BlockHash, retryCount, MaxRetryCountBlockHashMismatch,
 					)
-					return d.GetEventsByBlockRange(ctx, fromBlock, toBlock)
+					if retryCount >= MaxRetryCountBlockHashMismatch {
+						// Log an error and return nil if the maximum retry count is reached.
+						d.log.Errorf(
+							"max retry attempts %d reached for block hash mismatch on block %d, returning nil",
+							MaxRetryCountBlockHashMismatch, l.BlockNumber,
+						)
+						return nil
+					}
+					// Retry the operation with an incremented retry count.
+					return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, retryCount+1)
 				}
 				latestBlock = &EVMBlock{
 					EVMBlockHeader: EVMBlockHeader{
