@@ -167,7 +167,6 @@ func (a *AggSender) checkSendCertificateStopCondition(err error) {
 	if errors.Is(err, flows.ErrComplete) {
 		a.log.Infof("AggSender reached the end of the certificates to send")
 		if a.cfg.StopOnFinishedSendingAllCertificates {
-			a.log.Info("Stopping AggSender because StopOnFinishedSendingAllCertificates is true")
 			// That is the fastest way to stop the process. Currently there are no way of gracefully stopping the AggSender
 			// because the run.go launch the components with a goroutine but doesn't check any return value
 			a.log.Panicf("Stopping AggSender because StopOnFinishedSendingAllCertificates is true")
