@@ -17,7 +17,7 @@ import (
 
 const (
 	DefaultWaitPeriodBlockNotFound = time.Millisecond * 100
-	MaxRetryCountBlockHashMismatch = 3
+	MaxRetryCountBlockHashMismatch = 5
 )
 
 var (
