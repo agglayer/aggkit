@@ -175,7 +175,8 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | RequireNoFEPBlockGap              | bool                                                      | If true, AggSender should not accept a gap between lastBlock from lastCertificate and first block of FEP        |
 | OptimisticModeConfig              | [optimistic.Config](#optimisticconfig)                    | Configuration for optimistic mode (required by FEP mode).                                                       |
 | RequireOneBridgeInPPCertificate   | bool                                                      | If true, AggSender requires at least one bridge exit for Pessimistic Proof certificates                         |
-
+| MaxL2BlockNumber                  | uint64                    | Set the last block to be included in a certificate (0 = disabled)
+|StopOnFinishedSendingAllCertificates| bool                      | Stop when there are no more certificates to send due to MaxL2BlockNumber
 ## OptimisticConfig
 
 The `OptimisticConfig` structure configures the optimistic mode for the AggSender. This configuration is required when running in FEP (Fast Exit Protocol) mode.
