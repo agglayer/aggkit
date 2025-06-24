@@ -440,7 +440,7 @@ func (c *Claim) setClaimCalldata(
 // Returns true if the calldata is successfully decoded and matches the expected format, otherwise returns false.
 func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) (bool, error) {
 	if len(input) < methodIDLength {
-		return false, nil
+		return false, fmt.Errorf("input too short: %d bytes", len(input))
 	}
 	methodID := input[:methodIDLength]
 	switch {
@@ -504,6 +504,6 @@ func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) 
 		return found, nil
 
 	default:
-		return false, nil
+		return false, fmt.Errorf("unrecognized method ID: %x", methodID)
 	}
 }
