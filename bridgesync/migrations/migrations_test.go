@@ -281,8 +281,6 @@ func TestMigrations0004(t *testing.T) {
 		BlockPos                       uint64 `meddler:"block_pos"`
 		BlockTimestamp                 uint64 `meddler:"block_timestamp"`
 		TxHash                         string `meddler:"tx_hash"`
-		ContractAddress                string `meddler:"contract_address"`
-		NetworkID                      int64  `meddler:"network_id"`
 	}
 
 	_, err = tx.Exec(`
@@ -293,10 +291,8 @@ func TestMigrations0004(t *testing.T) {
 			block_num,
 			block_pos,
 			block_timestamp,
-			tx_hash,
-			contract_address,
-			network_id
-		) VALUES ('123', '456', 1, 2, 1739270804, '0xdeadbeef', '0xabc123', 42);
+			tx_hash
+		) VALUES ('123', '456', 1, 2, 1739270804, '0xdeadbeef');
 	`)
 	require.NoError(t, err)
 
@@ -313,6 +309,4 @@ func TestMigrations0004(t *testing.T) {
 	require.Equal(t, uint64(2), updatedChain.BlockPos)
 	require.Equal(t, uint64(1739270804), updatedChain.BlockTimestamp)
 	require.Equal(t, "0xdeadbeef", updatedChain.TxHash)
-	require.Equal(t, "0xabc123", updatedChain.ContractAddress)
-	require.Equal(t, int64(42), updatedChain.NetworkID)
 }
