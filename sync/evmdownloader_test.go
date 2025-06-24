@@ -190,13 +190,13 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		expectedBlocks: blocksC5,
 		setupMocks: func(clientMock *aggkittypesmocks.BaseEthereumClienter) {
 			// First call returns different hash (mismatch)
-			clientMock.On("HeaderByNumber", mock.Anything, big.NewInt(10)).
+			clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(10)).
 				Return(&types.Header{
 					Number:     big.NewInt(10),
 					ParentHash: common.HexToHash("foo"),
 				}, nil).Once()
 			// Second call returns correct hash
-			clientMock.On("HeaderByNumber", mock.Anything, big.NewInt(10)).
+			clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(10)).
 				Return(&types.Header{
 					Number:     big.NewInt(10),
 					ParentHash: common.HexToHash("foo"),
@@ -218,7 +218,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 			// Return a different hash than the log's block hash for all retry attempts
 			// This will trigger the retry logic and eventually exceed max retries
 			for i := 0; i < MaxRetryCountBlockHashMismatch+1; i++ {
-				clientMock.On("HeaderByNumber", mock.Anything, big.NewInt(15)).
+				clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(15)).
 					Return(&types.Header{
 						Number:     big.NewInt(15),
 						ParentHash: common.HexToHash("bar"), // Different parent hash to create different block hash
@@ -300,9 +300,9 @@ func TestGetEventsByBlockRange(t *testing.T) {
 				// Create a cancelled context
 				cancelledCtx, cancel := context.WithCancel(context.Background())
 				cancel()
-				clientMock.On("FilterLogs", cancelledCtx, query).Return(tc.inputLogs, nil)
+				clientMock.EXPECT().FilterLogs(cancelledCtx, query).Return(tc.inputLogs, nil)
 			} else {
-				clientMock.On("FilterLogs", mock.Anything, query).Return(tc.inputLogs, nil)
+				clientMock.EXPECT().FilterLogs(mock.Anything, query).Return(tc.inputLogs, nil)
 			}
 
 			// Setup custom mocks if provided
@@ -311,7 +311,7 @@ func TestGetEventsByBlockRange(t *testing.T) {
 			} else {
 				// Default mock setup for block headers
 				for _, b := range tc.expectedBlocks {
-					clientMock.On("HeaderByNumber", mock.Anything, big.NewInt(int64(b.Num))).
+					clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(b.Num))).
 						Return(&types.Header{
 							Number:     big.NewInt(int64(b.Num)),
 							ParentHash: common.HexToHash("foo"),
