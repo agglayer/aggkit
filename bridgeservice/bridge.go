@@ -14,11 +14,13 @@ package bridgeservice
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit"
@@ -26,6 +28,9 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
@@ -68,6 +73,97 @@ type Config struct {
 	WriteTimeout time.Duration
 	ReadTimeout  time.Duration
 	NetworkID    uint32
+	// RequireStorageContentCompatibility is true if it's mandatory that data stored in the database
+	// is compatible with the running environment
+	RequireStorageContentCompatibility bool
+}
+
+// RuntimeData is the data that is used to check that the DB is compatible with the runtime data
+// It contains the aggkit version to ensure compatibility across version changes
+type RuntimeData struct {
+	Version string
+}
+
+func (r RuntimeData) String() string {
+	return fmt.Sprintf("Version: %s", r.Version)
+}
+
+func (r RuntimeData) IsCompatible(storage RuntimeData) error {
+	if r.Version != storage.Version {
+		return fmt.Errorf("version mismatch: %s != %s", r.Version, storage.Version)
+	}
+	return nil
+}
+
+// BridgeCompatibilityStorage implements CompatibilityDataStorager for bridge databases
+type BridgeCompatibilityStorage struct {
+	bridgeL1 Bridger
+	bridgeL2 Bridger
+	storage  compatibility.CompatibilityDataStorager[RuntimeData]
+}
+
+func NewBridgeCompatibilityStorage(bridgeL1, bridgeL2 Bridger) *BridgeCompatibilityStorage {
+	// Use bridgeL1 database for compatibility storage if available, otherwise use bridgeL2
+	var storage compatibility.CompatibilityDataStorager[RuntimeData]
+
+	if bridgeL1 != nil && bridgeL1.GetDatabase() != nil {
+		storage = compatibility.NewKeyValueToCompatibilityStorage[RuntimeData](
+			db.NewKeyValueStorage(bridgeL1.GetDatabase()),
+			"bridgeservice_l1",
+		)
+	} else if bridgeL2 != nil && bridgeL2.GetDatabase() != nil {
+		storage = compatibility.NewKeyValueToCompatibilityStorage[RuntimeData](
+			db.NewKeyValueStorage(bridgeL2.GetDatabase()),
+			"bridgeservice_l2",
+		)
+	}
+
+	return &BridgeCompatibilityStorage{
+		bridgeL1: bridgeL1,
+		bridgeL2: bridgeL2,
+		storage:  storage,
+	}
+}
+
+// GetCompatibilityData returns the compatibility data from the storage
+func (b *BridgeCompatibilityStorage) GetCompatibilityData(ctx context.Context, tx dbtypes.Querier) (bool, RuntimeData, error) {
+	if b.storage == nil {
+		return false, RuntimeData{}, errors.New("no bridge database available for compatibility storage")
+	}
+	return b.storage.GetCompatibilityData(ctx, tx)
+}
+
+// SetCompatibilityData stores the compatibility data in the storage
+func (b *BridgeCompatibilityStorage) SetCompatibilityData(ctx context.Context, tx dbtypes.Querier, data RuntimeData) error {
+	if b.storage == nil {
+		return errors.New("no bridge database available for compatibility storage")
+	}
+	return b.storage.SetCompatibilityData(ctx, tx, data)
+}
+
+// IsEmpty checks if the bridge databases are empty
+func (b *BridgeCompatibilityStorage) IsEmpty(ctx context.Context) (bool, error) {
+	// Check L1 first, then L2
+	l1Empty := true
+	l2Empty := true
+
+	if b.bridgeL1 != nil {
+		isEmpty, err := b.bridgeL1.IsEmpty(ctx)
+		if err != nil {
+			return false, err
+		}
+		l1Empty = isEmpty
+	}
+
+	if b.bridgeL2 != nil {
+		isEmpty, err := b.bridgeL2.IsEmpty(ctx)
+		if err != nil {
+			return false, err
+		}
+		l2Empty = isEmpty
+	}
+
+	return l1Empty && l2Empty, nil
 }
 
 // BridgeService contains implementations for the bridge service endpoints
@@ -82,8 +178,10 @@ type BridgeService struct {
 	injectedGERs LastGERer
 	bridgeL1     Bridger
 	bridgeL2     Bridger
+	router       *gin.Engine
 
-	router *gin.Engine
+	compatibilityChecker               compatibility.CompatibilityChecker
+	requireStorageContentCompatibility bool
 }
 
 // New returns instance of BridgeService
@@ -115,17 +213,33 @@ func New(
 	router.Use(LoggerHandler(cfg.Logger))
 
 	b := &BridgeService{
-		logger:       cfg.Logger,
-		address:      cfg.Address,
-		meter:        meter,
-		readTimeout:  cfg.ReadTimeout,
-		writeTimeout: cfg.WriteTimeout,
-		networkID:    cfg.NetworkID,
-		l1InfoTree:   l1InfoTree,
-		injectedGERs: injectedGERs,
-		bridgeL1:     bridgeL1,
-		bridgeL2:     bridgeL2,
-		router:       router,
+		logger:                             cfg.Logger,
+		address:                            cfg.Address,
+		meter:                              meter,
+		readTimeout:                        cfg.ReadTimeout,
+		writeTimeout:                       cfg.WriteTimeout,
+		networkID:                          cfg.NetworkID,
+		l1InfoTree:                         l1InfoTree,
+		injectedGERs:                       injectedGERs,
+		bridgeL1:                           bridgeL1,
+		bridgeL2:                           bridgeL2,
+		router:                             router,
+		requireStorageContentCompatibility: cfg.RequireStorageContentCompatibility,
+	}
+
+	// Initialize compatibility checker if bridge databases are available
+	if bridgeL1 != nil || bridgeL2 != nil {
+		storage := NewBridgeCompatibilityStorage(bridgeL1, bridgeL2)
+		if storage.storage != nil {
+			b.compatibilityChecker = compatibility.NewCompatibilityCheck(
+				cfg.RequireStorageContentCompatibility,
+				func(ctx context.Context) (RuntimeData, error) {
+					version := aggkit.GetVersion()
+					return RuntimeData{Version: version.Version}, nil
+				},
+				storage,
+			)
+		}
 	}
 
 	b.registerRoutes()
@@ -199,6 +313,8 @@ func (b *BridgeService) registerRoutes() {
 
 // Start starts the HTTP bridge service
 func (b *BridgeService) Start(ctx context.Context) {
+	b.checkDBCompatibility(ctx)
+
 	srv := &http.Server{
 		Addr:         b.address,
 		Handler:      b.router,
@@ -1074,4 +1190,78 @@ func (b *BridgeService) setupRequest(
 	counter.Add(ctx, 1)
 
 	return ctx, cancel, pageNumber, pageSize, nil
+}
+
+func (b *BridgeService) checkDBCompatibility(ctx context.Context) {
+	if b.compatibilityChecker == nil {
+		b.logger.Debugf("compatibilityChecker is nil, skipping compatibility check - no bridge databases available")
+		return
+	}
+	if err := b.compatibilityChecker.Check(ctx, nil); err != nil {
+		// Check if this is a version mismatch error
+		if b.isVersionMismatchError(err) && b.requireStorageContentCompatibility {
+			isEmpty, emptyErr := b.isBridgeSyncDBEmpty()
+			if emptyErr != nil {
+				b.logger.Panicf("error checking if bridge sync DB is empty: %v", emptyErr)
+			}
+			if isEmpty {
+				b.logger.Infof("Bridge sync DB is empty, overwriting compatibility data and continuing.")
+				// Overwrite compatibility data with current version
+				if b.compatibilityChecker != nil {
+					version := aggkit.GetVersion()
+					runtimeData := RuntimeData{Version: version.Version}
+					if err := b.setCompatibilityData(ctx, runtimeData); err != nil {
+						b.logger.Panicf("failed to set compatibility data: %v", err)
+					}
+				}
+				return
+			}
+		}
+		b.logger.Panicf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
+	}
+}
+
+func (b *BridgeService) isVersionMismatchError(err error) bool {
+	return err != nil && (strings.Contains(err.Error(), "version mismatch") ||
+		strings.Contains(err.Error(), "data on DB is"))
+}
+
+// setCompatibilityData sets the compatibility data in the storage
+func (b *BridgeService) setCompatibilityData(ctx context.Context, data RuntimeData) error {
+	if b.compatibilityChecker == nil {
+		return errors.New("compatibilityChecker is nil")
+	}
+	checker, ok := b.compatibilityChecker.(*compatibility.CompatibilityCheck[RuntimeData])
+	if !ok {
+		return errors.New("compatibilityChecker is not of expected type")
+	}
+	return checker.Storage.SetCompatibilityData(ctx, nil, data)
+}
+
+// isBridgeSyncDBEmpty checks if the bridge sync DB is empty by querying the main tables
+func (b *BridgeService) isBridgeSyncDBEmpty() (bool, error) {
+	// Prefer L1, fallback to L2
+	var dbConn *sql.DB
+	if b.bridgeL1 != nil && b.bridgeL1.GetDatabase() != nil {
+		dbConn = b.bridgeL1.GetDatabase()
+	} else if b.bridgeL2 != nil && b.bridgeL2.GetDatabase() != nil {
+		dbConn = b.bridgeL2.GetDatabase()
+	} else {
+		return true, nil
+	}
+
+	tables := []string{"bridges", "claims", "token_mappings", "legacy_token_migrations"}
+	for _, table := range tables {
+		query := fmt.Sprintf("SELECT COUNT(*) FROM %s LIMIT 1", table)
+		var count int
+		err := dbConn.QueryRow(query).Scan(&count)
+		if err != nil {
+			// If table doesn't exist, skip
+			continue
+		}
+		if count > 0 {
+			return false, nil
+		}
+	}
+	return true, nil
 }

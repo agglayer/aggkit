@@ -2,6 +2,7 @@ package bridgesync
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -429,4 +430,22 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 	}
 
 	return uint32(depositCount.Int64()), nil
+}
+
+// IsEmpty returns true if the bridge database is empty (no data has been processed)
+func (s *BridgeSync) IsEmpty(ctx context.Context) (bool, error) {
+	if s.processor.isHalted() {
+		return false, sync.ErrInconsistentState
+	}
+
+	lastProcessedBlock, err := s.processor.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	return lastProcessedBlock == 0, nil
+}
+
+func (s *BridgeSync) GetDatabase() *sql.DB {
+	return s.processor.db
 }

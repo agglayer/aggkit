@@ -55,12 +55,17 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	}
 	logger := log.WithFields("module", "test bridge service")
 	cfg := &Config{
-		Logger:       logger,
-		Address:      "localhost",
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		NetworkID:    networkID,
+		Logger:                             logger,
+		Address:                            "localhost",
+		ReadTimeout:                        0,
+		WriteTimeout:                       0,
+		NetworkID:                          networkID,
+		RequireStorageContentCompatibility: false,
 	}
+
+	b.bridgeL1.EXPECT().GetDatabase().Return(nil).Maybe()
+	b.bridgeL2.EXPECT().GetDatabase().Return(nil).Maybe()
+
 	b.bridge = New(cfg, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
 	return b
 }
