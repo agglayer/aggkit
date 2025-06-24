@@ -298,13 +298,25 @@ type RemoveLegacyToken struct {
 	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address"`
 }
 
+// UpdatedClaimedGlobalIndexHashChain representation of an UpdatedClaimedGlobalIndexHashChain event,
+// that is emitted by the bridge contract.
+type UpdatedClaimedGlobalIndexHashChain struct {
+	ClaimedGlobalIndex             *big.Int    `meddler:"claimed_global_index,bigint"`
+	NewClaimedGlobalIndexHashChain *big.Int    `meddler:"new_global_index_hash_chain,bigint"`
+	BlockNum                       uint64      `meddler:"block_num"`
+	BlockPos                       uint64      `meddler:"block_pos"`
+	BlockTimestamp                 uint64      `meddler:"block_timestamp"`
+	TxHash                         common.Hash `meddler:"tx_hash,hash"`
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
-	Bridge               *Bridge
-	Claim                *Claim
-	TokenMapping         *TokenMapping
-	LegacyTokenMigration *LegacyTokenMigration
-	RemoveLegacyToken    *RemoveLegacyToken
+	Bridge                             *Bridge
+	Claim                              *Claim
+	TokenMapping                       *TokenMapping
+	LegacyTokenMigration               *LegacyTokenMigration
+	RemoveLegacyToken                  *RemoveLegacyToken
+	UpdatedClaimedGlobalIndexHashChain *UpdatedClaimedGlobalIndexHashChain
 }
 
 type processor struct {
@@ -375,12 +387,23 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	}
 	defer p.rollbackTransaction(tx)
 
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTableName)
+	// Join claim with updated_claimed_global_index_hash_chain on global_index and order by the id of the chain table
+	rows, err := tx.Query(`
+		SELECT claim.*
+		FROM claim
+		LEFT JOIN updated_claimed_global_index_hash_chain
+			ON claim.global_index = updated_claimed_global_index_hash_chain.claimed_global_index
+		WHERE claim.block_num >= $1 AND claim.block_num <= $2
+		ORDER BY updated_claimed_global_index_hash_chain.block_num ASC, updated_claimed_global_index_hash_chain.block_pos ASC;
+	`, fromBlock, toBlock)
+	if rows != nil {
+		defer func() {
+			if err := rows.Close(); err != nil {
+				p.log.Warnf("error closing rows: %v", err)
+			}
+		}()
+	}
 	if err != nil {
-		if errors.Is(err, db.ErrNotFound) {
-			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
-			return []Claim{}, nil
-		}
 		return nil, err
 	}
 	claimPtrs := []*Claim{}
@@ -764,6 +787,14 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			_, err := tx.Exec(deleteLegacyTokenSQL, event.RemoveLegacyToken.LegacyTokenAddress.Hex())
 			if err != nil {
 				p.log.Errorf("failed to remove legacy token at block %d: %v", block.Num, err)
+				return err
+			}
+		}
+
+		if event.UpdatedClaimedGlobalIndexHashChain != nil {
+			if err = meddler.Insert(tx,
+				"updated_claimed_global_index_hash_chain", event.UpdatedClaimedGlobalIndexHashChain); err != nil {
+				p.log.Errorf("failed to insert updated_claimed_global_index_hash_chain event at block %d: %v", block.Num, err)
 				return err
 			}
 		}
