@@ -346,9 +346,11 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(ctx context
 						l.BlockNumber, b.Hash, l.BlockHash, retryCount,
 					)
 					if retryCount >= MaxRetryCountBlockHashMismatch {
+						// Log an error and return nil if the maximum retry count is reached.
 						d.log.Errorf("max retry attempts %d reached for block hash mismatch on block %d, returning nil", MaxRetryCountBlockHashMismatch, l.BlockNumber)
 						return nil
 					}
+					// Retry the operation with an incremented retry count.
 					return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, retryCount+1)
 				}
 				latestBlock = &EVMBlock{
