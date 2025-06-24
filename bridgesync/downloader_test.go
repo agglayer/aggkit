@@ -330,16 +330,18 @@ func TestTryDecodeClaimCalldata(t *testing.T) {
 	c := &Claim{}
 	fromAddr := common.HexToAddress("0x20")
 
-	// Short input should return false, nil
+	// Short input should return false, error
 	found, err := c.tryDecodeClaimCalldata(fromAddr, []byte{0x01, 0x02, 0x03})
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "input too short: 3 bytes")
 	require.False(t, found)
 
-	// Unknown method ID should return false, nil
+	// Unknown method ID should return false, error
 	input := make([]byte, methodIDLength)
 	copy(input, []byte{0xaa, 0xbb, 0xcc, 0xdd})
 	found, err = c.tryDecodeClaimCalldata(fromAddr, input)
-	require.NoError(t, err)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "unrecognized method ID: aabbccdd")
 	require.False(t, found)
 
 	// Valid method ID (simulate claimAssetEtrogMethodID)
