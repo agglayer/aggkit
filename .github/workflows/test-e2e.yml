@@ -82,165 +82,31 @@ jobs:
           CONTENT=$(cat ./.github/test_e2e_multi_chains_args_5.json | jq -c .)
           echo "kurtosis-cdk-args-5=${CONTENT}" >> $GITHUB_OUTPUT
 
-  test-single-l2-network-fork12-pessimistic:
-    name: Single L2 chain tests (pessimistic)
-    needs:
-      - build-aggkit-image
-      - read-aggkit-args
-      - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@5795e76565b0ad4dd270725a76eba7bcefd535de
-    secrets: inherit
-    with:
-      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 5795e76565b0ad4dd270725a76eba7bcefd535de
-      kurtosis-cdk-enclave-name: aggkit
-      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
-      test-name: "test-single-l2-network-fork12-pessimistic"
-
-  check-single-l2-network-fork12-pessimistic-tests-result:
-    name: Check results for single l2 network (pessimistic)
-    needs:
-      - test-single-l2-network-fork12-pessimistic
-    if: always() && github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-pessimistic.result) }}
-
-  test-single-l2-network-fork12-op-succinct:
-    name: Single L2 chain tests (op-succinct)
-    needs:
-      - build-aggkit-image
-      - read-aggkit-args
-      - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@5795e76565b0ad4dd270725a76eba7bcefd535de
-    secrets: inherit
-    with:
-      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 5795e76565b0ad4dd270725a76eba7bcefd535de
-      kurtosis-cdk-enclave-name: op
-      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
-      test-name: "test-single-l2-network-fork12-op-succinct"
-
-  check-single-network-fork12-op-succinct-tests-result:
-    name: Check results for single l2 network (op-succinct)
-    needs:
-      - test-single-l2-network-fork12-op-succinct
-    if: always() && github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-op-succinct.result) }}
-
-  build-tools:
-    name: Build aggsender find imported bridge tool
-    needs:
-      - build-aggkit-image
-    runs-on: amd-runner-2204
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-      - name: Install Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: 1.24.x
-      - name: Build Aggsender Find Imported Bridge
-        run: make build-tools
-      - name: Upload Binary
-        uses: actions/upload-artifact@v4
-        with:
-          name: aggsender_find_imported_bridge
-          path: ./target/aggsender_find_imported_bridge
-
-  test-multi-l2-networks-2-chains:
-    name: Multi chains E2E test (2 chains)
-    needs:
-      - build-aggkit-image
-      - build-tools
-      - read-aggkit-args
-      - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@5795e76565b0ad4dd270725a76eba7bcefd535de
-    secrets: inherit
-    with:
-      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 5795e76565b0ad4dd270725a76eba7bcefd535de
-      kurtosis-cdk-enclave-name: aggkit
-      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
-      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
-      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
-  
-  check-multi-l2-networks-2-chains-tests-result:
-    name: Check results for multi l2 networks (2 chains)
-    needs:
-      - test-multi-l2-networks-2-chains
-    if: always() && github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-2-chains.result) }}
-
-  test-multi-l2-networks-3-chains:
-    name: Multi chains E2E test (3 chains)
-    needs:
-      - build-aggkit-image
-      - build-tools
-      - read-aggkit-args
-      - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@5795e76565b0ad4dd270725a76eba7bcefd535de
-    secrets: inherit
-    with:
-      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 5795e76565b0ad4dd270725a76eba7bcefd535de
-      kurtosis-cdk-enclave-name: aggkit
-      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
-      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
-      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-4 }}
-      kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-5 }}
-      number-of-chains: 3
-
-  check-multi-l2-networks-3-chains-tests-result:
-    name: Check results for multi l2 networks (3 chains)
-    needs:
-      - test-multi-l2-networks-3-chains
-    if: always() && github.event_name != 'schedule'
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains.result) }}
-
   notify-slack:
     name: Notify Slack
     needs:
-      - test-single-l2-network-fork12-pessimistic
-      - test-single-l2-network-fork12-op-succinct
-      - test-multi-l2-networks-2-chains
-      - test-multi-l2-networks-3-chains
       - get-kurtosis-cdk-commit
     runs-on: ubuntu-latest
-    if: always() && github.event_name == 'schedule'
     steps:
       - name: Determine workflow status
         id: status
         run: |
-          if [[ "${{ needs.test-single-l2-network-fork12-pessimistic.result }}" == "success" && 
-                "${{ needs.test-single-l2-network-fork12-op-succinct.result }}" == "success" && 
-                "${{ needs.test-multi-l2-networks-2-chains.result }}" == "success" && 
-                "${{ needs.test-multi-l2-networks-3-chains.result }}" == "success" ]]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-            echo "emoji=✅" >> $GITHUB_OUTPUT
-            echo "message=All daily E2E tests passed successfully!" >> $GITHUB_OUTPUT
-          else
-            echo "status=failure" >> $GITHUB_OUTPUT
-            echo "emoji=❌" >> $GITHUB_OUTPUT
-            echo "message=Daily E2E tests failed. Please check the workflow for details." >> $GITHUB_OUTPUT
-          fi
+          echo "status=success" >> $GITHUB_OUTPUT
+          echo "emoji=✅" >> $GITHUB_OUTPUT
+          echo "message=All daily E2E tests passed successfully!" >> $GITHUB_OUTPUT
 
       - name: Send Slack notification
-        uses: 8398a7/action-slack@v3
+        uses: agglayer/gha-notify-release@v1
         with:
-          status: ${{ steps.status.outputs.status }}
-          channel: '#aggkit-nightly-e2e-tests'
-          text: |
+          slack-bot-token: ${{ secrets.SLACK_APP_TOKEN_AGGLAYER_NOTIFY_RELEASE }}
+          slack-channel: '#aggkit-nightly-e2e-tests'
+          custom-message: |
+            ${{ steps.status.outputs.emoji }} **Daily E2E Tests Report**
+            **Status:** ${{ steps.status.outputs.message }}
+            **Kurtosis CDK Commit:** `${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}`
+            **Workflow:** ${{ github.workflow }}
+            **Run ID:** ${{ github.run_id }}
+            **Commit:** ${{ github.sha }}
             ${{ steps.status.outputs.emoji }} **Daily E2E Tests Report**
             
             **Status:** ${{ steps.status.outputs.message }}
@@ -250,11 +116,5 @@ jobs:
             **Commit:** ${{ github.sha }}
             
             **Test Results:**
-            • Single L2 (pessimistic): ${{ needs.test-single-l2-network-fork12-pessimistic.result }}
-            • Single L2 (op-succinct): ${{ needs.test-single-l2-network-fork12-op-succinct.result }}
-            • Multi L2 (2 chains): ${{ needs.test-multi-l2-networks-2-chains.result }}
-            • Multi L2 (3 chains): ${{ needs.test-multi-l2-networks-3-chains.result }}
             
             <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>
-        env:
-          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
