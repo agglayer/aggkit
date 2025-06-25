@@ -26,8 +26,14 @@ FROM alpine:3.22
 # Install runtime dependencies
 RUN apk add --no-cache sqlite-libs ca-certificates
 
-# Add non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+# Add non-root user with home directory (required for AWS credentials)
+RUN addgroup appgroup && \
+    adduser -D -G appgroup -h /home/appuser appuser && \
+    mkdir -p /home/appuser && \
+    chown -R appuser:appgroup /home/appuser
+
+# Set working directory to home
+WORKDIR /home/appuser
 USER appuser
 
 # Copy built binary
