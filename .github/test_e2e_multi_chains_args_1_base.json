@@ -1,0 +1,15 @@
+{
+  "deployment_stages": {
+    "deploy_l2_contracts": true,
+    "deploy_cdk_bridge_infra": false,
+    "deploy_optimism_rollup": false
+  },
+  "args": {
+    "verbosity": "debug",
+    "cdk_node_image": "aggkit:local",
+    "additional_services": [],
+    "erigon_strict_mode": false,
+    "enable_normalcy": true,
+    "binary_name": "aggkit"
+  }
+}
