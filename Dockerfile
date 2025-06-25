@@ -14,8 +14,7 @@ RUN go mod download
 
 # Copy source and build
 COPY . .
-
-# Compile binary with CGO enabled
+# Compile binary
 RUN make build-aggkit
 
 # ================================
@@ -23,20 +22,22 @@ RUN make build-aggkit
 # ================================
 FROM alpine:3.22
 
-# Install runtime dependencies
-RUN apk add --no-cache sqlite-libs ca-certificates
+# Install runtime dependencies and remove shell
+RUN apk add --no-cache sqlite-libs ca-certificates && \
+    rm -f /bin/sh
 
-# Add non-root user with home directory (required for AWS credentials)
+# Add non-root user with home and nologin shell
 RUN addgroup appgroup && \
-    adduser -D -G appgroup -h /home/appuser appuser && \
+    adduser -D -G appgroup -h /home/appuser -s /sbin/nologin appuser && \
     mkdir -p /home/appuser && \
     chown -R appuser:appgroup /home/appuser
 
-# Set working directory to home
-WORKDIR /home/appuser
+# Set the working directory and user
+# This ensures that the application runs as a non-root user
+    WORKDIR /home/appuser
 USER appuser
 
-# Copy built binary
+# Copy the built binary from the builder stage
 COPY --from=builder /app/target/aggkit /usr/local/bin/aggkit
 
 EXPOSE 5576/tcp
