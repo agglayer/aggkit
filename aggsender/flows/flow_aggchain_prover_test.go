@@ -935,3 +935,85 @@ func Test_AggchainProverFlow_getL2StartBlock(t *testing.T) {
 		})
 	}
 }
+
+func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	testCases := []struct {
+		name   string
+		mockFn func(
+			mockStorage *mocks.AggSenderStorage,
+			mockBaseFlow *mocks.AggsenderFlowBaser,
+		)
+		expectedError string
+	}{
+		{
+			name: "error getting last sent certificate",
+			mockFn: func(
+				mockStorage *mocks.AggSenderStorage,
+				mockBaseFlow *mocks.AggsenderFlowBaser,
+			) {
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, errors.New("db error")).Once()
+			},
+			expectedError: "aggchainProverFlow - error getting last sent certificate: db error",
+		},
+		{
+			name: "error verifying block range gaps",
+			mockFn: func(
+				mockStorage *mocks.AggSenderStorage,
+				mockBaseFlow *mocks.AggsenderFlowBaser,
+			) {
+				lastCert := &types.CertificateHeader{ToBlock: 10}
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
+				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(5)).Once()
+				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(5), uint64(5), true).
+					Return(errors.New("gap error")).Once()
+			},
+			expectedError: "aggchainProverFlow - error verifying block range gaps on startup: gap error",
+		},
+		{
+			name: "success",
+			mockFn: func(
+				mockStorage *mocks.AggSenderStorage,
+				mockBaseFlow *mocks.AggsenderFlowBaser,
+			) {
+				lastCert := &types.CertificateHeader{ToBlock: 10}
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
+				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(5)).Once()
+				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(5), uint64(5), true).
+					Return(nil).Once()
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			mockStorage := mocks.NewAggSenderStorage(t)
+			mockBaseFlow := mocks.NewAggsenderFlowBaser(t)
+			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_CheckInitialStatus")
+
+			flow := &AggchainProverFlow{
+				log:      logger,
+				storage:  mockStorage,
+				baseFlow: mockBaseFlow,
+			}
+
+			tc.mockFn(mockStorage, mockBaseFlow)
+
+			err := flow.CheckInitialStatus(ctx)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+
+			mockStorage.AssertExpectations(t)
+			mockBaseFlow.AssertExpectations(t)
+		})
+	}
+}

@@ -534,7 +534,7 @@ func Test_baseFlow_VerifyBuildParams(t *testing.T) {
 				},
 			},
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
-				mockL2BridgeQuerier.EXPECT().NumOfBridgeTransactions(ctx, uint64(8), uint64(9), true).
+				mockL2BridgeQuerier.EXPECT().NumOfBridgeTransactions(ctx, uint64(8), uint64(9), false).
 					Return(0, 0, errors.New("some error"))
 			},
 			expectedError: "error getting bridges and claims in the gap FromBlock: 8, ToBlock: 9: some error",
@@ -552,7 +552,7 @@ func Test_baseFlow_VerifyBuildParams(t *testing.T) {
 				},
 			},
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
-				mockL2BridgeQuerier.EXPECT().NumOfBridgeTransactions(ctx, uint64(13), uint64(14), true).Return(3, 2, nil)
+				mockL2BridgeQuerier.EXPECT().NumOfBridgeTransactions(ctx, uint64(13), uint64(14), false).Return(3, 2, nil)
 			},
 			expectedError: " there are new bridges or claims in the gap FromBlock: 13, ToBlock: 14, len(bridges)=3. len(claims)=2",
 		},
@@ -565,6 +565,19 @@ func Test_baseFlow_VerifyBuildParams(t *testing.T) {
 					Height:    1,
 					Status:    agglayertypes.InError,
 					FromBlock: 15,
+					ToBlock:   20,
+				},
+			},
+		},
+		{
+			name: "no gap - on startup",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 10, // startL2Block
+				ToBlock:   10, // startL2Block
+				LastSentCertificate: &types.CertificateHeader{
+					Height:    2,
+					Status:    agglayertypes.Settled,
+					FromBlock: 11,
 					ToBlock:   20,
 				},
 			},

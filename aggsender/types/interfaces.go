@@ -18,6 +18,8 @@ import (
 // AggsenderFlow is an interface that defines the methods to manage the flow of the AggSender
 // based on the different prover types
 type AggsenderFlow interface {
+	// CheckInitialStatus checks the initial status for the flow it's ok
+	CheckInitialStatus(ctx context.Context) error
 	// GetCertificateBuildParams returns the parameters to build a certificate
 	GetCertificateBuildParams(ctx context.Context) (*CertificateBuildParams, error)
 	// BuildCertificate builds a certificate based on the buildParams
@@ -35,6 +37,11 @@ type AggsenderFlowBaser interface {
 	GetNewLocalExitRoot(ctx context.Context,
 		certParams *CertificateBuildParams) (common.Hash, error)
 	VerifyBuildParams(ctx context.Context, fullCert *CertificateBuildParams) error
+	VerifyBlockRangeGaps(
+		ctx context.Context,
+		lastSentCertificate *CertificateHeader,
+		newFromBlock, newToBlock uint64,
+		waitForSyncer bool) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
 }

@@ -85,6 +85,24 @@ func TestBlockRange_Gap(t *testing.T) {
 			b:        NewBlockRange(1, 4),
 			expected: NewBlockRange(0, 0),
 		},
+		{
+			name:     "invalid a",
+			a:        NewBlockRange(10, 5), // from > to
+			b:        NewBlockRange(1, 15),
+			expected: NewBlockRange(0, 0), // should return empty range
+		},
+		{
+			name:     "invalid b",
+			a:        NewBlockRange(1, 15),
+			b:        NewBlockRange(10, 5), // from > to
+			expected: NewBlockRange(0, 0),  // should return empty range
+		},
+		{
+			name:     "start verification case",
+			a:        NewBlockRange(1, 5),
+			b:        NewBlockRange(10, 10),
+			expected: NewBlockRange(6, 9),
+		},
 	}
 
 	for _, tt := range tests {

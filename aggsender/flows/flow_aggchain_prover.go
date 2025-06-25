@@ -117,6 +117,25 @@ func NewAggchainProverFlow(
 	}
 }
 
+// CheckInitialStatus checks that initial status is correct.
+// For AggchainProverFlow checks that starting block and last certificate match
+func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
+	lastSentCertificate, err := a.storage.GetLastSentCertificateHeader()
+	if err != nil {
+		return fmt.Errorf("aggchainProverFlow - error getting last sent certificate: %w", err)
+	}
+
+	// we check if there are gaps between start L2 block and last sent certificate on startup
+	// if there are gaps with bridge transactions, we can not allow the start of aggsender
+	startL2Block := a.baseFlow.StartL2Block()
+	if err := a.baseFlow.VerifyBlockRangeGaps(
+		ctx, lastSentCertificate, startL2Block, startL2Block, true); err != nil {
+		return fmt.Errorf("aggchainProverFlow - error verifying block range gaps on startup: %w", err)
+	}
+
+	return nil
+}
+
 // getCertificateTypeToGenerate returns the type of certificate to generate
 func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateType, error) {
 	// AggchainProverFlow only supports FEP certificates

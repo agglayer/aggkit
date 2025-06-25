@@ -48,6 +48,12 @@ func NewPPFlow(log types.Logger,
 	}
 }
 
+// CheckInitialStatus checks that initial status is correct.
+// For PPFlow  there are no special checks to do, so it just returns nil
+func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
+	return nil
+}
+
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
