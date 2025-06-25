@@ -63,6 +63,13 @@ const (
 	errDepositCountParam = "invalid deposit count parameter: %v"
 )
 
+// VersionsRequiringCompatibilityCheck contains versions that require database compatibility checks
+// when upgrading from a previous version. This is used to prevent data corruption during
+// version upgrades that require database schema changes or data migrations.
+var VersionsRequiringCompatibilityCheck = []string{
+	"v0.5.0",
+}
+
 var (
 	ErrNotOnL1Info = errors.New("this bridge has not been included on the L1 Info Tree yet")
 )
@@ -227,18 +234,23 @@ func New(
 		requireStorageContentCompatibility: cfg.RequireStorageContentCompatibility,
 	}
 
-	// Initialize compatibility checker if bridge databases are available
+	// Initialize compatibility checker if bridge databases are available and current version requires compatibility checking
 	if bridgeL1 != nil || bridgeL2 != nil {
-		storage := NewBridgeCompatibilityStorage(bridgeL1, bridgeL2)
-		if storage.storage != nil {
-			b.compatibilityChecker = compatibility.NewCompatibilityCheck(
-				cfg.RequireStorageContentCompatibility,
-				func(ctx context.Context) (RuntimeData, error) {
-					version := aggkit.GetVersion()
-					return RuntimeData{Version: version.Version}, nil
-				},
-				storage,
-			)
+		currentVersion := aggkit.GetVersion()
+		if requiresCompatibilityCheck(currentVersion.Version) {
+			storage := NewBridgeCompatibilityStorage(bridgeL1, bridgeL2)
+			if storage.storage != nil {
+				b.compatibilityChecker = compatibility.NewCompatibilityCheck(
+					cfg.RequireStorageContentCompatibility,
+					func(ctx context.Context) (RuntimeData, error) {
+						version := aggkit.GetVersion()
+						return RuntimeData{Version: version.Version}, nil
+					},
+					storage,
+				)
+			}
+		} else {
+			b.logger.Debugf("Current version %s does not require compatibility checking, skipping compatibility checker initialization", currentVersion.Version)
 		}
 	}
 
@@ -1194,9 +1206,16 @@ func (b *BridgeService) setupRequest(
 
 func (b *BridgeService) checkDBCompatibility(ctx context.Context) {
 	if b.compatibilityChecker == nil {
-		b.logger.Debugf("compatibilityChecker is nil, skipping compatibility check - no bridge databases available")
+		b.logger.Debugf("compatibilityChecker is nil, skipping compatibility check - no bridge databases available or version does not require compatibility checking")
 		return
 	}
+
+	currentVersion := aggkit.GetVersion()
+	if !requiresCompatibilityCheck(currentVersion.Version) {
+		b.logger.Debugf("Current version %s does not require compatibility checking, skipping", currentVersion.Version)
+		return
+	}
+
 	if err := b.compatibilityChecker.Check(ctx, nil); err != nil {
 		// Check if this is a version mismatch error
 		if b.isVersionMismatchError(err) && b.requireStorageContentCompatibility {
@@ -1264,4 +1283,14 @@ func (b *BridgeService) isBridgeSyncDBEmpty() (bool, error) {
 		}
 	}
 	return true, nil
+}
+
+// requiresCompatibilityCheck returns true if the given version requires compatibility checking
+func requiresCompatibilityCheck(version string) bool {
+	for _, v := range VersionsRequiringCompatibilityCheck {
+		if v == version {
+			return true
+		}
+	}
+	return false
 }

@@ -1919,3 +1919,19 @@ func TestHealthCheckHandler(t *testing.T) {
 	require.NotEmpty(t, response.Time)
 	require.NotEmpty(t, response.Version)
 }
+
+func TestRequiresCompatibilityCheck(t *testing.T) {
+	t.Run("version requiring compatibility check", func(t *testing.T) {
+		require.True(t, requiresCompatibilityCheck("v0.5.0"))
+	})
+
+	t.Run("version not requiring compatibility check", func(t *testing.T) {
+		require.False(t, requiresCompatibilityCheck("v0.4.0"))
+		require.False(t, requiresCompatibilityCheck("v0.6.0"))
+		require.False(t, requiresCompatibilityCheck("v1.0.0"))
+	})
+
+	t.Run("empty version", func(t *testing.T) {
+		require.False(t, requiresCompatibilityCheck(""))
+	})
+}
