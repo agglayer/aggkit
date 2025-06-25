@@ -63,6 +63,7 @@ func NewFlow(
 			certificateVerifier,
 			certificateSigner,
 			cfg.RequireOneBridgeInPPCertificate,
+			cfg.MaxL2BlockNumber,
 		), nil
 	case types.AggchainProofMode:
 		certificateSigner, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
@@ -116,7 +117,7 @@ func NewFlow(
 
 		return NewAggchainProverFlow(
 			logger,
-			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap, startL2Block),
+			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap, startL2Block, cfg.MaxL2BlockNumber),
 			storage,
 			l2BridgeQuerier,
 			certificateSigner,

@@ -37,6 +37,7 @@ type AggchainProverFlow struct {
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	aggchainProofQuerier  types.AggchainProofQuerier
+	maxL2BlockLimiter     types.MaxL2BlockNumberLimiterInterface
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (uint64, error) {
@@ -61,6 +62,7 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 type AggchainProverFlowConfig struct {
 	requireNoFEPBlockGap bool
 	startL2Block         uint64
+	maxL2BlockNumber     uint64
 }
 
 // NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
@@ -68,6 +70,7 @@ func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		requireNoFEPBlockGap: true, // default to true, can be set to false for testing purposes
 		startL2Block:         0,
+		maxL2BlockNumber:     0,
 	}
 }
 
@@ -75,10 +78,12 @@ func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 func NewAggchainProverFlowConfig(
 	requireNoFEPBlockGap bool,
 	startL2Block uint64,
+	maxL2BlockNumber uint64,
 ) AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		requireNoFEPBlockGap: requireNoFEPBlockGap,
 		startL2Block:         startL2Block,
+		maxL2BlockNumber:     maxL2BlockNumber,
 	}
 }
 
@@ -95,6 +100,12 @@ func NewAggchainProverFlow(
 	certificateVerifier types.CertificateBuildVerifier,
 	aggchainProofQuerier types.AggchainProofQuerier,
 ) *AggchainProverFlow {
+	maxL2BlockLimiter := NewMaxL2BlockNumberLimiter(
+		aggChainProverFlowConfig.maxL2BlockNumber,
+		log,
+		false, // AggchainProverFlow allows to resize retry certs
+		false, // AggchainProverFlow allows to send no bridges certs
+	)
 	return &AggchainProverFlow{
 		log:                   log,
 		cfg:                   aggChainProverFlowConfig,
@@ -105,6 +116,7 @@ func NewAggchainProverFlow(
 		certificateBuilder:    certificateBuilder,
 		certificateVerifier:   certificateVerifier,
 		aggchainProofQuerier:  aggchainProofQuerier,
+		maxL2BlockLimiter:     maxL2BlockLimiter,
 	}
 }
 
@@ -189,6 +201,14 @@ func (a *AggchainProverFlow) getCertificateBuildParamsToResend(
 		CertificateType:     certType,
 	}
 
+	if a.maxL2BlockLimiter != nil {
+		// If the feature is enabled, we need to adapt the build params
+		buildParams, err = a.maxL2BlockLimiter.AdaptCertificate(buildParams)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block.Err: %w", err)
+		}
+	}
+
 	if proof == nil {
 		// this can happen if the aggsender db was deleted, so the aggsender
 		// got the last sent certificate from agglayer, but in that data we do not have
@@ -244,9 +264,16 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			// this is a valid case, so just return nil without error
 			return nil, nil
 		}
-
 		return nil, err
 	}
+	if a.maxL2BlockLimiter != nil {
+		// If the feature is enabled, we need to adapt the build params
+		buildParams, err = a.maxL2BlockLimiter.AdaptCertificate(buildParams)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error adapting certificate to MaxL2Block. Err: %w", err)
+		}
+	}
+
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, lastSentCert)
 	if buildParams.FromBlock != lastProvenBlock+1 {
 		a.log.Infof("aggchainProverFlow - getCertificateBuildParams - setting fromBlock to %d instead of %d",
@@ -279,8 +306,8 @@ func (a *AggchainProverFlow) generateProof(
 				lastProvenBlock, buildParams.ToBlock)
 			return nil, nil
 		}
-
-		return nil, fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
+		errNew := fmt.Errorf("aggchainProverFlow - error generating aggchain proof: %w", err)
+		return nil, errNew
 	}
 
 	a.log.Infof("aggchainProverFlow - fetched auth proof for lastProvenBlock: %d, maxEndBlock: %d "+

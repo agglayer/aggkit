@@ -317,7 +317,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 			flow := NewAggchainProverFlow(
 				logger,
-				NewAggchainProverFlowConfig(tc.startL2Block > 0, tc.startL2Block),
+				NewAggchainProverFlowConfig(tc.startL2Block > 0, tc.startL2Block, 0),
 				mockStorage,
 				mockL2BridgeQuerier,
 				nil,                   // mockSigner
@@ -419,7 +419,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 
 			flow := NewAggchainProverFlow(
 				logger,
-				NewAggchainProverFlowConfig(false, tc.startL2Block),
+				NewAggchainProverFlowConfig(false, tc.startL2Block, 0),
 				nil, // mockStorage
 				nil, // mockL2BridgeQuerier
 				nil, // mockSigner
@@ -551,7 +551,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 	logger := log.WithFields("flowManager", "Test_AggchainProverFlow_CheckInitialStatus")
 	sut := NewAggchainProverFlow(
 		logger,
-		NewAggchainProverFlowConfig(false, 1234),
+		NewAggchainProverFlowConfig(false, 1234, 0),
 		mockStorage,
 		nil, // mockL2BridgeQuerier
 		nil, // mockSigner

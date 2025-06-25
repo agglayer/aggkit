@@ -255,6 +255,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockCertVerifier,
 				nil, // signer
 				tc.forceOneBridgeExit,
+				0,
 			)
 
 			tc.mockFn(mockCertBuilder, mockCertVerifier, mockL1InfoTreeQuerier)

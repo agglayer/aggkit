@@ -38,6 +38,8 @@ func TestGetEventsByBlockRange(t *testing.T) {
 		inputLogs          []types.Log
 		fromBlock, toBlock uint64
 		expectedBlocks     EVMBlocks
+		setupMocks         func(*aggkittypesmocks.BaseEthereumClienter)
+		contextCancelled   bool
 	}
 	testCases := []testCase{}
 	ctx := context.Background()
@@ -156,26 +158,178 @@ func TestGetEventsByBlockRange(t *testing.T) {
 	}
 	testCases = append(testCases, case3)
 
-	for _, tc := range testCases {
-		query := ethereum.FilterQuery{
-			FromBlock: new(big.Int).SetUint64(tc.fromBlock),
-			Addresses: []common.Address{contractAddr},
-			ToBlock:   new(big.Int).SetUint64(tc.toBlock),
-		}
-		clientMock.
-			On("FilterLogs", mock.Anything, query).
-			Return(tc.inputLogs, nil)
-		for _, b := range tc.expectedBlocks {
-			clientMock.
-				On("HeaderByNumber", mock.Anything, big.NewInt(int64(b.Num))).
-				Return(&types.Header{
-					Number:     big.NewInt(int64(b.Num)),
-					ParentHash: common.HexToHash("foo"),
-				}, nil)
-		}
+	// case 4: context cancelled
+	case4 := testCase{
+		description:      "case 4: context cancelled",
+		inputLogs:        []types.Log{},
+		fromBlock:        1,
+		toBlock:          3,
+		expectedBlocks:   nil,
+		contextCancelled: true,
+	}
+	testCases = append(testCases, case4)
 
-		actualBlocks := d.GetEventsByBlockRange(ctx, tc.fromBlock, tc.toBlock)
-		require.Equal(t, tc.expectedBlocks, actualBlocks, tc.description)
+	// case 5: block hash mismatch with retry success
+	logC5, updateC5 := generateEvent(10)
+	logsC5 := []types.Log{*logC5}
+	blocksC5 := EVMBlocks{
+		{
+			EVMBlockHeader: EVMBlockHeader{
+				Num:        logC5.BlockNumber,
+				Hash:       logC5.BlockHash,
+				ParentHash: common.HexToHash("foo"),
+			},
+			Events: []interface{}{updateC5},
+		},
+	}
+	case5 := testCase{
+		description:    "case 5: block hash mismatch with retry success",
+		inputLogs:      logsC5,
+		fromBlock:      10,
+		toBlock:        10,
+		expectedBlocks: blocksC5,
+		setupMocks: func(clientMock *aggkittypesmocks.BaseEthereumClienter) {
+			// First call returns different hash (mismatch)
+			clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(10)).
+				Return(&types.Header{
+					Number:     big.NewInt(10),
+					ParentHash: common.HexToHash("foo"),
+				}, nil).Once()
+			// Second call returns correct hash
+			clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(10)).
+				Return(&types.Header{
+					Number:     big.NewInt(10),
+					ParentHash: common.HexToHash("foo"),
+				}, nil).Once()
+		},
+	}
+	testCases = append(testCases, case5)
+
+	// case 6: block hash mismatch with max retries exceeded
+	logC6, _ := generateEvent(15)
+	logsC6 := []types.Log{*logC6}
+	case6 := testCase{
+		description:    "case 6: block hash mismatch with max retries exceeded",
+		inputLogs:      logsC6,
+		fromBlock:      15,
+		toBlock:        15,
+		expectedBlocks: nil,
+		setupMocks: func(clientMock *aggkittypesmocks.BaseEthereumClienter) {
+			// Return a different hash than the log's block hash for all retry attempts
+			// This will trigger the retry logic and eventually exceed max retries
+			for i := 0; i < MaxRetryCountBlockHashMismatch+1; i++ {
+				clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(15)).
+					Return(&types.Header{
+						Number:     big.NewInt(15),
+						ParentHash: common.HexToHash("bar"), // Different parent hash to create different block hash
+						// The hash will be different from logC6.BlockHash, causing mismatch
+					}, nil).Once()
+			}
+		},
+	}
+	testCases = append(testCases, case6)
+
+	// case 7: logs with removed flag should be filtered out
+	logC7_1, _ := generateEvent(20)
+	logC7_2, updateC7_2 := generateEvent(20)
+	logC7_1.Removed = true // This log should be filtered out
+	logsC7 := []types.Log{*logC7_1, *logC7_2}
+	blocksC7 := EVMBlocks{
+		{
+			EVMBlockHeader: EVMBlockHeader{
+				Num:        logC7_2.BlockNumber,
+				Hash:       logC7_2.BlockHash,
+				ParentHash: common.HexToHash("foo"),
+			},
+			Events: []interface{}{updateC7_2}, // Only the non-removed log
+		},
+	}
+	case7 := testCase{
+		description:    "case 7: logs with removed flag should be filtered out",
+		inputLogs:      logsC7,
+		fromBlock:      20,
+		toBlock:        20,
+		expectedBlocks: blocksC7,
+	}
+	testCases = append(testCases, case7)
+
+	// case 8: logs with non-matching topics should be filtered out
+	logC8_1, updateC8_1 := generateEvent(25)
+	logC8_2 := &types.Log{
+		Address:     contractAddr,
+		BlockNumber: 25,
+		Topics: []common.Hash{
+			common.HexToHash("0x1234567890abcdef"), // Non-matching topic
+			common.HexToHash("0xabcdef1234567890"),
+		},
+		BlockHash: logC8_1.BlockHash,
+		Data:      nil,
+	}
+	logsC8 := []types.Log{*logC8_1, *logC8_2}
+	blocksC8 := EVMBlocks{
+		{
+			EVMBlockHeader: EVMBlockHeader{
+				Num:        logC8_1.BlockNumber,
+				Hash:       logC8_1.BlockHash,
+				ParentHash: common.HexToHash("foo"),
+			},
+			Events: []interface{}{updateC8_1}, // Only the matching topic log
+		},
+	}
+	case8 := testCase{
+		description:    "case 8: logs with non-matching topics should be filtered out",
+		inputLogs:      logsC8,
+		fromBlock:      25,
+		toBlock:        25,
+		expectedBlocks: blocksC8,
+	}
+	testCases = append(testCases, case8)
+
+	for i, tc := range testCases {
+		t.Run(fmt.Sprintf("test_case_%d_%s", i, tc.description), func(t *testing.T) {
+			// Reset mock for each test case
+			clientMock.ExpectedCalls = nil
+
+			query := ethereum.FilterQuery{
+				FromBlock: new(big.Int).SetUint64(tc.fromBlock),
+				Addresses: []common.Address{contractAddr},
+				ToBlock:   new(big.Int).SetUint64(tc.toBlock),
+			}
+
+			if tc.contextCancelled {
+				// Create a cancelled context
+				cancelledCtx, cancel := context.WithCancel(context.Background())
+				cancel()
+				clientMock.EXPECT().FilterLogs(cancelledCtx, query).Return(tc.inputLogs, nil)
+			} else {
+				clientMock.EXPECT().FilterLogs(mock.Anything, query).Return(tc.inputLogs, nil)
+			}
+
+			// Setup custom mocks if provided
+			if tc.setupMocks != nil {
+				tc.setupMocks(clientMock)
+			} else {
+				// Default mock setup for block headers
+				for _, b := range tc.expectedBlocks {
+					clientMock.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(b.Num))).
+						Return(&types.Header{
+							Number:     big.NewInt(int64(b.Num)),
+							ParentHash: common.HexToHash("foo"),
+						}, nil)
+				}
+			}
+
+			var actualBlocks EVMBlocks
+			if tc.contextCancelled {
+				cancelledCtx, cancel := context.WithCancel(context.Background())
+				cancel()
+				actualBlocks = d.GetEventsByBlockRange(cancelledCtx, tc.fromBlock, tc.toBlock)
+			} else {
+				actualBlocks = d.GetEventsByBlockRange(ctx, tc.fromBlock, tc.toBlock)
+			}
+
+			require.Equal(t, tc.expectedBlocks, actualBlocks, tc.description)
+		})
 	}
 }
 

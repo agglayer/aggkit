@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"math/big"
+	"os"
 	"path"
 	"testing"
 	"time"
@@ -21,6 +22,22 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func Test_StorageExploratory(t *testing.T) {
+	t.Skip()
+	path := os.Getenv("DB_AGGSENDER_0_2")
+	if path == "" {
+		t.Fatalf("environment variable DB_AGGSENDER_0_2 is not set")
+	}
+	cfg := AggSenderSQLStorageConfig{
+		DBPath:                  path,
+		KeepCertificatesHistory: true,
+	}
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+	cert, err := storage.GetLastSentCertificate()
+	require.NoError(t, err)
+	require.NotNil(t, cert)
+}
 func Test_Storage(t *testing.T) {
 	ctx := context.Background()
 

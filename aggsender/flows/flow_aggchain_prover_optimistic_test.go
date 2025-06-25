@@ -106,6 +106,7 @@ func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *
 		SP1StarkProof: &types.SP1StarkProof{
 			Proof: []byte("proof"),
 		},
+		EndBlock: 60,
 	}, &treetypes.Root{}, nil)
 
 	res, err := data.sut.GetCertificateBuildParams(data.ctx)

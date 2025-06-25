@@ -21,6 +21,7 @@ type PPFlow struct {
 
 	certificateBuilder  types.CertificateBuilder
 	certificateVerifier types.CertificateBuildVerifier
+	maxL2BlockLimiter   types.MaxL2BlockNumberLimiterInterface
 	forceOneBridgeExit  bool
 }
 
@@ -32,7 +33,14 @@ func NewPPFlow(log types.Logger,
 	certificateBuilder types.CertificateBuilder,
 	certificateVerifier types.CertificateBuildVerifier,
 	signer signertypes.Signer,
-	forceOneBridgeExit bool) *PPFlow {
+	forceOneBridgeExit bool,
+	maxL2BlockNumber uint64) *PPFlow {
+	maxL2BlockLimiter := NewMaxL2BlockNumberLimiter(
+		maxL2BlockNumber,
+		log,
+		true,
+		forceOneBridgeExit,
+	)
 	return &PPFlow{
 		signer:                signer,
 		log:                   log,
@@ -40,6 +48,7 @@ func NewPPFlow(log types.Logger,
 		certificateBuilder:    certificateBuilder,
 		certificateVerifier:   certificateVerifier,
 		forceOneBridgeExit:    forceOneBridgeExit,
+		maxL2BlockLimiter:     maxL2BlockLimiter,
 	}
 }
 
@@ -75,6 +84,13 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		p.log.Infof("PPFlow - no bridges or claims found for range: %d - %d, so no certificate will be built",
 			buildParams.FromBlock, buildParams.ToBlock)
 		return nil, nil
+	}
+	if p.maxL2BlockLimiter != nil {
+		// If the feature is enabled, we need to adapt the build params
+		buildParams, err = p.maxL2BlockLimiter.AdaptCertificate(buildParams)
+		if err != nil {
+			return nil, fmt.Errorf("ppFlow - error adapting  certificate to MaxL2Block. Err: %w", err)
+		}
 	}
 
 	if err := p.certificateVerifier.VerifyBuildParams(buildParams); err != nil {

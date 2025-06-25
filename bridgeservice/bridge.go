@@ -110,6 +110,10 @@ func New(
 		gin.SetMode(gin.ReleaseMode) // fallback to release mode
 	}
 
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(LoggerHandler(cfg.Logger))
+
 	b := &BridgeService{
 		logger:       cfg.Logger,
 		address:      cfg.Address,
@@ -121,13 +125,49 @@ func New(
 		injectedGERs: injectedGERs,
 		bridgeL1:     bridgeL1,
 		bridgeL2:     bridgeL2,
-		router:       gin.Default(),
+		router:       router,
 	}
 
 	b.registerRoutes()
 	cfg.Logger.Info("bridge service initialized successfully")
 
 	return b
+}
+
+// LoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.
+func LoggerHandler(logger aggkitcommon.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		raw := c.Request.URL.RawQuery
+
+		c.Next()
+
+		latency := time.Since(start)
+		if latency > time.Minute {
+			latency = latency.Truncate(time.Second)
+		}
+
+		clientIP := c.ClientIP()
+		method := c.Request.Method
+		statusCode := c.Writer.Status()
+		errorMessage := c.Errors.ByType(gin.ErrorTypePrivate).String()
+
+		if raw != "" {
+			path += "?" + raw
+		}
+
+		logger.Debugf(
+			"[GIN] %v | %3d | %13v | %15s | %-7s %#v\n%s",
+			start.Format("2006/01/02 - 15:04:05"),
+			statusCode,
+			latency,
+			clientIP,
+			method,
+			path,
+			errorMessage,
+		)
+	}
 }
 
 // registerRoutes registers the routes for the bridge service
@@ -591,7 +631,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Description or the first injected global exit root after the given index (for L2).
 // @Tags l1-info-tree-leaf
 // @Param network_id query int true "Network ID"
-// @Param l1_info_tree_index query int true "L1 Info Tree Index"
+// @Param leaf_index query int true "L1 Info Tree Index"
 // @Produce json
 // @Success 200 {object} types.L1InfoTreeLeafResponse
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
@@ -672,7 +712,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 // @Description the corresponding L1 info tree leaf needed to verify a claim.
 // @Tags claims
 // @Param network_id query uint32 true "Target network ID"
-// @Param l1_info_tree_index query uint32 true "Index in the L1 info tree"
+// @Param leaf_index query uint32 true "Index in the L1 info tree"
 // @Param deposit_count query uint32 true "Number of deposits in the bridge"
 // @Produce json
 // @Success 200 {object} types.ClaimProof "Merkle proofs and L1 info tree leaf"
