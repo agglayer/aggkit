@@ -43,7 +43,7 @@ jobs:
           CONTENT=$(cat ./.github/test_e2e_single_chain_fork12_op_succinct_args.json | jq -c .)
           echo "fork12_op_succinct_args=${CONTENT}" >> $GITHUB_OUTPUT
           # single l2 network (fork 12, pessimistic)
-          CONTENT=$(cat ./.github/test_e2e_single_chain_fork12_pessimistic_args.json | jq -c .)
+          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_1_base.json ./.github/test_e2e_single_chain_fork12_pessimistic_args.json | jq -c .)
           echo "fork12_pessimistic_args=${CONTENT}" >> $GITHUB_OUTPUT
           # multi l2 networks
           CONTENT=$(cat ./.github/test_e2e_multi_chains_args_1_base.json | jq -c .)

@@ -6,10 +6,6 @@
   "args": {
     "verbosity": "debug",
     "aggkit_image": "aggkit:local",
-    "agglayer_image": "ghcr.io/agglayer/agglayer:0.3.0-rc.21",
-    "aggkit_prover_image": "ghcr.io/agglayer/aggkit-prover:0.1.0-rc.29",
-    "op_succinct_proposer_image": "ghcr.io/agglayer/op-succinct/op-succinct:v2.2.1-agglayer",
-    "gas_token_enabled": false,
     "consensus_contract_type": "fep",
     "op_succinct_mock": true,
     "op_succinct_agglayer": true,
@@ -18,11 +14,8 @@
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
-    "l1_seconds_per_slot": 2,
     "additional_services": [
-      "bridge_spammer"
-    ],
-    "enable_aggkit_claim_sponsor": false
+    ]
   },
   "optimism_package": {
     "observability": {

@@ -82,20 +82,31 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
         ;;
     single-l2-network-fork12-pessimistic)
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_pessimistic_args.json" .
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1_base.json" "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_pessimistic_args.json" > /tmp/merged_args_1.json
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         ;;
     multi-l2-networks-2-chains)
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1.json" .
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" .
+        # Create merged args files using jq
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_1.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_4.json" > /tmp/merged_args_2.json
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         ;;
     multi-l2-networks-3-chains)
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" .
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_4.json" .
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_5.json" .
+        # Create merged args files using jq
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_1_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_1.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_4.json" > /tmp/merged_args_2.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_5.json" > /tmp/merged_args_3.json
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_3.json .
         ;;
     esac
     log_info "$ENCLAVE_NAME enclave started successfully."
     popd >/dev/null
+
+    # Clean up temporary merged args files if they exist
+    rm -f /tmp/merged_args_*.json
 else
     log_info "Skipping Kurtosis setup (kurtosis_repo_path is '-')"
 fi
