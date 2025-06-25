@@ -1,30 +1,37 @@
-# CONTAINER FOR BUILDING BINARY
-FROM --platform=${BUILDPLATFORM} golang:1.24.4 AS build
+# ================================
+# STAGE 1: Build binary
+# ================================
+FROM --platform=${BUILDPLATFORM} golang:1.24.4-alpine AS build
+
+# Install build dependencies
+RUN apk add --no-cache gcc musl-dev make sqlite-dev
 
 WORKDIR /app
 
-# INSTALL DEPENDENCIES
+# Download Go dependencies
 COPY go.mod go.sum ./
 RUN go mod download
 
-# BUILD BINARY
+# Copy source and build
 COPY . .
-RUN make build-aggkit build-tools
 
-# CONTAINER FOR RUNNING BINARY
-FROM --platform=${BUILDPLATFORM} debian:bookworm-slim
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    ca-certificates \
-    sqlite3 \
-    procps \
-    libssl-dev && \
-    rm -rf /var/lib/apt/lists/*
-COPY --from=build /app/target/aggkit /usr/local/bin/
+# Compile binary with CGO enabled
+RUN make build-aggkit
 
-# ADD NON-ROOT USER
-RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
+# ================================
+# STAGE 2: Final runtime image
+# ================================
+FROM alpine:3.20
+
+# Install runtime dependencies
+RUN apk add --no-cache sqlite-libs ca-certificates
+
+# Add non-root user
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
+
+# Copy built binary
+COPY --from=build /app/target/aggkit /usr/local/bin/aggkit
 
 EXPOSE 5576/tcp
 
