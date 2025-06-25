@@ -133,10 +133,18 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-fork12-op-succinct)
-        bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/e2e-pp.bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
+        bats \
+            ./tests/aggkit/bridge-e2e.bats \
+            ./tests/aggkit/e2e-pp.bats \
+            ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
+            ./tests/aggkit/claim-call-data.bats
         ;;
     single-l2-network-fork12-pessimistic)
-        bats ./tests/aggkit/bridge-e2e-custom-gas.bats ./tests/aggkit/bridge-e2e.bats ./tests/aggkit/e2e-pp.bats
+        bats \
+            ./tests/aggkit/bridge-e2e-custom-gas.bats \
+            ./tests/aggkit/bridge-e2e.bats \
+            ./tests/aggkit/e2e-pp.bats \
+            ./tests/aggkit/claim-call-data.bats
         ;;
     multi-l2-networks-2-chains)
         bats ./tests/aggkit/bridge-e2e-2-l2s.bats

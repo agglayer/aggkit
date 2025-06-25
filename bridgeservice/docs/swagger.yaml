@@ -148,6 +148,10 @@ definitions:
         description: Global index of the claim
         example: "1000000000000000000"
         type: string
+      mainnet_exit_root:
+        description: Mainnet exit root associated with the claim
+        example: 0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757
+        type: string
       origin_address:
         description: Address initiating the claim on the origin network
         example: 0xabc1234567890abcdef1234567890abcdef1234
