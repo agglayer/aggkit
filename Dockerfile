@@ -1,7 +1,7 @@
 # ================================
 # STAGE 1: Build binary
 # ================================
-FROM --platform=${BUILDPLATFORM} golang:1.24.4-alpine AS build
+FROM --platform=${BUILDPLATFORM} golang:1.24.4-alpine AS builder
 
 # Install build dependencies
 RUN apk add --no-cache gcc musl-dev make sqlite-dev
@@ -31,7 +31,7 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
 # Copy built binary
-COPY --from=build /app/target/aggkit /usr/local/bin/aggkit
+COPY --from=builder /app/target/aggkit /usr/local/bin/aggkit
 
 EXPOSE 5576/tcp
 
