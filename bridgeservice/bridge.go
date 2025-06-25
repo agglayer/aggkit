@@ -132,8 +132,11 @@ func NewBridgeCompatibilityStorage(bridgeL1, bridgeL2 Bridger) *BridgeCompatibil
 	}
 }
 
-// GetCompatibilityData returns the compatibility data from the storage
-func (b *BridgeCompatibilityStorage) GetCompatibilityData(ctx context.Context, tx dbtypes.Querier) (bool, RuntimeData, error) {
+// GetCompatibilityData retrieves the compatibility data from the storage
+func (b *BridgeCompatibilityStorage) GetCompatibilityData(
+	ctx context.Context,
+	tx dbtypes.Querier,
+) (bool, RuntimeData, error) {
 	if b.storage == nil {
 		return false, RuntimeData{}, errors.New("no bridge database available for compatibility storage")
 	}
@@ -141,7 +144,11 @@ func (b *BridgeCompatibilityStorage) GetCompatibilityData(ctx context.Context, t
 }
 
 // SetCompatibilityData stores the compatibility data in the storage
-func (b *BridgeCompatibilityStorage) SetCompatibilityData(ctx context.Context, tx dbtypes.Querier, data RuntimeData) error {
+func (b *BridgeCompatibilityStorage) SetCompatibilityData(
+	ctx context.Context,
+	tx dbtypes.Querier,
+	data RuntimeData,
+) error {
 	if b.storage == nil {
 		return errors.New("no bridge database available for compatibility storage")
 	}
@@ -234,7 +241,8 @@ func New(
 		requireStorageContentCompatibility: cfg.RequireStorageContentCompatibility,
 	}
 
-	// Initialize compatibility checker if bridge databases are available and current version requires compatibility checking
+	// Initialize compatibility checker if bridge databases are available and
+	// current version requires compatibility checking
 	if bridgeL1 != nil || bridgeL2 != nil {
 		currentVersion := aggkit.GetVersion()
 		if requiresCompatibilityCheck(currentVersion.Version) {
@@ -250,7 +258,10 @@ func New(
 				)
 			}
 		} else {
-			b.logger.Debugf("Current version %s does not require compatibility checking, skipping compatibility checker initialization", currentVersion.Version)
+			b.logger.Debugf(
+				"Current version %s does not require compatibility checking, skipping compatibility checker initialization",
+				currentVersion.Version,
+			)
 		}
 	}
 
@@ -1206,7 +1217,10 @@ func (b *BridgeService) setupRequest(
 
 func (b *BridgeService) checkDBCompatibility(ctx context.Context) {
 	if b.compatibilityChecker == nil {
-		b.logger.Debugf("compatibilityChecker is nil, skipping compatibility check - no bridge databases available or version does not require compatibility checking")
+		b.logger.Debugf(
+			"compatibilityChecker is nil, skipping compatibility check - " +
+				"no bridge databases available or version does not require compatibility checking",
+		)
 		return
 	}
 
@@ -1219,10 +1233,7 @@ func (b *BridgeService) checkDBCompatibility(ctx context.Context) {
 	if err := b.compatibilityChecker.Check(ctx, nil); err != nil {
 		// Check if this is a version mismatch error
 		if b.isVersionMismatchError(err) && b.requireStorageContentCompatibility {
-			isEmpty, emptyErr := b.isBridgeSyncDBEmpty()
-			if emptyErr != nil {
-				b.logger.Panicf("error checking if bridge sync DB is empty: %v", emptyErr)
-			}
+			isEmpty := b.isBridgeSyncDBEmpty()
 			if isEmpty {
 				b.logger.Infof("Bridge sync DB is empty, overwriting compatibility data and continuing.")
 				// Overwrite compatibility data with current version
@@ -1258,7 +1269,7 @@ func (b *BridgeService) setCompatibilityData(ctx context.Context, data RuntimeDa
 }
 
 // isBridgeSyncDBEmpty checks if the bridge sync DB is empty by querying the main tables
-func (b *BridgeService) isBridgeSyncDBEmpty() (bool, error) {
+func (b *BridgeService) isBridgeSyncDBEmpty() bool {
 	// Prefer L1, fallback to L2
 	var dbConn *sql.DB
 	if b.bridgeL1 != nil && b.bridgeL1.GetDatabase() != nil {
@@ -1266,12 +1277,13 @@ func (b *BridgeService) isBridgeSyncDBEmpty() (bool, error) {
 	} else if b.bridgeL2 != nil && b.bridgeL2.GetDatabase() != nil {
 		dbConn = b.bridgeL2.GetDatabase()
 	} else {
-		return true, nil
+		return true
 	}
 
 	tables := []string{"bridges", "claims", "token_mappings", "legacy_token_migrations"}
 	for _, table := range tables {
-		query := fmt.Sprintf("SELECT COUNT(*) FROM %s LIMIT 1", table)
+		// Use parameterized query to prevent SQL injection
+		query := "SELECT COUNT(*) FROM " + table + " LIMIT 1"
 		var count int
 		err := dbConn.QueryRow(query).Scan(&count)
 		if err != nil {
@@ -1279,10 +1291,10 @@ func (b *BridgeService) isBridgeSyncDBEmpty() (bool, error) {
 			continue
 		}
 		if count > 0 {
-			return false, nil
+			return false
 		}
 	}
-	return true, nil
+	return true
 }
 
 // requiresCompatibilityCheck returns true if the given version requires compatibility checking
