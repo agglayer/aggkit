@@ -14,6 +14,7 @@ RUN go mod download
 
 # Copy source and build
 COPY . .
+
 # Compile binary
 RUN make build-aggkit
 
@@ -23,18 +24,18 @@ RUN make build-aggkit
 FROM alpine:3.22
 
 # Install runtime dependencies and remove shell
-RUN apk add --no-cache sqlite-libs ca-certificates && \
-    rm -f /bin/sh
+RUN apk add --no-cache sqlite-libs ca-certificates
 
 # Add non-root user with home and nologin shell
 RUN addgroup appgroup && \
     adduser -D -G appgroup -h /home/appuser -s /sbin/nologin appuser && \
     mkdir -p /home/appuser && \
-    chown -R appuser:appgroup /home/appuser
+    chown -R appuser:appgroup /home/appuser && \
+    rm -f /bin/sh
 
 # Set the working directory and user
 # This ensures that the application runs as a non-root user
-    WORKDIR /home/appuser
+WORKDIR /home/appuser
 USER appuser
 
 # Copy the built binary from the builder stage
