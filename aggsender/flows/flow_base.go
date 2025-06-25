@@ -138,7 +138,7 @@ func (f *baseFlow) VerifyBuildParams(ctx context.Context, fullCert *types.Certif
 		return fmt.Errorf("error verifying retry certificate starting block: %w", err)
 	}
 
-	if err := f.VerifyBlockRangeGaps(
+	if _, err := f.VerifyBlockRangeGaps(
 		ctx,
 		fullCert.LastSentCertificate,
 		fullCert.FromBlock, fullCert.ToBlock,
@@ -507,9 +507,9 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 	ctx context.Context,
 	lastSentCertificate *types.CertificateHeader,
 	newFromBlock, newToBlock uint64,
-	waitForSyncer bool) error {
+	waitForSyncer bool) (types.BlockRange, error) {
 	if lastSentCertificate == nil {
-		return nil
+		return types.BlockRange{}, nil
 	}
 
 	lastSettledFromBlock := uint64(0)
@@ -533,18 +533,19 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 	// case 2: is a new cert but is not contiguous to previous one
 	gap := nextBlockRange.Gap(lastBlockRange)
 	if gap.IsEmpty() {
-		return nil
+		return gap, nil
 	}
 	bridgeDataInTheGap, claimDataInTheGap, err := f.l2BridgeQuerier.NumOfBridgeTransactions(
 		ctx, gap.FromBlock, gap.ToBlock, waitForSyncer)
 	if err != nil {
-		return fmt.Errorf("error getting bridges and claims in the gap %s: %w", gap.String(), err)
+		return types.BlockRange{}, fmt.Errorf("error getting bridges and claims in the gap %s: %w", gap.String(), err)
 	}
 	if bridgeDataInTheGap > 0 || claimDataInTheGap > 0 {
-		return fmt.Errorf("there are new bridges or claims in the gap %s, len(bridges)=%d. len(claims)=%d",
-			gap.String(), bridgeDataInTheGap, claimDataInTheGap)
+		return types.BlockRange{},
+			fmt.Errorf("there are new bridges or claims in the gap %s, len(bridges)=%d. len(claims)=%d",
+				gap.String(), bridgeDataInTheGap, claimDataInTheGap)
 	}
-	return nil
+	return gap, nil
 }
 
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate

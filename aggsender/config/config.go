@@ -63,6 +63,9 @@ type Config struct {
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
+	// RequireNoFEPBlockGap is true if the AggSender should not accept a gap between
+	// lastBlock from lastCertificate and first block of FEP
+	RequireNoFEPBlockGap bool `mapstructure:"RequireNoFEPBlockGap"`
 	// OptimisticModeConfig is the configuration for optimistic mode (required by FEP mode)
 	OptimisticModeConfig optimistic.Config `mapstructure:"OptimisticModeConfig"`
 	// RequireOneBridgeInPPCertificate is a flag to force the AggSender to have at least one bridge exit
@@ -98,5 +101,6 @@ func (c Config) String() string {
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
-		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n"
+		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
+		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n"
 }

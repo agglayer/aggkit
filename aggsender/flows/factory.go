@@ -110,7 +110,7 @@ func NewFlow(
 
 		return NewAggchainProverFlow(
 			logger,
-			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
+			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap, cfg.MaxL2BlockNumber),
 			baseFlow,
 			aggchainProofClient,
 			storage,

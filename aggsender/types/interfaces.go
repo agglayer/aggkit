@@ -41,7 +41,7 @@ type AggsenderFlowBaser interface {
 		ctx context.Context,
 		lastSentCertificate *CertificateHeader,
 		newFromBlock, newToBlock uint64,
-		waitForSyncer bool) error
+		waitForSyncer bool) (BlockRange, error)
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
 }

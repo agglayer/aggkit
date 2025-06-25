@@ -942,8 +942,9 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 	ctx := context.Background()
 
 	testCases := []struct {
-		name   string
-		mockFn func(
+		name                 string
+		requireNoFEPBlockGap bool
+		mockFn               func(
 			mockStorage *mocks.AggSenderStorage,
 			mockBaseFlow *mocks.AggsenderFlowBaser,
 		)
@@ -960,32 +961,73 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 			expectedError: "aggchainProverFlow - error getting last sent certificate: db error",
 		},
 		{
-			name: "error verifying block range gaps",
+			name: "error verifying block range gaps - has bridge transactions in gap",
 			mockFn: func(
 				mockStorage *mocks.AggSenderStorage,
 				mockBaseFlow *mocks.AggsenderFlowBaser,
 			) {
 				lastCert := &types.CertificateHeader{ToBlock: 10}
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
-				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(5)).Once()
-				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(5), uint64(5), true).
-					Return(errors.New("gap error")).Once()
+				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(15)).Once()
+				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(15), uint64(15), true).
+					Return(types.BlockRange{}, errors.New("gap error")).Once()
 			},
-			expectedError: "aggchainProverFlow - error verifying block range gaps on startup: gap error",
+			expectedError: "aggchainProverFlow - error verifying block range gaps on startup. RequireNoFEPBlockGap: false. Err: gap error",
 		},
 		{
-			name: "success",
+			name:                 "has a gap without bridge transactions, but requireNoFEPBlockGap is true",
+			requireNoFEPBlockGap: true,
 			mockFn: func(
 				mockStorage *mocks.AggSenderStorage,
 				mockBaseFlow *mocks.AggsenderFlowBaser,
 			) {
 				lastCert := &types.CertificateHeader{ToBlock: 10}
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
-				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(5)).Once()
-				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(5), uint64(5), true).
-					Return(nil).Once()
+				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(15)).Once()
+				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(15), uint64(15), true).
+					Return(types.BlockRange{FromBlock: 11, ToBlock: 14}, nil).Once()
 			},
-			expectedError: "",
+			expectedError: "aggchainProverFlow - FEP block gap detected",
+		},
+		{
+			name:                 "success - requireNoFEPBlockGap is true, no gap",
+			requireNoFEPBlockGap: true,
+			mockFn: func(
+				mockStorage *mocks.AggSenderStorage,
+				mockBaseFlow *mocks.AggsenderFlowBaser,
+			) {
+				lastCert := &types.CertificateHeader{ToBlock: 10}
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
+				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(11)).Once()
+				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(11), uint64(11), true).
+					Return(types.BlockRange{}, nil).Once()
+			},
+		},
+		{
+			name: "success - requireNoFEPBlockGap is false, no gap",
+			mockFn: func(
+				mockStorage *mocks.AggSenderStorage,
+				mockBaseFlow *mocks.AggsenderFlowBaser,
+			) {
+				lastCert := &types.CertificateHeader{ToBlock: 10}
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
+				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(11)).Once()
+				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(11), uint64(11), true).
+					Return(types.BlockRange{}, nil).Once()
+			},
+		},
+		{
+			name: "success - requireNoFEPBlockGap is false, has gap without bridge transactions",
+			mockFn: func(
+				mockStorage *mocks.AggSenderStorage,
+				mockBaseFlow *mocks.AggsenderFlowBaser,
+			) {
+				lastCert := &types.CertificateHeader{ToBlock: 10}
+				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
+				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(15)).Once()
+				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(15), uint64(15), true).
+					Return(types.BlockRange{FromBlock: 11, ToBlock: 14}, nil).Once()
+			},
 		},
 	}
 
@@ -1001,6 +1043,9 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 				log:      logger,
 				storage:  mockStorage,
 				baseFlow: mockBaseFlow,
+				config: AggchainProverFlowConfig{
+					requireNoFEPBlockGap: tc.requireNoFEPBlockGap,
+				},
 			}
 
 			tc.mockFn(mockStorage, mockBaseFlow)

@@ -62,20 +62,25 @@ var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 
 // AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {
-	maxL2BlockNumber uint64
+	requireNoFEPBlockGap bool
+	maxL2BlockNumber     uint64
 }
 
 // NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
 func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
-		maxL2BlockNumber: 0,
+		requireNoFEPBlockGap: true, // default to true, can be set to false for testing purposes
+		maxL2BlockNumber:     0,
 	}
 }
 
 // NewAggchainProverFlowConfig creates a new AggchainProverFlowConfig with the given base flow config
-func NewAggchainProverFlowConfig(maxL2BlockNumber uint64) AggchainProverFlowConfig {
+func NewAggchainProverFlowConfig(
+	requireNoFEPBlockGap bool,
+	maxL2BlockNumber uint64) AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
-		maxL2BlockNumber: maxL2BlockNumber,
+		requireNoFEPBlockGap: requireNoFEPBlockGap,
+		maxL2BlockNumber:     maxL2BlockNumber,
 	}
 }
 
@@ -128,9 +133,18 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 	// we check if there are gaps between start L2 block and last sent certificate on startup
 	// if there are gaps with bridge transactions, we can not allow the start of aggsender
 	startL2Block := a.baseFlow.StartL2Block()
-	if err := a.baseFlow.VerifyBlockRangeGaps(
-		ctx, lastSentCertificate, startL2Block, startL2Block, true); err != nil {
-		return fmt.Errorf("aggchainProverFlow - error verifying block range gaps on startup: %w", err)
+	gap, err := a.baseFlow.VerifyBlockRangeGaps(
+		ctx, lastSentCertificate, startL2Block, startL2Block, true)
+	if err != nil {
+		return fmt.Errorf("aggchainProverFlow - error verifying block range gaps on startup. "+
+			"RequireNoFEPBlockGap: %t. Err: %w", a.config.requireNoFEPBlockGap, err)
+	}
+
+	if !gap.IsEmpty() && a.config.requireNoFEPBlockGap {
+		// even though we do not have bridge transactions in the gap,
+		// we need to return an error if RequireNoFEPBlockGap is true
+		return fmt.Errorf("aggchainProverFlow - FEP block gap detected: %s. RequireNoFEPBlockGap: %t",
+			gap.String(), a.config.requireNoFEPBlockGap)
 	}
 
 	return nil

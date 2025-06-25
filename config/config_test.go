@@ -106,7 +106,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	AggchainProofURL = "http://localhost:5576"
 	UseAggkitProverTLS = true
 	GenerateAggchainProofTimeout = "1h"
-	RequireNoFEPBlockGap = true
 
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
@@ -149,5 +148,4 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, networkConfigDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigUsePolTokenAddrHint)
 	require.ErrorContains(t, err, l1NetworkConfigUseRollupAddrHint)
-	require.ErrorContains(t, err, aggsenderRequireNoFEPBlockGapHint)
 }

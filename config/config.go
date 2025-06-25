@@ -62,7 +62,6 @@ const (
 	networkConfigDeprecatedHint           = "NetworkConfig is deprecated, use L1NetworkConfig instead"
 	l1NetworkConfigUsePolTokenAddrHint    = "Use L1NetworkConfig.POLTokenAddr instead"
 	l1NetworkConfigUseRollupAddrHint      = "Use L1NetworkConfig.RollupAddr instead"
-	aggsenderRequireNoFEPBlockGapHint     = "AggSender.RequireNoFEPBlockGap is deprecated and no longer used"
 )
 
 type DeprecatedFieldsError struct {
@@ -171,10 +170,6 @@ var (
 		{
 			FieldNamePattern: "NetworkConfig",
 			Reason:           networkConfigDeprecatedHint,
-		},
-		{
-			FieldNamePattern: "AggSender.RequireNoFEPBlockGap",
-			Reason:           aggsenderRequireNoFEPBlockGapHint,
 		},
 	}
 )

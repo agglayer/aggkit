@@ -63,7 +63,8 @@ func TestConfigString(t *testing.T) {
 		"CheckStatusCertificateInterval: 0s\n"+
 		"RetryCertAfterInError: false\n"+
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
-		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n",
+		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
+		"RequireNoFEPBlockGap: false\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())

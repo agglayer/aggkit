@@ -311,21 +311,31 @@ func (_c *AggsenderFlowBaser_StartL2Block_Call) RunAndReturn(run func() uint64) 
 }
 
 // VerifyBlockRangeGaps provides a mock function with given fields: ctx, lastSentCertificate, newFromBlock, newToBlock, waitForSyncer
-func (_m *AggsenderFlowBaser) VerifyBlockRangeGaps(ctx context.Context, lastSentCertificate *types.CertificateHeader, newFromBlock uint64, newToBlock uint64, waitForSyncer bool) error {
+func (_m *AggsenderFlowBaser) VerifyBlockRangeGaps(ctx context.Context, lastSentCertificate *types.CertificateHeader, newFromBlock uint64, newToBlock uint64, waitForSyncer bool) (types.BlockRange, error) {
 	ret := _m.Called(ctx, lastSentCertificate, newFromBlock, newToBlock, waitForSyncer)
 
 	if len(ret) == 0 {
 		panic("no return value specified for VerifyBlockRangeGaps")
 	}
 
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateHeader, uint64, uint64, bool) error); ok {
+	var r0 types.BlockRange
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateHeader, uint64, uint64, bool) (types.BlockRange, error)); ok {
+		return rf(ctx, lastSentCertificate, newFromBlock, newToBlock, waitForSyncer)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateHeader, uint64, uint64, bool) types.BlockRange); ok {
 		r0 = rf(ctx, lastSentCertificate, newFromBlock, newToBlock, waitForSyncer)
 	} else {
-		r0 = ret.Error(0)
+		r0 = ret.Get(0).(types.BlockRange)
 	}
 
-	return r0
+	if rf, ok := ret.Get(1).(func(context.Context, *types.CertificateHeader, uint64, uint64, bool) error); ok {
+		r1 = rf(ctx, lastSentCertificate, newFromBlock, newToBlock, waitForSyncer)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
 }
 
 // AggsenderFlowBaser_VerifyBlockRangeGaps_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VerifyBlockRangeGaps'
@@ -350,12 +360,12 @@ func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) Return(_a0 error) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
-	_c.Call.Return(_a0)
+func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) Return(_a0 types.BlockRange, _a1 error) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) RunAndReturn(run func(context.Context, *types.CertificateHeader, uint64, uint64, bool) error) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
+func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) RunAndReturn(run func(context.Context, *types.CertificateHeader, uint64, uint64, bool) (types.BlockRange, error)) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
 	_c.Call.Return(run)
 	return _c
 }
