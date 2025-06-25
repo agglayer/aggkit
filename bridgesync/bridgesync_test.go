@@ -573,7 +573,7 @@ func TestBridgeSync_IsEmpty(t *testing.T) {
 
 			if tt.expectedError != nil {
 				require.Error(t, err)
-				if tt.expectedError == sync.ErrInconsistentState {
+				if errors.Is(tt.expectedError, sync.ErrInconsistentState) {
 					require.ErrorIs(t, err, sync.ErrInconsistentState)
 				} else {
 					require.Error(t, err)
