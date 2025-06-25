@@ -3,9 +3,11 @@
 # ================================
 FROM --platform=${BUILDPLATFORM} golang:1.24.4-alpine AS builder
 
-# Install build dependencies and prepare workdir
-RUN apk add --no-cache gcc make musl-dev sqlite-dev && \
-    addgroup -S appgroup && adduser -S appuser -G appgroup && \
+# Install build dependencies
+RUN apk add --no-cache gcc make musl-dev sqlite-dev
+
+# Create non-root user with home directory
+RUN addgroup appgroup && adduser -D -G appgroup -h /home/appuser appuser && \
     mkdir -p /app && chown -R appuser:appgroup /app
 
 USER appuser
@@ -20,19 +22,18 @@ COPY --chown=appuser:appgroup . .
 RUN make build-aggkit
 
 # ================================
-# STAGE 2: Final runtime image
+# STAGE 2: Final runtime image (distroless)
 # ================================
-FROM alpine:3.20
+FROM gcr.io/distroless/static-debian12:nonroot
 
-# Install runtime dependencies and create user
-RUN apk add --no-cache sqlite-libs ca-certificates && \
-    addgroup -S appgroup && adduser -S appuser -G appgroup
+# Copy binary (already built for correct architecture)
+COPY --chown=nonroot:nonroot --from=builder /app/target/aggkit /usr/local/bin/aggkit
 
-USER appuser
-
-# Copy built binary
-COPY --from=builder /app/target/aggkit /usr/local/bin/aggkit
-
+# Expose API port
 EXPOSE 5576/tcp
 
+# Run as non-root user (distroless uses UID 65532 `nonroot`)
+USER nonroot
+
+# Set entrypoint
 ENTRYPOINT ["/usr/local/bin/aggkit"]
