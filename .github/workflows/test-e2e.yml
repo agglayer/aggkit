@@ -50,12 +50,14 @@ jobs:
           echo "kurtosis-cdk-args-1=${CONTENT}" >> $GITHUB_OUTPUT
           CONTENT=$(cat ./.github/test_e2e_multi_chains_args_2_base.json | jq -c .)
           echo "kurtosis-cdk-args-2=${CONTENT}" >> $GITHUB_OUTPUT
-          # Merge base args with args_3 for kurtosis-cdk-args-3
+          # Merge base_1 args with args_3 for kurtosis-cdk-args-3
           CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_1_base.json ./.github/test_e2e_multi_chains_args_3.json | jq -c .)
           echo "kurtosis-cdk-args-3=${CONTENT}" >> $GITHUB_OUTPUT
-          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_4.json | jq -c .)
+          # Merge base_2 args with args_4 for kurtosis-cdk-args-4
+          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_2_base.json ./.github/test_e2e_multi_chains_args_4.json | jq -c .)
           echo "kurtosis-cdk-args-4=${CONTENT}" >> $GITHUB_OUTPUT
-          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_5.json | jq -c .)
+          # Merge base_2 args with args_5 for kurtosis-cdk-args-5
+          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_2_base.json ./.github/test_e2e_multi_chains_args_5.json | jq -c .)
           echo "kurtosis-cdk-args-5=${CONTENT}" >> $GITHUB_OUTPUT
 
   test-single-l2-network-fork12-pessimistic:
