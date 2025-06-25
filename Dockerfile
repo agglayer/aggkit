@@ -3,19 +3,20 @@
 # ================================
 FROM --platform=${BUILDPLATFORM} golang:1.24.4-alpine AS builder
 
-# Install build dependencies
-RUN apk add --no-cache gcc musl-dev make sqlite-dev
+# Install build dependencies and prepare workdir
+RUN apk add --no-cache gcc make musl-dev sqlite-dev && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup && \
+    mkdir -p /app && chown -R appuser:appgroup /app
 
+USER appuser
 WORKDIR /app
 
 # Download Go dependencies
-COPY go.mod go.sum ./
+COPY --chown=appuser:appgroup go.mod go.sum ./
 RUN go mod download
 
 # Copy source and build
-COPY . .
-
-# Compile binary with CGO enabled
+COPY --chown=appuser:appgroup . .
 RUN make build-aggkit
 
 # ================================
@@ -23,11 +24,10 @@ RUN make build-aggkit
 # ================================
 FROM alpine:3.20
 
-# Install runtime dependencies
-RUN apk add --no-cache sqlite-libs ca-certificates
+# Install runtime dependencies and create user
+RUN apk add --no-cache sqlite-libs ca-certificates && \
+    addgroup -S appgroup && adduser -S appuser -G appgroup
 
-# Add non-root user
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 USER appuser
 
 # Copy built binary
