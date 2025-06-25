@@ -28,7 +28,7 @@ jobs:
           go-version: ${{ inputs.go-version }}
 
       - name: Build Aggkit Docker Image
-        run: make build-docker
+        run: make build-docker-ci
 
       - name: Save Aggkit Image to Archive
         run: docker save --output /tmp/${{ inputs.docker-image-name }}.tar ${{ inputs.docker-image-name }}
