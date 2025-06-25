@@ -27,21 +27,6 @@ type AggsenderFlow interface {
 		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
 }
 
-type AggsenderFlowBaser interface {
-	GetCertificateBuildParamsInternal(
-		ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
-	BuildCertificate(ctx context.Context,
-		certParams *CertificateBuildParams,
-		lastSentCertificate *CertificateHeader,
-		allowEmptyCert bool) (*agglayertypes.Certificate, error)
-	GetNewLocalExitRoot(ctx context.Context,
-		certParams *CertificateBuildParams) (common.Hash, error)
-	VerifyBuildParams(fullCert *CertificateBuildParams) error
-	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
-
-	StartL2Block() uint64
-}
-
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
 type L1InfoTreeSyncer interface {
 	GetInfoByGlobalExitRoot(globalExitRoot common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
@@ -138,14 +123,59 @@ type CertificateStatusChecker interface {
 		aggsenderStatus *AggsenderStatus)
 }
 
+// CertificateBuilder is an interface defining functions that a CertificateBuilder should implement
+type CertificateBuilder interface {
+	GetCertificateBuildParams(
+		ctx context.Context,
+		certType CertificateType,
+	) (*CertificateBuildParams, error)
+
+	BuildCertificate(ctx context.Context,
+		certParams *CertificateBuildParams,
+		lastSentCertificate *CertificateHeader,
+		allowEmptyCert bool) (*agglayertypes.Certificate, error)
+
+	GetNewLocalExitRoot(ctx context.Context,
+		certParams *CertificateBuildParams) (common.Hash, error)
+}
+
+// CertificateBuildVerifier is an interface defining functions that a CertificateBuildVerifier should implement
+type CertificateBuildVerifier interface {
+	VerifyBuildParams(fullCert *CertificateBuildParams) error
+}
+
+// LocalExitRootQuery is an interface defining functions that a LocalExitRootQuery should implement
+type LocalExitRootQuery interface {
+	GetNewLocalExitRoot(ctx context.Context,
+		certParams *CertificateBuildParams) (common.Hash, error)
+}
+
+// ImportedBridgeExitConverter is an interface defining functions that an ImportedBridgeExitConverter should implement
+type ImportedBridgeExitConverter interface {
+	ConvertToImportedBridgeExitWithoutClaimData(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
+	ConvertToImportedBridgeExit(
+		ctx context.Context,
+		claim bridgesync.Claim,
+		rootFromWhichToProve common.Hash) (*agglayertypes.ImportedBridgeExit, error)
+	ConvertToImportedBridgeExits(
+		ctx context.Context,
+		claims []bridgesync.Claim,
+		rootFromWhichToProve common.Hash,
+	) ([]*agglayertypes.ImportedBridgeExit, error)
+}
+
+// AggchainProofQuerier is an interface defining functions that an AggchainProofQuerier should implement
+type AggchainProofQuerier interface {
+	GenerateAggchainProof(
+		ctx context.Context,
+		lastProvenBlock, toBlock uint64,
+		certBuildParams *CertificateBuildParams,
+	) (*AggchainProof, *treetypes.Root, error)
+}
+
 // RollupDataQuerier is an interface that abstracts interaction with the rollup manager contract
 type RollupDataQuerier interface {
 	GetRollupData(blockNumber *big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
-}
-
-// LERQuerier is an interface defining functions that a Local Exit Root querier should implement
-type LERQuerier interface {
-	GetLastLocalExitRoot() (common.Hash, error)
 }
 
 // MaxL2BlockNumberLimiterInterface is an interface defining functions that a MaxL2BlockNumberLimiter should implement

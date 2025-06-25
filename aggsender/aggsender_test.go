@@ -2,8 +2,6 @@ package aggsender
 
 import (
 	"context"
-	"crypto/ecdsa"
-	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,7 +15,6 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/db"
-	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -26,7 +23,6 @@ import (
 	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -189,73 +185,6 @@ func TestExploratoryGenerateCert(t *testing.T) {
 	encoder := json.NewEncoder(file)
 	encoder.SetIndent("", "  ")
 	require.NoError(t, encoder.Encode(certificate))
-}
-
-func TestSendCertificate_NoClaims(t *testing.T) {
-	privateKey, err := crypto.GenerateKey()
-	require.NoError(t, err)
-
-	ctx := context.Background()
-	mockStorage := mocks.NewAggSenderStorage(t)
-	mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
-	mockL1Querier := mocks.NewL1InfoTreeDataQuerier(t)
-	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
-	mockEpochNotifier := mocks.NewEpochNotifier(t)
-	mockLERQuerier := mocks.NewLERQuerier(t)
-	logger := log.WithFields("aggsender-test", "no claims test")
-	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey, 0)
-	aggSender := &AggSender{
-		log:             logger,
-		storage:         mockStorage,
-		l2OriginNetwork: 1,
-		aggLayerClient:  mockAggLayerClient,
-		epochNotifier:   mockEpochNotifier,
-		cfg:             config.Config{},
-		flow: flows.NewPPFlow(logger,
-			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
-				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
-			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
-		rateLimiter: aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
-	}
-
-	mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&aggsendertypes.CertificateHeader{
-		NewLocalExitRoot: common.HexToHash("0x123"),
-		Height:           1,
-		FromBlock:        0,
-		ToBlock:          10,
-		Status:           agglayertypes.Settled,
-	}, nil).Once()
-	mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
-	mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(50), nil)
-	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50)).Return([]bridgesync.Bridge{
-		{
-			BlockNum:           30,
-			BlockPos:           0,
-			LeafType:           agglayertypes.LeafTypeAsset.Uint8(),
-			OriginNetwork:      1,
-			OriginAddress:      common.HexToAddress("0x1"),
-			DestinationNetwork: 2,
-			DestinationAddress: common.HexToAddress("0x2"),
-			Amount:             big.NewInt(100),
-			Metadata:           []byte("metadata"),
-			DepositCount:       1,
-		},
-	}, []bridgesync.Claim{}, nil).Once()
-	mockL1Querier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(&treetypes.Root{}, nil, nil).Once()
-	mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(1)).Return(common.Hash{}, nil).Once()
-	mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-	mockAggLayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.Hash{}, nil).Once()
-	mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{})
-	signedCertificate, err := aggSender.sendCertificate(ctx)
-	require.NoError(t, err)
-	require.NotNil(t, signedCertificate)
-	require.NotNil(t, signedCertificate.AggchainData)
-	require.NotNil(t, signedCertificate.ImportedBridgeExits)
-	require.Len(t, signedCertificate.BridgeExits, 1)
-
-	mockStorage.AssertExpectations(t)
-	mockL2BridgeQuerier.AssertExpectations(t)
-	mockAggLayerClient.AssertExpectations(t)
 }
 
 func TestExtractFromCertificateMetadataToBlock(t *testing.T) {
@@ -424,8 +353,7 @@ func TestSendCertificate(t *testing.T) {
 				},
 			}
 			mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{})
-			_, err := aggsender.sendCertificate(context.Background())
-
+			err := aggsender.sendCertificate(context.Background())
 			if tt.expectedError != "" {
 				require.ErrorContains(t, err, tt.expectedError)
 			} else {
@@ -459,7 +387,7 @@ func TestCheckDBCompatibility(t *testing.T) {
 }
 
 func TestAggSenderStartFailFlowCheckInitialStatus(t *testing.T) {
-	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockFlow|testDataFlagMockStatusChecker)
+	testData := newAggsenderTestData(t, testDataFlagMockStorage|testDataFlagMockStatusChecker)
 	testData.sut.cfg.RequireStorageContentCompatibility = false
 	testData.certStatusCheckerMock.EXPECT().CheckInitialStatus(mock.Anything, mock.Anything, testData.sut.status).Once()
 	testData.flowMock.EXPECT().CheckInitialStatus(mock.Anything).Return(fmt.Errorf("error")).Once()
@@ -587,16 +515,13 @@ type testDataFlags = int
 const (
 	testDataFlagNone                     testDataFlags = 0
 	testDataFlagMockStorage              testDataFlags = 1
-	testDataFlagMockFlow                 testDataFlags = 2
-	testDataFlagMockCompatibilityChecker testDataFlags = 4
-	testDataFlagMockStatusChecker        testDataFlags = 8
+	testDataFlagMockCompatibilityChecker testDataFlags = 2
+	testDataFlagMockStatusChecker        testDataFlags = 4
 )
 
 type aggsenderTestData struct {
 	ctx                     context.Context
 	agglayerClientMock      *agglayer.AgglayerClientMock
-	l1InfoQuerier           *mocks.L1InfoTreeDataQuerier
-	l2BridgeQuerier         *mocks.BridgeQuerier
 	storageMock             *mocks.AggSenderStorage
 	epochNotifierMock       *mocks.EpochNotifier
 	flowMock                *mocks.AggsenderFlow
@@ -639,11 +564,9 @@ func NewClaimData(t *testing.T, num int, blockNum []uint64) []bridgesync.Claim {
 
 func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderTestData {
 	t.Helper()
-	l2BridgeQuerier := mocks.NewBridgeQuerier(t)
 	agglayerClientMock := agglayer.NewAgglayerClientMock(t)
-	l1InfoTreeQuerierMock := mocks.NewL1InfoTreeDataQuerier(t)
-	lerQuerier := mocks.NewLERQuerier(t)
 	epochNotifierMock := mocks.NewEpochNotifier(t)
+	flowMock := mocks.NewAggsenderFlow(t)
 	logger := log.WithFields("aggsender-test", "checkLastCertificateFromAgglayer")
 	var storageMock *mocks.AggSenderStorage
 	var storage db.AggSenderStorage
@@ -660,9 +583,6 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		storage, err = db.NewAggSenderSQLStorage(logger, storageConfig)
 		require.NoError(t, err)
 	}
-	privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
-	require.NoError(t, err)
-	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey, 0)
 	ctx := context.TODO()
 
 	sut := &AggSender{
@@ -677,15 +597,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
-		flow: flows.NewPPFlow(logger,
-			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
-				l1InfoTreeQuerierMock, lerQuerier, flows.NewBaseFlowConfigDefault()),
-			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0),
-	}
-	var flowMock *mocks.AggsenderFlow
-	if creationFlags&testDataFlagMockFlow != 0 {
-		flowMock = mocks.NewAggsenderFlow(t)
-		sut.flow = flowMock
+		flow:          flowMock,
 	}
 
 	var compatibilityCheckerMock *mocksdb.CompatibilityChecker
@@ -703,8 +615,6 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	return &aggsenderTestData{
 		ctx:                     ctx,
 		agglayerClientMock:      agglayerClientMock,
-		l2BridgeQuerier:         l2BridgeQuerier,
-		l1InfoQuerier:           l1InfoTreeQuerierMock,
 		storageMock:             storageMock,
 		epochNotifierMock:       epochNotifierMock,
 		flowMock:                flowMock,
