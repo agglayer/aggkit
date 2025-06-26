@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/contracts/claimmock"
 	"github.com/agglayer/aggkit/test/contracts/claimmockcaller"
 	"github.com/agglayer/aggkit/test/contracts/claimmocktest"
@@ -1112,7 +1113,8 @@ func TestClaimCalldata(t *testing.T) {
 				DestinationAddress: claimEvent.DestinationAddress,
 				Amount:             claimEvent.Amount,
 			}
-			err = actualClaim.setClaimCalldata(client.Client(), bridgeAddr, tc.log.TxHash)
+			logger := log.WithFields("module", "test")
+			err = actualClaim.setClaimCalldata(client.Client(), bridgeAddr, tc.log.TxHash, logger)
 			require.NoError(t, err)
 			require.Equal(t, tc.expectedClaim, actualClaim)
 			require.Equal(t, tc.expectedClaim.FromAddress, actualClaim.FromAddress)

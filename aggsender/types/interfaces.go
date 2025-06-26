@@ -147,3 +147,11 @@ type RollupDataQuerier interface {
 type LERQuerier interface {
 	GetLastLocalExitRoot() (common.Hash, error)
 }
+
+// MaxL2BlockNumberLimiterInterface is an interface defining functions that a MaxL2BlockNumberLimiter should implement
+type MaxL2BlockNumberLimiterInterface interface {
+	// AdaptCertificate is a custom handler that adjusts the certificate build parameters
+	//  and return it through a new buildParams
+	AdaptCertificate(
+		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
+}

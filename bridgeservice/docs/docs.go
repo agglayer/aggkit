@@ -713,6 +713,11 @@ const docTemplate = `{
                     "type": "string",
                     "example": "1000000000000000000"
                 },
+                "mainnet_exit_root": {
+                    "description": "Mainnet exit root associated with the claim",
+                    "type": "string",
+                    "example": "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"
+                },
                 "origin_address": {
                     "description": "Address initiating the claim on the origin network",
                     "type": "string",
