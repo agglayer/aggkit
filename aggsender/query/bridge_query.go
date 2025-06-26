@@ -122,7 +122,7 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 			return nil
 		}
 
-		b.log.Debugf("bridgeDataQuerier - waiting for L2 syncer to catch up to block: %d, current last processed block: %d",
+		b.log.Infof("bridgeDataQuerier - waiting for L2 syncer to catch up to block: %d, current last processed block: %d",
 			block, lastProcessedBlock)
 
 		select {
