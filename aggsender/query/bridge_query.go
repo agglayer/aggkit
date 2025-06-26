@@ -99,6 +99,9 @@ func (b *bridgeDataQuerier) OriginNetwork() uint32 {
 
 // WaitForSyncerToCatchUp waits for the bridge syncer to catch up to a specified block.
 func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block uint64) error {
+	b.log.Infof("bridgeDataQuerier - waiting for L2 syncer to catch up to block: %d", block)
+	defer b.log.Infof("bridgeDataQuerier - finished waiting for L2 syncer to catch up to block: %d", block)
+
 	if b.delayBetweenRetries <= 0 {
 		b.log.Warnf("bridgeDataQuerier - invalid delayBetweenRetries: %v, falling back to default value of 1s",
 			b.delayBetweenRetries)
