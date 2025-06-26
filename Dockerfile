@@ -30,8 +30,7 @@ RUN apk add --no-cache sqlite-libs ca-certificates
 RUN addgroup appgroup && \
     adduser -D -G appgroup -h /home/appuser -s /sbin/nologin appuser && \
     mkdir -p /home/appuser && \
-    chown -R appuser:appgroup /home/appuser && \
-    rm -f /bin/sh
+    chown -R appuser:appgroup /home/appuser
 
 # Set the working directory and user
 # This ensures that the application runs as a non-root user
