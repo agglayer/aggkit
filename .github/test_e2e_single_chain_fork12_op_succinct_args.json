@@ -5,7 +5,7 @@
   },
   "args": {
     "verbosity": "debug",
-    "aggkit_image": "ghcr.io/agglayer/aggkit:0.4.0-beta1",
+    "aggkit_image": "ghcr.io/agglayer/aggkit:0.4.0",
     "consensus_contract_type": "fep",
     "op_succinct_mock": true,
     "op_succinct_agglayer": true,
