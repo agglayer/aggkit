@@ -43,21 +43,21 @@ jobs:
           CONTENT=$(cat ./.github/test_e2e_single_chain_fork12_op_succinct_args.json | jq -c .)
           echo "fork12_op_succinct_args=${CONTENT}" >> $GITHUB_OUTPUT
           # single l2 network (fork 12, pessimistic)
-          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_single_chain_fork12_pessimistic_args.json | jq -c .)
+          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_gas_token_enabled_args.json | jq -c .)
           echo "fork12_pessimistic_args=${CONTENT}" >> $GITHUB_OUTPUT
           # multi l2 networks
           CONTENT=$(cat ./.github/test_e2e_cdk_args_base.json | jq -c .)
           echo "kurtosis-cdk-args-1=${CONTENT}" >> $GITHUB_OUTPUT
-          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_2_base.json | jq -c .)
+          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_2.json | jq -c .)
           echo "kurtosis-cdk-args-2=${CONTENT}" >> $GITHUB_OUTPUT
           # Merge base_1 args with args_3 for kurtosis-cdk-args-3
-          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_multi_chains_args_3.json | jq -c .)
+          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_gas_token_enabled_args.json | jq -c .)
           echo "kurtosis-cdk-args-3=${CONTENT}" >> $GITHUB_OUTPUT
           # Merge base_2 args with args_4 for kurtosis-cdk-args-4
-          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_2_base.json ./.github/test_e2e_multi_chains_args_4.json | jq -c .)
+          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_2.json ./.github/test_e2e_gas_token_enabled_args.json | jq -c .)
           echo "kurtosis-cdk-args-4=${CONTENT}" >> $GITHUB_OUTPUT
           # Merge base_2 args with args_5 for kurtosis-cdk-args-5
-          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_2_base.json ./.github/test_e2e_multi_chains_args_5.json | jq -c .)
+          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_2.json ./.github/test_e2e_multi_chains_args_3.json | jq -c .)
           echo "kurtosis-cdk-args-5=${CONTENT}" >> $GITHUB_OUTPUT
 
   test-single-l2-network-fork12-pessimistic:
@@ -124,7 +124,7 @@ jobs:
 
       - name: Build Aggsender Find Imported Bridge
         run: make build-tools
-      
+
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
@@ -146,7 +146,7 @@ jobs:
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
-  
+
   check-multi-l2-networks-2-chains-tests-result:
     name: Check results for multi l2 networks (2 chains)
     needs:

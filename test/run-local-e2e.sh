@@ -82,21 +82,21 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
         ;;
     single-l2-network-fork12-pessimistic)
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_pessimistic_args.json" > /tmp/merged_args_1.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         ;;
     multi-l2-networks-2-chains)
         # Create merged args files using jq
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_1.json
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_4.json" > /tmp/merged_args_2.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_2.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         ;;
     multi-l2-networks-3-chains)
         # Create merged args files using jq
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_1.json
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_4.json" > /tmp/merged_args_2.json
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_5.json" > /tmp/merged_args_3.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_2.json
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_3.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_3.json .
@@ -117,7 +117,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
         log_error "The provided E2E folder does not exist: $E2E_REPO_PATH"
         exit 1
     fi
-    
+
     log_info "Using provided Agglayer E2E repo at: $E2E_REPO_PATH"
 
     aggsender_find_imported_bridge_bin="./target/aggsender_find_imported_bridge"
