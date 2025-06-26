@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -13,16 +14,24 @@ var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 
 // bridgeDataQuerier is a struct that holds the logic to query the bridge data
 type bridgeDataQuerier struct {
-	bridgeSyncer types.L2BridgeSyncer
+	log                 types.Logger
+	bridgeSyncer        types.L2BridgeSyncer
+	delayBetweenRetries time.Duration
 
 	originNetwork uint32
 }
 
 // NewBridgeDataQuerier returns a new instance of the BridgeDataQuerier
-func NewBridgeDataQuerier(bridgeSyncer types.L2BridgeSyncer) *bridgeDataQuerier {
+func NewBridgeDataQuerier(
+	log types.Logger,
+	bridgeSyncer types.L2BridgeSyncer,
+	delayBetweenRetries time.Duration,
+) *bridgeDataQuerier {
 	return &bridgeDataQuerier{
-		bridgeSyncer:  bridgeSyncer,
-		originNetwork: bridgeSyncer.OriginNetwork(),
+		log:                 log,
+		bridgeSyncer:        bridgeSyncer,
+		delayBetweenRetries: delayBetweenRetries,
+		originNetwork:       bridgeSyncer.OriginNetwork(),
 	}
 }
 
@@ -86,4 +95,41 @@ func (b *bridgeDataQuerier) GetLastProcessedBlock(ctx context.Context) (uint64, 
 // OriginNetwork returns the origin network id related to given bridge syncer.
 func (b *bridgeDataQuerier) OriginNetwork() uint32 {
 	return b.originNetwork
+}
+
+// WaitForSyncerToCatchUp waits for the bridge syncer to catch up to a specified block.
+func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block uint64) error {
+	b.log.Infof("bridgeDataQuerier - waiting for L2 syncer to catch up to block: %d", block)
+	defer b.log.Infof("bridgeDataQuerier - finished waiting for L2 syncer to catch up to block: %d", block)
+
+	if b.delayBetweenRetries <= 0 {
+		b.log.Warnf("bridgeDataQuerier - invalid delayBetweenRetries: %v, falling back to default value of 1s",
+			b.delayBetweenRetries)
+		b.delayBetweenRetries = time.Second
+	}
+
+	ticker := time.NewTicker(b.delayBetweenRetries)
+	defer ticker.Stop()
+
+	for {
+		lastProcessedBlock, err := b.bridgeSyncer.GetLastProcessedBlock(ctx)
+		if err != nil {
+			return fmt.Errorf("bridgeDataQuerier - error getting last processed block: %w", err)
+		}
+
+		if lastProcessedBlock >= block {
+			b.log.Infof("bridgeDataQuerier - L2 syncer caught up to block: %d", block)
+			return nil
+		}
+
+		b.log.Infof("bridgeDataQuerier - waiting for L2 syncer to catch up to block: %d, current last processed block: %d",
+			block, lastProcessedBlock)
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-ticker.C:
+			continue // Keep checking until the condition is met
+		}
+	}
 }

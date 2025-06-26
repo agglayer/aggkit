@@ -89,7 +89,7 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 		}
 	}
 
-	if err := p.baseFlow.VerifyBuildParams(buildParams); err != nil {
+	if err := p.baseFlow.VerifyBuildParams(ctx, buildParams); err != nil {
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
 	}
 

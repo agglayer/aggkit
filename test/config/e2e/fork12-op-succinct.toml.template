@@ -200,10 +200,10 @@ SaveCertificatesToFilesPath = "/tmp"
 # MaxRetriesStoreCertificate = 3
 
 # ------------------------------------------------------------------------------
-# DelayBeetweenRetries is the delay between retries
+# DelayBetweenRetries is the delay between retries
 # Duration expressed in units: [ns, us, ms, s, m, h, d]"
 # ------------------------------------------------------------------------------
-# DelayBeetweenRetries = 5s
+# DelayBetweenRetries = 5s
 
 # ------------------------------------------------------------------------------
 # KeepCertificatesHistory is a flag to keep the certificates history on storage

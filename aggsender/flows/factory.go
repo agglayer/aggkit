@@ -46,12 +46,12 @@ func NewFlow(
 			return nil, fmt.Errorf("error creating LER data querier: %w", err)
 		}
 
-		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, 0),
+			NewBaseFlowConfig(cfg.MaxCertSize, 0, false),
 		)
 		return NewPPFlow(
 			logger,
@@ -102,16 +102,16 @@ func NewFlow(
 			return nil, fmt.Errorf("error creating LER data querier: %w", err)
 		}
 
-		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
+			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, cfg.RequireNoFEPBlockGap),
 		)
 
 		return NewAggchainProverFlow(
 			logger,
+			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
 			baseFlow,
-			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap, cfg.MaxL2BlockNumber),
 			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,
