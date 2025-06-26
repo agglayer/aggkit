@@ -230,130 +230,42 @@ func TestOriginNetwork(t *testing.T) {
 	mockSyncer.AssertExpectations(t)
 }
 
-func TestNumOfBridgeTransactions(t *testing.T) {
+func TestWaitForSyncerToCatchUp(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	type args struct {
-		fromBlock              uint64
-		toBlock                uint64
-		waitForSyncerToCatchUp bool
-		delayBetweenRetries    time.Duration
-	}
 
 	testCases := []struct {
-		name            string
-		args            args
-		mockFn          func(*mocks.L2BridgeSyncer)
-		expectedBridges int
-		expectedClaims  int
-		expectedError   string
+		name                string
+		delayBetweenRetries time.Duration
+		block               uint64
+		mockFn              func(*mocks.L2BridgeSyncer)
+		expectedError       string
 	}{
 		{
-			name: "success - no wait, valid bridges and claims",
-			args: args{
-				fromBlock:              100,
-				toBlock:                200,
-				waitForSyncerToCatchUp: false,
-			},
+			name:  "fail to get last processed block",
+			block: 100,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
-					{BlockNum: 100, BlockPos: 1},
-					{BlockNum: 101, BlockPos: 2},
-				}, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return([]bridgesync.Claim{
-					{BlockNum: 200, BlockPos: 1},
-				}, nil)
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), errors.New("some error")).Once()
 			},
-			expectedBridges: 2,
-			expectedClaims:  1,
+			expectedError: "bridgeDataQuerier - error getting last processed block: some error",
 		},
 		{
-			name: "success - wait for syncer to catch up",
-			args: args{
-				fromBlock:              100,
-				toBlock:                200,
-				waitForSyncerToCatchUp: true,
-				delayBetweenRetries:    time.Second,
-			},
+			name:                "success - delay between retries is zero",
+			delayBetweenRetries: 0,
+			block:               10,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-				// Simulate syncer is already caught up
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(200), nil)
-				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
-					{BlockNum: 100, BlockPos: 1},
-				}, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return([]bridgesync.Claim{
-					{BlockNum: 200, BlockPos: 1},
-					{BlockNum: 201, BlockPos: 2},
-				}, nil)
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(100), nil).Once()
 			},
-			expectedBridges: 1,
-			expectedClaims:  2,
 		},
 		{
-			name: "error - wait for syncer to catch up fails",
-			args: args{
-				fromBlock:              100,
-				toBlock:                200,
-				waitForSyncerToCatchUp: true,
-				delayBetweenRetries:    time.Second,
-			},
+			name:                "success - after multiple retries",
+			block:               10,
+			delayBetweenRetries: 10 * time.Millisecond,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), errors.New("syncer error"))
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), nil).Times(3)
+				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil).Once()
 			},
-			expectedError: "error waiting for syncer to catch up: bridgeDataQuerier - error getting last processed block: syncer error",
-		},
-		{
-			name: "error - GetBridgesAndClaims fails",
-			args: args{
-				fromBlock:              100,
-				toBlock:                200,
-				waitForSyncerToCatchUp: false,
-			},
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, errors.New("bridges error"))
-			},
-			expectedError: "error getting bridges: error getting bridges: bridges error",
-		},
-		{
-			name: "delayBetweenRetries is 0",
-			args: args{
-				fromBlock:              100,
-				toBlock:                200,
-				waitForSyncerToCatchUp: true,
-				delayBetweenRetries:    0,
-			},
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(200), nil)
-				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return([]bridgesync.Bridge{
-					{BlockNum: 100, BlockPos: 1},
-				}, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return([]bridgesync.Claim{
-					{BlockNum: 200, BlockPos: 1},
-				}, nil)
-			},
-			expectedBridges: 1,
-			expectedClaims:  1,
-		},
-		{
-			name: "success - no bridges or claims",
-			args: args{
-				fromBlock:              100,
-				toBlock:                200,
-				waitForSyncerToCatchUp: false,
-			},
-			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
-				mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, nil)
-				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, nil)
-			},
-			expectedBridges: 0,
-			expectedClaims:  0,
 		},
 	}
 
@@ -362,24 +274,24 @@ func TestNumOfBridgeTransactions(t *testing.T) {
 
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-
 			mockSyncer := mocks.NewL2BridgeSyncer(t)
-			tc.mockFn(mockSyncer)
-			bridgeQuerier := NewBridgeDataQuerier(log.WithFields("test", t.Name()), mockSyncer, tc.args.delayBetweenRetries)
+			if tc.mockFn != nil {
+				tc.mockFn(mockSyncer)
+			}
 
-			bridges, claims, err := bridgeQuerier.NumOfBridgeTransactions(
-				ctx,
-				tc.args.fromBlock,
-				tc.args.toBlock,
-				tc.args.waitForSyncerToCatchUp,
-			)
+			bridgeQuerier := &bridgeDataQuerier{
+				log:                 log.WithFields("test", "TestWaitForSyncerToCatchUp"),
+				bridgeSyncer:        mockSyncer,
+				delayBetweenRetries: tc.delayBetweenRetries,
+			}
+
+			err := bridgeQuerier.WaitForSyncerToCatchUp(ctx, tc.block)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expectedBridges, bridges)
-				require.Equal(t, tc.expectedClaims, claims)
 			}
+
 			mockSyncer.AssertExpectations(t)
 		})
 	}

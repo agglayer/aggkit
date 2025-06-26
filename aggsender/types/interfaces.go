@@ -40,8 +40,7 @@ type AggsenderFlowBaser interface {
 	VerifyBlockRangeGaps(
 		ctx context.Context,
 		lastSentCertificate *CertificateHeader,
-		newFromBlock, newToBlock uint64,
-		waitForSyncer bool) (BlockRange, error)
+		newFromBlock, newToBlock uint64) (BlockRange, error)
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
 }
@@ -78,11 +77,7 @@ type BridgeQuerier interface {
 	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	OriginNetwork() uint32
-	NumOfBridgeTransactions(
-		ctx context.Context,
-		fromBlock, toBlock uint64,
-		waitForSyncerToCatchUp bool,
-	) (int, int, error)
+	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement

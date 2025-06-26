@@ -66,26 +66,6 @@ func (b *bridgeDataQuerier) GetBridgesAndClaims(
 	return bridges, claims, nil
 }
 
-// NumOfBridgeTransactions checks the number of bridge transactions within a specified block range.
-func (b *bridgeDataQuerier) NumOfBridgeTransactions(
-	ctx context.Context,
-	fromBlock, toBlock uint64,
-	waitForSyncerToCatchUp bool,
-) (int, int, error) {
-	if waitForSyncerToCatchUp {
-		if err := b.waitForSyncerToCatchUp(ctx, toBlock); err != nil {
-			return 0, 0, fmt.Errorf("error waiting for syncer to catch up: %w", err)
-		}
-	}
-
-	bridges, claims, err := b.GetBridgesAndClaims(ctx, fromBlock, toBlock)
-	if err != nil {
-		return 0, 0, fmt.Errorf("error getting bridges: %w", err)
-	}
-
-	return len(bridges), len(claims), nil
-}
-
 // GetExitRootByIndex retrieves the local exit root hash for a given index from the bridge syncer.
 // Returns:
 //   - common.Hash: The hash of the exit root corresponding to the given index.
@@ -117,7 +97,8 @@ func (b *bridgeDataQuerier) OriginNetwork() uint32 {
 	return b.originNetwork
 }
 
-func (b *bridgeDataQuerier) waitForSyncerToCatchUp(ctx context.Context, block uint64) error {
+// WaitForSyncerToCatchUp waits for the bridge syncer to catch up to a specified block.
+func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block uint64) error {
 	if b.delayBetweenRetries <= 0 {
 		b.log.Warnf("bridgeDataQuerier - invalid delayBetweenRetries: %v, falling back to default value of 1s",
 			b.delayBetweenRetries)

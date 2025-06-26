@@ -133,8 +133,15 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 	// we check if there are gaps between start L2 block and last sent certificate on startup
 	// if there are gaps with bridge transactions, we can not allow the start of aggsender
 	startL2Block := a.baseFlow.StartL2Block()
+
+	// we need to wait for the syncer to catch up to the start L2 block (start FEP block)
+	// in order to check if there are any bridge transactions in the gap
+	if err := a.l2BridgeQuerier.WaitForSyncerToCatchUp(ctx, startL2Block); err != nil {
+		return fmt.Errorf("aggchainProverFlow - error waiting for syncer to catch up: %w", err)
+	}
+
 	gap, err := a.baseFlow.VerifyBlockRangeGaps(
-		ctx, lastSentCertificate, startL2Block, startL2Block, true)
+		ctx, lastSentCertificate, startL2Block, startL2Block)
 	if err != nil {
 		return fmt.Errorf("aggchainProverFlow - error verifying block range gaps on startup. "+
 			"RequireNoFEPBlockGap: %t. Err: %w", a.config.requireNoFEPBlockGap, err)
