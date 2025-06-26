@@ -15,7 +15,7 @@ import (
 const (
 	UpDownSeparator   = "-- +migrate Up"
 	dbPrefixReplacer  = "/*dbprefix*/"
-	NoLimitMigrations = 0 // NoLimitMigrations is used to indicate that there is no limit on the number of migrations to run
+	NoLimitMigrations = 0 // indicate that there is no limit on the number of migrations to run
 )
 
 // RunMigrations will execute pending migrations if needed to keep

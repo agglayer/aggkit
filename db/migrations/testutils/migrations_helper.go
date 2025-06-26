@@ -7,9 +7,8 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/log"
-
 	"github.com/agglayer/aggkit/db/types"
+	"github.com/agglayer/aggkit/log"
 	migrate "github.com/rubenv/sql-migrate"
 	"github.com/stretchr/testify/require"
 )
@@ -36,17 +35,18 @@ func copyFile(src string, dst string) error {
 		return fmt.Errorf("failed to read file %s: %w", src, err)
 	}
 	// Write data to dst
-	err = os.WriteFile(dst, data, 0644)
+	err = os.WriteFile(dst, data, 0600) //nolint:mnd
 	if err != nil {
 		return fmt.Errorf("failed to write file %s: %w", dst, err)
 	}
 	return nil
 }
 
-func TestMigration(t *testing.T, dbName string, migrationData []types.Migration, migrationNumber int, miter MigrationTester) {
+func TestMigration(t *testing.T, dbName string, migrationData []types.Migration,
+	migrationNumber int, miter MigrationTester) {
 	t.Helper()
 	logger := log.WithFields("module", "migration-test-"+dbName+"-"+fmt.Sprintf("%03d", migrationNumber))
-	dbPath := t.TempDir() + "/test_migration_" + string(dbName) + fmt.Sprintf("%03d", migrationNumber) + ".sqlite"
+	dbPath := t.TempDir() + "/test_migration_" + dbName + "-" + fmt.Sprintf("%03d", migrationNumber) + ".sqlite"
 	templateDBFilename := miter.FilenameTemplateDatabase()
 	if templateDBFilename != "" {
 		logger.Infof("Copying template database file %s to %s", templateDBFilename, dbPath)
@@ -58,19 +58,22 @@ func TestMigration(t *testing.T, dbName string, migrationData []types.Migration,
 
 	if migrationNumber > 1 {
 		logger.Infof("Running UP migration before  %d migration", migrationNumber)
-		db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Up, migrationNumber-1)
+		err := db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Up, migrationNumber-1)
+		require.NoError(t, err, "failed to run migration up %d", migrationNumber-1)
 		miter.InsertDataBeforeMigrationUp(t, database)
 	} else {
 		t.Log("this is the first migration")
 	}
 	// We just run the pending migration that is the one that we want to test
 	logger.Infof("Running UP migration from: %d  to next one", migrationNumber)
-	db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Up, 1)
+	err = db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Up, 1)
+	require.NoError(t, err, "failed to run migration up %d", migrationNumber)
 	miter.RunAssertsAfterMigrationUp(t, database)
 	// We downgrade to the previous miration
 	logger.Infof("Running DOWN migration from: %d to previous one", migrationNumber)
 
-	db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Down, 1)
+	err = db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Down, 1)
+	require.NoError(t, err, "failed to run migration down %d", migrationNumber)
 	miter.RunAssertsAfterMigrationDown(t, database)
 }
 

@@ -76,6 +76,7 @@ func (m *migrationTester003) FilenameTemplateDatabase() string {
 	return ""
 }
 func (m *migrationTester003) InsertDataBeforeMigrationUp(t *testing.T, db *sql.DB) {
+	t.Helper()
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
@@ -85,6 +86,7 @@ func (m *migrationTester003) InsertDataBeforeMigrationUp(t *testing.T, db *sql.D
 }
 
 func (m *migrationTester003) RunAssertsAfterMigrationUp(t *testing.T, db *sql.DB) {
+	t.Helper()
 	var certificateInfo certificateInfoRowMigration003
 	err := meddler.QueryRow(db, &certificateInfo,
 		"SELECT * FROM certificate_info WHERE height = $1;", migTest003Cert10.Height)
@@ -93,9 +95,10 @@ func (m *migrationTester003) RunAssertsAfterMigrationUp(t *testing.T, db *sql.DB
 	require.Equal(t, "", certificateInfo.CertType)
 	require.Equal(t, "", certificateInfo.CertSource)
 	require.Equal(t, "", certificateInfo.ExtraData)
-
 }
+
 func (m *migrationTester003) RunAssertsAfterMigrationDown(t *testing.T, db *sql.DB) {
+	t.Helper()
 	fields, err := dbmigrations.GetTableColumnNames(db, "certificate_info")
 	require.NoError(t, err)
 	require.NotContains(t, fields, "cert_type", "cert_source", "extra_data")

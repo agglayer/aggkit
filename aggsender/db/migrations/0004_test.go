@@ -16,6 +16,7 @@ func (m *migrationTester004) FilenameTemplateDatabase() string {
 	return ""
 }
 func (m *migrationTester004) InsertDataBeforeMigrationUp(t *testing.T, db *sql.DB) {
+	t.Helper()
 	ctx := context.Background()
 	tx, err := db.BeginTx(ctx, nil)
 	require.NoError(t, err)
@@ -54,6 +55,7 @@ func (m *migrationTester004) InsertDataBeforeMigrationUp(t *testing.T, db *sql.D
 }
 
 func (m *migrationTester004) RunAssertsAfterMigrationUp(t *testing.T, db *sql.DB) {
+	t.Helper()
 	var certificateInfo certificateInfoRowMigration003
 	err := meddler.QueryRow(db, &certificateInfo,
 		"SELECT * FROM certificate_info WHERE height = $1;", 10)
@@ -65,9 +67,10 @@ func (m *migrationTester004) RunAssertsAfterMigrationUp(t *testing.T, db *sql.DB
 	err = meddler.QueryRow(db, &certificateInfo,
 		"SELECT * FROM certificate_info WHERE height = $1;", 3)
 	require.Error(t, err, "Expected certificate_info with height 3 to be deleted after migration")
-
 }
+
 func (m *migrationTester004) RunAssertsAfterMigrationDown(t *testing.T, db *sql.DB) {
+	t.Helper()
 	var certificateInfo certificateInfoRowMigration003
 	err := meddler.QueryRow(db, &certificateInfo,
 		"SELECT * FROM certificate_info WHERE height = $1;", 10)
