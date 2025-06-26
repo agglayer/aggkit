@@ -51,7 +51,7 @@ func NewFlow(
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, 0),
+			NewBaseFlowConfig(cfg.MaxCertSize, 0, false),
 		)
 		return NewPPFlow(
 			logger,
@@ -105,12 +105,12 @@ func NewFlow(
 		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBeetweenRetries.Duration)
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
+			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, cfg.RequireNoFEPBlockGap),
 		)
 
 		return NewAggchainProverFlow(
 			logger,
-			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap, cfg.MaxL2BlockNumber),
+			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
 			baseFlow,
 			aggchainProofClient,
 			storage,

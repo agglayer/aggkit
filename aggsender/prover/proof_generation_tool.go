@@ -94,7 +94,7 @@ func NewAggchainProofGenerationTool(
 		nil, // storage
 		l1InfoTreeQuerier,
 		nil, // lerQuerier
-		flows.NewBaseFlowConfig(0, 0),
+		flows.NewBaseFlowConfigDefault(),
 	)
 	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,

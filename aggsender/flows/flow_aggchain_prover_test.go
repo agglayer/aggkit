@@ -715,7 +715,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // sotrage
 				nil, // l1InfoTreeDataQuerier,
 				nil, // lerQuerier
-				NewBaseFlowConfig(0, tc.startL2Block),
+				NewBaseFlowConfig(0, tc.startL2Block, false),
 			)
 			flow := NewAggchainProverFlow(
 				logger,
@@ -988,29 +988,12 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(15)).Once()
 				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(15)).Return(nil).Once()
 				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(15), uint64(15)).
-					Return(types.BlockRange{}, errors.New("gap error")).Once()
+					Return(errors.New("gap error")).Once()
 			},
-			expectedError: "aggchainProverFlow - error verifying block range gaps on startup. RequireNoFEPBlockGap: false. Err: gap error",
+			expectedError: "aggchainProverFlow - error verifying block range gaps on startup",
 		},
 		{
-			name:                 "has a gap without bridge transactions, but requireNoFEPBlockGap is true",
-			requireNoFEPBlockGap: true,
-			mockFn: func(
-				mockStorage *mocks.AggSenderStorage,
-				mockBaseFlow *mocks.AggsenderFlowBaser,
-				mockL2BridgeSyncer *mocks.BridgeQuerier,
-			) {
-				lastCert := &types.CertificateHeader{ToBlock: 10}
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
-				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(15)).Once()
-				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(15)).Return(nil).Once()
-				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(15), uint64(15)).
-					Return(types.BlockRange{FromBlock: 11, ToBlock: 14}, nil).Once()
-			},
-			expectedError: "aggchainProverFlow - FEP block gap detected",
-		},
-		{
-			name:                 "success - requireNoFEPBlockGap is true, no gap",
+			name:                 "success ",
 			requireNoFEPBlockGap: true,
 			mockFn: func(
 				mockStorage *mocks.AggSenderStorage,
@@ -1022,37 +1005,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(11)).Once()
 				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(11)).Return(nil).Once()
 				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(11), uint64(11)).
-					Return(types.BlockRange{}, nil).Once()
-			},
-		},
-		{
-			name: "success - requireNoFEPBlockGap is false, no gap",
-			mockFn: func(
-				mockStorage *mocks.AggSenderStorage,
-				mockBaseFlow *mocks.AggsenderFlowBaser,
-				mockL2BridgeSyncer *mocks.BridgeQuerier,
-			) {
-				lastCert := &types.CertificateHeader{ToBlock: 10}
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
-				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(11)).Once()
-				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(11)).Return(nil).Once()
-				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(11), uint64(11)).
-					Return(types.BlockRange{}, nil).Once()
-			},
-		},
-		{
-			name: "success - requireNoFEPBlockGap is false, has gap without bridge transactions",
-			mockFn: func(
-				mockStorage *mocks.AggSenderStorage,
-				mockBaseFlow *mocks.AggsenderFlowBaser,
-				mockL2BridgeSyncer *mocks.BridgeQuerier,
-			) {
-				lastCert := &types.CertificateHeader{ToBlock: 10}
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
-				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(15)).Once()
-				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(15)).Return(nil).Once()
-				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(15), uint64(15)).
-					Return(types.BlockRange{FromBlock: 11, ToBlock: 14}, nil).Once()
+					Return(nil).Once()
 			},
 		},
 	}
@@ -1071,9 +1024,6 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 				storage:         mockStorage,
 				baseFlow:        mockBaseFlow,
 				l2BridgeQuerier: mockL2BridgeSyncer,
-				config: AggchainProverFlowConfig{
-					requireNoFEPBlockGap: tc.requireNoFEPBlockGap,
-				},
 			}
 
 			tc.mockFn(mockStorage, mockBaseFlow, mockL2BridgeSyncer)

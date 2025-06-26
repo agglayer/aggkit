@@ -123,7 +123,7 @@ func Test_baseFlow_limitCertSize(t *testing.T) {
 				nil,
 				nil,
 				nil,
-				NewBaseFlowConfig(tt.maxCertSize, 0))
+				NewBaseFlowConfig(tt.maxCertSize, 0, false))
 
 			result, err := f.limitCertSize(tt.fullCert)
 
@@ -522,68 +522,6 @@ func Test_baseFlow_VerifyBuildParams(t *testing.T) {
 			expectedError: "retry certificate fromBlock 10 != last sent certificate fromBlock 5",
 		},
 		{
-			name: "error getting number of bridge transactions",
-			buildParams: &types.CertificateBuildParams{
-				FromBlock: 10,
-				ToBlock:   15,
-				LastSentCertificate: &types.CertificateHeader{
-					Height:    1,
-					Status:    agglayertypes.Settled,
-					FromBlock: 5,
-					ToBlock:   7,
-				},
-			},
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(8), uint64(9)).
-					Return(nil, nil, errors.New("some error"))
-			},
-			expectedError: "error getting bridges and claims in the gap FromBlock: 8, ToBlock: 9: some error",
-		},
-		{
-			name: "non empty gap",
-			buildParams: &types.CertificateBuildParams{
-				FromBlock: 15,
-				ToBlock:   20,
-				LastSentCertificate: &types.CertificateHeader{
-					Height:    1,
-					Status:    agglayertypes.Settled,
-					FromBlock: 10,
-					ToBlock:   12,
-				},
-			},
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(13), uint64(14)).Return(
-					[]bridgesync.Bridge{{}, {}, {}}, []bridgesync.Claim{{}, {}}, nil)
-			},
-			expectedError: " there are new bridges or claims in the gap FromBlock: 13, ToBlock: 14, len(bridges)=3. len(claims)=2",
-		},
-		{
-			name: "empty gap - last sent certificate is InError",
-			buildParams: &types.CertificateBuildParams{
-				FromBlock: 15,
-				ToBlock:   20,
-				LastSentCertificate: &types.CertificateHeader{
-					Height:    1,
-					Status:    agglayertypes.InError,
-					FromBlock: 15,
-					ToBlock:   20,
-				},
-			},
-		},
-		{
-			name: "no gap - on startup",
-			buildParams: &types.CertificateBuildParams{
-				FromBlock: 10, // startL2Block
-				ToBlock:   10, // startL2Block
-				LastSentCertificate: &types.CertificateHeader{
-					Height:    2,
-					Status:    agglayertypes.Settled,
-					FromBlock: 11,
-					ToBlock:   20,
-				},
-			},
-		},
-		{
 			name: "invalid claim GER",
 			buildParams: &types.CertificateBuildParams{
 				FromBlock: 1,
@@ -593,6 +531,13 @@ func Test_baseFlow_VerifyBuildParams(t *testing.T) {
 				},
 			},
 			expectedError: "GER mismatch",
+		},
+		{
+			name: "success",
+			buildParams: &types.CertificateBuildParams{
+				FromBlock: 1,
+				ToBlock:   10,
+			},
 		},
 	}
 
@@ -615,6 +560,183 @@ func Test_baseFlow_VerifyBuildParams(t *testing.T) {
 			err := f.VerifyBuildParams(ctx, tc.buildParams)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	type args struct {
+		lastSentCertificate *types.CertificateHeader
+		newFromBlock        uint64
+		newToBlock          uint64
+	}
+	tests := []struct {
+		name            string
+		args            args
+		requireNoFEPGap bool
+		mockFn          func(mockL2BridgeQuerier *mocks.BridgeQuerier)
+		expectedError   string
+	}{
+		{
+			name: "lastSentCertificate is nil",
+			args: args{
+				lastSentCertificate: nil,
+				newFromBlock:        10,
+				newToBlock:          20,
+			},
+		},
+		{
+			name: "no gap between certificates",
+			args: args{
+				lastSentCertificate: &types.CertificateHeader{
+					Status:    agglayertypes.Settled,
+					FromBlock: 10,
+					ToBlock:   20,
+				},
+				newFromBlock: 21,
+				newToBlock:   30,
+			},
+		},
+		{
+			name: "gap exists but no bridges or claims in gap",
+			args: args{
+				lastSentCertificate: &types.CertificateHeader{
+					Status:    agglayertypes.Settled,
+					FromBlock: 10,
+					ToBlock:   15,
+				},
+				newFromBlock: 17,
+				newToBlock:   20,
+			},
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+				// gap is [16,16]
+				mockL2BridgeQuerier.EXPECT().
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
+					Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
+			},
+		},
+		{
+			name: "gap exists and bridges in gap returns error",
+			args: args{
+				lastSentCertificate: &types.CertificateHeader{
+					Status:    agglayertypes.Settled,
+					FromBlock: 10,
+					ToBlock:   15,
+				},
+				newFromBlock: 17,
+				newToBlock:   20,
+			},
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+				mockL2BridgeQuerier.EXPECT().
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
+					Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{}, nil)
+			},
+			expectedError: "there are new bridges or claims in the gap",
+		},
+		{
+			name: "gap exists and claims in gap returns error",
+			args: args{
+				lastSentCertificate: &types.CertificateHeader{
+					Status:    agglayertypes.Settled,
+					FromBlock: 10,
+					ToBlock:   15,
+				},
+				newFromBlock: 17,
+				newToBlock:   20,
+			},
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+				mockL2BridgeQuerier.EXPECT().
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
+					Return([]bridgesync.Bridge{}, []bridgesync.Claim{{}}, nil)
+			},
+			expectedError: "there are new bridges or claims in the gap",
+		},
+		{
+			name: "gap exists, no bridges/claims, RequireNoFEPBlockGap true returns error",
+			args: args{
+				lastSentCertificate: &types.CertificateHeader{
+					Status:    agglayertypes.Settled,
+					FromBlock: 10,
+					ToBlock:   15,
+				},
+				newFromBlock: 17,
+				newToBlock:   20,
+			},
+			requireNoFEPGap: true,
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+				mockL2BridgeQuerier.EXPECT().
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
+					Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
+			},
+			expectedError: "block gap detected",
+		},
+		{
+			name: "gap exists, GetBridgesAndClaims returns error",
+			args: args{
+				lastSentCertificate: &types.CertificateHeader{
+					Status:    agglayertypes.Settled,
+					FromBlock: 10,
+					ToBlock:   15,
+				},
+				newFromBlock: 17,
+				newToBlock:   20,
+			},
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+				mockL2BridgeQuerier.EXPECT().
+					GetBridgesAndClaims(ctx, uint64(16), uint64(16)).
+					Return(nil, nil, errors.New("db error"))
+			},
+			expectedError: "error getting bridges and claims in the gap",
+		},
+		{
+			name: "lastSentCertificate is InError, gap logic uses FromBlock-1",
+			args: args{
+				lastSentCertificate: &types.CertificateHeader{
+					Status:    agglayertypes.InError,
+					FromBlock: 5,
+					ToBlock:   10,
+				},
+				newFromBlock: 7,
+				newToBlock:   10,
+			},
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier) {
+				// lastSettledToBlock = 4, so gap is [5,6]
+				mockL2BridgeQuerier.EXPECT().
+					GetBridgesAndClaims(ctx, uint64(5), uint64(6)).
+					Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
+			if tt.mockFn != nil {
+				tt.mockFn(mockL2BridgeQuerier)
+			}
+
+			f := &baseFlow{
+				l2BridgeQuerier: mockL2BridgeQuerier,
+				cfg: BaseFlowConfig{
+					RequireNoFEPBlockGap: tt.requireNoFEPGap,
+				},
+			}
+
+			err := f.VerifyBlockRangeGaps(ctx, tt.args.lastSentCertificate, tt.args.newFromBlock, tt.args.newToBlock)
+			if tt.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedError)
 			} else {
 				require.NoError(t, err)
 			}

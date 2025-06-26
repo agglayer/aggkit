@@ -40,7 +40,7 @@ type AggsenderFlowBaser interface {
 	VerifyBlockRangeGaps(
 		ctx context.Context,
 		lastSentCertificate *CertificateHeader,
-		newFromBlock, newToBlock uint64) (BlockRange, error)
+		newFromBlock, newToBlock uint64) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
 }
