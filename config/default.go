@@ -173,7 +173,7 @@ AggsenderPrivateKey = {{AggsenderPrivateKey}}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
-DelayBeetweenRetries = "5s"
+DelayBetweenRetries = "5s"
 KeepCertificatesHistory = true
 # MaxSize of the certificate to 8Mb
 MaxCertSize = 8388608

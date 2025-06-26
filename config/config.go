@@ -62,6 +62,8 @@ const (
 	networkConfigDeprecatedHint           = "NetworkConfig is deprecated, use L1NetworkConfig instead"
 	l1NetworkConfigUsePolTokenAddrHint    = "Use L1NetworkConfig.POLTokenAddr instead"
 	l1NetworkConfigUseRollupAddrHint      = "Use L1NetworkConfig.RollupAddr instead"
+	delayBetweenRetriesHint               = "AggSender.DelayBeetweenRetries is deprecated, " +
+		"use AggSender.DelayBetweenRetries instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -170,6 +172,10 @@ var (
 		{
 			FieldNamePattern: "NetworkConfig",
 			Reason:           networkConfigDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "Aggsender.DelayBeetweenRetries",
+			Reason:           delayBetweenRetriesHint,
 		},
 	}
 )

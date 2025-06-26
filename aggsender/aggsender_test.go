@@ -88,9 +88,9 @@ func TestAggSenderStart(t *testing.T) {
 		ctx,
 		log.WithFields("test", "unittest"),
 		config.Config{
-			Mode:                 "PessimisticProof",
-			StoragePath:          path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
-			DelayBeetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
+			Mode:                "PessimisticProof",
+			StoragePath:         path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
+			DelayBetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
 			AggsenderPrivateKey: signertypes.SignerConfig{
 				Method: signertypes.MethodNone,
 			},
@@ -672,8 +672,8 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		storage:         storage,
 		status:          &aggsendertypes.AggsenderStatus{},
 		cfg: config.Config{
-			MaxCertSize:          1024 * 1024,
-			DelayBeetweenRetries: types.Duration{Duration: time.Millisecond},
+			MaxCertSize:         1024 * 1024,
+			DelayBetweenRetries: types.Duration{Duration: time.Millisecond},
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,

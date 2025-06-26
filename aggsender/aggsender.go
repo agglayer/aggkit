@@ -147,7 +147,7 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.status.Start(time.Now().UTC())
 
 	a.checkDBCompatibility(ctx)
-	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBeetweenRetries.Duration, a.status)
+	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
@@ -339,7 +339,7 @@ func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Cer
 				return fmt.Errorf("error saving last sent certificate %s in db: %w", cert.String(), err)
 			} else {
 				retries++
-				time.Sleep(a.cfg.DelayBeetweenRetries.Duration)
+				time.Sleep(a.cfg.DelayBetweenRetries.Duration)
 			}
 		}
 	}
