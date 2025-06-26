@@ -1,0 +1,12 @@
+syntax = "proto3";
+
+option go_package = "github.com/agglayer/aggkit/aggsender/verifier/proto/v1";
+package aggkit.aggsender.verifier.v1;
+
+import "agglayer/node/types/v1/certificate.proto";
+import "google/protobuf/empty.proto";
+
+service AggsenderVerifier {
+    rpc VerifyCertificate(agglayer.node.types.v1.Certificate) returns (google.protobuf.Empty);
+}
+
