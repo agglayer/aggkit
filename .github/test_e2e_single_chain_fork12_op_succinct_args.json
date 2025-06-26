@@ -13,7 +13,7 @@
     "op_succinct_submission_interval": "1",
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
-    "op_succinct_range_proof_interval": "100",
+    "op_succinct_range_proof_interval": "60",
     "l1_seconds_per_slot": 1,
     "additional_services": [
       "bridge_spammer"
@@ -27,9 +27,6 @@
         },
         "challenger_params": {
           "enabled": false
-        },
-        "batcher_params": {
-          "max_channel_duration": 2
         },
         "network_params": {
           "name": "001",
