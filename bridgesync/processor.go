@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/iden3/go-iden3-crypto/keccak256"
 	"github.com/russross/meddler"
-	_ "modernc.org/sqlite"
 )
 
 const (
