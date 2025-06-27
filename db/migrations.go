@@ -44,6 +44,8 @@ func RunMigrationsDBExtendedFull(logger *log.Logger,
 	if err := RunMigrationsDBExtended(logger, db, migrationsParam, dir, maxMigrations); err != nil {
 		return fmt.Errorf("error running migrations %w", err)
 	}
+	// Ignore previous migration when apply this ones
+	migrate.SetIgnoreUnknown(true)
 	if err := RunMigrationsDBExtended(logger, db, migrations.GetBaseMigrations(), dir, NoLimitMigrations); err != nil {
 		return fmt.Errorf("error running base migrations %w", err)
 	}
@@ -69,7 +71,7 @@ func RunMigrationsDBExtended(logger *log.Logger,
 
 	var listMigrations strings.Builder
 	for _, m := range migs.Migrations {
-		listMigrations.WriteString(m.Id)
+		listMigrations.WriteString(m.Id + ", ")
 	}
 
 	logger.Debugf("running migrations: (max %d) migrations: %s", maxMigrations, listMigrations.String())
