@@ -30,23 +30,12 @@ func RunMigrations(dbPath string, migrations []types.Migration) error {
 }
 
 func RunMigrationsDB(logger *log.Logger, db *sql.DB, migrationsParam []types.Migration) error {
-	return RunMigrationsDBExtendedFull(logger, db, migrationsParam, migrate.Up, NoLimitMigrations)
+	return RunMigrationsDBExtended(logger, db, migrationsParam, migrate.Up, NoLimitMigrations)
 }
 
 // RunMigrationsDBExtended is an extended version of RunMigrationsDB that allows
 // dir: can be migrate.Up or migrate.Down
 // maxMigrations: Will apply at most `max` migrations. Pass 0 for no limit (or use Exec)
-func RunMigrationsDBExtendedFull(logger *log.Logger,
-	db *sql.DB,
-	migrationsParam []types.Migration,
-	dir migrate.MigrationDirection,
-	maxMigrations int) error {
-	if err := RunMigrationsDBExtended(logger, db, migrationsParam, dir, maxMigrations); err != nil {
-		return fmt.Errorf("error running migrations %w", err)
-	}
-	return nil
-}
-
 func RunMigrationsDBExtended(logger *log.Logger,
 	db *sql.DB,
 	migrationsParam []types.Migration,
@@ -76,7 +65,8 @@ func RunMigrationsDBExtended(logger *log.Logger,
 	nMigrations, err := migrate.ExecMax(db, "sqlite3", migs, dir, maxMigrations)
 
 	if err != nil {
-		return fmt.Errorf("error executing migration %w", err)
+		return fmt.Errorf("error executing migration (max %d/%d) migrations: %s . Err: %w",
+			maxMigrations, len(migs.Migrations), listMigrations.String(), err)
 	}
 
 	logger.Infof("successfully ran %d migrations from migrations: %s", nMigrations, listMigrations.String())
