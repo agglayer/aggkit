@@ -44,11 +44,6 @@ func RunMigrationsDBExtendedFull(logger *log.Logger,
 	if err := RunMigrationsDBExtended(logger, db, migrationsParam, dir, maxMigrations); err != nil {
 		return fmt.Errorf("error running migrations %w", err)
 	}
-	// Ignore previous migration when apply this ones
-	migrate.SetIgnoreUnknown(true)
-	if err := RunMigrationsDBExtended(logger, db, migrations.GetBaseMigrations(), dir, NoLimitMigrations); err != nil {
-		return fmt.Errorf("error running base migrations %w", err)
-	}
 	return nil
 }
 
@@ -59,6 +54,7 @@ func RunMigrationsDBExtended(logger *log.Logger,
 	maxMigrations int) error {
 	migs := &migrate.MemoryMigrationSource{Migrations: []*migrate.Migration{}}
 	fullmigrations := migrationsParam
+	fullmigrations = append(fullmigrations, migrations.GetBaseMigrations()...)
 	for _, m := range fullmigrations {
 		prefixed := strings.ReplaceAll(m.SQL, dbPrefixReplacer, m.Prefix)
 		splitted := strings.Split(prefixed, UpDownSeparator)
@@ -74,7 +70,9 @@ func RunMigrationsDBExtended(logger *log.Logger,
 		listMigrations.WriteString(m.Id + ", ")
 	}
 
-	logger.Debugf("running migrations: (max %d) migrations: %s", maxMigrations, listMigrations.String())
+	logger.Debugf("running migrations: (max %d/%d) migrations: %s", maxMigrations,
+		len(migs.Migrations),
+		listMigrations.String())
 	nMigrations, err := migrate.ExecMax(db, "sqlite3", migs, dir, maxMigrations)
 
 	if err != nil {
