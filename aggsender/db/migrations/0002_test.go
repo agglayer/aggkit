@@ -51,7 +51,6 @@ func (m *migrationTester002) RunAssertsAfterMigrationUp(t *testing.T, db *sql.DB
 		"SELECT * FROM certificate_info WHERE height = $1;", 0)
 	require.NoError(t, err)
 	require.Nil(t, certificateInfo.FinalizedL1InfoTreeRoot)
-
 }
 
 func (m *migrationTester002) RunAssertsAfterMigrationDown(t *testing.T, db *sql.DB) {
