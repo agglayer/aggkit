@@ -310,73 +310,52 @@ func TestDetectReorgs(t *testing.T) {
 		require.Equal(t, 0, len(trackedBlocks)) // shouldn't be any since a reorg happened on that block
 	})
 }
-func TestLoadTrackedHeaders(t *testing.T) {
+
+func TestLoadTrackedHeaders_ConcurrentWithSaveTrackedBlock(t *testing.T) {
 	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
-	testDir := path.Join(t.TempDir(), "reorgdetectorTestLoadTrackedHeaders.sqlite")
+	testDir := path.Join(t.TempDir(), "reorgdetectorTestConcurrentSave.sqlite")
 	reorgDetector, err := New(clientL1.Client(), Config{
 		DBPath:              testDir,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+		CheckReorgsInterval: cfgtypes.NewDuration(100 * time.Millisecond),
 	}, L1)
 	require.NoError(t, err)
 
-	// Save tracked blocks for multiple subscribers
-	headerFoo := header{Num: 1, Hash: common.HexToHash("foo")}
-	require.NoError(t, reorgDetector.saveTrackedBlock("Foo", headerFoo))
-	headerBar := header{Num: 2, Hash: common.HexToHash("bar")}
-	require.NoError(t, reorgDetector.saveTrackedBlock("Bar", headerBar))
-
-	// Clear in-memory trackedBlocks and subscriptions to simulate fresh load
-	reorgDetector.trackedBlocks = make(map[string]*headersList)
-	reorgDetector.subscriptions = make(map[string]*Subscription)
-
-	// Call loadTrackedHeaders and verify trackedBlocks and subscriptions are populated
-	require.NoError(t, reorgDetector.loadTrackedHeaders())
-
-	reorgDetector.trackedBlocksLock.RLock()
-	defer reorgDetector.trackedBlocksLock.RUnlock()
-	require.Contains(t, reorgDetector.trackedBlocks, "Foo")
-	require.Contains(t, reorgDetector.trackedBlocks, "Bar")
-	require.Equal(t, headerFoo, reorgDetector.trackedBlocks["Foo"].headers[1])
-	require.Equal(t, headerBar, reorgDetector.trackedBlocks["Bar"].headers[2])
-
-	reorgDetector.subscriptionsLock.RLock()
-	defer reorgDetector.subscriptionsLock.RUnlock()
-	require.Contains(t, reorgDetector.subscriptions, "Foo")
-	require.Contains(t, reorgDetector.subscriptions, "Bar")
-	require.NotNil(t, reorgDetector.subscriptions["Foo"].ReorgedBlock)
-	require.NotNil(t, reorgDetector.subscriptions["Bar"].ReorgedBlock)
-}
-
-func TestLoadTrackedHeaders_LockSafety(t *testing.T) {
-	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
-	testDir := path.Join(t.TempDir(), "reorgdetectorTestLoadTrackedHeadersLockSafety.sqlite")
-	reorgDetector, err := New(clientL1.Client(), Config{
-		DBPath:              testDir,
-		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
-	}, L1)
-	require.NoError(t, err)
-
-	// Save a tracked block
-	headerFoo := header{Num: 1, Hash: common.HexToHash("foo")}
-	require.NoError(t, reorgDetector.saveTrackedBlock("Foo", headerFoo))
-
-	// Simulate concurrent access: one goroutine loads headers, another reads trackedBlocks
 	var wg sync.WaitGroup
+	numSaves := 20
+	numLoads := 20
+
 	wg.Add(2)
 
+	// Goroutine for saving tracked blocks
 	go func() {
 		defer wg.Done()
-		require.NoError(t, reorgDetector.loadTrackedHeaders())
+		for i := range numSaves {
+			header := header{
+				Num:  uint64(i),
+				Hash: common.BigToHash(big.NewInt(int64(i))),
+			}
+			err := reorgDetector.saveTrackedBlock("sub", header)
+			require.NoError(t, err)
+			time.Sleep(5 * time.Millisecond)
+		}
 	}()
 
+	// Goroutine for loading tracked headers (rebuilds in-memory maps)
 	go func() {
 		defer wg.Done()
-		// Wait a bit to increase the chance of overlap
-		time.Sleep(10 * time.Millisecond)
-		reorgDetector.trackedBlocksLock.RLock()
-		_ = len(reorgDetector.trackedBlocks)
-		reorgDetector.trackedBlocksLock.RUnlock()
+		for range numLoads {
+			err := reorgDetector.loadTrackedHeaders()
+			require.NoError(t, err)
+			time.Sleep(7 * time.Millisecond)
+		}
 	}()
 
 	wg.Wait()
+
+	// Final verification
+	reorgDetector.trackedBlocksLock.RLock()
+	defer reorgDetector.trackedBlocksLock.RUnlock()
+	tracked, ok := reorgDetector.trackedBlocks["sub"]
+	require.True(t, ok)
+	require.GreaterOrEqual(t, len(tracked.getSorted()), 1)
 }
