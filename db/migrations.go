@@ -67,17 +67,18 @@ func RunMigrationsDBExtended(logger *log.Logger,
 		})
 	}
 
-	listMigrations := ""
+	var listMigrations strings.Builder
 	for _, m := range migs.Migrations {
-		listMigrations += fmt.Sprintf("%+v, ", m.Id)
+		listMigrations.WriteString(m.Id)
 	}
-	logger.Debugf("running migrations: (max %d) migrations: %s", maxMigrations, listMigrations)
+
+	logger.Debugf("running migrations: (max %d) migrations: %s", maxMigrations, listMigrations.String())
 	nMigrations, err := migrate.ExecMax(db, "sqlite3", migs, dir, maxMigrations)
 
 	if err != nil {
 		return fmt.Errorf("error executing migration %w", err)
 	}
 
-	logger.Infof("successfully ran %d migrations from migrations: %s", nMigrations, listMigrations)
+	logger.Infof("successfully ran %d migrations from migrations: %s", nMigrations, listMigrations.String())
 	return nil
 }

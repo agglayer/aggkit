@@ -18,7 +18,7 @@ type MigrationTester interface {
 	// if it's empty create a new one, if not copy this to a temporary file
 	FilenameTemplateDatabase() string
 	// InsertData used to insert data in the affected tables of the migration that is being tested
-	// data will be inserted with the schema as it was previous the migration that is being tested
+	// data will be inserted with the schema as it was before the migration that is being tested
 	InsertDataBeforeMigrationUp(*testing.T, *sql.DB)
 	// RunAssertsAfterMigrationUp this function will be called after running the migration is being tested
 	// and should assert that the data inserted in the function InsertData is persisted properly
@@ -51,7 +51,7 @@ func TestMigration(t *testing.T, dbName string, migrationData []types.Migration,
 	if templateDBFilename != "" {
 		logger.Infof("Copying template database file %s to %s", templateDBFilename, dbPath)
 		err := copyFile(templateDBFilename, dbPath)
-		require.NoError(t, err, "failed to copy "+templateDBFilename+"template database file")
+		require.NoError(t, err, "failed to copy "+templateDBFilename+" template database file")
 	}
 	database, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
@@ -69,9 +69,8 @@ func TestMigration(t *testing.T, dbName string, migrationData []types.Migration,
 	err = db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Up, 1)
 	require.NoError(t, err, "failed to run migration up %d", migrationNumber)
 	miter.RunAssertsAfterMigrationUp(t, database)
-	// We downgrade to the previous miration
-	logger.Infof("Running DOWN migration from: %d to previous one", migrationNumber)
-
+	// We downgrade to before tested migration
+	logger.Infof("Running DOWN migration from: %d to the previous one", migrationNumber)
 	err = db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Down, 1)
 	require.NoError(t, err, "failed to run migration down %d", migrationNumber)
 	miter.RunAssertsAfterMigrationDown(t, database)

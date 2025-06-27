@@ -101,7 +101,9 @@ func (m *migrationTester003) RunAssertsAfterMigrationDown(t *testing.T, db *sql.
 	t.Helper()
 	fields, err := dbmigrations.GetTableColumnNames(db, "certificate_info")
 	require.NoError(t, err)
-	require.NotContains(t, fields, "cert_type", "cert_source", "extra_data")
+	require.NotContains(t, fields, "cert_type")
+	require.NotContains(t, fields, "cert_source")
+	require.NotContains(t, fields, "extra_data")
 }
 
 func TestMigration003(t *testing.T) {
