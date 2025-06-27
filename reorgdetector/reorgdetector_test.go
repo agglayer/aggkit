@@ -310,3 +310,73 @@ func TestDetectReorgs(t *testing.T) {
 		require.Equal(t, 0, len(trackedBlocks)) // shouldn't be any since a reorg happened on that block
 	})
 }
+func TestLoadTrackedHeaders(t *testing.T) {
+	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
+	testDir := path.Join(t.TempDir(), "reorgdetectorTestLoadTrackedHeaders.sqlite")
+	reorgDetector, err := New(clientL1.Client(), Config{
+		DBPath:              testDir,
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+	}, L1)
+	require.NoError(t, err)
+
+	// Save tracked blocks for multiple subscribers
+	headerFoo := header{Num: 1, Hash: common.HexToHash("foo")}
+	require.NoError(t, reorgDetector.saveTrackedBlock("Foo", headerFoo))
+	headerBar := header{Num: 2, Hash: common.HexToHash("bar")}
+	require.NoError(t, reorgDetector.saveTrackedBlock("Bar", headerBar))
+
+	// Clear in-memory trackedBlocks and subscriptions to simulate fresh load
+	reorgDetector.trackedBlocks = make(map[string]*headersList)
+	reorgDetector.subscriptions = make(map[string]*Subscription)
+
+	// Call loadTrackedHeaders and verify trackedBlocks and subscriptions are populated
+	require.NoError(t, reorgDetector.loadTrackedHeaders())
+
+	reorgDetector.trackedBlocksLock.RLock()
+	defer reorgDetector.trackedBlocksLock.RUnlock()
+	require.Contains(t, reorgDetector.trackedBlocks, "Foo")
+	require.Contains(t, reorgDetector.trackedBlocks, "Bar")
+	require.Equal(t, headerFoo, reorgDetector.trackedBlocks["Foo"].headers[1])
+	require.Equal(t, headerBar, reorgDetector.trackedBlocks["Bar"].headers[2])
+
+	reorgDetector.subscriptionsLock.RLock()
+	defer reorgDetector.subscriptionsLock.RUnlock()
+	require.Contains(t, reorgDetector.subscriptions, "Foo")
+	require.Contains(t, reorgDetector.subscriptions, "Bar")
+	require.NotNil(t, reorgDetector.subscriptions["Foo"].ReorgedBlock)
+	require.NotNil(t, reorgDetector.subscriptions["Bar"].ReorgedBlock)
+}
+
+func TestLoadTrackedHeaders_LockSafety(t *testing.T) {
+	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
+	testDir := path.Join(t.TempDir(), "reorgdetectorTestLoadTrackedHeadersLockSafety.sqlite")
+	reorgDetector, err := New(clientL1.Client(), Config{
+		DBPath:              testDir,
+		CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+	}, L1)
+	require.NoError(t, err)
+
+	// Save a tracked block
+	headerFoo := header{Num: 1, Hash: common.HexToHash("foo")}
+	require.NoError(t, reorgDetector.saveTrackedBlock("Foo", headerFoo))
+
+	// Simulate concurrent access: one goroutine loads headers, another reads trackedBlocks
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		require.NoError(t, reorgDetector.loadTrackedHeaders())
+	}()
+
+	go func() {
+		defer wg.Done()
+		// Wait a bit to increase the chance of overlap
+		time.Sleep(10 * time.Millisecond)
+		reorgDetector.trackedBlocksLock.RLock()
+		_ = len(reorgDetector.trackedBlocks)
+		reorgDetector.trackedBlocksLock.RUnlock()
+	}()
+
+	wg.Wait()
+}
