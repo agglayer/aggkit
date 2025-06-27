@@ -259,6 +259,7 @@ func (rd *ReorgDetector) loadTrackedHeaders() (err error) {
 	}
 
 	rd.subscriptionsLock.Lock()
+	defer rd.subscriptionsLock.Unlock()
 	// Go over tracked blocks and create subscription for each tracker
 	for id := range rd.trackedBlocks {
 		rd.subscriptions[id] = &Subscription{
@@ -266,7 +267,6 @@ func (rd *ReorgDetector) loadTrackedHeaders() (err error) {
 			ReorgProcessed: make(chan bool),
 		}
 	}
-	rd.subscriptionsLock.Unlock()
 
 	return nil
 }
