@@ -11,24 +11,6 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-type certificateInfoRowMigration002 struct {
-	Height        uint64      `meddler:"height"`
-	RetryCount    int         `meddler:"retry_count"`
-	CertificateID common.Hash `meddler:"certificate_id,hash"`
-	// PreviousLocalExitRoot if it's nil means no reported
-	PreviousLocalExitRoot   *common.Hash `meddler:"previous_local_exit_root,hash"`
-	NewLocalExitRoot        common.Hash  `meddler:"new_local_exit_root,hash"`
-	FromBlock               uint64       `meddler:"from_block"`
-	ToBlock                 uint64       `meddler:"to_block"`
-	Status                  int          `meddler:"status"`
-	CreatedAt               uint32       `meddler:"created_at"`
-	UpdatedAt               uint32       `meddler:"updated_at"`
-	SignedCertificate       *string      `meddler:"signed_certificate"`
-	AggchainProof           []byte       `meddler:"aggchain_proof"`
-	FinalizedL1InfoTreeRoot *common.Hash `meddler:"finalized_l1_info_tree_root,hash"`
-	L1InfoTreeLeafCount     *uint32      `meddler:"l1_info_tree_leaf_count"`
-}
-
 type certificateInfoRowMigration003 struct {
 	Height        uint64      `meddler:"height"`
 	RetryCount    int         `meddler:"retry_count"`
@@ -72,7 +54,8 @@ var (
 
 type migrationTester003 struct{}
 
-func (m *migrationTester003) FilenameTemplateDatabase() string {
+func (m *migrationTester003) FilenameTemplateDatabase(t *testing.T) string {
+	t.Helper()
 	return ""
 }
 func (m *migrationTester003) InsertDataBeforeMigrationUp(t *testing.T, db *sql.DB) {

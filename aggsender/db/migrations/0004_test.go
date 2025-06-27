@@ -12,7 +12,8 @@ import (
 
 type migrationTester004 struct{}
 
-func (m *migrationTester004) FilenameTemplateDatabase() string {
+func (m *migrationTester004) FilenameTemplateDatabase(t *testing.T) string {
+	t.Helper()
 	return ""
 }
 func (m *migrationTester004) InsertDataBeforeMigrationUp(t *testing.T, db *sql.DB) {

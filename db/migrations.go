@@ -43,7 +43,12 @@ func RunMigrationsDBExtended(logger *log.Logger,
 	maxMigrations int) error {
 	migs := &migrate.MemoryMigrationSource{Migrations: []*migrate.Migration{}}
 	fullmigrations := migrationsParam
-	fullmigrations = append(fullmigrations, migrations.GetBaseMigrations()...)
+	// In case of partial execution we ignore the base migrations
+	if maxMigrations == NoLimitMigrations {
+		fullmigrations = append(fullmigrations, migrations.GetBaseMigrations()...)
+	} else {
+		migrate.SetIgnoreUnknown(true)
+	}
 	for _, m := range fullmigrations {
 		prefixed := strings.ReplaceAll(m.SQL, dbPrefixReplacer, m.Prefix)
 		splitted := strings.Split(prefixed, UpDownSeparator)

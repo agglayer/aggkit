@@ -16,7 +16,7 @@ import (
 type MigrationTester interface {
 	// FilenameTemplateDatabase returns the template for the database filename
 	// if it's empty create a new one, if not copy this to a temporary file
-	FilenameTemplateDatabase() string
+	FilenameTemplateDatabase(*testing.T) string
 	// InsertData used to insert data in the affected tables of the migration that is being tested
 	// data will be inserted with the schema as it was before the migration that is being tested
 	InsertDataBeforeMigrationUp(*testing.T, *sql.DB)
@@ -47,7 +47,7 @@ func TestMigration(t *testing.T, dbName string, migrationData []types.Migration,
 	t.Helper()
 	logger := log.WithFields("module", "migration-test-"+dbName+"-"+fmt.Sprintf("%03d", migrationNumber))
 	dbPath := t.TempDir() + "/test_migration_" + dbName + "-" + fmt.Sprintf("%03d", migrationNumber) + ".sqlite"
-	templateDBFilename := miter.FilenameTemplateDatabase()
+	templateDBFilename := miter.FilenameTemplateDatabase(t)
 	if templateDBFilename != "" {
 		logger.Infof("Copying template database file %s to %s", templateDBFilename, dbPath)
 		err := copyFile(templateDBFilename, dbPath)
@@ -55,14 +55,14 @@ func TestMigration(t *testing.T, dbName string, migrationData []types.Migration,
 	}
 	database, err := db.NewSQLiteDB(dbPath)
 	require.NoError(t, err)
-
-	if migrationNumber > 1 {
+	// If we use a testDatabase must correspond to before the testing migration
+	if templateDBFilename == "" && migrationNumber > 1 {
 		logger.Infof("Running UP migration before  %d migration", migrationNumber)
 		err := db.RunMigrationsDBExtended(logger, database, migrationData, migrate.Up, migrationNumber-1)
 		require.NoError(t, err, "failed to run migration up %d", migrationNumber-1)
 		miter.InsertDataBeforeMigrationUp(t, database)
 	} else {
-		t.Log("this is the first migration")
+		t.Log("this is the first migration or using a test database ready")
 	}
 	// We just run the pending migration that is the one that we want to test
 	logger.Infof("Running UP migration from: %d  to next one", migrationNumber)
