@@ -3,6 +3,7 @@ package bridgeservice
 import (
 	"bytes"
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,6 +21,8 @@ import (
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db/compatibility"
+	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
 	"github.com/agglayer/aggkit/log"
@@ -55,12 +58,17 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	}
 	logger := log.WithFields("module", "test bridge service")
 	cfg := &Config{
-		Logger:       logger,
-		Address:      "localhost",
-		ReadTimeout:  0,
-		WriteTimeout: 0,
-		NetworkID:    networkID,
+		Logger:                             logger,
+		Address:                            "localhost",
+		ReadTimeout:                        0,
+		WriteTimeout:                       0,
+		NetworkID:                          networkID,
+		RequireStorageContentCompatibility: false,
 	}
+
+	b.bridgeL1.EXPECT().GetDatabase().Return(nil).Maybe()
+	b.bridgeL2.EXPECT().GetDatabase().Return(nil).Maybe()
+
 	b.bridge = New(cfg, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
 	return b
 }
@@ -1915,4 +1923,207 @@ func TestHealthCheckHandler(t *testing.T) {
 	require.Equal(t, "ok", response.Status)
 	require.NotEmpty(t, response.Time)
 	require.NotEmpty(t, response.Version)
+}
+
+func TestRequiresCompatibilityCheck(t *testing.T) {
+	tests := []struct {
+		name     string
+		version  string
+		expected bool
+	}{
+		{
+			name:     "version requiring compatibility check",
+			version:  "v0.5.0",
+			expected: true,
+		},
+		{
+			name:     "version not requiring compatibility check",
+			version:  "v0.4.0",
+			expected: false,
+		},
+		{
+			name:     "empty version",
+			version:  "",
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := requiresCompatibilityCheck(tt.version)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestBridgeCompatibilityStorage_New(t *testing.T) {
+	storage := NewBridgeCompatibilityStorage(nil, nil)
+	require.NotNil(t, storage)
+	require.Nil(t, storage.bridgeL1)
+	require.Nil(t, storage.bridgeL2)
+	require.Nil(t, storage.storage)
+
+	mockBridgeL1 := mocks.NewBridger(t)
+	mockBridgeL1.EXPECT().GetDatabase().Return(&sql.DB{}).Maybe()
+
+	storage = NewBridgeCompatibilityStorage(mockBridgeL1, nil)
+	require.NotNil(t, storage)
+	require.NotNil(t, storage.storage)
+}
+
+func TestBridgeCompatibilityStorage_GetCompatibilityData(t *testing.T) {
+	storage := &BridgeCompatibilityStorage{
+		bridgeL1: nil,
+		bridgeL2: nil,
+		storage:  nil,
+	}
+
+	exists, data, err := storage.GetCompatibilityData(context.Background(), nil)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no bridge database available")
+	require.False(t, exists)
+	require.Equal(t, RuntimeData{}, data)
+}
+
+func TestBridgeCompatibilityStorage_SetCompatibilityData(t *testing.T) {
+	storage := &BridgeCompatibilityStorage{
+		bridgeL1: nil,
+		bridgeL2: nil,
+		storage:  nil,
+	}
+
+	err := storage.SetCompatibilityData(context.Background(), nil, RuntimeData{Version: "v0.5.0"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "no bridge database available")
+}
+
+func TestBridgeCompatibilityStorage_IsEmpty(t *testing.T) {
+	storage := &BridgeCompatibilityStorage{
+		bridgeL1: nil,
+		bridgeL2: nil,
+	}
+
+	isEmpty, err := storage.IsEmpty(context.Background())
+	require.NoError(t, err)
+	require.True(t, isEmpty)
+
+	mockBridgeL1 := mocks.NewBridger(t)
+	mockBridgeL1.EXPECT().IsEmpty(mock.Anything).Return(false, errors.New("mock error")).Once()
+	storage = &BridgeCompatibilityStorage{
+		bridgeL1: mockBridgeL1,
+		bridgeL2: nil,
+	}
+	isEmpty, err = storage.IsEmpty(context.Background())
+	require.Error(t, err)
+	require.False(t, isEmpty)
+}
+
+func TestBridgeService_isBridgeSyncDBEmpty(t *testing.T) {
+	bridge := &BridgeService{
+		bridgeL1: nil,
+		bridgeL2: nil,
+	}
+
+	isEmpty := bridge.isBridgeSyncDBEmpty()
+	require.True(t, isEmpty)
+
+	mockBridgeL1 := mocks.NewBridger(t)
+	db, err := sql.Open("sqlite", ":memory:")
+	require.NoError(t, err)
+	defer db.Close()
+
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS bridges (id INTEGER PRIMARY KEY)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS claims (id INTEGER PRIMARY KEY)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS token_mappings (id INTEGER PRIMARY KEY)`)
+	require.NoError(t, err)
+	_, err = db.Exec(`CREATE TABLE IF NOT EXISTS legacy_token_migrations (id INTEGER PRIMARY KEY)`)
+	require.NoError(t, err)
+
+	mockBridgeL1.EXPECT().GetDatabase().Return(db).Maybe()
+	bridge = &BridgeService{
+		bridgeL1: mockBridgeL1,
+		bridgeL2: nil,
+	}
+	isEmpty = bridge.isBridgeSyncDBEmpty()
+	require.True(t, isEmpty)
+}
+
+func TestBridgeService_isVersionMismatchError(t *testing.T) {
+	tests := []struct {
+		name     string
+		err      error
+		expected bool
+	}{
+		{
+			name:     "version mismatch error",
+			err:      errors.New("version mismatch: v0.5.0 != v0.4.0"),
+			expected: true,
+		},
+		{
+			name:     "nil error",
+			err:      nil,
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			bridge := &BridgeService{}
+			result := bridge.isVersionMismatchError(tt.err)
+			require.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestBridgeService_setCompatibilityData(t *testing.T) {
+	bridge := &BridgeService{
+		compatibilityChecker: nil,
+	}
+
+	err := bridge.setCompatibilityData(context.Background(), RuntimeData{Version: "v0.5.0"})
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "compatibilityChecker is nil")
+}
+
+func TestBridgeService_checkDBCompatibility(t *testing.T) {
+	originalVersions := VersionsRequiringCompatibilityCheck
+	defer func() {
+		VersionsRequiringCompatibilityCheck = originalVersions
+	}()
+
+	VersionsRequiringCompatibilityCheck = append(VersionsRequiringCompatibilityCheck, "v0.1.0")
+	bridge := &BridgeService{
+		compatibilityChecker: nil,
+		logger:               log.WithFields("module", "test"),
+	}
+
+	require.NotPanics(t, func() {
+		bridge.checkDBCompatibility(context.Background())
+	})
+	mockStorage := &mockCompatibilityStorage{}
+	mockChecker := &compatibility.CompatibilityCheck[RuntimeData]{
+		Storage: mockStorage,
+		RuntimeDataGetter: func(ctx context.Context) (RuntimeData, error) {
+			return RuntimeData{Version: "v0.1.0"}, nil
+		},
+	}
+	bridge = &BridgeService{
+		compatibilityChecker: mockChecker,
+		logger:               log.WithFields("module", "test"),
+	}
+	require.NotPanics(t, func() {
+		bridge.checkDBCompatibility(context.Background())
+	})
+}
+
+type mockCompatibilityStorage struct{}
+
+func (m *mockCompatibilityStorage) GetCompatibilityData(ctx context.Context, tx dbtypes.Querier) (bool, RuntimeData, error) {
+	return true, RuntimeData{Version: "v0.1.0"}, nil
+}
+
+func (m *mockCompatibilityStorage) SetCompatibilityData(ctx context.Context, tx dbtypes.Querier, data RuntimeData) error {
+	return nil
 }

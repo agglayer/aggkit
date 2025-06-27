@@ -2,6 +2,7 @@ package bridgesync
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"math/big"
@@ -486,4 +487,135 @@ func TestBridgeSync_GetLastReorgEvent(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, reorgEvent)
 	})
+}
+
+func TestBridgeSync_IsEmpty(t *testing.T) {
+	tests := []struct {
+		name               string
+		processorHalted    bool
+		lastProcessedBlock uint64
+		processorError     error
+		expectedIsEmpty    bool
+		expectedError      error
+	}{
+		{
+			name:               "processor halted - should return error",
+			processorHalted:    true,
+			lastProcessedBlock: 0,
+			processorError:     nil,
+			expectedIsEmpty:    false,
+			expectedError:      sync.ErrInconsistentState,
+		},
+		{
+			name:               "processor error - should return error",
+			processorHalted:    false,
+			lastProcessedBlock: 0,
+			processorError:     errors.New("database error"),
+			expectedIsEmpty:    false,
+			expectedError:      errors.New("database error"),
+		},
+		{
+			name:               "last processed block is 0 - should return true",
+			processorHalted:    false,
+			lastProcessedBlock: 0,
+			processorError:     nil,
+			expectedIsEmpty:    true,
+			expectedError:      nil,
+		},
+		{
+			name:               "last processed block is greater than 0 - should return false",
+			processorHalted:    false,
+			lastProcessedBlock: 100,
+			processorError:     nil,
+			expectedIsEmpty:    false,
+			expectedError:      nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proc := &processor{
+				halted: tt.processorHalted,
+				log:    log.WithFields("module", "test"),
+			}
+			bridgeSync := &BridgeSync{
+				processor: proc,
+			}
+
+			if tt.processorError != nil {
+				dbPath := path.Join(t.TempDir(), "test_error.sqlite")
+				proc.db, _ = sql.Open("sqlite", dbPath)
+				// Close the database to cause an error when trying to query
+				proc.db.Close()
+			} else if !tt.processorHalted {
+				dbPath := path.Join(t.TempDir(), "test.sqlite")
+				db, err := sql.Open("sqlite", dbPath)
+				require.NoError(t, err)
+				defer db.Close()
+
+				proc.db = db
+				_, err = db.Exec(`
+                    CREATE TABLE IF NOT EXISTS block (
+                        num INTEGER PRIMARY KEY,
+                        hash TEXT NOT NULL
+                    )
+                `)
+				require.NoError(t, err)
+				if tt.lastProcessedBlock > 0 {
+					_, err = db.Exec(`
+                        INSERT INTO block (num, hash) 
+                        VALUES (?, ?)
+                    `, tt.lastProcessedBlock, "0x1")
+					require.NoError(t, err)
+				}
+			}
+			isEmpty, err := bridgeSync.IsEmpty(context.Background())
+
+			if tt.expectedError != nil {
+				require.Error(t, err)
+				if errors.Is(tt.expectedError, sync.ErrInconsistentState) {
+					require.ErrorIs(t, err, sync.ErrInconsistentState)
+				} else {
+					require.Error(t, err)
+				}
+			} else {
+				require.NoError(t, err)
+			}
+			require.Equal(t, tt.expectedIsEmpty, isEmpty)
+		})
+	}
+}
+
+func TestBridgeSync_GetDatabase(t *testing.T) {
+	tests := []struct {
+		name        string
+		processorDB *sql.DB
+		expectedDB  *sql.DB
+	}{
+		{
+			name:        "database is nil",
+			processorDB: nil,
+			expectedDB:  nil,
+		},
+		{
+			name:        "database is not nil",
+			processorDB: &sql.DB{},
+			expectedDB:  &sql.DB{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			proc := &processor{
+				db:  tt.processorDB,
+				log: log.WithFields("module", "test"),
+			}
+
+			bridgeSync := &BridgeSync{
+				processor: proc,
+			}
+			resultDB := bridgeSync.GetDatabase()
+			require.Equal(t, tt.expectedDB, resultDB)
+		})
+	}
 }

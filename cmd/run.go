@@ -104,6 +104,7 @@ func start(cliCtx *cli.Context) error {
 				lastGERSync,
 				l1BridgeSync,
 				l2BridgeSync,
+				cfg.BridgeL1Sync.RequireStorageContentCompatibility,
 			)
 
 			go b.Start(cliCtx.Context)
@@ -606,15 +607,17 @@ func createBridgeService(
 	injectedGERs *lastgersync.LastGERSync,
 	bridgeL1 *bridgesync.BridgeSync,
 	bridgeL2 *bridgesync.BridgeSync,
+	requireStorageContentCompatibility bool,
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
 	bridgeCfg := &bridgeservice.Config{
-		Logger:       logger,
-		Address:      cfg.Address(),
-		ReadTimeout:  cfg.ReadTimeout.Duration,
-		WriteTimeout: cfg.WriteTimeout.Duration,
-		NetworkID:    l2NetworkID,
+		Logger:                             logger,
+		Address:                            cfg.Address(),
+		ReadTimeout:                        cfg.ReadTimeout.Duration,
+		WriteTimeout:                       cfg.WriteTimeout.Duration,
+		NetworkID:                          l2NetworkID,
+		RequireStorageContentCompatibility: requireStorageContentCompatibility,
 	}
 
 	return bridgeservice.New(

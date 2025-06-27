@@ -2,6 +2,7 @@ package bridgeservice
 
 import (
 	"context"
+	"database/sql"
 
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -22,6 +23,9 @@ type Bridger interface {
 		networkIDs []uint32, fromAddress string) ([]*bridgesync.Claim, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 	GetContractDepositCount(ctx context.Context) (uint32, error)
+	// IsEmpty returns true if the bridge database is empty (no data has been processed)
+	IsEmpty(ctx context.Context) (bool, error)
+	GetDatabase() *sql.DB
 }
 
 type LastGERer interface {
