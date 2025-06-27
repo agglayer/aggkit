@@ -258,6 +258,8 @@ func (rd *ReorgDetector) loadTrackedHeaders() (err error) {
 		return fmt.Errorf("failed to get tracked blocks: %w", err)
 	}
 
+	rd.subscriptionsLock.Lock()
+	defer rd.subscriptionsLock.Unlock()
 	// Go over tracked blocks and create subscription for each tracker
 	for id := range rd.trackedBlocks {
 		rd.subscriptions[id] = &Subscription{

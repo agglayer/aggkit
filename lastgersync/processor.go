@@ -74,8 +74,10 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	if err != nil {
 		return fmt.Errorf("failed to start transaction: %w", err)
 	}
+
+	shouldRollback := true
 	defer func() {
-		if err != nil {
+		if shouldRollback {
 			p.log.Errorf("transaction rollback due to error: %v", err)
 			if errRollback := tx.Rollback(); errRollback != nil {
 				log.Errorf("error while rolling back tx %v", errRollback)
@@ -114,6 +116,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	if err := tx.Commit(); err != nil {
 		return err
 	}
+
+	shouldRollback = false // Commit was successful, no need to rollback
 	p.log.Debugf("processed %d events until block %d", len(block.Events), block.Num)
 	return nil
 }

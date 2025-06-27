@@ -310,3 +310,52 @@ func TestDetectReorgs(t *testing.T) {
 		require.Equal(t, 0, len(trackedBlocks)) // shouldn't be any since a reorg happened on that block
 	})
 }
+
+func TestLoadTrackedHeaders_ConcurrentWithSaveTrackedBlock(t *testing.T) {
+	clientL1 := simulated.NewBackend(nil, simulated.WithBlockGasLimit(10000000))
+	testDir := path.Join(t.TempDir(), "reorgdetectorTestConcurrentSave.sqlite")
+	reorgDetector, err := New(clientL1.Client(), Config{
+		DBPath:              testDir,
+		CheckReorgsInterval: cfgtypes.NewDuration(100 * time.Millisecond),
+	}, L1)
+	require.NoError(t, err)
+
+	var wg sync.WaitGroup
+	numSaves := 20
+	numLoads := 20
+
+	wg.Add(2)
+
+	// Goroutine for saving tracked blocks
+	go func() {
+		defer wg.Done()
+		for i := range numSaves {
+			header := header{
+				Num:  uint64(i),
+				Hash: common.BigToHash(big.NewInt(int64(i))),
+			}
+			err := reorgDetector.saveTrackedBlock("sub", header)
+			require.NoError(t, err)
+			time.Sleep(5 * time.Millisecond)
+		}
+	}()
+
+	// Goroutine for loading tracked headers (rebuilds in-memory maps)
+	go func() {
+		defer wg.Done()
+		for range numLoads {
+			err := reorgDetector.loadTrackedHeaders()
+			require.NoError(t, err)
+			time.Sleep(7 * time.Millisecond)
+		}
+	}()
+
+	wg.Wait()
+
+	// Final verification
+	reorgDetector.trackedBlocksLock.RLock()
+	defer reorgDetector.trackedBlocksLock.RUnlock()
+	tracked, ok := reorgDetector.trackedBlocks["sub"]
+	require.True(t, ok)
+	require.GreaterOrEqual(t, len(tracked.getSorted()), 1)
+}

@@ -654,9 +654,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
-			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
-				p.log.Errorf("error rolling back reorg transaction: %v", errRllbck)
-			}
+			p.rollbackTransaction(tx)
 		}
 	}()
 
@@ -675,7 +673,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		p.log.Errorf("failed to reorg exit tree: %v", err)
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err = tx.Commit(); err != nil {
 		p.log.Errorf("failed to commit reorg transaction: %v", err)
 		return err
 	}
@@ -701,9 +699,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
-			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
-				p.log.Errorf("error rolling back db transaction (block number %d): %v", block.Num, errRllbck)
-			}
+			p.rollbackTransaction(tx)
 		}
 	}()
 
@@ -925,7 +921,8 @@ func (p *processor) startTransaction(ctx context.Context, isReadOnly bool) (*sql
 	return tx, nil
 }
 
-func (p *processor) rollbackTransaction(tx *sql.Tx) {
+// rollbackTransaction rolls back the transaction and logs an error if it fails
+func (p *processor) rollbackTransaction(tx dbtypes.SQLTxer) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 		log.Warnf("error rolling back tx: %v", err)
 	}
