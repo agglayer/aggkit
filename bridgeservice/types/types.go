@@ -187,6 +187,21 @@ type ClaimResponse struct {
 
 	// Mainnet exit root associated with the claim
 	MainnetExitRoot Hash `json:"mainnet_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"` //nolint:lll
+
+	// Rollup exit root associated with the claim
+	RollupExitRoot Hash `json:"rollup_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"` //nolint:lll
+
+	// Global exit root associated with the claim
+	GlobalExitRoot Hash `json:"global_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"` //nolint:lll
+
+	// Proof local exit root associated with the claim (optional)
+	ProofLocalExitRoot *tree.Proof `json:"proof_local_exit_root,omitempty" example:"[0x1, 0x2, 0x3...]"`
+
+	// Proof rollup exit root associated with the claim (optional)
+	ProofRollupExitRoot *tree.Proof `json:"proof_rollup_exit_root,omitempty" example:"[0x4, 0x5, 0x6...]"`
+
+	// Metadata associated with the claim
+	Metadata string `json:"metadata" example:"0xdeadbeef"`
 }
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings
