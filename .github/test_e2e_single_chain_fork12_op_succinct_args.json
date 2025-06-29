@@ -5,7 +5,7 @@
   },
   "args": {
     "verbosity": "debug",
-    "aggkit_image": "aggkit:local",
+    "aggkit_image": "ghcr.io/agglayer/aggkit:0.4.0",
     "consensus_contract_type": "fep",
     "op_succinct_mock": true,
     "op_succinct_agglayer": true,
@@ -14,11 +14,27 @@
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
+    "l1_seconds_per_slot": 1,
     "additional_services": [
       "bridge_spammer"
     ]
   },
   "optimism_package": {
+    "chains": [
+      {
+        "proposer_params": {
+          "enabled": false
+        },
+        "challenger_params": {
+          "enabled": false
+        },
+        "network_params": {
+          "name": "001",
+          "network_id": "2151908",
+          "seconds_per_slot": 1
+        }
+      }
+    ],
     "observability": {
       "enabled": false
     }
