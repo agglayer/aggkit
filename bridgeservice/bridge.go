@@ -406,7 +406,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	}
 	defer cancel()
 
-	b.logger.Debugf("fetching claims (network id=%d, page=%d, size=%d, network_ids=%v, from_address=%s, populate_proofs=%t)",
+	b.logger.Debugf(
+		"fetching claims (network id=%d, page=%d, size=%d, network_ids=%v, from_address=%s, populate_proofs=%t)",
 		networkID, pageNumber, pageSize, networkIDs, fromAddress, populateProofs)
 
 	var (
