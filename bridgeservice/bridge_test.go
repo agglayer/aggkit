@@ -633,7 +633,9 @@ func TestGetClaimsHandler(t *testing.T) {
 				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
 			},
 		}
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, NewClaimResponse)
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
@@ -673,7 +675,9 @@ func TestGetClaimsHandler(t *testing.T) {
 				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
 			},
 		}
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, NewClaimResponse)
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
 
 		bridgeMocks.bridge.networkID = 10
 		bridgeMocks.bridgeL2.EXPECT().
@@ -750,6 +754,224 @@ func TestGetClaimsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("GetClaims for L1 network with populate_proofs=true", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Create claims with proof data
+		expectedClaims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				GlobalIndex:        big.NewInt(1),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 10,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+				RollupExitRoot:     common.HexToHash("0xabc...123"),
+				GlobalExitRoot:     common.HexToHash("0x456...def"),
+				BlockTimestamp:     1617184800,
+				Metadata:           []byte("metadata"),
+				ProofLocalExitRoot: tree.Proof{
+					common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+					common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				},
+				ProofRollupExitRoot: tree.Proof{
+					common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
+					common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444"),
+				},
+			},
+		}
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, true)
+		})
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			Return(expectedClaims, len(expectedClaims), nil)
+
+		queryParams := url.Values{
+			networkIDParam:      []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam:     []string{"1"},
+			pageSizeParam:       []string{"10"},
+			populateProofsParam: []string{"true"},
+		}
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, claimsResp, response.Claims)
+		require.Equal(t, len(expectedClaims), response.Count)
+
+		// Verify that proof fields are populated
+		require.NotNil(t, response.Claims[0].ProofLocalExitRoot)
+		require.NotNil(t, response.Claims[0].ProofRollupExitRoot)
+		require.Len(t, *response.Claims[0].ProofLocalExitRoot, 32)  // Proof is always 32 elements
+		require.Len(t, *response.Claims[0].ProofRollupExitRoot, 32) // Proof is always 32 elements
+		require.Equal(t, bridgetypes.Hash("0x1111111111111111111111111111111111111111111111111111111111111111"), (*response.Claims[0].ProofLocalExitRoot)[0])
+		require.Equal(t, bridgetypes.Hash("0x2222222222222222222222222222222222222222222222222222222222222222"), (*response.Claims[0].ProofLocalExitRoot)[1])
+		require.Equal(t, bridgetypes.Hash("0x3333333333333333333333333333333333333333333333333333333333333333"), (*response.Claims[0].ProofRollupExitRoot)[0])
+		require.Equal(t, bridgetypes.Hash("0x4444444444444444444444444444444444444444444444444444444444444444"), (*response.Claims[0].ProofRollupExitRoot)[1])
+
+		// Verify that remaining elements are zero values (empty hashes)
+		for i := 2; i < 32; i++ {
+			require.Equal(t, bridgetypes.Hash("0x0000000000000000000000000000000000000000000000000000000000000000"), (*response.Claims[0].ProofLocalExitRoot)[i])
+			require.Equal(t, bridgetypes.Hash("0x0000000000000000000000000000000000000000000000000000000000000000"), (*response.Claims[0].ProofRollupExitRoot)[i])
+		}
+	})
+
+	t.Run("GetClaims for L2 network with populate_proofs=true", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Create claims with proof data
+		expectedClaims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				GlobalIndex:        big.NewInt(1),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 10,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+				RollupExitRoot:     common.HexToHash("0xabc...123"),
+				GlobalExitRoot:     common.HexToHash("0x456...def"),
+				BlockTimestamp:     1617184800,
+				Metadata:           []byte("metadata"),
+				ProofLocalExitRoot: tree.Proof{
+					common.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555"),
+					common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
+				},
+				ProofRollupExitRoot: tree.Proof{
+					common.HexToHash("0x7777777777777777777777777777777777777777777777777777777777777777"),
+					common.HexToHash("0x8888888888888888888888888888888888888888888888888888888888888888"),
+				},
+			},
+		}
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, true)
+		})
+
+		bridgeMocks.bridge.networkID = 10
+		bridgeMocks.bridgeL2.EXPECT().
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			Return(expectedClaims, len(expectedClaims), nil)
+
+		query := url.Values{}
+		query.Set(networkIDParam, "10")
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set(populateProofsParam, "true")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, claimsResp, response.Claims)
+		require.Equal(t, len(expectedClaims), response.Count)
+
+		// Verify that proof fields are populated
+		require.NotNil(t, response.Claims[0].ProofLocalExitRoot)
+		require.NotNil(t, response.Claims[0].ProofRollupExitRoot)
+		require.Len(t, *response.Claims[0].ProofLocalExitRoot, 32)  // Proof is always 32 elements
+		require.Len(t, *response.Claims[0].ProofRollupExitRoot, 32) // Proof is always 32 elements
+		require.Equal(t, bridgetypes.Hash("0x5555555555555555555555555555555555555555555555555555555555555555"), (*response.Claims[0].ProofLocalExitRoot)[0])
+		require.Equal(t, bridgetypes.Hash("0x6666666666666666666666666666666666666666666666666666666666666666"), (*response.Claims[0].ProofLocalExitRoot)[1])
+		require.Equal(t, bridgetypes.Hash("0x7777777777777777777777777777777777777777777777777777777777777777"), (*response.Claims[0].ProofRollupExitRoot)[0])
+		require.Equal(t, bridgetypes.Hash("0x8888888888888888888888888888888888888888888888888888888888888888"), (*response.Claims[0].ProofRollupExitRoot)[1])
+
+		// Verify that remaining elements are zero values (empty hashes)
+		for i := 2; i < 32; i++ {
+			require.Equal(t, bridgetypes.Hash("0x0000000000000000000000000000000000000000000000000000000000000000"), (*response.Claims[0].ProofLocalExitRoot)[i])
+			require.Equal(t, bridgetypes.Hash("0x0000000000000000000000000000000000000000000000000000000000000000"), (*response.Claims[0].ProofRollupExitRoot)[i])
+		}
+	})
+
+	t.Run("GetClaims with populate_proofs=false (default behavior)", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		// Create claims with proof data
+		expectedClaims := []*bridgesync.Claim{
+			{
+				BlockNum:           1,
+				GlobalIndex:        big.NewInt(1),
+				OriginNetwork:      0,
+				OriginAddress:      common.HexToAddress("0x1"),
+				DestinationNetwork: 10,
+				DestinationAddress: common.HexToAddress("0x2"),
+				Amount:             common.Big0,
+				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
+				RollupExitRoot:     common.HexToHash("0xabc...123"),
+				GlobalExitRoot:     common.HexToHash("0x456...def"),
+				BlockTimestamp:     1617184800,
+				Metadata:           []byte("metadata"),
+				ProofLocalExitRoot: tree.Proof{
+					common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+					common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				},
+				ProofRollupExitRoot: tree.Proof{
+					common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
+					common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444"),
+				},
+			},
+		}
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
+
+		bridgeMocks.bridgeL1.EXPECT().
+			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
+			Return(expectedClaims, len(expectedClaims), nil)
+
+		queryParams := url.Values{
+			networkIDParam:      []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam:     []string{"1"},
+			pageSizeParam:       []string{"10"},
+			populateProofsParam: []string{"false"},
+		}
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.ClaimsResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, claimsResp, response.Claims)
+		require.Equal(t, len(expectedClaims), response.Count)
+
+		// Verify that proof fields are NOT populated
+		require.Nil(t, response.Claims[0].ProofLocalExitRoot)
+		require.Nil(t, response.Claims[0].ProofRollupExitRoot)
+	})
+
+	t.Run("GetClaims with invalid populate_proofs parameter", func(t *testing.T) {
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+
+		query := url.Values{}
+		query.Set(networkIDParam, "0")
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set(populateProofsParam, "invalid")
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusBadRequest, w.Code)
+		require.Contains(t, w.Body.String(), "invalid populate_proofs parameter")
 	})
 }
 
