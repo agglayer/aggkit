@@ -633,7 +633,9 @@ func TestGetClaimsHandler(t *testing.T) {
 				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
 			},
 		}
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, NewClaimResponse)
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetClaimsPaged(mock.Anything, page, pageSize, mock.Anything, mock.Anything).
@@ -673,7 +675,9 @@ func TestGetClaimsHandler(t *testing.T) {
 				MainnetExitRoot:    common.HexToHash("0xdefc...789"),
 			},
 		}
-		claimsResp := aggkitcommon.MapSlice(expectedClaims, NewClaimResponse)
+		claimsResp := aggkitcommon.MapSlice(expectedClaims, func(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
+			return NewClaimResponse(claim, false)
+		})
 
 		bridgeMocks.bridge.networkID = 10
 		bridgeMocks.bridgeL2.EXPECT().

@@ -114,30 +114,7 @@ func NewBridgeResponse(bridge *bridgesync.Bridge) *bridgetypes.BridgeResponse {
 }
 
 // NewClaimResponse creates ClaimResponse instance out of the provided Claim
-func NewClaimResponse(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
-	return &bridgetypes.ClaimResponse{
-		GlobalIndex:         bridgetypes.BigIntString(claim.GlobalIndex.String()),
-		DestinationNetwork:  claim.DestinationNetwork,
-		TxHash:              bridgetypes.Hash(claim.TxHash.Hex()),
-		Amount:              bridgetypes.BigIntString(claim.Amount.String()),
-		BlockNum:            claim.BlockNum,
-		FromAddress:         bridgetypes.Address(claim.FromAddress.Hex()),
-		DestinationAddress:  bridgetypes.Address(claim.DestinationAddress.Hex()),
-		OriginAddress:       bridgetypes.Address(claim.OriginAddress.Hex()),
-		OriginNetwork:       claim.OriginNetwork,
-		BlockTimestamp:      claim.BlockTimestamp,
-		MainnetExitRoot:     bridgetypes.Hash(claim.MainnetExitRoot.Hex()),
-		RollupExitRoot:      bridgetypes.Hash(claim.RollupExitRoot.Hex()),
-		GlobalExitRoot:      bridgetypes.Hash(claim.GlobalExitRoot.Hex()),
-		ProofLocalExitRoot:  &claim.ProofLocalExitRoot,
-		ProofRollupExitRoot: &claim.ProofRollupExitRoot,
-		Metadata:            fmt.Sprintf("0x%s", hex.EncodeToString(claim.Metadata)),
-	}
-}
-
-// NewClaimResponseWithProofs creates ClaimResponse instance out of the provided Claim,
-// conditionally including proof fields based on the populateProofs parameter
-func NewClaimResponseWithProofs(claim *bridgesync.Claim, populateProofs bool) *bridgetypes.ClaimResponse {
+func NewClaimResponse(claim *bridgesync.Claim, populateProofs bool) *bridgetypes.ClaimResponse {
 	response := &bridgetypes.ClaimResponse{
 		GlobalIndex:        bridgetypes.BigIntString(claim.GlobalIndex.String()),
 		DestinationNetwork: claim.DestinationNetwork,
@@ -157,8 +134,10 @@ func NewClaimResponseWithProofs(claim *bridgesync.Claim, populateProofs bool) *b
 
 	// Only populate proof fields if requested
 	if populateProofs {
-		response.ProofLocalExitRoot = &claim.ProofLocalExitRoot
-		response.ProofRollupExitRoot = &claim.ProofRollupExitRoot
+		localProof := bridgetypes.ConvertToProofResponse(claim.ProofLocalExitRoot)
+		rollupProof := bridgetypes.ConvertToProofResponse(claim.ProofRollupExitRoot)
+		response.ProofLocalExitRoot = &localProof
+		response.ProofRollupExitRoot = &rollupProof
 	}
 
 	return response

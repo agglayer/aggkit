@@ -195,10 +195,10 @@ type ClaimResponse struct {
 	GlobalExitRoot Hash `json:"global_exit_root" example:"0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"` //nolint:lll
 
 	// Proof local exit root associated with the claim (optional)
-	ProofLocalExitRoot *tree.Proof `json:"proof_local_exit_root,omitempty" example:"[0x1, 0x2, 0x3...]"`
+	ProofLocalExitRoot *Proof `json:"proof_local_exit_root,omitempty" example:"[0x1, 0x2, 0x3...]"`
 
 	// Proof rollup exit root associated with the claim (optional)
-	ProofRollupExitRoot *tree.Proof `json:"proof_rollup_exit_root,omitempty" example:"[0x4, 0x5, 0x6...]"`
+	ProofRollupExitRoot *Proof `json:"proof_rollup_exit_root,omitempty" example:"[0x4, 0x5, 0x6...]"`
 
 	// Metadata associated with the claim
 	Metadata string `json:"metadata" example:"0xdeadbeef"`

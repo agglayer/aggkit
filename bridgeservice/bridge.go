@@ -441,7 +441,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	// Use conditional function to create claim responses
 	claimResponses := make([]*types.ClaimResponse, len(claims))
 	for i, claim := range claims {
-		claimResponses[i] = NewClaimResponseWithProofs(claim, populateProofs)
+		claimResponses[i] = NewClaimResponse(claim, populateProofs)
 	}
 
 	c.JSON(http.StatusOK,
