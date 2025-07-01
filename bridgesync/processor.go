@@ -47,12 +47,9 @@ const (
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
 
-	// resyncCounterTableName is the name of the table that stores resync counter
-	resyncCounterTableName = "resync_counter"
-
-	// RESYNC_COUNTER_VERSION is the current version of the database schema
+	// ResyncCounterVersion is the current version of the database schema
 	// Increment this value when you need to force a database resync
-	RESYNC_COUNTER_VERSION uint8 = 1
+	ResyncCounterVersion uint8 = 1
 )
 
 var (
@@ -973,18 +970,22 @@ func checkAndHandleResync(db *sql.DB, logger *log.Logger, name string) error {
 	if err != nil && err == sql.ErrNoRows {
 		logger.Info("resync_counter table is empty, resync required")
 		resyncRequired = true
-	} else if currentVersion != RESYNC_COUNTER_VERSION {
-		logger.Infof("resync required: current version %d, expected version %d", currentVersion, RESYNC_COUNTER_VERSION)
+	} else if currentVersion != ResyncCounterVersion {
+		logger.Infof("resync required: current version %d, expected version %d", currentVersion, ResyncCounterVersion)
 		resyncRequired = true
 	}
 
 	if !resyncRequired {
-		logger.Infof("no resync required: current version %d matches expected version %d", currentVersion, RESYNC_COUNTER_VERSION)
+		logger.Infof("no resync required: current version %d matches expected version %d",
+			currentVersion, ResyncCounterVersion)
 		return nil
 	}
 
 	// Resync is required - check if any data tables have data
-	tablesToCheck := []string{blockTableName, bridgeTableName, claimTableName, tokenMappingTableName, legacyTokenMigrationTableName}
+	tablesToCheck := []string{
+		blockTableName, bridgeTableName, claimTableName,
+		tokenMappingTableName, legacyTokenMigrationTableName,
+	}
 	for _, table := range tablesToCheck {
 		var count int
 		err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count)
@@ -1005,11 +1006,11 @@ func updateResyncCounter(db *sql.DB, logger *log.Logger, name string) error {
 	_, err := db.ExecContext(ctx, `
 		INSERT OR REPLACE INTO resync_counter (key, value)
 		VALUES (?, ?)
-	`, name, RESYNC_COUNTER_VERSION)
+	`, name, ResyncCounterVersion)
 	if err != nil {
 		return fmt.Errorf("failed to update resync counter: %w", err)
 	}
 
-	logger.Infof("updated %s version to %d", name, RESYNC_COUNTER_VERSION)
+	logger.Infof("updated %s version to %d", name, ResyncCounterVersion)
 	return nil
 }

@@ -2053,7 +2053,7 @@ func TestResyncFunctionality(t *testing.T) {
 		var version uint8
 		err = p.db.QueryRow("SELECT value FROM resync_counter WHERE key = ?", "bridge-syncer").Scan(&version)
 		require.NoError(t, err)
-		require.Equal(t, RESYNC_COUNTER_VERSION, version)
+		require.Equal(t, ResyncCounterVersion, version)
 	})
 
 	// Test case 2: Version mismatch with empty tables (should update counter)
@@ -2082,7 +2082,7 @@ func TestResyncFunctionality(t *testing.T) {
 		var version uint8
 		err = p.db.QueryRow("SELECT value FROM resync_counter WHERE key = ?", "bridge-syncer").Scan(&version)
 		require.NoError(t, err)
-		require.Equal(t, RESYNC_COUNTER_VERSION, version)
+		require.Equal(t, ResyncCounterVersion, version)
 	})
 
 	// Test case 3: Version mismatch with data in tables (should panic)
@@ -2109,7 +2109,7 @@ func TestResyncFunctionality(t *testing.T) {
 
 		// This should panic since there's data in the tables
 		require.Panics(t, func() {
-			newProcessor(dbPath, "bridge-syncer", logger)
+			_, _ = newProcessor(dbPath, "bridge-syncer", logger)
 		})
 	})
 
@@ -2126,7 +2126,7 @@ func TestResyncFunctionality(t *testing.T) {
 		require.NoError(t, err)
 
 		// Insert correct version
-		_, err = db.Exec("INSERT INTO resync_counter (key, value) VALUES (?, ?)", "bridge-syncer", RESYNC_COUNTER_VERSION)
+		_, err = db.Exec("INSERT INTO resync_counter (key, value) VALUES (?, ?)", "bridge-syncer", ResyncCounterVersion)
 		require.NoError(t, err)
 
 		db.Close()
@@ -2140,7 +2140,7 @@ func TestResyncFunctionality(t *testing.T) {
 		var version uint8
 		err = p.db.QueryRow("SELECT value FROM resync_counter WHERE key = ?", "bridge-syncer").Scan(&version)
 		require.NoError(t, err)
-		require.Equal(t, RESYNC_COUNTER_VERSION, version)
+		require.Equal(t, ResyncCounterVersion, version)
 	})
 
 	// Test case 5: Empty resync_counter table (should update counter)
@@ -2167,6 +2167,6 @@ func TestResyncFunctionality(t *testing.T) {
 		var version uint8
 		err = p.db.QueryRow("SELECT value FROM resync_counter WHERE key = ?", "bridge-syncer").Scan(&version)
 		require.NoError(t, err)
-		require.Equal(t, RESYNC_COUNTER_VERSION, version)
+		require.Equal(t, ResyncCounterVersion, version)
 	})
 }
