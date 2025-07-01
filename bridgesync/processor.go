@@ -32,6 +32,9 @@ const (
 	globalIndexPartSize = 4
 	globalIndexMaxSize  = 9
 
+	// blockTableName is the name of the table that stores last processed block
+	blockTableName = "block"
+
 	// bridgeTableName is the name of the table that stores bridge events
 	bridgeTableName = "bridge"
 
@@ -43,6 +46,13 @@ const (
 
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
+
+	// resyncCounterTableName is the name of the table that stores resync counter
+	resyncCounterTableName = "resync_counter"
+
+	// RESYNC_COUNTER_VERSION is the current version of the database schema
+	// Increment this value when you need to force a database resync
+	RESYNC_COUNTER_VERSION uint8 = 1
 )
 
 var (
@@ -323,6 +333,12 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 		return nil, err
 	}
 	database, err := db.NewSQLiteDB(dbPath)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check if resync is required and handle it
+	err = checkAndHandleResync(database, logger, name)
 	if err != nil {
 		return nil, err
 	}
@@ -944,4 +960,56 @@ func (p *processor) isHalted() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.halted
+}
+
+func checkAndHandleResync(db *sql.DB, logger *log.Logger, name string) error {
+	ctx := context.Background()
+
+	var currentVersion uint8
+	err := db.QueryRowContext(ctx, "SELECT value FROM resync_counter WHERE key = ?", name).Scan(&currentVersion)
+
+	// Check if resync is required
+	resyncRequired := false
+	if err != nil && err == sql.ErrNoRows {
+		logger.Info("resync_counter table is empty, resync required")
+		resyncRequired = true
+	} else if currentVersion != RESYNC_COUNTER_VERSION {
+		logger.Infof("resync required: current version %d, expected version %d", currentVersion, RESYNC_COUNTER_VERSION)
+		resyncRequired = true
+	}
+
+	if !resyncRequired {
+		logger.Infof("no resync required: current version %d matches expected version %d", currentVersion, RESYNC_COUNTER_VERSION)
+		return nil
+	}
+
+	// Resync is required - check if any data tables have data
+	tablesToCheck := []string{blockTableName, bridgeTableName, claimTableName, tokenMappingTableName, legacyTokenMigrationTableName}
+	for _, table := range tablesToCheck {
+		var count int
+		err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count)
+		if err != nil {
+			return fmt.Errorf("failed to check if table %s exists: %w", table, err)
+		}
+		if count > 0 {
+			panic(fmt.Sprintf("DB needs resync delete existing db entries: table %s contains %d records", table, count))
+		}
+	}
+
+	return updateResyncCounter(db, logger, name)
+}
+
+func updateResyncCounter(db *sql.DB, logger *log.Logger, name string) error {
+	ctx := context.Background()
+
+	_, err := db.ExecContext(ctx, `
+		INSERT OR REPLACE INTO resync_counter (key, value)
+		VALUES (?, ?)
+	`, name, RESYNC_COUNTER_VERSION)
+	if err != nil {
+		return fmt.Errorf("failed to update resync counter: %w", err)
+	}
+
+	logger.Infof("updated %s version to %d", name, RESYNC_COUNTER_VERSION)
+	return nil
 }

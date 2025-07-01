@@ -2037,3 +2037,136 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 	require.Equal(t, uint64(2), bridges[3].BlockNum)
 	require.Equal(t, uint64(0), bridges[3].BlockPos)
 }
+
+func TestResyncFunctionality(t *testing.T) {
+	// Test case 1: First time initialization (no resync_counter table)
+	t.Run("first_time_initialization", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "bridgesyncTestResync1.sqlite")
+		logger := log.WithFields("module", "bridge-syncer")
+
+		// This should not panic and should create the resync counter
+		p, err := newProcessor(dbPath, "bridge-syncer", logger)
+		require.NoError(t, err)
+		require.NotNil(t, p)
+
+		// Verify resync counter was created with correct version
+		var version uint8
+		err = p.db.QueryRow("SELECT value FROM resync_counter WHERE key = ?", "bridge-syncer").Scan(&version)
+		require.NoError(t, err)
+		require.Equal(t, RESYNC_COUNTER_VERSION, version)
+	})
+
+	// Test case 2: Version mismatch with empty tables (should update counter)
+	t.Run("version_mismatch_empty_tables", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "bridgesyncTestResync2.sqlite")
+		logger := log.WithFields("module", "bridge-syncer")
+
+		// Create database with old version
+		err := migrations.RunMigrations(dbPath)
+		require.NoError(t, err)
+
+		db, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+
+		// Insert old version
+		_, err = db.Exec("INSERT INTO resync_counter (key, value) VALUES (?, ?)", "bridge-syncer", 0)
+		require.NoError(t, err)
+		db.Close()
+
+		// This should not panic since tables are empty, just update counter
+		p, err := newProcessor(dbPath, "bridge-syncer", logger)
+		require.NoError(t, err)
+		require.NotNil(t, p)
+
+		// Verify version was updated
+		var version uint8
+		err = p.db.QueryRow("SELECT value FROM resync_counter WHERE key = ?", "bridge-syncer").Scan(&version)
+		require.NoError(t, err)
+		require.Equal(t, RESYNC_COUNTER_VERSION, version)
+	})
+
+	// Test case 3: Version mismatch with data in tables (should panic)
+	t.Run("version_mismatch_with_data_panic", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "bridgesyncTestResync3.sqlite")
+		logger := log.WithFields("module", "bridge-syncer")
+
+		// Create database with old version and some data
+		err := migrations.RunMigrations(dbPath)
+		require.NoError(t, err)
+
+		db, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+
+		// Insert old version
+		_, err = db.Exec("INSERT INTO resync_counter (key, value) VALUES (?, ?)", "bridge-syncer", 0)
+		require.NoError(t, err)
+
+		// Insert some data
+		_, err = db.Exec("INSERT INTO block (num, hash) VALUES (1, '0x123')")
+		require.NoError(t, err)
+
+		db.Close()
+
+		// This should panic since there's data in the tables
+		require.Panics(t, func() {
+			newProcessor(dbPath, "bridge-syncer", logger)
+		})
+	})
+
+	// Test case 4: Correct version (should not panic)
+	t.Run("correct_version", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "bridgesyncTestResync4.sqlite")
+		logger := log.WithFields("module", "bridge-syncer")
+
+		// Create database with correct version
+		err := migrations.RunMigrations(dbPath)
+		require.NoError(t, err)
+
+		db, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+
+		// Insert correct version
+		_, err = db.Exec("INSERT INTO resync_counter (key, value) VALUES (?, ?)", "bridge-syncer", RESYNC_COUNTER_VERSION)
+		require.NoError(t, err)
+
+		db.Close()
+
+		// This should not panic
+		p, err := newProcessor(dbPath, "bridge-syncer", logger)
+		require.NoError(t, err)
+		require.NotNil(t, p)
+
+		// Verify version is still correct
+		var version uint8
+		err = p.db.QueryRow("SELECT value FROM resync_counter WHERE key = ?", "bridge-syncer").Scan(&version)
+		require.NoError(t, err)
+		require.Equal(t, RESYNC_COUNTER_VERSION, version)
+	})
+
+	// Test case 5: Empty resync_counter table (should update counter)
+	t.Run("empty_resync_counter_table", func(t *testing.T) {
+		dbPath := path.Join(t.TempDir(), "bridgesyncTestResync5.sqlite")
+		logger := log.WithFields("module", "bridge-syncer")
+
+		// Create database with empty resync_counter table
+		err := migrations.RunMigrations(dbPath)
+		require.NoError(t, err)
+
+		db, err := db.NewSQLiteDB(dbPath)
+		require.NoError(t, err)
+
+		// Don't insert any version - table will be empty
+		db.Close()
+
+		// This should not panic since tables are empty, just update counter
+		p, err := newProcessor(dbPath, "bridge-syncer", logger)
+		require.NoError(t, err)
+		require.NotNil(t, p)
+
+		// Verify version was set
+		var version uint8
+		err = p.db.QueryRow("SELECT value FROM resync_counter WHERE key = ?", "bridge-syncer").Scan(&version)
+		require.NoError(t, err)
+		require.Equal(t, RESYNC_COUNTER_VERSION, version)
+	})
+}
