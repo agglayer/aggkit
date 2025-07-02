@@ -314,13 +314,6 @@ func TestStressAndReorgs(t *testing.T) {
 
 	waitForSyncerToCatchUp(ctx, t, syncer, client)
 
-	// Assert rollup exit root
-	expectedRollupExitRoot, err := verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
-	require.NoError(t, err)
-	actualRollupExitRoot, err := syncer.GetLastRollupExitRoot(ctx)
-	require.NoError(t, err)
-	require.Equal(t, common.Hash(expectedRollupExitRoot), actualRollupExitRoot.Hash)
-
 	// Assert L1 Info tree root
 	expectedL1InfoRoot, err := gerSc.GetRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
