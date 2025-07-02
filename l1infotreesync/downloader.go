@@ -14,8 +14,10 @@ import (
 )
 
 var (
-	updateL1InfoTreeSignatureV1             = crypto.Keccak256Hash([]byte("UpdateL1InfoTree(bytes32,bytes32)"))
-	updateL1InfoTreeSignatureV2             = crypto.Keccak256Hash([]byte("UpdateL1InfoTreeV2(bytes32,uint32,uint256,uint64)"))
+	updateL1InfoTreeSignatureV1 = crypto.Keccak256Hash([]byte("UpdateL1InfoTree(bytes32,bytes32)"))
+	updateL1InfoTreeSignatureV2 = crypto.Keccak256Hash(
+		[]byte("UpdateL1InfoTreeV2(bytes32,uint32,uint256,uint64)"),
+	)
 	verifyBatchesTrustedAggregatorSignature = crypto.Keccak256Hash(
 		[]byte("VerifyBatchesTrustedAggregator(uint32,uint64,bytes32,bytes32,address)"),
 	)
