@@ -226,8 +226,8 @@ const docTemplate = `{
                     },
                     {
                         "type": "boolean",
-                        "description": "Whether to include proof fields in response (default false)",
-                        "name": "populate_proofs",
+                        "description": "Whether to include full response fields (default false)",
+                        "name": "include_all_fields",
                         "in": "query"
                     }
                 ],

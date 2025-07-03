@@ -545,9 +545,9 @@ paths:
         in: query
         name: from_address
         type: string
-      - description: Whether to include proof fields in response (default false)
+      - description: Whether to include full response fields (default false)
         in: query
-        name: populate_proofs
+        name: include_all_fields
         type: boolean
       produces:
       - application/json

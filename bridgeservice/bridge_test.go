@@ -796,10 +796,10 @@ func TestGetClaimsHandler(t *testing.T) {
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		queryParams := url.Values{
-			networkIDParam:      []string{fmt.Sprintf("%d", mainnetNetworkID)},
-			pageNumberParam:     []string{"1"},
-			pageSizeParam:       []string{"10"},
-			populateProofsParam: []string{"true"},
+			networkIDParam:   []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam:  []string{"1"},
+			pageSizeParam:    []string{"10"},
+			includeAllFields: []string{"true"},
 		}
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
@@ -872,7 +872,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(networkIDParam, "10")
 		query.Set(pageNumberParam, "1")
 		query.Set(pageSizeParam, "10")
-		query.Set(populateProofsParam, "true")
+		query.Set(includeAllFields, "true")
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusOK, w.Code)
@@ -940,10 +940,10 @@ func TestGetClaimsHandler(t *testing.T) {
 			Return(expectedClaims, len(expectedClaims), nil)
 
 		queryParams := url.Values{
-			networkIDParam:      []string{fmt.Sprintf("%d", mainnetNetworkID)},
-			pageNumberParam:     []string{"1"},
-			pageSizeParam:       []string{"10"},
-			populateProofsParam: []string{"false"},
+			networkIDParam:   []string{fmt.Sprintf("%d", mainnetNetworkID)},
+			pageNumberParam:  []string{"1"},
+			pageSizeParam:    []string{"10"},
+			includeAllFields: []string{"false"},
 		}
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, queryParams.Encode()), nil)
@@ -967,7 +967,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		query.Set(networkIDParam, "0")
 		query.Set(pageNumberParam, "1")
 		query.Set(pageSizeParam, "10")
-		query.Set(populateProofsParam, "invalid")
+		query.Set(includeAllFields, "invalid")
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)

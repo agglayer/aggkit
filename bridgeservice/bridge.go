@@ -42,15 +42,15 @@ const (
 	BridgeV1Prefix = "/bridge/v1"
 	meterName      = "github.com/agglayer/aggkit/bridgeservice"
 
-	networkIDParam      = "network_id"
-	networkIDsParam     = "network_ids"
-	pageNumberParam     = "page_number"
-	pageSizeParam       = "page_size"
-	depositCountParam   = "deposit_count"
-	fromAddressParam    = "from_address"
-	leafIndexParam      = "leaf_index"
-	globalIndexParam    = "global_index"
-	populateProofsParam = "populate_proofs"
+	networkIDParam    = "network_id"
+	networkIDsParam   = "network_ids"
+	pageNumberParam   = "page_number"
+	pageSizeParam     = "page_size"
+	depositCountParam = "deposit_count"
+	fromAddressParam  = "from_address"
+	leafIndexParam    = "leaf_index"
+	globalIndexParam  = "global_index"
+	includeAllFields  = "include_all_fields"
 
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
@@ -361,15 +361,15 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Param page_size query uint32 false "Page size (default 100)"
 // @Param network_ids query []uint32 false "Filter by one or more network IDs"
 // @Param from_address query string false "Filter by from address"
-// @Param populate_proofs query bool false "Whether to include proof fields in response (default false)"
+// @Param include_all_fields query bool false "Whether to include full response fields (default false)"
 // @Produce json
 // @Success 200 {object} types.ClaimsResult
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /claims [get]
 func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
-	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s, populate_proofs=%s)",
-		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(populateProofsParam))
+	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s, include_all_fields=%s)",
+		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(includeAllFields))
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -387,13 +387,13 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	fromAddress := c.Query(fromAddressParam)
 
-	// Parse populate_proofs parameter (default to false)
-	populateProofs := false
-	if populateProofsStr := c.Query(populateProofsParam); populateProofsStr != "" {
-		populateProofs, err = strconv.ParseBool(populateProofsStr)
+	// Parse include_all_fields parameter (default to false)
+	includeAllFieldsFlag := false
+	if includeAllFieldsStr := c.Query(includeAllFields); includeAllFieldsStr != "" {
+		includeAllFieldsFlag, err = strconv.ParseBool(includeAllFieldsStr)
 		if err != nil {
-			b.logger.Warnf("invalid populate_proofs parameter: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid populate_proofs parameter"})
+			b.logger.Warnf("invalid include_all_fields parameter: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid include_all_fields parameter"})
 			return
 		}
 	}
@@ -407,8 +407,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	defer cancel()
 
 	b.logger.Debugf(
-		"fetching claims (network id=%d, page=%d, size=%d, network_ids=%v, from_address=%s, populate_proofs=%t)",
-		networkID, pageNumber, pageSize, networkIDs, fromAddress, populateProofs)
+		"fetching claims (network id=%d, page=%d, size=%d, network_ids=%v, from_address=%s, include_all_fields=%t)",
+		networkID, pageNumber, pageSize, networkIDs, fromAddress, includeAllFieldsFlag)
 
 	var (
 		claims []*bridgesync.Claim
@@ -441,7 +441,7 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	// Use conditional function to create claim responses
 	claimResponses := make([]*types.ClaimResponse, len(claims))
 	for i, claim := range claims {
-		claimResponses[i] = NewClaimResponse(claim, populateProofs)
+		claimResponses[i] = NewClaimResponse(claim, includeAllFieldsFlag)
 	}
 
 	c.JSON(http.StatusOK,
