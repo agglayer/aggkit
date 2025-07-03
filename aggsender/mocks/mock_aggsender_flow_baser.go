@@ -310,17 +310,66 @@ func (_c *AggsenderFlowBaser_StartL2Block_Call) RunAndReturn(run func() uint64) 
 	return _c
 }
 
-// VerifyBuildParams provides a mock function with given fields: fullCert
-func (_m *AggsenderFlowBaser) VerifyBuildParams(fullCert *types.CertificateBuildParams) error {
-	ret := _m.Called(fullCert)
+// VerifyBlockRangeGaps provides a mock function with given fields: ctx, lastSentCertificate, newFromBlock, newToBlock
+func (_m *AggsenderFlowBaser) VerifyBlockRangeGaps(ctx context.Context, lastSentCertificate *types.CertificateHeader, newFromBlock uint64, newToBlock uint64) error {
+	ret := _m.Called(ctx, lastSentCertificate, newFromBlock, newToBlock)
+
+	if len(ret) == 0 {
+		panic("no return value specified for VerifyBlockRangeGaps")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateHeader, uint64, uint64) error); ok {
+		r0 = rf(ctx, lastSentCertificate, newFromBlock, newToBlock)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// AggsenderFlowBaser_VerifyBlockRangeGaps_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'VerifyBlockRangeGaps'
+type AggsenderFlowBaser_VerifyBlockRangeGaps_Call struct {
+	*mock.Call
+}
+
+// VerifyBlockRangeGaps is a helper method to define mock.On call
+//   - ctx context.Context
+//   - lastSentCertificate *types.CertificateHeader
+//   - newFromBlock uint64
+//   - newToBlock uint64
+func (_e *AggsenderFlowBaser_Expecter) VerifyBlockRangeGaps(ctx interface{}, lastSentCertificate interface{}, newFromBlock interface{}, newToBlock interface{}) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
+	return &AggsenderFlowBaser_VerifyBlockRangeGaps_Call{Call: _e.mock.On("VerifyBlockRangeGaps", ctx, lastSentCertificate, newFromBlock, newToBlock)}
+}
+
+func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) Run(run func(ctx context.Context, lastSentCertificate *types.CertificateHeader, newFromBlock uint64, newToBlock uint64)) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*types.CertificateHeader), args[2].(uint64), args[3].(uint64))
+	})
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) Return(_a0 error) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_VerifyBlockRangeGaps_Call) RunAndReturn(run func(context.Context, *types.CertificateHeader, uint64, uint64) error) *AggsenderFlowBaser_VerifyBlockRangeGaps_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// VerifyBuildParams provides a mock function with given fields: ctx, fullCert
+func (_m *AggsenderFlowBaser) VerifyBuildParams(ctx context.Context, fullCert *types.CertificateBuildParams) error {
+	ret := _m.Called(ctx, fullCert)
 
 	if len(ret) == 0 {
 		panic("no return value specified for VerifyBuildParams")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(*types.CertificateBuildParams) error); ok {
-		r0 = rf(fullCert)
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificateBuildParams) error); ok {
+		r0 = rf(ctx, fullCert)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -334,14 +383,15 @@ type AggsenderFlowBaser_VerifyBuildParams_Call struct {
 }
 
 // VerifyBuildParams is a helper method to define mock.On call
+//   - ctx context.Context
 //   - fullCert *types.CertificateBuildParams
-func (_e *AggsenderFlowBaser_Expecter) VerifyBuildParams(fullCert interface{}) *AggsenderFlowBaser_VerifyBuildParams_Call {
-	return &AggsenderFlowBaser_VerifyBuildParams_Call{Call: _e.mock.On("VerifyBuildParams", fullCert)}
+func (_e *AggsenderFlowBaser_Expecter) VerifyBuildParams(ctx interface{}, fullCert interface{}) *AggsenderFlowBaser_VerifyBuildParams_Call {
+	return &AggsenderFlowBaser_VerifyBuildParams_Call{Call: _e.mock.On("VerifyBuildParams", ctx, fullCert)}
 }
 
-func (_c *AggsenderFlowBaser_VerifyBuildParams_Call) Run(run func(fullCert *types.CertificateBuildParams)) *AggsenderFlowBaser_VerifyBuildParams_Call {
+func (_c *AggsenderFlowBaser_VerifyBuildParams_Call) Run(run func(ctx context.Context, fullCert *types.CertificateBuildParams)) *AggsenderFlowBaser_VerifyBuildParams_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*types.CertificateBuildParams))
+		run(args[0].(context.Context), args[1].(*types.CertificateBuildParams))
 	})
 	return _c
 }
@@ -351,7 +401,7 @@ func (_c *AggsenderFlowBaser_VerifyBuildParams_Call) Return(_a0 error) *Aggsende
 	return _c
 }
 
-func (_c *AggsenderFlowBaser_VerifyBuildParams_Call) RunAndReturn(run func(*types.CertificateBuildParams) error) *AggsenderFlowBaser_VerifyBuildParams_Call {
+func (_c *AggsenderFlowBaser_VerifyBuildParams_Call) RunAndReturn(run func(context.Context, *types.CertificateBuildParams) error) *AggsenderFlowBaser_VerifyBuildParams_Call {
 	_c.Call.Return(run)
 	return _c
 }

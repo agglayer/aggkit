@@ -1,15 +1,11 @@
 {
   "deployment_stages": {
-    "deploy_l1": false,
-    "deploy_agglayer": false,
+    "deploy_l2_contracts": true,
     "deploy_cdk_bridge_infra": false,
     "deploy_optimism_rollup": false
   },
   "args": {
     "verbosity": "debug",
-    "deployment_suffix": "-002",
-    "zkevm_rollup_chain_id": 20202,
-    "zkevm_rollup_id": 2,
     "cdk_node_image": "aggkit:local",
     "additional_services": [],
     "erigon_strict_mode": false,

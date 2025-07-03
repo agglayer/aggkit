@@ -32,21 +32,26 @@ type BaseFlowConfig struct {
 	// It is used to determine the first block to include in the certificate.
 	// It can be 0
 	StartL2Block uint64
+	// RequireNoFEPBlockGap indicates whether the flow requires no gap between the
+	// first FEP block and last settled certificate.
+	RequireNoFEPBlockGap bool
 }
 
 // NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
 func NewBaseFlowConfigDefault() BaseFlowConfig {
 	return BaseFlowConfig{
-		MaxCertSize:  0, // 0 means no limit
-		StartL2Block: 0, // 0 means start from the first block
+		MaxCertSize:          0,     // 0 means no limit
+		StartL2Block:         0,     // 0 means start from the first block
+		RequireNoFEPBlockGap: false, // default is false, can be set to true if needed
 	}
 }
 
 // NewBaseFlowConfig returns a BaseFlowConfig with the specified maxCertSize and startL2Block
-func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64) BaseFlowConfig {
+func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64, requireNoFEPBlockGap bool) BaseFlowConfig {
 	return BaseFlowConfig{
-		MaxCertSize:  maxCertSize,
-		StartL2Block: startL2Block,
+		MaxCertSize:          maxCertSize,
+		StartL2Block:         startL2Block,
+		RequireNoFEPBlockGap: requireNoFEPBlockGap,
 	}
 }
 
@@ -133,9 +138,16 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 }
 
 // VerifyBuildParams verifies the build parameters
-func (f *baseFlow) VerifyBuildParams(fullCert *types.CertificateBuildParams) error {
-	// this will be a good place to add more verification checks in the future
-	return f.verifyClaimGERs(fullCert.Claims)
+func (f *baseFlow) VerifyBuildParams(ctx context.Context, fullCert *types.CertificateBuildParams) error {
+	if err := f.verifyRetryCertStartingBlock(fullCert); err != nil {
+		return fmt.Errorf("error verifying retry certificate starting block: %w", err)
+	}
+
+	if err := f.verifyClaimGERs(fullCert.Claims); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // limitCertSize limits certificate size based on the max size configuration parameter
@@ -470,6 +482,71 @@ func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 			return fmt.Errorf("claim[GlobalIndex: %s, BlockNum: %d]: GER mismatch. Expected: %s, got: %s",
 				claim.GlobalIndex.String(), claim.BlockNum, claim.GlobalExitRoot.String(), ger.String())
 		}
+	}
+
+	return nil
+}
+
+// verifyRetryCertStartingBlock verifies that the starting block of a retry certificate
+// matches the last sent (InError) certificate's starting block.
+func (f *baseFlow) verifyRetryCertStartingBlock(buildParams *types.CertificateBuildParams) error {
+	if buildParams.IsARetry() && buildParams.FromBlock != buildParams.LastSentCertificate.FromBlock {
+		return fmt.Errorf("retry certificate fromBlock %d != last sent certificate fromBlock %d",
+			buildParams.FromBlock, buildParams.LastSentCertificate.FromBlock)
+	}
+
+	return nil
+}
+
+// VerifyBlockRangeGaps checks if there are any gaps in the block range of the certificate
+// and verifies that there are no new bridges or claims in the gap.
+func (f *baseFlow) VerifyBlockRangeGaps(
+	ctx context.Context,
+	lastSentCertificate *types.CertificateHeader,
+	newFromBlock, newToBlock uint64) error {
+	if lastSentCertificate == nil {
+		return nil
+	}
+
+	lastSettledFromBlock := uint64(0)
+	lastSettledToBlock := uint64(0)
+	if lastSentCertificate.Status.IsInError() {
+		// if the last certificate was in error, we need to check the last
+		// settled range to be correct
+		// we will leave the from block as 0, since we only require the to block
+		// to check the gap between the last sent certificate and the new one
+		if lastSentCertificate.FromBlock > 0 {
+			lastSettledToBlock = lastSentCertificate.FromBlock - 1
+		}
+	} else {
+		lastSettledFromBlock = lastSentCertificate.FromBlock
+		lastSettledToBlock = lastSentCertificate.ToBlock
+	}
+
+	nextBlockRange := types.NewBlockRange(newFromBlock, newToBlock)
+	lastBlockRange := types.NewBlockRange(lastSettledFromBlock, lastSettledToBlock)
+
+	// case 2: is a new cert but is not contiguous to previous one
+	gap := nextBlockRange.Gap(lastBlockRange)
+	if gap.IsEmpty() {
+		return nil
+	}
+
+	bridgeDataInTheGap, claimDataInTheGap, err := f.l2BridgeQuerier.GetBridgesAndClaims(
+		ctx, gap.FromBlock, gap.ToBlock)
+	if err != nil {
+		return fmt.Errorf("error getting bridges and claims in the gap %s: %w", gap.String(), err)
+	}
+	if len(bridgeDataInTheGap) > 0 || len(claimDataInTheGap) > 0 {
+		return fmt.Errorf("there are new bridges or claims in the gap %s, len(bridges)=%d. len(claims)=%d",
+			gap.String(), len(bridgeDataInTheGap), len(claimDataInTheGap))
+	}
+
+	if !gap.IsEmpty() && f.cfg.RequireNoFEPBlockGap {
+		// even though we do not have bridge transactions in the gap,
+		// we need to return an error if RequireNoFEPBlockGap is true
+		return fmt.Errorf("block gap detected: %s without bridge transactions, but RequireNoFEPBlockGap is true",
+			gap.String())
 	}
 
 	return nil

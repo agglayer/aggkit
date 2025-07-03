@@ -33,7 +33,6 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
-	require.Equal(t, cfg.AggSender.RequireNoFEPBlockGap, true)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.SovereignRollupAddr, cfg.AggSender.SovereignRollupAddr)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")
@@ -107,6 +106,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	AggchainProofURL = "http://localhost:5576"
 	UseAggkitProverTLS = true
 	GenerateAggchainProofTimeout = "1h"
+	DelayBeetweenRetries = "1s"
 
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
@@ -148,5 +148,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, ethermanDeprecatedHint)
 	require.ErrorContains(t, err, networkConfigDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigUsePolTokenAddrHint)
-	require.ErrorContains(t, err, l1NetworkConfigUseRollupAddrrHint)
+	require.ErrorContains(t, err, l1NetworkConfigUseRollupAddrHint)
+	require.ErrorContains(t, err, delayBetweenRetriesHint)
 }

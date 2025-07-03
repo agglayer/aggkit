@@ -50,7 +50,6 @@ func Test_AggchainProverFlow_getCertificateTypeToGenerate(t *testing.T) {
 			t.Parallel()
 
 			data := NewAggchainProverFlowTestData(t,
-				NewAggchainProverFlowConfigDefault(),
 				NewBaseFlowConfigDefault())
 			data.mockOptimisticModeQuerier.EXPECT().IsOptimisticModeOn().Return(tc.optimisticModeReturn, tc.optimisticModeError).Once()
 			certificateType, err := data.sut.getCertificateTypeToGenerate()
@@ -68,9 +67,7 @@ func Test_AggchainProverFlow_getCertificateTypeToGenerate(t *testing.T) {
 // the key part of it is the call to GetCertificateBuildParamsInternal that means that are getting
 // a new block range and is not taking advantage of previous proofs
 func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *testing.T) {
-	data := NewAggchainProverFlowTestData(t,
-		NewAggchainProverFlowConfigDefault(),
-		NewBaseFlowConfigDefault())
+	data := NewAggchainProverFlowTestData(t, NewBaseFlowConfigDefault())
 	lastCert := &types.CertificateHeader{
 		Height:    3,
 		FromBlock: 10,
@@ -94,7 +91,7 @@ func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *
 	data.mockFlowBase.EXPECT().GetCertificateBuildParamsInternal(data.ctx, types.CertificateTypeFEP).Return(
 		nextCert, nil).Once()
 	// After the function verifyBuildParamsAndGenerateProof calls to baseFlow.VerifyBuildParams()
-	data.mockFlowBase.EXPECT().VerifyBuildParams(mock.Anything).Return(nil).Once()
+	data.mockFlowBase.EXPECT().VerifyBuildParams(mock.Anything, mock.Anything).Return(nil).Once()
 	// GenerateAggchainProof get data for calling prover
 	data.mockL1InfoTreeQuerier.EXPECT().GetFinalizedL1InfoTreeData(data.ctx).Return(treetypes.Proof{},
 		&l1infotreesync.L1InfoTreeLeaf{}, &treetypes.Root{}, nil).Once()
@@ -116,7 +113,7 @@ func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *
 }
 
 func Test_AggchainProverFlow_IfGenerateOptimisticCertCallsToAggkitProverSpecificEndpoint(t *testing.T) {
-	data := NewAggchainProverFlowTestData(t, NewAggchainProverFlowConfigDefault(), NewBaseFlowConfigDefault())
+	data := NewAggchainProverFlowTestData(t, NewBaseFlowConfigDefault())
 	lastCert := &types.CertificateHeader{
 		Height:    3,
 		FromBlock: 10,
@@ -172,9 +169,7 @@ type AggchainProverFlowTestData struct {
 	sut *AggchainProverFlow
 }
 
-func NewAggchainProverFlowTestData(t *testing.T,
-	cfg AggchainProverFlowConfig,
-	cfgBase BaseFlowConfig) *AggchainProverFlowTestData {
+func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *AggchainProverFlowTestData {
 	t.Helper()
 	res := &AggchainProverFlowTestData{
 		mockAggchainProofClient:   mocks.NewAggchainProofClientInterface(t),
@@ -195,8 +190,8 @@ func NewAggchainProverFlowTestData(t *testing.T,
 
 	res.sut = NewAggchainProverFlow(
 		log.WithFields("flowManager", "AggchainProverFlowTestData"),
+		NewAggchainProverFlowConfigDefault(),
 		res.mockFlowBase,
-		cfg,
 		res.mockAggchainProofClient,
 		res.mockStorage,
 		res.mockL1InfoTreeQuerier,

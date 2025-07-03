@@ -15,9 +15,8 @@ import (
 
 var (
 	updateL1InfoTreeSignatureV1 = crypto.Keccak256Hash([]byte("UpdateL1InfoTree(bytes32,bytes32)"))
-	updateL1InfoTreeSignatureV2 = crypto.Keccak256Hash([]byte("UpdateL1InfoTreeV2(bytes32,uint32,uint256,uint64)"))
-	verifyBatchesSignature      = crypto.Keccak256Hash(
-		[]byte("VerifyBatches(uint32,uint64,bytes32,bytes32,address)"),
+	updateL1InfoTreeSignatureV2 = crypto.Keccak256Hash(
+		[]byte("UpdateL1InfoTreeV2(bytes32,uint32,uint256,uint64)"),
 	)
 	verifyBatchesTrustedAggregatorSignature = crypto.Keccak256Hash(
 		[]byte("VerifyBatchesTrustedAggregator(uint32,uint64,bytes32,bytes32,address)"),
@@ -124,7 +123,6 @@ func buildAppender(client aggkittypes.BaseEthereumClienter, globalExitRoot,
 
 		return nil
 	}
-
 	appender[updateL1InfoTreeSignatureV2] = func(b *sync.EVMBlock, l types.Log) error {
 		l1InfoTreeUpdateV2, err := ger.ParseUpdateL1InfoTreeV2(l)
 		if err != nil {
@@ -138,26 +136,6 @@ func buildAppender(client aggkittypes.BaseEthereumClienter, globalExitRoot,
 			LeafCount:         l1InfoTreeUpdateV2.LeafCount,
 			Blockhash:         common.BytesToHash(l1InfoTreeUpdateV2.Blockhash.Bytes()),
 			MinTimestamp:      l1InfoTreeUpdateV2.MinTimestamp,
-		}})
-
-		return nil
-	}
-	// This event is coming from RollupManager
-	appender[verifyBatchesSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		verifyBatches, err := rm.ParseVerifyBatches(l)
-		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using rm.ParseVerifyBatches: %w",
-				l, err,
-			)
-		}
-		b.Events = append(b.Events, Event{VerifyBatches: &VerifyBatches{
-			BlockPosition: uint64(l.Index),
-			RollupID:      verifyBatches.RollupID,
-			NumBatch:      verifyBatches.NumBatch,
-			StateRoot:     verifyBatches.StateRoot,
-			ExitRoot:      verifyBatches.ExitRoot,
-			Aggregator:    verifyBatches.Aggregator,
 		}})
 
 		return nil

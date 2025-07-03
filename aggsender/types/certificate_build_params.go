@@ -140,7 +140,7 @@ func (c *CertificateBuildParams) IsEmpty() bool {
 
 // IsARetry returns true if the certificate is a retry
 func (c *CertificateBuildParams) IsARetry() bool {
-	return c != nil && c.RetryCount > 0
+	return c != nil && c.RetryCount > 0 && c.LastSentCertificate != nil
 }
 
 // MaxDepoitCount returns the maximum deposit count in the certificate
