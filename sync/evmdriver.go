@@ -74,8 +74,6 @@ type processorInterface interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	ProcessBlock(ctx context.Context, block Block) error
 	Reorg(ctx context.Context, firstReorgedBlock uint64) error
-	// CheckCompatibilityData is the interface to set / retrieve the compatibility data to storage
-	//compatibility.CompatibilityDataStorager[T]
 }
 
 type ReorgDetector interface {

@@ -307,13 +307,13 @@ type Event struct {
 	RemoveLegacyToken    *RemoveLegacyToken
 }
 
-// BridgeSyncRuntimeData is the data that is used to check that the DB is compatible with the runtime data
-// basically it contains the relevant data from runtime environment
+// BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
+// It includes chain ID, contract addresses, and database version information.
 type BridgeSyncRuntimeData struct {
 	// This fields are comming from legacy sync.RuntimeData
 	ChainID   uint64
 	Addresses []common.Address
-	// This is the specific field added for this syncer
+	// DBVersion tracks the database schema version for compatibility validation
 	DBVersion *int
 }
 
@@ -335,9 +335,10 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 	if err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
 		return err
 	}
-	// TODO: check dbVersion
 	if storage.DBVersion == nil || *storage.DBVersion != *b.DBVersion {
-		return fmt.Errorf("This version of bridge syncer required a resync! previous data is not compatible")
+		return fmt.Errorf("database schema version mismatch (current: %v, stored: %v). "+
+			"Drop BridgeL1Sync and BridgeL2Sync databases and restart",
+			b.DBVersion, storage.DBVersion)
 	}
 	return nil
 }
