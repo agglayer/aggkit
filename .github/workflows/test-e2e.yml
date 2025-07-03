@@ -104,7 +104,6 @@ jobs:
     name: Check results for single l2 network (pessimistic)
     needs:
       - test-single-l2-network-fork12-pessimistic
-    # if: always() && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -129,7 +128,6 @@ jobs:
     name: Check results for single l2 network (op-succinct)
     needs:
       - test-single-l2-network-fork12-op-succinct
-    # if: always() && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -176,7 +174,6 @@ jobs:
     name: Check results for multi l2 networks (2 chains)
     needs:
       - test-multi-l2-networks-2-chains
-    # if: always() && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -205,7 +202,6 @@ jobs:
     name: Check results for multi l2 networks (3 chains)
     needs:
       - test-multi-l2-networks-3-chains
-    # if: always() && github.event_name != 'schedule'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -220,7 +216,7 @@ jobs:
       - test-multi-l2-networks-3-chains
       - get-kurtosis-cdk-commit
     runs-on: ubuntu-latest
-    # if: always() && github.event_name == 'schedule'
+    if: always() && github.event_name == 'schedule'
     steps:
       - name: Determine workflow status
         id: status
@@ -245,18 +241,10 @@ jobs:
           channel-id: 'C092K6Z0EUT'
           message: |
             ${{ steps.status.outputs.emoji }} **Daily E2E Tests Report**
-            **Status:** ${{ steps.status.outputs.message }}
-            **Kurtosis CDK Commit:** `${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}`
-            **Workflow:** ${{ github.workflow }}
-            **Run ID:** ${{ github.run_id }}
-            **Commit:** ${{ github.sha }}
-            ${{ steps.status.outputs.emoji }} **Daily E2E Tests Report**
 
             **Status:** ${{ steps.status.outputs.message }}
             **Kurtosis CDK Commit:** `${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}`
             **Workflow:** ${{ github.workflow }}
-            **Run ID:** ${{ github.run_id }}
-            **Commit:** ${{ github.sha }}
 
             **Test Results:**
             • Single L2 (pessimistic): ${{ needs.test-single-l2-network-fork12-pessimistic.result }}
