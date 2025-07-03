@@ -960,10 +960,8 @@ func (p *processor) isHalted() bool {
 }
 
 func checkAndHandleResync(db *sql.DB, logger *log.Logger, name string) error {
-	ctx := context.Background()
-
 	var currentVersion uint8
-	err := db.QueryRowContext(ctx, "SELECT value FROM resync_counter WHERE key = ?", name).Scan(&currentVersion)
+	err := db.QueryRow("SELECT value FROM resync_counter WHERE key = ?", name).Scan(&currentVersion)
 
 	// Check if resync is required
 	resyncRequired := false
@@ -988,7 +986,7 @@ func checkAndHandleResync(db *sql.DB, logger *log.Logger, name string) error {
 	}
 	for _, table := range tablesToCheck {
 		var count int
-		err := db.QueryRowContext(ctx, fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count)
+		err := db.QueryRow(fmt.Sprintf("SELECT COUNT(*) FROM %s", table)).Scan(&count)
 		if err != nil {
 			return fmt.Errorf("failed to check if table %s exists: %w", table, err)
 		}
@@ -1001,11 +999,10 @@ func checkAndHandleResync(db *sql.DB, logger *log.Logger, name string) error {
 }
 
 func updateResyncCounter(db *sql.DB, logger *log.Logger, name string) error {
-	ctx := context.Background()
-
-	_, err := db.ExecContext(ctx, `
-		INSERT OR REPLACE INTO resync_counter (key, value)
+	_, err := db.ExecContext(context.Background(), `
+		INSERT INTO resync_counter (key, value)
 		VALUES (?, ?)
+		ON CONFLICT(key) DO UPDATE SET value = excluded.value
 	`, name, ResyncCounterVersion)
 	if err != nil {
 		return fmt.Errorf("failed to update resync counter: %w", err)
