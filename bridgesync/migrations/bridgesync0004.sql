@@ -7,5 +7,3 @@ CREATE TABLE resync_counter (
     value INTEGER NOT NULL
 );
 
--- Insert initial resync counter value
-INSERT INTO resync_counter (key, value) VALUES ('resync_version', 1);
