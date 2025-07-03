@@ -307,6 +307,41 @@ type Event struct {
 	RemoveLegacyToken    *RemoveLegacyToken
 }
 
+// BridgeSyncRuntimeData is the data that is used to check that the DB is compatible with the runtime data
+// basically it contains the relevant data from runtime environment
+type BridgeSyncRuntimeData struct {
+	// This fields are comming from legacy sync.RuntimeData
+	ChainID   uint64
+	Addresses []common.Address
+	// This is the specific field added for this syncer
+	DBVersion *int
+}
+
+func (b BridgeSyncRuntimeData) String() string {
+	res := fmt.Sprintf("ChainID: %d, Addresses: ", b.ChainID)
+	for _, addr := range b.Addresses {
+		res += addr.String() + ", "
+	}
+	if b.DBVersion != nil {
+		res += fmt.Sprintf("DBVersion: %d", *b.DBVersion)
+	}
+	return res
+}
+func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error {
+	tmp := sync.RuntimeData{
+		ChainID:   b.ChainID,
+		Addresses: b.Addresses,
+	}
+	if err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
+		return err
+	}
+	// TODO: check dbVersion
+	if storage.DBVersion == nil || *storage.DBVersion != *b.DBVersion {
+		return fmt.Errorf("This version of bridge syncer required a resync! previous data is not compatible")
+	}
+	return nil
+}
+
 type processor struct {
 	db           *sql.DB
 	exitTree     *tree.AppendOnlyTree
@@ -314,7 +349,7 @@ type processor struct {
 	mu           mutex.RWMutex
 	halted       bool
 	haltedReason string
-	compatibility.CompatibilityDataStorager[sync.RuntimeData]
+	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
 func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, error) {
@@ -332,7 +367,7 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 		db:       database,
 		exitTree: exitTree,
 		log:      logger,
-		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
 			name,
 		),
