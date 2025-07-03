@@ -310,7 +310,7 @@ type Event struct {
 // BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
 // It includes chain ID, contract addresses, and database version information.
 type BridgeSyncRuntimeData struct {
-	// This fields are comming from legacy sync.RuntimeData
+	// This fields are coming from legacy sync.RuntimeData
 	ChainID   uint64
 	Addresses []common.Address
 	// DBVersion tracks the database schema version for compatibility validation
