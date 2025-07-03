@@ -756,7 +756,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
 	})
 
-	t.Run("GetClaims for L1 network with populate_proofs=true", func(t *testing.T) {
+	t.Run("GetClaims for L1 network with include_all_fields=true", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
 
@@ -828,7 +828,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("GetClaims for L2 network with populate_proofs=true", func(t *testing.T) {
+	t.Run("GetClaims for L2 network with include_all_fields=true", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
 
@@ -900,7 +900,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		}
 	})
 
-	t.Run("GetClaims with populate_proofs=false (default behavior)", func(t *testing.T) {
+	t.Run("GetClaims with include_all_fields=false (default behavior)", func(t *testing.T) {
 		page := uint32(1)
 		pageSize := uint32(10)
 
@@ -960,7 +960,7 @@ func TestGetClaimsHandler(t *testing.T) {
 		require.Nil(t, response.Claims[0].ProofRollupExitRoot)
 	})
 
-	t.Run("GetClaims with invalid populate_proofs parameter", func(t *testing.T) {
+	t.Run("GetClaims with invalid include_all_fields parameter", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		query := url.Values{}
@@ -971,7 +971,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
-		require.Contains(t, w.Body.String(), "invalid populate_proofs parameter")
+		require.Contains(t, w.Body.String(), "invalid include_all_fields parameter")
 	})
 }
 
