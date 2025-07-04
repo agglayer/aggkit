@@ -10,8 +10,8 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/tree"
-	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/crypto/sha3"
@@ -21,25 +21,77 @@ var (
 	errNoBridgesAndClaims = errors.New("no bridges and claims to build certificate")
 	errNoNewBlocks        = errors.New("no new blocks to send a certificate")
 
-	zeroLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
+	emptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
+
+// BaseFlowConfig is a struct that holds the configuration for the base flow
+type BaseFlowConfig struct {
+	// MaxCertSize is the maximum size of the certificate in bytes. 0 means no limit
+	MaxCertSize uint
+	// StartL2Block is the L2 block number from which to start sending certificates.
+	// It is used to determine the first block to include in the certificate.
+	// It can be 0
+	StartL2Block uint64
+	// RequireNoFEPBlockGap indicates whether the flow requires no gap between the
+	// first FEP block and last settled certificate.
+	RequireNoFEPBlockGap bool
+}
+
+// NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
+func NewBaseFlowConfigDefault() BaseFlowConfig {
+	return BaseFlowConfig{
+		MaxCertSize:          0,     // 0 means no limit
+		StartL2Block:         0,     // 0 means start from the first block
+		RequireNoFEPBlockGap: false, // default is false, can be set to true if needed
+	}
+}
+
+// NewBaseFlowConfig returns a BaseFlowConfig with the specified maxCertSize and startL2Block
+func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64, requireNoFEPBlockGap bool) BaseFlowConfig {
+	return BaseFlowConfig{
+		MaxCertSize:          maxCertSize,
+		StartL2Block:         startL2Block,
+		RequireNoFEPBlockGap: requireNoFEPBlockGap,
+	}
+}
 
 // baseFlow is a struct that holds the common logic for the different prover types
 type baseFlow struct {
 	l2BridgeQuerier       types.BridgeQuerier
 	storage               db.AggSenderStorage
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-
-	log types.Logger
-
-	maxCertSize  uint
-	startL2Block uint64
-	signer       signertypes.Signer
+	lerQuerier            types.LERQuerier
+	cfg                   BaseFlowConfig
+	log                   types.Logger
 }
 
-// getCertificateBuildParamsInternal returns the parameters to build a certificate
-func (f *baseFlow) getCertificateBuildParamsInternal(
-	ctx context.Context, allowEmptyCert bool, certType types.CertificateType) (*types.CertificateBuildParams, error) {
+// NewBaseFlow creates a new instance of the base flow
+func NewBaseFlow(
+	log types.Logger,
+	l2BridgeQuerier types.BridgeQuerier,
+	storage db.AggSenderStorage,
+	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier,
+	lerQuerier types.LERQuerier,
+	cfg BaseFlowConfig,
+) *baseFlow {
+	return &baseFlow{
+		log:                   log,
+		l2BridgeQuerier:       l2BridgeQuerier,
+		storage:               storage,
+		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
+		lerQuerier:            lerQuerier,
+		cfg:                   cfg,
+	}
+}
+
+// StartL2Block returns the L2 block number from which to start sending certificates.
+func (f *baseFlow) StartL2Block() uint64 {
+	return f.cfg.StartL2Block
+}
+
+// GetCertificateBuildParamsInternal returns the parameters to build a certificate
+func (f *baseFlow) GetCertificateBuildParamsInternal(
+	ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
 	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
@@ -61,7 +113,7 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 	fromBlock := previousToBlock + 1
 	toBlock := lastL2BlockSynced
 
-	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock, allowEmptyCert)
+	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +129,7 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 		CertificateType:     certType,
 	}
 
-	buildParams, err = f.limitCertSize(buildParams, allowEmptyCert)
+	buildParams, err = f.limitCertSize(buildParams)
 	if err != nil {
 		return nil, fmt.Errorf("error limitCertSize: %w", err)
 	}
@@ -85,33 +137,34 @@ func (f *baseFlow) getCertificateBuildParamsInternal(
 	return buildParams, nil
 }
 
-// verifyBuildParams verifies the build parameters
-func (f *baseFlow) verifyBuildParams(fullCert *types.CertificateBuildParams) error {
-	// this will be a good place to add more verification checks in the future
-	return f.verifyClaimGERs(fullCert.Claims)
+// VerifyBuildParams verifies the build parameters
+func (f *baseFlow) VerifyBuildParams(ctx context.Context, fullCert *types.CertificateBuildParams) error {
+	if err := f.verifyRetryCertStartingBlock(fullCert); err != nil {
+		return fmt.Errorf("error verifying retry certificate starting block: %w", err)
+	}
+
+	if err := f.verifyClaimGERs(fullCert.Claims); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // limitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
 func (f *baseFlow) limitCertSize(
-	fullCert *types.CertificateBuildParams, allowEmptyCert bool) (*types.CertificateBuildParams, error) {
+	fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	currentCert := fullCert
 	var err error
-
+	maxCertSize := f.cfg.MaxCertSize
 	for {
-		if currentCert.NumberOfBridges() == 0 && !allowEmptyCert {
-			return nil, fmt.Errorf("error on reducing the certificate size. "+
-				"No bridge exits found in range from: %d, to: %d and empty certificate is not allowed",
-				currentCert.FromBlock, currentCert.ToBlock)
-		}
-
-		if f.maxCertSize == 0 || currentCert.EstimatedSize() <= f.maxCertSize {
+		if maxCertSize == 0 || currentCert.EstimatedSize() <= maxCertSize {
 			return currentCert, nil
 		}
 
 		if currentCert.NumberOfBlocks() <= 1 {
 			f.log.Warnf("Minimum number of blocks reached [%d to %d]. Estimated size: %d > max size: %d",
-				currentCert.FromBlock, currentCert.ToBlock, currentCert.EstimatedSize(), f.maxCertSize)
+				currentCert.FromBlock, currentCert.ToBlock, currentCert.EstimatedSize(), maxCertSize)
 			return currentCert, nil
 		}
 
@@ -122,7 +175,25 @@ func (f *baseFlow) limitCertSize(
 	}
 }
 
-func (f *baseFlow) buildCertificate(ctx context.Context,
+// GetNewLocalExitRoot gets the new local exit root for the certificate
+func (f *baseFlow) GetNewLocalExitRoot(ctx context.Context,
+	certParams *types.CertificateBuildParams) (common.Hash, error) {
+	if certParams == nil {
+		return common.Hash{}, fmt.Errorf("baseFlow.GetNewLocalExitRoot. certificate build parameters cannot be nil")
+	}
+	_, previousLER, err := f.getNextHeightAndPreviousLER(certParams.LastSentCertificate)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("baseFlow.GetNewLocalExitRoot. error getting next height and previous LER: %w", err)
+	}
+
+	newLER, err := f.getNewLocalExitRoot(ctx, certParams, previousLER)
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("baseFlow.GetNewLocalExitRoot. error getting new local exit root: %w", err)
+	}
+	return newLER, nil
+}
+
+func (f *baseFlow) BuildCertificate(ctx context.Context,
 	certParams *types.CertificateBuildParams,
 	lastSentCertificate *types.CertificateHeader,
 	allowEmptyCert bool) (*agglayertypes.Certificate, error) {
@@ -201,8 +272,8 @@ func convertBridgeMetadata(metadata []byte) []byte {
 	return metaData
 }
 
-// convertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
-func (f *baseFlow) convertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
+// ConvertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
+func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
 	leafType := agglayertypes.LeafTypeAsset
 	if claim.IsMessage {
 		leafType = agglayertypes.LeafTypeMessage
@@ -274,7 +345,7 @@ func (f *baseFlow) getImportedBridgeExits(
 		f.log.Debugf("claim[%d]: destAddr: %s GER: %s Block: %d Pos: %d GlobalIndex: 0x%x",
 			i, claim.DestinationAddress.String(), claim.GlobalExitRoot.String(),
 			claim.BlockNum, claim.BlockPos, claim.GlobalIndex)
-		ibe, err := f.convertClaimToImportedBridgeExit(claim)
+		ibe, err := f.ConvertClaimToImportedBridgeExit(claim)
 		if err != nil {
 			return nil, fmt.Errorf("error converting claim to imported bridge exit: %w", err)
 		}
@@ -343,14 +414,29 @@ func (f *baseFlow) getImportedBridgeExits(
 	return importedBridgeExits, nil
 }
 
+// getStartLER returns the last local exit root (LER) based on the configuration
+func (f *baseFlow) getStartLER() (common.Hash, error) {
+	ler, err := f.lerQuerier.GetLastLocalExitRoot()
+	if err != nil {
+		return common.Hash{}, fmt.Errorf("error getting last local exit root: %w", err)
+	}
+
+	if ler == aggkitcommon.ZeroHash {
+		return emptyLER, nil
+	}
+
+	return ler, nil
+}
+
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		return 0, zeroLER, nil
+		ler, err := f.getStartLER()
+		return uint64(0), ler, err
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
-		return 0, zeroLER, fmt.Errorf("last certificate %s is not closed (status: %s)",
+		return 0, aggkitcommon.ZeroHash, fmt.Errorf("last certificate %s is not closed (status: %s)",
 			lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 	}
 	if lastSentCertificateInfo.Status.IsSettled() {
@@ -364,26 +450,27 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			return 0, zeroLER, nil
+			ler, err := f.getStartLER()
+			return uint64(0), ler, err
 		}
 		// We get previous certificate that must be settled
 		f.log.Debugf("last certificate %s is in error, getting previous settled certificate height:%d",
 			lastSentCertificateInfo.Height-1)
 		lastSettleCert, err := f.storage.GetCertificateHeaderByHeight(lastSentCertificateInfo.Height - 1)
 		if err != nil {
-			return 0, common.Hash{}, fmt.Errorf("error getting last settled certificate: %w", err)
+			return 0, aggkitcommon.ZeroHash, fmt.Errorf("error getting last settled certificate: %w", err)
 		}
 		if lastSettleCert == nil {
-			return 0, common.Hash{}, fmt.Errorf("none settled certificate: %w", err)
+			return 0, aggkitcommon.ZeroHash, fmt.Errorf("none settled certificate: %w", err)
 		}
 		if !lastSettleCert.Status.IsSettled() {
-			return 0, common.Hash{}, fmt.Errorf("last settled certificate %s is not settled (status: %s)",
+			return 0, aggkitcommon.ZeroHash, fmt.Errorf("last settled certificate %s is not settled (status: %s)",
 				lastSettleCert.ID(), lastSettleCert.Status.String())
 		}
 
 		return lastSentCertificateInfo.Height, lastSettleCert.NewLocalExitRoot, nil
 	}
-	return 0, zeroLER, fmt.Errorf("last certificate %s has an unknown status: %s",
+	return 0, aggkitcommon.ZeroHash, fmt.Errorf("last certificate %s has an unknown status: %s",
 		lastSentCertificateInfo.ID(), lastSentCertificateInfo.Status.String())
 }
 
@@ -400,12 +487,77 @@ func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 	return nil
 }
 
+// verifyRetryCertStartingBlock verifies that the starting block of a retry certificate
+// matches the last sent (InError) certificate's starting block.
+func (f *baseFlow) verifyRetryCertStartingBlock(buildParams *types.CertificateBuildParams) error {
+	if buildParams.IsARetry() && buildParams.FromBlock != buildParams.LastSentCertificate.FromBlock {
+		return fmt.Errorf("retry certificate fromBlock %d != last sent certificate fromBlock %d",
+			buildParams.FromBlock, buildParams.LastSentCertificate.FromBlock)
+	}
+
+	return nil
+}
+
+// VerifyBlockRangeGaps checks if there are any gaps in the block range of the certificate
+// and verifies that there are no new bridges or claims in the gap.
+func (f *baseFlow) VerifyBlockRangeGaps(
+	ctx context.Context,
+	lastSentCertificate *types.CertificateHeader,
+	newFromBlock, newToBlock uint64) error {
+	if lastSentCertificate == nil {
+		return nil
+	}
+
+	lastSettledFromBlock := uint64(0)
+	lastSettledToBlock := uint64(0)
+	if lastSentCertificate.Status.IsInError() {
+		// if the last certificate was in error, we need to check the last
+		// settled range to be correct
+		// we will leave the from block as 0, since we only require the to block
+		// to check the gap between the last sent certificate and the new one
+		if lastSentCertificate.FromBlock > 0 {
+			lastSettledToBlock = lastSentCertificate.FromBlock - 1
+		}
+	} else {
+		lastSettledFromBlock = lastSentCertificate.FromBlock
+		lastSettledToBlock = lastSentCertificate.ToBlock
+	}
+
+	nextBlockRange := types.NewBlockRange(newFromBlock, newToBlock)
+	lastBlockRange := types.NewBlockRange(lastSettledFromBlock, lastSettledToBlock)
+
+	// case 2: is a new cert but is not contiguous to previous one
+	gap := nextBlockRange.Gap(lastBlockRange)
+	if gap.IsEmpty() {
+		return nil
+	}
+
+	bridgeDataInTheGap, claimDataInTheGap, err := f.l2BridgeQuerier.GetBridgesAndClaims(
+		ctx, gap.FromBlock, gap.ToBlock)
+	if err != nil {
+		return fmt.Errorf("error getting bridges and claims in the gap %s: %w", gap.String(), err)
+	}
+	if len(bridgeDataInTheGap) > 0 || len(claimDataInTheGap) > 0 {
+		return fmt.Errorf("there are new bridges or claims in the gap %s, len(bridges)=%d. len(claims)=%d",
+			gap.String(), len(bridgeDataInTheGap), len(claimDataInTheGap))
+	}
+
+	if !gap.IsEmpty() && f.cfg.RequireNoFEPBlockGap {
+		// even though we do not have bridge transactions in the gap,
+		// we need to return an error if RequireNoFEPBlockGap is true
+		return fmt.Errorf("block gap detected: %s without bridge transactions, but RequireNoFEPBlockGap is true",
+			gap.String())
+	}
+
+	return nil
+}
+
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
 // if there is no previosly sent certificate, it returns startL2Block and 0
 func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateHeader) (uint64, int) {
 	if lastSentCertificateInfo == nil {
 		// this is the first certificate so we start from what we have set in start L2 block
-		return f.startL2Block, 0
+		return f.StartL2Block(), 0
 	}
 
 	retryCount := 0

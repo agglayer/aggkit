@@ -7,6 +7,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 	"github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -27,7 +28,9 @@ type EVMChainGERReader struct {
 }
 
 // NewEVMChainGERReader creates a new L2Etherman
-func NewEVMChainGERReader(l2GERManagerAddr common.Address, l2Client types.EthClienter) (*EVMChainGERReader, error) {
+func NewEVMChainGERReader(
+	l2GERManagerAddr common.Address,
+	l2Client aggkittypes.BaseEthereumClienter) (*EVMChainGERReader, error) {
 	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERManagerAddr, l2Client)
 	if err != nil {

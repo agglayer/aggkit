@@ -7,8 +7,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -16,9 +15,8 @@ import (
 
 var (
 	updateL1InfoTreeSignatureV1 = crypto.Keccak256Hash([]byte("UpdateL1InfoTree(bytes32,bytes32)"))
-	updateL1InfoTreeSignatureV2 = crypto.Keccak256Hash([]byte("UpdateL1InfoTreeV2(bytes32,uint32,uint256,uint64)"))
-	verifyBatchesSignature      = crypto.Keccak256Hash(
-		[]byte("VerifyBatches(uint32,uint64,bytes32,bytes32,address)"),
+	updateL1InfoTreeSignatureV2 = crypto.Keccak256Hash(
+		[]byte("UpdateL1InfoTreeV2(bytes32,uint32,uint256,uint64)"),
 	)
 	verifyBatchesTrustedAggregatorSignature = crypto.Keccak256Hash(
 		[]byte("VerifyBatchesTrustedAggregator(uint32,uint64,bytes32,bytes32,address)"),
@@ -26,21 +24,13 @@ var (
 	initL1InfoRootMapSignature = crypto.Keccak256Hash([]byte("InitL1InfoRootMap(uint32,bytes32)"))
 )
 
-type EthClienter interface {
-	ethereum.LogFilterer
-	ethereum.BlockNumberReader
-	ethereum.ChainReader
-	ethereum.ChainIDReader
-	bind.ContractBackend
-}
-
 func checkSMCIsRollupManager(rollupManagerAddr common.Address,
 	rollupManagerContract *polygonrollupmanager.Polygonrollupmanager) error {
 	bridgeAddr, err := rollupManagerContract.BridgeAddress(nil)
 	if err != nil {
-		return fmt.Errorf("fail sanity check RollupManager(%s) Contract. Err: %w", rollupManagerAddr.String(), err)
+		return fmt.Errorf("failed sanity check for RollupManager(%s) SC. Err: %w", rollupManagerAddr.String(), err)
 	}
-	log.Infof("sanity check rollupManager(%s) OK. bridgeAddr: %s", rollupManagerAddr.String(), bridgeAddr.String())
+	log.Infof("sanity check RollupManager(%s) SC OK. Bridge address: %s", rollupManagerAddr.String(), bridgeAddr.String())
 	return nil
 }
 
@@ -48,9 +38,9 @@ func checkSMCIsGlobalExitRoot(globalExitRootAddr common.Address,
 	gerContract *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2) error {
 	depositCount, err := gerContract.DepositCount(nil)
 	if err != nil {
-		return fmt.Errorf("fail sanity check GlobalExitRoot(%s) Contract. Err: %w", globalExitRootAddr.String(), err)
+		return fmt.Errorf("failed sanity check for GlobalExitRoot(%s) SC. Err: %w", globalExitRootAddr.String(), err)
 	}
-	log.Infof("sanity check GlobalExitRoot(%s) OK. DepositCount: %v", globalExitRootAddr.String(), depositCount)
+	log.Infof("sanity check GlobalExitRoot (%s) SC OK. DepositCount: %v", globalExitRootAddr.String(), depositCount)
 	return nil
 }
 
@@ -67,7 +57,7 @@ func sanityCheckContracts(globalExitRoot, rollupManager common.Address,
 	return nil
 }
 
-func createContracts(client EthClienter, globalExitRoot, rollupManager common.Address) (
+func createContracts(client aggkittypes.BaseEthereumClienter, globalExitRoot, rollupManager common.Address) (
 	*polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2,
 	*polygonrollupmanager.Polygonrollupmanager,
 	error) {
@@ -83,7 +73,7 @@ func createContracts(client EthClienter, globalExitRoot, rollupManager common.Ad
 	return gerContract, rollupManagerContract, nil
 }
 
-func buildAppender(client EthClienter, globalExitRoot,
+func buildAppender(client aggkittypes.BaseEthereumClienter, globalExitRoot,
 	rollupManager common.Address, flags CreationFlags) (sync.LogAppenderMap, error) {
 	ger, rm, err := createContracts(client, globalExitRoot, rollupManager)
 	if err != nil {
@@ -133,7 +123,6 @@ func buildAppender(client EthClienter, globalExitRoot,
 
 		return nil
 	}
-
 	appender[updateL1InfoTreeSignatureV2] = func(b *sync.EVMBlock, l types.Log) error {
 		l1InfoTreeUpdateV2, err := ger.ParseUpdateL1InfoTreeV2(l)
 		if err != nil {
@@ -147,26 +136,6 @@ func buildAppender(client EthClienter, globalExitRoot,
 			LeafCount:         l1InfoTreeUpdateV2.LeafCount,
 			Blockhash:         common.BytesToHash(l1InfoTreeUpdateV2.Blockhash.Bytes()),
 			MinTimestamp:      l1InfoTreeUpdateV2.MinTimestamp,
-		}})
-
-		return nil
-	}
-	// This event is coming from RollupManager
-	appender[verifyBatchesSignature] = func(b *sync.EVMBlock, l types.Log) error {
-		verifyBatches, err := rm.ParseVerifyBatches(l)
-		if err != nil {
-			return fmt.Errorf(
-				"error parsing log %+v using rm.ParseVerifyBatches: %w",
-				l, err,
-			)
-		}
-		b.Events = append(b.Events, Event{VerifyBatches: &VerifyBatches{
-			BlockPosition: uint64(l.Index),
-			RollupID:      verifyBatches.RollupID,
-			NumBatch:      verifyBatches.NumBatch,
-			StateRoot:     verifyBatches.StateRoot,
-			ExitRoot:      verifyBatches.ExitRoot,
-			Aggregator:    verifyBatches.Aggregator,
 		}})
 
 		return nil

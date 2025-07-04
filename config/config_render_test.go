@@ -157,7 +157,6 @@ func TestConfigRenderComplexStruct(t *testing.T) {
 	defaultValues := `
 		[Etherman]
 	URL="http://generic_url"
-	ForkIDChunkSize=100
 	[Etherman.EthermanConfig]
 		URL="http://localhost:8545"
 `
@@ -169,14 +168,14 @@ func TestConfigRenderComplexStruct(t *testing.T) {
 		{
 			name:                 "Complex struct merge",
 			contents:             []string{defaultValues, confiFile},
-			expectedRenderConfig: "\n[Etherman]\n  ForkIDChunkSize = 100\n  URL = \"http://generic_url\"\n\n  [Etherman.EthermanConfig]\n    URL = \"http://generic_url\"\n",
+			expectedRenderConfig: "\n[Etherman]\n  URL = \"http://generic_url\"\n\n  [Etherman.EthermanConfig]\n    URL = \"http://generic_url\"\n",
 		},
 		// This test Etherman.URL doesnt change because is not a var, it will change value on viper stage
 		{
 			name:                 "Complex struct merge override env-var, but we must propagate the string type",
 			contents:             []string{defaultValues, confiFile},
 			envVars:              map[string]string{"UTCR_Etherman_URL": "env"},
-			expectedRenderConfig: "\n[Etherman]\n  ForkIDChunkSize = 100\n  URL = \"http://generic_url\"\n\n  [Etherman.EthermanConfig]\n    URL = \"env\"\n",
+			expectedRenderConfig: "\n[Etherman]\n  URL = \"http://generic_url\"\n\n  [Etherman.EthermanConfig]\n    URL = \"env\"\n",
 		},
 	}
 	executeCases(t, tests)
@@ -201,23 +200,30 @@ func TestConfigRenderConvertFileToToml(t *testing.T) {
 	require.Equal(t, "genesisBlockNumber = 63.0\nrollupCreationBlockNumber = 63.0\nrollupManagerCreationBlockNumber = 57.0\n\n[L1Config]\n  chainId = 271828.0\n  polTokenAddress = \"0xEdE9cf798E0fE25D35469493f43E88FeA4a5da0E\"\n  polygonRollupManagerAddress = \"0x2F50ef6b8e8Ee4E579B17619A92dE3E2ffbD8AD2\"\n  polygonZkEVMAddress = \"0x1Fe038B54aeBf558638CA51C91bC8cCa06609e91\"\n  polygonZkEVMGlobalExitRootAddress = \"0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674\"\n", data)
 }
 
-/*
-TODO: This test generate this, is the same?
-[PrivateKey]
-    Password = "testonly"
-    Path = "./test/sequencer.keystore"
-
-func TestConfigRenderValueIsAObject(t *testing.T) {
+func TestConfigRenderComplexStructCopy(t *testing.T) {
 	var tests = []testCaseData{
 		{
-			name:                 "Complex struct object inside var",
-			contents:             []string{"PrivateKey = {Path = \"./test/sequencer.keystore\", Password = \"testonly\"}"},
-			expectedRenderConfig: "PrivateKey = {Path = \"./test/sequencer.keystore\", Password = \"testonly\"}",
+			name: "complex struct copy",
+			contents: []string{`
+[Section]
+A= { B=4, C="hello" }
+[Section2]
+B = {{Section.A}}
+`},
+			expectedRenderConfig: `
+[Section]
+
+  [Section.A]
+    B = 4
+    C = "hello"
+
+[Section2]
+  B = {B=4, C="hello"}
+`,
 		},
 	}
 	executeCases(t, tests)
 }
-*/
 
 type configRenderTestData struct {
 	Sut     *ConfigRender

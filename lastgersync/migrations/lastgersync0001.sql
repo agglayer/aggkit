@@ -1,6 +1,6 @@
 -- +migrate Down
 DROP TABLE IF EXISTS block;
-DROP TABLE IF EXISTS global_exit_root;
+DROP TABLE IF EXISTS imported_global_exit_root;
 
 -- +migrate Up
 CREATE TABLE block (

@@ -13,7 +13,7 @@ import (
 )
 
 func TestEVM(t *testing.T) {
-	setup := helpers.NewE2EEnvWithEVML2(t)
+	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
 
 	for i := 0; i < 10; i++ {
 		_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, common.HexToHash(strconv.Itoa(i)))

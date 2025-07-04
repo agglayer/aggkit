@@ -81,5 +81,6 @@ func convertCertificateToCertificateInfo(c *types.Certificate) (*certificateInfo
 		CertSource:              c.Header.CertSource,
 		SignedCertificate:       c.SignedCertificate,
 		AggchainProof:           c.AggchainProof,
+		ExtraData:               c.ExtraData,
 	}, nil
 }

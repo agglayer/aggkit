@@ -7,9 +7,9 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -21,7 +21,7 @@ type Block struct {
 	Hash   common.Hash
 }
 
-type downloaderInterface interface {
+type Downloader interface {
 	Download(ctx context.Context, fromBlock uint64, downloadedCh chan EVMBlock)
 	// RuntimeData returns the runtime data from this downloader
 	// this is used to check that DB is compatible with the runtime data
@@ -32,7 +32,7 @@ type EVMDriver struct {
 	reorgDetector        ReorgDetector
 	reorgSub             *reorgdetector.Subscription
 	processor            processorInterface
-	downloader           downloaderInterface
+	downloader           Downloader
 	reorgDetectorID      string
 	downloadBufferSize   int
 	rh                   *RetryHandler
@@ -74,35 +74,29 @@ type processorInterface interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	ProcessBlock(ctx context.Context, block Block) error
 	Reorg(ctx context.Context, firstReorgedBlock uint64) error
-	// CheckCompatibilityData is the interface to set / retrieve the compatibility data to storage
-	compatibility.CompatibilityDataStorager[RuntimeData]
 }
 
 type ReorgDetector interface {
 	Subscribe(id string) (*reorgdetector.Subscription, error)
 	AddBlockToTrack(ctx context.Context, id string, blockNum uint64, blockHash common.Hash) error
-	GetFinalizedBlockType() etherman.BlockNumberFinality
+	GetFinalizedBlockType() aggkittypes.BlockNumberFinality
 	String() string
 }
 
 func NewEVMDriver(
 	reorgDetector ReorgDetector,
 	processor processorInterface,
-	downloader downloaderInterface,
+	downloader Downloader,
 	reorgDetectorID string,
 	downloadBufferSize int,
 	rh *RetryHandler,
-	requireStorageContentCompatibility bool,
+	compatibilityChecker compatibility.CompatibilityChecker,
 ) (*EVMDriver, error) {
 	logger := log.WithFields("syncer", reorgDetectorID)
 	reorgSub, err := reorgDetector.Subscribe(reorgDetectorID)
 	if err != nil {
 		return nil, err
 	}
-	compatibilityChecker := compatibility.NewCompatibilityCheck(
-		requireStorageContentCompatibility,
-		downloader.RuntimeData,
-		processor)
 
 	return &EVMDriver{
 		reorgDetector:        reorgDetector,
@@ -128,7 +122,7 @@ reset:
 		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
 			attempts++
 			d.log.Error("error checking compatibility data between downloader (runtime) and processor (db): ", err)
-			d.rh.Handle("Sync", attempts)
+			d.rh.Handle("CompatibilityChecker", attempts)
 			continue
 		}
 		break

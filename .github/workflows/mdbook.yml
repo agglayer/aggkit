@@ -1,12 +1,11 @@
 # Sample workflow for building and deploying a mdBook site to GitHub Pages
 #
 # To get started with mdBook see: https://rust-lang.github.io/mdBook/index.html
-#
 name: Deploy mdBook site to Pages
 
 on:
-  # Runs on pushes targeting the default branch
   push:
+    # Runs on pushes targeting the default branch
     branches: ["develop"]
 
   # Allows you to run this workflow manually from the Actions tab
@@ -28,21 +27,18 @@ jobs:
   # Build job
   build:
     runs-on: amd-runner-2204
-    env:
-      MDBOOK_VERSION: 0.4.43
-      MDBOOK_ALERTS_VERSION: 0.7.0
-      MDBOOK_MERMAID_VERSION: 0.14.1
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Install mdBook
+      - name: Install mdBook and plugins
         run: |
           curl --proto '=https' --tlsv1.2 https://sh.rustup.rs -sSf -y | sh
+          source "$HOME/.cargo/env"
           rustup update
-          cargo install --version ${MDBOOK_VERSION} mdbook
-          cargo install --version ${MDBOOK_ALERTS_VERSION} mdbook-alerts
-          cargo install --version ${MDBOOK_MERMAID_VERSION} mdbook-mermaid
+          cargo install mdbook
+          cargo install mdbook-mermaid
+          cargo install mdbook-alerts
 
       - name: Setup Pages
         id: pages
@@ -56,7 +52,7 @@ jobs:
         with:
           path: ./book
 
-  # Deployment job
+# Deployment job
   deploy:
     environment:
       name: github-pages

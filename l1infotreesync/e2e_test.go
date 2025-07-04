@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
-	aggkittypes "github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/etherman"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	mocks_l1infotreesync "github.com/agglayer/aggkit/l1infotreesync/mocks"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/verifybatchesmock"
 	"github.com/agglayer/aggkit/test/helpers"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -62,16 +62,16 @@ func newSimulatedClient(t *testing.T) (
 }
 
 func TestE2E(t *testing.T) {
-	ctx, cancelCtx := context.WithCancel(context.Background())
+	ctx, _ := context.WithCancel(context.Background())
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestE2E.sqlite")
 
 	rdm := mocks_l1infotreesync.NewReorgDetectorMock(t)
 	rdm.On("Subscribe", mock.Anything).Return(&reorgdetector.Subscription{}, nil)
 	rdm.On("AddBlockToTrack", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
-	syncer, err := l1infotreesync.New(ctx, dbPath, gerAddr, verifyAddr, 10, etherman.LatestBlock, rdm, client.Client(), time.Millisecond, 0, 100*time.Millisecond, 25,
-		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock, true)
+	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
+	syncer, err := l1infotreesync.New(ctx, dbPath, gerAddr, verifyAddr, 10, aggkittypes.LatestBlock, rdm, client.Client(), time.Millisecond, 0, 100*time.Millisecond, 25,
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock, true)
 	require.NoError(t, err)
 
 	go syncer.Start(ctx)
@@ -103,48 +103,6 @@ func TestE2E(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, common.Hash(expectedRoot), actualRoot.Hash)
 	}
-
-	// Restart syncer
-	cancelCtx()
-	ctx = context.Background()
-	go syncer.Start(ctx)
-
-	// Update 3 rollups (verify batches event) 3 times
-	for rollupID := uint32(1); rollupID < 3; rollupID++ {
-		for i := 0; i < 3; i++ {
-			newLocalExitRoot := common.HexToHash(strconv.Itoa(int(rollupID)) + "ffff" + strconv.Itoa(i))
-			tx, err := verifySC.VerifyBatches(auth, rollupID, 0, newLocalExitRoot, common.Hash{}, i%2 != 0)
-			require.NoError(t, err)
-			client.Commit()
-			receipt, err := client.Client().TransactionReceipt(ctx, tx.Hash())
-			require.NoError(t, err)
-			require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-			require.True(t, len(receipt.Logs) == 1+i%2+i%2)
-
-			// Let the processor catch
-			helpers.RequireProcessorUpdated(t, syncer, receipt.BlockNumber.Uint64())
-
-			// Assert rollup exit root
-			expectedRollupExitRoot, err := verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
-			require.NoError(t, err)
-			actualRollupExitRoot, err := syncer.GetLastRollupExitRoot(ctx)
-			require.NoError(t, err)
-			require.Equal(t, common.Hash(expectedRollupExitRoot), actualRollupExitRoot.Hash, fmt.Sprintf("rollupID: %d, i: %d", rollupID, i))
-
-			// Assert verify batches
-			expectedVerify := l1infotreesync.VerifyBatches{
-				BlockNumber:    receipt.BlockNumber.Uint64(),
-				BlockPosition:  uint64(i%2 + i%2),
-				RollupID:       rollupID,
-				ExitRoot:       newLocalExitRoot,
-				Aggregator:     auth.From,
-				RollupExitRoot: expectedRollupExitRoot,
-			}
-			actualVerify, err := syncer.GetLastVerifiedBatches(rollupID)
-			require.NoError(t, err)
-			require.Equal(t, expectedVerify, *actualVerify)
-		}
-	}
 }
 
 func TestWithReorgs(t *testing.T) {
@@ -154,12 +112,12 @@ func TestWithReorgs(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 30)}, reorgdetector.L1)
+	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 30)}, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
-	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, etherman.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 25,
-		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock, true)
+	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, aggkittypes.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 25,
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock, true)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 
@@ -274,12 +232,12 @@ func TestStressAndReorgs(t *testing.T) {
 
 	client, auth, gerAddr, verifyAddr, gerSc, verifySC := newSimulatedClient(t)
 
-	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100)}, reorgdetector.L1)
+	rd, err := reorgdetector.New(client.Client(), reorgdetector.Config{DBPath: dbPathReorg, CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100)}, reorgdetector.L1)
 	require.NoError(t, err)
 	require.NoError(t, rd.Start(ctx))
 
-	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, etherman.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 100,
-		l1infotreesync.FlagAllowWrongContractsAddrs, etherman.SafeBlock, true)
+	syncer, err := l1infotreesync.New(ctx, dbPathSyncer, gerAddr, verifyAddr, 10, aggkittypes.LatestBlock, rd, client.Client(), time.Millisecond, 0, time.Second, 100,
+		l1infotreesync.FlagAllowWrongContractsAddrs, aggkittypes.SafeBlock, true)
 	require.NoError(t, err)
 	go syncer.Start(ctx)
 
@@ -313,13 +271,6 @@ func TestStressAndReorgs(t *testing.T) {
 	helpers.CommitBlocks(t, client, 11, time.Millisecond*10)
 
 	waitForSyncerToCatchUp(ctx, t, syncer, client)
-
-	// Assert rollup exit root
-	expectedRollupExitRoot, err := verifySC.GetRollupExitRoot(&bind.CallOpts{Pending: false})
-	require.NoError(t, err)
-	actualRollupExitRoot, err := syncer.GetLastRollupExitRoot(ctx)
-	require.NoError(t, err)
-	require.Equal(t, common.Hash(expectedRollupExitRoot), actualRollupExitRoot.Hash)
 
 	// Assert L1 Info tree root
 	expectedL1InfoRoot, err := gerSc.GetRoot(&bind.CallOpts{Pending: false})

@@ -19,6 +19,7 @@ Level = "{{.global_log_level}}"
 Outputs = ["stderr"]
 
 [L1Config]
+	URL = "{{.l1_rpc_url}}"
 	chainId = "{{.l1_chain_id}}"
 	polygonZkEVMGlobalExitRootAddress = "{{.zkevm_global_exit_root_address}}"
 	polygonRollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
@@ -41,9 +42,10 @@ Mode = "AggchainProof"
 		Interval = "1m"
 
 [AggchainProofGen]
-AggchainProofURL = "{{.aggkit_prover_grpc_url}}"
 GlobalExitRootL2Addr = "{{.zkevm_global_exit_root_l2_address}}"
 GenerateAggchainProofTimeout = "1h"
+	[AggchainProofGen.AggkitProverClient]
+	URL = "{{.aggkit_prover_grpc_url}}"
 
 [RPC]
 ReadTimeout = "1h"

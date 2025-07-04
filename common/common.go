@@ -8,10 +8,8 @@ import (
 	"path/filepath"
 
 	"github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/iden3/go-iden3-crypto/keccak256"
 )
 
 const KB = 1 << 10 // 1024
@@ -20,11 +18,14 @@ var (
 	ZeroHash = common.HexToHash("0x0")
 )
 
+const (
+	Uint32ByteSize = 4
+	Uint64ByteSize = 8
+)
+
 // Uint64ToBigEndianBytes converts a uint64 to a byte slice in big-endian order
 func Uint64ToBigEndianBytes(num uint64) []byte {
-	const uint64ByteSize = 8
-
-	bytes := make([]byte, uint64ByteSize)
+	bytes := make([]byte, Uint64ByteSize)
 	binary.BigEndian.PutUint64(bytes, num)
 
 	return bytes
@@ -32,9 +33,7 @@ func Uint64ToBigEndianBytes(num uint64) []byte {
 
 // Uint64ToLittleEndianBytes converts a uint64 to a byte slice in little-endian order
 func Uint64ToLittleEndianBytes(num uint64) []byte {
-	const uint64ByteSize = 8
-
-	bytes := make([]byte, uint64ByteSize)
+	bytes := make([]byte, Uint64ByteSize)
 	binary.LittleEndian.PutUint64(bytes, num)
 
 	return bytes
@@ -42,74 +41,34 @@ func Uint64ToLittleEndianBytes(num uint64) []byte {
 
 // BytesToUint64 converts a byte slice to a uint64
 func BytesToUint64(bytes []byte) uint64 {
-	return binary.BigEndian.Uint64(bytes)
+	if len(bytes) > Uint64ByteSize {
+		panic("Uint64ByteSize: input byte slice is too long")
+	}
+
+	padded := make([]byte, Uint64ByteSize)
+	copy(padded[Uint64ByteSize-len(bytes):], bytes)
+	return binary.BigEndian.Uint64(padded)
 }
 
 // Uint32ToBytes converts a uint32 to a byte slice in big-endian order
 func Uint32ToBytes(num uint32) []byte {
-	const uint32ByteSize = 4
+	bytes := make([]byte, Uint32ByteSize)
+	binary.BigEndian.PutUint32(bytes, num)
 
-	key := make([]byte, uint32ByteSize)
-	binary.BigEndian.PutUint32(key, num)
-
-	return key
+	return bytes
 }
 
-// BytesToUint32 converts a byte slice to a uint32
+// BytesToUint32 converts a byte slice to a uint32.
+// If byte slice is shorter than 4 bytes, it is padded with 0s.
+// In case it is longer than 4 bytes, it panics.
 func BytesToUint32(bytes []byte) uint32 {
-	return binary.BigEndian.Uint32(bytes)
-}
-
-// CalculateAccInputHash computes the hash of accumulated input data for a given batch.
-func CalculateAccInputHash(
-	logger *log.Logger,
-	oldAccInputHash common.Hash,
-	batchData []byte,
-	l1InfoRoot common.Hash,
-	timestampLimit uint64,
-	sequencerAddr common.Address,
-	forcedBlockhashL1 common.Hash,
-) common.Hash {
-	v1 := oldAccInputHash.Bytes()
-	v2 := batchData
-	v3 := l1InfoRoot.Bytes()
-	v4 := big.NewInt(0).SetUint64(timestampLimit).Bytes()
-	v5 := sequencerAddr.Bytes()
-	v6 := forcedBlockhashL1.Bytes()
-
-	// Add 0s to make values 32 bytes long
-	for len(v1) < 32 {
-		v1 = append([]byte{0}, v1...)
+	if len(bytes) > Uint32ByteSize {
+		panic("BytesToUint32: input byte slice is too long")
 	}
 
-	for len(v3) < 32 {
-		v3 = append([]byte{0}, v3...)
-	}
-
-	for len(v4) < 8 {
-		v4 = append([]byte{0}, v4...)
-	}
-
-	for len(v5) < 20 {
-		v5 = append([]byte{0}, v5...)
-	}
-
-	for len(v6) < 32 {
-		v6 = append([]byte{0}, v6...)
-	}
-
-	v2 = keccak256.Hash(v2)
-	calculatedAccInputHash := common.BytesToHash(keccak256.Hash(v1, v2, v3, v4, v5, v6))
-
-	logger.Debugf("OldAccInputHash: %v", oldAccInputHash)
-	logger.Debugf("BatchHashData: %v", common.Bytes2Hex(v2))
-	logger.Debugf("L1InfoRoot: %v", l1InfoRoot)
-	logger.Debugf("TimeStampLimit: %v", timestampLimit)
-	logger.Debugf("Sequencer Address: %v", sequencerAddr)
-	logger.Debugf("Forced BlockHashL1: %v", forcedBlockhashL1)
-	logger.Debugf("CalculatedAccInputHash: %v", calculatedAccInputHash)
-
-	return calculatedAccInputHash
+	padded := make([]byte, Uint32ByteSize)
+	copy(padded[Uint32ByteSize-len(bytes):], bytes)
+	return binary.BigEndian.Uint32(padded)
 }
 
 // NewKeyFromKeystore creates a private key from a keystore file
@@ -161,4 +120,14 @@ func EstimateSliceCapacity(total int, span, fullSpan uint64) int {
 		return 0
 	}
 	return int((uint64(total) * span) / fullSpan)
+}
+
+// MapSlice transforms a slice of type T into a slice of type R using the provided mapping function f.
+// It's a generic utility that reduces boilerplate when converting between types.
+func MapSlice[T any, R any](in []T, f func(T) R) []R {
+	out := make([]R, 0, len(in))
+	for _, v := range in {
+		out = append(out, f(v))
+	}
+	return out
 }

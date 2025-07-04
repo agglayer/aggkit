@@ -24,6 +24,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/agglayer/go_signer/signer"
@@ -40,34 +41,31 @@ const (
 
 func TestConfigString(t *testing.T) {
 	config := config.Config{
-		StoragePath:                  "/path/to/storage",
-		AggLayerURL:                  "http://agglayer.url",
-		AggsenderPrivateKey:          signer.NewLocalSignerConfig("/path/to/key", "password"),
-		URLRPCL2:                     "http://l2.rpc.url",
-		BlockFinality:                "latestBlock",
-		EpochNotificationPercentage:  50,
-		Mode:                         "PP",
-		GenerateAggchainProofTimeout: types.Duration{Duration: time.Second},
-		SovereignRollupAddr:          common.HexToAddress("0x1"),
+		StoragePath:                 "/path/to/storage",
+		AgglayerClient:              &aggkitgrpc.ClientConfig{URL: "http://agglayer.url"},
+		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
+		URLRPCL2:                    "http://l2.rpc.url",
+		BlockFinality:               "latestBlock",
+		EpochNotificationPercentage: 50,
+		Mode:                        "PP",
+		SovereignRollupAddr:         common.HexToAddress("0x1"),
 	}
 
-	expected := "StoragePath: /path/to/storage\n" +
-		"AggLayerURL: http://agglayer.url\n" +
-		"AggsenderPrivateKey: local\n" +
-		"BlockFinality: latestBlock\n" +
-		"EpochNotificationPercentage: 50\n" +
-		"DryRun: false\n" +
-		"EnableRPC: false\n" +
-		"AggchainProofURL: \n" +
-		"Mode: PP\n" +
-		"CheckStatusCertificateInterval: 0s\n" +
-		"RetryCertAfterInError: false\n" +
-		"MaxSubmitRate: RateLimitConfig{Unlimited}\n" +
-		"GenerateAggchainProofTimeout: 1s\n" +
-		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n" +
-		"UseAgglayerTLS: false\n" +
-		"UseAggkitProverTLS: false\n" +
-		"RequireNoFEPBlockGap: false\n"
+	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
+		"AgglayerClient: %s\n"+
+		"AggsenderPrivateKey: local\n"+
+		"BlockFinality: latestBlock\n"+
+		"EpochNotificationPercentage: 50\n"+
+		"DryRun: false\n"+
+		"EnableRPC: false\n"+
+		"AggkitProverClient: none\n"+
+		"Mode: PP\n"+
+		"CheckStatusCertificateInterval: 0s\n"+
+		"RetryCertAfterInError: false\n"+
+		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
+		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
+		"RequireNoFEPBlockGap: false\n",
+		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
 }
@@ -76,6 +74,7 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock := agglayer.NewAgglayerClientMock(t)
 	epochNotifierMock := mocks.NewEpochNotifier(t)
 	bridgeL2SyncerMock := mocks.NewL2BridgeSyncer(t)
+	rollupQuerierMock := mocks.NewRollupDataQuerier(t)
 	ch := make(chan aggsendertypes.EpochEvent)
 	epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch)
 	epochNotifierMock.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{}).Once()
@@ -84,15 +83,14 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	aggSender, err := New(
 		ctx,
 		log.WithFields("test", "unittest"),
 		config.Config{
-			Mode:                 "PessimisticProof",
-			StoragePath:          path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
-			DelayBeetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
+			Mode:                "PessimisticProof",
+			StoragePath:         path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
+			DelayBetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
 			AggsenderPrivateKey: signertypes.SignerConfig{
 				Method: signertypes.MethodNone,
 			},
@@ -100,7 +98,7 @@ func TestAggSenderStart(t *testing.T) {
 		aggLayerMock,
 		nil,
 		bridgeL2SyncerMock,
-		epochNotifierMock, nil, nil)
+		epochNotifierMock, nil, nil, rollupQuerierMock)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 
@@ -203,8 +201,9 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL1Querier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
 	mockEpochNotifier := mocks.NewEpochNotifier(t)
+	mockLERQuerier := mocks.NewLERQuerier(t)
 	logger := log.WithFields("aggsender-test", "no claims test")
-	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey)
+	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey, 0)
 	aggSender := &AggSender{
 		log:             logger,
 		storage:         mockStorage,
@@ -212,8 +211,11 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		aggLayerClient:  mockAggLayerClient,
 		epochNotifier:   mockEpochNotifier,
 		cfg:             config.Config{},
-		flow:            flows.NewPPFlow(logger, 0, mockStorage, mockL1Querier, mockL2BridgeQuerier, signer),
-		rateLimiter:     aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
+		flow: flows.NewPPFlow(logger,
+			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
+				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
+			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
+		rateLimiter: aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
 	mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&aggsendertypes.CertificateHeader{
@@ -225,7 +227,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	}, nil).Once()
 	mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(50), nil)
-	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50), false).Return([]bridgesync.Bridge{
+	mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(mock.Anything, uint64(11), uint64(50)).Return([]bridgesync.Bridge{
 		{
 			BlockNum:           30,
 			BlockPos:           0,
@@ -438,13 +440,13 @@ func TestSendCertificate(t *testing.T) {
 
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
-	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Twice()
+	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
 		},
 		Mode: "PessimisticProof",
-	}, nil, nil, mockBridgeSyncer, nil, nil, nil)
+	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
@@ -640,6 +642,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	l2BridgeQuerier := mocks.NewBridgeQuerier(t)
 	agglayerClientMock := agglayer.NewAgglayerClientMock(t)
 	l1InfoTreeQuerierMock := mocks.NewL1InfoTreeDataQuerier(t)
+	lerQuerier := mocks.NewLERQuerier(t)
 	epochNotifierMock := mocks.NewEpochNotifier(t)
 	logger := log.WithFields("aggsender-test", "checkLastCertificateFromAgglayer")
 	var storageMock *mocks.AggSenderStorage
@@ -659,7 +662,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 	}
 	privKey, err := ecdsa.GenerateKey(crypto.S256(), rand.Reader)
 	require.NoError(t, err)
-	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey)
+	signer := signer.NewLocalSignFromPrivateKey("ut", logger, privKey, 0)
 	ctx := context.TODO()
 
 	sut := &AggSender{
@@ -669,12 +672,15 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		storage:         storage,
 		status:          &aggsendertypes.AggsenderStatus{},
 		cfg: config.Config{
-			MaxCertSize:          1024 * 1024,
-			DelayBeetweenRetries: types.Duration{Duration: time.Millisecond},
+			MaxCertSize:         1024 * 1024,
+			DelayBetweenRetries: types.Duration{Duration: time.Millisecond},
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
-		flow:          flows.NewPPFlow(logger, 0, storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer),
+		flow: flows.NewPPFlow(logger,
+			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
+				l1InfoTreeQuerierMock, lerQuerier, flows.NewBaseFlowConfigDefault()),
+			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0),
 	}
 	var flowMock *mocks.AggsenderFlow
 	if creationFlags&testDataFlagMockFlow != 0 {

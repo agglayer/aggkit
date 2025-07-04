@@ -9,10 +9,9 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector/migrations"
-	"github.com/ethereum/go-ethereum"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"golang.org/x/sync/errgroup"
@@ -29,17 +28,11 @@ func (n Network) String() string {
 	return string(n)
 }
 
-type EthClient interface {
-	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (ethereum.Subscription, error)
-	HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error)
-	HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error)
-}
-
 type ReorgDetector struct {
-	client               EthClient
+	client               aggkittypes.BaseEthereumClienter
 	db                   *sql.DB
 	checkReorgInterval   time.Duration
-	finalizedBlockType   etherman.BlockNumberFinality
+	finalizedBlockType   aggkittypes.BlockNumberFinality
 	finalizedBlockNumber *big.Int
 	network              Network
 
@@ -52,7 +45,7 @@ type ReorgDetector struct {
 	log *log.Logger
 }
 
-func New(client EthClient, cfg Config, network Network) (*ReorgDetector, error) {
+func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (*ReorgDetector, error) {
 	log := log.WithFields("reorg-detector", network.String())
 	err := migrations.RunMigrations(cfg.DBPath)
 	if err != nil {
@@ -64,7 +57,7 @@ func New(client EthClient, cfg Config, network Network) (*ReorgDetector, error) 
 	}
 	if cfg.FinalizedBlock.IsEmpty() {
 		log.Warnf("Finalized block is not set. Setting to finalized block")
-		cfg.FinalizedBlock = etherman.FinalizedBlock
+		cfg.FinalizedBlock = aggkittypes.FinalizedBlock
 	}
 
 	finalizedBlockNumber, err := cfg.FinalizedBlock.ToBlockNum()
@@ -86,7 +79,7 @@ func New(client EthClient, cfg Config, network Network) (*ReorgDetector, error) 
 }
 
 func (rd *ReorgDetector) IsDisabled() bool {
-	return rd.finalizedBlockType == etherman.LatestBlock
+	return rd.finalizedBlockType == aggkittypes.LatestBlock
 }
 
 // Start starts the reorg detector
@@ -124,7 +117,7 @@ func (rd *ReorgDetector) String() string {
 }
 
 // GetFinalizedBlockType returns the finalized block name
-func (rd *ReorgDetector) GetFinalizedBlockType() etherman.BlockNumberFinality {
+func (rd *ReorgDetector) GetFinalizedBlockType() aggkittypes.BlockNumberFinality {
 	return rd.finalizedBlockType
 }
 
@@ -265,6 +258,8 @@ func (rd *ReorgDetector) loadTrackedHeaders() (err error) {
 		return fmt.Errorf("failed to get tracked blocks: %w", err)
 	}
 
+	rd.subscriptionsLock.Lock()
+	defer rd.subscriptionsLock.Unlock()
 	// Go over tracked blocks and create subscription for each tracker
 	for id := range rd.trackedBlocks {
 		rd.subscriptions[id] = &Subscription{

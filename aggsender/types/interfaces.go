@@ -2,16 +2,16 @@ package types
 
 import (
 	"context"
+	"math/big"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
-	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -25,6 +25,24 @@ type AggsenderFlow interface {
 	// BuildCertificate builds a certificate based on the buildParams
 	BuildCertificate(ctx context.Context,
 		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
+}
+
+type AggsenderFlowBaser interface {
+	GetCertificateBuildParamsInternal(
+		ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
+	BuildCertificate(ctx context.Context,
+		certParams *CertificateBuildParams,
+		lastSentCertificate *CertificateHeader,
+		allowEmptyCert bool) (*agglayertypes.Certificate, error)
+	GetNewLocalExitRoot(ctx context.Context,
+		certParams *CertificateBuildParams) (common.Hash, error)
+	VerifyBuildParams(ctx context.Context, fullCert *CertificateBuildParams) error
+	VerifyBlockRangeGaps(
+		ctx context.Context,
+		lastSentCertificate *CertificateHeader,
+		newFromBlock, newToBlock uint64) error
+	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
+	StartL2Block() uint64
 }
 
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
@@ -46,7 +64,7 @@ type L2BridgeSyncer interface {
 	GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
 	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Claim, error)
 	OriginNetwork() uint32
-	BlockFinality() etherman.BlockNumberFinality
+	BlockFinality() aggkittypes.BlockNumberFinality
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 }
 
@@ -55,11 +73,11 @@ type BridgeQuerier interface {
 	GetBridgesAndClaims(
 		ctx context.Context,
 		fromBlock, toBlock uint64,
-		allowEmptyCert bool,
 	) ([]bridgesync.Bridge, []bridgesync.Claim, error)
 	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	OriginNetwork() uint32
+	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
@@ -101,14 +119,6 @@ type GERQuerier interface {
 		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
 }
 
-// EthClient is an interface defining functions that an EthClient should implement
-type EthClient interface {
-	bind.ContractBackend
-	ethereum.LogFilterer
-	ethereum.BlockNumberReader
-	ethereum.ChainReader
-}
-
 // Logger is an interface that defines the methods to log messages
 type Logger interface {
 	Panicf(format string, args ...interface{})
@@ -130,4 +140,22 @@ type CertificateStatusChecker interface {
 		ctx context.Context,
 		delayBetweenRetries time.Duration,
 		aggsenderStatus *AggsenderStatus)
+}
+
+// RollupDataQuerier is an interface that abstracts interaction with the rollup manager contract
+type RollupDataQuerier interface {
+	GetRollupData(blockNumber *big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
+}
+
+// LERQuerier is an interface defining functions that a Local Exit Root querier should implement
+type LERQuerier interface {
+	GetLastLocalExitRoot() (common.Hash, error)
+}
+
+// MaxL2BlockNumberLimiterInterface is an interface defining functions that a MaxL2BlockNumberLimiter should implement
+type MaxL2BlockNumberLimiterInterface interface {
+	// AdaptCertificate is a custom handler that adjusts the certificate build parameters
+	//  and return it through a new buildParams
+	AdaptCertificate(
+		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }

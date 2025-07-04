@@ -1,4 +1,4 @@
-// //nolint:dupl
+//nolint:dupl
 package grpc
 
 import (
@@ -14,6 +14,7 @@ import (
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	"github.com/agglayer/aggkit/agglayer/types"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -33,9 +34,10 @@ func TestGetEpochConfiguration(t *testing.T) {
 		cfgServiceMock := mocks.NewConfigurationServiceClient(t)
 		client := &AgglayerGRPCClient{
 			cfgService: cfgServiceMock,
+			cfg:        aggkitgrpc.DefaultConfig(),
 		}
 
-		cfgServiceMock.EXPECT().GetEpochConfiguration(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		cfgServiceMock.EXPECT().GetEpochConfiguration(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetEpochConfiguration(ctx)
 		require.ErrorContains(t, err, "test error")
@@ -47,6 +49,7 @@ func TestGetEpochConfiguration(t *testing.T) {
 		cfgServiceMock := mocks.NewConfigurationServiceClient(t)
 		client := &AgglayerGRPCClient{
 			cfgService: cfgServiceMock,
+			cfg:        aggkitgrpc.DefaultConfig(),
 		}
 
 		expectedResponse := &node.GetEpochConfigurationResponse{
@@ -56,7 +59,7 @@ func TestGetEpochConfiguration(t *testing.T) {
 			},
 		}
 
-		cfgServiceMock.EXPECT().GetEpochConfiguration(ctx, mock.Anything).Return(expectedResponse, nil)
+		cfgServiceMock.EXPECT().GetEpochConfiguration(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetEpochConfiguration(ctx)
 		require.NoError(t, err)
@@ -77,9 +80,10 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
 		client := &AgglayerGRPCClient{
 			networkStateService: networkStateServiceMock,
+			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetLatestPendingCertificateHeader(ctx, networkID)
 		require.ErrorContains(t, err, "test error")
@@ -91,6 +95,7 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
 		client := &AgglayerGRPCClient{
 			networkStateService: networkStateServiceMock,
+			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
 		epoch := uint64(10)
@@ -120,7 +125,7 @@ func TestGetLatestPendingCertificateHeader(t *testing.T) {
 			},
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetLatestPendingCertificateHeader(ctx, networkID)
 		require.NoError(t, err)
@@ -149,9 +154,10 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
 		client := &AgglayerGRPCClient{
 			networkStateService: networkStateServiceMock,
+			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetLatestSettledCertificateHeader(ctx, networkID)
 		require.ErrorContains(t, err, "test error")
@@ -163,6 +169,7 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
 		client := &AgglayerGRPCClient{
 			networkStateService: networkStateServiceMock,
+			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
 		epoch := uint64(10)
@@ -192,7 +199,7 @@ func TestGetLatestSettledCertificateHeader(t *testing.T) {
 			},
 		}
 
-		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
+		networkStateServiceMock.EXPECT().GetLatestCertificateHeader(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetLatestSettledCertificateHeader(ctx, networkID)
 		require.NoError(t, err)
@@ -221,9 +228,10 @@ func TestGetCertificateHeader(t *testing.T) {
 		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
 		client := &AgglayerGRPCClient{
 			networkStateService: networkStateServiceMock,
+			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
-		networkStateServiceMock.EXPECT().GetCertificateHeader(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetCertificateHeader(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.GetCertificateHeader(ctx, certificateID)
 		require.ErrorContains(t, err, "test error")
@@ -235,6 +243,7 @@ func TestGetCertificateHeader(t *testing.T) {
 		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
 		client := &AgglayerGRPCClient{
 			networkStateService: networkStateServiceMock,
+			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
 		epoch := uint64(10)
@@ -264,7 +273,7 @@ func TestGetCertificateHeader(t *testing.T) {
 			},
 		}
 
-		networkStateServiceMock.EXPECT().GetCertificateHeader(ctx, mock.Anything).Return(expectedResponse, nil)
+		networkStateServiceMock.EXPECT().GetCertificateHeader(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.GetCertificateHeader(ctx, certificateID)
 		require.NoError(t, err)
@@ -289,7 +298,9 @@ func TestSendCertificate(t *testing.T) {
 	t.Run("returns error when AggchainData not defined", func(t *testing.T) {
 		t.Parallel()
 
-		client := &AgglayerGRPCClient{}
+		client := &AgglayerGRPCClient{
+			cfg: aggkitgrpc.DefaultConfig(),
+		}
 
 		certificate := &types.Certificate{}
 
@@ -303,6 +314,7 @@ func TestSendCertificate(t *testing.T) {
 		submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
 		client := &AgglayerGRPCClient{
 			submissionService: submissionServiceMock,
+			cfg:               aggkitgrpc.DefaultConfig(),
 		}
 
 		certificate := &types.Certificate{
@@ -311,7 +323,7 @@ func TestSendCertificate(t *testing.T) {
 			},
 		}
 
-		submissionServiceMock.EXPECT().SubmitCertificate(ctx, mock.Anything).Return(nil, errors.New("test error"))
+		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
 		_, err := client.SendCertificate(ctx, certificate)
 		require.ErrorContains(t, err, "test error")
@@ -323,6 +335,7 @@ func TestSendCertificate(t *testing.T) {
 		submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
 		client := &AgglayerGRPCClient{
 			submissionService: submissionServiceMock,
+			cfg:               aggkitgrpc.DefaultConfig(),
 		}
 
 		certificate := &types.Certificate{
@@ -438,7 +451,7 @@ func TestSendCertificate(t *testing.T) {
 			},
 		}
 
-		submissionServiceMock.EXPECT().SubmitCertificate(ctx, mock.Anything).Return(expectedResponse, nil)
+		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
 		resp, err := client.SendCertificate(ctx, certificate)
 		require.NoError(t, err)
