@@ -2,6 +2,10 @@ package types
 
 import "fmt"
 
+var (
+	BlockRangeZero = BlockRange{}
+)
+
 // BlockRange represents a range of blocks with inclusive starting (FromBlock) and ending (ToBlock) block numbers.
 type BlockRange struct {
 	FromBlock uint64
@@ -48,7 +52,7 @@ func (b BlockRange) Gap(other BlockRange) BlockRange {
 	// If they overlap or touch, return empty
 	if b.ToBlock >= getBlockMinusOne(other.FromBlock) &&
 		other.ToBlock >= getBlockMinusOne(b.FromBlock) {
-		return BlockRange{}
+		return BlockRangeZero
 	}
 
 	if b.ToBlock < other.FromBlock {
@@ -69,4 +73,12 @@ func getBlockMinusOne(fromBlock uint64) uint64 {
 		return fromBlock - 1
 	}
 	return 0
+}
+
+func (b BlockRange) IsNextContigousBlock(other BlockRange) bool {
+	// Check if the two ranges are contiguous
+	if b.ToBlock+1 == other.FromBlock || other.ToBlock+1 == b.FromBlock {
+		return true
+	}
+	return false
 }

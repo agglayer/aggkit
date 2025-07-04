@@ -35,6 +35,22 @@ type CertificateMetadata struct {
 	CertType uint8 // version >= V2
 }
 
+func (c *CertificateMetadata) BlockRange() (BlockRange, error) {
+	if c == nil {
+		return BlockRangeZero, fmt.Errorf("certificate metadata is nil")
+	}
+	switch c.Version {
+	case CertificateMetadataV0:
+		return BlockRangeZero, fmt.Errorf("cannot get block range from metadata version 0")
+	case CertificateMetadataV1:
+		return NewBlockRange(c.FromBlock, c.FromBlock+uint64(c.Offset)), nil
+	case CertificateMetadataV2:
+		return NewBlockRange(c.FromBlock, c.FromBlock+uint64(c.Offset)), nil
+	default:
+		return BlockRangeZero, fmt.Errorf("unsupported certificate metadata version: %d", c.Version)
+	}
+}
+
 // NewCertificateMetadata returns a new CertificateMetadata from the given hash
 func NewCertificateMetadata(fromBlock uint64, offset uint32, createdAt uint32, certType uint8) *CertificateMetadata {
 	return &CertificateMetadata{
