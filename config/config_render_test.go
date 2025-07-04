@@ -157,7 +157,6 @@ func TestConfigRenderComplexStruct(t *testing.T) {
 	defaultValues := `
 		[Etherman]
 	URL="http://generic_url"
-	ForkIDChunkSize=100
 	[Etherman.EthermanConfig]
 		URL="http://localhost:8545"
 `
@@ -169,14 +168,14 @@ func TestConfigRenderComplexStruct(t *testing.T) {
 		{
 			name:                 "Complex struct merge",
 			contents:             []string{defaultValues, confiFile},
-			expectedRenderConfig: "\n[Etherman]\n  ForkIDChunkSize = 100\n  URL = \"http://generic_url\"\n\n  [Etherman.EthermanConfig]\n    URL = \"http://generic_url\"\n",
+			expectedRenderConfig: "\n[Etherman]\n  URL = \"http://generic_url\"\n\n  [Etherman.EthermanConfig]\n    URL = \"http://generic_url\"\n",
 		},
 		// This test Etherman.URL doesnt change because is not a var, it will change value on viper stage
 		{
 			name:                 "Complex struct merge override env-var, but we must propagate the string type",
 			contents:             []string{defaultValues, confiFile},
 			envVars:              map[string]string{"UTCR_Etherman_URL": "env"},
-			expectedRenderConfig: "\n[Etherman]\n  ForkIDChunkSize = 100\n  URL = \"http://generic_url\"\n\n  [Etherman.EthermanConfig]\n    URL = \"env\"\n",
+			expectedRenderConfig: "\n[Etherman]\n  URL = \"http://generic_url\"\n\n  [Etherman.EthermanConfig]\n    URL = \"env\"\n",
 		},
 	}
 	executeCases(t, tests)
@@ -225,24 +224,6 @@ B = {{Section.A}}
 	}
 	executeCases(t, tests)
 }
-
-/*
-TODO: This test generate this, is the same?
-[PrivateKey]
-    Password = "testonly"
-    Path = "./test/sequencer.keystore"
-
-func TestConfigRenderValueIsAObject(t *testing.T) {
-	var tests = []testCaseData{
-		{
-			name:                 "Complex struct object inside var",
-			contents:             []string{"PrivateKey = {Path = \"./test/sequencer.keystore\", Password = \"testonly\"}"},
-			expectedRenderConfig: "PrivateKey = {Path = \"./test/sequencer.keystore\", Password = \"testonly\"}",
-		},
-	}
-	executeCases(t, tests)
-}
-*/
 
 type configRenderTestData struct {
 	Sut     *ConfigRender

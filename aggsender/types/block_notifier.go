@@ -3,12 +3,12 @@ package types
 import (
 	"time"
 
-	"github.com/agglayer/aggkit/etherman"
+	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
 type EventNewBlock struct {
 	BlockNumber       uint64
-	BlockFinalityType etherman.BlockNumberFinality
+	BlockFinalityType aggkittypes.BlockNumberFinality
 	BlockRate         time.Duration
 }
 

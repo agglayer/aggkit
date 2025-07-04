@@ -2,16 +2,16 @@ package types
 
 import (
 	"context"
+	"math/big"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -36,9 +36,12 @@ type AggsenderFlowBaser interface {
 		allowEmptyCert bool) (*agglayertypes.Certificate, error)
 	GetNewLocalExitRoot(ctx context.Context,
 		certParams *CertificateBuildParams) (common.Hash, error)
-	VerifyBuildParams(fullCert *CertificateBuildParams) error
+	VerifyBuildParams(ctx context.Context, fullCert *CertificateBuildParams) error
+	VerifyBlockRangeGaps(
+		ctx context.Context,
+		lastSentCertificate *CertificateHeader,
+		newFromBlock, newToBlock uint64) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
-
 	StartL2Block() uint64
 }
 
@@ -61,7 +64,7 @@ type L2BridgeSyncer interface {
 	GetBridges(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Bridge, error)
 	GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]bridgesync.Claim, error)
 	OriginNetwork() uint32
-	BlockFinality() etherman.BlockNumberFinality
+	BlockFinality() aggkittypes.BlockNumberFinality
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 }
 
@@ -74,6 +77,7 @@ type BridgeQuerier interface {
 	GetExitRootByIndex(ctx context.Context, index uint32) (common.Hash, error)
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	OriginNetwork() uint32
+	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
@@ -138,13 +142,20 @@ type CertificateStatusChecker interface {
 		aggsenderStatus *AggsenderStatus)
 }
 
-// RollupManagerContract is an interface defining functions that a RollupManager contract should implement
-type RollupManagerContract interface {
-	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (
-		polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
+// RollupDataQuerier is an interface that abstracts interaction with the rollup manager contract
+type RollupDataQuerier interface {
+	GetRollupData(blockNumber *big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
 }
 
 // LERQuerier is an interface defining functions that a Local Exit Root querier should implement
 type LERQuerier interface {
 	GetLastLocalExitRoot() (common.Hash, error)
+}
+
+// MaxL2BlockNumberLimiterInterface is an interface defining functions that a MaxL2BlockNumberLimiter should implement
+type MaxL2BlockNumberLimiterInterface interface {
+	// AdaptCertificate is a custom handler that adjusts the certificate build parameters
+	//  and return it through a new buildParams
+	AdaptCertificate(
+		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }

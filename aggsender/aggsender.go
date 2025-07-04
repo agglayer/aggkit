@@ -3,6 +3,7 @@ package aggsender
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -60,7 +61,8 @@ func New(
 	l2Syncer types.L2BridgeSyncer,
 	epochNotifier types.EpochNotifier,
 	l1Client aggkittypes.BaseEthereumClienter,
-	l2Client aggkittypes.BaseEthereumClienter) (*AggSender, error) {
+	l2Client aggkittypes.BaseEthereumClienter,
+	rollupDataQuerier types.RollupDataQuerier) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
@@ -81,6 +83,7 @@ func New(
 		l2Client,
 		l1InfoTreeSyncer,
 		l2Syncer,
+		rollupDataQuerier,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)
@@ -144,7 +147,7 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.status.Start(time.Now().UTC())
 
 	a.checkDBCompatibility(ctx)
-	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBeetweenRetries.Duration, a.status)
+	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
@@ -158,6 +161,16 @@ func (a *AggSender) checkDBCompatibility(ctx context.Context) {
 	}
 	if err := a.compatibilityStoragedChecker.Check(ctx, nil); err != nil {
 		a.log.Panicf("error checking compatibility data in DB, you can bypass this check using config file. Err: %w", err)
+	}
+}
+func (a *AggSender) checkSendCertificateStopCondition(err error) {
+	if errors.Is(err, flows.ErrComplete) {
+		a.log.Infof("AggSender reached the end of the certificates to send")
+		if a.cfg.StopOnFinishedSendingAllCertificates {
+			// That is the fastest way to stop the process. Currently there are no way of gracefully stopping the AggSender
+			// because the run.go launch the components with a goroutine but doesn't check any return value
+			a.log.Panicf("Stopping AggSender because StopOnFinishedSendingAllCertificates is true")
+		}
 	}
 }
 
@@ -191,6 +204,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 					if err != nil {
 						a.log.Error(err)
 					}
+					a.checkSendCertificateStopCondition(err)
 				} else {
 					a.log.Infof("An InError cert exists but skipping send cert because RetryCertAfterInError is false")
 				}
@@ -209,6 +223,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 				if err != nil {
 					a.log.Error(err)
 				}
+				a.checkSendCertificateStopCondition(err)
 			} else {
 				log.Infof("Skipping epoch %s because there are pending certificates",
 					epoch.String())
@@ -324,7 +339,7 @@ func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Cer
 				return fmt.Errorf("error saving last sent certificate %s in db: %w", cert.String(), err)
 			} else {
 				retries++
-				time.Sleep(a.cfg.DelayBeetweenRetries.Duration)
+				time.Sleep(a.cfg.DelayBetweenRetries.Duration)
 			}
 		}
 	}

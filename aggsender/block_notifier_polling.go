@@ -9,7 +9,6 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/etherman"
 	aggkittypes "github.com/agglayer/aggkit/types"
 )
 
@@ -29,7 +28,7 @@ const (
 
 type ConfigBlockNotifierPolling struct {
 	// BlockFinalityType is the finality of the block to be notified
-	BlockFinalityType etherman.BlockNumberFinality
+	BlockFinalityType aggkittypes.BlockNumberFinality
 	// CheckNewBlockInterval is the interval at which the AggSender will check for new blocks
 	// if is 0 it will be calculated automatically
 	CheckNewBlockInterval time.Duration
@@ -147,7 +146,7 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 		return b.nextBlockRequestDelay(nil, err), newState, nil
 	}
 	if previousState == nil {
-		newState := previousState.intialBlock(currentBlock.Number.Uint64())
+		newState := previousState.initialBlock(currentBlock.Number.Uint64())
 		return b.nextBlockRequestDelay(previousState, nil), newState, nil
 	}
 	if currentBlock.Number.Uint64() == previousState.lastBlockSeen {
@@ -163,7 +162,7 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 		b.logger.Warnf("Block number decreased [finality:%s]: %d -> %d",
 			b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock.Number.Uint64())
 		// It start from scratch because something fails in calculation of block period
-		newState := previousState.intialBlock(currentBlock.Number.Uint64())
+		newState := previousState.initialBlock(currentBlock.Number.Uint64())
 		return b.nextBlockRequestDelay(nil, nil), newState, eventToEmit
 	}
 
@@ -174,7 +173,7 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 		}
 
 		// It start from scratch because something fails in calculation of block period
-		newState := previousState.intialBlock(currentBlock.Number.Uint64())
+		newState := previousState.initialBlock(currentBlock.Number.Uint64())
 		return b.nextBlockRequestDelay(nil, nil), newState, eventToEmit
 	}
 	newState := previousState.incommingNewBlock(currentBlock.Number.Uint64())
@@ -223,7 +222,7 @@ func (s *blockNotifierPollingInternalStatus) clear() *blockNotifierPollingIntern
 	return &blockNotifierPollingInternalStatus{}
 }
 
-func (s *blockNotifierPollingInternalStatus) intialBlock(block uint64) *blockNotifierPollingInternalStatus {
+func (s *blockNotifierPollingInternalStatus) initialBlock(block uint64) *blockNotifierPollingInternalStatus {
 	return &blockNotifierPollingInternalStatus{
 		lastBlockSeen: block,
 		lastBlockTime: timeNowFunc(),

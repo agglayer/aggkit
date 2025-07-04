@@ -30,6 +30,7 @@ func NewFlow(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
+	rollupDataQuerier types.RollupDataQuerier,
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
@@ -40,17 +41,17 @@ func NewFlow(
 		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
 			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1)
 		lerQuerier, err := query.NewLERDataQuerier(
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, rollupDataQuerier)
 		if err != nil {
 			return nil, fmt.Errorf("error creating LER data querier: %w", err)
 		}
 
-		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, 0),
+			NewBaseFlowConfig(cfg.MaxCertSize, 0, false),
 		)
 		return NewPPFlow(
 			logger,
@@ -60,6 +61,7 @@ func NewFlow(
 			l2BridgeQuerier,
 			signer,
 			cfg.RequireOneBridgeInPPCertificate,
+			cfg.MaxL2BlockNumber,
 		), nil
 	case types.AggchainProofMode:
 		if err := cfg.AggkitProverClient.Validate(); err != nil {
@@ -95,21 +97,21 @@ func NewFlow(
 		}
 
 		lerQuerier, err := query.NewLERDataQuerier(
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, l2Syncer.OriginNetwork(), l1Client)
+			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, rollupDataQuerier)
 		if err != nil {
 			return nil, fmt.Errorf("error creating LER data querier: %w", err)
 		}
 
-		l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block),
+			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, cfg.RequireNoFEPBlockGap),
 		)
 
 		return NewAggchainProverFlow(
 			logger,
+			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
 			baseFlow,
-			NewAggchainProverFlowConfig(cfg.RequireNoFEPBlockGap),
 			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,

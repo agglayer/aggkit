@@ -253,6 +253,53 @@ func (_c *BridgeQuerier_OriginNetwork_Call) RunAndReturn(run func() uint32) *Bri
 	return _c
 }
 
+// WaitForSyncerToCatchUp provides a mock function with given fields: ctx, block
+func (_m *BridgeQuerier) WaitForSyncerToCatchUp(ctx context.Context, block uint64) error {
+	ret := _m.Called(ctx, block)
+
+	if len(ret) == 0 {
+		panic("no return value specified for WaitForSyncerToCatchUp")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64) error); ok {
+		r0 = rf(ctx, block)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// BridgeQuerier_WaitForSyncerToCatchUp_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'WaitForSyncerToCatchUp'
+type BridgeQuerier_WaitForSyncerToCatchUp_Call struct {
+	*mock.Call
+}
+
+// WaitForSyncerToCatchUp is a helper method to define mock.On call
+//   - ctx context.Context
+//   - block uint64
+func (_e *BridgeQuerier_Expecter) WaitForSyncerToCatchUp(ctx interface{}, block interface{}) *BridgeQuerier_WaitForSyncerToCatchUp_Call {
+	return &BridgeQuerier_WaitForSyncerToCatchUp_Call{Call: _e.mock.On("WaitForSyncerToCatchUp", ctx, block)}
+}
+
+func (_c *BridgeQuerier_WaitForSyncerToCatchUp_Call) Run(run func(ctx context.Context, block uint64)) *BridgeQuerier_WaitForSyncerToCatchUp_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64))
+	})
+	return _c
+}
+
+func (_c *BridgeQuerier_WaitForSyncerToCatchUp_Call) Return(_a0 error) *BridgeQuerier_WaitForSyncerToCatchUp_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *BridgeQuerier_WaitForSyncerToCatchUp_Call) RunAndReturn(run func(context.Context, uint64) error) *BridgeQuerier_WaitForSyncerToCatchUp_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewBridgeQuerier creates a new instance of BridgeQuerier. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewBridgeQuerier(t interface {

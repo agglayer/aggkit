@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/bridgesync"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/helpers"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -115,7 +115,7 @@ func TestBridgeEventE2E(t *testing.T) {
 
 func getFinalizedBlockNumber(t *testing.T, ctx context.Context, client simulated.Client) uint64 {
 	t.Helper()
-	lastBlockFinalityType, err := etherman.FinalizedBlock.ToBlockNum()
+	lastBlockFinalityType, err := aggkittypes.FinalizedBlock.ToBlockNum()
 	require.NoError(t, err)
 	lastBlockHeader, err := client.HeaderByNumber(ctx, lastBlockFinalityType)
 	require.NoError(t, err)

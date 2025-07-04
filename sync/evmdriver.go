@@ -7,9 +7,9 @@ import (
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -74,14 +74,12 @@ type processorInterface interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	ProcessBlock(ctx context.Context, block Block) error
 	Reorg(ctx context.Context, firstReorgedBlock uint64) error
-	// CheckCompatibilityData is the interface to set / retrieve the compatibility data to storage
-	compatibility.CompatibilityDataStorager[RuntimeData]
 }
 
 type ReorgDetector interface {
 	Subscribe(id string) (*reorgdetector.Subscription, error)
 	AddBlockToTrack(ctx context.Context, id string, blockNum uint64, blockHash common.Hash) error
-	GetFinalizedBlockType() etherman.BlockNumberFinality
+	GetFinalizedBlockType() aggkittypes.BlockNumberFinality
 	String() string
 }
 
@@ -92,17 +90,13 @@ func NewEVMDriver(
 	reorgDetectorID string,
 	downloadBufferSize int,
 	rh *RetryHandler,
-	requireStorageContentCompatibility bool,
+	compatibilityChecker compatibility.CompatibilityChecker,
 ) (*EVMDriver, error) {
 	logger := log.WithFields("syncer", reorgDetectorID)
 	reorgSub, err := reorgDetector.Subscribe(reorgDetectorID)
 	if err != nil {
 		return nil, err
 	}
-	compatibilityChecker := compatibility.NewCompatibilityCheck(
-		requireStorageContentCompatibility,
-		downloader.RuntimeData,
-		processor)
 
 	return &EVMDriver{
 		reorgDetector:        reorgDetector,

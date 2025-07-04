@@ -105,12 +105,14 @@ func TestNewFlow(t *testing.T) {
 			t.Parallel()
 			ctx := context.Background()
 
-			mockStorage := new(mocks.AggSenderStorage)
-			mockL1Client := new(typesmocks.BaseEthereumClienter)
-			mockL2Client := new(typesmocks.BaseEthereumClienter)
-			mockL1InfoTreeSyncer := new(mocks.L1InfoTreeSyncer)
-			mockL2BridgeSyncer := new(mocks.L2BridgeSyncer)
-			mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(1)
+			mockStorage := mocks.NewAggSenderStorage(t)
+			mockL1Client := typesmocks.NewBaseEthereumClienter(t)
+			mockL2Client := typesmocks.NewBaseEthereumClienter(t)
+			mockL1InfoTreeSyncer := mocks.NewL1InfoTreeSyncer(t)
+			mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
+			mockRollupDataQuerier := mocks.NewRollupDataQuerier(t)
+
+			mockL2BridgeSyncer.EXPECT().OriginNetwork().Return(1).Maybe()
 			mockLogger := log.WithFields("test", "NewFlow")
 
 			mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Maybe()
@@ -126,6 +128,7 @@ func TestNewFlow(t *testing.T) {
 				mockL2Client,
 				mockL1InfoTreeSyncer,
 				mockL2BridgeSyncer,
+				mockRollupDataQuerier,
 			)
 
 			if tc.expectedError != "" {

@@ -14,7 +14,6 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/bridgesync"
 	cfgTypes "github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
@@ -92,7 +91,7 @@ func NewE2EEnvWithEVML2(t *testing.T, cfg *EnvironmentConfig) *AggoracleWithEVMC
 	oracle, err := aggoracle.New(
 		log.GetDefaultLogger(), l2Setup.AggoracleSender,
 		l1Setup.SimBackend.Client(), l1Setup.InfoTreeSync,
-		etherman.LatestBlock, time.Millisecond*20, //nolint:mnd
+		aggkittypes.LatestBlock, time.Millisecond*20, //nolint:mnd
 	)
 	require.NoError(t, err)
 	go oracle.Start(ctx)
@@ -119,7 +118,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	rdL1, err := reorgdetector.New(l1Client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorgDetectorL1,
 		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
-		FinalizedBlock:      etherman.FinalizedBlock,
+		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	}, reorgdetector.L1)
 	require.NoError(t, err)
 	go rdL1.Start(ctx) //nolint:errcheck
@@ -134,11 +133,11 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx, dbPathL1InfoTreeSync,
 		gerL1Addr, common.Address{},
-		syncBlockChunkSize, etherman.LatestBlock,
+		syncBlockChunkSize, aggkittypes.LatestBlock,
 		rdL1, l1Client.Client(),
 		time.Millisecond, 0, l1InfoTreeSyncerRetryFreq,
 		l1InfoTreeSyncerRetries, l1infotreesync.FlagAllowWrongContractsAddrs,
-		etherman.SafeBlock,
+		aggkittypes.SafeBlock,
 		true,
 	)
 	require.NoError(t, err)
@@ -158,7 +157,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
-		syncBlockChunkSize, etherman.LatestBlock, rdL1, testClient,
+		syncBlockChunkSize, aggkittypes.LatestBlock, rdL1, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
 		retriesCount, originNetwork, false, true)
 	require.NoError(t, err)
@@ -202,7 +201,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 	rdL2, err := reorgdetector.New(l2Client.Client(), reorgdetector.Config{
 		DBPath:              dbPathReorgL2,
 		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
-		FinalizedBlock:      etherman.FinalizedBlock,
+		FinalizedBlock:      aggkittypes.FinalizedBlock,
 	},
 		reorgdetector.L2,
 	)
@@ -223,7 +222,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 
 	bridgeL2Sync, err := bridgesync.NewL2(
 		ctx, dbPathL2BridgeSync, bridgeL2Addr, syncBlockChunkSize,
-		etherman.LatestBlock, rdL2, testClient,
+		aggkittypes.LatestBlock, rdL2, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
 		retriesCount, originNetwork, false, true)
 	require.NoError(t, err)
