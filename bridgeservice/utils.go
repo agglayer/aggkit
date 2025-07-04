@@ -114,8 +114,8 @@ func NewBridgeResponse(bridge *bridgesync.Bridge) *bridgetypes.BridgeResponse {
 }
 
 // NewClaimResponse creates ClaimResponse instance out of the provided Claim
-func NewClaimResponse(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
-	return &bridgetypes.ClaimResponse{
+func NewClaimResponse(claim *bridgesync.Claim, populateProofs bool) *bridgetypes.ClaimResponse {
+	response := &bridgetypes.ClaimResponse{
 		GlobalIndex:        bridgetypes.BigIntString(claim.GlobalIndex.String()),
 		DestinationNetwork: claim.DestinationNetwork,
 		TxHash:             bridgetypes.Hash(claim.TxHash.Hex()),
@@ -127,7 +127,20 @@ func NewClaimResponse(claim *bridgesync.Claim) *bridgetypes.ClaimResponse {
 		OriginNetwork:      claim.OriginNetwork,
 		BlockTimestamp:     claim.BlockTimestamp,
 		MainnetExitRoot:    bridgetypes.Hash(claim.MainnetExitRoot.Hex()),
+		RollupExitRoot:     bridgetypes.Hash(claim.RollupExitRoot.Hex()),
+		GlobalExitRoot:     bridgetypes.Hash(claim.GlobalExitRoot.Hex()),
+		Metadata:           fmt.Sprintf("0x%s", hex.EncodeToString(claim.Metadata)),
 	}
+
+	// Only populate proof fields if requested
+	if populateProofs {
+		localProof := bridgetypes.ConvertToProofResponse(claim.ProofLocalExitRoot)
+		rollupProof := bridgetypes.ConvertToProofResponse(claim.ProofRollupExitRoot)
+		response.ProofLocalExitRoot = &localProof
+		response.ProofRollupExitRoot = &rollupProof
+	}
+
+	return response
 }
 
 // NewTokenMappingResponse creates TokenMappingResponse instance out of the provided TokenMapping

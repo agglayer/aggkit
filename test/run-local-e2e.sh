@@ -148,15 +148,15 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
             ./tests/aggkit/bridge-e2e.bats \
             ./tests/aggkit/e2e-pp.bats \
             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
-            ./tests/aggkit/claim-call-data.bats \
             ./tests/op/optimistic-mode.bats \
+            ./tests/aggkit/internal-claims.bats
         ;;
     single-l2-network-fork12-pessimistic)
         bats \
             ./tests/aggkit/bridge-e2e-custom-gas.bats \
             ./tests/aggkit/bridge-e2e.bats \
             ./tests/aggkit/e2e-pp.bats \
-            ./tests/aggkit/claim-call-data.bats
+            ./tests/aggkit/internal-claims.bats
         ;;
     multi-l2-networks-2-chains)
         bats ./tests/aggkit/bridge-e2e-2-l2s.bats

@@ -307,6 +307,42 @@ type Event struct {
 	RemoveLegacyToken    *RemoveLegacyToken
 }
 
+// BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
+// It includes chain ID, contract addresses, and database version information.
+type BridgeSyncRuntimeData struct {
+	// This fields are coming from legacy sync.RuntimeData
+	ChainID   uint64
+	Addresses []common.Address
+	// DBVersion tracks the database schema version for compatibility validation
+	DBVersion *int
+}
+
+func (b BridgeSyncRuntimeData) String() string {
+	res := fmt.Sprintf("ChainID: %d, Addresses: ", b.ChainID)
+	for _, addr := range b.Addresses {
+		res += addr.String() + ", "
+	}
+	if b.DBVersion != nil {
+		res += fmt.Sprintf("DBVersion: %d", *b.DBVersion)
+	}
+	return res
+}
+func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error {
+	tmp := sync.RuntimeData{
+		ChainID:   b.ChainID,
+		Addresses: b.Addresses,
+	}
+	if err := tmp.IsCompatible(sync.RuntimeData{ChainID: storage.ChainID, Addresses: storage.Addresses}); err != nil {
+		return err
+	}
+	if storage.DBVersion == nil || *storage.DBVersion != *b.DBVersion {
+		return fmt.Errorf("database schema version mismatch (current: %v, stored: %v). "+
+			"Drop BridgeL1Sync and BridgeL2Sync databases and restart",
+			b.DBVersion, storage.DBVersion)
+	}
+	return nil
+}
+
 type processor struct {
 	db           *sql.DB
 	exitTree     *tree.AppendOnlyTree
@@ -314,7 +350,7 @@ type processor struct {
 	mu           mutex.RWMutex
 	halted       bool
 	haltedReason string
-	compatibility.CompatibilityDataStorager[sync.RuntimeData]
+	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
 func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, error) {
@@ -332,7 +368,7 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 		db:       database,
 		exitTree: exitTree,
 		log:      logger,
-		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[sync.RuntimeData](
+		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
 			name,
 		),
@@ -654,9 +690,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
-			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
-				p.log.Errorf("error rolling back reorg transaction: %v", errRllbck)
-			}
+			p.rollbackTransaction(tx)
 		}
 	}()
 
@@ -675,7 +709,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 		p.log.Errorf("failed to reorg exit tree: %v", err)
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err = tx.Commit(); err != nil {
 		p.log.Errorf("failed to commit reorg transaction: %v", err)
 		return err
 	}
@@ -701,9 +735,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
-			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
-				p.log.Errorf("error rolling back db transaction (block number %d): %v", block.Num, errRllbck)
-			}
+			p.rollbackTransaction(tx)
 		}
 	}()
 
@@ -925,7 +957,8 @@ func (p *processor) startTransaction(ctx context.Context, isReadOnly bool) (*sql
 	return tx, nil
 }
 
-func (p *processor) rollbackTransaction(tx *sql.Tx) {
+// rollbackTransaction rolls back the transaction and logs an error if it fails
+func (p *processor) rollbackTransaction(tx dbtypes.SQLTxer) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 		log.Warnf("error rolling back tx: %v", err)
 	}
