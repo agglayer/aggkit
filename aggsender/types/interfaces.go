@@ -87,6 +87,9 @@ type ChainGERReader interface {
 		fromBlock, toBlock uint64) (map[common.Hash]chaingerreader.InjectedGER, error)
 }
 
+type L1InfoTreeRootByLeafQuerier interface {
+}
+
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
 // It is used to query data from the L1 Info tree
 type L1InfoTreeDataQuerier interface {
@@ -109,6 +112,9 @@ type L1InfoTreeDataQuerier interface {
 	// CheckIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
 	CheckIfClaimsArePartOfFinalizedL1InfoTree(
 		finalizedL1InfoTreeRoot *treetypes.Root, claims []bridgesync.Claim) error
+
+	// GetL1InfoRootByLeafCount returns the L1 Info tree root for the given leaf count
+	GetL1InfoRootByLeafCount(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
 }
 
 // GERQuerier is an interface defining functions that an GERQuerier should implement

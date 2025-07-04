@@ -51,6 +51,10 @@ func (c *CertificateMetadata) BlockRange() (BlockRange, error) {
 	}
 }
 
+func (c *CertificateMetadata) CertificateType() CertificateType {
+	return CertificateType(c.CertType)
+}
+
 // NewCertificateMetadata returns a new CertificateMetadata from the given hash
 func NewCertificateMetadata(fromBlock uint64, offset uint32, createdAt uint32, certType uint8) *CertificateMetadata {
 	return &CertificateMetadata{

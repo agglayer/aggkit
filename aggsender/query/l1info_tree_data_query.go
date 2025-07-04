@@ -59,6 +59,22 @@ func (l *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context
 	return &root, l1InfoLeaf, nil
 }
 
+// GetL1InfoRootByLeafCount returns the L1 Info tree root for the given leaf count
+func (l *L1InfoTreeDataQuerier) GetL1InfoRootByLeafCount(ctx context.Context, leafCount uint32) (*treetypes.Root, error) {
+	// Get the latest finalized L1 Info tree root
+	root, err := l.l1InfoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, leafCount)
+	if err != nil {
+		return nil, fmt.Errorf("error getting L1 Info tree root by leaf count %d: %w", leafCount, err)
+	}
+
+	// If the root is empty, it means there are no leaves in the tree
+	if root.Hash == (common.Hash{}) {
+		return nil, fmt.Errorf("no L1 Info tree root found for leaf count %d", leafCount)
+	}
+
+	return &root, nil
+}
+
 // GetFinalizedL1InfoTreeData returns the L1 Info tree data for the last finalized processed block
 // l1InfoTreeData is:
 // - merkle proof of given l1 info tree leaf

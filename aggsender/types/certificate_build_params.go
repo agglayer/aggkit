@@ -11,6 +11,24 @@ import (
 
 const claimSizeFactor = 200 // Size factor for claims in bytes
 
+type CertificatePreBuildParams struct {
+	BlockRange             BlockRange
+	RetryCount             int
+	CertificateType        CertificateType
+	LastSentCertificate    *CertificateHeader
+	L1InfoTreeWhichToProve *CertificateL1InfoTree
+}
+
+type CertificateL1InfoTree struct {
+	L1InfoTreeRootFromWhichToProve common.Hash
+	L1InfoTreeLeafCount            uint32
+}
+
+type CertificateBridgesData struct {
+	Bridges []bridgesync.Bridge
+	Claims  []bridgesync.Claim
+}
+
 // CertificateBuildParams is a struct that holds the parameters to build a certificate
 type CertificateBuildParams struct {
 	FromBlock                      uint64

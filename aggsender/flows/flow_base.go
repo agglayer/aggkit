@@ -89,42 +89,70 @@ func (f *baseFlow) StartL2Block() uint64 {
 	return f.cfg.StartL2Block
 }
 
+// NextCertificateBlockRange returns the block range and retryCount for the next certificate
+func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
+	lastSentCertificate *types.CertificateHeader) (types.BlockRange, int, error) {
+	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
+	if err != nil {
+		return types.BlockRangeZero, 0, fmt.Errorf("error getting last processed block from l2: %w", err)
+	}
+
+	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
+	if previousToBlock >= lastL2BlockSynced {
+		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
+			previousToBlock, lastL2BlockSynced)
+		return types.BlockRangeZero, 0, errNoNewBlocks
+	}
+	fromBlock := previousToBlock + 1
+	toBlock := lastL2BlockSynced
+	return types.NewBlockRange(fromBlock, toBlock), retryCount, nil
+}
+
+func (f *baseFlow) GetLastCertificate(ctx context.Context) (*types.CertificateHeader, error) {
+	lastSentCertificate, err := f.storage.GetLastSentCertificateHeader()
+	if err != nil {
+		return nil, fmt.Errorf("fails to GetLastCertificate. Err: %w", err)
+	}
+	return lastSentCertificate, nil
+}
+
+func (f *baseFlow) GetBridgesAndClaims(ctx context.Context,
+	blockRange types.BlockRange) (*types.CertificateBridgesData, error) {
+	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, blockRange.FromBlock, blockRange.ToBlock)
+	if err != nil {
+		return nil, err
+	}
+	return &types.CertificateBridgesData{
+		Bridges: bridges,
+		Claims:  claims,
+	}, nil
+
+}
+
 // GetCertificateBuildParamsInternal returns the parameters to build a certificate
 func (f *baseFlow) GetCertificateBuildParamsInternal(
 	ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
-	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
+	lastSentCertificate, err := f.GetLastCertificate(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
+		return nil, err
 	}
-
-	lastSentCertificate, err := f.storage.GetLastSentCertificateHeader()
+	nextBlocks, retryCount, err := f.NextCertificateBlockRange(ctx, lastSentCertificate)
 	if err != nil {
 		return nil, err
 	}
 
-	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
-
-	if previousToBlock >= lastL2BlockSynced {
-		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
-			previousToBlock, lastL2BlockSynced)
-		return nil, errNoNewBlocks
-	}
-
-	fromBlock := previousToBlock + 1
-	toBlock := lastL2BlockSynced
-
-	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
+	bridgeData, err := f.GetBridgesAndClaims(ctx, nextBlocks)
 	if err != nil {
 		return nil, err
 	}
 
 	buildParams := &types.CertificateBuildParams{
-		FromBlock:           fromBlock,
-		ToBlock:             toBlock,
+		FromBlock:           nextBlocks.FromBlock,
+		ToBlock:             nextBlocks.ToBlock,
 		RetryCount:          retryCount,
 		LastSentCertificate: lastSentCertificate,
-		Bridges:             bridges,
-		Claims:              claims,
+		Bridges:             bridgeData.Bridges,
+		Claims:              bridgeData.Claims,
 		CreatedAt:           uint32(time.Now().UTC().Unix()),
 		CertificateType:     certType,
 	}

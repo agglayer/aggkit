@@ -137,8 +137,8 @@ func start(cliCtx *cli.Context) error {
 			}
 
 			rpcServices = append(rpcServices, aggchainProofGen.GetRPCServices()...)
-		case aggkitcommon.AGGSENDER_VERIFIER:
-			aggsenderVerifier, err := createAggSenderVerifier(
+		case aggkitcommon.AGGSENDER_VALIDATOR:
+			aggsenderValidator, err := createAggSenderValidator(
 				cliCtx.Context,
 				cfg.AggSender,
 				l1Client,
@@ -150,8 +150,8 @@ func start(cliCtx *cli.Context) error {
 			if err != nil {
 				log.Fatal(err)
 			}
-			rpcServices = append(rpcServices, aggsenderVerifier.GetRPCServices()...)
-			go aggsenderVerifier.Start(cliCtx.Context)
+			rpcServices = append(rpcServices, aggsenderValidator.GetRPCServices()...)
+			go aggsenderValidator.Start(cliCtx.Context)
 		}
 
 	}
@@ -204,15 +204,15 @@ func createAggchainProofGen(
 	return aggchainProofGen, nil
 }
 
-func createAggSenderVerifier(ctx context.Context,
+func createAggSenderValidator(ctx context.Context,
 	cfg aggsendercfg.Config,
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderVerifier, error) {
-	logger := log.WithFields("module", aggkitcommon.AGGSENDER_VERIFIER)
-	return aggsender.NewAggsenderVerifier(ctx, logger, cfg,
+	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
+	logger := log.WithFields("module", aggkitcommon.AGGSENDER_VALIDATOR)
+	return aggsender.NewAggsenderValidator(ctx, logger, cfg,
 		l1InfoTreeSync, l2Syncer, l1EthClient, l2Client, rollupDataQuerier)
 }
 
@@ -396,7 +396,7 @@ func runL1InfoTreeSyncerIfNeeded(
 	reorgDetector *reorgdetector.ReorgDetector,
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDER_VERIFIER,
+		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDER_VALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
@@ -430,7 +430,7 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) aggkittypes.EthCl
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDER_VERIFIER,
+		aggkitcommon.AGGSENDER_VALIDATOR,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.L1INFOTREESYNC,
 		aggkitcommon.AGGCHAINPROOFGEN,
@@ -451,7 +451,7 @@ func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientC
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDER_VERIFIER,
+		aggkitcommon.AGGSENDER_VALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
@@ -470,7 +470,7 @@ func runReorgDetectorL1IfNeeded(
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDER_VERIFIER,
+		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDER_VALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
 		aggkitcommon.AGGCHAINPROOFGEN},
 		components) {
@@ -499,7 +499,7 @@ func runReorgDetectorL2IfNeeded(
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDER_VERIFIER,
+		aggkitcommon.AGGSENDER_VALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil, nil
 	}
@@ -602,7 +602,7 @@ func runBridgeSyncL2IfNeeded(
 	if !isNeeded([]string{
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDER_VERIFIER,
+		aggkitcommon.AGGSENDER_VALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
@@ -704,7 +704,7 @@ func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDER_VERIFIER,
+		aggkitcommon.AGGSENDER_VALIDATOR,
 		aggkitcommon.BRIDGE,
 	}, components) {
 		return nil, nil
