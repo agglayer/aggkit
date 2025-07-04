@@ -24,11 +24,6 @@ type CertificateL1InfoTree struct {
 	L1InfoTreeLeafCount            uint32
 }
 
-type CertificateBridgesData struct {
-	Bridges []bridgesync.Bridge
-	Claims  []bridgesync.Claim
-}
-
 // CertificateBuildParams is a struct that holds the parameters to build a certificate
 type CertificateBuildParams struct {
 	FromBlock                      uint64

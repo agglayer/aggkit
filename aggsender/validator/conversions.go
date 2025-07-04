@@ -55,8 +55,11 @@ func AgglayerCertificateToCertificateBuildParams(cert *agglayertypes.Certificate
 		return nil, fmt.Errorf("cant get blockRange from certificate. Err: %w", err)
 	}
 
-	bridges := ConvertBridges(cert.BridgeExits)
-	claims := ConvertClaims(cert.ImportedBridgeExits)
+	bridges := ConvertBridgeExits(cert.BridgeExits)
+	claims, err := ConvertImportedBridgeExits(cert.ImportedBridgeExits)
+	if err != nil {
+		return nil, fmt.Errorf("error converting imported bridge exits: %w", err)
+	}
 
 	certParams := &types.CertificateBuildParams{
 		FromBlock:           blockRange.FromBlock,
@@ -66,6 +69,8 @@ func AgglayerCertificateToCertificateBuildParams(cert *agglayertypes.Certificate
 		CertificateType:     metadataUnmarshal.CertificateType(),
 		//L1InfoTreeRootFromWhichToProve:,
 		L1InfoTreeLeafCount: cert.L1InfoTreeLeafCount,
+		Bridges:             bridges,
+		Claims:              claims,
 	}
 	return certParams, nil
 }

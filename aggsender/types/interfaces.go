@@ -43,6 +43,12 @@ type AggsenderFlowBaser interface {
 		newFromBlock, newToBlock uint64) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
+
+	GeneratePreBuildParams(ctx context.Context,
+		certType CertificateType) (*CertificatePreBuildParams, error)
+	GenerateBuildParams(ctx context.Context,
+		preParams CertificatePreBuildParams) (*CertificateBuildParams, error)
+	ApplyLimitSize(certParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }
 
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement

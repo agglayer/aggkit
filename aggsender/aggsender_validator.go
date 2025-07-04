@@ -29,9 +29,17 @@ type L1InfoTreeRootByLeafQuerier interface {
 	GetL1InfoRootByLeafCount(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
 }
 
+type FlowInterface interface {
+	GenerateBuildParams(ctx context.Context,
+		preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)
+	BuildCertificate(ctx context.Context,
+		buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error)
+}
+
 type AggsenderValidator struct {
 	log                   aggkitcommon.Logger
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
+	flow                  FlowInterface
 }
 
 func NewAggsenderValidator(ctx context.Context,
@@ -56,7 +64,7 @@ type VerifyIncommingRequests struct {
 	previousCertificate *agglayertypes.CertificateHeader
 }
 
-func (a *AggsenderValidator) ValidateCertificate(params VerifyIncommingRequests) error {
+func (a *AggsenderValidator) ValidateCertificate(ctx context.Context, params VerifyIncommingRequests) error {
 	if params.certificate == nil {
 		return ErrNilCertificate
 	}
@@ -65,8 +73,36 @@ func (a *AggsenderValidator) ValidateCertificate(params VerifyIncommingRequests)
 		return err
 	}
 	// Build corresponding certificate
-
+	preBuildParams, err := a.GetCertificatePreBuildParams(ctx, params)
+	if err != nil {
+		return fmt.Errorf("failed to get certificate pre-build params: %w", err)
+	}
+	buildParams, err := a.flow.GenerateBuildParams(ctx, preBuildParams)
+	if err != nil {
+		return fmt.Errorf("failed to generate certificate build params: %w", err)
+	}
+	certificate, err := a.flow.BuildCertificate(ctx, buildParams)
+	if err != nil {
+		return fmt.Errorf("failed to build certificate: %w", err)
+	}
+	err = a.CompareCertificates(params.certificate, certificate)
+	if err != nil {
+		return fmt.Errorf("failed to compare certificates: %w", err)
+	}
 	return ErrNotImplemented
+}
+func (a *AggsenderValidator) CompareCertificates(
+	incomingCertificate *agglayertypes.Certificate,
+	localCertificate *agglayertypes.Certificate) error {
+	if incomingCertificate == nil || localCertificate == nil {
+		return fmt.Errorf("one of the certificates is nil, incoming: %v, local: %v",
+			incomingCertificate, localCertificate)
+	}
+	if incomingCertificate.Hash() != localCertificate.Hash() {
+		return fmt.Errorf("certificates hash mismatch, incoming: %s, local: %s",
+			incomingCertificate.Hash().Hex(), localCertificate.Hash().Hex())
+	}
+	return nil
 }
 
 func (a *AggsenderValidator) CheckContigousCertificates(params VerifyIncommingRequests) error {
