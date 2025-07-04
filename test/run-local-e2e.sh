@@ -138,7 +138,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
 
     export BATS_LIB_PATH="$PWD/core/helpers/lib"
     export PROJECT_ROOT="$PWD"
-    export ENCLAVE="$ENCLAVE_NAME"
+    export ENCLAVE_NAME="$ENCLAVE_NAME"
     export AGGSENDER_IMPORTED_BRIDGE_PATH="$E2E_REPO_PATH/aggsender_find_imported_bridge"
 
     log_info "Running BATS E2E tests..."
