@@ -38,6 +38,7 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -223,6 +224,7 @@ func createAggSenderValidator(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender SQL storage: %w", err)
 	}
+	cfg.AggsenderPrivateKey = types.SignerConfig{Method: "mock"}
 	flow, err := flows.NewFlow(
 		ctx,
 		cfg,

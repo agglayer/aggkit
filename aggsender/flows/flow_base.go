@@ -146,8 +146,8 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 
 func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 	preParams types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
-	if preParams.L1InfoTreeWhichToProve != nil {
-		return nil, fmt.Errorf("L1InfoTreeWhichToProve should be nil for GenerateBuildParams")
+	if preParams.L1InfoTreeWhichToProve == nil {
+		return nil, fmt.Errorf("L1InfoTreeWhichToProve should be not nil for GenerateBuildParams")
 	}
 
 	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx,
