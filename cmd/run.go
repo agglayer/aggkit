@@ -286,8 +286,20 @@ func createAggSender(
 	go blockNotifier.Start(ctx)
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
-	return aggsender.New(ctx, logger, cfg, agglayerClient,
+	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
 		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggSender: %w", err)
+	}
+	// TODO: Remove this, just for testing
+	if cfg.Mode == "PessimisticProof" {
+		validator, err := createAggSenderValidator(ctx, cfg, l1InfoTreeSync, l2Syncer, l1EthClient, l2Client, rollupDataQuerier)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create AggSender validator: %w", err)
+		}
+		aggsender.AttatchValidator(validator)
+	}
+	return aggsender, nil
 }
 
 func createAggoracle(
@@ -733,7 +745,7 @@ func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*
 		aggkitcommon.AGGSENDER_VALIDATOR,
 		aggkitcommon.BRIDGE,
 	}, components) {
-		return nil, nil
+		return &etherman.RollupDataQuerier{}, nil
 	}
 
 	return etherman.NewRollupDataQuerier(cfg,
