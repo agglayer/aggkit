@@ -1,4 +1,4 @@
-package verifier
+package validator
 
 import (
 	"context"
@@ -8,14 +8,14 @@ import (
 	"testing"
 
 	nodev1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
-	v1 "github.com/agglayer/aggkit/aggsender/verifier/proto/v1"
+	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-func TestVerifierService(t *testing.T) {
-	t.Skip("Skipping test for VerifierService, this is only for debugging purposes")
+func TestValidatorService(t *testing.T) {
+	t.Skip("Skipping test for ValidatorService, this is only for debugging purposes")
 
 	cfg := grpc.ServerConfig{
 		Host:             "localhost",
@@ -27,8 +27,8 @@ func TestVerifierService(t *testing.T) {
 	server, err := grpc.NewServer(cfg)
 	require.NoError(t, err, "Failed to create gRPC server")
 
-	// Register the Verifier service
-	v1.RegisterAggsenderVerifierServer(server.GRPC(), &VerifierService{})
+	// Register the Validator service
+	v1.RegisterAggsenderValidatorServer(server.GRPC(), &ValidatorService{})
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
@@ -42,13 +42,13 @@ func TestVerifierService(t *testing.T) {
 	server.Start(ctx)
 }
 
-func TestVerifierService_VerifyCertificate(t *testing.T) {
-	svc := &VerifierService{}
+func TestValidatorService_ValidateCertificate(t *testing.T) {
+	svc := &ValidatorService{}
 	cert := &nodev1.Certificate{
 		Height: 42,
 	}
 
-	resp, err := svc.VerifyCertificate(context.Background(), cert)
+	resp, err := svc.ValidateCertificate(context.Background(), cert)
 	require.NoError(t, err)
 	require.IsType(t, &emptypb.Empty{}, resp)
 }
