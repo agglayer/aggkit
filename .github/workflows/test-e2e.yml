@@ -216,7 +216,7 @@ jobs:
       - test-multi-l2-networks-3-chains
       - get-kurtosis-cdk-commit
     runs-on: ubuntu-latest
-    if: always() && github.event_name == 'schedule'
+    # if: always() && github.event_name == 'schedule'
     steps:
       - name: Determine workflow status
         id: status
