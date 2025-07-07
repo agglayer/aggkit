@@ -18,6 +18,7 @@ import (
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/statuschecker"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -49,6 +50,8 @@ type AggSender struct {
 	flow        types.AggsenderFlow
 
 	l2OriginNetwork uint32
+
+	validator types.CertificateValidator
 }
 
 // New returns a new AggSender instance
@@ -123,6 +126,14 @@ func (a *AggSender) Info() types.AggsenderInfo {
 		NetworkID:                a.l2OriginNetwork,
 	}
 	return res
+}
+
+func (a *AggSender) AttatchValidator(validator types.CertificateValidator) {
+	if validator == nil {
+		a.log.Panicf("validator is nil")
+	}
+	a.validator = validator
+	a.log.Infof("AggSender validator attached: %T", a.validator)
 }
 
 // GetRPCServices returns the list of services that the RPC provider exposes
@@ -271,6 +282,17 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
+	if a.validator != nil {
+		a.log.Infof("certificate validation: %s ....", certificate.Brief())
+		if err := a.validator.ValidateCertificate(ctx, types.VerifyIncommingRequests{
+			Certificate:         certificate,
+			PreviousCertificate: validator.AggsenderCertificateHeaderToAgglayer(certificateParams.LastSentCertificate, certificate.NetworkID),
+		}); err != nil {
+			a.log.Errorf("certificate validation failed: %s. Cert: %s", err.Error(), certificate.Brief())
+			return nil, fmt.Errorf("certificate validation failed: %w", err)
+		}
+		a.log.Infof("certificate validation passed: %s", certificate.Brief())
+	}
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return certificate, nil

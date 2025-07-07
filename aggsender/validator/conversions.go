@@ -45,6 +45,27 @@ func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader)
 	}, nil
 }
 
+func AggsenderCertificateHeaderToAgglayer(cert *types.CertificateHeader, networkID uint32) *agglayertypes.CertificateHeader {
+	if cert == nil {
+		return nil
+	}
+	metadata := types.NewCertificateMetadata(
+		cert.FromBlock,
+		uint32(cert.ToBlock-cert.FromBlock),
+		cert.CreatedAt,
+		cert.CertType.ToInt(),
+	)
+	return &agglayertypes.CertificateHeader{
+		NetworkID:             networkID,
+		Height:                cert.Height,
+		CertificateID:         cert.CertificateID,
+		PreviousLocalExitRoot: cert.PreviousLocalExitRoot,
+		NewLocalExitRoot:      cert.NewLocalExitRoot,
+		Status:                cert.Status,
+		Metadata:              metadata.ToHash(),
+	}
+}
+
 func AgglayerCertificateToCertificateBuildParams(cert *agglayertypes.Certificate) (*types.CertificateBuildParams, error) {
 	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(cert.Metadata)
 	if err != nil {

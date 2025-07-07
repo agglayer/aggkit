@@ -20,7 +20,10 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
+	aggsenderdb "github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/prover"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -141,9 +144,9 @@ func start(cliCtx *cli.Context) error {
 			aggsenderValidator, err := createAggSenderValidator(
 				cliCtx.Context,
 				cfg.AggSender,
-				l1Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				l1Client,
 				l2Client,
 				rollupDataQuerier,
 			)
@@ -206,14 +209,37 @@ func createAggchainProofGen(
 
 func createAggSenderValidator(ctx context.Context,
 	cfg aggsendercfg.Config,
-	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
+	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER_VALIDATOR)
-	return aggsender.NewAggsenderValidator(ctx, logger, cfg,
-		l1InfoTreeSync, l2Syncer, l1EthClient, l2Client, rollupDataQuerier)
+	storageConfig := aggsenderdb.AggSenderSQLStorageConfig{
+		DBPath:                  cfg.StoragePath,
+		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
+	}
+	aggsenderdb, err := aggsenderdb.NewAggSenderSQLStorage(logger, storageConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggSender SQL storage: %w", err)
+	}
+	flow, err := flows.NewFlow(
+		ctx,
+		cfg,
+		logger,
+		aggsenderdb,
+		l1Client,
+		l2Client,
+		l1InfoTreeSync,
+		l2Syncer,
+		rollupDataQuerier,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggSender flow: %w", err)
+	}
+	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
+
+	return aggsender.NewAggsenderValidator(ctx, logger, flow, l1InfoTreeQuerier)
 }
 
 func createAggSender(

@@ -25,6 +25,9 @@ type AggsenderFlow interface {
 	// BuildCertificate builds a certificate based on the buildParams
 	BuildCertificate(ctx context.Context,
 		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
+	// GenerateBuildParams generates the build parameters based on the preParams
+	GenerateBuildParams(ctx context.Context,
+		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
 }
 
 type AggsenderFlowBaser interface {
@@ -170,4 +173,13 @@ type MaxL2BlockNumberLimiterInterface interface {
 	//  and return it through a new buildParams
 	AdaptCertificate(
 		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
+}
+
+type VerifyIncommingRequests struct {
+	Certificate         *agglayertypes.Certificate
+	PreviousCertificate *agglayertypes.CertificateHeader
+}
+
+type CertificateValidator interface {
+	ValidateCertificate(ctx context.Context, params VerifyIncommingRequests) error
 }

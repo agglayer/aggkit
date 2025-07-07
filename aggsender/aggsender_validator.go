@@ -7,14 +7,11 @@ import (
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -38,19 +35,19 @@ type FlowInterface interface {
 
 type AggsenderValidator struct {
 	log                   aggkitcommon.Logger
+	flowPP                FlowInterface
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
-	flow                  FlowInterface
 }
 
 func NewAggsenderValidator(ctx context.Context,
 	logger *log.Logger,
-	cfg config.Config,
-	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
-	l2Syncer types.L2BridgeSyncer,
-	l1Client aggkittypes.BaseEthereumClienter,
-	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier types.RollupDataQuerier) (*AggsenderValidator, error) {
-	return nil, nil
+	flowPP FlowInterface,
+	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier) (*AggsenderValidator, error) {
+	return &AggsenderValidator{
+		log:                   logger,
+		flowPP:                flowPP,
+		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
+	}, nil
 }
 func (a *AggsenderValidator) Start(ctx context.Context) {
 }
@@ -59,13 +56,10 @@ func (a *AggsenderValidator) GetRPCServices() []jRPC.Service {
 	return []jRPC.Service{}
 }
 
-type VerifyIncommingRequests struct {
-	certificate         *agglayertypes.Certificate
-	previousCertificate *agglayertypes.CertificateHeader
-}
+type VerifyIncommingRequests = types.VerifyIncommingRequests
 
 func (a *AggsenderValidator) ValidateCertificate(ctx context.Context, params VerifyIncommingRequests) error {
-	if params.certificate == nil {
+	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
 	// Between cert must be no gap because if there are could be a attack vector
@@ -77,15 +71,15 @@ func (a *AggsenderValidator) ValidateCertificate(ctx context.Context, params Ver
 	if err != nil {
 		return fmt.Errorf("failed to get certificate pre-build params: %w", err)
 	}
-	buildParams, err := a.flow.GenerateBuildParams(ctx, preBuildParams)
+	buildParams, err := a.flowPP.GenerateBuildParams(ctx, preBuildParams)
 	if err != nil {
 		return fmt.Errorf("failed to generate certificate build params: %w", err)
 	}
-	certificate, err := a.flow.BuildCertificate(ctx, buildParams)
+	certificate, err := a.flowPP.BuildCertificate(ctx, buildParams)
 	if err != nil {
 		return fmt.Errorf("failed to build certificate: %w", err)
 	}
-	err = a.CompareCertificates(params.certificate, certificate)
+	err = a.CompareCertificates(params.Certificate, certificate)
 	if err != nil {
 		return fmt.Errorf("failed to compare certificates: %w", err)
 	}
@@ -106,24 +100,24 @@ func (a *AggsenderValidator) CompareCertificates(
 }
 
 func (a *AggsenderValidator) CheckContigousCertificates(params VerifyIncommingRequests) error {
-	if params.certificate == nil {
+	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
-	if params.previousCertificate == nil {
+	if params.PreviousCertificate == nil {
 		// TODO: Check that the first certificate start at the begining of genesis
 		return a.CheckFirstCerficateBlocks(params)
 	}
 	// certificate != nil && previousCertificate != nil
-	currentBlockRange, err := getBlockRangeFromMetadata(params.certificate.Metadata)
+	currentBlockRange, err := getBlockRangeFromMetadata(params.Certificate.Metadata)
 	if err != nil {
 		return fmt.Errorf("failed to get block range from certificate metadata: %w", err)
 	}
 	if currentBlockRange.IsEmpty() {
 		return fmt.Errorf("certificate block range %s have no block! , certificate: %s",
 			currentBlockRange.String(),
-			params.certificate.ID())
+			params.Certificate.ID())
 	}
-	previousBlockRange, err := getBlockRangeFromMetadata(params.previousCertificate.Metadata)
+	previousBlockRange, err := getBlockRangeFromMetadata(params.PreviousCertificate.Metadata)
 	if err != nil {
 		return fmt.Errorf("failed to get block range from previous certificate metadata: %w", err)
 	}
@@ -143,14 +137,14 @@ func (a *AggsenderValidator) CheckFirstCerficateBlocks(params VerifyIncommingReq
 }
 
 func (a *AggsenderValidator) GetCertificatePreBuildParams(ctx context.Context, params VerifyIncommingRequests) (*types.CertificatePreBuildParams, error) {
-	if params.certificate == nil {
+	if params.Certificate == nil {
 		return nil, ErrNilCertificate
 	}
-	lastSentCertificate, err := validator.AgglayerCertificateHeaderToAggsender(params.previousCertificate)
+	lastSentCertificate, err := validator.AgglayerCertificateHeaderToAggsender(params.PreviousCertificate)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert previous certificate to Aggsender format: %w", err)
 	}
-	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.certificate.Metadata)
+	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.Certificate.Metadata)
 	if err != nil {
 		return nil, ErrMetadataNotCompatible
 	}
@@ -159,20 +153,20 @@ func (a *AggsenderValidator) GetCertificatePreBuildParams(ctx context.Context, p
 		return nil, fmt.Errorf("failed to get block range from certificate metadata: %w", err)
 	}
 
-	l1InfoRoot, err := a.l1InfoTreeDataQuerier.GetL1InfoRootByLeafCount(ctx, params.certificate.L1InfoTreeLeafCount)
+	l1InfoRoot, err := a.l1InfoTreeDataQuerier.GetL1InfoRootByLeafCount(ctx, params.Certificate.L1InfoTreeLeafCount)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get L1 Info tree root by leaf count %d: %w",
-			params.certificate.L1InfoTreeLeafCount, err)
+			params.Certificate.L1InfoTreeLeafCount, err)
 	}
 
 	return &types.CertificatePreBuildParams{
 		BlockRange:          blockRange,
 		RetryCount:          0, // TODO: ???
-		CertificateType:     guessCertificateType(params.certificate, metadataUnmarshal.CertificateType()),
+		CertificateType:     guessCertificateType(params.Certificate, metadataUnmarshal.CertificateType()),
 		LastSentCertificate: lastSentCertificate,
 		L1InfoTreeWhichToProve: &types.CertificateL1InfoTree{
 			L1InfoTreeRootFromWhichToProve: l1InfoRoot.Hash,
-			L1InfoTreeLeafCount:            params.certificate.L1InfoTreeLeafCount,
+			L1InfoTreeLeafCount:            params.Certificate.L1InfoTreeLeafCount,
 		},
 	}, nil
 }
