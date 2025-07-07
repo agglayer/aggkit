@@ -7,6 +7,7 @@ import (
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -52,8 +53,16 @@ func NewAggsenderValidator(ctx context.Context,
 func (a *AggsenderValidator) Start(ctx context.Context) {
 }
 
+// GetRPCServices returns the list of services that the RPC provider exposes
 func (a *AggsenderValidator) GetRPCServices() []jRPC.Service {
-	return []jRPC.Service{}
+
+	logger := log.WithFields("aggsender-validator-rpc", aggkitcommon.BRIDGE)
+	return []jRPC.Service{
+		{
+			Name:    "aggsender-validator",
+			Service: aggsenderrpc.NewAggsenderValidatorRPC(logger, a),
+		},
+	}
 }
 
 type VerifyIncommingRequests = types.VerifyIncommingRequests
