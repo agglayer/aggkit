@@ -7,9 +7,11 @@ import (
 	"syscall"
 	"testing"
 
+	nodev1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	v1 "github.com/agglayer/aggkit/aggsender/verifier/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestVerifierService(t *testing.T) {
@@ -38,4 +40,15 @@ func TestVerifierService(t *testing.T) {
 	}()
 
 	server.Start(ctx)
+}
+
+func TestVerifierService_VerifyCertificate(t *testing.T) {
+	svc := &VerifierService{}
+	cert := &nodev1.Certificate{
+		Height: 42,
+	}
+
+	resp, err := svc.VerifyCertificate(context.Background(), cert)
+	require.NoError(t, err)
+	require.IsType(t, &emptypb.Empty{}, resp)
 }

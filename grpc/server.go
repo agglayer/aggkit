@@ -59,7 +59,7 @@ func NewServer(cfg ServerConfig, opts ...grpc.ServerOption) (*Server, error) {
 // It blocks until the provided context is cancelled, at which point it gracefully stops the server.
 // If the server fails to start, an error is logged.
 func (s *Server) Start(ctx context.Context) {
-	defer func() {
+	go func() {
 		<-ctx.Done()
 		s.stop()
 	}()

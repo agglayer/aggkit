@@ -20,12 +20,6 @@ LDFLAGS += -X 'github.com/agglayer/aggkit.GitRev=$(GITREV)'
 LDFLAGS += -X 'github.com/agglayer/aggkit.GitBranch=$(GITBRANCH)'
 LDFLAGS += -X 'github.com/agglayer/aggkit.BuildDate=$(DATE)'
 
-# Manually list proto source directories (relative to project root)
-PROTO_SRC_DIRS := aggsender/verifier/proto/v1
-
-# List all .proto files in those directories
-PROTO_FILES := $(foreach dir,$(PROTO_SRC_DIRS),$(wildcard $(dir)/*.proto))
-
 # Check dependencies
 .PHONY: check-go
 check-go: ## Check if golang is installed
@@ -42,6 +36,7 @@ check-protoc: ## Check if protoc is installed
 	@which protoc > /dev/null || (echo "Error: protoc is not installed" && exit 1)
 	@which protoc-gen-go > /dev/null || (echo "Error: protoc-gen-go is not installed. Run: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest" && exit 1)
 	@which protoc-gen-go-grpc > /dev/null || (echo "Error: protoc-gen-go-grpc is not installed. Run: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest" && exit 1)
+	@which buf > /dev/null || (echo "Error: buf is not installed. Please install it from https://docs.buf.build/installation" && exit 1)
 
 # Check for Curl
 .PHONY: check-curl
@@ -71,15 +66,8 @@ generate-code-from-proto: check-protoc
 
 .PHONY: generate-code-from-proto
 generate-code-from-proto: check-protoc ## Generate Go code from proto files in-place
-	@for file in $(PROTO_FILES); do \
-		echo "Generating code for $$file"; \
-		protoc \
-			--proto_path=. \
-			--go_out=paths=source_relative:. \
-			--go-grpc_out=paths=source_relative:. \
-			--go_opt=Magglayer/node/types/v1/certificate.proto=buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1 \
-			$$file; \
-	done
+	buf dep update
+	buf generate
 
 .PHONY: build ## Builds the binaries locally into ./target
 build: build-aggkit build-tools
