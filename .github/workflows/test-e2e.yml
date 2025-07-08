@@ -26,6 +26,8 @@ jobs:
       kurtosis-cdk-args-single-fork12-op-succinct: ${{ steps.read-args.outputs.fork12_op_succinct_args }}
       # single l2 network (fork 12, pessimistic)
       kurtosis-cdk-args-single-fork12-pessimistic: ${{ steps.read-args.outputs.fork12_pessimistic_args }}
+      # single l2 network (fork 12, global index pp old contracts)
+      kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts: ${{ steps.read-args.outputs.fork12_global_index_pp_old_contracts_args }}
       # multi l2 networks
       kurtosis-cdk-args-1: ${{ steps.read-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ steps.read-args.outputs.kurtosis-cdk-args-2 }}
@@ -45,6 +47,9 @@ jobs:
           # single l2 network (fork 12, pessimistic)
           CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_gas_token_enabled_args.json | jq -c .)
           echo "fork12_pessimistic_args=${CONTENT}" >> $GITHUB_OUTPUT
+          # single l2 network (fork 12, global index pp old contracts)
+          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_cdk_args_global_index_pp_old_contracts.json | jq -c .)
+          echo "fork12_global_index_pp_old_contracts_args=${CONTENT}" >> $GITHUB_OUTPUT
           # multi l2 networks
           CONTENT=$(cat ./.github/test_e2e_cdk_args_base.json | jq -c .)
           echo "kurtosis-cdk-args-1=${CONTENT}" >> $GITHUB_OUTPUT
@@ -65,11 +70,11 @@ jobs:
     needs:
       - build-aggkit-image
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c8d6aa44205a5b61bb0900157230aba39bf5cb64
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
     secrets: inherit
     with:
       kurtosis-cdk-ref: 9c34c35e39143a97a8583f678cf962a6d188a8b7
-      agglayer-e2e-ref: c8d6aa44205a5b61bb0900157230aba39bf5cb64
+      agglayer-e2e-ref: edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
       test-name: "test-single-l2-network-fork12-pessimistic"
@@ -84,16 +89,40 @@ jobs:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-pessimistic.result) }}
 
+  test-single-l2-network-fork12-global-index-pp-old-contracts:
+    name: Single L2 chain tests (global index pp old contracts)
+    needs:
+      - build-aggkit-image
+      - read-aggkit-args
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
+    secrets: inherit
+    with:
+      kurtosis-cdk-ref: 9c34c35e39143a97a8583f678cf962a6d188a8b7
+      agglayer-e2e-ref: edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
+      kurtosis-cdk-enclave-name: aggkit
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts }}
+      test-name: "test-single-l2-network-fork12-global-index-pp-old-contracts"
+
+  check-single-l2-network-fork12-global-index-pp-old-contracts-tests-result:
+    name: Check results for single l2 network (global index pp old contracts)
+    needs:
+      - test-single-l2-network-fork12-global-index-pp-old-contracts
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-global-index-pp-old-contracts.result) }}
+
   test-single-l2-network-fork12-op-succinct:
     name: Single L2 chain tests (op-succinct)
     needs:
       - build-aggkit-image
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@c8d6aa44205a5b61bb0900157230aba39bf5cb64
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
     secrets: inherit
     with:
       kurtosis-cdk-ref: 9c34c35e39143a97a8583f678cf962a6d188a8b7
-      agglayer-e2e-ref: c8d6aa44205a5b61bb0900157230aba39bf5cb64
+      agglayer-e2e-ref: edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
       test-name: "test-single-l2-network-fork12-op-succinct"
@@ -137,11 +166,11 @@ jobs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@c8d6aa44205a5b61bb0900157230aba39bf5cb64
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
     secrets: inherit
     with:
       kurtosis-cdk-ref: 9c34c35e39143a97a8583f678cf962a6d188a8b7
-      agglayer-e2e-ref: c8d6aa44205a5b61bb0900157230aba39bf5cb64
+      agglayer-e2e-ref: edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
@@ -163,11 +192,11 @@ jobs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@c8d6aa44205a5b61bb0900157230aba39bf5cb64
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
     secrets: inherit
     with:
       kurtosis-cdk-ref: 9c34c35e39143a97a8583f678cf962a6d188a8b7
-      agglayer-e2e-ref: c8d6aa44205a5b61bb0900157230aba39bf5cb64
+      agglayer-e2e-ref: edff63b9ffd083a58c9a0dc52f24f83cbff13e8c
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
