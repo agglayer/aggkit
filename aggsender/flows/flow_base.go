@@ -141,6 +141,7 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 			L1InfoTreeRootFromWhichToProve: l1InfoRoot.Hash,
 			L1InfoTreeLeafCount:            l1InfoRoot.Index + 1,
 		},
+		CreatedAt: uint32(time.Now().UTC().Unix()),
 	}, nil
 }
 
@@ -163,7 +164,7 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 		LastSentCertificate:            preParams.LastSentCertificate,
 		Bridges:                        bridges,
 		Claims:                         claims,
-		CreatedAt:                      uint32(time.Now().UTC().Unix()),
+		CreatedAt:                      preParams.CreatedAt,
 		CertificateType:                preParams.CertificateType,
 		L1InfoTreeRootFromWhichToProve: preParams.L1InfoTreeWhichToProve.L1InfoTreeRootFromWhichToProve,
 		L1InfoTreeLeafCount:            preParams.L1InfoTreeWhichToProve.L1InfoTreeLeafCount,

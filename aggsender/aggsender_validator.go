@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -23,8 +24,8 @@ var (
 )
 
 type L1InfoTreeRootByLeafQuerier interface {
-	// GetL1InfoRootByLeafCount returns the L1 Info tree root for the given leaf count
-	GetL1InfoRootByLeafCount(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
+	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
+	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
 }
 
 type FlowInterface interface {
@@ -80,6 +81,7 @@ func (a *AggsenderValidator) ValidateCertificate(ctx context.Context, params Ver
 	if err != nil {
 		return fmt.Errorf("failed to get certificate pre-build params: %w", err)
 	}
+	a.log.Debugf("aggsender-validator: preBuild: %s", preBuildParams.String())
 	buildParams, err := a.flowPP.GenerateBuildParams(ctx, preBuildParams)
 	if err != nil {
 		return fmt.Errorf("failed to generate certificate build params: %w", err)
@@ -92,7 +94,7 @@ func (a *AggsenderValidator) ValidateCertificate(ctx context.Context, params Ver
 	if err != nil {
 		return fmt.Errorf("failed to compare certificates: %w", err)
 	}
-	return ErrNotImplemented
+	return nil
 }
 func (a *AggsenderValidator) CompareCertificates(
 	incomingCertificate *agglayertypes.Certificate,
@@ -101,9 +103,19 @@ func (a *AggsenderValidator) CompareCertificates(
 		return fmt.Errorf("one of the certificates is nil, incoming: %v, local: %v",
 			incomingCertificate, localCertificate)
 	}
+	diffs := validator.DiffsCertificate(incomingCertificate, localCertificate)
+	diffStr := strings.Join(diffs, "\n")
 	if incomingCertificate.Hash() != localCertificate.Hash() {
-		return fmt.Errorf("certificates hash mismatch, incoming: %s, local: %s",
-			incomingCertificate.Hash().Hex(), localCertificate.Hash().Hex())
+		return fmt.Errorf("certificates hash mismatch, incoming: %s, local: %s.\n FullDiff: %s",
+			incomingCertificate.Hash().Hex(), localCertificate.Hash().Hex(), diffStr)
+	}
+	if incomingCertificate.Metadata != localCertificate.Metadata {
+		return fmt.Errorf("certificates metadata mismatch, incoming: %s, local: %s.\n FullDiff: %s",
+			incomingCertificate.Metadata.Hex(), localCertificate.Metadata.Hex(), diffStr)
+	}
+	if len(diffs) > 0 {
+		return fmt.Errorf("certificates mismatch. FullDiff: %s",
+			diffStr)
 	}
 	return nil
 }
@@ -115,6 +127,10 @@ func (a *AggsenderValidator) CheckContigousCertificates(params VerifyIncommingRe
 	if params.PreviousCertificate == nil {
 		// TODO: Check that the first certificate start at the begining of genesis
 		return a.CheckFirstCerficateBlocks(params)
+	}
+	if params.PreviousCertificate.Height+1 != params.Certificate.Height {
+		return fmt.Errorf("certificate height not contigous, expected: %d, got: %d",
+			params.PreviousCertificate.Height+1, params.Certificate.Height)
 	}
 	// certificate != nil && previousCertificate != nil
 	currentBlockRange, err := getBlockRangeFromMetadata(params.Certificate.Metadata)
@@ -162,7 +178,7 @@ func (a *AggsenderValidator) GetCertificatePreBuildParams(ctx context.Context, p
 		return nil, fmt.Errorf("failed to get block range from certificate metadata: %w", err)
 	}
 
-	l1InfoRoot, err := a.l1InfoTreeDataQuerier.GetL1InfoRootByLeafCount(ctx, params.Certificate.L1InfoTreeLeafCount)
+	l1InfoRoot, err := a.l1InfoTreeDataQuerier.GetL1InfoRootByLeafIndex(ctx, params.Certificate.L1InfoTreeLeafCount-1)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get L1 Info tree root by leaf count %d: %w",
 			params.Certificate.L1InfoTreeLeafCount, err)
@@ -177,6 +193,7 @@ func (a *AggsenderValidator) GetCertificatePreBuildParams(ctx context.Context, p
 			L1InfoTreeRootFromWhichToProve: l1InfoRoot.Hash,
 			L1InfoTreeLeafCount:            params.Certificate.L1InfoTreeLeafCount,
 		},
+		CreatedAt: metadataUnmarshal.CreatedAt,
 	}, nil
 }
 

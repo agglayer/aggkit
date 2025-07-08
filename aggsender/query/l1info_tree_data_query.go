@@ -59,17 +59,17 @@ func (l *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context
 	return &root, l1InfoLeaf, nil
 }
 
-// GetL1InfoRootByLeafCount returns the L1 Info tree root for the given leaf count
-func (l *L1InfoTreeDataQuerier) GetL1InfoRootByLeafCount(ctx context.Context, leafCount uint32) (*treetypes.Root, error) {
+// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
+func (l *L1InfoTreeDataQuerier) GetL1InfoRootByLeafIndex(ctx context.Context, leafIndex uint32) (*treetypes.Root, error) {
 	// Get the latest finalized L1 Info tree root
-	root, err := l.l1InfoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, leafCount)
+	root, err := l.l1InfoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, leafIndex)
 	if err != nil {
-		return nil, fmt.Errorf("error getting L1 Info tree root by leaf count %d: %w", leafCount, err)
+		return nil, fmt.Errorf("error getting L1 Info tree root by leaf index %d: %w", leafIndex, err)
 	}
 
 	// If the root is empty, it means there are no leaves in the tree
 	if root.Hash == (common.Hash{}) {
-		return nil, fmt.Errorf("no L1 Info tree root found for leaf count %d", leafCount)
+		return nil, fmt.Errorf("no L1 Info tree root found for leaf index %d", leafIndex)
 	}
 
 	return &root, nil

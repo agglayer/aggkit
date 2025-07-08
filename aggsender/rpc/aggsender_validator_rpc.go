@@ -3,6 +3,7 @@ package aggsenderrpc
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -45,45 +46,59 @@ func (b *AggsenderValidatorRPC) ValidateDB(dbPath string) (interface{}, rpc.Erro
 	if cert == nil {
 		return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "no certificate found in the database")
 	}
-	hight := cert.Header.Height
-	b.logger.Infof("rpc-validator. Height: %d oldest certificate in DB %s", hight, cert.Header.CertificateID.Hex())
-	for hight >= 0 {
-		cert, err = database.GetCertificateByHeight(hight)
+	height := cert.Header.Height
+	done := false
+	result := ""
+	b.logger.Infof("rpc-validator. Height: %d oldest certificate in DB %s", height, cert.Header.CertificateID.Hex())
+	for !done {
+		cert, err = database.GetCertificateByHeight(height)
 		if err != nil {
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "failed to get certificate by height: "+err.Error())
 		}
 		if cert == nil || cert.SignedCertificate == nil {
 			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "no certificate found in the database")
 		}
-		// Unmarshall string with a json of a certificate
-		var unmarshalCert *agglayertypes.Certificate
-		err = json.Unmarshal([]byte(*cert.SignedCertificate), &unmarshalCert)
-		if err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "failed to unmarshal certificate: "+err.Error())
-		}
-		if unmarshalCert == nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "unmarshalled certificate is nil")
-		}
-		var previousCertificate *agglayertypes.CertificateHeader
-		if hight > 0 {
-			prevCertHeader, err := database.GetCertificateHeaderByHeight(hight - 1)
+		if cert.Header.Status.IsSettled() {
+			// Unmarshall string with a json of a certificate
+			var unmarshalCert *agglayertypes.Certificate
+			err = json.Unmarshal([]byte(*cert.SignedCertificate), &unmarshalCert)
 			if err != nil {
-				return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "failed to get previous certificate header: "+err.Error())
+				return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "failed to unmarshal certificate: "+err.Error())
 			}
-			if prevCertHeader != nil {
-				previousCertificate = validator.AggsenderCertificateHeaderToAgglayer(prevCertHeader, unmarshalCert.NetworkID)
+			if unmarshalCert == nil {
+				return nil, rpc.NewRPCError(rpc.DefaultErrorCode, "unmarshalled certificate is nil")
 			}
+			var previousCertificate *agglayertypes.CertificateHeader
+			if height > 0 {
+				prevCertHeader, err := database.GetCertificateHeaderByHeight(height - 1)
+				if err != nil {
+					return err, rpc.NewRPCError(rpc.DefaultErrorCode, "failed to get previous certificate header: "+err.Error())
+				}
+				if prevCertHeader != nil {
+					previousCertificate = validator.AggsenderCertificateHeaderToAgglayer(prevCertHeader, unmarshalCert.NetworkID)
+				}
 
+			}
+			params := types.VerifyIncommingRequests{
+				Certificate:         unmarshalCert,
+				PreviousCertificate: previousCertificate,
+			}
+			ctx := context.Background()
+			b.logger.Infof("rpc-validator. Validating Height: %d", height)
+			if err := b.aggsenderValidator.ValidateCertificate(ctx, params); err != nil {
+				b.logger.Infof("rpc-validator. Validation failed for %d / %s, Error: %s", unmarshalCert.Height, unmarshalCert.ID(), err.Error())
+				return err.Error(), rpc.NewRPCError(rpc.DefaultErrorCode, err.Error())
+			}
+			b.logger.Infof("rpc-validator. Validated Height: %d. OK", height)
+			result = "Certificate " + unmarshalCert.ID() + " at height " + fmt.Sprintf("%d", unmarshalCert.Height) + " is valid\n"
+		} else {
+			b.logger.Infof("rpc-validator. Certificate %s at height %d is not settled yet, skipping validation", cert.Header.CertificateID.Hex(), height)
 		}
-		params := types.VerifyIncommingRequests{
-			Certificate:         unmarshalCert,
-			PreviousCertificate: previousCertificate,
+		if cert.Header.Height == 0 {
+			b.logger.Infof("rpc-validator.All certs done, stopping validation")
+			done = true
 		}
-		ctx := context.Background()
-		b.logger.Infof("rpc-validator. Validating Height: %d", hight)
-		if err := b.aggsenderValidator.ValidateCertificate(ctx, params); err != nil {
-			return nil, rpc.NewRPCError(rpc.DefaultErrorCode, err.Error())
-		}
+		height--
 	}
-	return nil, nil
+	return result, nil
 }

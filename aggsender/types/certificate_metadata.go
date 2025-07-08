@@ -35,6 +35,14 @@ type CertificateMetadata struct {
 	CertType uint8 // version >= V2
 }
 
+func (c *CertificateMetadata) String() string {
+	if c == nil {
+		return "CertificateMetadata is nil"
+	}
+	return fmt.Sprintf("Version: %d, FromBlock: %d, Offset: %d, CreatedAt: %d, CertType: %d",
+		c.Version, c.FromBlock, c.Offset, c.CreatedAt, c.CertType)
+}
+
 func (c *CertificateMetadata) BlockRange() (BlockRange, error) {
 	if c == nil {
 		return BlockRangeZero, fmt.Errorf("certificate metadata is nil")

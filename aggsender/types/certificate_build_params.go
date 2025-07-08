@@ -17,11 +17,28 @@ type CertificatePreBuildParams struct {
 	CertificateType        CertificateType
 	LastSentCertificate    *CertificateHeader
 	L1InfoTreeWhichToProve *CertificateL1InfoTree
+	CreatedAt              uint32
+}
+
+func (c *CertificatePreBuildParams) String() string {
+	if c == nil {
+		return "CertificatePreBuildParams is nil"
+	}
+	return fmt.Sprintf("Type: %s BlockRange: %s,  RetryCount: %d, L1InfoTreeWhichToProve:%s, CreatedAt:%d",
+		c.CertificateType, c.BlockRange.String(), c.RetryCount, c.L1InfoTreeWhichToProve.String(), c.CreatedAt)
 }
 
 type CertificateL1InfoTree struct {
 	L1InfoTreeRootFromWhichToProve common.Hash
 	L1InfoTreeLeafCount            uint32
+}
+
+func (c *CertificateL1InfoTree) String() string {
+	if c == nil {
+		return "CertificateL1InfoTree is nil"
+	}
+	return fmt.Sprintf("L1InfoTreeRootFromWhichToProve: %s, L1InfoTreeLeafCount: %d",
+		c.L1InfoTreeRootFromWhichToProve.Hex(), c.L1InfoTreeLeafCount)
 }
 
 // CertificateBuildParams is a struct that holds the parameters to build a certificate

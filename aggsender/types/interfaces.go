@@ -122,8 +122,8 @@ type L1InfoTreeDataQuerier interface {
 	CheckIfClaimsArePartOfFinalizedL1InfoTree(
 		finalizedL1InfoTreeRoot *treetypes.Root, claims []bridgesync.Claim) error
 
-	// GetL1InfoRootByLeafCount returns the L1 Info tree root for the given leaf count
-	GetL1InfoRootByLeafCount(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
+	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
+	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
 }
 
 // GERQuerier is an interface defining functions that an GERQuerier should implement
