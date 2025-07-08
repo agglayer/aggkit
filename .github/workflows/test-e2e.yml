@@ -262,7 +262,7 @@ jobs:
           slack-bot-token: ${{ secrets.SLACK_APP_TOKEN_AGGLAYER_NOTIFY_GENERIC }}
           channel-id: ${{ env.AGGKIT_REPORT_CHANNEL }}
           message: |
-            Daily E2E Tests Report
+            **Daily E2E Tests Report**
 
             Kurtosis CDK Commit: `${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}`
 
