@@ -115,7 +115,7 @@ WaitPeriodNextGER = "10s"
 						URL = "{{L2URL}}"
 						MultiGasProvider = false
 						# L1ChainID = 0 indicates it will be set at runtime
-						# This field should be populated with L2ChainID 
+						# This field should be populated with L2ChainID
 						L1ChainID = 0
 						HTTPHeaders = []
 
@@ -195,13 +195,13 @@ StopOnFinishedSendingAllCertificates = false
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectTimeout = "5s"
-		RequestTimeout = "300s" 
+		RequestTimeout = "300s"
 		UseTLS = false
 		[AggSender.AgglayerClient.Retry]
 			InitialBackoff = "1s"
 			MaxBackoff = "10s"
 			BackoffMultiplier = 2.0
-			MaxAttempts = 16
+			MaxAttempts = 20
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"
