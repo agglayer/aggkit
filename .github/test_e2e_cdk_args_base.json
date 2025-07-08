@@ -6,7 +6,7 @@
   },
   "args": {
     "verbosity": "debug",
-    "cdk_node_image": "aggkit:local",
+    "aggkit_image": "aggkit:local",
     "additional_services": [],
     "erigon_strict_mode": false,
     "enable_normalcy": true,
