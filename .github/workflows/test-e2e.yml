@@ -16,6 +16,9 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  AGGKIT_REPORT_CHANNEL: 'C092K6Z0EUT'
+
 jobs:
   get-kurtosis-cdk-commit:
     name: Get Kurtosis CDK Commit
@@ -216,37 +219,20 @@ jobs:
       - test-multi-l2-networks-3-chains
       - get-kurtosis-cdk-commit
     runs-on: ubuntu-latest
-    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
+    # if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
-      - name: Determine workflow status
-        id: status
-        run: |
-          if [[ "${{ needs.test-single-l2-network-fork12-pessimistic.result }}" == "success" &&
-                "${{ needs.test-single-l2-network-fork12-op-succinct.result }}" == "success" &&
-                "${{ needs.test-multi-l2-networks-2-chains.result }}" == "success" &&
-                "${{ needs.test-multi-l2-networks-3-chains.result }}" == "success" ]]; then
-            echo "status=success" >> $GITHUB_OUTPUT
-            echo "emoji=✅" >> $GITHUB_OUTPUT
-            echo "message=All daily E2E tests passed successfully!" >> $GITHUB_OUTPUT
-          else
-            echo "status=failure" >> $GITHUB_OUTPUT
-            echo "emoji=❌" >> $GITHUB_OUTPUT
-            echo "message=Daily E2E tests failed. Please check the workflow for details." >> $GITHUB_OUTPUT
-          fi
 
       - name: Send Slack notification
         uses: agglayer/gha-notify-generic@v1
         with:
           slack-bot-token: ${{ secrets.SLACK_APP_TOKEN_AGGLAYER_NOTIFY_GENERIC }}
-          channel-id: 'C092K6Z0EUT'
+          channel-id: ${{ env.AGGKIT_REPORT_CHANNEL }}
           message: |
-            ${{ steps.status.outputs.emoji }} **Daily E2E Tests Report**
+            Daily E2E Tests Report
 
-            **Status:** ${{ steps.status.outputs.message }}
-            **Kurtosis CDK Commit:** `${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}`
-            **Workflow:** ${{ github.workflow }}
+            Kurtosis CDK Commit: `${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}`
 
-            **Test Results:**
+            Test Results:
             • Single L2 (pessimistic): ${{ needs.test-single-l2-network-fork12-pessimistic.result }}
             • Single L2 (op-succinct): ${{ needs.test-single-l2-network-fork12-op-succinct.result }}
             • Multi L2 (2 chains): ${{ needs.test-multi-l2-networks-2-chains.result }}
