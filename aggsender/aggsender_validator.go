@@ -157,8 +157,16 @@ func (a *AggsenderValidator) CheckContigousCertificates(params VerifyIncommingRe
 // CheckFirstCerficateBlocks checks that the first certificate blocks are correct
 // so it's starts from genesis?!?
 func (a *AggsenderValidator) CheckFirstCerficateBlocks(params VerifyIncommingRequests) error {
-	// TODO: fill it
-	return ErrNotImplemented
+	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.Certificate.Metadata)
+	if err != nil {
+		return fmt.Errorf("error checking first certificate because can't unmarshal metadata. Err: %w", err)
+	}
+	if metadataUnmarshal.FromBlock != 1 {
+		// The first certificate must start from block 0
+		return fmt.Errorf("first certificate must start from block 1, but got: %d",
+			metadataUnmarshal.FromBlock)
+	}
+	return nil
 }
 
 func (a *AggsenderValidator) GetCertificatePreBuildParams(ctx context.Context, params VerifyIncommingRequests) (*types.CertificatePreBuildParams, error) {

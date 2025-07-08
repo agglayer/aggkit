@@ -90,7 +90,7 @@ func (b *AggsenderValidatorRPC) ValidateDB(dbPath string) (interface{}, rpc.Erro
 				return err.Error(), rpc.NewRPCError(rpc.DefaultErrorCode, err.Error())
 			}
 			b.logger.Infof("rpc-validator. Validated Height: %d. OK", height)
-			result = "Certificate " + unmarshalCert.ID() + " at height " + fmt.Sprintf("%d", unmarshalCert.Height) + " is valid\n"
+			result += "Certificate " + unmarshalCert.ID() + " at height " + fmt.Sprintf("%d", unmarshalCert.Height) + " is valid\n"
 		} else {
 			b.logger.Infof("rpc-validator. Certificate %s at height %d is not settled yet, skipping validation", cert.Header.CertificateID.Hex(), height)
 		}
@@ -100,5 +100,6 @@ func (b *AggsenderValidatorRPC) ValidateDB(dbPath string) (interface{}, rpc.Erro
 		}
 		height--
 	}
+	b.logger.Infof("rpc-validator. Validation completed for database %s. Result: %s", dbPath, result)
 	return result, nil
 }
