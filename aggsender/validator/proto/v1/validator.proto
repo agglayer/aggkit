@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+option go_package = "github.com/agglayer/aggkit/aggsender/validator/proto/v1";
+package aggkit.aggsender.validator.v1;
+
+import "agglayer/node/types/v1/certificate.proto";
+import "agglayer/node/types/v1/certificate_id.proto";
+import "google/protobuf/empty.proto";
+
+// Service for validating new certificates
+service AggsenderValidator {
+    // Method to validate a new certificate
+    rpc ValidateCertificate(ValidateCertificateRequest) returns (google.protobuf.Empty);
+}
+
+// Request to validate a certificate
+message ValidateCertificateRequest {
+  // Previous certificate identifier
+  agglayer.node.types.v1.CertificateId previous_certificate_id = 1;
+  // Certificate to be validated
+  agglayer.node.types.v1.Certificate certificate = 2;
+}

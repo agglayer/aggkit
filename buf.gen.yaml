@@ -1,0 +1,26 @@
+version: v2
+plugins:
+  - local: protoc-gen-go
+    out: .
+    opt:
+      - paths=source_relative
+      - Magglayer/interop/types/v1/bytes.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/bridge_exit.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/imported_bridge_exit.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/claim.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/merkle_proof.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/aggchain.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/node/types/v1/certificate.proto=buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1
+      - Magglayer/node/types/v1/certificate_id.proto=buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1
+  - local: protoc-gen-go-grpc
+    out: .
+    opt:
+      - paths=source_relative
+      - Magglayer/interop/types/v1/bytes.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/bridge_exit.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/imported_bridge_exit.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/claim.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/merkle_proof.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/interop/types/v1/aggchain.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
+      - Magglayer/node/types/v1/certificate.proto=buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1
+      - Magglayer/node/types/v1/certificate_id.proto=buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1
