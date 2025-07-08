@@ -17,8 +17,10 @@ func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 	})
 
 	t.Run("MetadataNotCompatible", func(t *testing.T) {
+		badMetadata := make([]byte, common.HashLength)
+		badMetadata[0] = 0xff // Version = 0xff
 		cert := &agglayertypes.CertificateHeader{
-			Metadata: common.HexToHash("0xff"),
+			Metadata: common.Hash(badMetadata),
 		}
 		result, err := AgglayerCertificateHeaderToAggsender(cert)
 		assert.Nil(t, result)
