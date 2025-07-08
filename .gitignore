@@ -14,4 +14,3 @@ coverage.html
 .idea/*
 build/*
 data
-buf.lock
