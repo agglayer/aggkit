@@ -28,7 +28,10 @@ func NewAggsenderValidatorRPC(
 	}
 }
 
+// gomng:nolll
 // curl -X POST http://localhost:5576/ -H "Content-Type: application/json" -d '{"method":"aggsender-validator_validateDB", "params":["aggsender.sqlite"], "id":1}'
+//
+//nolint:lll
 func (b *AggsenderValidatorRPC) ValidateDB(dbPath string) (interface{}, rpc.Error) {
 	b.logger.Infof("Validating Aggsender DB at path: %s", dbPath)
 	cfg := db.AggSenderSQLStorageConfig{
@@ -77,7 +80,6 @@ func (b *AggsenderValidatorRPC) ValidateDB(dbPath string) (interface{}, rpc.Erro
 				if prevCertHeader != nil {
 					previousCertificate = validator.AggsenderCertificateHeaderToAgglayer(prevCertHeader, unmarshalCert.NetworkID)
 				}
-
 			}
 			params := types.VerifyIncommingRequests{
 				Certificate:         unmarshalCert,
@@ -86,13 +88,16 @@ func (b *AggsenderValidatorRPC) ValidateDB(dbPath string) (interface{}, rpc.Erro
 			ctx := context.Background()
 			b.logger.Infof("rpc-validator. Validating Height: %d", height)
 			if err := b.aggsenderValidator.ValidateCertificate(ctx, params); err != nil {
-				b.logger.Infof("rpc-validator. Validation failed for %d / %s, Error: %s", unmarshalCert.Height, unmarshalCert.ID(), err.Error())
+				b.logger.Infof("rpc-validator. Validation failed for %d / %s, Error: %s",
+					unmarshalCert.Height, unmarshalCert.ID(), err.Error())
 				return err.Error(), rpc.NewRPCError(rpc.DefaultErrorCode, err.Error())
 			}
 			b.logger.Infof("rpc-validator. Validated Height: %d. OK", height)
-			result += "Certificate " + unmarshalCert.ID() + " at height " + fmt.Sprintf("%d", unmarshalCert.Height) + " is valid\n"
+			result += "Certificate " + unmarshalCert.ID() + " at height " +
+				fmt.Sprintf("%d", unmarshalCert.Height) + " is valid\n"
 		} else {
-			b.logger.Infof("rpc-validator. Certificate %s at height %d is not settled yet, skipping validation", cert.Header.CertificateID.Hex(), height)
+			b.logger.Infof("rpc-validator. Certificate %s at height %d is not settled yet, skipping validation",
+				cert.Header.CertificateID.Hex(), height)
 		}
 		if cert.Header.Height == 0 {
 			b.logger.Infof("rpc-validator.All certs done, stopping validation")

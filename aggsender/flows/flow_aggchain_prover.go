@@ -158,8 +158,9 @@ func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateTy
 	return types.CertificateTypeFEP, nil
 }
 
-func (a *AggchainProverFlow) GenerateBuildParams(ctx context.Context, preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
-	return nil, fmt.Errorf("aggchainProverFlow - GenerateBuildParams is not implemented, use GetCertificateBuildParams instead")
+func (a *AggchainProverFlow) GenerateBuildParams(ctx context.Context,
+	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
+	return nil, fmt.Errorf("aggchainProverFlow - GenerateBuildParams is not implemented")
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate

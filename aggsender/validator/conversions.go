@@ -6,7 +6,6 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
 )
 
 var (
@@ -45,7 +44,8 @@ func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader)
 	}, nil
 }
 
-func AggsenderCertificateHeaderToAgglayer(cert *types.CertificateHeader, networkID uint32) *agglayertypes.CertificateHeader {
+func AggsenderCertificateHeaderToAgglayer(cert *types.CertificateHeader,
+	networkID uint32) *agglayertypes.CertificateHeader {
 	if cert == nil {
 		return nil
 	}
@@ -66,7 +66,9 @@ func AggsenderCertificateHeaderToAgglayer(cert *types.CertificateHeader, network
 	}
 }
 
-func AgglayerCertificateToCertificateBuildParams(cert *agglayertypes.Certificate) (*types.CertificateBuildParams, error) {
+/*
+func AgglayerCertificateToCertificateBuildParams(cert *agglayertypes.Certificate)
+(*types.CertificateBuildParams, error) {
 	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(cert.Metadata)
 	if err != nil {
 		return nil, ErrMetadataNotCompatible
@@ -142,8 +144,9 @@ func ConvertImportedBridgeExits(importedBridgeExits []*agglayertypes.ImportedBri
 			DestinationAddress: bridge.DestinationAddress,
 			Amount:             bridge.Amount,
 			Metadata:           bridge.Metadata,
-			GlobalIndex:        bridgesync.GenerateGlobalIndex(ibe.GlobalIndex.MainnetFlag, ibe.GlobalIndex.RollupIndex, ibe.GlobalIndex.LeafIndex),
-			IsMessage:          ibe.BridgeExit.LeafType == agglayertypes.LeafTypeMessage,
+			GlobalIndex: bridgesync.GenerateGlobalIndex(
+				ibe.GlobalIndex.MainnetFlag, ibe.GlobalIndex.RollupIndex, ibe.GlobalIndex.LeafIndex),
+			IsMessage: ibe.BridgeExit.LeafType == agglayertypes.LeafTypeMessage,
 		}
 
 		// Populate additional fields based on ClaimData
@@ -168,3 +171,4 @@ func ConvertImportedBridgeExits(importedBridgeExits []*agglayertypes.ImportedBri
 
 	return claims, nil
 }
+*/

@@ -13,6 +13,6 @@ const (
 	L1INFOTREESYNC = "l1infotreesync"
 	// AGGCHAINPROOFGEN name to identify the aggchain-proof-gen component
 	AGGCHAINPROOFGEN = "aggchain-proof-gen"
-	// AGGSENDER_VALIDATOR runs aggsender ceritifacate validator
-	AGGSENDER_VALIDATOR = "aggsender-validator"
+	// AGGSENDERVALIDATOR runs aggsender ceritifacate validator
+	AGGSENDERVALIDATOR = "aggsender-validator"
 )

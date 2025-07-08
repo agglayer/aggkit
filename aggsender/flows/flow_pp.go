@@ -54,20 +54,20 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 	return nil
 }
 
-func (f *PPFlow) GeneratePreBuildParams(ctx context.Context) (*types.CertificatePreBuildParams, error) {
-	return f.baseFlow.GeneratePreBuildParams(ctx, types.CertificateTypePP)
+func (p *PPFlow) GeneratePreBuildParams(ctx context.Context) (*types.CertificatePreBuildParams, error) {
+	return p.baseFlow.GeneratePreBuildParams(ctx, types.CertificateTypePP)
 }
 
-func (f *PPFlow) GenerateBuildParams(ctx context.Context,
+func (p *PPFlow) GenerateBuildParams(ctx context.Context,
 	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
 	if preParams == nil {
 		return nil, fmt.Errorf("ppFlow - preParams is nil")
 	}
-	params, err := f.baseFlow.GenerateBuildParams(ctx, *preParams)
+	params, err := p.baseFlow.GenerateBuildParams(ctx, *preParams)
 	if err != nil {
 		return nil, fmt.Errorf("ppFlow - error generating build params: %w", err)
 	}
-	params, err = f.baseFlow.ApplyLimitSize(params)
+	params, err = p.baseFlow.ApplyLimitSize(params)
 	if err != nil {
 		return nil, fmt.Errorf("error applying limit size: %w", err)
 	}

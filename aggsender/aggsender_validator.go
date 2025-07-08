@@ -56,7 +56,6 @@ func (a *AggsenderValidator) Start(ctx context.Context) {
 
 // GetRPCServices returns the list of services that the RPC provider exposes
 func (a *AggsenderValidator) GetRPCServices() []jRPC.Service {
-
 	logger := log.WithFields("aggsender-validator-rpc", aggkitcommon.BRIDGE)
 	return []jRPC.Service{
 		{
@@ -125,7 +124,6 @@ func (a *AggsenderValidator) CheckContigousCertificates(params VerifyIncommingRe
 		return ErrNilCertificate
 	}
 	if params.PreviousCertificate == nil {
-		// TODO: Check that the first certificate start at the begining of genesis
 		return a.CheckFirstCerficateBlocks(params)
 	}
 	if params.PreviousCertificate.Height+1 != params.Certificate.Height {
@@ -169,7 +167,8 @@ func (a *AggsenderValidator) CheckFirstCerficateBlocks(params VerifyIncommingReq
 	return nil
 }
 
-func (a *AggsenderValidator) GetCertificatePreBuildParams(ctx context.Context, params VerifyIncommingRequests) (*types.CertificatePreBuildParams, error) {
+func (a *AggsenderValidator) GetCertificatePreBuildParams(ctx context.Context,
+	params VerifyIncommingRequests) (*types.CertificatePreBuildParams, error) {
 	if params.Certificate == nil {
 		return nil, ErrNilCertificate
 	}
@@ -206,7 +205,8 @@ func (a *AggsenderValidator) GetCertificatePreBuildParams(ctx context.Context, p
 }
 
 // guessCertificateType tries to guess the certificate type based on the certificate and metadata.
-func guessCertificateType(certificate *agglayertypes.Certificate, metadataCertType types.CertificateType) types.CertificateType {
+func guessCertificateType(certificate *agglayertypes.Certificate,
+	metadataCertType types.CertificateType) types.CertificateType {
 	if metadataCertType != types.CertificateTypeUnknown {
 		return metadataCertType
 	}

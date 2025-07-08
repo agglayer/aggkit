@@ -285,8 +285,9 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	if a.validator != nil {
 		a.log.Infof("certificate validation: %s ....", certificate.Brief())
 		if err := a.validator.ValidateCertificate(ctx, types.VerifyIncommingRequests{
-			Certificate:         certificate,
-			PreviousCertificate: validator.AggsenderCertificateHeaderToAgglayer(certificateParams.LastSentCertificate, certificate.NetworkID),
+			Certificate: certificate,
+			PreviousCertificate: validator.AggsenderCertificateHeaderToAgglayer(certificateParams.LastSentCertificate,
+				certificate.NetworkID),
 		}); err != nil {
 			a.log.Errorf("certificate validation failed: %s. Cert: %s", err.Error(), certificate.Brief())
 			return nil, fmt.Errorf("certificate validation failed: %w", err)

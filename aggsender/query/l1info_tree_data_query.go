@@ -60,7 +60,8 @@ func (l *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context
 }
 
 // GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
-func (l *L1InfoTreeDataQuerier) GetL1InfoRootByLeafIndex(ctx context.Context, leafIndex uint32) (*treetypes.Root, error) {
+func (l *L1InfoTreeDataQuerier) GetL1InfoRootByLeafIndex(ctx context.Context,
+	leafIndex uint32) (*treetypes.Root, error) {
 	// Get the latest finalized L1 Info tree root
 	root, err := l.l1InfoTreeSyncer.GetL1InfoTreeRootByIndex(ctx, leafIndex)
 	if err != nil {
