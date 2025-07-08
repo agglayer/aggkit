@@ -219,7 +219,7 @@ jobs:
       - test-multi-l2-networks-3-chains
       - get-kurtosis-cdk-commit
     runs-on: ubuntu-latest
-    # if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
 
       - name: Send Slack notification
