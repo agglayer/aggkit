@@ -213,14 +213,48 @@ jobs:
   notify-slack:
     name: Notify Slack
     needs:
-      - test-single-l2-network-fork12-pessimistic
-      - test-single-l2-network-fork12-op-succinct
-      - test-multi-l2-networks-2-chains
-      - test-multi-l2-networks-3-chains
+      # - test-single-l2-network-fork12-pessimistic
+      # - test-single-l2-network-fork12-op-succinct
+      # - test-multi-l2-networks-2-chains
+      # - test-multi-l2-networks-3-chains
       - get-kurtosis-cdk-commit
     runs-on: ubuntu-latest
     # if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
+
+      # - name: Send Slack notification
+      #   uses: agglayer/gha-notify-generic@v1
+      #   with:
+      #     slack-bot-token: ${{ secrets.SLACK_APP_TOKEN_AGGLAYER_NOTIFY_GENERIC }}
+      #     channel-id: ${{ env.AGGKIT_REPORT_CHANNEL }}
+      #     message: |
+      #       Daily E2E Tests Report
+
+      #       Kurtosis CDK Commit: `${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}`
+
+      #       Test Results:
+      #       if [ ${{ needs.test-single-l2-network-fork12-pessimistic.result }} == 'success' ]; then
+      #       • Single L2 (pessimistic): 🟢
+      #       else
+      #       • Single L2 (pessimistic): 🔴
+      #       fi
+      #       if [ ${{ needs.test-single-l2-network-fork12-op-succinct.result }} == 'success' ]; then
+      #       • Single L2 (op-succinct): 🟢
+      #       else
+      #       • Single L2 (op-succinct): 🔴
+      #       fi
+      #       if [ ${{ needs.test-multi-l2-networks-2-chains.result }} == 'success' ]; then
+      #       • Multi L2 (2 chains): 🟢
+      #       else
+      #       • Multi L2 (2 chains): 🔴
+      #       fi
+      #       if [ ${{ needs.test-multi-l2-networks-3-chains.result }} == 'success' ]; then
+      #       • Multi L2 (3 chains): 🟢
+      #       else
+      #       • Multi L2 (3 chains): 🔴
+      #       fi
+
+      #       <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>
 
       - name: Send Slack notification
         uses: agglayer/gha-notify-generic@v1
@@ -233,25 +267,7 @@ jobs:
             Kurtosis CDK Commit: `${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}`
 
             Test Results:
-            if [ ${{ needs.test-single-l2-network-fork12-pessimistic.result }} == 'success' ]; then
-            • Single L2 (pessimistic): 🟢
-            else
-            • Single L2 (pessimistic): 🔴
-            fi
-            if [ ${{ needs.test-single-l2-network-fork12-op-succinct.result }} == 'success' ]; then
-            • Single L2 (op-succinct): 🟢
-            else
-            • Single L2 (op-succinct): 🔴
-            fi
-            if [ ${{ needs.test-multi-l2-networks-2-chains.result }} == 'success' ]; then
-            • Multi L2 (2 chains): 🟢
-            else
-            • Multi L2 (2 chains): 🔴
-            fi
-            if [ ${{ needs.test-multi-l2-networks-3-chains.result }} == 'success' ]; then
-            • Multi L2 (3 chains): 🟢
-            else
-            • Multi L2 (3 chains): 🔴
-            fi
+            Single L2 (pessimistic): 🟢
+            Single L2 (pessimistic): 🔴
 
             <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>
