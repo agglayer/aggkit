@@ -164,10 +164,10 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 			requestToBlock = lastBlock
 			reachTop = true
 		}
-		d.log.Debugf("getting events from blocks [%d to  %d] toBlock: %d. lastFinalizedBlock: %d lastBlock: %d",
+		d.log.Debugf("getting events from blocks [%d to %d] toBlock: %d. lastFinalizedBlock: %d lastBlock: %d",
 			fromBlock, requestToBlock, toBlock, lastFinalizedBlockNumber, lastBlock)
 		blocks := d.GetEventsByBlockRange(ctx, fromBlock, requestToBlock)
-		d.log.Debugf("result events from blocks [%d to  %d] -> len(blocks)=%d",
+		d.log.Debugf("result events from blocks [%d to %d] -> len(blocks)=%d",
 			fromBlock, requestToBlock, len(blocks))
 		if requestToBlock <= lastFinalizedBlockNumber {
 			d.log.Debugf("range is in a safe zone (requestToBlock: %d <= finalized: %d)",
