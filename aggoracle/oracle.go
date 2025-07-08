@@ -59,13 +59,11 @@ func (a *AggOracle) Start(ctx context.Context) {
 	ticker := time.NewTicker(a.waitPeriodNextGER)
 	defer ticker.Stop()
 
-	var blockNumToFetch uint64
-
 	for {
 		select {
 		case <-ticker.C:
-			if err := a.processLatestGER(ctx, &blockNumToFetch); err != nil {
-				a.handleGERProcessingError(err, blockNumToFetch)
+			if blockNum, err := a.processLatestGER(ctx); err != nil {
+				a.handleGERProcessingError(err, blockNum)
 			}
 
 		case <-ctx.Done():
@@ -75,33 +73,30 @@ func (a *AggOracle) Start(ctx context.Context) {
 }
 
 // processLatestGER fetches the latest finalized GER, checks if it is already injected and injects it if not
-func (a *AggOracle) processLatestGER(ctx context.Context, blockNumToFetch *uint64) error {
+func (a *AggOracle) processLatestGER(ctx context.Context) (uint64, error) {
 	// Fetch the latest GER
-	blockNum, gerToInject, err := a.getLastFinalizedGER(ctx, *blockNumToFetch)
+	blockNum, gerToInject, err := a.getLatestIndexedGER(ctx)
 	if err != nil {
-		return err
+		return blockNum, err
 	}
-
-	// Update the block number for the next iteration
-	*blockNumToFetch = blockNum
 
 	isGERInjected, err := a.chainSender.IsGERInjected(gerToInject)
 	if err != nil {
-		return fmt.Errorf("error checking if GER is already injected: %w", err)
+		return blockNum, fmt.Errorf("error checking if GER is already injected: %w", err)
 	}
 
 	if isGERInjected {
 		a.logger.Debugf("GER %s is already injected", gerToInject.Hex())
-		return nil
+		return blockNum, nil
 	}
 
 	a.logger.Infof("injecting new GER: %s", gerToInject.Hex())
 	if err := a.chainSender.InjectGER(ctx, gerToInject); err != nil {
-		return fmt.Errorf("error injecting GER %s: %w", gerToInject.Hex(), err)
+		return blockNum, fmt.Errorf("error injecting GER %s: %w", gerToInject.Hex(), err)
 	}
 
 	a.logger.Infof("GER %s is injected successfully", gerToInject.Hex())
-	return nil
+	return blockNum, nil
 }
 
 // handleGERProcessingError handles global exit root processing error
@@ -116,23 +111,21 @@ func (a *AggOracle) handleGERProcessingError(err error, blockNumToFetch uint64) 
 	}
 }
 
-// getLastFinalizedGER tries to return a finalised GER:
-// If targetBlockNum != 0: it will try to fetch it until the given block
-// Else it will ask the L1 client for the latest finalised block and use that.
-// If it fails to get the GER from the syncer, it will return the block number that used to query
-func (a *AggOracle) getLastFinalizedGER(ctx context.Context, targetBlockNum uint64) (uint64, common.Hash, error) {
-	if targetBlockNum == 0 {
-		header, err := a.l1Client.HeaderByNumber(ctx, a.blockFinality)
-		if err != nil {
-			return 0, common.Hash{}, err
-		}
-		targetBlockNum = header.Number.Uint64()
-	}
-
-	info, err := a.l1Info.GetLatestInfoUntilBlock(ctx, targetBlockNum)
+// getLatestIndexedGER tries to return the latest indexed GER from l1 info tree syncer.
+// It fetches the latest block header, retrieves the latest info from the syncer,
+// and returns the block number and the global exit root.
+// If there is an error during the process, it returns an error.
+func (a *AggOracle) getLatestIndexedGER(ctx context.Context) (uint64, common.Hash, error) {
+	header, err := a.l1Client.HeaderByNumber(ctx, a.blockFinality)
 	if err != nil {
-		return targetBlockNum, common.Hash{}, err
+		return 0, common.Hash{}, err
+	}
+	blockNum := header.Number.Uint64()
+
+	info, err := a.l1Info.GetLatestInfoUntilBlock(ctx, blockNum)
+	if err != nil {
+		return blockNum, common.Hash{}, err
 	}
 
-	return 0, info.GlobalExitRoot, nil
+	return blockNum, info.GlobalExitRoot, nil
 }
