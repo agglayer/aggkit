@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
@@ -22,6 +23,11 @@ type BridgeSyncerType int
 const (
 	L1BridgeSyncer BridgeSyncerType = iota
 	L2BridgeSyncer
+
+	// CurrentDBVersion represents the current version of the bridge syncer's database schema.
+	// It is used to ensure the database is reset if an upgrade requires a full resync.
+	// Increment this value whenever the database schema changes in a way that is not backward-compatible.
+	CurrentDBVersion = 1
 )
 
 func (b BridgeSyncerType) String() string {
@@ -207,9 +213,24 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
+	compatibilityChecker := compatibility.NewCompatibilityCheck(
+		requireStorageContentCompatibility,
+		func(ctx context.Context) (BridgeSyncRuntimeData, error) {
+			tmp, err := downloader.RuntimeData(ctx)
+			if err != nil {
+				return BridgeSyncRuntimeData{}, fmt.Errorf("failed to get runtime data: %w", err)
+			}
+			ver := CurrentDBVersion
+			return BridgeSyncRuntimeData{
+				ChainID:   tmp.ChainID,
+				Addresses: tmp.Addresses,
+				DBVersion: &ver,
+			}, nil
+		},
+		processor)
 
 	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID.String(),
-		downloadBufferSize, rh, requireStorageContentCompatibility)
+		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
 	}

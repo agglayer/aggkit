@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -100,9 +101,12 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-
+	compatibilityChecker := compatibility.NewCompatibilityCheck(
+		requireStorageContentCompatibility,
+		downloader.RuntimeData,
+		processor)
 	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
-		downloadBufferSize, rh, requireStorageContentCompatibility)
+		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
 	}

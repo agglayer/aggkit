@@ -2037,3 +2037,90 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 	require.Equal(t, uint64(2), bridges[3].BlockNum)
 	require.Equal(t, uint64(0), bridges[3].BlockPos)
 }
+
+func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
+	tests := []struct {
+		name        string
+		current     BridgeSyncRuntimeData
+		storage     BridgeSyncRuntimeData
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "compatible versions",
+			current: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			expectError: false,
+		},
+		{
+			name: "incompatible versions - different DB versions",
+			current: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(2),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			expectError: true,
+			errorMsg:    "database schema version mismatch",
+		},
+		{
+			name: "incompatible versions - different chain IDs",
+			current: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:   2,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			expectError: true,
+			errorMsg:    "chain ID mismatch: 1 != 2",
+		},
+		{
+			name: "incompatible versions - different addresses",
+			current: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x456")},
+				DBVersion: intPtr(1),
+			},
+			expectError: true,
+			errorMsg:    "addresses[0] mismatch: 0x0000000000000000000000000000000000000123 != 0x0000000000000000000000000000000000000456",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.current.IsCompatible(tt.storage)
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func intPtr(i int) *int {
+	return &i
+}

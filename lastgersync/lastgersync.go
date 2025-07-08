@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/sync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -89,9 +90,12 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-
+	compatibilityChecker := compatibility.NewCompatibilityCheck(
+		requireStorageContentCompatibility,
+		downloader.RuntimeData,
+		processor)
 	driver, err := sync.NewEVMDriver(rdL2, processor, downloader, reorgDetectorID,
-		downloadBufferSize, rh, requireStorageContentCompatibility)
+		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
 	}
