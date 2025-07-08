@@ -19,9 +19,9 @@ if [ "$#" -lt 3 ]; then
     echo "  e2e_repo_path       Path to E2E repo (use '-' to skip tests)"
     echo ""
     echo "Examples:"
-    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo /path/to/e2e-repo                    # Run both setup and tests"
-    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo -                                    # Run only setup"
-    echo "  $0 single-l2-network-fork12-op-succinct - /path/to/e2e-repo                                         # Run only tests"
+    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo /path/to/e2e-repo   # Run both setup and tests"
+    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo -                   # Run only setup"
+    echo "  $0 single-l2-network-fork12-op-succinct - /path/to/e2e-repo                        # Run only tests"
     exit 1
 fi
 
