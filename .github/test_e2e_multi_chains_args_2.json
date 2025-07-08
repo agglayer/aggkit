@@ -15,6 +15,7 @@
     "erigon_strict_mode": false,
     "enable_normalcy": true,
     "binary_name": "aggkit",
-    "aggkit_components": "aggsender,bridge"
+    "aggkit_components": "aggsender,bridge",
+    "zkevm_contracts_image": "jhkimqd/agglayer-contracts:v11.0.0-rc.2-fork.12"
   }
 }
