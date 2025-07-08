@@ -9,9 +9,9 @@ import (
 )
 
 var (
-	ErrNotImplemented        = errors.New("aggsender-verifier not implemented")
-	ErrNilCertificate        = errors.New("aggsender-verfivier nil certificate")
-	ErrMetadataNotCompatible = errors.New("aggsender-verifier metadata not compatible with the current version")
+	ErrNotImplemented        = errors.New("aggsender-validator not implemented")
+	ErrNilCertificate        = errors.New("aggsender-validator nil certificate")
+	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
 
 func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader) (*types.CertificateHeader, error) {
@@ -24,7 +24,7 @@ func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader)
 	}
 	blockRange, err := metadataUnmarshal.BlockRange()
 	if err != nil {
-		return nil, fmt.Errorf("cant get blockRange from certificate. Err: %w", err)
+		return nil, fmt.Errorf("cant get blockRange from certificate metadata. Err: %w", err)
 	}
 
 	return &types.CertificateHeader{
