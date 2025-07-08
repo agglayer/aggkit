@@ -6,14 +6,14 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 	t.Run("NilCertificate", func(t *testing.T) {
 		result, err := AgglayerCertificateHeaderToAggsender(nil)
-		assert.Nil(t, result)
-		assert.NoError(t, err)
+		require.Nil(t, result)
+		require.NoError(t, err)
 	})
 
 	t.Run("MetadataNotCompatible", func(t *testing.T) {
@@ -23,15 +23,37 @@ func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 			Metadata: common.Hash(badMetadata),
 		}
 		result, err := AgglayerCertificateHeaderToAggsender(cert)
-		assert.Nil(t, result)
-		assert.ErrorIs(t, err, ErrMetadataNotCompatible)
+		require.Nil(t, result)
+		require.ErrorIs(t, err, ErrMetadataNotCompatible)
+	})
+
+	t.Run("Can't get blockRange'", func(t *testing.T) {
+		badMetadata := make([]byte, common.HashLength)
+		badMetadata[0] = 0x0 // Version = 0x0 doesn't have blockrange
+		cert := &agglayertypes.CertificateHeader{
+			Metadata: common.Hash(badMetadata),
+		}
+		result, err := AgglayerCertificateHeaderToAggsender(cert)
+		require.Nil(t, result)
+		require.Error(t, err)
+	})
+
+	t.Run("ok", func(t *testing.T) {
+		badMetadata := make([]byte, common.HashLength)
+		badMetadata[0] = 0x1 // Version = 0xff
+		cert := &agglayertypes.CertificateHeader{
+			Metadata: common.Hash(badMetadata),
+		}
+		result, err := AgglayerCertificateHeaderToAggsender(cert)
+		require.NotNil(t, result)
+		require.NoError(t, err)
 	})
 }
 
 func TestAggsenderCertificateHeaderToAgglayer(t *testing.T) {
 	t.Run("NilCertificate", func(t *testing.T) {
 		result := AggsenderCertificateHeaderToAgglayer(nil, 1)
-		assert.Nil(t, result)
+		require.Nil(t, result)
 	})
 
 	t.Run("ValidConversion", func(t *testing.T) {
@@ -48,12 +70,12 @@ func TestAggsenderCertificateHeaderToAgglayer(t *testing.T) {
 			CertType:              types.CertificateType(1),
 		}
 		result := AggsenderCertificateHeaderToAgglayer(cert, 42)
-		assert.NotNil(t, result)
-		assert.Equal(t, uint32(42), result.NetworkID)
-		assert.Equal(t, cert.Height, result.Height)
-		assert.Equal(t, cert.CertificateID, result.CertificateID)
-		assert.Equal(t, cert.PreviousLocalExitRoot, result.PreviousLocalExitRoot)
-		assert.Equal(t, cert.NewLocalExitRoot, result.NewLocalExitRoot)
-		assert.Equal(t, cert.Status, result.Status)
+		require.NotNil(t, result)
+		require.Equal(t, uint32(42), result.NetworkID)
+		require.Equal(t, cert.Height, result.Height)
+		require.Equal(t, cert.CertificateID, result.CertificateID)
+		require.Equal(t, cert.PreviousLocalExitRoot, result.PreviousLocalExitRoot)
+		require.Equal(t, cert.NewLocalExitRoot, result.NewLocalExitRoot)
+		require.Equal(t, cert.Status, result.Status)
 	})
 }
