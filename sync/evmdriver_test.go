@@ -36,7 +36,7 @@ func TestSync(t *testing.T) {
 		ReorgedBlock:   firstReorgedBlock,
 		ReorgProcessed: reorgProcessed,
 	}, nil)
-	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, true)
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatibilityCheckerMock)
 	require.NoError(t, err)
 	driver.compatibilityChecker = compatibilityCheckerMock
 	ctx := context.Background()
@@ -132,8 +132,9 @@ func TestHandleNewBlock(t *testing.T) {
 	rdm := NewReorgDetectorMock(t)
 	pm := NewProcessorMock(t)
 	dm := NewDownloaderMock(t)
+	compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
 	rdm.On("Subscribe", reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
-	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, true)
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatibilityCheckerMock)
 	require.NoError(t, err)
 	ctx := context.Background()
 
@@ -212,11 +213,12 @@ func TestHandleReorg(t *testing.T) {
 	rdm := NewReorgDetectorMock(t)
 	pm := NewProcessorMock(t)
 	dm := NewDownloaderMock(t)
+	compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
 	reorgProcessed := make(chan bool)
 	rdm.On("Subscribe", reorgDetectorID).Return(&reorgdetector.Subscription{
 		ReorgProcessed: reorgProcessed,
 	}, nil)
-	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, true)
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatibilityCheckerMock)
 	require.NoError(t, err)
 	ctx := context.Background()
 
@@ -251,7 +253,7 @@ func TestCheckCompatibility(t *testing.T) {
 
 	reorgDetectorMock.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
 
-	driver, err := NewEVMDriver(reorgDetectorMock, processorMock, downloaderMock, reorgDetectorID, 10, retryHandler, true)
+	driver, err := NewEVMDriver(reorgDetectorMock, processorMock, downloaderMock, reorgDetectorID, 10, retryHandler, compatibilityCheckerMock)
 	require.NoError(t, err)
 	driver.compatibilityChecker = compatibilityCheckerMock
 	t.Run("pass compatibility check", func(t *testing.T) {
