@@ -18,21 +18,28 @@ var mig002 string
 //go:embed 0003.sql
 var mig003 string
 
-func RunMigrations(logger *log.Logger, database *sql.DB) error {
-	migrations := []types.Migration{
-		{
-			ID:  "0001",
-			SQL: mig001,
-		},
-		{
-			ID:  "0002",
-			SQL: mig002,
-		},
-		{
-			ID:  "0003",
-			SQL: mig003,
-		},
-	}
+//go:embed 0004.sql
+var mig004 string
 
-	return db.RunMigrationsDB(logger, database, migrations)
+var Migrations = []types.Migration{
+	{
+		ID:  "0001",
+		SQL: mig001,
+	},
+	{
+		ID:  "0002",
+		SQL: mig002,
+	},
+	{
+		ID:  "0003",
+		SQL: mig003,
+	},
+	{
+		ID:  "0004",
+		SQL: mig004,
+	},
+}
+
+func RunMigrations(logger *log.Logger, database *sql.DB) error {
+	return db.RunMigrationsDB(logger, database, Migrations)
 }

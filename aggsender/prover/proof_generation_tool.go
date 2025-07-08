@@ -3,6 +3,7 @@ package prover
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
@@ -85,7 +86,7 @@ func NewAggchainProofGenerationTool(
 	}
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
-	l2BridgeQuerier := query.NewBridgeDataQuerier(l2Syncer)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second)
 
 	baseFlow := flows.NewBaseFlow(
 		logger,
@@ -93,12 +94,12 @@ func NewAggchainProofGenerationTool(
 		nil, // storage
 		l1InfoTreeQuerier,
 		nil, // lerQuerier
-		flows.NewBaseFlowConfig(0, 0),
+		flows.NewBaseFlowConfigDefault(),
 	)
 	aggchainProverFlow := flows.NewAggchainProverFlow(
 		logger,
-		baseFlow,
 		flows.NewAggchainProverFlowConfigDefault(),
+		baseFlow,
 		aggchainProofClient,
 		nil, // storage
 		l1InfoTreeQuerier,

@@ -74,6 +74,7 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock := agglayer.NewAgglayerClientMock(t)
 	epochNotifierMock := mocks.NewEpochNotifier(t)
 	bridgeL2SyncerMock := mocks.NewL2BridgeSyncer(t)
+	rollupQuerierMock := mocks.NewRollupDataQuerier(t)
 	ch := make(chan aggsendertypes.EpochEvent)
 	epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch)
 	epochNotifierMock.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{}).Once()
@@ -82,15 +83,14 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	aggSender, err := New(
 		ctx,
 		log.WithFields("test", "unittest"),
 		config.Config{
-			Mode:                 "PessimisticProof",
-			StoragePath:          path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
-			DelayBeetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
+			Mode:                "PessimisticProof",
+			StoragePath:         path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
+			DelayBetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
 			AggsenderPrivateKey: signertypes.SignerConfig{
 				Method: signertypes.MethodNone,
 			},
@@ -98,7 +98,7 @@ func TestAggSenderStart(t *testing.T) {
 		aggLayerMock,
 		nil,
 		bridgeL2SyncerMock,
-		epochNotifierMock, nil, nil)
+		epochNotifierMock, nil, nil, rollupQuerierMock)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 
@@ -214,7 +214,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		flow: flows.NewPPFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
 				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
-			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true),
+			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
 		rateLimiter: aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
@@ -440,13 +440,13 @@ func TestSendCertificate(t *testing.T) {
 
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
-	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(3)
+	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
 		},
 		Mode: "PessimisticProof",
-	}, nil, nil, mockBridgeSyncer, nil, nil, nil)
+	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
@@ -672,15 +672,15 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		storage:         storage,
 		status:          &aggsendertypes.AggsenderStatus{},
 		cfg: config.Config{
-			MaxCertSize:          1024 * 1024,
-			DelayBeetweenRetries: types.Duration{Duration: time.Millisecond},
+			MaxCertSize:         1024 * 1024,
+			DelayBetweenRetries: types.Duration{Duration: time.Millisecond},
 		},
 		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
 		flow: flows.NewPPFlow(logger,
 			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,
 				l1InfoTreeQuerierMock, lerQuerier, flows.NewBaseFlowConfigDefault()),
-			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true),
+			storage, l1InfoTreeQuerierMock, l2BridgeQuerier, signer, true, 0),
 	}
 	var flowMock *mocks.AggsenderFlow
 	if creationFlags&testDataFlagMockFlow != 0 {

@@ -4,6 +4,8 @@ package mocks
 
 import (
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
+	common "github.com/ethereum/go-ethereum/common"
+
 	mock "github.com/stretchr/testify/mock"
 
 	polygonrollupmanager "github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
@@ -20,6 +22,63 @@ type RollupManagerContract_Expecter struct {
 
 func (_m *RollupManagerContract) EXPECT() *RollupManagerContract_Expecter {
 	return &RollupManagerContract_Expecter{mock: &_m.Mock}
+}
+
+// RollupAddressToID provides a mock function with given fields: opts, rollupAddress
+func (_m *RollupManagerContract) RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error) {
+	ret := _m.Called(opts, rollupAddress)
+
+	if len(ret) == 0 {
+		panic("no return value specified for RollupAddressToID")
+	}
+
+	var r0 uint32
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts, common.Address) (uint32, error)); ok {
+		return rf(opts, rollupAddress)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts, common.Address) uint32); ok {
+		r0 = rf(opts, rollupAddress)
+	} else {
+		r0 = ret.Get(0).(uint32)
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts, common.Address) error); ok {
+		r1 = rf(opts, rollupAddress)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// RollupManagerContract_RollupAddressToID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'RollupAddressToID'
+type RollupManagerContract_RollupAddressToID_Call struct {
+	*mock.Call
+}
+
+// RollupAddressToID is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+//   - rollupAddress common.Address
+func (_e *RollupManagerContract_Expecter) RollupAddressToID(opts interface{}, rollupAddress interface{}) *RollupManagerContract_RollupAddressToID_Call {
+	return &RollupManagerContract_RollupAddressToID_Call{Call: _e.mock.On("RollupAddressToID", opts, rollupAddress)}
+}
+
+func (_c *RollupManagerContract_RollupAddressToID_Call) Run(run func(opts *bind.CallOpts, rollupAddress common.Address)) *RollupManagerContract_RollupAddressToID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts), args[1].(common.Address))
+	})
+	return _c
+}
+
+func (_c *RollupManagerContract_RollupAddressToID_Call) Return(_a0 uint32, _a1 error) *RollupManagerContract_RollupAddressToID_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *RollupManagerContract_RollupAddressToID_Call) RunAndReturn(run func(*bind.CallOpts, common.Address) (uint32, error)) *RollupManagerContract_RollupAddressToID_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // RollupIDToRollupData provides a mock function with given fields: opts, rollupID

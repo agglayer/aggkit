@@ -19,6 +19,7 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/agglayer/aggkit"
@@ -49,6 +50,7 @@ const (
 	fromAddressParam  = "from_address"
 	leafIndexParam    = "leaf_index"
 	globalIndexParam  = "global_index"
+	includeAllFields  = "include_all_fields"
 
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
@@ -110,6 +112,10 @@ func New(
 		gin.SetMode(gin.ReleaseMode) // fallback to release mode
 	}
 
+	router := gin.New()
+	router.Use(gin.Recovery())
+	router.Use(LoggerHandler(cfg.Logger))
+
 	b := &BridgeService{
 		logger:       cfg.Logger,
 		address:      cfg.Address,
@@ -121,13 +127,49 @@ func New(
 		injectedGERs: injectedGERs,
 		bridgeL1:     bridgeL1,
 		bridgeL2:     bridgeL2,
-		router:       gin.Default(),
+		router:       router,
 	}
 
 	b.registerRoutes()
 	cfg.Logger.Info("bridge service initialized successfully")
 
 	return b
+}
+
+// LoggerHandler returns a Gin middleware that logs HTTP requests using logger at DEBUG level.
+func LoggerHandler(logger aggkitcommon.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		raw := c.Request.URL.RawQuery
+
+		c.Next()
+
+		latency := time.Since(start)
+		if latency > time.Minute {
+			latency = latency.Truncate(time.Second)
+		}
+
+		clientIP := c.ClientIP()
+		method := c.Request.Method
+		statusCode := c.Writer.Status()
+		errorMessage := c.Errors.ByType(gin.ErrorTypePrivate).String()
+
+		if raw != "" {
+			path += "?" + raw
+		}
+
+		logger.Debugf(
+			"[GIN] %v | %3d | %13v | %15s | %-7s %#v\n%s",
+			start.Format("2006/01/02 - 15:04:05"),
+			statusCode,
+			latency,
+			clientIP,
+			method,
+			path,
+			errorMessage,
+		)
+	}
 }
 
 // registerRoutes registers the routes for the bridge service
@@ -319,14 +361,15 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Param page_size query uint32 false "Page size (default 100)"
 // @Param network_ids query []uint32 false "Filter by one or more network IDs"
 // @Param from_address query string false "Filter by from address"
+// @Param include_all_fields query bool false "Whether to include full response fields (default false)"
 // @Produce json
 // @Success 200 {object} types.ClaimsResult
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /claims [get]
 func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
-	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s)",
-		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
+	b.logger.Debugf("GetClaims request received (network id=%s, page number=%s, page size=%s, include_all_fields=%s)",
+		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(includeAllFields))
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -344,6 +387,17 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 
 	fromAddress := c.Query(fromAddressParam)
 
+	// Parse include_all_fields parameter (default to false)
+	includeAllFieldsFlag := false
+	if includeAllFieldsStr := c.Query(includeAllFields); includeAllFieldsStr != "" {
+		includeAllFieldsFlag, err = strconv.ParseBool(includeAllFieldsStr)
+		if err != nil {
+			b.logger.Warnf("invalid include_all_fields parameter: %v", err)
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid include_all_fields parameter"})
+			return
+		}
+	}
+
 	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_claims")
 	if err != nil {
 		b.logger.Warnf(errSetupRequest, err)
@@ -352,8 +406,9 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	}
 	defer cancel()
 
-	b.logger.Debugf("fetching claims (network id=%d, page=%d, size=%d, network_ids=%v, from_address=%s)",
-		networkID, pageNumber, pageSize, networkIDs, fromAddress)
+	b.logger.Debugf(
+		"fetching claims (network id=%d, page=%d, size=%d, network_ids=%v, from_address=%s, include_all_fields=%t)",
+		networkID, pageNumber, pageSize, networkIDs, fromAddress, includeAllFieldsFlag)
 
 	var (
 		claims []*bridgesync.Claim
@@ -383,7 +438,11 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 		return
 	}
 
-	claimResponses := aggkitcommon.MapSlice(claims, NewClaimResponse)
+	// Use conditional function to create claim responses
+	claimResponses := make([]*types.ClaimResponse, len(claims))
+	for i, claim := range claims {
+		claimResponses[i] = NewClaimResponse(claim, includeAllFieldsFlag)
+	}
 
 	c.JSON(http.StatusOK,
 		types.ClaimsResult{
@@ -591,7 +650,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Description or the first injected global exit root after the given index (for L2).
 // @Tags l1-info-tree-leaf
 // @Param network_id query int true "Network ID"
-// @Param l1_info_tree_index query int true "L1 Info Tree Index"
+// @Param leaf_index query int true "L1 Info Tree Index"
 // @Produce json
 // @Success 200 {object} types.L1InfoTreeLeafResponse
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
@@ -672,7 +731,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 // @Description the corresponding L1 info tree leaf needed to verify a claim.
 // @Tags claims
 // @Param network_id query uint32 true "Target network ID"
-// @Param l1_info_tree_index query uint32 true "Index in the L1 info tree"
+// @Param leaf_index query uint32 true "Index in the L1 info tree"
 // @Param deposit_count query uint32 true "Number of deposits in the bridge"
 // @Produce json
 // @Success 200 {object} types.ClaimProof "Merkle proofs and L1 info tree leaf"

@@ -8,7 +8,6 @@ import (
 	"slices"
 	"time"
 
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum"
@@ -18,6 +17,7 @@ import (
 
 const (
 	DefaultWaitPeriodBlockNotFound = time.Millisecond * 100
+	MaxRetryCountBlockHashMismatch = 5
 )
 
 var (
@@ -48,7 +48,7 @@ type EVMDownloader struct {
 	syncBlockChunkSize uint64
 	EVMDownloaderInterface
 	log                        *log.Logger
-	finalizedBlockType         etherman.BlockNumberFinality
+	finalizedBlockType         aggkittypes.BlockNumberFinality
 	stopDownloaderOnIterationN int
 	addressesToQuery           []common.Address
 }
@@ -57,12 +57,12 @@ func NewEVMDownloader(
 	syncerID string,
 	ethClient aggkittypes.BaseEthereumClienter,
 	syncBlockChunkSize uint64,
-	blockFinalityType etherman.BlockNumberFinality,
+	blockFinalityType aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,
 	addressesToQuery []common.Address,
 	rh *RetryHandler,
-	finalizedBlockType etherman.BlockNumberFinality,
+	finalizedBlockType aggkittypes.BlockNumberFinality,
 ) (*EVMDownloader, error) {
 	logger := log.WithFields("syncer", syncerID)
 	finality, err := blockFinalityType.ToBlockNum()
@@ -321,6 +321,13 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 }
 
 func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) EVMBlocks {
+	return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0)
+}
+
+func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
+	ctx context.Context,
+	fromBlock, toBlock uint64, retryCount int,
+) EVMBlocks {
 	select {
 	case <-ctx.Done():
 		return nil
@@ -338,10 +345,19 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 				if b.Hash != l.BlockHash {
 					d.log.Infof(
 						"there has been a block hash change between the event query and the block query "+
-							"for block %d: %s vs %s. Retrying.",
-						l.BlockNumber, b.Hash, l.BlockHash,
+							"for block %d: %s vs %s. Retrying attempt %d/%d.",
+						l.BlockNumber, b.Hash, l.BlockHash, retryCount, MaxRetryCountBlockHashMismatch,
 					)
-					return d.GetEventsByBlockRange(ctx, fromBlock, toBlock)
+					if retryCount >= MaxRetryCountBlockHashMismatch {
+						// Log an error and return nil if the maximum retry count is reached.
+						d.log.Errorf(
+							"max retry attempts %d reached for block hash mismatch on block %d, returning nil",
+							MaxRetryCountBlockHashMismatch, l.BlockNumber,
+						)
+						return nil
+					}
+					// Retry the operation with an incremented retry count.
+					return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, retryCount+1)
 				}
 				latestBlock = &EVMBlock{
 					EVMBlockHeader: EVMBlockHeader{

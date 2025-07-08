@@ -31,9 +31,9 @@ type Config struct {
 	// MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
 	// 0 is infinite
 	MaxRetriesStoreCertificate int `mapstructure:"MaxRetriesStoreCertificate"`
-	// DelayBeetweenRetries is the delay between retries:
+	// DelayBetweenRetries is the delay between retries:
 	//  is used on store Certificate and also in initial check
-	DelayBeetweenRetries types.Duration `mapstructure:"DelayBeetweenRetries"`
+	DelayBetweenRetries types.Duration `mapstructure:"DelayBetweenRetries"`
 	// KeepCertificatesHistory is a flag to keep the certificates history on storage
 	KeepCertificatesHistory bool `mapstructure:"KeepCertificatesHistory"`
 	// MaxCertSize is the maximum size of the certificate (the emitted certificate cannot be bigger that this size)
@@ -75,6 +75,12 @@ type Config struct {
 	RollupManagerAddr ethCommon.Address `mapstructure:"RollupManagerAddr"`
 	// RollupCreationBlockL1 is the block number when the rollup was created on L1
 	RollupCreationBlockL1 uint64 `mapstructure:"RollupCreationBlockL1"`
+	// MaxL2BlockNumber is the last L2 block number that is going to be included in a certificate
+	// 0 means disabled
+	MaxL2BlockNumber uint64 `mapstructure:"MaxL2BlockNumber"`
+	// StopOnFinishedSendingAllCertificates is a flag to stop the AggSender when it finishes sending all certificates
+	// up to MaxL2BlockNumber
+	StopOnFinishedSendingAllCertificates bool `mapstructure:"StopOnFinishedSendingAllCertificates"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

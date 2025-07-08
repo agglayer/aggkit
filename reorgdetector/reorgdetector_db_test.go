@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	aggkittypes "github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/etherman"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	common "github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 	"github.com/stretchr/testify/require"
@@ -20,8 +20,8 @@ func setupReorgDetector(t *testing.T) *ReorgDetector {
 	reorgDetector, err := New(nil,
 		Config{
 			DBPath:              testDir,
-			CheckReorgsInterval: aggkittypes.NewDuration(time.Millisecond * 100),
-			FinalizedBlock:      etherman.FinalizedBlock,
+			CheckReorgsInterval: cfgtypes.NewDuration(time.Millisecond * 100),
+			FinalizedBlock:      aggkittypes.FinalizedBlock,
 		}, L1)
 	require.NoError(t, err)
 

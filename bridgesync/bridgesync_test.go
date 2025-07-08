@@ -10,10 +10,10 @@ import (
 	"time"
 
 	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
-	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -31,7 +31,7 @@ func TestNewLx(t *testing.T) {
 	)
 
 	var (
-		blockFinalityType = etherman.SafeBlock
+		blockFinalityType = aggkittypes.SafeBlock
 		ctx               = context.Background()
 		dbPath            = path.Join(t.TempDir(), "TestNewLx.sqlite")
 		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
@@ -186,7 +186,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	)
 
 	var (
-		blockFinalityType = etherman.SafeBlock
+		blockFinalityType = aggkittypes.SafeBlock
 		ctx               = context.Background()
 		dbPath            = path.Join(t.TempDir(), "TestGetTokenMappings.sqlite")
 		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
@@ -318,7 +318,7 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 	)
 
 	var (
-		blockFinalityType = etherman.SafeBlock
+		blockFinalityType = aggkittypes.SafeBlock
 		ctx               = context.Background()
 		dbPath            = path.Join(t.TempDir(), "TestGetTokenMigrations.sqlite")
 		bridge            = common.HexToAddress("0x123456")
