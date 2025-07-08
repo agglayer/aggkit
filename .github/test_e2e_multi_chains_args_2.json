@@ -10,7 +10,7 @@
     "deployment_suffix": "-002",
     "zkevm_rollup_chain_id": 20202,
     "zkevm_rollup_id": 2,
-    "cdk_node_image": "aggkit:local",
+    "aggkit_image": "aggkit:local",
     "additional_services": [],
     "erigon_strict_mode": false,
     "enable_normalcy": true,
