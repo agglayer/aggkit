@@ -65,78 +65,6 @@ jobs:
           CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_2.json ./.github/test_e2e_multi_chains_args_3.json | jq -c .)
           echo "kurtosis-cdk-args-5=${CONTENT}" >> $GITHUB_OUTPUT
 
-  test-single-l2-network-fork12-pessimistic:
-    name: Single L2 chain tests (pessimistic)
-    needs:
-      - build-aggkit-image
-      - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@01c007d2b062de91822c041d00ffd7985c62ff20
-    secrets: inherit
-    with:
-      kurtosis-cdk-ref: 2a880250c071451a1419b8ebd7b63e4cb898ea8c
-      agglayer-e2e-ref: 01c007d2b062de91822c041d00ffd7985c62ff20
-      kurtosis-cdk-enclave-name: aggkit
-      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
-      test-name: "test-single-l2-network-fork12-pessimistic"
-
-  check-single-l2-network-fork12-pessimistic-tests-result:
-    name: Check results for single l2 network (pessimistic)
-    needs:
-      - test-single-l2-network-fork12-pessimistic
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-pessimistic.result) }}
-
-  test-single-l2-network-fork12-global-index-pp-old-contracts:
-    name: Single L2 chain tests (global index pp old contracts)
-    needs:
-      - build-aggkit-image
-      - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@01c007d2b062de91822c041d00ffd7985c62ff20
-    secrets: inherit
-    with:
-      kurtosis-cdk-ref: 2a880250c071451a1419b8ebd7b63e4cb898ea8c
-      agglayer-e2e-ref: 01c007d2b062de91822c041d00ffd7985c62ff20
-      kurtosis-cdk-enclave-name: aggkit
-      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts }}
-      test-name: "test-single-l2-network-fork12-global-index-pp-old-contracts"
-
-  check-single-l2-network-fork12-global-index-pp-old-contracts-tests-result:
-    name: Check results for single l2 network (global index pp old contracts)
-    needs:
-      - test-single-l2-network-fork12-global-index-pp-old-contracts
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-global-index-pp-old-contracts.result) }}
-
-  test-single-l2-network-fork12-op-succinct:
-    name: Single L2 chain tests (op-succinct)
-    needs:
-      - build-aggkit-image
-      - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@01c007d2b062de91822c041d00ffd7985c62ff20
-    secrets: inherit
-    with:
-      kurtosis-cdk-ref: 2a880250c071451a1419b8ebd7b63e4cb898ea8c
-      agglayer-e2e-ref: 01c007d2b062de91822c041d00ffd7985c62ff20
-      kurtosis-cdk-enclave-name: op
-      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
-      test-name: "test-single-l2-network-fork12-op-succinct"
-
-  check-single-network-fork12-op-succinct-tests-result:
-    name: Check results for single l2 network (op-succinct)
-    needs:
-      - test-single-l2-network-fork12-op-succinct
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-op-succinct.result) }}
-
   build-tools:
     name: Build aggsender find imported bridge tool
     needs:
@@ -160,17 +88,91 @@ jobs:
           name: aggsender_find_imported_bridge
           path: ./target/aggsender_find_imported_bridge
 
+  test-single-l2-network-fork12-pessimistic:
+    name: Single L2 chain tests (pessimistic)
+    needs:
+      - build-aggkit-image
+      - read-aggkit-args
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@3268c4e2609f85a99b0a17c69d5c25ab8e69737b
+    secrets: inherit
+    with:
+      kurtosis-cdk-ref: 2a880250c071451a1419b8ebd7b63e4cb898ea8c
+      agglayer-e2e-ref: 3268c4e2609f85a99b0a17c69d5c25ab8e69737b
+      kurtosis-cdk-enclave-name: aggkit
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
+      test-name: "test-single-l2-network-fork12-pessimistic"
+
+  check-single-l2-network-fork12-pessimistic-tests-result:
+    name: Check results for single l2 network (pessimistic)
+    needs:
+      - test-single-l2-network-fork12-pessimistic
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-pessimistic.result) }}
+
+  test-single-l2-network-fork12-global-index-pp-old-contracts:
+    name: Single L2 chain tests (global index pp old contracts)
+    needs:
+      - build-aggkit-image
+      - build-tools
+      - read-aggkit-args
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@3268c4e2609f85a99b0a17c69d5c25ab8e69737b
+    secrets: inherit
+    with:
+      kurtosis-cdk-ref: 2a880250c071451a1419b8ebd7b63e4cb898ea8c
+      agglayer-e2e-ref: 3268c4e2609f85a99b0a17c69d5c25ab8e69737b
+      kurtosis-cdk-enclave-name: aggkit
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts }}
+      test-name: "test-single-l2-network-fork12-global-index-pp-old-contracts"
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+
+  check-single-l2-network-fork12-global-index-pp-old-contracts-tests-result:
+    name: Check results for single l2 network (global index pp old contracts)
+    needs:
+      - test-single-l2-network-fork12-global-index-pp-old-contracts
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-global-index-pp-old-contracts.result) }}
+
+  test-single-l2-network-fork12-op-succinct:
+    name: Single L2 chain tests (op-succinct)
+    needs:
+      - build-aggkit-image
+      - read-aggkit-args
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@3268c4e2609f85a99b0a17c69d5c25ab8e69737b
+    secrets: inherit
+    with:
+      kurtosis-cdk-ref: 2a880250c071451a1419b8ebd7b63e4cb898ea8c
+      agglayer-e2e-ref: 3268c4e2609f85a99b0a17c69d5c25ab8e69737b
+      kurtosis-cdk-enclave-name: op
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
+      test-name: "test-single-l2-network-fork12-op-succinct"
+
+  check-single-network-fork12-op-succinct-tests-result:
+    name: Check results for single l2 network (op-succinct)
+    needs:
+      - test-single-l2-network-fork12-op-succinct
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-op-succinct.result) }}
+
   test-multi-l2-networks-2-chains:
     name: Multi chains E2E test (2 chains)
     needs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@01c007d2b062de91822c041d00ffd7985c62ff20
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@3268c4e2609f85a99b0a17c69d5c25ab8e69737b
     secrets: inherit
     with:
       kurtosis-cdk-ref: 2a880250c071451a1419b8ebd7b63e4cb898ea8c
-      agglayer-e2e-ref: 01c007d2b062de91822c041d00ffd7985c62ff20
+      agglayer-e2e-ref: 3268c4e2609f85a99b0a17c69d5c25ab8e69737b
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
@@ -192,11 +194,11 @@ jobs:
       - build-aggkit-image
       - build-tools
       - read-aggkit-args
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@01c007d2b062de91822c041d00ffd7985c62ff20
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@3268c4e2609f85a99b0a17c69d5c25ab8e69737b
     secrets: inherit
     with:
       kurtosis-cdk-ref: 2a880250c071451a1419b8ebd7b63e4cb898ea8c
-      agglayer-e2e-ref: 01c007d2b062de91822c041d00ffd7985c62ff20
+      agglayer-e2e-ref: 3268c4e2609f85a99b0a17c69d5c25ab8e69737b
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
