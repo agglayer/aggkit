@@ -11,7 +11,7 @@ import (
 
 func TestServer(t *testing.T) {
 	cfg := ServerConfig{
-		Host:             "http://127.0.0.1",
+		Host:             "127.0.0.1",
 		Port:             1111,
 		EnableReflection: true,
 	}
