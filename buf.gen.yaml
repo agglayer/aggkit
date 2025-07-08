@@ -11,6 +11,7 @@ plugins:
       - Magglayer/interop/types/v1/merkle_proof.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
       - Magglayer/interop/types/v1/aggchain.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
       - Magglayer/node/types/v1/certificate.proto=buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1
+      - Magglayer/node/types/v1/certificate_id.proto=buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1
   - local: protoc-gen-go-grpc
     out: .
     opt:
@@ -22,3 +23,4 @@ plugins:
       - Magglayer/interop/types/v1/merkle_proof.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
       - Magglayer/interop/types/v1/aggchain.proto=buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1
       - Magglayer/node/types/v1/certificate.proto=buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1
+      - Magglayer/node/types/v1/certificate_id.proto=buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1

@@ -3,7 +3,6 @@ package validator
 import (
 	"context"
 
-	nodev1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/log"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -15,9 +14,11 @@ type ValidatorService struct {
 	v1.UnimplementedAggsenderValidatorServer
 }
 
-func (s *ValidatorService) ValidateCertificate(ctx context.Context, cert *nodev1.Certificate) (*emptypb.Empty, error) {
+// ValidateCertificate validates a new certificate
+func (s *ValidatorService) ValidateCertificate(
+	ctx context.Context, req *v1.ValidateCertificateRequest) (*emptypb.Empty, error) {
 	// TODO: implement actual logic here
-	log.Infof("Received certificate with height: %d", cert.Height)
+	log.Infof("Received certificate with height: %d", req.Certificate.Height)
 
 	return &emptypb.Empty{}, nil
 }

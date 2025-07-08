@@ -44,11 +44,13 @@ func TestValidatorService(t *testing.T) {
 
 func TestValidatorService_ValidateCertificate(t *testing.T) {
 	svc := &ValidatorService{}
-	cert := &nodev1.Certificate{
-		Height: 42,
+	req := &v1.ValidateCertificateRequest{
+		Certificate: &nodev1.Certificate{
+			Height: 42,
+		},
 	}
 
-	resp, err := svc.ValidateCertificate(context.Background(), cert)
+	resp, err := svc.ValidateCertificate(context.Background(), req)
 	require.NoError(t, err)
 	require.IsType(t, &emptypb.Empty{}, resp)
 }

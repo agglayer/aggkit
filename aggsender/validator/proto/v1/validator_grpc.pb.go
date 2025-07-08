@@ -7,7 +7,6 @@
 package v1
 
 import (
-	v1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	context "context"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
@@ -27,8 +26,11 @@ const (
 // AggsenderValidatorClient is the client API for AggsenderValidator service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// Service for validating new certificates
 type AggsenderValidatorClient interface {
-	ValidateCertificate(ctx context.Context, in *v1.Certificate, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	// Method to validate a new certificate
+	ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
 }
 
 type aggsenderValidatorClient struct {
@@ -39,7 +41,7 @@ func NewAggsenderValidatorClient(cc grpc.ClientConnInterface) AggsenderValidator
 	return &aggsenderValidatorClient{cc}
 }
 
-func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *v1.Certificate, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(emptypb.Empty)
 	err := c.cc.Invoke(ctx, AggsenderValidator_ValidateCertificate_FullMethodName, in, out, cOpts...)
@@ -52,8 +54,11 @@ func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *
 // AggsenderValidatorServer is the server API for AggsenderValidator service.
 // All implementations must embed UnimplementedAggsenderValidatorServer
 // for forward compatibility
+//
+// Service for validating new certificates
 type AggsenderValidatorServer interface {
-	ValidateCertificate(context.Context, *v1.Certificate) (*emptypb.Empty, error)
+	// Method to validate a new certificate
+	ValidateCertificate(context.Context, *ValidateCertificateRequest) (*emptypb.Empty, error)
 	mustEmbedUnimplementedAggsenderValidatorServer()
 }
 
@@ -61,7 +66,7 @@ type AggsenderValidatorServer interface {
 type UnimplementedAggsenderValidatorServer struct {
 }
 
-func (UnimplementedAggsenderValidatorServer) ValidateCertificate(context.Context, *v1.Certificate) (*emptypb.Empty, error) {
+func (UnimplementedAggsenderValidatorServer) ValidateCertificate(context.Context, *ValidateCertificateRequest) (*emptypb.Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateCertificate not implemented")
 }
 func (UnimplementedAggsenderValidatorServer) mustEmbedUnimplementedAggsenderValidatorServer() {}
@@ -78,7 +83,7 @@ func RegisterAggsenderValidatorServer(s grpc.ServiceRegistrar, srv AggsenderVali
 }
 
 func _AggsenderValidator_ValidateCertificate_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(v1.Certificate)
+	in := new(ValidateCertificateRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
@@ -90,7 +95,7 @@ func _AggsenderValidator_ValidateCertificate_Handler(srv interface{}, ctx contex
 		FullMethod: AggsenderValidator_ValidateCertificate_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AggsenderValidatorServer).ValidateCertificate(ctx, req.(*v1.Certificate))
+		return srv.(AggsenderValidatorServer).ValidateCertificate(ctx, req.(*ValidateCertificateRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
