@@ -760,7 +760,6 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
-				//mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, errors.New("some error"))
 			},
 			expectedError: "some error",
