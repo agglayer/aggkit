@@ -26,7 +26,7 @@ const (
 // Request to validate a certificate
 type ValidateCertificateRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Previous certificate identifier.
+	// Previous certificate identifier
 	PreviousCertificateId *v1.CertificateId `protobuf:"bytes,1,opt,name=previous_certificate_id,json=previousCertificateId,proto3" json:"previous_certificate_id,omitempty"`
 	// Certificate to be validated
 	Certificate   *v1.Certificate `protobuf:"bytes,2,opt,name=certificate,proto3" json:"certificate,omitempty"`

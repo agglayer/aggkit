@@ -16,6 +16,7 @@ type ServerConfig struct {
 	// Port is the port to bind the gRPC server
 	Port int `mapstructure:"Port"`
 	// EnableReflection indicates whether gRPC server reflection is enabled
+	// This allows clients to introspect the server's services and methods.
 	EnableReflection bool `mapstructure:"EnableReflection"`
 }
 
@@ -35,8 +36,9 @@ type Server struct {
 // Returns a pointer to the Server and an error if the listener cannot be created.
 func NewServer(cfg ServerConfig, opts ...grpc.ServerOption) (*Server, error) {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
+	serverAddr := trimGRPCAddress(addr)
 
-	listener, err := net.Listen("tcp", addr)
+	listener, err := net.Listen("tcp", serverAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +52,7 @@ func NewServer(cfg ServerConfig, opts ...grpc.ServerOption) (*Server, error) {
 	return &Server{
 		grpcServer: server,
 		listener:   listener,
-		addr:       addr,
+		addr:       serverAddr,
 		cfg:        cfg,
 	}, nil
 }
@@ -65,7 +67,7 @@ func (s *Server) Start(ctx context.Context) {
 	}()
 
 	if err := s.grpcServer.Serve(s.listener); err != nil {
-		log.Errorf("failed to start gRPC server: %w", err)
+		log.Errorf("failed to start gRPC server: %v", err)
 	}
 }
 

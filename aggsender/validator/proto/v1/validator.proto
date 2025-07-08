@@ -15,7 +15,7 @@ service AggsenderValidator {
 
 // Request to validate a certificate
 message ValidateCertificateRequest {
-  // Previous certificate identifier.
+  // Previous certificate identifier
   agglayer.node.types.v1.CertificateId previous_certificate_id = 1;
   // Certificate to be validated
   agglayer.node.types.v1.Certificate certificate = 2;

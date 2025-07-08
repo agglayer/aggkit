@@ -11,7 +11,7 @@ import (
 
 func TestServer(t *testing.T) {
 	cfg := ServerConfig{
-		Host:             "127.0.0.1",
+		Host:             "http://127.0.0.1",
 		Port:             1111,
 		EnableReflection: true,
 	}
@@ -30,8 +30,8 @@ func TestServer(t *testing.T) {
 		close(done)
 	}()
 
-	// Give the server a moment to start
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the server to start
+	time.Sleep(200 * time.Millisecond)
 
 	cancel()
 
