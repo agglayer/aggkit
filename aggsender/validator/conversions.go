@@ -20,7 +20,7 @@ func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader)
 	}
 	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(cert.Metadata)
 	if err != nil {
-		return nil, ErrMetadataNotCompatible
+		return nil, fmt.Errorf("error parsing cert metadata. Err: %w", err)
 	}
 	blockRange, err := metadataUnmarshal.BlockRange()
 	if err != nil {

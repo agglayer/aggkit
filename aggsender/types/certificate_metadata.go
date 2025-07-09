@@ -12,6 +12,8 @@ const (
 	CertificateMetadataV0 = uint8(0) // Pre v1 metadata, only ToBlock is stored
 	CertificateMetadataV1 = uint8(1) // Post v1 metadata, FromBlock, Offset, CreatedAt are stored
 	CertificateMetadataV2 = uint8(2) // Same V1 + CertType
+
+	LatestCertificateMetadataVersion = CertificateMetadataV2
 )
 
 type CertificateMetadata struct {
@@ -70,7 +72,7 @@ func NewCertificateMetadata(fromBlock uint64, offset uint32, createdAt uint32, c
 		Offset:    offset,
 		CreatedAt: createdAt,
 		CertType:  certType,
-		Version:   CertificateMetadataV2,
+		Version:   LatestCertificateMetadataVersion,
 	}
 }
 

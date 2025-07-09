@@ -47,6 +47,11 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params V
 	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
+	// If metadata is not lastest version when is generated again is always differ
+	// metadata field
+	if err := a.CheckMetadataCompatibility(params); err != nil {
+		return err
+	}
 	// Between cert must be no gap because if there are could be a attack vector
 	if err := a.CheckContigousCertificates(params); err != nil {
 		return err
@@ -102,7 +107,24 @@ func (a *CertificateValidator) CheckContigousCertificates(params VerifyIncomming
 		// No more check required is just the next one
 		return nil
 	}
-	// TODO: Check logic for gaps (no data beetween certificates)
+	return nil
+}
+
+func (a *CertificateValidator) CheckMetadataCompatibility(params VerifyIncommingRequests) error {
+	if params.Certificate == nil {
+		return nil
+	}
+	// Check if metadata is compatible with the current version
+	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.Certificate.Metadata)
+	if err != nil {
+		return fmt.Errorf("error unmarshalling certificate metadata: %w. Err: %w", err, ErrMetadataNotCompatible)
+	}
+	if metadataUnmarshal.Version != types.LatestCertificateMetadataVersion {
+		return fmt.Errorf("certificate metadata version is not latest, expected: %d, got: %d."+
+			"Can't generate a certificate if metadata version is not latest beacuse the field."+
+			" will differ. Err: %w",
+			types.LatestCertificateMetadataVersion, metadataUnmarshal.Version, ErrMetadataNotCompatible)
+	}
 	return nil
 }
 
@@ -143,6 +165,11 @@ func (a *CertificateValidator) CheckFirstCerficateBlocks(params VerifyIncommingR
 		return fmt.Errorf("first certificate must start from block 1, but got: %d",
 			metadataUnmarshal.FromBlock)
 	}
+	if params.Certificate.Height != 0 {
+		// The first certificate must have height 0
+		return fmt.Errorf("first certificate must have height 0, but got: %d",
+			params.Certificate.Height)
+	}
 	return nil
 }
 
@@ -151,24 +178,24 @@ func (a *CertificateValidator) CheckFirstCerficateBlocks(params VerifyIncommingR
 func (a *CertificateValidator) GetCertificatePreBuildParams(ctx context.Context,
 	params VerifyIncommingRequests) (*types.CertificatePreBuildParams, error) {
 	if params.Certificate == nil {
-		return nil, ErrNilCertificate
+		return nil, fmt.Errorf("preBuildParams. Err: %w", ErrNilCertificate)
 	}
 	lastSentCertificate, err := AgglayerCertificateHeaderToAggsender(params.PreviousCertificate)
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert previous certificate to Aggsender format: %w", err)
+		return nil, fmt.Errorf("preBuildParams. failed to convert previous certificate to Aggsender format: %w", err)
 	}
 	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.Certificate.Metadata)
 	if err != nil {
-		return nil, ErrMetadataNotCompatible
+		return nil, fmt.Errorf("preBuildParams. Error unmarshal cert.metadata. Err: %w", err)
 	}
 	blockRange, err := metadataUnmarshal.BlockRange()
 	if err != nil {
-		return nil, fmt.Errorf("failed to get block range from certificate metadata: %w", err)
+		return nil, fmt.Errorf("preBuildParams. failed to get block range from certificate metadata: %w", err)
 	}
 
 	l1InfoRoot, err := a.l1InfoTreeDataQuerier.GetL1InfoRootByLeafIndex(ctx, params.Certificate.L1InfoTreeLeafCount-1)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get L1 Info tree root by leaf count %d: %w",
+		return nil, fmt.Errorf("preBuildParams. failed to get L1 Info tree root by leaf count %d: %w",
 			params.Certificate.L1InfoTreeLeafCount, err)
 	}
 
