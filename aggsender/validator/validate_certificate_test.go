@@ -9,6 +9,9 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/log"
+	treetypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -29,19 +32,19 @@ var (
 		Version:   types.CertificateMetadataV2,
 	}
 	errGenericForTesting = errors.New("generic error for testing purposes")
+
+	testTreeRootIndex9 = treetypes.Root{
+		Hash:          common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+		Index:         9,
+		BlockNum:      1234,
+		BlockPosition: 2,
+	}
 )
 
 func TestValidateCertificate(t *testing.T) {
-	mockLogger := log.WithFields("test", "TestValidateCertificate")
-	mockFlow := mocks.NewAggsenderFlow(t)
-	mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-
-	validator := NewAggsenderValidator(mockLogger, mockFlow, mockL1InfoTreeQuerier)
-
-	ctx := context.Background()
-
 	t.Run("metadata not latest", func(t *testing.T) {
-		err := validator.ValidateCertificate(ctx, types.VerifyIncommingRequests{
+		testData := newTestDataCertificateValidator(t)
+		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncommingRequests{
 			Certificate: &agglayertypes.Certificate{
 				Height:   0,
 				Metadata: metadataV1Block1.ToHash(),
@@ -53,7 +56,8 @@ func TestValidateCertificate(t *testing.T) {
 	})
 
 	t.Run("first cert bad height", func(t *testing.T) {
-		err := validator.ValidateCertificate(ctx, types.VerifyIncommingRequests{
+		testData := newTestDataCertificateValidator(t)
+		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncommingRequests{
 			Certificate: &agglayertypes.Certificate{
 				Height:   1,
 				Metadata: metadataV2Block1.ToHash(),
@@ -62,6 +66,76 @@ func TestValidateCertificate(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "first certificate must have height 0")
+	})
+	t.Run("GetCertificatePreBuildParams error l1infotree", func(t *testing.T) {
+		testData := newTestDataCertificateValidator(t)
+		testData.mockL1InfoTreeQuerier.EXPECT().
+			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(nil, errGenericForTesting)
+		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncommingRequests{
+			Certificate: &agglayertypes.Certificate{
+				Height:              0,
+				Metadata:            metadataV2Block1.ToHash(),
+				L1InfoTreeLeafCount: 10,
+			},
+			PreviousCertificate: nil,
+		})
+		require.ErrorContains(t, err, "failed to get L1 Info tree root by leaf count 10")
+	})
+	t.Run("fails flowPP.GenerateBuildParams", func(t *testing.T) {
+		testData := newTestDataCertificateValidator(t)
+		testData.mockL1InfoTreeQuerier.EXPECT().
+			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
+		testData.mockFlow.EXPECT().
+			GenerateBuildParams(testData.ctx, mock.Anything).Return(nil, errGenericForTesting)
+		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncommingRequests{
+			Certificate: &agglayertypes.Certificate{
+				Height:              0,
+				Metadata:            metadataV2Block1.ToHash(),
+				L1InfoTreeLeafCount: 10,
+			},
+			PreviousCertificate: nil,
+		})
+		require.ErrorContains(t, err, "failed flow.GenerateBuildParams")
+	})
+
+	t.Run("fails flowPP.BuildCertificate", func(t *testing.T) {
+		testData := newTestDataCertificateValidator(t)
+		testData.mockL1InfoTreeQuerier.EXPECT().
+			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
+		testData.mockFlow.EXPECT().
+			GenerateBuildParams(testData.ctx, mock.Anything).Return(&types.CertificateBuildParams{}, nil)
+		testData.mockFlow.EXPECT().
+			BuildCertificate(testData.ctx, mock.Anything).Return(nil, errGenericForTesting)
+		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncommingRequests{
+			Certificate: &agglayertypes.Certificate{
+				Height:              0,
+				Metadata:            metadataV2Block1.ToHash(),
+				L1InfoTreeLeafCount: 10,
+			},
+			PreviousCertificate: nil,
+		})
+		require.ErrorContains(t, err, "failed flow.BuildCertificate")
+	})
+
+	t.Run("fails CompareCertificates", func(t *testing.T) {
+		testData := newTestDataCertificateValidator(t)
+		testData.mockL1InfoTreeQuerier.EXPECT().
+			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
+		testData.mockFlow.EXPECT().
+			GenerateBuildParams(testData.ctx, mock.Anything).Return(&types.CertificateBuildParams{}, nil)
+		testData.mockFlow.EXPECT().
+			BuildCertificate(testData.ctx, mock.Anything).Return(&agglayertypes.Certificate{
+			Metadata: metadataV2Block1.ToHash(),
+		}, nil)
+		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncommingRequests{
+			Certificate: &agglayertypes.Certificate{
+				Height:              0,
+				Metadata:            metadataV2Block1.ToHash(),
+				L1InfoTreeLeafCount: 10,
+			},
+			PreviousCertificate: nil,
+		})
+		require.ErrorContains(t, err, "certificate not equal to expected")
 	})
 }
 

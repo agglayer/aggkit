@@ -64,15 +64,15 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params V
 	a.log.Debugf("aggsender-validator: preBuild: %s", preBuildParams.String())
 	buildParams, err := a.flowPP.GenerateBuildParams(ctx, preBuildParams)
 	if err != nil {
-		return fmt.Errorf("failed to generate certificate build params: %w", err)
+		return fmt.Errorf("failed flow.GenerateBuildParams: %w", err)
 	}
 	certificate, err := a.flowPP.BuildCertificate(ctx, buildParams)
 	if err != nil {
-		return fmt.Errorf("failed to build certificate: %w", err)
+		return fmt.Errorf("failed flow.BuildCertificate: %w", err)
 	}
 	err = a.CompareCertificates(params.Certificate, certificate)
 	if err != nil {
-		return fmt.Errorf("failed to compare certificates: %w", err)
+		return fmt.Errorf("certificate not equal to expected: %w", err)
 	}
 	return nil
 }
@@ -225,12 +225,14 @@ func guessCertificateType(certificate *agglayertypes.Certificate,
 	}
 	// Metadata doesn't have the cert type,  I will try to guess from the certificate
 	// TODO: Double check this logic... what about optimistic, PP have something in this field
-	proof, err := certificate.AggchainData.MarshalJSON()
-	if err != nil {
-		return types.CertificateTypePP
-	}
-	if len(proof) > 0 {
-		return types.CertificateTypeFEP
+	if certificate.AggchainData != nil {
+		proof, err := certificate.AggchainData.MarshalJSON()
+		if err != nil {
+			return types.CertificateTypePP
+		}
+		if len(proof) > 0 {
+			return types.CertificateTypeFEP
+		}
 	}
 	return types.CertificateTypePP
 }
