@@ -723,6 +723,8 @@ func TestHashBridge(t *testing.T) {
 
 func TestDecodeGlobalIndex(t *testing.T) {
 	t.Parallel()
+	bigInt, ok := new(big.Int).SetString("3402823669209384634652192818391391666177", 10)
+	require.True(t, ok)
 
 	tests := []struct {
 		name                string
@@ -778,6 +780,14 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag: false,
 			expectedRollupIndex: 1231,
 			expectedLocalIndex:  111234,
+			expectedErr:         nil,
+		},
+		{
+			name:                "Big string",
+			globalIndex:         bigInt,
+			expectedMainnetFlag: true,
+			expectedRollupIndex: 0,
+			expectedLocalIndex:  1,
 			expectedErr:         nil,
 		},
 	}
