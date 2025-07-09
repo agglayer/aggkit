@@ -25,7 +25,6 @@ import (
 func TestValidateFullAggsenderDB(t *testing.T) {
 	// Test real db verification
 	testDataPath := getTestDataPath(t)
-	//testDataPath := "/home/jesteban/POLYGON/src/aggkit/aggkit-develop/tmp/running_db2/"
 	logger := log.WithFields("test", "TestValidateFullAggsenderDB")
 	ctx := context.TODO()
 	mockL2EthClient := mocksethclient.NewEthClienter(t)
@@ -88,6 +87,7 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 }
 
 func getTestDataPath(t *testing.T) string {
+	t.Helper()
 	_, filename, _, ok := runtime.Caller(0)
 	require.True(t, ok, "failed to get caller information")
 	testDir := filepath.Dir(filename)

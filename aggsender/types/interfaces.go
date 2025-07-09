@@ -96,9 +96,6 @@ type ChainGERReader interface {
 		fromBlock, toBlock uint64) (map[common.Hash]chaingerreader.InjectedGER, error)
 }
 
-type L1InfoTreeRootByLeafQuerier interface {
-}
-
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
 // It is used to query data from the L1 Info tree
 type L1InfoTreeDataQuerier interface {

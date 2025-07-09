@@ -38,7 +38,7 @@ func (a *AggsenderValidator) Start(ctx context.Context) {
 
 // GetRPCServices returns the list of services that the RPC provider exposes
 func (a *AggsenderValidator) GetRPCServices() []jRPC.Service {
-	logger := log.WithFields("aggsender-validator-rpc", aggkitcommon.BRIDGE)
+	logger := log.WithFields("aggsender-validator-rpc", aggkitcommon.AGGSENDERVALIDATOR)
 	return []jRPC.Service{
 		{
 			Name:    "aggsender-validator",
