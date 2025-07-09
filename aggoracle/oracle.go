@@ -55,16 +55,16 @@ func New(
 	}, nil
 }
 
+// Start starts the AggOracle process that checks for new GERs and injects them if not already injected
 func (a *AggOracle) Start(ctx context.Context) {
-	ticker := time.NewTicker(a.waitPeriodNextGER)
-	defer ticker.Stop()
-
 	for {
+		if blockNum, err := a.processLatestGER(ctx); err != nil {
+			a.handleGERProcessingError(err, blockNum)
+		}
+
 		select {
-		case <-ticker.C:
-			if blockNum, err := a.processLatestGER(ctx); err != nil {
-				a.handleGERProcessingError(err, blockNum)
-			}
+		case <-time.After(a.waitPeriodNextGER):
+			continue
 
 		case <-ctx.Done():
 			return
