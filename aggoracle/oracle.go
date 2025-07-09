@@ -65,28 +65,33 @@ func (a *AggOracle) Start(ctx context.Context) {
 
 // processLatestGER fetches the latest finalized GER, checks if it is already injected and injects it if not
 func (a *AggOracle) processLatestGER(ctx context.Context) error {
+	a.logger.Debugf("checking for new GERs...")
 	// Fetch the latest GER
-	gerToInject, err := a.getLatestIndexedGER(ctx)
+	latestL1InfoLeaf, err := a.l1Info.GetLatestL1InfoLeaf(ctx)
 	if err != nil {
 		return err
 	}
 
-	isGERInjected, err := a.chainSender.IsGERInjected(gerToInject)
+	a.logger.Debugf("latest l1 info leaf retrieved: %s", latestL1InfoLeaf.String())
+
+	latestGER := latestL1InfoLeaf.GlobalExitRoot
+
+	isGERInjected, err := a.chainSender.IsGERInjected(latestGER)
 	if err != nil {
 		return fmt.Errorf("error checking if GER is already injected: %w", err)
 	}
 
 	if isGERInjected {
-		a.logger.Debugf("GER %s is already injected", gerToInject.Hex())
+		a.logger.Debugf("GER %s is already injected", latestGER.Hex())
 		return nil
 	}
 
-	a.logger.Infof("injecting new GER: %s", gerToInject.Hex())
-	if err := a.chainSender.InjectGER(ctx, gerToInject); err != nil {
-		return fmt.Errorf("error injecting GER %s: %w", gerToInject.Hex(), err)
+	a.logger.Debugf("injecting new GER: %s", latestGER.Hex())
+	if err := a.chainSender.InjectGER(ctx, latestGER); err != nil {
+		return fmt.Errorf("error injecting GER %s: %w", latestGER.Hex(), err)
 	}
 
-	a.logger.Infof("GER %s is injected successfully", gerToInject.Hex())
+	a.logger.Infof("GER %s is injected successfully", latestGER.Hex())
 	return nil
 }
 
@@ -98,14 +103,4 @@ func (a *AggOracle) handleGERProcessingError(err error) {
 	default:
 		a.logger.Error("unexpected error processing GER: ", err)
 	}
-}
-
-// getLatestIndexedGER tries to return the latest indexed GER from l1 info tree syncer.
-func (a *AggOracle) getLatestIndexedGER(ctx context.Context) (common.Hash, error) {
-	info, err := a.l1Info.GetLatestL1InfoLeaf(ctx)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	return info.GlobalExitRoot, nil
 }
