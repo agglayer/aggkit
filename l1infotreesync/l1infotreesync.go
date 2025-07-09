@@ -153,16 +153,28 @@ func translateError(err error) error {
 	return err
 }
 
-// GetLatestInfoUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
+// GetLatestL1InfoLeafUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
 // If the blockNum has not been processed yet the error ErrBlockNotProcessed will be returned
 // It can returns next errors:
 // - ErrBlockNotProcessed,
 // - ErrNotFound
-func (s *L1InfoTreeSync) GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64) (*L1InfoTreeLeaf, error) {
+func (s *L1InfoTreeSync) GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*L1InfoTreeLeaf, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
-	leaf, err := s.processor.GetLatestInfoUntilBlock(ctx, blockNum)
+	leaf, err := s.processor.GetLatestL1InfoLeafUntilBlock(ctx, &blockNum)
+	return leaf, translateError(err)
+}
+
+// GetLatestL1InfoLeaf returns the most recent L1InfoTreeLeaf that has been indexed
+// It can return next errors:
+// - ErrInconsistentState
+// - ErrNotFound
+func (s *L1InfoTreeSync) GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLeaf, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	leaf, err := s.processor.GetLatestL1InfoLeafUntilBlock(ctx, nil)
 	return leaf, translateError(err)
 }
 

@@ -42,7 +42,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
-				mockL1InfoTreeSyncer.On("GetLatestInfoUntilBlock", ctx, l1Header.Number.Uint64()).Return(nil, errors.New("some error"))
+				mockL1InfoTreeSyncer.On("GetLatestL1InfoLeafUntilBlock", ctx, l1Header.Number.Uint64()).Return(nil, errors.New("some error"))
 			},
 			expectedError: "error getting latest l1 info tree info until block num 10: some error",
 		},
@@ -52,7 +52,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
-				mockL1InfoTreeSyncer.On("GetLatestInfoUntilBlock", ctx, l1Header.Number.Uint64()).Return(
+				mockL1InfoTreeSyncer.On("GetLatestL1InfoLeafUntilBlock", ctx, l1Header.Number.Uint64()).Return(
 					&l1infotreesync.L1InfoTreeLeaf{
 						L1InfoTreeIndex: 0,
 						Hash:            common.HexToHash("0x1"),
@@ -70,7 +70,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
-				mockL1InfoTreeSyncer.On("GetLatestInfoUntilBlock", ctx, l1Header.Number.Uint64()).Return(
+				mockL1InfoTreeSyncer.On("GetLatestL1InfoLeafUntilBlock", ctx, l1Header.Number.Uint64()).Return(
 					&l1infotreesync.L1InfoTreeLeaf{
 						L1InfoTreeIndex: 0,
 						Hash:            common.HexToHash("0x1"),
@@ -90,7 +90,7 @@ func Test_GetFinalizedL1InfoTreeData(t *testing.T) {
 				l1Header := &gethtypes.Header{Number: big.NewInt(10)}
 				mockL1Client.On("HeaderByNumber", ctx, finalizedBlockBigInt).Return(l1Header, nil)
 				mockL1InfoTreeSyncer.On("GetProcessedBlockUntil", ctx, l1Header.Number.Uint64()).Return(l1Header.Number.Uint64(), l1Header.Hash(), nil)
-				mockL1InfoTreeSyncer.On("GetLatestInfoUntilBlock", ctx, l1Header.Number.Uint64()).Return(
+				mockL1InfoTreeSyncer.On("GetLatestL1InfoLeafUntilBlock", ctx, l1Header.Number.Uint64()).Return(
 					&l1infotreesync.L1InfoTreeLeaf{
 						L1InfoTreeIndex: 0,
 						Hash:            common.HexToHash("0x2"),

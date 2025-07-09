@@ -64,6 +64,7 @@ const (
 	l1NetworkConfigUseRollupAddrHint      = "Use L1NetworkConfig.RollupAddr instead"
 	delayBetweenRetriesHint               = "AggSender.DelayBeetweenRetries is deprecated, " +
 		"use AggSender.DelayBetweenRetries instead"
+	aggOracleBlockFinalityDeprecated = "AggOracle.BlockFinality is deprecated, remove it from configuration"
 )
 
 type DeprecatedFieldsError struct {
@@ -176,6 +177,10 @@ var (
 		{
 			FieldNamePattern: "Aggsender.DelayBeetweenRetries",
 			Reason:           delayBetweenRetriesHint,
+		},
+		{
+			FieldNamePattern: "AggOracle.BlockFinality",
+			Reason:           aggOracleBlockFinalityDeprecated,
 		},
 	}
 )

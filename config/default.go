@@ -90,7 +90,6 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 [AggOracle]
 TargetChainType = "EVM"
 URLRPCL1 = "{{L1URL}}"
-BlockFinality = "FinalizedBlock"
 WaitPeriodNextGER = "10s"
 	[AggOracle.EVMSender]
 		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"

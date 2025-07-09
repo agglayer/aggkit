@@ -49,10 +49,11 @@ func start(cliCtx *cli.Context) error {
 
 	log.Init(cfg.Log)
 
-	if cfg.Log.Environment == log.EnvironmentDevelopment {
+	switch cfg.Log.Environment {
+	case log.EnvironmentDevelopment:
 		aggkit.PrintVersion(os.Stdout)
 		log.Info("Starting application")
-	} else if cfg.Log.Environment == log.EnvironmentProduction {
+	case log.EnvironmentProduction:
 		logVersion()
 	}
 
@@ -296,7 +297,6 @@ func createAggoracle(
 		sender,
 		l1Client,
 		l1InfoTreeSyncer,
-		aggkittypes.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
 	if err != nil {
