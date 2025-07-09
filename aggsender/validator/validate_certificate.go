@@ -143,6 +143,7 @@ func (a *CertificateValidator) CompareCertificates(
 	}
 	diffs := DiffsCertificate(incomingCertificate, localCertificate)
 	diffStr := strings.Join(diffs, "\n")
+	// This is redudant, but just in case
 	if incomingCertificate.Hash() != localCertificate.Hash() {
 		return fmt.Errorf("certificates hash mismatch, incoming: %s, local: %s.\n FullDiff: %s",
 			incomingCertificate.Hash().Hex(), localCertificate.Hash().Hex(), diffStr)
