@@ -81,16 +81,16 @@ jobs:
           # multi l2 networks
           CONTENT=$(cat ./.github/test_e2e_cdk_args_base.json | jq -c .)
           echo "kurtosis-cdk-args-1=${CONTENT}" >> $GITHUB_OUTPUT
-          CONTENT=$(cat ./.github/test_e2e_multi_chains_args_2.json | jq -c .)
+          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_multi_chains_args_2.json | jq -c .)
           echo "kurtosis-cdk-args-2=${CONTENT}" >> $GITHUB_OUTPUT
           # Merge base_1 args with args_3 for kurtosis-cdk-args-3
           CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_gas_token_enabled_args.json | jq -c .)
           echo "kurtosis-cdk-args-3=${CONTENT}" >> $GITHUB_OUTPUT
           # Merge base_2 args with args_4 for kurtosis-cdk-args-4
-          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_2.json ./.github/test_e2e_gas_token_enabled_args.json | jq -c .)
+          CONTENT=$(jq -s '.[0] * .[1] * .[2]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_multi_chains_args_2.json ./.github/test_e2e_gas_token_enabled_args.json | jq -c .)
           echo "kurtosis-cdk-args-4=${CONTENT}" >> $GITHUB_OUTPUT
           # Merge base_2 args with args_5 for kurtosis-cdk-args-5
-          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_multi_chains_args_2.json ./.github/test_e2e_multi_chains_args_3.json | jq -c .)
+          CONTENT=$(jq -s '.[0] * .[1] * .[2]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_multi_chains_args_2.json ./.github/test_e2e_multi_chains_args_3.json | jq -c .)
           echo "kurtosis-cdk-args-5=${CONTENT}" >> $GITHUB_OUTPUT
 
   build-tools:
