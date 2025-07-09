@@ -30,7 +30,7 @@ import (
 
 const (
 	globalIndexPartSize = 4
-	globalIndexMaxSize  = 9
+	globalIndexBitIndex = 64
 
 	// bridgeTableName is the name of the table that stores bridge events
 	bridgeTableName = "bridge"
@@ -934,7 +934,8 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 		return
 	}
 
-	if l == globalIndexMaxSize {
+	bit := globalIndex.Bit(globalIndexBitIndex)
+	if bit == 1 {
 		// true, rollupIndex, localExitRootIndex
 		mainnetFlag = true
 	}
