@@ -360,6 +360,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			return errors.New("failed to convert from sync.Block.Event into Event")
 		}
 		if event.UpdateL1InfoTree != nil {
+			p.log.Debugf("handle UpdateL1InfoTree event. Block: %d, block hash: %s, mainnet exit root: %s, rollup exit root: %s",
+				block.Num, block.Hash, event.UpdateL1InfoTree.MainnetExitRoot, event.UpdateL1InfoTree.RollupExitRoot)
 			index := initialL1InfoIndex + l1InfoLeavesAdded
 			info := &L1InfoTreeLeaf{
 				BlockNumber:       block.Num,
@@ -383,11 +385,11 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			if err != nil {
 				return fmt.Errorf("AddLeaf(%s). err: %w", info.String(), err)
 			}
-			p.log.Infof("inserted L1InfoTreeLeaf %s", info.String())
+			p.log.Debugf("inserted L1InfoTreeLeaf %s", info.String())
 			l1InfoLeavesAdded++
 		}
 		if event.UpdateL1InfoTreeV2 != nil {
-			p.log.Infof("handle UpdateL1InfoTreeV2 event. Block: %d, block hash: %s. Event root: %s. Event leaf count: %d.",
+			p.log.Debugf("handle UpdateL1InfoTreeV2 event. Block: %d, block hash: %s. Event root: %s. Event leaf count: %d.",
 				block.Num, block.Hash, event.UpdateL1InfoTreeV2.CurrentL1InfoRoot.String(), event.UpdateL1InfoTreeV2.LeafCount)
 
 			root, err := p.l1InfoTree.GetLastRoot(tx)
