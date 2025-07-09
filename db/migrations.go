@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/migrations"
 	"github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
@@ -29,14 +30,14 @@ func RunMigrations(dbPath string, migrations []types.Migration) error {
 	return RunMigrationsDB(log.GetDefaultLogger(), db, migrations)
 }
 
-func RunMigrationsDB(logger *log.Logger, db *sql.DB, migrationsParam []types.Migration) error {
+func RunMigrationsDB(logger aggkitcommon.Logger, db *sql.DB, migrationsParam []types.Migration) error {
 	return RunMigrationsDBExtended(logger, db, migrationsParam, migrate.Up, NoLimitMigrations)
 }
 
 // RunMigrationsDBExtended is an extended version of RunMigrationsDB that allows
 // dir: can be migrate.Up or migrate.Down
 // maxMigrations: Will apply at most `max` migrations. Pass 0 for no limit (or use Exec)
-func RunMigrationsDBExtended(logger *log.Logger,
+func RunMigrationsDBExtended(logger aggkitcommon.Logger,
 	db *sql.DB,
 	migrationsParam []types.Migration,
 	dir migrate.MigrationDirection,
