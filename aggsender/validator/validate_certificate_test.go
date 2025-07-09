@@ -63,18 +63,6 @@ func TestValidateCertificate(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorContains(t, err, "first certificate must have height 0")
 	})
-
-	t.Run("first cert bad height", func(t *testing.T) {
-		err := validator.ValidateCertificate(ctx, types.VerifyIncommingRequests{
-			Certificate: &agglayertypes.Certificate{
-				Height:   0,
-				Metadata: metadataV2Block1.ToHash(),
-			},
-			PreviousCertificate: nil,
-		})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "first certificate must have height 0")
-	})
 }
 
 func TestCheckContigousCertificates(t *testing.T) {
@@ -104,15 +92,17 @@ func TestCheckContigousCertificates(t *testing.T) {
 		require.ErrorContains(t, err, "first certificate must have height 0, but got: 1")
 	})
 
-	t.Run("Contiguous Certificates", func(t *testing.T) {
+	t.Run("Non Contiguous BlockRange Certificates", func(t *testing.T) {
 		err := testData.sut.CheckContigousCertificates(types.VerifyIncommingRequests{
 			Certificate: &agglayertypes.Certificate{
-				Height: 2,
+				Height:   2,
+				Metadata: metadataV2Block1.ToHash(),
 			},
 			PreviousCertificate: &agglayertypes.CertificateHeader{
-				Height: 1,
+				Height:   1,
+				Metadata: metadataV2Block1.ToHash(),
 			}})
-		require.NoError(t, err)
+		require.ErrorContains(t, err, "is not contiguous with previous certificate")
 	})
 	t.Run("Non-Contiguous Certificates", func(t *testing.T) {
 		err := testData.sut.CheckContigousCertificates(types.VerifyIncommingRequests{

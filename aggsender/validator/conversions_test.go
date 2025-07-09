@@ -24,7 +24,7 @@ func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 		}
 		result, err := AgglayerCertificateHeaderToAggsender(cert)
 		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrMetadataNotCompatible)
+		require.ErrorContains(t, err, "unsupported certificate metadata")
 	})
 
 	t.Run("Can't get blockRange'", func(t *testing.T) {

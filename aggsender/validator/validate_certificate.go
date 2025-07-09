@@ -107,7 +107,12 @@ func (a *CertificateValidator) CheckContigousCertificates(params VerifyIncomming
 		// No more check required is just the next one
 		return nil
 	}
-	return nil
+	return fmt.Errorf("certificate block range %s is not contiguous with previous certificate block range %s, "+
+		"certificate: %s, previous certificate: %s",
+		currentBlockRange.String(),
+		previousBlockRange.String(),
+		params.Certificate.ID(),
+		params.PreviousCertificate.ID())
 }
 
 func (a *CertificateValidator) CheckMetadataCompatibility(params VerifyIncommingRequests) error {
