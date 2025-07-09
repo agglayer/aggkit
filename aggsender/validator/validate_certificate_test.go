@@ -28,7 +28,7 @@ var (
 		CertType:  0,
 		Version:   types.CertificateMetadataV2,
 	}
-	genericError = errors.New("generic error for testing purposes")
+	errGenericForTesting = errors.New("generic error for testing purposes")
 )
 
 func TestValidateCertificate(t *testing.T) {
@@ -75,7 +75,6 @@ func TestValidateCertificate(t *testing.T) {
 		require.Error(t, err)
 		require.ErrorContains(t, err, "first certificate must have height 0")
 	})
-
 }
 
 func TestCheckContigousCertificates(t *testing.T) {
@@ -116,7 +115,6 @@ func TestCheckContigousCertificates(t *testing.T) {
 		require.NoError(t, err)
 	})
 	t.Run("Non-Contiguous Certificates", func(t *testing.T) {
-
 		err := testData.sut.CheckContigousCertificates(types.VerifyIncommingRequests{
 			Certificate: &agglayertypes.Certificate{
 				Height: 2,
@@ -149,7 +147,7 @@ func TestGetCertificatePreBuildParams(t *testing.T) {
 
 	t.Run("fails GetL1InfoRootByLeafIndex", func(t *testing.T) {
 		testData.mockL1InfoTreeQuerier.EXPECT().
-			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(nil, genericError)
+			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(nil, errGenericForTesting)
 		_, err := testData.sut.GetCertificatePreBuildParams(testData.ctx, types.VerifyIncommingRequests{
 			Certificate: &agglayertypes.Certificate{
 				Height:              2,

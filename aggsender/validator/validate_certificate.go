@@ -121,7 +121,7 @@ func (a *CertificateValidator) CheckMetadataCompatibility(params VerifyIncomming
 	}
 	if metadataUnmarshal.Version != types.LatestCertificateMetadataVersion {
 		return fmt.Errorf("certificate metadata version is not latest, expected: %d, got: %d."+
-			"Can't generate a certificate if metadata version is not latest beacuse the field."+
+			"Can't generate a certificate if metadata version is not latest because the field."+
 			" will differ. Err: %w",
 			types.LatestCertificateMetadataVersion, metadataUnmarshal.Version, ErrMetadataNotCompatible)
 	}
