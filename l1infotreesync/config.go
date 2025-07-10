@@ -6,12 +6,10 @@ import (
 )
 
 type Config struct {
-	DBPath             string         `mapstructure:"DBPath"`
-	GlobalExitRootAddr common.Address `mapstructure:"GlobalExitRootAddr"`
-	RollupManagerAddr  common.Address `mapstructure:"RollupManagerAddr"`
-	SyncBlockChunkSize uint64         `mapstructure:"SyncBlockChunkSize"`
-	// BlockFinality indicates the status of the blocks that will be queried in order to sync
-	BlockFinality              string         `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
+	DBPath                     string         `mapstructure:"DBPath"`
+	GlobalExitRootAddr         common.Address `mapstructure:"GlobalExitRootAddr"`
+	RollupManagerAddr          common.Address `mapstructure:"RollupManagerAddr"`
+	SyncBlockChunkSize         uint64         `mapstructure:"SyncBlockChunkSize"`
 	URLRPCL1                   string         `mapstructure:"URLRPCL1"`
 	WaitForNewBlocksPeriod     types.Duration `mapstructure:"WaitForNewBlocksPeriod"`
 	InitialBlock               uint64         `mapstructure:"InitialBlock"`
