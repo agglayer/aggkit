@@ -7,6 +7,7 @@ import (
 
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -59,7 +60,7 @@ func (l *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context
 	return &root, l1InfoLeaf, nil
 }
 
-// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
+// GetL1InfoRootByLeafIndex returns the L1 Info tree root tha corresponds to the given leaf index
 func (l *L1InfoTreeDataQuerier) GetL1InfoRootByLeafIndex(ctx context.Context,
 	leafIndex uint32) (*treetypes.Root, error) {
 	// Get the latest finalized L1 Info tree root
@@ -69,7 +70,7 @@ func (l *L1InfoTreeDataQuerier) GetL1InfoRootByLeafIndex(ctx context.Context,
 	}
 
 	// If the root is empty, it means there are no leaves in the tree
-	if root.Hash == (common.Hash{}) {
+	if root.Hash == aggkitcommon.ZeroHash {
 		return nil, fmt.Errorf("no L1 Info tree root found for leaf index %d", leafIndex)
 	}
 

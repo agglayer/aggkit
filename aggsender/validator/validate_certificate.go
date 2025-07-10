@@ -24,6 +24,7 @@ type L1InfoTreeRootByLeafQuerier interface {
 	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
 }
 
+// CertificateValidator is a object to validate a certificate
 type CertificateValidator struct {
 	log                   aggkitcommon.Logger
 	flowPP                FlowInterface
@@ -49,19 +50,19 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params V
 	}
 	// If metadata is not lastest version when is generated again is always differ
 	// metadata field
-	if err := a.CheckMetadataCompatibility(params); err != nil {
+	if err := a.checkMetadataCompatibility(params); err != nil {
 		return fmt.Errorf("failed CheckMetadataCompatibility: %w", err)
 	}
 	// Between cert must be no gap because if there are could be a attack vector
-	if err := a.CheckContigousCertificates(params); err != nil {
+	if err := a.checkContigousCertificates(params); err != nil {
 		return fmt.Errorf("failed CheckContigousCertificates: %w", err)
 	}
 
-	if err := a.CheckCertificatesContents(params); err != nil {
+	if err := a.checkCertificatesContents(params); err != nil {
 		return fmt.Errorf("failed CheckCertificatesContents: %w", err)
 	}
 	// Build corresponding certificate
-	preBuildParams, err := a.GetCertificatePreBuildParams(ctx, params)
+	preBuildParams, err := a.getCertificatePreBuildParams(ctx, params)
 	if err != nil {
 		return fmt.Errorf("failed to get certificate pre-build params: %w", err)
 	}
@@ -74,14 +75,14 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params V
 	if err != nil {
 		return fmt.Errorf("failed flow.BuildCertificate: %w", err)
 	}
-	err = a.CompareCertificates(params.Certificate, certificate)
+	err = a.compareCertificates(params.Certificate, certificate)
 	if err != nil {
 		return fmt.Errorf("certificate not equal to expected: %w", err)
 	}
 	return nil
 }
 
-func (a *CertificateValidator) CheckCertificatesContents(params VerifyIncommingRequests) error {
+func (a *CertificateValidator) checkCertificatesContents(params VerifyIncommingRequests) error {
 	if params.PreviousCertificate != nil {
 		if !params.PreviousCertificate.Status.IsSettled() {
 			return fmt.Errorf("previous certificate %s is not settled (status:%s), can't be used to validate certificate %s",
@@ -91,13 +92,13 @@ func (a *CertificateValidator) CheckCertificatesContents(params VerifyIncommingR
 	return nil
 }
 
-// CheckContigousCertificates checks if the incoming certificate is contiguous with the previous one.
-func (a *CertificateValidator) CheckContigousCertificates(params VerifyIncommingRequests) error {
+// checkContigousCertificates checks if the incoming certificate is contiguous with the previous one.
+func (a *CertificateValidator) checkContigousCertificates(params VerifyIncommingRequests) error {
 	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
 	if params.PreviousCertificate == nil {
-		return a.CheckFirstCerficateBlocks(params)
+		return a.checkFirstCerficateBlocks(params)
 	}
 	if params.PreviousCertificate.Height+1 != params.Certificate.Height {
 		return fmt.Errorf("certificate height not contigous, expected: %d, got: %d",
@@ -129,7 +130,7 @@ func (a *CertificateValidator) CheckContigousCertificates(params VerifyIncomming
 		params.PreviousCertificate.ID())
 }
 
-func (a *CertificateValidator) CheckMetadataCompatibility(params VerifyIncommingRequests) error {
+func (a *CertificateValidator) checkMetadataCompatibility(params VerifyIncommingRequests) error {
 	if params.Certificate == nil {
 		return nil
 	}
@@ -147,8 +148,8 @@ func (a *CertificateValidator) CheckMetadataCompatibility(params VerifyIncomming
 	return nil
 }
 
-// CompareCertificates compares the incoming certificate with the one generated.
-func (a *CertificateValidator) CompareCertificates(
+// compareCertificates compares the incoming certificate with the one generated.
+func (a *CertificateValidator) compareCertificates(
 	incomingCertificate *agglayertypes.Certificate,
 	localCertificate *agglayertypes.Certificate) error {
 	if incomingCertificate == nil || localCertificate == nil {
@@ -173,9 +174,9 @@ func (a *CertificateValidator) CompareCertificates(
 	return nil
 }
 
-// CheckFirstCerficateBlocks checks that the first certificate blocks are correct
+// checkFirstCerficateBlocks checks that the first certificate blocks are correct
 // so it's starts from genesis?!?
-func (a *CertificateValidator) CheckFirstCerficateBlocks(params VerifyIncommingRequests) error {
+func (a *CertificateValidator) checkFirstCerficateBlocks(params VerifyIncommingRequests) error {
 	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.Certificate.Metadata)
 	if err != nil {
 		return fmt.Errorf("error checking first certificate because can't unmarshal metadata. Err: %w", err)
@@ -193,9 +194,9 @@ func (a *CertificateValidator) CheckFirstCerficateBlocks(params VerifyIncommingR
 	return nil
 }
 
-// GetCertificatePreBuildParams prepares the parameters needed to build a certificate based
+// getCertificatePreBuildParams prepares the parameters needed to build a certificate based
 // on incomming certificate
-func (a *CertificateValidator) GetCertificatePreBuildParams(ctx context.Context,
+func (a *CertificateValidator) getCertificatePreBuildParams(ctx context.Context,
 	params VerifyIncommingRequests) (*types.CertificatePreBuildParams, error) {
 	if params.Certificate == nil {
 		return nil, fmt.Errorf("preBuildParams. Err: %w", ErrNilCertificate)

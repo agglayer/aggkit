@@ -14,6 +14,7 @@ var (
 	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
 
+// AgglayerCertificateHeaderToAggsender converts an agglayer CertificateHeader to an aggsender CertificateHeader
 func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader) (*types.CertificateHeader, error) {
 	if cert == nil {
 		return nil, nil
@@ -44,6 +45,7 @@ func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader)
 	}, nil
 }
 
+// AggsenderCertificateHeaderToAgglayer converts an aggsender CertificateHeader to an agglayer CertificateHeader
 func AggsenderCertificateHeaderToAgglayer(cert *types.CertificateHeader,
 	networkID uint32) *agglayertypes.CertificateHeader {
 	if cert == nil {

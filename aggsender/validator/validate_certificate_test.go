@@ -165,11 +165,11 @@ func TestValidateCertificate(t *testing.T) {
 func TestCheckContigousCertificates(t *testing.T) {
 	testData := newTestDataCertificateValidator(t)
 	t.Run("Nil Certificates", func(t *testing.T) {
-		err := testData.sut.CheckContigousCertificates(types.VerifyIncomingRequest{})
+		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{})
 		require.Error(t, err)
 	})
 	t.Run("Nil PreviousCertificate, cert no start 0", func(t *testing.T) {
-		err := testData.sut.CheckContigousCertificates(types.VerifyIncomingRequest{
+		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height: 0,
 			},
@@ -179,7 +179,7 @@ func TestCheckContigousCertificates(t *testing.T) {
 	})
 
 	t.Run("Nil PreviousCertificate, cert height!= 0", func(t *testing.T) {
-		err := testData.sut.CheckContigousCertificates(types.VerifyIncomingRequest{
+		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:   1,
 				Metadata: metadataV2Block1.ToHash(),
@@ -190,7 +190,7 @@ func TestCheckContigousCertificates(t *testing.T) {
 	})
 
 	t.Run("Non Contiguous BlockRange Certificates", func(t *testing.T) {
-		err := testData.sut.CheckContigousCertificates(types.VerifyIncomingRequest{
+		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:   2,
 				Metadata: metadataV2Block1.ToHash(),
@@ -202,7 +202,7 @@ func TestCheckContigousCertificates(t *testing.T) {
 		require.ErrorContains(t, err, "is not contiguous with previous certificate")
 	})
 	t.Run("Non-Contiguous Certificates", func(t *testing.T) {
-		err := testData.sut.CheckContigousCertificates(types.VerifyIncomingRequest{
+		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height: 2,
 			},
@@ -217,12 +217,12 @@ func TestCheckContigousCertificates(t *testing.T) {
 func TestGetCertificatePreBuildParams(t *testing.T) {
 	testData := newTestDataCertificateValidator(t)
 	t.Run("Nil Certificates", func(t *testing.T) {
-		_, err := testData.sut.GetCertificatePreBuildParams(testData.ctx, types.VerifyIncomingRequest{})
+		_, err := testData.sut.getCertificatePreBuildParams(testData.ctx, types.VerifyIncomingRequest{})
 		require.ErrorIs(t, err, ErrNilCertificate)
 	})
 
 	t.Run("fails AgglayerCertificateHeaderToAggsender", func(t *testing.T) {
-		_, err := testData.sut.GetCertificatePreBuildParams(testData.ctx, types.VerifyIncomingRequest{
+		_, err := testData.sut.getCertificatePreBuildParams(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height: 2,
 			},
@@ -235,7 +235,7 @@ func TestGetCertificatePreBuildParams(t *testing.T) {
 	t.Run("fails GetL1InfoRootByLeafIndex", func(t *testing.T) {
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(nil, errGenericForTesting)
-		_, err := testData.sut.GetCertificatePreBuildParams(testData.ctx, types.VerifyIncomingRequest{
+		_, err := testData.sut.getCertificatePreBuildParams(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:              2,
 				Metadata:            metadataV2Block1.ToHash(),

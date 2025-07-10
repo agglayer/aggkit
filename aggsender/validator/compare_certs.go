@@ -16,7 +16,7 @@ func DiffsCertificate(
 		return diffs
 	}
 	if validatingCertificate == nil || expectedCertificate == nil {
-		diffs = append(diffs, "one of the certificates is nil")
+		diffs = append(diffs, "one of the certificates in comparison  is nil")
 		return diffs
 	}
 	if validatingCertificate.NetworkID != expectedCertificate.NetworkID {
