@@ -75,10 +75,8 @@ func getBlockMinusOne(fromBlock uint64) uint64 {
 	return 0
 }
 
-func (b BlockRange) IsNextContigousBlock(other BlockRange) bool {
-	// Check if the two ranges are contiguous
-	if b.ToBlock+1 == other.FromBlock || other.ToBlock+1 == b.FromBlock {
-		return true
-	}
-	return false
+// IsNextContigousBlock checks if 'next' BlockRange is exactly the next contiguous block
+// so the way to use this is:  previousBlockRange.IsNextContigousBlock(nextBlockRange)
+func (b BlockRange) IsNextContigousBlock(next BlockRange) bool {
+	return b.ToBlock+1 == next.FromBlock
 }
