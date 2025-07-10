@@ -108,6 +108,7 @@ func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
 	return types.NewBlockRange(fromBlock, toBlock), retryCount, nil
 }
 
+// GetLastCertificate returns latest certificate in local database
 func (f *baseFlow) GetLastCertificate(ctx context.Context) (*types.CertificateHeader, error) {
 	lastSentCertificate, err := f.storage.GetLastSentCertificateHeader()
 	if err != nil {
@@ -183,7 +184,7 @@ func (f *baseFlow) GetCertificateBuildParamsInternal(
 	if err != nil {
 		return nil, fmt.Errorf("error generating build params: %w", err)
 	}
-	params, err = f.ApplyLimitSize(params)
+	params, err = f.LimitCertSize(params)
 	if err != nil {
 		return nil, fmt.Errorf("error applying limit size: %w", err)
 	}
@@ -203,9 +204,9 @@ func (f *baseFlow) VerifyBuildParams(ctx context.Context, fullCert *types.Certif
 	return nil
 }
 
-// ApplyLimitSize limits certificate size based on the max size configuration parameter
+// LimitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
-func (f *baseFlow) ApplyLimitSize(
+func (f *baseFlow) LimitCertSize(
 	certParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
 	currentCert := certParams
 	var err error

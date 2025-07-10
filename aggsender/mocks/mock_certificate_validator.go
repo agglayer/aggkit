@@ -47,7 +47,7 @@ type CertificateValidator_ValidateCertificate_Call struct {
 
 // ValidateCertificate is a helper method to define mock.On call
 //   - ctx context.Context
-//   - params types.VerifyIncommingRequests
+//   - params types.VerifyIncomingRequest
 func (_e *CertificateValidator_Expecter) ValidateCertificate(ctx interface{}, params interface{}) *CertificateValidator_ValidateCertificate_Call {
 	return &CertificateValidator_ValidateCertificate_Call{Call: _e.mock.On("ValidateCertificate", ctx, params)}
 }
