@@ -18,7 +18,7 @@ type CertificatePreBuildParams struct {
 	RetryCount          int
 	CertificateType     CertificateType
 	LastSentCertificate *CertificateHeader
-	L1InfoTreeToProve   *CertificateL1InfoTree
+	L1InfoTreeToProve   *CertificateL1InfoTreeData
 	CreatedAt           uint32
 }
 
@@ -30,18 +30,18 @@ func (c *CertificatePreBuildParams) String() string {
 		c.CertificateType, c.BlockRange.String(), c.RetryCount, c.L1InfoTreeToProve.String(), c.CreatedAt)
 }
 
-// CertificateL1InfoTree is a struct that holds the L1 info tree root and leaf count
+// CertificateL1InfoTreeData is a struct that holds the L1 info tree root and leaf count
 // that is used to prove the L1 info tree in the certificate
-type CertificateL1InfoTree struct {
+type CertificateL1InfoTreeData struct {
 	L1InfoTreeRootToProve common.Hash
 	L1InfoTreeLeafCount   uint32
 }
 
-func (c *CertificateL1InfoTree) String() string {
+func (c *CertificateL1InfoTreeData) String() string {
 	if c == nil {
-		return "CertificateL1InfoTree is nil"
+		return "CertificateL1InfoTreeData is nil"
 	}
-	return fmt.Sprintf("L1InfoTreeRootFromWhichToProve: %s, L1InfoTreeLeafCount: %d",
+	return fmt.Sprintf("CertificateL1InfoTreeData{L1InfoTreeRootFromWhichToProve: %s, L1InfoTreeLeafCount: %d}",
 		c.L1InfoTreeRootToProve.Hex(), c.L1InfoTreeLeafCount)
 }
 

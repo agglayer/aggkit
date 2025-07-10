@@ -138,7 +138,7 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 		RetryCount:          retryCount,
 		LastSentCertificate: lastSentCertificate,
 		CertificateType:     certType,
-		L1InfoTreeToProve: &types.CertificateL1InfoTree{
+		L1InfoTreeToProve: &types.CertificateL1InfoTreeData{
 			L1InfoTreeRootToProve: l1InfoRoot.Hash,
 			L1InfoTreeLeafCount:   l1InfoRoot.Index + 1,
 		},
