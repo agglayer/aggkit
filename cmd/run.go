@@ -602,10 +602,10 @@ func runBridgeSyncL2IfNeeded(
 func createBridgeService(
 	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
-	l1InfoTree *l1infotreesync.L1InfoTreeSync,
-	injectedGERs *lastgersync.LastGERSync,
-	bridgeL1 *bridgesync.BridgeSync,
-	bridgeL2 *bridgesync.BridgeSync,
+	l1InfoTree bridgeservice.L1InfoTreer,
+	injectedGERs bridgeservice.LastGERer,
+	bridgeL1 bridgeservice.Bridger,
+	bridgeL2 bridgeservice.Bridger,
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
