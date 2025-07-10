@@ -24,6 +24,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/aggsender/query"
+	aggsendervalidator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -299,7 +300,11 @@ func createAggSender(
 		if err != nil {
 			return nil, fmt.Errorf("failed to create AggSender validator: %w", err)
 		}
-		aggsender.AttatchValidator(validator)
+		aggsender.AttachValidator(&aggsendervalidator.LocalValidator{
+			Log:       logger,
+			Storage:   aggsender.GetStorage(),
+			Validator: validator,
+		})
 	}
 	return aggsender, nil
 }

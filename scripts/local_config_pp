@@ -189,7 +189,6 @@ function export_values_of_cdk_node_config() {
         log_debug "Validium mode detected... Retrieving the dac_port"
         export_value_from_kurtosis_or_fail dac_port zkevm-dac-001 dac
     fi
-    #export zkevm_l2_keystore_password=$zkevm_l2_sequencer_keystore_password
 }
 ###############################################################################
 function export_values_of_cdk_node_config_genesis() {
@@ -361,7 +360,6 @@ create_dest_folder
 
 download_kurtosis_artifacts
 
-#export_values_of_genesis $genesis_file
 export_ports_from_kurtosis
 export_values_of_cdk_node_config $DEST/cdk-node-config.toml
 export_values_of_cdk_node_config_genesis  $DEST/cdk-node-config.toml

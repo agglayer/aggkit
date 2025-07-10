@@ -40,7 +40,7 @@ func NewAggsenderValidator(logger aggkitcommon.Logger,
 	}
 }
 
-type VerifyIncommingRequests = types.VerifyIncommingRequests
+type VerifyIncommingRequests = types.VerifyIncomingRequest
 
 // ValidateCertificate validates the incoming certificate against the previous one.
 func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params VerifyIncommingRequests) error {
@@ -55,6 +55,10 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params V
 	// Between cert must be no gap because if there are could be a attack vector
 	if err := a.CheckContigousCertificates(params); err != nil {
 		return err
+	}
+
+	if err := a.CheckCertificatesContents(params); err != nil {
+		return fmt.Errorf("failed to CheckCertificatesContents: %w", err)
 	}
 	// Build corresponding certificate
 	preBuildParams, err := a.GetCertificatePreBuildParams(ctx, params)
@@ -73,6 +77,16 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params V
 	err = a.CompareCertificates(params.Certificate, certificate)
 	if err != nil {
 		return fmt.Errorf("certificate not equal to expected: %w", err)
+	}
+	return nil
+}
+
+func (a *CertificateValidator) CheckCertificatesContents(params VerifyIncommingRequests) error {
+	if params.PreviousCertificate != nil {
+		if !params.PreviousCertificate.Status.IsSettled() {
+			return fmt.Errorf("previous certificate %s is not settled (status:%s), can't be used to validate certificate %s",
+				params.PreviousCertificate.ID(), params.PreviousCertificate.Status.String(), params.Certificate.ID())
+		}
 	}
 	return nil
 }

@@ -52,9 +52,7 @@ func (c *CertificateMetadata) BlockRange() (BlockRange, error) {
 	switch c.Version {
 	case CertificateMetadataV0:
 		return BlockRangeZero, fmt.Errorf("cannot get block range from metadata version 0")
-	case CertificateMetadataV1:
-		return NewBlockRange(c.FromBlock, c.FromBlock+uint64(c.Offset)), nil
-	case CertificateMetadataV2:
+	case CertificateMetadataV1, CertificateMetadataV2:
 		return NewBlockRange(c.FromBlock, c.FromBlock+uint64(c.Offset)), nil
 	default:
 		return BlockRangeZero, fmt.Errorf("unsupported certificate metadata version: %d", c.Version)

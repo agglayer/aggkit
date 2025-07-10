@@ -76,7 +76,7 @@ func (b *DBValidator) ValidateDB(dbPath string) (string, rpc.Error) {
 					previousCertificate = AggsenderCertificateHeaderToAgglayer(prevCertHeader, unmarshalCert.NetworkID)
 				}
 			}
-			params := types.VerifyIncommingRequests{
+			params := types.VerifyIncomingRequest{
 				Certificate:         unmarshalCert,
 				PreviousCertificate: previousCertificate,
 			}

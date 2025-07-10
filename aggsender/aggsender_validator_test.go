@@ -32,5 +32,5 @@ func TestNewAggsenderValidator(t *testing.T) {
 
 	require.Equal(t, 1, len(validator.GetRPCServices()), "Expected one RPC service to be registered")
 
-	require.Error(t, validator.ValidateCertificate(ctx, types.VerifyIncommingRequests{}))
+	require.Error(t, validator.ValidateCertificate(ctx, types.VerifyIncomingRequest{}))
 }

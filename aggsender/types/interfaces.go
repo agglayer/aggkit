@@ -172,11 +172,22 @@ type MaxL2BlockNumberLimiterInterface interface {
 		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }
 
-type VerifyIncommingRequests struct {
+type VerifyIncomingRequest struct {
 	Certificate         *agglayertypes.Certificate
 	PreviousCertificate *agglayertypes.CertificateHeader
 }
 
 type CertificateValidator interface {
-	ValidateCertificate(ctx context.Context, params VerifyIncommingRequests) error
+	ValidateCertificate(ctx context.Context, params VerifyIncomingRequest) error
+}
+
+// CertificateValidateAndSigner is an interface to attach a certificate validator and signer
+// to aggsender regular flow
+type CertificateValidateAndSigner interface {
+	// ValidateAndSignCertificate validates the certificate and signs it if valid.
+	ValidateAndSignCertificate(
+		ctx context.Context,
+		certificate *agglayertypes.Certificate,
+	) ([]byte, error)
+	String() string
 }

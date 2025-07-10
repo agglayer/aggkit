@@ -169,12 +169,6 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 		L1InfoTreeRootFromWhichToProve: preParams.L1InfoTreeWhichToProve.L1InfoTreeRootFromWhichToProve,
 		L1InfoTreeLeafCount:            preParams.L1InfoTreeWhichToProve.L1InfoTreeLeafCount,
 	}
-	// if applyLimitSize {
-	// 	buildParams, err = f.ApplyLimitSize(buildParams)
-	// 	if err != nil {
-	// 		return nil, fmt.Errorf("error limitCertSize: %w", err)
-	// 	}
-	// }
 	return buildParams, nil
 }
 

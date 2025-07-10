@@ -18,7 +18,6 @@ import (
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/statuschecker"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -51,7 +50,7 @@ type AggSender struct {
 
 	l2OriginNetwork uint32
 
-	validator types.CertificateValidator
+	validator types.CertificateValidateAndSigner
 }
 
 // New returns a new AggSender instance
@@ -118,6 +117,10 @@ func New(
 	}, nil
 }
 
+func (a *AggSender) GetStorage() db.AggSenderStorage {
+	return a.storage
+}
+
 func (a *AggSender) Info() types.AggsenderInfo {
 	res := types.AggsenderInfo{
 		AggsenderStatus:          *a.status,
@@ -128,12 +131,13 @@ func (a *AggSender) Info() types.AggsenderInfo {
 	return res
 }
 
-func (a *AggSender) AttatchValidator(validator types.CertificateValidator) {
-	if validator == nil {
-		a.log.Panicf("validator is nil")
-	}
+func (a *AggSender) AttachValidator(validator types.CertificateValidateAndSigner) {
 	a.validator = validator
-	a.log.Infof("AggSender validator attached: %T", a.validator)
+	if validator == nil {
+		a.log.Infof("AggSender validator attached: nil")
+		return
+	}
+	a.log.Infof("AggSender validator attached: %s", a.validator.String())
 }
 
 // GetRPCServices returns the list of services that the RPC provider exposes
@@ -283,29 +287,15 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
 	if a.validator != nil {
-		a.log.Infof("certificate validation: %s ....", certificate.Brief())
-		verifyParams := types.VerifyIncommingRequests{
-			Certificate:         certificate,
-			PreviousCertificate: nil,
-		}
-		if certificate.Height != 0 {
-			previousSettledCertificate, err := a.storage.GetCertificateHeaderByHeight(certificate.Height - 1)
-			if err != nil {
-				a.log.Errorf("error getting previous certificate header by height %d: %s", certificate.Height-1, err.Error())
-				return nil, fmt.Errorf("error getting previous certificate header by height %d: %w", certificate.Height-1, err)
-			}
-			if previousSettledCertificate != nil {
-				verifyParams.PreviousCertificate = validator.AggsenderCertificateHeaderToAgglayer(
-					previousSettledCertificate, certificate.NetworkID)
-			}
-
-		}
-		if err := a.validator.ValidateCertificate(ctx, verifyParams); err != nil {
+		a.log.Infof("certificate validation (%s): %s ....", a.validator.String(), certificate.Brief())
+		_, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
+		if err != nil {
 			a.log.Errorf("certificate validation failed: %s. Cert: %s", err.Error(), certificate.Brief())
 			return nil, fmt.Errorf("certificate validation failed: %w", err)
 		}
 		a.log.Infof("certificate validation passed: %s", certificate.Brief())
 	}
+
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return certificate, nil

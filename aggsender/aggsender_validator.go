@@ -48,6 +48,6 @@ func (a *AggsenderValidator) GetRPCServices() []jRPC.Service {
 }
 
 // ValidateCertificate validates the incoming certificate against the previous one.
-func (a *AggsenderValidator) ValidateCertificate(ctx context.Context, params types.VerifyIncommingRequests) error {
+func (a *AggsenderValidator) ValidateCertificate(ctx context.Context, params types.VerifyIncomingRequest) error {
 	return a.validator.ValidateCertificate(ctx, params)
 }
