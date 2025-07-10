@@ -226,8 +226,8 @@ func (a *CertificateValidator) getCertificatePreBuildParams(ctx context.Context,
 		CertificateType:     guessCertificateType(params.Certificate, metadataUnmarshal.CertificateType()),
 		LastSentCertificate: lastSentCertificate,
 		L1InfoTreeToProve: &types.CertificateL1InfoTree{
-			L1InfoTreeRootFromWhichToProve: l1InfoRoot.Hash,
-			L1InfoTreeLeafCount:            params.Certificate.L1InfoTreeLeafCount,
+			L1InfoTreeRootToProve: l1InfoRoot.Hash,
+			L1InfoTreeLeafCount:   params.Certificate.L1InfoTreeLeafCount,
 		},
 		CreatedAt: metadataUnmarshal.CreatedAt,
 	}, nil
