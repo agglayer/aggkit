@@ -58,7 +58,7 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params V
 		return fmt.Errorf("failed CheckContigousCertificates: %w", err)
 	}
 
-	if err := a.checkCertificatesContents(params); err != nil {
+	if err := a.checkPreviousCertificate(params.PreviousCertificate); err != nil {
 		return fmt.Errorf("failed CheckCertificatesContents: %w", err)
 	}
 	// Build corresponding certificate
@@ -82,11 +82,11 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params V
 	return nil
 }
 
-func (a *CertificateValidator) checkCertificatesContents(params VerifyIncommingRequests) error {
-	if params.PreviousCertificate != nil {
-		if !params.PreviousCertificate.Status.IsSettled() {
-			return fmt.Errorf("previous certificate %s is not settled (status:%s), can't be used to validate certificate %s",
-				params.PreviousCertificate.ID(), params.PreviousCertificate.Status.String(), params.Certificate.ID())
+func (a *CertificateValidator) checkPreviousCertificate(previousCertificate *agglayertypes.CertificateHeader) error {
+	if previousCertificate != nil {
+		if !previousCertificate.Status.IsSettled() {
+			return fmt.Errorf("previous certificate %s is not settled (status:%s)",
+				previousCertificate.ID(), previousCertificate.Status.String())
 		}
 	}
 	return nil
