@@ -5,12 +5,13 @@ package aggkit.aggsender.validator.v1;
 
 import "agglayer/node/types/v1/certificate.proto";
 import "agglayer/node/types/v1/certificate_id.proto";
+import "agglayer/interop/types/v1/bytes.proto";
 import "google/protobuf/empty.proto";
 
 // Service for validating new certificates
 service AggsenderValidator {
     // Method to validate a new certificate
-    rpc ValidateCertificate(ValidateCertificateRequest) returns (google.protobuf.Empty);
+    rpc ValidateCertificate(ValidateCertificateRequest) returns (ValidateCertificateResponse);
 }
 
 // Request to validate a certificate
@@ -19,4 +20,10 @@ message ValidateCertificateRequest {
   agglayer.node.types.v1.CertificateId previous_certificate_id = 1;
   // Certificate to be validated
   agglayer.node.types.v1.Certificate certificate = 2;
+}
+
+// Type used as response to a certificate validation request.
+message ValidateCertificateResponse {
+  // The signature provided by the aggsender validator.
+   agglayer.interop.types.v1.FixedBytes65 signature = 1;
 }

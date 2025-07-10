@@ -12,7 +12,6 @@ import (
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestClient_ValidatCertificate(t *testing.T) {
@@ -126,7 +125,7 @@ func TestClient_ValidatCertificate(t *testing.T) {
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 					PreviousCertificateId: nil,
 					Certificate:           protoCert,
-				}).Return(&emptypb.Empty{}, nil)
+				}).Return(&v1.ValidateCertificateResponse{}, nil)
 			},
 			expectedError: "",
 		},
@@ -141,7 +140,7 @@ func TestClient_ValidatCertificate(t *testing.T) {
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 					PreviousCertificateId: certIDToProtoNullable(&prevCertHash),
 					Certificate:           protoCert,
-				}).Return(&emptypb.Empty{}, nil)
+				}).Return(&v1.ValidateCertificateResponse{}, nil)
 			},
 			expectedError: "",
 		},

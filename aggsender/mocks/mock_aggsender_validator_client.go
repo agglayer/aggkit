@@ -6,7 +6,6 @@ import (
 	context "context"
 
 	grpc "google.golang.org/grpc"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -27,7 +26,7 @@ func (_m *AggsenderValidatorClient) EXPECT() *AggsenderValidatorClient_Expecter 
 }
 
 // ValidateCertificate provides a mock function with given fields: ctx, in, opts
-func (_m *AggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *v1.ValidateCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (_m *AggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *v1.ValidateCertificateRequest, opts ...grpc.CallOption) (*v1.ValidateCertificateResponse, error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -41,16 +40,16 @@ func (_m *AggsenderValidatorClient) ValidateCertificate(ctx context.Context, in 
 		panic("no return value specified for ValidateCertificate")
 	}
 
-	var r0 *emptypb.Empty
+	var r0 *v1.ValidateCertificateResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *v1.ValidateCertificateRequest, ...grpc.CallOption) (*emptypb.Empty, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *v1.ValidateCertificateRequest, ...grpc.CallOption) (*v1.ValidateCertificateResponse, error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *v1.ValidateCertificateRequest, ...grpc.CallOption) *emptypb.Empty); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *v1.ValidateCertificateRequest, ...grpc.CallOption) *v1.ValidateCertificateResponse); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*emptypb.Empty)
+			r0 = ret.Get(0).(*v1.ValidateCertificateResponse)
 		}
 	}
 
@@ -90,12 +89,12 @@ func (_c *AggsenderValidatorClient_ValidateCertificate_Call) Run(run func(ctx co
 	return _c
 }
 
-func (_c *AggsenderValidatorClient_ValidateCertificate_Call) Return(_a0 *emptypb.Empty, _a1 error) *AggsenderValidatorClient_ValidateCertificate_Call {
+func (_c *AggsenderValidatorClient_ValidateCertificate_Call) Return(_a0 *v1.ValidateCertificateResponse, _a1 error) *AggsenderValidatorClient_ValidateCertificate_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggsenderValidatorClient_ValidateCertificate_Call) RunAndReturn(run func(context.Context, *v1.ValidateCertificateRequest, ...grpc.CallOption) (*emptypb.Empty, error)) *AggsenderValidatorClient_ValidateCertificate_Call {
+func (_c *AggsenderValidatorClient_ValidateCertificate_Call) RunAndReturn(run func(context.Context, *v1.ValidateCertificateRequest, ...grpc.CallOption) (*v1.ValidateCertificateResponse, error)) *AggsenderValidatorClient_ValidateCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }
