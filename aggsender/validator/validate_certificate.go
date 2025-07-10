@@ -242,11 +242,8 @@ func guessCertificateType(certificate *agglayertypes.Certificate,
 	// Metadata doesn't have the cert type,  I will try to guess from the certificate
 	// TODO: Double check this logic... what about optimistic, PP have something in this field
 	if certificate.AggchainData != nil {
-		proof, err := certificate.AggchainData.MarshalJSON()
-		if err != nil {
-			return types.CertificateTypePP
-		}
-		if len(proof) > 0 {
+		_, ok := certificate.AggchainData.(*agglayertypes.AggchainDataProof)
+		if ok {
 			return types.CertificateTypeFEP
 		}
 	}
