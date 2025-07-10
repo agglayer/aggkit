@@ -2,6 +2,7 @@ package validator
 
 import (
 	"context"
+	"fmt"
 
 	nodev1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	typesv1 "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
@@ -38,18 +39,22 @@ func (v *ValidatorClient) ValidateCertificate(
 	ctx context.Context,
 	previousCertificateID *common.Hash, // can be nil if there is no previous certificate
 	certificate *agglayertypes.Certificate,
-) error {
+) ([]byte, error) {
 	protoCert, err := agglayergrpc.ConvertCertToProtoCertificate(certificate)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	_, err = v.client.ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
+	response, err := v.client.ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 		PreviousCertificateId: certIDToProtoNullable(previousCertificateID),
 		Certificate:           protoCert,
 	})
 
-	return err
+	if err != nil {
+		return nil, fmt.Errorf("aggsender validator failed to successfully validate certificate: %w", err)
+	}
+
+	return response.Signature.Value, nil
 }
 
 // certIDToProtoNullable converts a common.Hash pointer to a nodev1.CertificateId proto message.

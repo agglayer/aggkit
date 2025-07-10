@@ -6,6 +6,7 @@ import (
 	"math/big"
 	"testing"
 
+	typesv1 "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	agglayergrpc "github.com/agglayer/aggkit/agglayer/grpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
@@ -112,7 +113,7 @@ func TestClient_ValidatCertificate(t *testing.T) {
 					Certificate:           protoCert,
 				}).Return(nil, errors.New("some error"))
 			},
-			expectedError: "some error",
+			expectedError: "aggsender validator failed to successfully validate certificate: some error",
 		},
 		{
 			name:                  "Valid certificate - no previous certificate",
@@ -125,7 +126,9 @@ func TestClient_ValidatCertificate(t *testing.T) {
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 					PreviousCertificateId: nil,
 					Certificate:           protoCert,
-				}).Return(&v1.ValidateCertificateResponse{}, nil)
+				}).Return(&v1.ValidateCertificateResponse{
+					Signature: &typesv1.FixedBytes65{Value: []byte("valid-signature")},
+				}, nil)
 			},
 			expectedError: "",
 		},
@@ -140,7 +143,9 @@ func TestClient_ValidatCertificate(t *testing.T) {
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 					PreviousCertificateId: certIDToProtoNullable(&prevCertHash),
 					Certificate:           protoCert,
-				}).Return(&v1.ValidateCertificateResponse{}, nil)
+				}).Return(&v1.ValidateCertificateResponse{
+					Signature: &typesv1.FixedBytes65{Value: []byte("valid-signature")},
+				}, nil)
 			},
 			expectedError: "",
 		},
@@ -159,11 +164,12 @@ func TestClient_ValidatCertificate(t *testing.T) {
 				client: mockClient,
 			}
 
-			err := validatorClient.ValidateCertificate(ctx, tc.previousCertificateID, tc.certificate)
+			signature, err := validatorClient.ValidateCertificate(ctx, tc.previousCertificateID, tc.certificate)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
 				require.NoError(t, err)
+				require.NotNil(t, signature)
 			}
 
 			mockClient.AssertExpectations(t)
