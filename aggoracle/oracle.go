@@ -12,10 +12,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// L1InfoTreer is an interface that defines the methods required to interact with the L1 info tree syncer
 type L1InfoTreer interface {
 	GetLatestL1InfoLeaf(ctx context.Context) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
+// ChainSender is an interface that defines the methods required to send Global Exit Roots (GERs) to the chain
 type ChainSender interface {
 	IsGERInjected(ger common.Hash) (bool, error)
 	InjectGER(ctx context.Context, ger common.Hash) error
