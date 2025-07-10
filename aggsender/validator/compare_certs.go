@@ -8,6 +8,8 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 )
 
+// DiffsCertificate compares two certificates and returns a slice of strings
+// containing the differences between them. If both certificates are nil, it returns an empty slice.
 func DiffsCertificate(
 	expectedCertificate *agglayertypes.Certificate,
 	validatingCertificate *agglayertypes.Certificate) []string {
@@ -76,6 +78,8 @@ func DiffsCertificate(
 	return diffs
 }
 
+// DiffsBridgeExits compares two slices of BridgeExit and returns a slice of strings
+// containing the differences between them.
 func DiffsBridgeExits(
 	expected []*agglayertypes.BridgeExit,
 	validating []*agglayertypes.BridgeExit) []string {
@@ -95,6 +99,8 @@ func DiffsBridgeExits(
 	return diffs
 }
 
+// DiffsImportedBridgeExit compares two slices of ImportedBridgeExit and returns a slice of strings
+// containing the differences between them.
 func DiffsImportedBridgeExit(expected []*agglayertypes.ImportedBridgeExit,
 	validating []*agglayertypes.ImportedBridgeExit) []string {
 	diffs := make([]string, 0)
