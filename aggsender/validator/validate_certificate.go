@@ -98,7 +98,7 @@ func (a *CertificateValidator) checkContigousCertificates(params VerifyIncomming
 		return ErrNilCertificate
 	}
 	if params.PreviousCertificate == nil {
-		return a.checkFirstCerficateBlocks(params)
+		return a.checkFirstCertificateBlocks(params)
 	}
 	if params.PreviousCertificate.Height+1 != params.Certificate.Height {
 		return fmt.Errorf("certificate height not contigous, expected: %d, got: %d",
@@ -174,9 +174,8 @@ func (a *CertificateValidator) compareCertificates(
 	return nil
 }
 
-// checkFirstCerficateBlocks checks that the first certificate blocks are correct
-// so it's starts from genesis?!?
-func (a *CertificateValidator) checkFirstCerficateBlocks(params VerifyIncommingRequests) error {
+// checkFirstCertificateBlocks checks that the first certificate blocks are correct
+func (a *CertificateValidator) checkFirstCertificateBlocks(params VerifyIncommingRequests) error {
 	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(params.Certificate.Metadata)
 	if err != nil {
 		return fmt.Errorf("error checking first certificate because can't unmarshal metadata. Err: %w", err)
