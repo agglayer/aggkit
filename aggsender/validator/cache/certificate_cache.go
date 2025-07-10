@@ -17,7 +17,7 @@ import (
 type CertificateCache struct {
 	agglayerClient agglayer.AgglayerClientInterface
 
-	cache *ttlcache.Cache[common.Hash, *agglayertypes.CertificateHeader]
+	cache *ttlcache.Cache[common.Hash, agglayertypes.CertificateHeader]
 }
 
 // NewCertificateCache creates and returns a new CertificateCache instance with the specified
@@ -29,8 +29,8 @@ func NewCertificateCache(
 	ttl time.Duration,
 	capacity uint64) *CertificateCache {
 	c := ttlcache.New(
-		ttlcache.WithTTL[common.Hash, *agglayertypes.CertificateHeader](ttl),
-		ttlcache.WithCapacity[common.Hash, *agglayertypes.CertificateHeader](capacity),
+		ttlcache.WithTTL[common.Hash, agglayertypes.CertificateHeader](ttl),
+		ttlcache.WithCapacity[common.Hash, agglayertypes.CertificateHeader](capacity),
 	)
 	return &CertificateCache{
 		cache:          c,
@@ -52,19 +52,19 @@ func NewCertificateCache(
 //   - *agglayertypes.CertificateHeader: The retrieved certificate header.
 //   - error: An error if the certificate header could not be retrieved.
 func (c *CertificateCache) GetCertificateHeader(
-	ctx context.Context, certificateID common.Hash) (*agglayertypes.CertificateHeader, error) {
+	ctx context.Context, certificateID common.Hash) (agglayertypes.CertificateHeader, error) {
 	if c.cache.Has(certificateID) {
 		return c.cache.Get(certificateID).Value(), nil
 	}
 
 	certificateHeader, err := c.agglayerClient.GetCertificateHeader(ctx, certificateID)
 	if err != nil {
-		return nil, err
+		return agglayertypes.CertificateHeader{}, err
 	}
 
 	// if DefaultTTL is set, the cache will use the TTL from the cache configuration
 	// defined in the NewCertificateCache function
-	c.cache.Set(certificateID, certificateHeader, ttlcache.DefaultTTL)
+	c.cache.Set(certificateID, *certificateHeader, ttlcache.DefaultTTL)
 
-	return certificateHeader, nil
+	return *certificateHeader, nil
 }
