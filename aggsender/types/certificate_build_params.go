@@ -12,20 +12,20 @@ import (
 const claimSizeFactor = 200 // Size factor for claims in bytes
 
 type CertificatePreBuildParams struct {
-	BlockRange             BlockRange
-	RetryCount             int
-	CertificateType        CertificateType
-	LastSentCertificate    *CertificateHeader
-	L1InfoTreeWhichToProve *CertificateL1InfoTree
-	CreatedAt              uint32
+	BlockRange          BlockRange
+	RetryCount          int
+	CertificateType     CertificateType
+	LastSentCertificate *CertificateHeader
+	L1InfoTreeToProve   *CertificateL1InfoTree
+	CreatedAt           uint32
 }
 
 func (c *CertificatePreBuildParams) String() string {
 	if c == nil {
 		return "CertificatePreBuildParams is nil"
 	}
-	return fmt.Sprintf("Type: %s BlockRange: %s,  RetryCount: %d, L1InfoTreeWhichToProve:%s, CreatedAt:%d",
-		c.CertificateType, c.BlockRange.String(), c.RetryCount, c.L1InfoTreeWhichToProve.String(), c.CreatedAt)
+	return fmt.Sprintf("Type: %s BlockRange: %s,  RetryCount: %d, L1InfoTreeToProve:%s, CreatedAt:%d",
+		c.CertificateType, c.BlockRange.String(), c.RetryCount, c.L1InfoTreeToProve.String(), c.CreatedAt)
 }
 
 type CertificateL1InfoTree struct {

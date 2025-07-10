@@ -138,7 +138,7 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 		RetryCount:          retryCount,
 		LastSentCertificate: lastSentCertificate,
 		CertificateType:     certType,
-		L1InfoTreeWhichToProve: &types.CertificateL1InfoTree{
+		L1InfoTreeToProve: &types.CertificateL1InfoTree{
 			L1InfoTreeRootFromWhichToProve: l1InfoRoot.Hash,
 			L1InfoTreeLeafCount:            l1InfoRoot.Index + 1,
 		},
@@ -148,7 +148,7 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 
 func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 	preParams types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
-	if preParams.L1InfoTreeWhichToProve == nil {
+	if preParams.L1InfoTreeToProve == nil {
 		return nil, fmt.Errorf("L1InfoTreeWhichToProve should be not nil for GenerateBuildParams")
 	}
 
@@ -167,8 +167,8 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 		Claims:                         claims,
 		CreatedAt:                      preParams.CreatedAt,
 		CertificateType:                preParams.CertificateType,
-		L1InfoTreeRootFromWhichToProve: preParams.L1InfoTreeWhichToProve.L1InfoTreeRootFromWhichToProve,
-		L1InfoTreeLeafCount:            preParams.L1InfoTreeWhichToProve.L1InfoTreeLeafCount,
+		L1InfoTreeRootFromWhichToProve: preParams.L1InfoTreeToProve.L1InfoTreeRootFromWhichToProve,
+		L1InfoTreeLeafCount:            preParams.L1InfoTreeToProve.L1InfoTreeLeafCount,
 	}
 	return buildParams, nil
 }
