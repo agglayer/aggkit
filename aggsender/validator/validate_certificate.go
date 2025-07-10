@@ -50,15 +50,15 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params V
 	// If metadata is not lastest version when is generated again is always differ
 	// metadata field
 	if err := a.CheckMetadataCompatibility(params); err != nil {
-		return err
+		return fmt.Errorf("failed CheckMetadataCompatibility: %w", err)
 	}
 	// Between cert must be no gap because if there are could be a attack vector
 	if err := a.CheckContigousCertificates(params); err != nil {
-		return err
+		return fmt.Errorf("failed CheckContigousCertificates: %w", err)
 	}
 
 	if err := a.CheckCertificatesContents(params); err != nil {
-		return fmt.Errorf("failed to CheckCertificatesContents: %w", err)
+		return fmt.Errorf("failed CheckCertificatesContents: %w", err)
 	}
 	// Build corresponding certificate
 	preBuildParams, err := a.GetCertificatePreBuildParams(ctx, params)

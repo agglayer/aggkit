@@ -31,6 +31,13 @@ var (
 		CertType:  0,
 		Version:   types.CertificateMetadataV2,
 	}
+	metadataV2Block46 = &types.CertificateMetadata{
+		FromBlock: 46,
+		Offset:    40,
+		CreatedAt: 0,
+		CertType:  0,
+		Version:   types.CertificateMetadataV2,
+	}
 	errGenericForTesting = errors.New("generic error for testing purposes")
 
 	testTreeRootIndex9 = treetypes.Root{
@@ -66,6 +73,22 @@ func TestValidateCertificate(t *testing.T) {
 		})
 		require.Error(t, err)
 		require.ErrorContains(t, err, "first certificate must have height 0")
+	})
+	t.Run("prev cert bad status", func(t *testing.T) {
+		testData := newTestDataCertificateValidator(t)
+		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
+			Certificate: &agglayertypes.Certificate{
+				Height:   1,
+				Metadata: metadataV2Block46.ToHash(),
+			},
+			PreviousCertificate: &agglayertypes.CertificateHeader{
+				Height:   0,
+				Metadata: metadataV2Block1.ToHash(),
+				Status:   agglayertypes.Pending,
+			},
+		})
+		require.Error(t, err)
+		require.ErrorContains(t, err, "is not settled")
 	})
 	t.Run("GetCertificatePreBuildParams error l1infotree", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
