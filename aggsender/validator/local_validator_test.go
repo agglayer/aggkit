@@ -8,7 +8,6 @@ import (
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/log"
-
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
