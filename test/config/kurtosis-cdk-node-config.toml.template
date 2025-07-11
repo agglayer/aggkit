@@ -3,10 +3,10 @@ L1URL="{{.l1_rpc_url}}"
 L2URL="http://{{.l2_rpc_name}}{{.deployment_suffix}}:{{.zkevm_rpc_http_port}}"
 AggLayerURL="{{.agglayer_grpc_url}}"
 
-NetworkID = {{.zkevm_rollup_id}}
 
-AggSenderPrivateKeyPath = "{{or .zkevm_l2_sequencer_keystore_file "/etc/cdk/sequencer.keystore"}}"
-AggSenderPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
+
+SequencerPrivateKeyPath = "{{.zkevm_l2_sequencer_keystore_file}}"
+SequencerPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
 
 polygonBridgeAddr = "{{.zkevm_bridge_address}}" 
 
@@ -23,7 +23,7 @@ genesisBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
 	polygonZkEVMAddress = "{{.zkevm_rollup_address}}"
 	
 [L2Config]
-	GlobalExitRootAddr = "{{.zkevm_global_exit_root_l2_address}}"
+	GlobalExitRootAddr = "{{.l2_global_exit_root_address}}"
 
 [Log]
 Environment = "development" # "production" or "development"

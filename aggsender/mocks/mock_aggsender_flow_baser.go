@@ -147,6 +147,124 @@ func (_c *AggsenderFlowBaser_ConvertClaimToImportedBridgeExit_Call) RunAndReturn
 	return _c
 }
 
+// GenerateBuildParams provides a mock function with given fields: ctx, preParams
+func (_m *AggsenderFlowBaser) GenerateBuildParams(ctx context.Context, preParams types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
+	ret := _m.Called(ctx, preParams)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GenerateBuildParams")
+	}
+
+	var r0 *types.CertificateBuildParams
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)); ok {
+		return rf(ctx, preParams)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificatePreBuildParams) *types.CertificateBuildParams); ok {
+		r0 = rf(ctx, preParams)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.CertificateBuildParams)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, types.CertificatePreBuildParams) error); ok {
+		r1 = rf(ctx, preParams)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggsenderFlowBaser_GenerateBuildParams_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GenerateBuildParams'
+type AggsenderFlowBaser_GenerateBuildParams_Call struct {
+	*mock.Call
+}
+
+// GenerateBuildParams is a helper method to define mock.On call
+//   - ctx context.Context
+//   - preParams types.CertificatePreBuildParams
+func (_e *AggsenderFlowBaser_Expecter) GenerateBuildParams(ctx interface{}, preParams interface{}) *AggsenderFlowBaser_GenerateBuildParams_Call {
+	return &AggsenderFlowBaser_GenerateBuildParams_Call{Call: _e.mock.On("GenerateBuildParams", ctx, preParams)}
+}
+
+func (_c *AggsenderFlowBaser_GenerateBuildParams_Call) Run(run func(ctx context.Context, preParams types.CertificatePreBuildParams)) *AggsenderFlowBaser_GenerateBuildParams_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(types.CertificatePreBuildParams))
+	})
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_GenerateBuildParams_Call) Return(_a0 *types.CertificateBuildParams, _a1 error) *AggsenderFlowBaser_GenerateBuildParams_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_GenerateBuildParams_Call) RunAndReturn(run func(context.Context, types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_GenerateBuildParams_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GeneratePreBuildParams provides a mock function with given fields: ctx, certType
+func (_m *AggsenderFlowBaser) GeneratePreBuildParams(ctx context.Context, certType types.CertificateType) (*types.CertificatePreBuildParams, error) {
+	ret := _m.Called(ctx, certType)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GeneratePreBuildParams")
+	}
+
+	var r0 *types.CertificatePreBuildParams
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType) (*types.CertificatePreBuildParams, error)); ok {
+		return rf(ctx, certType)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, types.CertificateType) *types.CertificatePreBuildParams); ok {
+		r0 = rf(ctx, certType)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.CertificatePreBuildParams)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, types.CertificateType) error); ok {
+		r1 = rf(ctx, certType)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggsenderFlowBaser_GeneratePreBuildParams_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GeneratePreBuildParams'
+type AggsenderFlowBaser_GeneratePreBuildParams_Call struct {
+	*mock.Call
+}
+
+// GeneratePreBuildParams is a helper method to define mock.On call
+//   - ctx context.Context
+//   - certType types.CertificateType
+func (_e *AggsenderFlowBaser_Expecter) GeneratePreBuildParams(ctx interface{}, certType interface{}) *AggsenderFlowBaser_GeneratePreBuildParams_Call {
+	return &AggsenderFlowBaser_GeneratePreBuildParams_Call{Call: _e.mock.On("GeneratePreBuildParams", ctx, certType)}
+}
+
+func (_c *AggsenderFlowBaser_GeneratePreBuildParams_Call) Run(run func(ctx context.Context, certType types.CertificateType)) *AggsenderFlowBaser_GeneratePreBuildParams_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(types.CertificateType))
+	})
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_GeneratePreBuildParams_Call) Return(_a0 *types.CertificatePreBuildParams, _a1 error) *AggsenderFlowBaser_GeneratePreBuildParams_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_GeneratePreBuildParams_Call) RunAndReturn(run func(context.Context, types.CertificateType) (*types.CertificatePreBuildParams, error)) *AggsenderFlowBaser_GeneratePreBuildParams_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetCertificateBuildParamsInternal provides a mock function with given fields: ctx, certType
 func (_m *AggsenderFlowBaser) GetCertificateBuildParamsInternal(ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
 	ret := _m.Called(ctx, certType)
@@ -261,6 +379,64 @@ func (_c *AggsenderFlowBaser_GetNewLocalExitRoot_Call) Return(_a0 common.Hash, _
 }
 
 func (_c *AggsenderFlowBaser_GetNewLocalExitRoot_Call) RunAndReturn(run func(context.Context, *types.CertificateBuildParams) (common.Hash, error)) *AggsenderFlowBaser_GetNewLocalExitRoot_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// LimitCertSize provides a mock function with given fields: certParams
+func (_m *AggsenderFlowBaser) LimitCertSize(certParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
+	ret := _m.Called(certParams)
+
+	if len(ret) == 0 {
+		panic("no return value specified for LimitCertSize")
+	}
+
+	var r0 *types.CertificateBuildParams
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*types.CertificateBuildParams) (*types.CertificateBuildParams, error)); ok {
+		return rf(certParams)
+	}
+	if rf, ok := ret.Get(0).(func(*types.CertificateBuildParams) *types.CertificateBuildParams); ok {
+		r0 = rf(certParams)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.CertificateBuildParams)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*types.CertificateBuildParams) error); ok {
+		r1 = rf(certParams)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggsenderFlowBaser_LimitCertSize_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'LimitCertSize'
+type AggsenderFlowBaser_LimitCertSize_Call struct {
+	*mock.Call
+}
+
+// LimitCertSize is a helper method to define mock.On call
+//   - certParams *types.CertificateBuildParams
+func (_e *AggsenderFlowBaser_Expecter) LimitCertSize(certParams interface{}) *AggsenderFlowBaser_LimitCertSize_Call {
+	return &AggsenderFlowBaser_LimitCertSize_Call{Call: _e.mock.On("LimitCertSize", certParams)}
+}
+
+func (_c *AggsenderFlowBaser_LimitCertSize_Call) Run(run func(certParams *types.CertificateBuildParams)) *AggsenderFlowBaser_LimitCertSize_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*types.CertificateBuildParams))
+	})
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_LimitCertSize_Call) Return(_a0 *types.CertificateBuildParams, _a1 error) *AggsenderFlowBaser_LimitCertSize_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggsenderFlowBaser_LimitCertSize_Call) RunAndReturn(run func(*types.CertificateBuildParams) (*types.CertificateBuildParams, error)) *AggsenderFlowBaser_LimitCertSize_Call {
 	_c.Call.Return(run)
 	return _c
 }

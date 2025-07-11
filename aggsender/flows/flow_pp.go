@@ -54,6 +54,26 @@ func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 	return nil
 }
 
+func (p *PPFlow) GeneratePreBuildParams(ctx context.Context) (*types.CertificatePreBuildParams, error) {
+	return p.baseFlow.GeneratePreBuildParams(ctx, types.CertificateTypePP)
+}
+
+func (p *PPFlow) GenerateBuildParams(ctx context.Context,
+	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
+	if preParams == nil {
+		return nil, fmt.Errorf("ppFlow - preParams is nil")
+	}
+	params, err := p.baseFlow.GenerateBuildParams(ctx, *preParams)
+	if err != nil {
+		return nil, fmt.Errorf("ppFlow - error generating build params: %w", err)
+	}
+	params, err = p.baseFlow.LimitCertSize(params)
+	if err != nil {
+		return nil, fmt.Errorf("error applying limit size: %w", err)
+	}
+	return params, nil
+}
+
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
@@ -92,15 +112,6 @@ func (p *PPFlow) GetCertificateBuildParams(ctx context.Context) (*types.Certific
 	if err := p.baseFlow.VerifyBuildParams(ctx, buildParams); err != nil {
 		return nil, fmt.Errorf("ppFlow - error verifying build params: %w", err)
 	}
-
-	root, _, err := p.l1InfoTreeDataQuerier.GetLatestFinalizedL1InfoRoot(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("ppFlow - error getting latest finalized L1 info root: %w", err)
-	}
-
-	buildParams.L1InfoTreeRootFromWhichToProve = root.Hash
-	buildParams.L1InfoTreeLeafCount = root.Index + 1
-
 	return buildParams, nil
 }
 

@@ -37,6 +37,20 @@ type L1InfoTreeSync struct {
 	driver    *sync.EVMDriver
 }
 
+func NewReadOnly(
+	ctx context.Context,
+	dbPath string,
+) (*L1InfoTreeSync, error) {
+	processor, err := newProcessor(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	return &L1InfoTreeSync{
+		processor: processor,
+		driver:    nil,
+	}, nil
+}
+
 // New creates a L1 Info tree syncer that syncs the L1 info tree
 // and the rollup exit tree
 func New(

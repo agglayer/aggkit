@@ -163,9 +163,8 @@ function export_values_of_genesis() {
 ###############################################################################
 function export_values_of_cdk_node_config() {
     local _CDK_CONFIG_FILE=$1
-    export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." AggSenderPrivateKeyPassword
     export_key_from_toml_file_or_fatal l1_chain_id $_CDK_CONFIG_FILE L1Config chainId
-    export_key_from_toml_file zkevm_rollup_id $_CDK_CONFIG_FILE Common NetworkID
+    #export_key_from_toml_file zkevm_rollup_id $_CDK_CONFIG_FILE Common NetworkID
     if [ $? -ne 0 ]; then
         export_key_from_toml_file_or_fatal zkevm_rollup_id $_CDK_CONFIG_FILE "." NetworkID
     fi
@@ -174,9 +173,10 @@ function export_values_of_cdk_node_config() {
         log_debug "l2_chain_id not found in Aggregator section, using 0"
         export l2_chain_id="0"
     fi
-    export_key_from_toml_file zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE AggSender.SequencerPrivateKey Password
+    export_key_from_toml_file zkevm_l2_keystore_password $_CDK_CONFIG_FILE AggSender.SequencerPrivateKey Password
     if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE "." AggSenderPrivateKeyPassword
+        echo .
+        export_key_from_toml_file_or_fatal zkevm_l2_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
     fi
     export_key_from_toml_file zkevm_bridge_address $_CDK_CONFIG_FILE BridgeL1Sync BridgeAddr
     if [ $? -ne 0 ]; then
@@ -189,7 +189,17 @@ function export_values_of_cdk_node_config() {
         log_debug "Validium mode detected... Retrieving the dac_port"
         export_value_from_kurtosis_or_fail dac_port zkevm-dac-001 dac
     fi
-    export zkevm_l2_keystore_password=$zkevm_l2_sequencer_keystore_password
+}
+###############################################################################
+function export_values_of_cdk_node_config_genesis() {
+    local _CDK_CONFIG_FILE=$1
+    export_key_from_toml_file_or_fatal l1_chain_id                       $_CDK_CONFIG_FILE L1Config chainId
+    export_key_from_toml_file_or_fatal pol_token_address                 $_CDK_CONFIG_FILE L1Config polTokenAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_address              $_CDK_CONFIG_FILE L1Config polygonZkEVMAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_address      $_CDK_CONFIG_FILE L1Config polygonRollupManagerAddress
+    export_key_from_toml_file_or_fatal zkevm_global_exit_root_address    $_CDK_CONFIG_FILE L1Config polygonZkEVMGlobalExitRootAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_block_number $_CDK_CONFIG_FILE "." genesisBlockNumber
+    export_key_from_toml_file_or_fatal l2_global_exit_root_address       $_CDK_CONFIG_FILE L2Config GlobalExitRootAddr
 }
 ###############################################################################
 # params:
@@ -350,9 +360,9 @@ create_dest_folder
 
 download_kurtosis_artifacts
 
-export_values_of_genesis $genesis_file
 export_ports_from_kurtosis
 export_values_of_cdk_node_config $DEST/cdk-node-config.toml
+export_values_of_cdk_node_config_genesis  $DEST/cdk-node-config.toml
 export_forced_values
 
 ORIG_TEMPLATE_FILE=test/config/kurtosis-cdk-node-config.toml.template
