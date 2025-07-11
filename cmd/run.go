@@ -24,6 +24,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/aggsender/query"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggsendervalidator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -254,13 +255,21 @@ func createAggSender(
 	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
-	if err := cfg.AgglayerClient.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid agglayer client config: %w", err)
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid aggsender config: %w", err)
 	}
 
 	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AgglayerClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
+	}
+
+	var validatorClient aggsendertypes.ValidatorClient
+	if cfg.RequireValidatorCall {
+		validatorClient, err = aggsendervalidator.NewValidatorClient(cfg.ValidatorClient)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create validator client: %w", err)
+		}
 	}
 
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
@@ -289,23 +298,11 @@ func createAggSender(
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, validatorClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
-	// TODO: Remove this, just for testing
-	if cfg.Mode == "PessimisticProof" {
-		validator, err := createAggSenderValidator(ctx, cfg, l1InfoTreeSync,
-			l2Syncer, l1EthClient, l2Client, rollupDataQuerier)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create AggSender validator: %w", err)
-		}
-		aggsender.AttachValidator(&aggsendervalidator.LocalValidator{
-			Log:       logger,
-			Storage:   aggsender.GetStorage(),
-			Validator: validator,
-		})
-	}
+
 	return aggsender, nil
 }
 

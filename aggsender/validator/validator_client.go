@@ -8,16 +8,19 @@ import (
 	typesv1 "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	agglayergrpc "github.com/agglayer/aggkit/agglayer/grpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/types"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/common"
 )
 
+var _ types.ValidatorClient = (*ValidatorClient)(nil)
+
 // ValidatorClient encapsulates the gRPC client and configuration
 // required to interact with the AggsenderValidator service.
 type ValidatorClient struct {
-	client        v1.AggsenderValidatorClient
-	grpcClientCfg *grpc.ClientConfig
+	client v1.AggsenderValidatorClient
+	cfg    *grpc.ClientConfig
 }
 
 // NewValidatorClient initializes a new ValidatorClient with the provided gRPC client configuration.
@@ -29,8 +32,8 @@ func NewValidatorClient(cfg *grpc.ClientConfig) (*ValidatorClient, error) {
 	}
 
 	return &ValidatorClient{
-		client:        v1.NewAggsenderValidatorClient(grpcClient.Conn()),
-		grpcClientCfg: cfg,
+		client: v1.NewAggsenderValidatorClient(grpcClient.Conn()),
+		cfg:    cfg,
 	}, nil
 }
 
