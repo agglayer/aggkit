@@ -55,6 +55,7 @@ USER appuser
 
 # Copy the built binary from the builder stage
 COPY --from=builder /app/target/aggkit /usr/local/bin/aggkit
+COPY --from=builder /app/target/aggsender_find_imported_bridge /usr/local/bin/aggsender_find_imported_bridge
 
 EXPOSE 5576/tcp
 
