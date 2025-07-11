@@ -383,7 +383,7 @@ func TestFindCallWithMixedMethods(t *testing.T) {
 	require.NotNil(t, found)
 	require.Equal(t, bridgeAddr, found.To)
 	// Note: DFS traversal processes calls in reverse order (stack), so it finds claimMessage first
-	require.Equal(t, []byte(claimMessageEtrogMethodID), []byte(found.Input[:4])) // Should find the first claim method in DFS order
+	require.Equal(t, claimMessageEtrogMethodID, []byte(found.Input[:4])) // Should find the first claim method in DFS order
 }
 
 func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
