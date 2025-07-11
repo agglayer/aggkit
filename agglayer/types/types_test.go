@@ -510,6 +510,7 @@ func TestCertificate_Hash(t *testing.T) {
 		newLocalExitRoot[:],
 		bridgeExitsPart,
 		importedBridgeExitsPart,
+		metadata.Bytes(),
 	)
 
 	// Test the certificate hash
