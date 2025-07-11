@@ -46,7 +46,7 @@ func TestLastGERSyncE2E(t *testing.T) {
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,
-		lastgersync.FEP,
+		lastgersync.Legacy,
 	)
 	require.NoError(t, err)
 
@@ -82,7 +82,7 @@ func TestLastGERSync_GERRemoval(t *testing.T) {
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,
-		lastgersync.PP,
+		lastgersync.SovereignChain,
 	)
 	require.NoError(t, err)
 

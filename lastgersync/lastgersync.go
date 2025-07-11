@@ -20,8 +20,8 @@ const (
 type SyncMode string
 
 const (
-	FEP SyncMode = "FEP"
-	PP  SyncMode = "PP"
+	Legacy         SyncMode = "Legacy"
+	SovereignChain SyncMode = "SovereignChain"
 )
 
 // L1InfoTreeQuerier is abstraction for querying the L1InfoTree data
@@ -70,14 +70,15 @@ func New(
 	var downloader sync.Downloader
 
 	switch syncMode {
-	case FEP:
-		downloader, err = newDownloaderFEP(l2Client, l2GERManagerAddr,
+	case Legacy:
+		downloader, err = newDownloaderLegacy(
+			l2Client, l2GERManagerAddr,
 			l1InfoTreeSync, processor,
 			rh, bf, waitForNewBlocksPeriod,
 		)
 
-	case PP:
-		downloader, err = newDownloaderPP(
+	case SovereignChain:
+		downloader, err = newDownloaderSovereign(
 			l2Client, l2GERManagerAddr,
 			l1InfoTreeSync, processor,
 			rh, bf, waitForNewBlocksPeriod,

@@ -23,7 +23,7 @@ type Event struct {
 	GEREvent *GEREvent
 }
 
-type downloaderFEP struct {
+type downloaderLegacy struct {
 	*sync.EVMDownloaderImplementation
 	l2GERManager   *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
 	l2GERAddr      common.Address
@@ -32,7 +32,7 @@ type downloaderFEP struct {
 	rh             *sync.RetryHandler
 }
 
-func newDownloaderFEP(
+func newDownloaderLegacy(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
@@ -40,7 +40,7 @@ func newDownloaderFEP(
 	rh *sync.RetryHandler,
 	blockFinality *big.Int,
 	waitForNewBlocksPeriod time.Duration,
-) (*downloaderFEP, error) {
+) (*downloaderLegacy, error) {
 	l2GERManager, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(
 		l2GERAddr, l2Client)
 	if err != nil {
@@ -52,7 +52,7 @@ func newDownloaderFEP(
 		waitForNewBlocksPeriod, nil, nil,
 		rh, nil)
 
-	return &downloaderFEP{
+	return &downloaderLegacy{
 		EVMDownloaderImplementation: evmDownloader,
 		l2GERManager:                l2GERManager,
 		l2GERAddr:                   l2GERAddr,
@@ -63,7 +63,7 @@ func newDownloaderFEP(
 }
 
 // RuntimeData returns the runtime data: chainID + addresses to query
-func (d *downloaderFEP) RuntimeData(ctx context.Context) (sync.RuntimeData, error) {
+func (d *downloaderLegacy) RuntimeData(ctx context.Context) (sync.RuntimeData, error) {
 	chainID, err := d.ChainID(ctx)
 	if err != nil {
 		return sync.RuntimeData{}, err
@@ -74,7 +74,7 @@ func (d *downloaderFEP) RuntimeData(ctx context.Context) (sync.RuntimeData, erro
 	}, nil
 }
 
-func (d *downloaderFEP) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock) {
+func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock) {
 	var (
 		attempts            int
 		nextL1InfoTreeIndex uint32
@@ -156,7 +156,7 @@ func (d *downloaderFEP) Download(ctx context.Context, fromBlock uint64, download
 	}
 }
 
-func (d *downloaderFEP) getGERsFromIndex(
+func (d *downloaderLegacy) getGERsFromIndex(
 	ctx context.Context, fromL1InfoTreeIndex uint32) ([]*GlobalExitRootInfo, error) {
 	lastRoot, err := d.l1InfoTreeSync.GetLastL1InfoTreeRoot(ctx)
 	if errors.Is(err, db.ErrNotFound) {
@@ -182,7 +182,7 @@ func (d *downloaderFEP) getGERsFromIndex(
 	return gers, nil
 }
 
-func (d *downloaderFEP) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*GlobalExitRootInfo) {
+func (d *downloaderLegacy) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*GlobalExitRootInfo) {
 	for _, gerInfo := range gerInfos {
 		attempts := 0
 		for {

@@ -23,7 +23,7 @@ var (
 	removeGEREventSignature = crypto.Keccak256Hash([]byte("UpdateRemovalHashChainValue(bytes32,bytes32)"))
 )
 
-type downloaderPP struct {
+type downloaderSovereign struct {
 	*sync.EVMDownloaderImplementation
 	l2GERManager   *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
 	l2GERAddr      common.Address
@@ -32,21 +32,21 @@ type downloaderPP struct {
 	rh             *sync.RetryHandler
 }
 
-func newDownloaderPP(
+func newDownloaderSovereign(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
 	processor *processor,
 	rh *sync.RetryHandler,
 	blockFinality *big.Int,
-	waitForNewBlocksPeriod time.Duration) (*downloaderPP, error) {
+	waitForNewBlocksPeriod time.Duration) (*downloaderSovereign, error) {
 	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERAddr, l2Client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize L2 GER manager contract: %w", err)
 	}
 
-	d := &downloaderPP{
+	d := &downloaderSovereign{
 		l2GERManager:   l2GERManager,
 		l2GERAddr:      l2GERAddr,
 		l1InfoTreeSync: l1InfoTreeSync,
@@ -67,7 +67,7 @@ func newDownloaderPP(
 }
 
 // RuntimeData returns the runtime data: chainID + addresses to query
-func (d *downloaderPP) RuntimeData(ctx context.Context) (sync.RuntimeData, error) {
+func (d *downloaderSovereign) RuntimeData(ctx context.Context) (sync.RuntimeData, error) {
 	chainID, err := d.ChainID(ctx)
 	if err != nil {
 		return sync.RuntimeData{}, err
@@ -78,7 +78,7 @@ func (d *downloaderPP) RuntimeData(ctx context.Context) (sync.RuntimeData, error
 	}, nil
 }
 
-func (d *downloaderPP) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock) {
+func (d *downloaderSovereign) Download(ctx context.Context, fromBlock uint64, downloadedCh chan sync.EVMBlock) {
 	for {
 		select {
 		case <-ctx.Done():
@@ -100,7 +100,7 @@ func (d *downloaderPP) Download(ctx context.Context, fromBlock uint64, downloade
 // buildAppender creates a log appender for the downloader
 // It parses the logs emitted by the L2 GER manager and populates the block events
 // with the corresponding events.
-func (d *downloaderPP) buildAppender(
+func (d *downloaderSovereign) buildAppender(
 	l2GERManager *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain) sync.LogAppenderMap {
 	appender := make(sync.LogAppenderMap)
 
