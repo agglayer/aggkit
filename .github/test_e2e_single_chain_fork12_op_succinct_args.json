@@ -14,7 +14,6 @@
     "op_succinct_max_concurrent_proof_requests": "1",
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
-    "zkevm_contracts_image": "jhkimqd/agglayer-contracts:v11.0.0-rc.2-fork.12",
     "additional_services": [
       "bridge_spammer"
     ]
