@@ -77,7 +77,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout.Duration)
 	defer cancel()
 
-	if validatorSignature != nil {
+	if len(validatorSignature) > 0 {
 		// Add validator signature to metadata
 		sigHex := hex.EncodeToString(validatorSignature)
 		md := metadata.Pairs(validatorSignatureMetadataKey, sigHex)
