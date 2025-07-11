@@ -80,20 +80,31 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 
 	isGERInjected, err := a.chainSender.IsGERInjected(latestGER)
 	if err != nil {
-		return fmt.Errorf("error checking if GER is already injected: %w", err)
+		return fmt.Errorf("error checking if GER (%s) is already injected: %w", latestGER, err)
 	}
 
 	if isGERInjected {
-		a.logger.Debugf("GER %s is already injected", latestGER.Hex())
+		a.logger.Debugf("GER (%s) is already injected", latestGER.Hex())
 		return nil
 	}
 
-	a.logger.Debugf("injecting new GER: %s", latestGER.Hex())
-	if err := a.chainSender.InjectGER(ctx, latestGER); err != nil {
-		return fmt.Errorf("error injecting GER %s: %w", latestGER.Hex(), err)
+	go func() {
+		if err := a.injectGER(ctx, latestGER); err != nil {
+			a.logger.Error(err)
+		}
+	}()
+
+	return nil
+}
+
+// injectGER injects the provided Global Exit Root (GER) into the chain
+func (a *AggOracle) injectGER(ctx context.Context, ger common.Hash) error {
+	a.logger.Debugf("injecting GER (%s)", ger.Hex())
+	if err := a.chainSender.InjectGER(ctx, ger); err != nil {
+		return fmt.Errorf("failed to inject GER (%s): %w", ger.Hex(), err)
 	}
 
-	a.logger.Infof("GER %s is injected successfully", latestGER.Hex())
+	a.logger.Infof("GER (%s) injected successfully", ger.Hex())
 	return nil
 }
 
