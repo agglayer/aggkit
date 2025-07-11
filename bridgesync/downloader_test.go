@@ -1,6 +1,8 @@
 package bridgesync
 
 import (
+	"bytes"
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -326,28 +328,139 @@ func TestFindCall(t *testing.T) {
 	require.Equal(t, bridgeAddr, found.To)
 }
 
+func TestFindCallWithMixedMethods(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	fromAddr := common.HexToAddress("0x20")
+	logger := logger.WithFields("module", "test")
+
+	// Test case: Transaction with mixed method calls
+	// First call: getProxiedTokensManager (unrecognized)
+	// Second call: claimAsset (recognized)
+	// Third call: claimMessage (recognized)
+	rootCall := call{
+		To:   common.HexToAddress("0x01"),
+		From: fromAddr,
+		Err:  nil,
+		Calls: []call{
+			{
+				To:    bridgeAddr,
+				From:  fromAddr,
+				Err:   nil,
+				Input: []byte{0x38, 0xb8, 0xfb, 0xbb}, // getProxiedTokensManager
+			},
+			{
+				To:    bridgeAddr,
+				From:  fromAddr,
+				Err:   nil,
+				Input: claimAssetEtrogMethodID, // claimAsset
+			},
+			{
+				To:    bridgeAddr,
+				From:  fromAddr,
+				Err:   nil,
+				Input: claimMessageEtrogMethodID, // claimMessage
+			},
+		},
+	}
+
+	// Test that findCall continues searching and finds the first valid claim method
+	found, err := findCall(rootCall, bridgeAddr, func(call call) (bool, error) {
+		// Simulate tryDecodeClaimCalldata behavior
+		if len(call.Input) < 4 {
+			return false, fmt.Errorf("input too short")
+		}
+		methodID := call.Input[:4]
+
+		if bytes.Equal(methodID, claimAssetEtrogMethodID) || bytes.Equal(methodID, claimMessageEtrogMethodID) {
+			return true, nil // Found a valid claim method
+		}
+
+		// Unrecognized method ID - return false, nil to continue searching
+		return false, nil
+	}, logger)
+
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	require.Equal(t, bridgeAddr, found.To)
+	// Note: DFS traversal processes calls in reverse order (stack), so it finds claimMessage first
+	require.Equal(t, []byte(claimMessageEtrogMethodID), []byte(found.Input[:4])) // Should find the first claim method in DFS order
+}
+
+func TestFindCallWithOnlyUnrecognizedMethods(t *testing.T) {
+	bridgeAddr := common.HexToAddress("0x10")
+	fromAddr := common.HexToAddress("0x20")
+	logger := logger.WithFields("module", "test")
+
+	// Test case: Transaction with only unrecognized method calls
+	rootCall := call{
+		To:   common.HexToAddress("0x01"),
+		From: fromAddr,
+		Err:  nil,
+		Calls: []call{
+			{
+				To:    bridgeAddr,
+				From:  fromAddr,
+				Err:   nil,
+				Input: []byte{0x38, 0xb8, 0xfb, 0xbb}, // getProxiedTokensManager
+			},
+			{
+				To:    bridgeAddr,
+				From:  fromAddr,
+				Err:   nil,
+				Input: []byte{0xaa, 0xbb, 0xcc, 0xdd}, // unrecognized method
+			},
+		},
+	}
+
+	// Test that findCall returns not found when no valid claim methods exist
+	found, err := findCall(rootCall, bridgeAddr, func(call call) (bool, error) {
+		// Simulate tryDecodeClaimCalldata behavior
+		if len(call.Input) < 4 {
+			return false, fmt.Errorf("input too short")
+		}
+		methodID := call.Input[:4]
+
+		if bytes.Equal(methodID, claimAssetEtrogMethodID) || bytes.Equal(methodID, claimMessageEtrogMethodID) {
+			return true, nil
+		}
+
+		// Unrecognized method ID - return false, nil to continue searching
+		return false, nil
+	}, logger)
+
+	require.Error(t, err)
+	require.Nil(t, found)
+	require.Contains(t, err.Error(), "not found")
+}
+
 func TestTryDecodeClaimCalldata(t *testing.T) {
 	c := &Claim{}
 	fromAddr := common.HexToAddress("0x20")
+	logger := logger.WithFields("module", "test")
 
 	// Short input should return false, error
-	found, err := c.tryDecodeClaimCalldata(fromAddr, []byte{0x01, 0x02, 0x03})
+	found, err := c.tryDecodeClaimCalldata(fromAddr, []byte{0x01, 0x02, 0x03}, logger)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "input too short: 3 bytes")
 	require.False(t, found)
 
-	// Unknown method ID should return false, error
+	// Unknown method ID should return false, nil (not error anymore)
 	input := make([]byte, methodIDLength)
 	copy(input, []byte{0xaa, 0xbb, 0xcc, 0xdd})
-	found, err = c.tryDecodeClaimCalldata(fromAddr, input)
-	require.Error(t, err)
-	require.Contains(t, err.Error(), "unrecognized method ID: aabbccdd")
+	found, err = c.tryDecodeClaimCalldata(fromAddr, input, logger)
+	require.NoError(t, err) // Should not return error anymore
 	require.False(t, found)
+
+	// Test getProxiedTokensManager method ID (38b8fbbb)
+	getProxiedTokensManagerID := []byte{0x38, 0xb8, 0xfb, 0xbb}
+	found, err = c.tryDecodeClaimCalldata(fromAddr, getProxiedTokensManagerID, logger)
+	require.NoError(t, err) // Should not return error
+	require.False(t, found) // Should return false (not a claim method)
 
 	// Valid method ID (simulate claimAssetEtrogMethodID)
 	copy(input, claimAssetEtrogMethodID)
 	// The rest of the input is not valid ABI, so it will error on unpack
-	found, err = c.tryDecodeClaimCalldata(fromAddr, input)
+	found, err = c.tryDecodeClaimCalldata(fromAddr, input, logger)
 	require.Error(t, err)
 	require.False(t, found)
 }
