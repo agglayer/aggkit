@@ -46,7 +46,7 @@ RUN addgroup appgroup && \
 # Remove shell for production security (only if not INCLUDE_SHELL)
 RUN if [ "$INCLUDE_SHELL" != "true" ]; then \
       echo "Removing shell for production security" && \
-      rm -f /bin/sh /bin/bash /bin/ash; \
+      rm -f /bin/sh /bin/bash /bin/ash /bin/busybox; \
     fi
 
 # Set the working directory and user
