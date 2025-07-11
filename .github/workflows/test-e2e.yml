@@ -4,7 +4,7 @@ name: Bats E2E Tests
 on:
   push:
     branches:
-      - '**'
+      - "**"
   workflow_dispatch: {}
 
 concurrency:
@@ -65,7 +65,7 @@ jobs:
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@5795e76565b0ad4dd270725a76eba7bcefd535de
     secrets: inherit
     with:
-      kurtosis-cdk-ref: 76ea67fb491333f8a7d419307f3e397cfc055f80
+      kurtosis-cdk-ref: 626b291076a315b484232c92d3e0eddd78bad434
       agglayer-e2e-ref: 5795e76565b0ad4dd270725a76eba7bcefd535de
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
@@ -121,7 +121,7 @@ jobs:
 
       - name: Build Aggsender Find Imported Bridge
         run: make build-tools
-      
+
       - name: Upload Binary
         uses: actions/upload-artifact@v4
         with:
@@ -143,7 +143,7 @@ jobs:
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
-  
+
   check-multi-l2-networks-2-chains-tests-result:
     name: Check results for multi l2 networks (2 chains)
     needs:
