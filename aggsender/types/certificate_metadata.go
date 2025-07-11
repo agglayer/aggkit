@@ -12,6 +12,8 @@ const (
 	CertificateMetadataV0 = uint8(0) // Pre v1 metadata, only ToBlock is stored
 	CertificateMetadataV1 = uint8(1) // Post v1 metadata, FromBlock, Offset, CreatedAt are stored
 	CertificateMetadataV2 = uint8(2) // Same V1 + CertType
+
+	LatestCertificateMetadataVersion = CertificateMetadataV2
 )
 
 type CertificateMetadata struct {
@@ -35,6 +37,32 @@ type CertificateMetadata struct {
 	CertType uint8 // version >= V2
 }
 
+func (c *CertificateMetadata) String() string {
+	if c == nil {
+		return "CertificateMetadata is nil"
+	}
+	return fmt.Sprintf("Version: %d, FromBlock: %d, Offset: %d, CreatedAt: %d, CertType: %d",
+		c.Version, c.FromBlock, c.Offset, c.CreatedAt, c.CertType)
+}
+
+func (c *CertificateMetadata) BlockRange() (BlockRange, error) {
+	if c == nil {
+		return BlockRangeZero, fmt.Errorf("certificate metadata is nil")
+	}
+	switch c.Version {
+	case CertificateMetadataV0:
+		return BlockRangeZero, fmt.Errorf("cannot get block range from metadata version 0")
+	case CertificateMetadataV1, CertificateMetadataV2:
+		return NewBlockRange(c.FromBlock, c.FromBlock+uint64(c.Offset)), nil
+	default:
+		return BlockRangeZero, fmt.Errorf("unsupported certificate metadata version: %d", c.Version)
+	}
+}
+
+func (c *CertificateMetadata) CertificateType() CertificateType {
+	return CertificateType(c.CertType)
+}
+
 // NewCertificateMetadata returns a new CertificateMetadata from the given hash
 func NewCertificateMetadata(fromBlock uint64, offset uint32, createdAt uint32, certType uint8) *CertificateMetadata {
 	return &CertificateMetadata{
@@ -42,7 +70,7 @@ func NewCertificateMetadata(fromBlock uint64, offset uint32, createdAt uint32, c
 		Offset:    offset,
 		CreatedAt: createdAt,
 		CertType:  certType,
-		Version:   CertificateMetadataV2,
+		Version:   LatestCertificateMetadataVersion,
 	}
 }
 

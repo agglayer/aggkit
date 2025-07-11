@@ -115,7 +115,7 @@ WaitPeriodNextGER = "10s"
 						URL = "{{L2URL}}"
 						MultiGasProvider = false
 						# L1ChainID = 0 indicates it will be set at runtime
-						# This field should be populated with L2ChainID 
+						# This field should be populated with L2ChainID
 						L1ChainID = 0
 						HTTPHeaders = []
 
@@ -173,7 +173,7 @@ AggsenderPrivateKey = {{AggsenderPrivateKey}}
 BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
-DelayBeetweenRetries = "60s"
+DelayBetweenRetries = "30s"
 KeepCertificatesHistory = true
 # MaxSize of the certificate to 8Mb
 MaxCertSize = 8388608
@@ -186,7 +186,7 @@ RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-RequireNoFEPBlockGap = true
+RequireNoFEPBlockGap = false
 RequireOneBridgeInPPCertificate = false
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
@@ -195,13 +195,13 @@ StopOnFinishedSendingAllCertificates = false
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectTimeout = "5s"
-		RequestTimeout = "300s" 
+		RequestTimeout = "300s"
 		UseTLS = false
 		[AggSender.AgglayerClient.Retry]
 			InitialBackoff = "1s"
 			MaxBackoff = "10s"
 			BackoffMultiplier = 2.0
-			MaxAttempts = 16
+			MaxAttempts = 20
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"

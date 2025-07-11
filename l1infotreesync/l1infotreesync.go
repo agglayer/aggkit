@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -34,6 +35,20 @@ var (
 type L1InfoTreeSync struct {
 	processor *processor
 	driver    *sync.EVMDriver
+}
+
+func NewReadOnly(
+	ctx context.Context,
+	dbPath string,
+) (*L1InfoTreeSync, error) {
+	processor, err := newProcessor(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	return &L1InfoTreeSync{
+		processor: processor,
+		driver:    nil,
+	}, nil
 }
 
 // New creates a L1 Info tree syncer that syncs the L1 info tree
@@ -100,9 +115,12 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-
+	compatibilityChecker := compatibility.NewCompatibilityCheck(
+		requireStorageContentCompatibility,
+		downloader.RuntimeData,
+		processor)
 	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
-		downloadBufferSize, rh, requireStorageContentCompatibility)
+		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
 	}

@@ -99,8 +99,16 @@ packages:
   github.com/agglayer/aggkit/etherman:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
-      all: true
+      all: false
+    interfaces:
+      RollupManagerContract:
+      OpNodeClienter:
   github.com/agglayer/aggkit/aggsender/optimistic:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+  github.com/agglayer/aggkit/aggsender/validator/proto/v1:
+    config:
+      dir: "{{ .InterfaceDir }}/../../../mocks"
+    interfaces:
+      AggsenderValidatorClient:

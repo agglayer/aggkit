@@ -1,0 +1,17 @@
+{
+  "deployment_stages": {
+    "deploy_l2_contracts": true,
+    "deploy_cdk_bridge_infra": false,
+    "deploy_optimism_rollup": false
+  },
+  "args": {
+    "verbosity": "debug",
+    "aggkit_image": "aggkit:local",
+    "additional_services": [],
+    "erigon_strict_mode": false,
+    "enable_normalcy": true,
+    "binary_name": "aggkit",
+    "zkevm_contracts_image": "jhkimqd/agglayer-contracts:v11.0.0-rc.2-fork.12",
+    "aggkit_components": "aggsender,bridge"
+  }
+}

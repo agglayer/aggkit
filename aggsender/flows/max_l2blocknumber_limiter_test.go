@@ -55,9 +55,10 @@ func TestAdaptCertificateForFEP(t *testing.T) {
 			name:             "Retry certificate not allowed to resize",
 			maxL2BlockNumber: 150,
 			buildParams: &types.CertificateBuildParams{
-				FromBlock:  100,
-				ToBlock:    200,
-				RetryCount: 1,
+				FromBlock:           100,
+				ToBlock:             200,
+				RetryCount:          1,
+				LastSentCertificate: &types.CertificateHeader{},
 			},
 			expectedBuildParams: nil,
 			expectedError:       ErrMaxL2BlockNumberExceededInARetryCert,

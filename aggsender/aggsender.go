@@ -49,6 +49,8 @@ type AggSender struct {
 	flow        types.AggsenderFlow
 
 	l2OriginNetwork uint32
+
+	validator types.CertificateValidateAndSigner
 }
 
 // New returns a new AggSender instance
@@ -115,6 +117,10 @@ func New(
 	}, nil
 }
 
+func (a *AggSender) GetStorage() db.AggSenderStorage {
+	return a.storage
+}
+
 func (a *AggSender) Info() types.AggsenderInfo {
 	res := types.AggsenderInfo{
 		AggsenderStatus:          *a.status,
@@ -123,6 +129,15 @@ func (a *AggSender) Info() types.AggsenderInfo {
 		NetworkID:                a.l2OriginNetwork,
 	}
 	return res
+}
+
+func (a *AggSender) AttachValidator(validator types.CertificateValidateAndSigner) {
+	a.validator = validator
+	if validator == nil {
+		a.log.Infof("AggSender validator attached: nil")
+		return
+	}
+	a.log.Infof("AggSender validator attached: %s", a.validator.String())
 }
 
 // GetRPCServices returns the list of services that the RPC provider exposes
@@ -147,7 +162,7 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.status.Start(time.Now().UTC())
 
 	a.checkDBCompatibility(ctx)
-	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBeetweenRetries.Duration, a.status)
+	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
@@ -271,6 +286,16 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
+	if a.validator != nil {
+		a.log.Infof("certificate validation (%s): %s ....", a.validator.String(), certificate.Brief())
+		_, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
+		if err != nil {
+			a.log.Errorf("certificate validation failed: %s. Cert: %s", err.Error(), certificate.Brief())
+			return nil, fmt.Errorf("certificate validation failed: %w", err)
+		}
+		a.log.Infof("certificate validation passed: %s", certificate.Brief())
+	}
+
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return certificate, nil
@@ -339,7 +364,7 @@ func (a *AggSender) saveCertificateToStorage(ctx context.Context, cert types.Cer
 				return fmt.Errorf("error saving last sent certificate %s in db: %w", cert.String(), err)
 			} else {
 				retries++
-				time.Sleep(a.cfg.DelayBeetweenRetries.Duration)
+				time.Sleep(a.cfg.DelayBetweenRetries.Duration)
 			}
 		}
 	}

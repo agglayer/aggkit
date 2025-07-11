@@ -404,6 +404,7 @@ var (
 				OriginAddress:      common.HexToAddress("01"),
 				DestinationAddress: common.HexToAddress("01"),
 				Amount:             big.NewInt(1),
+				MainnetExitRoot:    common.Hash{},
 			}},
 			Event{TokenMapping: &TokenMapping{
 				BlockNum:            1,
@@ -475,6 +476,7 @@ var (
 				OriginAddress:      common.HexToAddress("04"),
 				DestinationAddress: common.HexToAddress("04"),
 				Amount:             big.NewInt(4),
+				MainnetExitRoot:    common.Hash{},
 			}},
 			Event{Claim: &Claim{
 				BlockNum:           5,
@@ -484,6 +486,7 @@ var (
 				OriginAddress:      common.HexToAddress("05"),
 				DestinationAddress: common.HexToAddress("05"),
 				Amount:             big.NewInt(5),
+				MainnetExitRoot:    common.Hash{},
 			}},
 			Event{LegacyTokenMigration: &LegacyTokenMigration{
 				BlockNum:            5,
@@ -720,6 +723,8 @@ func TestHashBridge(t *testing.T) {
 
 func TestDecodeGlobalIndex(t *testing.T) {
 	t.Parallel()
+	bigInt, ok := new(big.Int).SetString("3402823669209384634652192818391391666177", 10)
+	require.True(t, ok)
 
 	tests := []struct {
 		name                string
@@ -775,6 +780,14 @@ func TestDecodeGlobalIndex(t *testing.T) {
 			expectedMainnetFlag: false,
 			expectedRollupIndex: 1231,
 			expectedLocalIndex:  111234,
+			expectedErr:         nil,
+		},
+		{
+			name:                "Big string",
+			globalIndex:         bigInt,
+			expectedMainnetFlag: true,
+			expectedRollupIndex: 0,
+			expectedLocalIndex:  1,
 			expectedErr:         nil,
 		},
 	}
@@ -1181,12 +1194,12 @@ func TestGetClaimsPaged(t *testing.T) {
 	num2.SetString("18446744073709551618", 10)
 
 	claims := []*Claim{
-		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970")},
-		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4, FromAddress: common.HexToAddress("0xd34aaF64b29273B7D567FCFc40544c014EEe9970")},
+		{BlockNum: 1, GlobalIndex: num2, Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 2, GlobalIndex: big.NewInt(2), Amount: big.NewInt(1), OriginNetwork: 1, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 3, GlobalIndex: uint64Max, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 4, GlobalIndex: num1, Amount: big.NewInt(1), OriginNetwork: 2, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 5, GlobalIndex: big.NewInt(5), Amount: big.NewInt(1), OriginNetwork: 3, FromAddress: common.HexToAddress("0xE34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
+		{BlockNum: 6, GlobalIndex: uint256Max, Amount: big.NewInt(1), OriginNetwork: 4, FromAddress: common.HexToAddress("0xd34aaF64b29273B7D567FCFc40544c014EEe9970"), MainnetExitRoot: common.Hash{}},
 	}
 
 	path := path.Join(t.TempDir(), "bridgesyncGetClaimsPaged.sqlite")
@@ -2033,4 +2046,91 @@ func TestQueryBlockRangeOrdering(t *testing.T) {
 	require.Equal(t, uint64(2), bridges[2].BlockPos)
 	require.Equal(t, uint64(2), bridges[3].BlockNum)
 	require.Equal(t, uint64(0), bridges[3].BlockPos)
+}
+
+func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
+	tests := []struct {
+		name        string
+		current     BridgeSyncRuntimeData
+		storage     BridgeSyncRuntimeData
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name: "compatible versions",
+			current: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			expectError: false,
+		},
+		{
+			name: "incompatible versions - different DB versions",
+			current: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(2),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			expectError: true,
+			errorMsg:    "database schema version mismatch",
+		},
+		{
+			name: "incompatible versions - different chain IDs",
+			current: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:   2,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			expectError: true,
+			errorMsg:    "chain ID mismatch: 1 != 2",
+		},
+		{
+			name: "incompatible versions - different addresses",
+			current: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x123")},
+				DBVersion: intPtr(1),
+			},
+			storage: BridgeSyncRuntimeData{
+				ChainID:   1,
+				Addresses: []common.Address{common.HexToAddress("0x456")},
+				DBVersion: intPtr(1),
+			},
+			expectError: true,
+			errorMsg:    "addresses[0] mismatch: 0x0000000000000000000000000000000000000123 != 0x0000000000000000000000000000000000000456",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.current.IsCompatible(tt.storage)
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errorMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
+
+func intPtr(i int) *int {
+	return &i
 }

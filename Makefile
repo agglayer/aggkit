@@ -33,7 +33,10 @@ check-docker: ## Check if docker is installed
 # Check for Protoc
 .PHONY: check-protoc
 check-protoc: ## Check if protoc is installed
-	@which protoc > /dev/null || (echo "Error: Protoc is not installed" && exit 1)
+	@which protoc > /dev/null || (echo "Error: protoc is not installed" && exit 1) || (echo "Please install protoc from https://grpc.io/docs/protoc-installation/" && exit 1)
+	@which protoc-gen-go > /dev/null || (echo "Error: protoc-gen-go is not installed. Run: go install google.golang.org/protobuf/cmd/protoc-gen-go@latest" && exit 1)
+	@which protoc-gen-go-grpc > /dev/null || (echo "Error: protoc-gen-go-grpc is not installed. Run: go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest" && exit 1)
+	@which buf > /dev/null || (echo "Error: buf is not installed. Please install it from https://docs.buf.build/installation" && exit 1)
 
 # Check for Curl
 .PHONY: check-curl
@@ -59,6 +62,12 @@ lint: check-go check-golangci-lint
 build-docker: check-docker
 build-docker-nc: check-docker
 generate-swagger-docs: check-swag
+generate-code-from-proto: check-protoc
+
+.PHONY: generate-code-from-proto
+generate-code-from-proto: check-protoc ## Generate Go code from proto files in-place
+	buf dep update
+	buf generate
 
 .PHONY: build ## Builds the binaries locally into ./target
 build: build-aggkit build-tools

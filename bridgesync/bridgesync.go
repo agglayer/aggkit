@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
@@ -22,6 +23,11 @@ type BridgeSyncerType int
 const (
 	L1BridgeSyncer BridgeSyncerType = iota
 	L2BridgeSyncer
+
+	// CurrentDBVersion represents the current version of the bridge syncer's database schema.
+	// It is used to ensure the database is reset if an upgrade requires a full resync.
+	// Increment this value whenever the database schema changes in a way that is not backward-compatible.
+	CurrentDBVersion = 1
 )
 
 func (b BridgeSyncerType) String() string {
@@ -94,6 +100,23 @@ func NewL1(
 	)
 }
 
+func NewL2ReadOnly(
+	ctx context.Context,
+	dbPath string,
+	originNetwork uint32,
+) (*BridgeSync, error) {
+	syncerID := L2BridgeSyncer
+	logger := log.WithFields("module", syncerID.String())
+	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger)
+	if err != nil {
+		return nil, err
+	}
+	return &BridgeSync{
+		processor:     processor,
+		originNetwork: originNetwork,
+	}, nil
+}
+
 // NewL2 creates a bridge syncer that synchronizes the local exit tree
 func NewL2(
 	ctx context.Context,
@@ -160,6 +183,7 @@ func newBridgeSync(
 			bridge.String(), err)
 		return nil, err
 	}
+
 	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger)
 	if err != nil {
 		return nil, err
@@ -189,7 +213,7 @@ func newBridgeSync(
 		RetryAfterErrorPeriod:      retryAfterErrorPeriod,
 	}
 
-	appender, err := buildAppender(ethClient, bridge, syncFullClaims, bridgeContractV2)
+	appender, err := buildAppender(ethClient, bridge, syncFullClaims, bridgeContractV2, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -207,9 +231,24 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
+	compatibilityChecker := compatibility.NewCompatibilityCheck(
+		requireStorageContentCompatibility,
+		func(ctx context.Context) (BridgeSyncRuntimeData, error) {
+			tmp, err := downloader.RuntimeData(ctx)
+			if err != nil {
+				return BridgeSyncRuntimeData{}, fmt.Errorf("failed to get runtime data: %w", err)
+			}
+			ver := CurrentDBVersion
+			return BridgeSyncRuntimeData{
+				ChainID:   tmp.ChainID,
+				Addresses: tmp.Addresses,
+				DBVersion: &ver,
+			}, nil
+		},
+		processor)
 
 	driver, err := sync.NewEVMDriver(rd, processor, downloader, syncerID.String(),
-		downloadBufferSize, rh, requireStorageContentCompatibility)
+		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
 	}

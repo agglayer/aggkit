@@ -74,8 +74,6 @@ type processorInterface interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	ProcessBlock(ctx context.Context, block Block) error
 	Reorg(ctx context.Context, firstReorgedBlock uint64) error
-	// CheckCompatibilityData is the interface to set / retrieve the compatibility data to storage
-	compatibility.CompatibilityDataStorager[RuntimeData]
 }
 
 type ReorgDetector interface {
@@ -92,17 +90,13 @@ func NewEVMDriver(
 	reorgDetectorID string,
 	downloadBufferSize int,
 	rh *RetryHandler,
-	requireStorageContentCompatibility bool,
+	compatibilityChecker compatibility.CompatibilityChecker,
 ) (*EVMDriver, error) {
 	logger := log.WithFields("syncer", reorgDetectorID)
 	reorgSub, err := reorgDetector.Subscribe(reorgDetectorID)
 	if err != nil {
 		return nil, err
 	}
-	compatibilityChecker := compatibility.NewCompatibilityCheck(
-		requireStorageContentCompatibility,
-		downloader.RuntimeData,
-		processor)
 
 	return &EVMDriver{
 		reorgDetector:        reorgDetector,

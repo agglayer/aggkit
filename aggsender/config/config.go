@@ -31,9 +31,9 @@ type Config struct {
 	// MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
 	// 0 is infinite
 	MaxRetriesStoreCertificate int `mapstructure:"MaxRetriesStoreCertificate"`
-	// DelayBeetweenRetries is the delay between retries:
+	// DelayBetweenRetries is the delay between retries:
 	//  is used on store Certificate and also in initial check
-	DelayBeetweenRetries types.Duration `mapstructure:"DelayBeetweenRetries"`
+	DelayBetweenRetries types.Duration `mapstructure:"DelayBetweenRetries"`
 	// KeepCertificatesHistory is a flag to keep the certificates history on storage
 	KeepCertificatesHistory bool `mapstructure:"KeepCertificatesHistory"`
 	// MaxCertSize is the maximum size of the certificate (the emitted certificate cannot be bigger that this size)
