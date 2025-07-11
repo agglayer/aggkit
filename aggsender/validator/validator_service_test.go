@@ -11,7 +11,6 @@ import (
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/stretchr/testify/require"
-	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 func TestValidatorService(t *testing.T) {
@@ -52,5 +51,5 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 
 	resp, err := svc.ValidateCertificate(context.Background(), req)
 	require.NoError(t, err)
-	require.IsType(t, &emptypb.Empty{}, resp)
+	require.IsType(t, &v1.ValidateCertificateResponse{}, resp)
 }

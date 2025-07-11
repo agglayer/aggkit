@@ -19,6 +19,7 @@ import (
 var (
 	errUndefinedAggchainData = errors.New("undefined aggchain data parameter")
 	errUnknownAggchainData   = errors.New("unknown aggchain data type")
+	errNilCertificate        = errors.New("nil certificate provided for conversion to proto")
 )
 
 type AgglayerGRPCClient struct {
@@ -63,41 +64,9 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 // It returns the certificate ID
 func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 	certificate *types.Certificate) (common.Hash, error) {
-	aggchainDataProto, err := convertAggchainData(certificate.AggchainData)
+	protoCert, err := ConvertCertToProtoCertificate(certificate)
 	if err != nil {
 		return common.Hash{}, err
-	}
-
-	protoCert := &v1nodetypes.Certificate{
-		NetworkId:           certificate.NetworkID,
-		Height:              certificate.Height,
-		L1InfoTreeLeafCount: &certificate.L1InfoTreeLeafCount,
-		PrevLocalExitRoot: &v1types.FixedBytes32{
-			Value: certificate.PrevLocalExitRoot.Bytes(),
-		},
-		NewLocalExitRoot: &v1types.FixedBytes32{
-			Value: certificate.NewLocalExitRoot.Bytes(),
-		},
-		Metadata: &v1types.FixedBytes32{
-			Value: certificate.Metadata.Bytes(),
-		},
-		CustomChainData:     certificate.CustomChainData,
-		AggchainData:        aggchainDataProto,
-		BridgeExits:         make([]*v1types.BridgeExit, 0, len(certificate.BridgeExits)),
-		ImportedBridgeExits: make([]*v1types.ImportedBridgeExit, 0, len(certificate.ImportedBridgeExits)),
-	}
-
-	for _, be := range certificate.BridgeExits {
-		protoCert.BridgeExits = append(protoCert.BridgeExits, convertToProtoBridgeExit(be))
-	}
-
-	for _, ibe := range certificate.ImportedBridgeExits {
-		protoImportedBridgeExit, err := convertToProtoImportedBridgeExit(ibe)
-		if err != nil {
-			return common.Hash{}, err
-		}
-
-		protoCert.ImportedBridgeExits = append(protoCert.ImportedBridgeExits, protoImportedBridgeExit)
 	}
 
 	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout.Duration)
@@ -174,6 +143,54 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 	}
 
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
+}
+
+// ConvertCertToProtoCertificate converts a types.Certificate to a grpc v1nodetypes.Certificate
+func ConvertCertToProtoCertificate(
+	certificate *types.Certificate,
+) (*v1nodetypes.Certificate, error) {
+	if certificate == nil {
+		return nil, errNilCertificate
+	}
+
+	aggchainDataProto, err := convertAggchainData(certificate.AggchainData)
+	if err != nil {
+		return nil, err
+	}
+
+	protoCert := &v1nodetypes.Certificate{
+		NetworkId:           certificate.NetworkID,
+		Height:              certificate.Height,
+		L1InfoTreeLeafCount: &certificate.L1InfoTreeLeafCount,
+		PrevLocalExitRoot: &v1types.FixedBytes32{
+			Value: certificate.PrevLocalExitRoot.Bytes(),
+		},
+		NewLocalExitRoot: &v1types.FixedBytes32{
+			Value: certificate.NewLocalExitRoot.Bytes(),
+		},
+		Metadata: &v1types.FixedBytes32{
+			Value: certificate.Metadata.Bytes(),
+		},
+		CustomChainData:     certificate.CustomChainData,
+		AggchainData:        aggchainDataProto,
+		BridgeExits:         make([]*v1types.BridgeExit, 0, len(certificate.BridgeExits)),
+		ImportedBridgeExits: make([]*v1types.ImportedBridgeExit, 0, len(certificate.ImportedBridgeExits)),
+	}
+
+	for _, be := range certificate.BridgeExits {
+		protoCert.BridgeExits = append(protoCert.BridgeExits, convertToProtoBridgeExit(be))
+	}
+
+	for _, ibe := range certificate.ImportedBridgeExits {
+		protoImportedBridgeExit, err := convertToProtoImportedBridgeExit(ibe)
+		if err != nil {
+			return nil, err
+		}
+
+		protoCert.ImportedBridgeExits = append(protoCert.ImportedBridgeExits, protoImportedBridgeExit)
+	}
+
+	return protoCert, nil
 }
 
 // convertAggchainData converts the aggchain data to a proto aggchain data

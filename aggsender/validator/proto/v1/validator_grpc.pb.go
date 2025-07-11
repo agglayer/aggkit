@@ -11,7 +11,6 @@ import (
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
 	status "google.golang.org/grpc/status"
-	emptypb "google.golang.org/protobuf/types/known/emptypb"
 )
 
 // This is a compile-time assertion to ensure that this generated file
@@ -30,7 +29,7 @@ const (
 // Service for validating new certificates
 type AggsenderValidatorClient interface {
 	// Method to validate a new certificate
-	ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*ValidateCertificateResponse, error)
 }
 
 type aggsenderValidatorClient struct {
@@ -41,9 +40,9 @@ func NewAggsenderValidatorClient(cc grpc.ClientConnInterface) AggsenderValidator
 	return &aggsenderValidatorClient{cc}
 }
 
-func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
+func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*ValidateCertificateResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(emptypb.Empty)
+	out := new(ValidateCertificateResponse)
 	err := c.cc.Invoke(ctx, AggsenderValidator_ValidateCertificate_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
@@ -58,7 +57,7 @@ func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *
 // Service for validating new certificates
 type AggsenderValidatorServer interface {
 	// Method to validate a new certificate
-	ValidateCertificate(context.Context, *ValidateCertificateRequest) (*emptypb.Empty, error)
+	ValidateCertificate(context.Context, *ValidateCertificateRequest) (*ValidateCertificateResponse, error)
 	mustEmbedUnimplementedAggsenderValidatorServer()
 }
 
@@ -66,7 +65,7 @@ type AggsenderValidatorServer interface {
 type UnimplementedAggsenderValidatorServer struct {
 }
 
-func (UnimplementedAggsenderValidatorServer) ValidateCertificate(context.Context, *ValidateCertificateRequest) (*emptypb.Empty, error) {
+func (UnimplementedAggsenderValidatorServer) ValidateCertificate(context.Context, *ValidateCertificateRequest) (*ValidateCertificateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateCertificate not implemented")
 }
 func (UnimplementedAggsenderValidatorServer) mustEmbedUnimplementedAggsenderValidatorServer() {}
