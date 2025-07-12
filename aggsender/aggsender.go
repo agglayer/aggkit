@@ -8,7 +8,7 @@ import (
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
-	zkevm "github.com/agglayer/aggkit"
+	aggkit "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/config"
@@ -124,7 +124,7 @@ func (a *AggSender) GetStorage() db.AggSenderStorage {
 func (a *AggSender) Info() types.AggsenderInfo {
 	res := types.AggsenderInfo{
 		AggsenderStatus:          *a.status,
-		Version:                  zkevm.GetVersion(),
+		Version:                  aggkit.GetVersion(),
 		EpochNotifierDescription: a.epochNotifier.String(),
 		NetworkID:                a.l2OriginNetwork,
 	}
