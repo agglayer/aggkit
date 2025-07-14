@@ -351,10 +351,12 @@ func createAggoracle(
 		sender, err = chaingersender.NewEVMChainGERSender(
 			logger,
 			cfg.AggOracle.EVMSender.GlobalExitRootL2Addr,
+			cfg.AggOracle.EVMSender.AggOracleManagerAddr,
 			l2Client,
 			ethTxManager,
 			cfg.AggOracle.EVMSender.GasOffset,
 			cfg.AggOracle.EVMSender.WaitPeriodMonitorTx.Duration,
+			cfg.AggOracle.EnableAggOracleQuorum,
 		)
 		if err != nil {
 			log.Fatal(err)
@@ -371,6 +373,7 @@ func createAggoracle(
 		l1Client,
 		l1InfoTreeSyncer,
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
+		cfg.AggOracle.EnableAggOracleQuorum,
 	)
 	if err != nil {
 		logger.Fatal(err)

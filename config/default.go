@@ -33,7 +33,7 @@ genesisBlockNumber = 0
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
-
+	AggOracleManagerAddr = "0x0000000000000000000000000000000000000000"
 `
 
 // This doesnt below to config, but are the vars used
@@ -90,8 +90,10 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 TargetChainType = "EVM"
 URLRPCL1 = "{{L1URL}}"
 WaitPeriodNextGER = "10s"
+EnableAggOracleQuorum = false
 	[AggOracle.EVMSender]
 		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+		AggOracleManagerAddr = "{{L2Config.AggOracleManagerAddr}}"
 		GasOffset = 0
 		WaitPeriodMonitorTx = "1s"
 		[AggOracle.EVMSender.EthTxManager]

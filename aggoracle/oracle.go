@@ -21,14 +21,16 @@ type L1InfoTreer interface {
 type ChainSender interface {
 	IsGERInjected(ger common.Hash) (bool, error)
 	InjectGER(ctx context.Context, ger common.Hash) error
+	ProposeGER(ctx context.Context, ger common.Hash) error
 }
 
 type AggOracle struct {
-	logger            *log.Logger
-	waitPeriodNextGER time.Duration
-	l1Client          ethereum.ChainReader
-	l1Info            L1InfoTreer
-	chainSender       ChainSender
+	logger                *log.Logger
+	waitPeriodNextGER     time.Duration
+	l1Client              ethereum.ChainReader
+	l1Info                L1InfoTreer
+	chainSender           ChainSender
+	enableAggOracleQuorum bool
 }
 
 // New creates a new AggOracle instance that will monitor the L1 info tree for new Global Exit Roots (GERs)
@@ -38,13 +40,15 @@ func New(
 	l1Client ethereum.ChainReader,
 	l1InfoTreeSyncer L1InfoTreer,
 	waitPeriodNextGER time.Duration,
+	enableAggOracleQuorum bool,
 ) (*AggOracle, error) {
 	return &AggOracle{
-		logger:            logger,
-		chainSender:       chainSender,
-		l1Client:          l1Client,
-		l1Info:            l1InfoTreeSyncer,
-		waitPeriodNextGER: waitPeriodNextGER,
+		logger:                logger,
+		chainSender:           chainSender,
+		l1Client:              l1Client,
+		l1Info:                l1InfoTreeSyncer,
+		waitPeriodNextGER:     waitPeriodNextGER,
+		enableAggOracleQuorum: enableAggOracleQuorum,
 	}, nil
 }
 
@@ -89,8 +93,15 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 	}
 
 	go func() {
-		if err := a.injectGER(ctx, latestGER); err != nil {
-			a.logger.Error(err)
+		// if enableAggOracleQuorum is true, we need to propose the GER to the AggOracleManager contract
+		if a.enableAggOracleQuorum {
+			if err := a.chainSender.ProposeGER(ctx, latestGER); err != nil {
+				a.logger.Error(err)
+			}
+		} else {
+			if err := a.injectGER(ctx, latestGER); err != nil {
+				a.logger.Error(err)
+			}
 		}
 	}()
 
