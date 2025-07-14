@@ -19,11 +19,21 @@ func TestValidate(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name: "RequireValidatorCall ",
+			name: "RequireValidatorCall not PP mode",
+			config: Config{
+				Mode:                 aggsendertypes.AggchainProofMode.String(),
+				RequireValidatorCall: true,
+				ValidatorClient: &grpc.ClientConfig{
+					URL:               "http://localhost:8080",
+					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				},
+			},
+			expectedErr: "RequireValidatorCall can only be true in PessimisticProof mode",
 		},
 		{
 			name: "RequireValidatorCall is true with ValidatorClient URL set",
 			config: Config{
+				Mode:                 aggsendertypes.PessimisticProofMode.String(),
 				RequireValidatorCall: true,
 				ValidatorClient: &grpc.ClientConfig{
 					URL: "http://localhost:8080",
@@ -37,6 +47,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "RequireValidatorCall is true with ValidatorClient URL not set",
 			config: Config{
+				Mode:                 aggsendertypes.PessimisticProofMode.String(),
 				RequireValidatorCall: true,
 				ValidatorClient: &grpc.ClientConfig{
 					URL: "",
