@@ -39,7 +39,7 @@ const (
 
 type bridgeWithMocks struct {
 	bridge       *BridgeService
-	l1InfoTree   *mocks.L1InfoTreer
+	l1InfoTree   *mocks.L1InfoTreeSyncer
 	injectedGERs *mocks.LastGERer
 	bridgeL1     *mocks.Bridger
 	bridgeL2     *mocks.Bridger
