@@ -25,12 +25,12 @@ type ChainSender interface {
 }
 
 type AggOracle struct {
-	logger                *log.Logger
-	waitPeriodNextGER     time.Duration
-	l1Client              ethereum.ChainReader
-	l1Info                L1InfoTreer
-	chainSender           ChainSender
-	enableAggOracleQuorum bool
+	logger            *log.Logger
+	waitPeriodNextGER time.Duration
+	l1Client          ethereum.ChainReader
+	l1Info            L1InfoTreer
+	chainSender       ChainSender
+	enableQuorum      bool
 }
 
 // New creates a new AggOracle instance that will monitor the L1 info tree for new Global Exit Roots (GERs)
@@ -43,12 +43,12 @@ func New(
 	enableAggOracleQuorum bool,
 ) (*AggOracle, error) {
 	return &AggOracle{
-		logger:                logger,
-		chainSender:           chainSender,
-		l1Client:              l1Client,
-		l1Info:                l1InfoTreeSyncer,
-		waitPeriodNextGER:     waitPeriodNextGER,
-		enableAggOracleQuorum: enableAggOracleQuorum,
+		logger:            logger,
+		chainSender:       chainSender,
+		l1Client:          l1Client,
+		l1Info:            l1InfoTreeSyncer,
+		waitPeriodNextGER: waitPeriodNextGER,
+		enableQuorum:      enableAggOracleQuorum,
 	}, nil
 }
 
@@ -93,29 +93,19 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 	}
 
 	go func() {
-		// if enableAggOracleQuorum is true, we need to propose the GER to the AggOracleManager contract
-		if a.enableAggOracleQuorum {
-			if err := a.chainSender.ProposeGER(ctx, latestGER); err != nil {
-				a.logger.Error(err)
-			}
+		// Submit GER based on mode
+		var err error
+		if a.enableQuorum {
+			err = a.chainSender.ProposeGER(ctx, latestGER)
 		} else {
-			if err := a.injectGER(ctx, latestGER); err != nil {
-				a.logger.Error(err)
-			}
+			err = a.chainSender.InjectGER(ctx, latestGER)
+		}
+
+		if err != nil {
+			a.logger.Error(err)
 		}
 	}()
 
-	return nil
-}
-
-// injectGER injects the provided Global Exit Root (GER) into the chain
-func (a *AggOracle) injectGER(ctx context.Context, ger common.Hash) error {
-	a.logger.Debugf("injecting GER (%s)", ger.Hex())
-	if err := a.chainSender.InjectGER(ctx, ger); err != nil {
-		return fmt.Errorf("failed to inject GER (%s): %w", ger.Hex(), err)
-	}
-
-	a.logger.Infof("GER (%s) injected successfully", ger.Hex())
 	return nil
 }
 

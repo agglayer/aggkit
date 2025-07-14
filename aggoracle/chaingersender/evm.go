@@ -18,7 +18,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const insertGERFuncName = "insertGlobalExitRoot"
+const (
+	insertGERFuncName  = "insertGlobalExitRoot"
+	proposeGERFuncName = "proposeGlobalExitRoot"
+)
 
 type EVMConfig struct {
 	GlobalExitRootL2Addr common.Address      `mapstructure:"GlobalExitRootL2"`
@@ -28,16 +31,30 @@ type EVMConfig struct {
 	EthTxManager         ethtxmanager.Config `mapstructure:"EthTxManager"`
 }
 
+// GERMode represents the mode of GER submission
+type GERMode string
+
+const (
+	DirectInjectionMode GERMode = "direct_injection"
+	QuorumProposalMode  GERMode = "quorum_proposal"
+)
+
 type EVMChainGERSender struct {
 	logger *log.Logger
+	mode   GERMode
 
+	// L2 GER Manager (always needed for checking if GER is injected)
 	l2GERManager     types.L2GERManagerContract
 	l2GERManagerAddr common.Address
 	l2GERManagerAbi  *abi.ABI
 
+	// AggOracle Manager (only needed for quorum proposal mode)
 	aggOracleManager     types.AggOracleManagerContract
 	aggOracleManagerAddr common.Address
 	aggOracleManagerAbi  *abi.ABI
+
+	// Client for contract bindings
+	l2Client aggkittypes.BaseEthereumClienter
 
 	ethTxMan            types.EthTxManager
 	gasOffset           uint64
@@ -54,6 +71,13 @@ func NewEVMChainGERSender(
 	waitPeriodMonitorTx time.Duration,
 	enableAggOracleQuorum bool,
 ) (*EVMChainGERSender, error) {
+	// Determine mode based on configuration
+	mode := DirectInjectionMode
+	if enableAggOracleQuorum {
+		mode = QuorumProposalMode
+	}
+
+	// Always initialize L2 GER Manager (needed for checking if GER is injected)
 	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERManagerAddr, l2Client)
 	if err != nil {
@@ -65,46 +89,157 @@ func NewEVMChainGERSender(
 		return nil, fmt.Errorf("failed to retrieve GER L2 manager ABI: %w", err)
 	}
 
-	// Initialize AggOracleManager fields only when quorum is enabled
-	var aggOracleManager types.AggOracleManagerContract
-	var aggOracleManagerAbi *abi.ABI
-
-	if enableAggOracleQuorum {
-		// Create AggOracleManager contract binding
-		aggOracleManager, err = aggoraclemanager.NewAggoraclemanager(aggOracleManagerAddr, l2Client)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create binding for AggOracleManager (SC address: %s): %w", aggOracleManagerAddr, err)
-		}
-
-		// Get the ABI for AggOracleManager
-		aggOracleManagerAbi, err = aggoraclemanager.AggoraclemanagerMetaData.GetAbi()
-		if err != nil {
-			return nil, fmt.Errorf("failed to retrieve AggOracleManager ABI: %w", err)
-		}
-
-		// Validate GER proposer when quorum is enabled
-		if err := validateGERProposer(ethTxMan.From(), aggOracleManager); err != nil {
-			return nil, err
-		}
-	} else {
-		// Validate GER sender when quorum is disabled
-		if err := validateGERSender(ethTxMan.From(), l2GERManager); err != nil {
-			return nil, err
-		}
-	}
-
-	return &EVMChainGERSender{
+	sender := &EVMChainGERSender{
 		logger:               logger,
+		mode:                 mode,
 		l2GERManager:         l2GERManager,
 		l2GERManagerAddr:     l2GERManagerAddr,
 		l2GERManagerAbi:      l2GERAbi,
-		aggOracleManager:     aggOracleManager,
 		aggOracleManagerAddr: aggOracleManagerAddr,
-		aggOracleManagerAbi:  aggOracleManagerAbi,
+		l2Client:             l2Client,
 		ethTxMan:             ethTxMan,
 		gasOffset:            gasOffset,
 		waitPeriodMonitorTx:  waitPeriodMonitorTx,
-	}, nil
+	}
+
+	// Initialize mode-specific components
+	if err := sender.initializeMode(); err != nil {
+		return nil, err
+	}
+
+	logger.Infof("EVMChainGERSender initialized in %s mode", mode)
+	return sender, nil
+}
+
+// initializeMode initializes mode-specific components and validations
+func (c *EVMChainGERSender) initializeMode() error {
+	switch c.mode {
+	case DirectInjectionMode:
+		return c.initializeDirectInjectionMode()
+	case QuorumProposalMode:
+		return c.initializeQuorumProposalMode()
+	default:
+		return fmt.Errorf("unknown GER mode: %s", c.mode)
+	}
+}
+
+func (c *EVMChainGERSender) initializeDirectInjectionMode() error {
+	if err := validateGERSender(c.ethTxMan.From(), c.l2GERManager); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *EVMChainGERSender) initializeQuorumProposalMode() error {
+	// Create AggOracleManager contract binding
+	aggOracleManager, err := aggoraclemanager.NewAggoraclemanager(c.aggOracleManagerAddr, c.l2Client)
+	if err != nil {
+		return fmt.Errorf("failed to create binding for AggOracleManager (SC address: %s): %w", c.aggOracleManagerAddr, err)
+	}
+
+	// Get the ABI for AggOracleManager
+	aggOracleManagerAbi, err := aggoraclemanager.AggoraclemanagerMetaData.GetAbi()
+	if err != nil {
+		return fmt.Errorf("failed to retrieve AggOracleManager ABI: %w", err)
+	}
+
+	c.aggOracleManager = aggOracleManager
+	c.aggOracleManagerAbi = aggOracleManagerAbi
+
+	// Validate GER proposer
+	if err := validateGERProposer(c.ethTxMan.From(), aggOracleManager); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// IsGERInjected checks if the provided global exit root is already injected into the
+// L2 GER manager contract by querying the map
+func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
+	gerIndex, err := c.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if global exit root is injected %s: %w", ger, err)
+	}
+
+	return gerIndex.Cmp(common.Big0) == 1, nil
+}
+
+// InjectGER injects the provided global exit root into the L2 GER manager contract
+func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) error {
+	if c.mode != DirectInjectionMode {
+		return fmt.Errorf("InjectGER is only available in direct injection mode, current mode: %s", c.mode)
+	}
+
+	return c.submitTransaction(ctx, &c.l2GERManagerAddr, c.l2GERManagerAbi, insertGERFuncName, ger, "inject")
+}
+
+// ProposeGER proposes the provided global exit root to the AggOracleManager contract
+func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) error {
+	if c.mode != QuorumProposalMode {
+		return fmt.Errorf("ProposeGER is only available in quorum proposal mode, current mode: %s", c.mode)
+	}
+
+	return c.submitTransaction(ctx, &c.aggOracleManagerAddr, c.aggOracleManagerAbi, proposeGERFuncName, ger, "propose")
+}
+
+// submitTransaction is a generic method to submit and monitor transactions
+func (c *EVMChainGERSender) submitTransaction(
+	ctx context.Context,
+	targetAddr *common.Address,
+	abi *abi.ABI,
+	funcName string,
+	ger common.Hash,
+	action string,
+) error {
+	ticker := time.NewTicker(c.waitPeriodMonitorTx)
+	defer ticker.Stop()
+
+	// Pack the function call
+	txInput, err := abi.Pack(funcName, ger)
+	if err != nil {
+		return fmt.Errorf("failed to pack %s call: %w", funcName, err)
+	}
+
+	// Add the transaction to the transaction manager
+	id, err := c.ethTxMan.Add(ctx, targetAddr, common.Big0, txInput, c.gasOffset, nil)
+	if err != nil {
+		return fmt.Errorf("failed to add %s GER transaction: %w", action, err)
+	}
+
+	c.logger.Infof("%s GER transaction submitted with ID: %s", action, id.Hex())
+
+	// Monitor the transaction status
+	for {
+		select {
+		case <-ctx.Done():
+			c.logger.Infof("context cancelled handled in %s for tx %s", action, id.Hex())
+			return nil
+
+		case <-ticker.C:
+			c.logger.Debugf("waiting for %s GER tx %s to be mined", action, id.Hex())
+			res, err := c.ethTxMan.Result(ctx, id)
+			if err != nil {
+				c.logger.Errorf("failed to check the %s GER transaction %s status: %s", action, id.Hex(), err)
+				return err
+			}
+
+			switch res.Status {
+			case ethtxtypes.MonitoredTxStatusCreated,
+				ethtxtypes.MonitoredTxStatusSent:
+				continue
+			case ethtxtypes.MonitoredTxStatusFailed:
+				return fmt.Errorf("%s GER tx %s failed", action, id.Hex())
+			case ethtxtypes.MonitoredTxStatusMined,
+				ethtxtypes.MonitoredTxStatusSafe,
+				ethtxtypes.MonitoredTxStatusFinalized:
+				c.logger.Debugf("%s GER tx %s was successfully mined at block %d", action, id.Hex(), res.MinedAtBlockNumber)
+				return nil
+			default:
+				c.logger.Error("unexpected tx status:", res.Status)
+			}
+		}
+	}
 }
 
 // validateGERSender validates whether the provided GER sender is allowed to send and remove GERs
@@ -133,122 +268,4 @@ func validateGERProposer(gerProposer common.Address, aggOracleManagerSC types.Ag
 	}
 
 	return nil
-}
-
-// IsGERInjected checks if the provided global exit root is already injected into the
-// L2 GER manager contract by querying the map
-func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
-	gerIndex, err := c.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)
-	if err != nil {
-		return false, fmt.Errorf("failed to check if global exit root is injected %s: %w", ger, err)
-	}
-
-	return gerIndex.Cmp(common.Big0) == 1, nil
-}
-
-// InjectGER injects the provided global exit root into the L2 GER manager contract
-func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) error {
-	ticker := time.NewTicker(c.waitPeriodMonitorTx)
-	defer ticker.Stop()
-
-	updateGERTxInput, err := c.l2GERManagerAbi.Pack(insertGERFuncName, ger)
-	if err != nil {
-		return err
-	}
-
-	id, err := c.ethTxMan.Add(ctx, &c.l2GERManagerAddr, common.Big0, updateGERTxInput, c.gasOffset, nil)
-	if err != nil {
-		return err
-	}
-
-	for {
-		select {
-		case <-ctx.Done():
-			c.logger.Infof("context cancelled handled in InjectGER for tx %s", id.Hex())
-			return nil
-
-		case <-ticker.C:
-			c.logger.Debugf("waiting for tx %s to be mined", id.Hex())
-			res, err := c.ethTxMan.Result(ctx, id)
-			if err != nil {
-				c.logger.Errorf("failed to check the transaction %s status: %s", id.Hex(), err)
-				return err
-			}
-
-			switch res.Status {
-			case ethtxtypes.MonitoredTxStatusCreated,
-				ethtxtypes.MonitoredTxStatusSent:
-				continue
-			case ethtxtypes.MonitoredTxStatusFailed:
-				return fmt.Errorf("inject GER tx %s failed", id.Hex())
-			case ethtxtypes.MonitoredTxStatusMined,
-				ethtxtypes.MonitoredTxStatusSafe,
-				ethtxtypes.MonitoredTxStatusFinalized:
-				c.logger.Debugf("inject GER tx %s was successfully mined at block %d", id.Hex(), res.MinedAtBlockNumber)
-
-				return nil
-			default:
-				c.logger.Error("unexpected tx status:", res.Status)
-			}
-
-		}
-
-	}
-}
-
-// ProposeGER proposes the provided global exit root to the AggOracleManager contract
-func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) error {
-	// Check if AggOracleManager is initialized (only when quorum is enabled)
-	if c.aggOracleManager == nil || c.aggOracleManagerAbi == nil {
-		return fmt.Errorf("AggOracleManager not initialized - enableAggOracleQuorum must be true to use ProposeGER")
-	}
-
-	ticker := time.NewTicker(c.waitPeriodMonitorTx)
-	defer ticker.Stop()
-
-	// Pack the proposeGlobalExitRoot function call
-	proposeGERTxInput, err := c.aggOracleManagerAbi.Pack("proposeGlobalExitRoot", ger)
-	if err != nil {
-		return fmt.Errorf("failed to pack proposeGlobalExitRoot call: %w", err)
-	}
-
-	// Add the transaction to the transaction manager
-	id, err := c.ethTxMan.Add(ctx, &c.aggOracleManagerAddr, common.Big0, proposeGERTxInput, c.gasOffset, nil)
-	if err != nil {
-		return fmt.Errorf("failed to add propose GER transaction: %w", err)
-	}
-
-	c.logger.Infof("propose GER transaction submitted with ID: %s", id.Hex())
-
-	// Monitor the transaction status
-	for {
-		select {
-		case <-ctx.Done():
-			c.logger.Infof("context cancelled handled in ProposeGER for tx %s", id.Hex())
-			return nil
-
-		case <-ticker.C:
-			c.logger.Debugf("waiting for propose GER tx %s to be mined", id.Hex())
-			res, err := c.ethTxMan.Result(ctx, id)
-			if err != nil {
-				c.logger.Errorf("failed to check the propose GER transaction %s status: %s", id.Hex(), err)
-				return err
-			}
-
-			switch res.Status {
-			case ethtxtypes.MonitoredTxStatusCreated,
-				ethtxtypes.MonitoredTxStatusSent:
-				continue
-			case ethtxtypes.MonitoredTxStatusFailed:
-				return fmt.Errorf("propose GER tx %s failed", id.Hex())
-			case ethtxtypes.MonitoredTxStatusMined,
-				ethtxtypes.MonitoredTxStatusSafe,
-				ethtxtypes.MonitoredTxStatusFinalized:
-				c.logger.Debugf("propose GER tx %s was successfully mined at block %d", id.Hex(), res.MinedAtBlockNumber)
-				return nil
-			default:
-				c.logger.Error("unexpected tx status:", res.Status)
-			}
-		}
-	}
 }
