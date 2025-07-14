@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
-	"github.com/agglayer/aggkit/agglayer/types"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
@@ -90,7 +89,7 @@ var exampleTestAgglayerCert = &agglayertypes.Certificate{
 				LeafIndex:   2,
 			},
 			ClaimData: &agglayertypes.ClaimFromRollup{
-				ProofLeafLER: &types.MerkleProof{
+				ProofLeafLER: &agglayertypes.MerkleProof{
 					Root:  common.HexToHash("0x0112"),
 					Proof: tree.EmptyProof,
 				},

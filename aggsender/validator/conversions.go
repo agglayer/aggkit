@@ -144,7 +144,8 @@ func grpcBridgeExitToAgglayer(bridgeExit *v1types.BridgeExit) (*agglayertypes.Br
 		return nil, fmt.Errorf("grpcBridgeExitToAgglayer. error converting grpc leaf type to agglayer: %w", err)
 	}
 	if bridgeExit.TokenInfo == nil || bridgeExit.TokenInfo.OriginTokenAddress == nil {
-		return nil, fmt.Errorf("grpcBridgeExitToAgglayer. bridge exit has nil TokenInfo, OriginTokenAddress or OriginNetwork. %w", ErrNilCertificate)
+		return nil, fmt.Errorf("grpcBridgeExitToAgglayer. bridge exit has nil TokenInfo, "+
+			"OriginTokenAddress or OriginNetwork. %w", ErrNilCertificate)
 	}
 
 	if bridgeExit.DestAddress == nil {
@@ -197,7 +198,8 @@ func grpcImportedBridgeExitsToAgglayer(
 	for i, exit := range importedBridgeExits {
 		agglayerImportedBridgeExit, err := grpcImportedBridgeExitToAgglayer(exit)
 		if err != nil {
-			return nil, fmt.Errorf("grpcImportedBridgeExitsToAgglayer. error converting grpc imported bridge exit at index %d: %w", i, err)
+			return nil, fmt.Errorf("grpcImportedBridgeExitsToAgglayer. error converting grpc "+
+				"imported bridge exit at index %d: %w", i, err)
 		}
 		exits[i] = agglayerImportedBridgeExit
 	}
@@ -216,7 +218,8 @@ func grpcImportedBridgeExitToAgglayer(
 	}
 
 	if importedBridgeExit.GlobalIndex == nil {
-		return nil, fmt.Errorf("grpcImportedBridgeExitToAgglayer. imported bridge exit has nil GlobalIndex or Hash. %w", ErrNilCertificate)
+		return nil, fmt.Errorf("grpcImportedBridgeExitToAgglayer. imported bridge exit has nil GlobalIndex or Hash. %w",
+			ErrNilCertificate)
 	}
 	globalIndexBigInt := new(big.Int).SetBytes(importedBridgeExit.GlobalIndex.Value)
 	mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(globalIndexBigInt)
@@ -281,7 +284,6 @@ func grpcClaimDataToAgglayer(claim interface{}) (agglayertypes.Claim, error) {
 	default:
 		return nil, fmt.Errorf("unknown claim type: %T", v)
 	}
-
 }
 
 func grpcMerkleProofsToAgglayer(proofs ...*v1types.MerkleProof) ([]*agglayertypes.MerkleProof, error) {
@@ -328,7 +330,8 @@ func grpcL1LeafToAgglayer(l1Leaf *v1types.L1InfoTreeLeafWithContext) (*agglayert
 	var inner *agglayertypes.L1InfoTreeLeafInner
 	if l1Leaf.Inner != nil {
 		if l1Leaf.Inner.GlobalExitRoot == nil || l1Leaf.Inner.BlockHash == nil {
-			return nil, fmt.Errorf("grpcL1LeafToAgglayer. l1 leaf inner has nil GlobalExitRoot or BlockHash. %w", ErrNilCertificate)
+			return nil, fmt.Errorf("grpcL1LeafToAgglayer. l1 leaf inner has nil GlobalExitRoot or BlockHash. %w",
+				ErrNilCertificate)
 		}
 		inner = &agglayertypes.L1InfoTreeLeafInner{
 			GlobalExitRoot: common.BytesToHash(l1Leaf.Inner.GlobalExitRoot.Value),
@@ -343,5 +346,4 @@ func grpcL1LeafToAgglayer(l1Leaf *v1types.L1InfoTreeLeafWithContext) (*agglayert
 		MainnetExitRoot: common.BytesToHash(l1Leaf.Mer.Value),
 		Inner:           inner,
 	}, nil
-
 }

@@ -2,7 +2,6 @@ package validator
 
 import (
 	"github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/grpc"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
@@ -15,7 +14,7 @@ type Config struct {
 	// Signer is the key which is used to sign certificates
 	Signer signertypes.SignerConfig `mapstructure:"Signer"`
 	// ServerConfig contains the configuration for the gRPC server.
-	ServerConfig grpc.ServerConfig `mapstructure:"ServerConfig"`
+	ServerConfig aggkitgrpc.ServerConfig `mapstructure:"ServerConfig"`
 	// MaxCertSize is the maximum size of the certificate (the emitted certificate cannot be bigger that this size)
 	// 0 is infinite
 	MaxCertSize uint `mapstructure:"MaxCertSize"`

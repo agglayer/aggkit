@@ -8,8 +8,12 @@ import (
 	"testing"
 
 	nodev1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
+	typesv1 "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
+	"github.com/agglayer/aggkit/aggsender/mocks"
+	validatormocks "github.com/agglayer/aggkit/aggsender/validator/mocks"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
 
@@ -42,14 +46,21 @@ func TestValidatorService(t *testing.T) {
 }
 
 func TestValidatorService_ValidateCertificate(t *testing.T) {
-	svc := &ValidatorService{}
+	mockValidator := mocks.NewCertificateValidator(t)
+	mockAgglayerClient := validatormocks.NewAgglayerClientInterface(t)
+	svc := NewValidatorService(mockValidator, mockAgglayerClient)
+	l1InfoTreeLeafCount := uint32(123)
 	req := &v1.ValidateCertificateRequest{
 		Certificate: &nodev1.Certificate{
-			Height: 42,
+			Height:              42,
+			NewLocalExitRoot:    &typesv1.FixedBytes32{},
+			PrevLocalExitRoot:   &typesv1.FixedBytes32{},
+			Metadata:            &typesv1.FixedBytes32{},
+			L1InfoTreeLeafCount: &l1InfoTreeLeafCount,
 		},
 	}
-
-	resp, err := svc.ValidateCertificate(context.Background(), req)
+	mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+	resp, err := svc.ValidateCertificate(t.Context(), req)
 	require.NoError(t, err)
 	require.IsType(t, &v1.ValidateCertificateResponse{}, resp)
 }

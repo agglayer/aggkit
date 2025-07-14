@@ -8,14 +8,19 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 )
 
+const (
+	u32Size = 4
+	u64Size = 8
+)
+
 func HashCertificateToSign(cert *agglayertypes.Certificate) common.Hash {
 	globalIndexHashes := make([][]byte, len(cert.ImportedBridgeExits))
 	for i, importedBridgeExit := range cert.ImportedBridgeExits {
 		globalIndexHashes[i] = importedBridgeExit.GlobalIndex.Hash().Bytes()
 	}
-	networkID := make([]byte, 4)
+	networkID := make([]byte, u32Size)
 	binary.BigEndian.PutUint32(networkID, cert.NetworkID)
-	height := make([]byte, 8)
+	height := make([]byte, u64Size)
 	binary.BigEndian.PutUint64(height, cert.Height)
 	return crypto.Keccak256Hash(
 		cert.NewLocalExitRoot.Bytes(),

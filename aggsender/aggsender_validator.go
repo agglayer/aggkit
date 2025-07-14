@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/agglayer/aggkit/agglayer"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/aggsender/validator"
@@ -32,7 +31,7 @@ func NewAggsenderValidator(ctx context.Context,
 	cfg validator.Config,
 	flowPP validator.FlowInterface,
 	l1InfoTreeDataQuerier validator.L1InfoTreeRootByLeafQuerier,
-	aggLayerClient agglayer.AgglayerClientInterface) (*AggsenderValidator, error) {
+	aggLayerClient validator.AgglayerClientInterface) (*AggsenderValidator, error) {
 	validatorCert := validator.NewAggsenderValidator(
 		logger, flowPP, l1InfoTreeDataQuerier)
 	grpcServer, err := grpc.NewServer(cfg.ServerConfig)

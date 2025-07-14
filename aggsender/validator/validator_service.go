@@ -47,13 +47,14 @@ func (s *ValidatorService) Status(ctx context.Context, in *emptypb.Empty) (*v1.S
 func (s *ValidatorService) ValidateCertificate(
 	ctx context.Context, req *v1.ValidateCertificateRequest) (*v1.ValidateCertificateResponse, error) {
 	// TODO: implement actual logic here
-	//log.Infof("Received certificate with height: %d", req.Certificate.Height)
+	if req != nil && req.Certificate != nil {
+		log.Infof("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
+	}
 	params := VerifyIncommingRequests{}
 	if req.PreviousCertificateId != nil && req.PreviousCertificateId.Value != nil {
-
-		previousCertificateId := common.BytesToHash(req.PreviousCertificateId.Value.Value)
-		log.Debugf("Previous certificate ID: %s", previousCertificateId.Hex())
-		certHeader, err := s.agglayerClient.GetCertificateHeader(ctx, previousCertificateId)
+		previousCertificateID := common.BytesToHash(req.PreviousCertificateId.Value.Value)
+		log.Debugf("Previous certificate ID: %s", previousCertificateID.Hex())
+		certHeader, err := s.agglayerClient.GetCertificateHeader(ctx, previousCertificateID)
 		if err != nil {
 			log.Errorf("Error getting certificate header: %v", err)
 			return nil, grpc.GRPCError{
@@ -62,7 +63,7 @@ func (s *ValidatorService) ValidateCertificate(
 			}
 		}
 		if certHeader == nil {
-			log.Errorf("Certificate header not found for ID: %s", previousCertificateId.Hex())
+			log.Errorf("Certificate header not found for ID: %s", previousCertificateID.Hex())
 			return nil, grpc.GRPCError{
 				Code:    codes.NotFound,
 				Message: "Certificate header not found in agglayer",
@@ -70,8 +71,16 @@ func (s *ValidatorService) ValidateCertificate(
 		}
 		params.PreviousCertificate = certHeader
 	}
-	agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
-	err := s.validator.ValidateCertificate(ctx, params)
+	cert, err := agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
+	if err != nil {
+		log.Errorf("Error converting certificate: %v", err)
+		return nil, grpc.GRPCError{
+			Code:    codes.InvalidArgument,
+			Message: "Invalid certificate format: " + err.Error(),
+		}
+	}
+	params.Certificate = cert
+	err = s.validator.ValidateCertificate(ctx, params)
 	if err != nil {
 		log.Errorf("Certificate validation failed: %v", err)
 		return nil, grpc.GRPCError{

@@ -6,18 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
 	"testing"
-	"time"
 
 	v1nodetypes "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	node "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/v1"
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	"github.com/agglayer/aggkit/agglayer/types"
-	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
-	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
@@ -25,19 +21,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-func TestAgglayerExploratory(t *testing.T) {
-	client, err := NewAgglayerGRPCClient(
-		&aggkitgrpc.ClientConfig{
-			URL: "grpc-agglayer-dev.polygon.technology:443",
-			MinConnectTimeout: configtypes.Duration{
-				time.Second * 60,
-			},
-		},
-	)
-	require.NoError(t, err)
-	_, err = client.GetEpochConfiguration(t.Context())
-	require.NoError(t, err)
-}
 func TestGetEpochConfiguration(t *testing.T) {
 	t.Parallel()
 
@@ -383,110 +366,7 @@ func TestSendCertificate(t *testing.T) {
 			cfg:               aggkitgrpc.DefaultConfig(),
 		}
 
-		certificate := &types.Certificate{
-			AggchainData: &types.AggchainDataProof{
-				Proof:          []byte{0x01},
-				AggchainParams: common.HexToHash("0x010203"),
-			},
-			NetworkID:           1,
-			Height:              100,
-			PrevLocalExitRoot:   common.HexToHash("0x010201"),
-			NewLocalExitRoot:    common.HexToHash("0x010202"),
-			Metadata:            common.HexToHash("0x011201"),
-			CustomChainData:     []byte{0x1, 0x2, 0x3},
-			L1InfoTreeLeafCount: 11,
-			BridgeExits: []*types.BridgeExit{
-				{
-					LeafType: types.LeafTypeAsset,
-					TokenInfo: &types.TokenInfo{
-						OriginNetwork:      2,
-						OriginTokenAddress: common.HexToAddress("0x010203"),
-					},
-					DestinationNetwork: 1,
-					DestinationAddress: common.HexToAddress("0x010204"),
-					Amount:             big.NewInt(100),
-				},
-			},
-			ImportedBridgeExits: []*types.ImportedBridgeExit{
-				{
-					BridgeExit: &types.BridgeExit{
-						LeafType: types.LeafTypeAsset,
-						TokenInfo: &types.TokenInfo{
-							OriginNetwork:      1,
-							OriginTokenAddress: common.HexToAddress("0x01111"),
-						},
-						DestinationNetwork: 2,
-						DestinationAddress: common.HexToAddress("0x011112"),
-						Amount:             big.NewInt(101),
-					},
-					GlobalIndex: &types.GlobalIndex{
-						MainnetFlag: true,
-						RollupIndex: 0,
-						LeafIndex:   1,
-					},
-					ClaimData: &types.ClaimFromMainnnet{
-						ProofLeafMER: &types.MerkleProof{
-							Root:  common.HexToHash("0x010203"),
-							Proof: tree.EmptyProof,
-						},
-						ProofGERToL1Root: &types.MerkleProof{
-							Root:  common.HexToHash("0x0102011"),
-							Proof: tree.EmptyProof,
-						},
-						L1Leaf: &types.L1InfoTreeLeaf{
-							L1InfoTreeIndex: 1,
-							RollupExitRoot:  common.HexToHash("0x0102012"),
-							MainnetExitRoot: common.HexToHash("0x0102013"),
-							Inner: &types.L1InfoTreeLeafInner{
-								GlobalExitRoot: common.HexToHash("0x0102014"),
-								BlockHash:      common.HexToHash("0x0102015"),
-								Timestamp:      1234567890,
-							},
-						},
-					},
-				},
-				{
-					BridgeExit: &types.BridgeExit{
-						LeafType: types.LeafTypeMessage,
-						TokenInfo: &types.TokenInfo{
-							OriginNetwork:      11,
-							OriginTokenAddress: common.HexToAddress("0x011"),
-						},
-						DestinationNetwork: 22,
-						DestinationAddress: common.HexToAddress("0x012"),
-					},
-					GlobalIndex: &types.GlobalIndex{
-						MainnetFlag: false,
-						RollupIndex: 11,
-						LeafIndex:   2,
-					},
-					ClaimData: &types.ClaimFromRollup{
-						ProofLeafLER: &types.MerkleProof{
-							Root:  common.HexToHash("0x0112"),
-							Proof: tree.EmptyProof,
-						},
-						ProofGERToL1Root: &types.MerkleProof{
-							Root:  common.HexToHash("0x0122"),
-							Proof: tree.EmptyProof,
-						},
-						ProofLERToRER: &types.MerkleProof{
-							Root:  common.HexToHash("0x0123"),
-							Proof: tree.EmptyProof,
-						},
-						L1Leaf: &types.L1InfoTreeLeaf{
-							L1InfoTreeIndex: 2,
-							RollupExitRoot:  common.HexToHash("0x11"),
-							MainnetExitRoot: common.HexToHash("0x12"),
-							Inner: &types.L1InfoTreeLeafInner{
-								GlobalExitRoot: common.HexToHash("0x13"),
-								BlockHash:      common.HexToHash("0x14"),
-								Timestamp:      122222,
-							},
-						},
-					},
-				},
-			},
-		}
+		certificate := exampleTestAgglayerCert
 
 		expectedResponse := &node.SubmitCertificateResponse{
 			CertificateId: &v1nodetypes.CertificateId{
