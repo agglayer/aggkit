@@ -7,7 +7,6 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -57,8 +56,6 @@ func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.Ba
 
 	return startL2Block.Uint64(), nil
 }
-
-var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 
 // AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {

@@ -210,3 +210,107 @@ func TestReorg(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint32(2), index)
 }
+
+func TestGetInjectedGERsForRange(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	makeGERs := func() []*GlobalExitRootInfo {
+		return []*GlobalExitRootInfo{
+			{GlobalExitRoot: common.HexToHash("0x1234")},
+			{GlobalExitRoot: common.HexToHash("0x5678")},
+			{GlobalExitRoot: common.HexToHash("0x9876")},
+		}
+	}
+
+	setupProcessorWithGERs := func(t *testing.T, blocks []sync.Block) *processor {
+		t.Helper()
+
+		testDir := path.Join(t.TempDir(), "test.sqlite")
+		processor, err := newProcessor(testDir)
+		require.NoError(t, err)
+
+		var l1InfoTreeIndex uint32
+		for _, b := range blocks {
+			for _, evt := range b.Events {
+				if gerEvent, ok := evt.(*Event); ok && gerEvent.GERInfo != nil {
+					gerEvent.GERInfo.L1InfoTreeIndex = l1InfoTreeIndex
+					gerEvent.GERInfo.BlockNum = b.Num
+					l1InfoTreeIndex++
+				}
+			}
+			require.NoError(t, processor.ProcessBlock(t.Context(), b))
+		}
+		return processor
+	}
+
+	t.Run("invalid block range", func(t *testing.T) {
+		t.Parallel()
+
+		gerList := makeGERs()
+		allBlocks := []sync.Block{
+			{Num: 3, Events: []any{&Event{GERInfo: gerList[0]}}},
+			{Num: 4, Events: []any{&Event{GERInfo: gerList[1]}}},
+			{Num: 5, Events: []any{&Event{GERInfo: gerList[2]}}},
+			{Num: 6, Events: []any{&Event{GEREvent: &GEREvent{
+				GlobalExitRoot: gerList[2].GlobalExitRoot,
+				IsRemove:       true,
+			}}}},
+		}
+
+		processor := setupProcessorWithGERs(t, allBlocks)
+		injectedGERsMap, err := processor.GetInjectedGERsForRange(ctx, 10, 1)
+		require.ErrorContains(t, err, "invalid block range: fromBlock(10) > toBlock(1)")
+		require.Empty(t, injectedGERsMap)
+	})
+
+	t.Run("returns only non-removed GERs", func(t *testing.T) {
+		t.Parallel()
+
+		gerList := makeGERs()
+		allBlocks := []sync.Block{
+			{Num: 3, Events: []any{&Event{GERInfo: gerList[0]}}},
+			{Num: 4, Events: []any{&Event{GERInfo: gerList[1]}}},
+			{Num: 5, Events: []any{&Event{GERInfo: gerList[2]}}},
+			{Num: 6, Events: []any{&Event{GEREvent: &GEREvent{
+				GlobalExitRoot: gerList[2].GlobalExitRoot,
+				IsRemove:       true,
+			}}}},
+		}
+
+		processor := setupProcessorWithGERs(t, allBlocks)
+		injectedGERsMap, err := processor.GetInjectedGERsForRange(ctx, 3, 5)
+		require.NoError(t, err)
+
+		expectedGERs := gerList[:2] // The 3rd was removed
+		require.Len(t, injectedGERsMap, len(expectedGERs))
+
+		for _, expected := range expectedGERs {
+			actual, ok := injectedGERsMap[expected.GlobalExitRoot]
+			require.True(t, ok, "GER %s not found", expected.GlobalExitRoot.Hex())
+			require.Equal(t, expected.GlobalExitRoot, actual.GlobalExitRoot)
+		}
+	})
+
+	t.Run("includes removed GER if block range excludes removal", func(t *testing.T) {
+		t.Parallel()
+
+		gerList := makeGERs()
+		blocksExcludingRemoval := []sync.Block{
+			{Num: 3, Events: []any{&Event{GERInfo: gerList[0]}}},
+			{Num: 4, Events: []any{&Event{GERInfo: gerList[1]}}},
+			{Num: 5, Events: []any{&Event{GERInfo: gerList[2]}}},
+		}
+
+		processor := setupProcessorWithGERs(t, blocksExcludingRemoval)
+		injectedGERsMap, err := processor.GetInjectedGERsForRange(ctx, 3, 5)
+		require.NoError(t, err)
+
+		require.Len(t, injectedGERsMap, 3)
+		for _, expected := range gerList {
+			_, ok := injectedGERsMap[expected.GlobalExitRoot]
+			require.True(t, ok, "GER %s not found", expected.GlobalExitRoot.Hex())
+		}
+	})
+}

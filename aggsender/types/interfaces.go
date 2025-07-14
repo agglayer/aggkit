@@ -7,9 +7,9 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/lastgersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -91,9 +91,8 @@ type BridgeQuerier interface {
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
-	GetInjectedGERsForRange(
-		ctx context.Context,
-		fromBlock, toBlock uint64) (map[common.Hash]chaingerreader.InjectedGER, error)
+	GetInjectedGERsForRange(ctx context.Context,
+		fromBlock, toBlock uint64) (map[common.Hash]lastgersync.GlobalExitRootInfo, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement

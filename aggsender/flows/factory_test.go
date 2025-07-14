@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
@@ -94,12 +93,11 @@ func TestNewFlow(t *testing.T) {
 			expectedError: "error aggchainFEPContract",
 		},
 	}
-	funcNewEVMChainGERReader = func(_ common.Address, _ aggkittypes.BaseEthereumClienter) (*chaingerreader.EVMChainGERReader, error) {
-		return &chaingerreader.EVMChainGERReader{}, nil
-	}
+
 	funcGetL2StartBlock = func(_ common.Address, _ aggkittypes.BaseEthereumClienter) (uint64, error) {
 		return 100, nil
 	}
+
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -129,6 +127,7 @@ func TestNewFlow(t *testing.T) {
 				mockL1InfoTreeSyncer,
 				mockL2BridgeSyncer,
 				mockRollupDataQuerier,
+				nil,
 			)
 
 			if tc.expectedError != "" {

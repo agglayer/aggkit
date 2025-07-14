@@ -20,7 +20,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -59,12 +58,13 @@ func New(
 	logger *log.Logger,
 	cfg config.Config,
 	aggLayerClient agglayer.AgglayerClientInterface,
-	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	epochNotifier types.EpochNotifier,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier types.RollupDataQuerier) (*AggSender, error) {
+	rollupDataQuerier types.RollupDataQuerier,
+	gerReader types.ChainGERReader) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
@@ -86,6 +86,7 @@ func New(
 		l1InfoTreeSyncer,
 		l2Syncer,
 		rollupDataQuerier,
+		gerReader,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)

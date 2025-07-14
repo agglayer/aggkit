@@ -98,7 +98,7 @@ func TestAggSenderStart(t *testing.T) {
 		aggLayerMock,
 		nil,
 		bridgeL2SyncerMock,
-		epochNotifierMock, nil, nil, rollupQuerierMock)
+		epochNotifierMock, nil, nil, rollupQuerierMock, nil)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 
@@ -446,7 +446,7 @@ func TestNewAggSender(t *testing.T) {
 			Method: signertypes.MethodNone,
 		},
 		Mode: "PessimisticProof",
-	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil)
+	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")

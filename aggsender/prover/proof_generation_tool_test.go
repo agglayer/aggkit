@@ -154,6 +154,6 @@ func TestNewAggchainProofGenerationTool(t *testing.T) {
 	mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
-		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL2Syncer, nil, mockL1Client, mockL2Client)
+		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, mockL2Syncer, nil, nil)
 	require.Error(t, err)
 }

@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/query"
@@ -67,10 +66,12 @@ func NewAggchainProofGenerationTool(
 	ctx context.Context,
 	logger *log.Logger,
 	cfg Config,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l2Syncer types.L2BridgeSyncer,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	l1Client aggkittypes.BaseEthereumClienter,
-	l2Client aggkittypes.BaseEthereumClienter) (*AggchainProofGenerationTool, error) {
+	chainGERReader types.ChainGERReader,
+) (*AggchainProofGenerationTool, error) {
 	if err := cfg.AggkitProverClient.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
 	}
@@ -78,11 +79,6 @@ func NewAggchainProofGenerationTool(
 	aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
-	}
-
-	chainGERReader, err := chaingerreader.NewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
-	if err != nil {
-		return nil, fmt.Errorf("error creating chain GER reader: %w", err)
 	}
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)

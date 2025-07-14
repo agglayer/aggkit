@@ -64,8 +64,8 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 		}
 
 		proofs[ger] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
-			BlockNumber: injectedGER.BlockNumber,
-			BlockIndex:  injectedGER.BlockIndex,
+			BlockNumber: injectedGER.BlockNum,
+			BlockIndex:  uint(injectedGER.BlockPosition),
 			ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
 				ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
 				L1Leaf: &agglayertypes.L1InfoTreeLeaf{

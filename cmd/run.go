@@ -24,6 +24,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/aggsender/query"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggsendervalidator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -121,6 +122,7 @@ func start(cliCtx *cli.Context) error {
 				l2BridgeSync,
 				l2Client,
 				rollupDataQuerier,
+				lastGERSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -136,6 +138,7 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				lastGERSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -151,6 +154,7 @@ func start(cliCtx *cli.Context) error {
 				l1Client,
 				l2Client,
 				rollupDataQuerier,
+				lastGERSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -189,17 +193,19 @@ func createAggchainProofGen(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-	l2Syncer *bridgesync.BridgeSync) (*prover.AggchainProofGenerationTool, error) {
+	l2Syncer *bridgesync.BridgeSync,
+	chainGERReader aggsendertypes.ChainGERReader) (*prover.AggchainProofGenerationTool, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGCHAINPROOFGEN)
 
 	aggchainProofGen, err := prover.NewAggchainProofGenerationTool(
 		ctx,
 		logger,
 		cfg,
-		l2Syncer,
-		l1InfoTreeSync,
 		l1Client,
 		l2Client,
+		l2Syncer,
+		l1InfoTreeSync,
+		chainGERReader,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofGenerationTool: %w", err)
@@ -214,7 +220,8 @@ func createAggSenderValidator(ctx context.Context,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
+	rollupDataQuerier *etherman.RollupDataQuerier,
+	gerReader aggsendertypes.ChainGERReader) (*aggsender.AggsenderValidator, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
 	storageConfig := aggsenderdb.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
@@ -235,6 +242,7 @@ func createAggSenderValidator(ctx context.Context,
 		l1InfoTreeSync,
 		l2Syncer,
 		rollupDataQuerier,
+		gerReader,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender flow: %w", err)
@@ -251,7 +259,8 @@ func createAggSender(
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggSender, error) {
+	rollupDataQuerier *etherman.RollupDataQuerier,
+	gerReader aggsendertypes.ChainGERReader) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	if err := cfg.AgglayerClient.Validate(); err != nil {
@@ -289,14 +298,14 @@ func createAggSender(
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, gerReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
 	// TODO: Remove this, just for testing
-	if cfg.Mode == "PessimisticProof" {
+	if cfg.Mode == string(aggsendertypes.PessimisticProofMode) {
 		validator, err := createAggSenderValidator(ctx, cfg, l1InfoTreeSync,
-			l2Syncer, l1EthClient, l2Client, rollupDataQuerier)
+			l2Syncer, l1EthClient, l2Client, rollupDataQuerier, gerReader)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create AggSender validator: %w", err)
 		}

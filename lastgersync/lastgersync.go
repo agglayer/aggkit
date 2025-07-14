@@ -120,6 +120,14 @@ func (s *LastGERSync) GetFirstGERAfterL1InfoTreeIndex(
 	return s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, atOrAfterL1InfoTreeIndex)
 }
 
+// GetInjectedGERsForRange retrieves all injected global exit roots within a specified block range.
+// It returns a map where the keys are the global exit root hashes and the values are the
+// corresponding GlobalExitRootInfo containing the L1 info tree index, global exit root and block number.
+func (s *LastGERSync) GetInjectedGERsForRange(ctx context.Context,
+	fromBlock, toBlock uint64) (map[common.Hash]GlobalExitRootInfo, error) {
+	return s.processor.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
+}
+
 // GetLastProcessedBlock returns the last processed block number
 func (s *LastGERSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return s.processor.GetLastProcessedBlock(ctx)
