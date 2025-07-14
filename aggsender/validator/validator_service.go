@@ -5,6 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
+	agglayergrpc "github.com/agglayer/aggkit/agglayer/grpc"
 	"github.com/agglayer/aggkit/aggsender/types"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
@@ -69,7 +70,7 @@ func (s *ValidatorService) ValidateCertificate(
 		}
 		params.PreviousCertificate = certHeader
 	}
-
+	agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
 	err := s.validator.ValidateCertificate(ctx, params)
 	if err != nil {
 		log.Errorf("Certificate validation failed: %v", err)
@@ -78,5 +79,5 @@ func (s *ValidatorService) ValidateCertificate(
 			Message: "Certificate validation failed: " + err.Error(),
 		}
 	}
-	return &emptypb.Empty{}, nil
+	return &v1.ValidateCertificateResponse{}, nil
 }

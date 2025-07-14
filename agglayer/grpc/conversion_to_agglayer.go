@@ -1,4 +1,6 @@
-package validator
+package grpc
+
+// This file contains the function to convert from grpc to agglayer types.
 
 import (
 	"errors"
@@ -8,7 +10,6 @@ import (
 	v1nodetypes "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -20,86 +21,32 @@ var (
 	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
 
-// AgglayerCertificateHeaderToAggsender converts an agglayer CertificateHeader to an aggsender CertificateHeader
-func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader) (*types.CertificateHeader, error) {
-	if cert == nil {
-		return nil, nil
-	}
-	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(cert.Metadata)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing cert metadata. Err: %w", err)
-	}
-	blockRange, err := metadataUnmarshal.BlockRange()
-	if err != nil {
-		return nil, fmt.Errorf("cant get blockRange from certificate metadata. Err: %w", err)
-	}
-
-	return &types.CertificateHeader{
-		Height:                  cert.Height,
-		RetryCount:              0, // TODO: ??
-		CertificateID:           cert.CertificateID,
-		PreviousLocalExitRoot:   cert.PreviousLocalExitRoot,
-		NewLocalExitRoot:        cert.NewLocalExitRoot,
-		Status:                  cert.Status,
-		FromBlock:               blockRange.FromBlock,
-		ToBlock:                 blockRange.ToBlock,
-		CreatedAt:               0,
-		UpdatedAt:               0,
-		FinalizedL1InfoTreeRoot: nil,
-		CertType:                metadataUnmarshal.CertificateType(),
-		CertSource:              types.CertificateSourceAggLayer,
-	}, nil
-}
-
-// AggsenderCertificateHeaderToAgglayer converts an aggsender CertificateHeader to an agglayer CertificateHeader
-func AggsenderCertificateHeaderToAgglayer(cert *types.CertificateHeader,
-	networkID uint32) *agglayertypes.CertificateHeader {
-	if cert == nil {
-		return nil
-	}
-	metadata := types.NewCertificateMetadata(
-		cert.FromBlock,
-		uint32(cert.ToBlock-cert.FromBlock),
-		cert.CreatedAt,
-		cert.CertType.ToInt(),
-	)
-	return &agglayertypes.CertificateHeader{
-		NetworkID:             networkID,
-		Height:                cert.Height,
-		CertificateID:         cert.CertificateID,
-		PreviousLocalExitRoot: cert.PreviousLocalExitRoot,
-		NewLocalExitRoot:      cert.NewLocalExitRoot,
-		Status:                cert.Status,
-		Metadata:              metadata.ToHash(),
-	}
-}
-
-// GrpcCertificateToAgglayer Convert a certificate from the gRPC format to the agglayer format
-func GrpcCertificateToAgglayer(cert *v1nodetypes.Certificate) (*agglayertypes.Certificate, error) {
+// ConvertProtoCertToAgglayer Convert a certificate from the gRPC (PROTO) format to the agglayer format
+func ConvertProtoCertToAgglayer(cert *v1nodetypes.Certificate) (*agglayertypes.Certificate, error) {
 	if cert == nil {
 		return nil, ErrNilCertificate
 	}
 
 	if cert.PrevLocalExitRoot == nil || cert.NewLocalExitRoot == nil || cert.Metadata == nil {
-		return nil, fmt.Errorf("certificate has nil fields: PrevLocalExitRoot, NewLocalExitRoot, or Metadata. %w",
+		return nil, fmt.Errorf("convertProtoCertToAgglayer. Certificate has nil fields: PrevLocalExitRoot, NewLocalExitRoot, or Metadata. %w",
 			ErrNilCertificate)
 	}
 
 	if cert.L1InfoTreeLeafCount == nil {
-		return nil, fmt.Errorf("certificate has nil L1InfoTreeLeafCount. %w", ErrNilCertificate)
+		return nil, fmt.Errorf("convertProtoCertToAgglayer.certificate has nil L1InfoTreeLeafCount. %w", ErrNilCertificate)
 	}
 
 	if cert.AggchainData != nil {
-		return nil, fmt.Errorf("not supported AggchainData in incomming certificate. %w", ErrNotImplemented)
+		return nil, fmt.Errorf("convertProtoCertToAgglayer. not supported AggchainData in incomming certificate. %w", ErrNotImplemented)
 	}
 
 	bridgeExits, err := grpcBridgeExitsToAgglayer(cert.BridgeExits)
 	if err != nil {
-		return nil, fmt.Errorf("error converting grpc bridge exits: %w", err)
+		return nil, fmt.Errorf("convertProtoCertToAgglayer. error converting grpc bridge exits: %w", err)
 	}
 	importedBridgeExits, err := grpcImportedBridgeExitsToAgglayer(cert.ImportedBridgeExits)
 	if err != nil {
-		return nil, fmt.Errorf("error converting grpc imported bridge exits: %w", err)
+		return nil, fmt.Errorf("convertProtoCertToAgglayer. error converting grpc imported bridge exits: %w", err)
 	}
 
 	agglayerCert := &agglayertypes.Certificate{

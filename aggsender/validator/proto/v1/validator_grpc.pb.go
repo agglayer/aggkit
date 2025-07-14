@@ -25,7 +25,7 @@ const _ = grpc.SupportPackageIsVersion7
 type AggsenderValidatorClient interface {
 	// Method to validate a new certificate
 	Status(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatusResponse, error)
-	ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error)
+	ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*ValidateCertificateResponse, error)
 }
 
 type aggsenderValidatorClient struct {
@@ -45,8 +45,8 @@ func (c *aggsenderValidatorClient) Status(ctx context.Context, in *emptypb.Empty
 	return out, nil
 }
 
-func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*emptypb.Empty, error) {
-	out := new(emptypb.Empty)
+func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*ValidateCertificateResponse, error) {
+	out := new(ValidateCertificateResponse)
 	err := c.cc.Invoke(ctx, "/aggkit.aggsender.validator.v1.AggsenderValidator/ValidateCertificate", in, out, opts...)
 	if err != nil {
 		return nil, err
@@ -60,7 +60,7 @@ func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *
 type AggsenderValidatorServer interface {
 	// Method to validate a new certificate
 	Status(context.Context, *emptypb.Empty) (*StatusResponse, error)
-	ValidateCertificate(context.Context, *ValidateCertificateRequest) (*emptypb.Empty, error)
+	ValidateCertificate(context.Context, *ValidateCertificateRequest) (*ValidateCertificateResponse, error)
 	mustEmbedUnimplementedAggsenderValidatorServer()
 }
 
@@ -71,7 +71,7 @@ type UnimplementedAggsenderValidatorServer struct {
 func (UnimplementedAggsenderValidatorServer) Status(context.Context, *emptypb.Empty) (*StatusResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method Status not implemented")
 }
-func (UnimplementedAggsenderValidatorServer) ValidateCertificate(context.Context, *ValidateCertificateRequest) (*emptypb.Empty, error) {
+func (UnimplementedAggsenderValidatorServer) ValidateCertificate(context.Context, *ValidateCertificateRequest) (*ValidateCertificateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateCertificate not implemented")
 }
 func (UnimplementedAggsenderValidatorServer) mustEmbedUnimplementedAggsenderValidatorServer() {}
