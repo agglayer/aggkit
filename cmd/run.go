@@ -679,7 +679,7 @@ func runBridgeSyncL2IfNeeded(
 func createBridgeService(
 	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
-	l1InfoTree bridgeservice.L1InfoTreer,
+	l1InfoTree bridgeservice.L1InfoTreeSyncer,
 	injectedGERs bridgeservice.LastGERer,
 	bridgeL1 bridgeservice.Bridger,
 	bridgeL2 bridgeservice.Bridger,
