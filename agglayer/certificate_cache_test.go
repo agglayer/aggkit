@@ -21,7 +21,7 @@ func TestGetCertificateHeader(t *testing.T) {
 		certificateHeader, err := certCache.GetCertificateHeader(ctx, certID)
 		require.NoError(t, err)
 		require.True(t, certCache.cache.Has(certID)) // Ensure the cache has the certificate
-		require.Equal(t, *expectedCert, certificateHeader)
+		require.Equal(t, expectedCert, certificateHeader)
 	}
 
 	checkCacheIsEmptyFn := func(certCache *CertificateCache, certID common.Hash, ttl time.Duration) {
