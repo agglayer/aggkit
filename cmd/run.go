@@ -15,7 +15,8 @@ import (
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	"github.com/agglayer/aggkit"
-	agglayer "github.com/agglayer/aggkit/agglayer/grpc"
+	"github.com/agglayer/aggkit/agglayer"
+	agglayergrpc "github.com/agglayer/aggkit/agglayer/grpc"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
@@ -233,7 +234,7 @@ func createAggSenderValidator(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("error creating LER data querier: %w", err)
 	}
-	agglayerClient, err := createAgglayerClient(&cfg.AgglayerClient)
+	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
@@ -262,12 +263,12 @@ func createAggSenderValidator(ctx context.Context,
 	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP, l1InfoTreeQuerier, agglayerClient)
 }
 
-func createAgglayerClient(cfg *aggkitgrpc.ClientConfig) (*agglayer.AgglayerGRPCClient, error) {
+func createAgglayerClient(cfg *aggkitgrpc.ClientConfig) (*agglayergrpc.AgglayerGRPCClient, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid agglayer client config: %w", err)
 	}
 
-	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg)
+	agglayerClient, err := agglayergrpc.NewAgglayerGRPCClient(cfg)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}

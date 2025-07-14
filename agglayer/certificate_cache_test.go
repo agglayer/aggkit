@@ -1,4 +1,4 @@
-package cache
+package agglayer
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jellydator/ttlcache/v3"
@@ -41,7 +40,7 @@ func TestGetCertificateHeader(t *testing.T) {
 		Status:        agglayertypes.Settled,
 	}
 
-	mockAgglayerClient := agglayer.NewAgglayerClientMock(t)
+	mockAgglayerClient := NewAgglayerClientMock(t)
 	certCache := NewCertificateCache(mockAgglayerClient, ttl, capacity)
 
 	// Test cache doesn't have the certificate header initially

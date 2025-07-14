@@ -42,6 +42,9 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)
 	require.Equal(t, cfg.Validator.ServerConfig.EnableReflection, true)
+	require.Equal(t, cfg.Validator.AgglayerClient.Cached, true)
+	require.Equal(t, cfg.Validator.AgglayerClient.ConfigurationCache.Capacity, uint64(100))
+	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.MinConnectTimeout, cfg.AggSender.AgglayerClient.MinConnectTimeout)
 	t.Logf("cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey: %+v", cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey)
 }
 

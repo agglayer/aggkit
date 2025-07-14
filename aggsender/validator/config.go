@@ -1,6 +1,7 @@
 package validator
 
 import (
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -30,7 +31,7 @@ type Config struct {
 	// PPConfig specific configuration  for Pessimistic mode
 	PPConfig `mapstructure:"PPConfig"`
 	// AgglayerClient is the Agglayer gRPC client configuration
-	AgglayerClient aggkitgrpc.ClientConfig `mapstructure:"AgglayerClient"`
+	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 }
 
 type PPConfig struct {

@@ -255,8 +255,13 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 [Validator.PPConfig]
 	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
 [Validator.AgglayerClient]
+		Cached = true
+		[Validator.AgglayerClient.ConfigurationCache]
+			TTL = "15m"
+			Capacity = 100
+		[Validator.AgglayerClient.GRPC]
 		URL = "{{AggSender.AgglayerClient.URL}}"
-	MinConnectTimeout = "{{AggSender.AgglayerClient.MinConnectTimeout}}"
+		MinConnectTimeout = "{{AggSender.AgglayerClient.MinConnectTimeout}}"
 		RequestTimeout = "{{AggSender.AgglayerClient.RequestTimeout}}"
 		UseTLS = "{{AggSender.AgglayerClient.UseTLS}}"
 		[Validator.AgglayerClient.Retry]
