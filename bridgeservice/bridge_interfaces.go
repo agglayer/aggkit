@@ -30,7 +30,7 @@ type LastGERer interface {
 	) (lastgersync.GlobalExitRootInfo, error)
 }
 
-type L1InfoTreer interface {
+type L1InfoTreeSyncer interface {
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetRollupExitTreeMerkleProof(ctx context.Context, networkID uint32, root common.Hash) (tree.Proof, error)
 	GetLocalExitRoot(ctx context.Context, networkID uint32, rollupExitRoot common.Hash) (common.Hash, error)

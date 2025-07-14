@@ -177,12 +177,9 @@ func (p *processor) GetL1InfoTreeMerkleProof(
 	return proof, root, err
 }
 
-// GetLatestInfoUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
+// GetLatestL1InfoLeafUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
 // If the blockNum has not been processed yet the error ErrBlockNotProcessed will be returned
-func (p *processor) GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64) (*L1InfoTreeLeaf, error) {
-	if blockNum == 0 {
-		return nil, ErrNoBlock0
-	}
+func (p *processor) GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum *uint64) (*L1InfoTreeLeaf, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, err
@@ -193,20 +190,33 @@ func (p *processor) GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64
 		}
 	}()
 
-	lpb, err := p.getLastProcessedBlockWithTx(tx)
-	if err != nil {
-		return nil, err
+	if blockNum != nil {
+		if *blockNum == 0 {
+			return nil, ErrNoBlock0
+		}
+		lpb, err := p.getLastProcessedBlockWithTx(tx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve the last processed block: %w", err)
+		}
+		if lpb < *blockNum {
+			return nil, ErrBlockNotProcessed
+		}
 	}
-	if lpb < blockNum {
-		return nil, ErrBlockNotProcessed
+
+	var (
+		query string
+		args  []any
+	)
+
+	if blockNum != nil {
+		query = `SELECT * FROM l1info_leaf WHERE block_num <= $1 ORDER BY block_num DESC, block_pos DESC LIMIT 1;`
+		args = append(args, *blockNum)
+	} else {
+		query = `SELECT * FROM l1info_leaf ORDER BY block_num DESC, block_pos DESC LIMIT 1;`
 	}
 
 	info := &L1InfoTreeLeaf{}
-	err = meddler.QueryRow(
-		tx, info,
-		`SELECT * FROM l1info_leaf WHERE block_num <= $1 ORDER BY block_num DESC, block_pos DESC LIMIT 1;`,
-		blockNum,
-	)
+	err = meddler.QueryRow(tx, info, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound
@@ -360,6 +370,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			return errors.New("failed to convert from sync.Block.Event into Event")
 		}
 		if event.UpdateL1InfoTree != nil {
+			p.log.Debugf("handle UpdateL1InfoTree event. Block: %d, block hash: %s, mainnet exit root: %s, rollup exit root: %s",
+				block.Num, block.Hash, event.UpdateL1InfoTree.MainnetExitRoot, event.UpdateL1InfoTree.RollupExitRoot)
 			index := initialL1InfoIndex + l1InfoLeavesAdded
 			info := &L1InfoTreeLeaf{
 				BlockNumber:       block.Num,
@@ -383,11 +395,11 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			if err != nil {
 				return fmt.Errorf("AddLeaf(%s). err: %w", info.String(), err)
 			}
-			p.log.Infof("inserted L1InfoTreeLeaf %s", info.String())
+			p.log.Debugf("inserted L1InfoTreeLeaf %s", info.String())
 			l1InfoLeavesAdded++
 		}
 		if event.UpdateL1InfoTreeV2 != nil {
-			p.log.Infof("handle UpdateL1InfoTreeV2 event. Block: %d, block hash: %s. Event root: %s. Event leaf count: %d.",
+			p.log.Debugf("handle UpdateL1InfoTreeV2 event. Block: %d, block hash: %s. Event root: %s. Event leaf count: %d.",
 				block.Num, block.Hash, event.UpdateL1InfoTreeV2.CurrentL1InfoRoot.String(), event.UpdateL1InfoTreeV2.LeafCount)
 
 			root, err := p.l1InfoTree.GetLastRoot(tx)

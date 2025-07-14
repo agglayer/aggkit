@@ -89,52 +89,106 @@ func (f *baseFlow) StartL2Block() uint64 {
 	return f.cfg.StartL2Block
 }
 
-// GetCertificateBuildParamsInternal returns the parameters to build a certificate
-func (f *baseFlow) GetCertificateBuildParamsInternal(
-	ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
+// NextCertificateBlockRange returns the block range and retryCount for the next certificate
+func (f *baseFlow) NextCertificateBlockRange(ctx context.Context,
+	lastSentCertificate *types.CertificateHeader) (types.BlockRange, int, error) {
 	lastL2BlockSynced, err := f.l2BridgeQuerier.GetLastProcessedBlock(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("error getting last processed block from l2: %w", err)
-	}
-
-	lastSentCertificate, err := f.storage.GetLastSentCertificateHeader()
-	if err != nil {
-		return nil, err
+		return types.BlockRangeZero, 0, fmt.Errorf("error getting last processed block from l2: %w", err)
 	}
 
 	previousToBlock, retryCount := f.getLastSentBlockAndRetryCount(lastSentCertificate)
-
 	if previousToBlock >= lastL2BlockSynced {
 		f.log.Warnf("no new blocks to send a certificate, last certificate block: %d, last L2 block: %d",
 			previousToBlock, lastL2BlockSynced)
-		return nil, errNoNewBlocks
+		return types.BlockRangeZero, 0, errNoNewBlocks
 	}
-
 	fromBlock := previousToBlock + 1
 	toBlock := lastL2BlockSynced
+	return types.NewBlockRange(fromBlock, toBlock), retryCount, nil
+}
 
-	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx, fromBlock, toBlock)
+// GetLastCertificate returns latest certificate in local database
+func (f *baseFlow) GetLastCertificate(ctx context.Context) (*types.CertificateHeader, error) {
+	lastSentCertificate, err := f.storage.GetLastSentCertificateHeader()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("fails to GetLastCertificate. Err: %w", err)
+	}
+	return lastSentCertificate, nil
+}
+
+func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
+	certType types.CertificateType) (*types.CertificatePreBuildParams, error) {
+	lastSentCertificate, err := f.GetLastCertificate(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting last sent certificate: %w", err)
+	}
+
+	nextBlocks, retryCount, err := f.NextCertificateBlockRange(ctx, lastSentCertificate)
+	if err != nil {
+		return nil, fmt.Errorf("error getting next certificate block range: %w", err)
+	}
+	l1InfoRoot, _, err := f.l1InfoTreeDataQuerier.GetLatestFinalizedL1InfoRoot(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("error getting latest finalized L1 info root: %w", err)
+	}
+
+	return &types.CertificatePreBuildParams{
+		BlockRange:          nextBlocks,
+		RetryCount:          retryCount,
+		LastSentCertificate: lastSentCertificate,
+		CertificateType:     certType,
+		L1InfoTreeToProve: &types.CertificateL1InfoTreeData{
+			L1InfoTreeRootToProve: l1InfoRoot.Hash,
+			L1InfoTreeLeafCount:   l1InfoRoot.Index + 1,
+		},
+		CreatedAt: uint32(time.Now().UTC().Unix()),
+	}, nil
+}
+
+func (f *baseFlow) GenerateBuildParams(ctx context.Context,
+	preParams types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
+	if preParams.L1InfoTreeToProve == nil {
+		return nil, fmt.Errorf("L1InfoTreeWhichToProve should be not nil for GenerateBuildParams")
+	}
+
+	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx,
+		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock)
+	if err != nil {
+		return nil, fmt.Errorf("generateBulidParams fails getting bridges and claims. Err: %w", err)
 	}
 
 	buildParams := &types.CertificateBuildParams{
-		FromBlock:           fromBlock,
-		ToBlock:             toBlock,
-		RetryCount:          retryCount,
-		LastSentCertificate: lastSentCertificate,
-		Bridges:             bridges,
-		Claims:              claims,
-		CreatedAt:           uint32(time.Now().UTC().Unix()),
-		CertificateType:     certType,
+		FromBlock:                      preParams.BlockRange.FromBlock,
+		ToBlock:                        preParams.BlockRange.ToBlock,
+		RetryCount:                     preParams.RetryCount,
+		LastSentCertificate:            preParams.LastSentCertificate,
+		Bridges:                        bridges,
+		Claims:                         claims,
+		CreatedAt:                      preParams.CreatedAt,
+		CertificateType:                preParams.CertificateType,
+		L1InfoTreeRootFromWhichToProve: preParams.L1InfoTreeToProve.L1InfoTreeRootToProve,
+		L1InfoTreeLeafCount:            preParams.L1InfoTreeToProve.L1InfoTreeLeafCount,
 	}
-
-	buildParams, err = f.limitCertSize(buildParams)
-	if err != nil {
-		return nil, fmt.Errorf("error limitCertSize: %w", err)
-	}
-
 	return buildParams, nil
+}
+
+// GetCertificateBuildParamsInternal returns the parameters to build a certificate
+func (f *baseFlow) GetCertificateBuildParamsInternal(
+	ctx context.Context, certType types.CertificateType) (*types.CertificateBuildParams, error) {
+	preParams, err := f.GeneratePreBuildParams(ctx, certType)
+	if err != nil {
+		return nil, fmt.Errorf("error generating pre build params: %w", err)
+	}
+	params, err := f.GenerateBuildParams(ctx, *preParams)
+	if err != nil {
+		return nil, fmt.Errorf("error generating build params: %w", err)
+	}
+	params, err = f.LimitCertSize(params)
+	if err != nil {
+		return nil, fmt.Errorf("error applying limit size: %w", err)
+	}
+	return params, nil
 }
 
 // VerifyBuildParams verifies the build parameters
@@ -150,11 +204,11 @@ func (f *baseFlow) VerifyBuildParams(ctx context.Context, fullCert *types.Certif
 	return nil
 }
 
-// limitCertSize limits certificate size based on the max size configuration parameter
+// LimitCertSize limits certificate size based on the max size configuration parameter
 // size is expressed in bytes
-func (f *baseFlow) limitCertSize(
-	fullCert *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
-	currentCert := fullCert
+func (f *baseFlow) LimitCertSize(
+	certParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
+	currentCert := certParams
 	var err error
 	maxCertSize := f.cfg.MaxCertSize
 	for {

@@ -158,6 +158,11 @@ func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateTy
 	return types.CertificateTypeFEP, nil
 }
 
+func (a *AggchainProverFlow) GenerateBuildParams(ctx context.Context,
+	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
+	return nil, fmt.Errorf("aggchainProverFlow - GenerateBuildParams is not implemented")
+}
+
 // GetCertificateBuildParams returns the parameters to build a certificate
 // this function is the implementation of the FlowManager interface
 // What differentiates this function from the regular PP flow is that,

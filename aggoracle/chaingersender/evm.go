@@ -49,7 +49,7 @@ func NewEVMChainGERSender(
 	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERManagerAddr, l2Client)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create binding for GER L2 manager (SC address: %s): %w", l2GERManagerAddr, err)
 	}
 
 	if err := validateGERSender(ethTxMan.From(), l2GERManager); err != nil {
@@ -58,7 +58,7 @@ func NewEVMChainGERSender(
 
 	l2GERAbi, err := globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchainMetaData.GetAbi()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to retrieve GER L2 manager ABI: %w", err)
 	}
 
 	return &EVMChainGERSender{
@@ -77,7 +77,7 @@ func validateGERSender(gerSender common.Address, l2GERManagerSC types.L2GERManag
 	zeroAddr := common.Address{}
 	gerUpdater, err := l2GERManagerSC.GlobalExitRootUpdater(nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to retrieve GER updater address from GER L2 manager: %w", err)
 	}
 
 	if gerUpdater != zeroAddr && gerSender != gerUpdater {
@@ -88,6 +88,8 @@ func validateGERSender(gerSender common.Address, l2GERManagerSC types.L2GERManag
 	return nil
 }
 
+// IsGERInjected checks if the provided global exit root is already injected into the
+// L2 GER manager contract by querying the map
 func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
 	gerIndex, err := c.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)
 	if err != nil {
@@ -97,6 +99,7 @@ func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
 	return gerIndex.Cmp(common.Big0) == 1, nil
 }
 
+// InjectGER injects the provided global exit root into the L2 GER manager contract
 func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) error {
 	ticker := time.NewTicker(c.waitPeriodMonitorTx)
 	defer ticker.Stop()
@@ -114,7 +117,7 @@ func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) erro
 	for {
 		select {
 		case <-ctx.Done():
-			c.logger.Infof("context cancelled")
+			c.logger.Infof("context cancelled handled in InjectGER for tx %s", id.Hex())
 			return nil
 
 		case <-ticker.C:

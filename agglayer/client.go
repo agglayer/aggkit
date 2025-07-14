@@ -29,7 +29,7 @@ type AggLayerClientRecoveryQuerier interface {
 
 // AgglayerClientInterface is the interface that defines the methods that the AggLayerClient will implement
 type AgglayerClientInterface interface {
-	SendCertificate(ctx context.Context, certificate *types.Certificate) (common.Hash, error)
+	SendCertificate(ctx context.Context, certificate *types.Certificate, validatorSignature []byte) (common.Hash, error)
 	GetCertificateHeader(ctx context.Context, certificateHash common.Hash) (*types.CertificateHeader, error)
 	AggLayerClientGetEpochConfiguration
 	AggLayerClientRecoveryQuerier
