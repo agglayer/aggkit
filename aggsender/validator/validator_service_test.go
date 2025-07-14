@@ -104,7 +104,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 		require.ErrorContains(t, err, "Certificate header is nil in agglayer")
 	})
 
-	t.Run("fails conversion certificate", func(t *testing.T) {
+	t.Run("fails to convert certificate", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		cert := testCertificate1
 		cert.NewLocalExitRoot = nil
@@ -112,7 +112,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 			Certificate: &cert,
 		}
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
-		require.ErrorContains(t, err, "Error converting certificate")
+		require.ErrorContains(t, err, "Invalid certificate conversion")
 	})
 	t.Run("fails validate certificate", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
