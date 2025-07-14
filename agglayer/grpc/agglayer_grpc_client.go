@@ -80,8 +80,7 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 	if len(validatorSignature) > 0 {
 		// Add validator signature to metadata
 		sigHex := hex.EncodeToString(validatorSignature)
-		md := metadata.Pairs(validatorSignatureMetadataKey, sigHex)
-		ctx = metadata.NewOutgoingContext(ctx, md)
+		ctx = metadata.AppendToOutgoingContext(ctx, validatorSignatureMetadataKey, sigHex)
 	}
 
 	response, err := a.submissionService.SubmitCertificate(ctx,

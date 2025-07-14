@@ -114,8 +114,10 @@ func (c Config) String() string {
 
 // Validate checks if the configuration is valid
 func (c Config) Validate() error {
-	if c.RequireValidatorCall && c.ValidatorClient.URL == "" {
-		return errValidatorClientURLNotSet
+	if c.RequireValidatorCall {
+		if c.ValidatorClient == nil || c.ValidatorClient.URL == "" {
+			return errValidatorClientURLNotSet
+		}
 	}
 
 	if err := c.AgglayerClient.Validate(); err != nil {

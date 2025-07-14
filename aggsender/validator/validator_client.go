@@ -19,8 +19,8 @@ var _ types.ValidatorClient = (*ValidatorClient)(nil)
 // ValidatorClient encapsulates the gRPC client and configuration
 // required to interact with the AggsenderValidator service.
 type ValidatorClient struct {
-	client v1.AggsenderValidatorClient
-	cfg    *grpc.ClientConfig
+	client        v1.AggsenderValidatorClient
+	grpcClientCfg *grpc.ClientConfig
 }
 
 // NewValidatorClient initializes a new ValidatorClient with the provided gRPC client configuration.
@@ -32,8 +32,8 @@ func NewValidatorClient(cfg *grpc.ClientConfig) (*ValidatorClient, error) {
 	}
 
 	return &ValidatorClient{
-		client: v1.NewAggsenderValidatorClient(grpcClient.Conn()),
-		cfg:    cfg,
+		client:        v1.NewAggsenderValidatorClient(grpcClient.Conn()),
+		grpcClientCfg: cfg,
 	}, nil
 }
 
