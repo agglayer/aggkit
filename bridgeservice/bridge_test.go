@@ -48,7 +48,7 @@ type bridgeWithMocks struct {
 func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	t.Helper()
 	b := bridgeWithMocks{
-		l1InfoTree:   mocks.NewL1InfoTreer(t),
+		l1InfoTree:   mocks.NewL1InfoTreeSyncer(t),
 		injectedGERs: mocks.NewLastGERer(t),
 		bridgeL1:     mocks.NewBridger(t),
 		bridgeL2:     mocks.NewBridger(t),
