@@ -44,7 +44,7 @@ func (l *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context
 			fmt.Errorf("error getting latest processed finalized block: %w", err)
 	}
 
-	l1InfoLeaf, err := l.l1InfoTreeSyncer.GetLatestInfoUntilBlock(ctx, lastFinalizedProcessedBlock)
+	l1InfoLeaf, err := l.l1InfoTreeSyncer.GetLatestL1InfoLeafUntilBlock(ctx, lastFinalizedProcessedBlock)
 	if err != nil {
 		return nil, nil,
 			fmt.Errorf("error getting latest l1 info tree info until block num %d: %w",
