@@ -46,10 +46,15 @@ func (s *ValidatorService) Status(ctx context.Context, in *emptypb.Empty) (*v1.S
 // ValidateCertificate validates a new certificate
 func (s *ValidatorService) ValidateCertificate(
 	ctx context.Context, req *v1.ValidateCertificateRequest) (*v1.ValidateCertificateResponse, error) {
-	// TODO: implement actual logic here
-	if req != nil && req.Certificate != nil {
-		log.Infof("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
+	if req == nil || req.Certificate == nil {
+		return nil, grpc.GRPCError{
+			Code:    codes.NotFound,
+			Message: "requrired a certificate",
+		}
 	}
+
+	log.Infof("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
+
 	params := VerifyIncommingRequests{}
 	if req.PreviousCertificateId != nil && req.PreviousCertificateId.Value != nil {
 		previousCertificateID := common.BytesToHash(req.PreviousCertificateId.Value.Value)
@@ -63,10 +68,10 @@ func (s *ValidatorService) ValidateCertificate(
 			}
 		}
 		if certHeader == nil {
-			log.Errorf("Certificate header not found for ID: %s", previousCertificateID.Hex())
+			log.Errorf("Certificate header is nil for ID: %s", previousCertificateID.Hex())
 			return nil, grpc.GRPCError{
 				Code:    codes.NotFound,
-				Message: "Certificate header not found in agglayer",
+				Message: "Certificate header is nil in agglayer",
 			}
 		}
 		params.PreviousCertificate = certHeader

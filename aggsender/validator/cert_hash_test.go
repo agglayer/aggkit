@@ -28,14 +28,14 @@ func TestHashCertificateToSign(t *testing.T) {
 			Height:           100,
 			NewLocalExitRoot: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
 			ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{
-				&agglayertypes.ImportedBridgeExit{
+				{
 					GlobalIndex: &agglayertypes.GlobalIndex{
 						MainnetFlag: true,
 						RollupIndex: 1,
 						LeafIndex:   10,
 					},
 				},
-				&agglayertypes.ImportedBridgeExit{
+				{
 					GlobalIndex: &agglayertypes.GlobalIndex{
 						MainnetFlag: false,
 						RollupIndex: 2,
@@ -57,14 +57,14 @@ func TestHashCertificateToSign(t *testing.T) {
 			Height:           100,
 			NewLocalExitRoot: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
 			ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{
-				&agglayertypes.ImportedBridgeExit{
+				{
 					GlobalIndex: &agglayertypes.GlobalIndex{
 						MainnetFlag: true,
 						RollupIndex: 1,
 						LeafIndex:   10,
 					},
 				},
-				&agglayertypes.ImportedBridgeExit{
+				{
 					GlobalIndex: &agglayertypes.GlobalIndex{
 						MainnetFlag: false,
 						RollupIndex: 2,
@@ -83,5 +83,4 @@ func TestHashCertificateToSign(t *testing.T) {
 		cert.Metadata = [32]byte{6, 7, 8, 9, 10}
 		require.Equal(t, "0x912dd941aadbad91de9079c8738180f0539578f8bc7c4cc18e0353d1c885ed96", HashCertificateToSign(cert).String())
 	})
-
 }
