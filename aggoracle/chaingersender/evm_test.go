@@ -96,6 +96,7 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 
 			sender := &EVMChainGERSender{
 				logger:              log.GetDefaultLogger(),
+				mode:                DirectInjectionMode,
 				l2GERManagerAddr:    l2GERManagerAddr,
 				l2GERManagerAbi:     &l2GERManagerAbi,
 				ethTxMan:            ethTxMan,

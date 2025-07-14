@@ -91,7 +91,7 @@ func NewE2EEnvWithEVML2(t *testing.T, cfg *EnvironmentConfig) *AggoracleWithEVMC
 	oracle, err := aggoracle.New(
 		log.GetDefaultLogger(), l2Setup.AggoracleSender,
 		l1Setup.SimBackend.Client(), l1Setup.InfoTreeSync,
-		time.Millisecond*20, //nolint:mnd
+		time.Millisecond*20, false, //nolint:mnd
 	)
 	require.NoError(t, err)
 	go oracle.Start(ctx)
@@ -190,8 +190,8 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 
 	const gerCheckFrequency = time.Millisecond * 50
 	sender, err := chaingersender.NewEVMChainGERSender(
-		log.GetDefaultLogger(), gerL2Addr, l2Client.Client(),
-		ethTxManagerMock, 0, gerCheckFrequency,
+		log.GetDefaultLogger(), gerL2Addr, common.Address{}, l2Client.Client(),
+		ethTxManagerMock, 0, gerCheckFrequency, false,
 	)
 	require.NoError(t, err)
 	ctx := context.Background()
