@@ -166,20 +166,12 @@ function export_values_of_cdk_node_config() {
     export_key_from_toml_file_or_fatal zkevm_l2_sequencer_address $_CDK_CONFIG_FILE "." L2Coinbase
     #export_key_from_toml_file_or_fatal zkevm_l2_sequencer_keystore_password $_CDK_CONFIG_FILE "." SequencerPrivateKeyPassword
     export_key_from_toml_file_or_fatal l1_chain_id $_CDK_CONFIG_FILE L1Config chainId
-    export_key_from_toml_file zkevm_is_validium $_CDK_CONFIG_FILE Common IsValidiumMode
-    if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_is_validium $_CDK_CONFIG_FILE "." IsValidiumMode
-    fi
-    export_key_from_toml_file zkevm_contract_versions $_CDK_CONFIG_FILE Common ContractVersions
-    if [ $? -ne 0 ]; then
-        export_key_from_toml_file_or_fatal zkevm_contract_versions $_CDK_CONFIG_FILE "." ContractVersions
-    fi
     export_key_from_toml_file l2_chain_id $_CDK_CONFIG_FILE Aggregator ChainID
     if [ $? -ne 0 ]; then
         log_debug "l2_chain_id not found in Aggregator section, using 0"
         export l2_chain_id="0"
     fi
-    export_key_from_toml_file_or_fatal zkevm_rollup_fork_id $_CDK_CONFIG_FILE "." ForkId
+    
     export_key_from_toml_file_or_fatal aggsender_mode $_CDK_CONFIG_FILE AggSender Mode
     
     export_obj_key_from_toml_file_or_fatal zkevm_l2_agglayer_keystore_password $_CDK_CONFIG_FILE AggSender AggsenderPrivateKey Password

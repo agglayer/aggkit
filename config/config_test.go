@@ -119,7 +119,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 
 	[Etherman]
 	URL = "{{L1URL}}"
-	ForkIDChunkSize = 100
 	[Etherman.EthermanConfig]
 		URL = "{{L1URL}}"
 		MultiGasProvider = false

@@ -15,10 +15,6 @@ L1URL="{{.l1_rpc_url}}"
 L2URL="{{.op_el_rpc_url}}"
 AggLayerURL="{{.agglayer_grpc_url}}"
 OpNodeURL = "{{.op_cl_rpc_url}}"
-
-ForkId = 12
-ContractVersions = "banana"
-IsValidiumMode = false
 NetworkID = {{.zkevm_rollup_id}}
 
 # This is the admin account for now
