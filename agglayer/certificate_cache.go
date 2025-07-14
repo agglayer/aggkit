@@ -90,7 +90,8 @@ func (c *CertificateCache) GetCertificateHeader(
 }
 
 // SendCertificate sends a certificate to the Agglayer client. (no cache)
-func (c *CertificateCache) SendCertificate(ctx context.Context, certificate *agglayertypes.Certificate) (common.Hash, error) {
+func (c *CertificateCache) SendCertificate(ctx context.Context,
+	certificate *agglayertypes.Certificate) (common.Hash, error) {
 	return c.agglayerClient.SendCertificate(ctx, certificate)
 }
 
@@ -100,11 +101,13 @@ func (c *CertificateCache) GetEpochConfiguration(ctx context.Context) (*agglayer
 }
 
 // GetLatestSettledCertificateHeader retrieves the latest settled certificate header for a given network ID. (no cache)
-func (c *CertificateCache) GetLatestSettledCertificateHeader(ctx context.Context, networkID uint32) (*agglayertypes.CertificateHeader, error) {
+func (c *CertificateCache) GetLatestSettledCertificateHeader(ctx context.Context,
+	networkID uint32) (*agglayertypes.CertificateHeader, error) {
 	return c.agglayerClient.GetLatestSettledCertificateHeader(ctx, networkID)
 }
 
 // GetLatestPendingCertificateHeader retrieves the latest pending certificate header for a given network ID. (no cache)
-func (c *CertificateCache) GetLatestPendingCertificateHeader(ctx context.Context, networkID uint32) (*agglayertypes.CertificateHeader, error) {
+func (c *CertificateCache) GetLatestPendingCertificateHeader(ctx context.Context,
+	networkID uint32) (*agglayertypes.CertificateHeader, error) {
 	return c.agglayerClient.GetLatestPendingCertificateHeader(ctx, networkID)
 }

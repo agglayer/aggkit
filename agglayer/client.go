@@ -3,14 +3,13 @@ package agglayer
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/agglayer/aggkit/agglayer/grpc"
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const errCodeAgglayerRateLimitExceeded int = -10007
+// NOTE:  errCodeAgglayerRateLimitExceeded is -10007
 
 var ErrAgglayerRateLimitExceeded = errors.New("agglayer rate limit exceeded")
 
@@ -37,6 +36,9 @@ type AgglayerClientInterface interface {
 }
 
 func NewAgglayerClient(cfg ClientConfig) (AgglayerClientInterface, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, err
+	}
 	var client AgglayerClientInterface
 	client, err := grpc.NewAgglayerGRPCClient(cfg.GRPC)
 	if err != nil {
@@ -44,7 +46,7 @@ func NewAgglayerClient(cfg ClientConfig) (AgglayerClientInterface, error) {
 	}
 	if cfg.Cached {
 		client = NewCertificateCache(
-			client, time.Second, 100)
+			client, cfg.ConfigurationCache.TTL.Duration, cfg.ConfigurationCache.Capacity)
 	}
 	return client, nil
 }
