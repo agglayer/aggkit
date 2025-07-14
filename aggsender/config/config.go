@@ -115,6 +115,10 @@ func (c Config) String() string {
 // Validate checks if the configuration is valid
 func (c Config) Validate() error {
 	if c.RequireValidatorCall {
+		if c.Mode != aggsendertypes.PessimisticProofMode.String() {
+			return fmt.Errorf("RequireValidatorCall can only be true in PessimisticProof mode, got %s", c.Mode)
+		}
+
 		if c.ValidatorClient == nil || c.ValidatorClient.URL == "" {
 			return errValidatorClientURLNotSet
 		}

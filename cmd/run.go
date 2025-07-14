@@ -295,26 +295,29 @@ func createAggSender(
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
 
-	var validator aggsendertypes.CertificateValidateAndSigner
-	if cfg.RequireValidatorCall {
-		validator, err = aggsendervalidator.NewRemoteValidatorClient(cfg.ValidatorClient, aggsender.GetStorage())
-		if err != nil {
-			return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
-		}
-	} else {
-		// this is only temporary, until we test it in local, then we will only use the remote validator
-		validator = aggsendervalidator.NewLocalValidator(
-			logger,
-			aggsender.GetStorage(),
-			aggsendervalidator.NewAggsenderValidator(
+	if cfg.Mode == aggsendertypes.PessimisticProofMode.String() {
+		// validator is only supported in PessimisticProof mode
+		var validator aggsendertypes.CertificateValidateAndSigner
+		if cfg.RequireValidatorCall {
+			validator, err = aggsendervalidator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
+			if err != nil {
+				return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
+			}
+		} else {
+			// this is only temporary, until we test it in local, then we will only use the remote validator
+			validator = aggsendervalidator.NewLocalValidator(
 				logger,
-				aggsender.GetFlow(),
-				query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
-			),
-		)
-	}
+				aggsender.GetStorage(),
+				aggsendervalidator.NewAggsenderValidator(
+					logger,
+					aggsender.GetFlow(),
+					query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
+				),
+			)
+		}
 
-	aggsender.AttachValidator(validator)
+		aggsender.AttachValidator(validator)
+	}
 
 	return aggsender, nil
 }

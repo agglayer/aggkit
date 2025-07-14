@@ -19,6 +19,9 @@ func TestValidate(t *testing.T) {
 		expectedErr string
 	}{
 		{
+			name: "RequireValidatorCall ",
+		},
+		{
 			name: "RequireValidatorCall is true with ValidatorClient URL set",
 			config: Config{
 				RequireValidatorCall: true,
