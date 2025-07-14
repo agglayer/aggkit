@@ -19,12 +19,12 @@ type L1InfoTreeSyncer struct {
 	mock.Mock
 }
 
-type L1InfoTreer_Expecter struct {
+type L1InfoTreeSyncer_Expecter struct {
 	mock *mock.Mock
 }
 
-func (_m *L1InfoTreeSyncer) EXPECT() *L1InfoTreer_Expecter {
-	return &L1InfoTreer_Expecter{mock: &_m.Mock}
+func (_m *L1InfoTreeSyncer) EXPECT() *L1InfoTreeSyncer_Expecter {
+	return &L1InfoTreeSyncer_Expecter{mock: &_m.Mock}
 }
 
 // GetFirstInfo provides a mock function with no fields
@@ -57,29 +57,29 @@ func (_m *L1InfoTreeSyncer) GetFirstInfo() (*l1infotreesync.L1InfoTreeLeaf, erro
 	return r0, r1
 }
 
-// L1InfoTreer_GetFirstInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstInfo'
-type L1InfoTreer_GetFirstInfo_Call struct {
+// L1InfoTreeSyncer_GetFirstInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstInfo'
+type L1InfoTreeSyncer_GetFirstInfo_Call struct {
 	*mock.Call
 }
 
 // GetFirstInfo is a helper method to define mock.On call
-func (_e *L1InfoTreer_Expecter) GetFirstInfo() *L1InfoTreer_GetFirstInfo_Call {
-	return &L1InfoTreer_GetFirstInfo_Call{Call: _e.mock.On("GetFirstInfo")}
+func (_e *L1InfoTreeSyncer_Expecter) GetFirstInfo() *L1InfoTreeSyncer_GetFirstInfo_Call {
+	return &L1InfoTreeSyncer_GetFirstInfo_Call{Call: _e.mock.On("GetFirstInfo")}
 }
 
-func (_c *L1InfoTreer_GetFirstInfo_Call) Run(run func()) *L1InfoTreer_GetFirstInfo_Call {
+func (_c *L1InfoTreeSyncer_GetFirstInfo_Call) Run(run func()) *L1InfoTreeSyncer_GetFirstInfo_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstInfo_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreer_GetFirstInfo_Call {
+func (_c *L1InfoTreeSyncer_GetFirstInfo_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetFirstInfo_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstInfo_Call) RunAndReturn(run func() (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreer_GetFirstInfo_Call {
+func (_c *L1InfoTreeSyncer_GetFirstInfo_Call) RunAndReturn(run func() (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetFirstInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -114,30 +114,30 @@ func (_m *L1InfoTreeSyncer) GetFirstInfoAfterBlock(blockNum uint64) (*l1infotree
 	return r0, r1
 }
 
-// L1InfoTreer_GetFirstInfoAfterBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstInfoAfterBlock'
-type L1InfoTreer_GetFirstInfoAfterBlock_Call struct {
+// L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstInfoAfterBlock'
+type L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call struct {
 	*mock.Call
 }
 
 // GetFirstInfoAfterBlock is a helper method to define mock.On call
 //   - blockNum uint64
-func (_e *L1InfoTreer_Expecter) GetFirstInfoAfterBlock(blockNum interface{}) *L1InfoTreer_GetFirstInfoAfterBlock_Call {
-	return &L1InfoTreer_GetFirstInfoAfterBlock_Call{Call: _e.mock.On("GetFirstInfoAfterBlock", blockNum)}
+func (_e *L1InfoTreeSyncer_Expecter) GetFirstInfoAfterBlock(blockNum interface{}) *L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call {
+	return &L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call{Call: _e.mock.On("GetFirstInfoAfterBlock", blockNum)}
 }
 
-func (_c *L1InfoTreer_GetFirstInfoAfterBlock_Call) Run(run func(blockNum uint64)) *L1InfoTreer_GetFirstInfoAfterBlock_Call {
+func (_c *L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call) Run(run func(blockNum uint64)) *L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(uint64))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstInfoAfterBlock_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreer_GetFirstInfoAfterBlock_Call {
+func (_c *L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstInfoAfterBlock_Call) RunAndReturn(run func(uint64) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreer_GetFirstInfoAfterBlock_Call {
+func (_c *L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call) RunAndReturn(run func(uint64) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetFirstInfoAfterBlock_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -172,30 +172,30 @@ func (_m *L1InfoTreeSyncer) GetFirstL1InfoWithRollupExitRoot(rollupExitRoot comm
 	return r0, r1
 }
 
-// L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstL1InfoWithRollupExitRoot'
-type L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call struct {
+// L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstL1InfoWithRollupExitRoot'
+type L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call struct {
 	*mock.Call
 }
 
 // GetFirstL1InfoWithRollupExitRoot is a helper method to define mock.On call
 //   - rollupExitRoot common.Hash
-func (_e *L1InfoTreer_Expecter) GetFirstL1InfoWithRollupExitRoot(rollupExitRoot interface{}) *L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call {
-	return &L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call{Call: _e.mock.On("GetFirstL1InfoWithRollupExitRoot", rollupExitRoot)}
+func (_e *L1InfoTreeSyncer_Expecter) GetFirstL1InfoWithRollupExitRoot(rollupExitRoot interface{}) *L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call {
+	return &L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call{Call: _e.mock.On("GetFirstL1InfoWithRollupExitRoot", rollupExitRoot)}
 }
 
-func (_c *L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call) Run(run func(rollupExitRoot common.Hash)) *L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call {
+func (_c *L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call) Run(run func(rollupExitRoot common.Hash)) *L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(common.Hash))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call {
+func (_c *L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call) RunAndReturn(run func(common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreer_GetFirstL1InfoWithRollupExitRoot_Call {
+func (_c *L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call) RunAndReturn(run func(common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetFirstL1InfoWithRollupExitRoot_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -230,30 +230,30 @@ func (_m *L1InfoTreeSyncer) GetFirstVerifiedBatches(rollupID uint32) (*l1infotre
 	return r0, r1
 }
 
-// L1InfoTreer_GetFirstVerifiedBatches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstVerifiedBatches'
-type L1InfoTreer_GetFirstVerifiedBatches_Call struct {
+// L1InfoTreeSyncer_GetFirstVerifiedBatches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstVerifiedBatches'
+type L1InfoTreeSyncer_GetFirstVerifiedBatches_Call struct {
 	*mock.Call
 }
 
 // GetFirstVerifiedBatches is a helper method to define mock.On call
 //   - rollupID uint32
-func (_e *L1InfoTreer_Expecter) GetFirstVerifiedBatches(rollupID interface{}) *L1InfoTreer_GetFirstVerifiedBatches_Call {
-	return &L1InfoTreer_GetFirstVerifiedBatches_Call{Call: _e.mock.On("GetFirstVerifiedBatches", rollupID)}
+func (_e *L1InfoTreeSyncer_Expecter) GetFirstVerifiedBatches(rollupID interface{}) *L1InfoTreeSyncer_GetFirstVerifiedBatches_Call {
+	return &L1InfoTreeSyncer_GetFirstVerifiedBatches_Call{Call: _e.mock.On("GetFirstVerifiedBatches", rollupID)}
 }
 
-func (_c *L1InfoTreer_GetFirstVerifiedBatches_Call) Run(run func(rollupID uint32)) *L1InfoTreer_GetFirstVerifiedBatches_Call {
+func (_c *L1InfoTreeSyncer_GetFirstVerifiedBatches_Call) Run(run func(rollupID uint32)) *L1InfoTreeSyncer_GetFirstVerifiedBatches_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(uint32))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstVerifiedBatches_Call) Return(_a0 *l1infotreesync.VerifyBatches, _a1 error) *L1InfoTreer_GetFirstVerifiedBatches_Call {
+func (_c *L1InfoTreeSyncer_GetFirstVerifiedBatches_Call) Return(_a0 *l1infotreesync.VerifyBatches, _a1 error) *L1InfoTreeSyncer_GetFirstVerifiedBatches_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstVerifiedBatches_Call) RunAndReturn(run func(uint32) (*l1infotreesync.VerifyBatches, error)) *L1InfoTreer_GetFirstVerifiedBatches_Call {
+func (_c *L1InfoTreeSyncer_GetFirstVerifiedBatches_Call) RunAndReturn(run func(uint32) (*l1infotreesync.VerifyBatches, error)) *L1InfoTreeSyncer_GetFirstVerifiedBatches_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -288,31 +288,31 @@ func (_m *L1InfoTreeSyncer) GetFirstVerifiedBatchesAfterBlock(rollupID uint32, b
 	return r0, r1
 }
 
-// L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstVerifiedBatchesAfterBlock'
-type L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call struct {
+// L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetFirstVerifiedBatchesAfterBlock'
+type L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call struct {
 	*mock.Call
 }
 
 // GetFirstVerifiedBatchesAfterBlock is a helper method to define mock.On call
 //   - rollupID uint32
 //   - blockNum uint64
-func (_e *L1InfoTreer_Expecter) GetFirstVerifiedBatchesAfterBlock(rollupID interface{}, blockNum interface{}) *L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call {
-	return &L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call{Call: _e.mock.On("GetFirstVerifiedBatchesAfterBlock", rollupID, blockNum)}
+func (_e *L1InfoTreeSyncer_Expecter) GetFirstVerifiedBatchesAfterBlock(rollupID interface{}, blockNum interface{}) *L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call {
+	return &L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call{Call: _e.mock.On("GetFirstVerifiedBatchesAfterBlock", rollupID, blockNum)}
 }
 
-func (_c *L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call) Run(run func(rollupID uint32, blockNum uint64)) *L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call {
+func (_c *L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call) Run(run func(rollupID uint32, blockNum uint64)) *L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(uint32), args[1].(uint64))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call) Return(_a0 *l1infotreesync.VerifyBatches, _a1 error) *L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call {
+func (_c *L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call) Return(_a0 *l1infotreesync.VerifyBatches, _a1 error) *L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call) RunAndReturn(run func(uint32, uint64) (*l1infotreesync.VerifyBatches, error)) *L1InfoTreer_GetFirstVerifiedBatchesAfterBlock_Call {
+func (_c *L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call) RunAndReturn(run func(uint32, uint64) (*l1infotreesync.VerifyBatches, error)) *L1InfoTreeSyncer_GetFirstVerifiedBatchesAfterBlock_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -347,31 +347,31 @@ func (_m *L1InfoTreeSyncer) GetInfoByIndex(ctx context.Context, index uint32) (*
 	return r0, r1
 }
 
-// L1InfoTreer_GetInfoByIndex_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInfoByIndex'
-type L1InfoTreer_GetInfoByIndex_Call struct {
+// L1InfoTreeSyncer_GetInfoByIndex_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetInfoByIndex'
+type L1InfoTreeSyncer_GetInfoByIndex_Call struct {
 	*mock.Call
 }
 
 // GetInfoByIndex is a helper method to define mock.On call
 //   - ctx context.Context
 //   - index uint32
-func (_e *L1InfoTreer_Expecter) GetInfoByIndex(ctx interface{}, index interface{}) *L1InfoTreer_GetInfoByIndex_Call {
-	return &L1InfoTreer_GetInfoByIndex_Call{Call: _e.mock.On("GetInfoByIndex", ctx, index)}
+func (_e *L1InfoTreeSyncer_Expecter) GetInfoByIndex(ctx interface{}, index interface{}) *L1InfoTreeSyncer_GetInfoByIndex_Call {
+	return &L1InfoTreeSyncer_GetInfoByIndex_Call{Call: _e.mock.On("GetInfoByIndex", ctx, index)}
 }
 
-func (_c *L1InfoTreer_GetInfoByIndex_Call) Run(run func(ctx context.Context, index uint32)) *L1InfoTreer_GetInfoByIndex_Call {
+func (_c *L1InfoTreeSyncer_GetInfoByIndex_Call) Run(run func(ctx context.Context, index uint32)) *L1InfoTreeSyncer_GetInfoByIndex_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint32))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetInfoByIndex_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreer_GetInfoByIndex_Call {
+func (_c *L1InfoTreeSyncer_GetInfoByIndex_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetInfoByIndex_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetInfoByIndex_Call) RunAndReturn(run func(context.Context, uint32) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreer_GetInfoByIndex_Call {
+func (_c *L1InfoTreeSyncer_GetInfoByIndex_Call) RunAndReturn(run func(context.Context, uint32) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetInfoByIndex_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -406,29 +406,29 @@ func (_m *L1InfoTreeSyncer) GetLastInfo() (*l1infotreesync.L1InfoTreeLeaf, error
 	return r0, r1
 }
 
-// L1InfoTreer_GetLastInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastInfo'
-type L1InfoTreer_GetLastInfo_Call struct {
+// L1InfoTreeSyncer_GetLastInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastInfo'
+type L1InfoTreeSyncer_GetLastInfo_Call struct {
 	*mock.Call
 }
 
 // GetLastInfo is a helper method to define mock.On call
-func (_e *L1InfoTreer_Expecter) GetLastInfo() *L1InfoTreer_GetLastInfo_Call {
-	return &L1InfoTreer_GetLastInfo_Call{Call: _e.mock.On("GetLastInfo")}
+func (_e *L1InfoTreeSyncer_Expecter) GetLastInfo() *L1InfoTreeSyncer_GetLastInfo_Call {
+	return &L1InfoTreeSyncer_GetLastInfo_Call{Call: _e.mock.On("GetLastInfo")}
 }
 
-func (_c *L1InfoTreer_GetLastInfo_Call) Run(run func()) *L1InfoTreer_GetLastInfo_Call {
+func (_c *L1InfoTreeSyncer_GetLastInfo_Call) Run(run func()) *L1InfoTreeSyncer_GetLastInfo_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run()
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetLastInfo_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreer_GetLastInfo_Call {
+func (_c *L1InfoTreeSyncer_GetLastInfo_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetLastInfo_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetLastInfo_Call) RunAndReturn(run func() (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreer_GetLastInfo_Call {
+func (_c *L1InfoTreeSyncer_GetLastInfo_Call) RunAndReturn(run func() (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetLastInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -463,30 +463,30 @@ func (_m *L1InfoTreeSyncer) GetLastVerifiedBatches(rollupID uint32) (*l1infotree
 	return r0, r1
 }
 
-// L1InfoTreer_GetLastVerifiedBatches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastVerifiedBatches'
-type L1InfoTreer_GetLastVerifiedBatches_Call struct {
+// L1InfoTreeSyncer_GetLastVerifiedBatches_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastVerifiedBatches'
+type L1InfoTreeSyncer_GetLastVerifiedBatches_Call struct {
 	*mock.Call
 }
 
 // GetLastVerifiedBatches is a helper method to define mock.On call
 //   - rollupID uint32
-func (_e *L1InfoTreer_Expecter) GetLastVerifiedBatches(rollupID interface{}) *L1InfoTreer_GetLastVerifiedBatches_Call {
-	return &L1InfoTreer_GetLastVerifiedBatches_Call{Call: _e.mock.On("GetLastVerifiedBatches", rollupID)}
+func (_e *L1InfoTreeSyncer_Expecter) GetLastVerifiedBatches(rollupID interface{}) *L1InfoTreeSyncer_GetLastVerifiedBatches_Call {
+	return &L1InfoTreeSyncer_GetLastVerifiedBatches_Call{Call: _e.mock.On("GetLastVerifiedBatches", rollupID)}
 }
 
-func (_c *L1InfoTreer_GetLastVerifiedBatches_Call) Run(run func(rollupID uint32)) *L1InfoTreer_GetLastVerifiedBatches_Call {
+func (_c *L1InfoTreeSyncer_GetLastVerifiedBatches_Call) Run(run func(rollupID uint32)) *L1InfoTreeSyncer_GetLastVerifiedBatches_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(uint32))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetLastVerifiedBatches_Call) Return(_a0 *l1infotreesync.VerifyBatches, _a1 error) *L1InfoTreer_GetLastVerifiedBatches_Call {
+func (_c *L1InfoTreeSyncer_GetLastVerifiedBatches_Call) Return(_a0 *l1infotreesync.VerifyBatches, _a1 error) *L1InfoTreeSyncer_GetLastVerifiedBatches_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetLastVerifiedBatches_Call) RunAndReturn(run func(uint32) (*l1infotreesync.VerifyBatches, error)) *L1InfoTreer_GetLastVerifiedBatches_Call {
+func (_c *L1InfoTreeSyncer_GetLastVerifiedBatches_Call) RunAndReturn(run func(uint32) (*l1infotreesync.VerifyBatches, error)) *L1InfoTreeSyncer_GetLastVerifiedBatches_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -521,8 +521,8 @@ func (_m *L1InfoTreeSyncer) GetLocalExitRoot(ctx context.Context, networkID uint
 	return r0, r1
 }
 
-// L1InfoTreer_GetLocalExitRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLocalExitRoot'
-type L1InfoTreer_GetLocalExitRoot_Call struct {
+// L1InfoTreeSyncer_GetLocalExitRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLocalExitRoot'
+type L1InfoTreeSyncer_GetLocalExitRoot_Call struct {
 	*mock.Call
 }
 
@@ -530,23 +530,23 @@ type L1InfoTreer_GetLocalExitRoot_Call struct {
 //   - ctx context.Context
 //   - networkID uint32
 //   - rollupExitRoot common.Hash
-func (_e *L1InfoTreer_Expecter) GetLocalExitRoot(ctx interface{}, networkID interface{}, rollupExitRoot interface{}) *L1InfoTreer_GetLocalExitRoot_Call {
-	return &L1InfoTreer_GetLocalExitRoot_Call{Call: _e.mock.On("GetLocalExitRoot", ctx, networkID, rollupExitRoot)}
+func (_e *L1InfoTreeSyncer_Expecter) GetLocalExitRoot(ctx interface{}, networkID interface{}, rollupExitRoot interface{}) *L1InfoTreeSyncer_GetLocalExitRoot_Call {
+	return &L1InfoTreeSyncer_GetLocalExitRoot_Call{Call: _e.mock.On("GetLocalExitRoot", ctx, networkID, rollupExitRoot)}
 }
 
-func (_c *L1InfoTreer_GetLocalExitRoot_Call) Run(run func(ctx context.Context, networkID uint32, rollupExitRoot common.Hash)) *L1InfoTreer_GetLocalExitRoot_Call {
+func (_c *L1InfoTreeSyncer_GetLocalExitRoot_Call) Run(run func(ctx context.Context, networkID uint32, rollupExitRoot common.Hash)) *L1InfoTreeSyncer_GetLocalExitRoot_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint32), args[2].(common.Hash))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetLocalExitRoot_Call) Return(_a0 common.Hash, _a1 error) *L1InfoTreer_GetLocalExitRoot_Call {
+func (_c *L1InfoTreeSyncer_GetLocalExitRoot_Call) Return(_a0 common.Hash, _a1 error) *L1InfoTreeSyncer_GetLocalExitRoot_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetLocalExitRoot_Call) RunAndReturn(run func(context.Context, uint32, common.Hash) (common.Hash, error)) *L1InfoTreer_GetLocalExitRoot_Call {
+func (_c *L1InfoTreeSyncer_GetLocalExitRoot_Call) RunAndReturn(run func(context.Context, uint32, common.Hash) (common.Hash, error)) *L1InfoTreeSyncer_GetLocalExitRoot_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -581,8 +581,8 @@ func (_m *L1InfoTreeSyncer) GetRollupExitTreeMerkleProof(ctx context.Context, ne
 	return r0, r1
 }
 
-// L1InfoTreer_GetRollupExitTreeMerkleProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRollupExitTreeMerkleProof'
-type L1InfoTreer_GetRollupExitTreeMerkleProof_Call struct {
+// L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRollupExitTreeMerkleProof'
+type L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call struct {
 	*mock.Call
 }
 
@@ -590,30 +590,30 @@ type L1InfoTreer_GetRollupExitTreeMerkleProof_Call struct {
 //   - ctx context.Context
 //   - networkID uint32
 //   - root common.Hash
-func (_e *L1InfoTreer_Expecter) GetRollupExitTreeMerkleProof(ctx interface{}, networkID interface{}, root interface{}) *L1InfoTreer_GetRollupExitTreeMerkleProof_Call {
-	return &L1InfoTreer_GetRollupExitTreeMerkleProof_Call{Call: _e.mock.On("GetRollupExitTreeMerkleProof", ctx, networkID, root)}
+func (_e *L1InfoTreeSyncer_Expecter) GetRollupExitTreeMerkleProof(ctx interface{}, networkID interface{}, root interface{}) *L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call {
+	return &L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call{Call: _e.mock.On("GetRollupExitTreeMerkleProof", ctx, networkID, root)}
 }
 
-func (_c *L1InfoTreer_GetRollupExitTreeMerkleProof_Call) Run(run func(ctx context.Context, networkID uint32, root common.Hash)) *L1InfoTreer_GetRollupExitTreeMerkleProof_Call {
+func (_c *L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call) Run(run func(ctx context.Context, networkID uint32, root common.Hash)) *L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint32), args[2].(common.Hash))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreer_GetRollupExitTreeMerkleProof_Call) Return(_a0 types.Proof, _a1 error) *L1InfoTreer_GetRollupExitTreeMerkleProof_Call {
+func (_c *L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call) Return(_a0 types.Proof, _a1 error) *L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreer_GetRollupExitTreeMerkleProof_Call) RunAndReturn(run func(context.Context, uint32, common.Hash) (types.Proof, error)) *L1InfoTreer_GetRollupExitTreeMerkleProof_Call {
+func (_c *L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call) RunAndReturn(run func(context.Context, uint32, common.Hash) (types.Proof, error)) *L1InfoTreeSyncer_GetRollupExitTreeMerkleProof_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
-// NewL1InfoTreer creates a new instance of L1InfoTreeSyncer. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
+// NewL1InfoTreeSyncer creates a new instance of L1InfoTreeSyncer. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
-func NewL1InfoTreer(t interface {
+func NewL1InfoTreeSyncer(t interface {
 	mock.TestingT
 	Cleanup(func())
 }) *L1InfoTreeSyncer {
