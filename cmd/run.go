@@ -34,7 +34,7 @@ import (
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 	"github.com/agglayer/aggkit/healthcheck"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/lastgersync"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
@@ -92,8 +92,8 @@ func start(cliCtx *cli.Context) error {
 		l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID)
-	lastGERSync := runLastGERSyncIfNeeded(
-		cliCtx.Context, components, cfg.LastGERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
+	l2GERSync := runL2GERSyncIfNeeded(
+		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
 	var rpcServices []jRPC.Service
 	for _, component := range components {
@@ -107,7 +107,7 @@ func start(cliCtx *cli.Context) error {
 				cfg.REST,
 				cfg.Common.NetworkID,
 				l1InfoTreeSync,
-				lastGERSync,
+				l2GERSync,
 				l1BridgeSync,
 				l2BridgeSync,
 			)
@@ -122,7 +122,7 @@ func start(cliCtx *cli.Context) error {
 				l2BridgeSync,
 				l2Client,
 				rollupDataQuerier,
-				lastGERSync,
+				l2GERSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -138,7 +138,7 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
-				lastGERSync,
+				l2GERSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -154,7 +154,7 @@ func start(cliCtx *cli.Context) error {
 				l1Client,
 				l2Client,
 				rollupDataQuerier,
-				lastGERSync,
+				l2GERSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -570,18 +570,18 @@ func runReorgDetectorL2IfNeeded(
 	return rd, errChan
 }
 
-func runLastGERSyncIfNeeded(
+func runL2GERSyncIfNeeded(
 	ctx context.Context,
 	components []string,
-	cfg lastgersync.Config,
+	cfg l2gersync.Config,
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-) *lastgersync.LastGERSync {
+) *l2gersync.L2GERSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) {
 		return nil
 	}
-	lastGERSync, err := lastgersync.New(
+	l2GERSync, err := l2gersync.New(
 		ctx,
 		cfg.DBPath,
 		reorgDetectorL2,
@@ -597,16 +597,16 @@ func runLastGERSyncIfNeeded(
 		cfg.SyncMode,
 	)
 	if err != nil {
-		log.Fatalf("error creating lastGERSync: %s", err)
+		log.Fatalf("error creating l2GERSync: %s", err)
 	}
 
 	go func() {
-		if err := lastGERSync.Start(ctx); err != nil {
-			log.Fatalf("lastGERSync failed: %s", err)
+		if err := l2GERSync.Start(ctx); err != nil {
+			log.Fatalf("l2GERSync failed: %s", err)
 		}
 	}()
 
-	return lastGERSync
+	return l2GERSync
 }
 
 func runBridgeSyncL1IfNeeded(
@@ -689,7 +689,7 @@ func createBridgeService(
 	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
 	l1InfoTree *l1infotreesync.L1InfoTreeSync,
-	injectedGERs *lastgersync.LastGERSync,
+	injectedGERs *l2gersync.L2GERSync,
 	bridgeL1 *bridgesync.BridgeSync,
 	bridgeL2 *bridgesync.BridgeSync,
 ) *bridgeservice.BridgeService {

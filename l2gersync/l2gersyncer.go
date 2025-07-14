@@ -1,4 +1,4 @@
-package lastgersync
+package l2gersync
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	reorgDetectorID = "lastGERSyncer"
+	reorgDetectorID = "l2GERSyncer"
 )
 
 type SyncMode string
@@ -31,13 +31,13 @@ type L1InfoTreeQuerier interface {
 	GetInfoByGlobalExitRoot(ger common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
-// LastGERSync is responsible for managing GER synchronization.
-type LastGERSync struct {
+// L2GERSync is responsible for managing GER synchronization.
+type L2GERSync struct {
 	driver    *sync.EVMDriver
 	processor *processor
 }
 
-// New initializes and returns a new instance of LastGERSync
+// New initializes and returns a new instance of L2GERSync
 func New(
 	ctx context.Context,
 	dbPath string,
@@ -52,7 +52,7 @@ func New(
 	downloadBufferSize int,
 	requireStorageContentCompatibility bool,
 	syncMode SyncMode,
-) (*LastGERSync, error) {
+) (*L2GERSync, error) {
 	processor, err := newProcessor(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create processor: %w", err)
@@ -101,20 +101,20 @@ func New(
 		return nil, err
 	}
 
-	return &LastGERSync{
+	return &L2GERSync{
 		driver:    driver,
 		processor: processor,
 	}, nil
 }
 
 // Start initiates the synchronization process.
-func (s *LastGERSync) Start(ctx context.Context) error {
+func (s *L2GERSync) Start(ctx context.Context) error {
 	s.driver.Sync(ctx)
 	return nil
 }
 
 // GetFirstGERAfterL1InfoTreeIndex returns the first GER after a specified L1 info tree index
-func (s *LastGERSync) GetFirstGERAfterL1InfoTreeIndex(
+func (s *L2GERSync) GetFirstGERAfterL1InfoTreeIndex(
 	ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
 ) (GlobalExitRootInfo, error) {
 	return s.processor.GetFirstGERAfterL1InfoTreeIndex(ctx, atOrAfterL1InfoTreeIndex)
@@ -123,12 +123,12 @@ func (s *LastGERSync) GetFirstGERAfterL1InfoTreeIndex(
 // GetInjectedGERsForRange retrieves all injected global exit roots within a specified block range.
 // It returns a map where the keys are the global exit root hashes and the values are the
 // corresponding GlobalExitRootInfo containing the L1 info tree index, global exit root and block number.
-func (s *LastGERSync) GetInjectedGERsForRange(ctx context.Context,
+func (s *L2GERSync) GetInjectedGERsForRange(ctx context.Context,
 	fromBlock, toBlock uint64) (map[common.Hash]GlobalExitRootInfo, error) {
 	return s.processor.GetInjectedGERsForRange(ctx, fromBlock, toBlock)
 }
 
 // GetLastProcessedBlock returns the last processed block number
-func (s *LastGERSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
+func (s *L2GERSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 	return s.processor.GetLastProcessedBlock(ctx)
 }

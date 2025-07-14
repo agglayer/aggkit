@@ -1,4 +1,4 @@
-package lastgersync
+package l2gersync
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
 	dbtypes "github.com/agglayer/aggkit/db/types"
-	"github.com/agglayer/aggkit/lastgersync/migrations"
+	"github.com/agglayer/aggkit/l2gersync/migrations"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
 	ethcommon "github.com/ethereum/go-ethereum/common"
@@ -66,7 +66,7 @@ func newProcessor(dbPath string) (*processor, error) {
 	}, nil
 }
 
-// ProcessBlock stores a block and its related events in the lastgersync database
+// ProcessBlock stores a block and its related events in the l2 ger syncer database
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	tx, err := db.NewTx(ctx, p.database)
 	if err != nil {
@@ -182,7 +182,7 @@ func (p *processor) getLatestL1InfoTreeIndex() (uint32, error) {
 	return latestGERInfo.L1InfoTreeIndex, nil
 }
 
-// Reorg removes all blocks and associated data starting from a specific block number from lastgersync database
+// Reorg removes all blocks and associated data starting from a specific block number from l2 ger sync database
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	_, err := p.database.ExecContext(ctx, `DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
 	if err != nil {

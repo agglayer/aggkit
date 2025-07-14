@@ -1,4 +1,4 @@
-package lastgersync
+package l2gersync
 
 import (
 	"context"
@@ -14,7 +14,7 @@ import (
 
 func Test_getLatestL1InfoTreeIndex(t *testing.T) {
 	t.Parallel()
-	testDir := path.Join(t.TempDir(), "lastgersync_Test_getLatestL1InfoTreeIndex.sqlite")
+	testDir := path.Join(t.TempDir(), "l2gersync_Test_getLatestL1InfoTreeIndex.sqlite")
 	processor, err := newProcessor(testDir)
 	require.NoError(t, err)
 
@@ -147,7 +147,7 @@ func TestProcessBlock(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			testDir := path.Join(t.TempDir(), fmt.Sprintf("lastgersync_Test_ProcessBlock_%s.sqlite", tt.name))
+			testDir := path.Join(t.TempDir(), fmt.Sprintf("l2gersync_Test_ProcessBlock_%s.sqlite", tt.name))
 			p, err := newProcessor(testDir)
 			require.NoError(t, err)
 
@@ -168,7 +168,7 @@ func TestProcessBlock(t *testing.T) {
 }
 
 func TestReorg(t *testing.T) {
-	testDir := path.Join(t.TempDir(), "lastgersync_TestReorg.sqlite")
+	testDir := path.Join(t.TempDir(), "l2gersync_TestReorg.sqlite")
 	processor, err := newProcessor(testDir)
 	require.NoError(t, err)
 

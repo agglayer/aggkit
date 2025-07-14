@@ -9,7 +9,7 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/lastgersync"
+	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -92,7 +92,7 @@ type BridgeQuerier interface {
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
 	GetInjectedGERsForRange(ctx context.Context,
-		fromBlock, toBlock uint64) (map[common.Hash]lastgersync.GlobalExitRootInfo, error)
+		fromBlock, toBlock uint64) (map[common.Hash]l2gersync.GlobalExitRootInfo, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement

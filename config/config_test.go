@@ -127,6 +127,9 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 		[Etherman.EthermanConfig.Etherscan]
 			ApiKey = ""
 			Url = "https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
+
+	[LastGERSync]
+	DBPath = "{{PathRWData}}/l2gersync.sqlite"
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
@@ -149,4 +152,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, l1NetworkConfigUsePolTokenAddrHint)
 	require.ErrorContains(t, err, l1NetworkConfigUseRollupAddrHint)
 	require.ErrorContains(t, err, delayBetweenRetriesHint)
+	require.ErrorContains(t, err, lastGERSyncDeprecatedHint)
 }

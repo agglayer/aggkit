@@ -155,8 +155,8 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
-[LastGERSync]
-DBPath = "{{PathRWData}}/lastgersync.sqlite"
+[L2GERSync]
+DBPath = "{{PathRWData}}/l2gersync.sqlite"
 BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"

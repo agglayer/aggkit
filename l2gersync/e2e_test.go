@@ -1,4 +1,4 @@
-package lastgersync_test
+package l2gersync_test
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/lastgersync"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/test/helpers"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -27,13 +27,13 @@ const (
 	syncDelay                  = 150 * time.Millisecond
 )
 
-func TestLastGERSyncE2E(t *testing.T) {
+func TestL2GERSyncE2E(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
-	dbPathSyncer := path.Join(t.TempDir(), "lastGERSyncTestE2E.sqlite")
+	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
 
-	syncer, err := lastgersync.New(
+	syncer, err := l2gersync.New(
 		ctx,
 		dbPathSyncer,
 		setup.L2Environment.ReorgDetector,
@@ -46,13 +46,13 @@ func TestLastGERSyncE2E(t *testing.T) {
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,
-		lastgersync.Legacy,
+		l2gersync.Legacy,
 	)
 	require.NoError(t, err)
 
 	go func() {
 		if err := syncer.Start(ctx); err != nil {
-			log.Fatalf("lastGERSync failed: %s", err)
+			log.Fatalf("l2GERSync failed: %s", err)
 		}
 	}()
 
@@ -63,13 +63,13 @@ func TestLastGERSyncE2E(t *testing.T) {
 	}
 }
 
-func TestLastGERSync_GERRemoval(t *testing.T) {
+func TestL2GERSync_GERRemoval(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
-	dbPathSyncer := path.Join(t.TempDir(), "lastGERSyncTestE2E.sqlite")
+	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
 
-	syncer, err := lastgersync.New(
+	syncer, err := l2gersync.New(
 		ctx,
 		dbPathSyncer,
 		setup.L2Environment.ReorgDetector,
@@ -82,13 +82,13 @@ func TestLastGERSync_GERRemoval(t *testing.T) {
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,
-		lastgersync.SovereignChain,
+		l2gersync.SovereignChain,
 	)
 	require.NoError(t, err)
 
 	go func() {
 		if err := syncer.Start(ctx); err != nil {
-			log.Fatalf("lastGERSync failed: %s", err)
+			log.Fatalf("l2GERsync failed: %s", err)
 		}
 	}()
 
@@ -147,7 +147,7 @@ func updateGlobalExitRoot(t *testing.T, setup *helpers.AggoracleWithEVMChain, i 
 	return crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
 }
 
-func testGERSyncer(t *testing.T, ctx context.Context, setup *helpers.AggoracleWithEVMChain, syncer *lastgersync.LastGERSync, i int) {
+func testGERSyncer(t *testing.T, ctx context.Context, setup *helpers.AggoracleWithEVMChain, syncer *l2gersync.L2GERSync, i int) {
 	t.Helper()
 
 	expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})

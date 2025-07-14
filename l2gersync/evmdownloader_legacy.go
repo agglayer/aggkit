@@ -1,4 +1,4 @@
-package lastgersync
+package l2gersync
 
 import (
 	"context"
@@ -48,7 +48,7 @@ func newDownloaderLegacy(
 	}
 
 	evmDownloader := sync.NewEVMDownloaderImplementation(
-		"lastgersync", l2Client, blockFinality,
+		"l2GERSync", l2Client, blockFinality,
 		waitForNewBlocksPeriod, nil, nil,
 		rh, nil)
 
@@ -102,7 +102,7 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debug("aborting the lastgersync downloader...")
+			log.Debug("aborting the l2GERSync downloader...")
 			close(downloadedCh)
 
 			return

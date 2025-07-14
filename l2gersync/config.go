@@ -1,4 +1,4 @@
-package lastgersync
+package l2gersync
 
 import (
 	"github.com/agglayer/aggkit/config/types"
