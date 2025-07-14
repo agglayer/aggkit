@@ -189,6 +189,7 @@ RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
+RequireValidatorCall = false
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectTimeout = "5s"
@@ -214,6 +215,12 @@ StopOnFinishedSendingAllCertificates = false
 		OpNodeURL = "{{OpNodeURL}}"
 		# TODO: For now set it to false, until it gets fixed on the contracts deployment end
 		RequireKeyMatchTrustedSequencer = false
+	[AggSender.ValidatorClient]
+		URL = ""
+		MinConnectTimeout = "5s"
+		RequestTimeout = "30s"
+		UseTLS = false
+
 [Prometheus]
 Enabled = true
 Host = "localhost"
