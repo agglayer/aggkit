@@ -8,12 +8,14 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	v1nodetypes "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	node "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/v1"
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	"github.com/agglayer/aggkit/agglayer/types"
+	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
@@ -23,6 +25,19 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+func TestAgglayerExploratory(t *testing.T) {
+	client, err := NewAgglayerGRPCClient(
+		&aggkitgrpc.ClientConfig{
+			URL: "grpc-agglayer-dev.polygon.technology:443",
+			MinConnectTimeout: configtypes.Duration{
+				time.Second * 60,
+			},
+		},
+	)
+	require.NoError(t, err)
+	_, err = client.GetEpochConfiguration(t.Context())
+	require.NoError(t, err)
+}
 func TestGetEpochConfiguration(t *testing.T) {
 	t.Parallel()
 

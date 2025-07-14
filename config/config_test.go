@@ -41,6 +41,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)
+	require.Equal(t, cfg.Validator.ServerConfig.EnableReflection, true)
 	t.Logf("cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey: %+v", cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey)
 }
 

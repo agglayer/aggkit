@@ -20,11 +20,11 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
-	aggsenderdb "github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/aggsender/query"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
 	aggsendervalidator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -32,6 +32,7 @@ import (
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/healthcheck"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
@@ -40,7 +41,7 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/agglayer/go_signer/signer/types"
+	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -118,6 +119,7 @@ func start(cliCtx *cli.Context) error {
 			aggsender, err := createAggSender(
 				cliCtx.Context,
 				cfg.AggSender,
+				cfg.Validator,
 				l1Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
@@ -147,7 +149,7 @@ func start(cliCtx *cli.Context) error {
 		case aggkitcommon.AGGSENDERVALIDATOR:
 			aggsenderValidator, err := createAggSenderValidator(
 				cliCtx.Context,
-				cfg.AggSender,
+				cfg.Validator,
 				l1InfoTreeSync,
 				l2BridgeSync,
 				l1Client,
@@ -211,44 +213,74 @@ func createAggchainProofGen(
 }
 
 func createAggSenderValidator(ctx context.Context,
-	cfg aggsendercfg.Config,
+	cfg validator.Config,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
-	storageConfig := aggsenderdb.AggSenderSQLStorageConfig{
-		DBPath:                  cfg.StoragePath,
-		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
-	}
-	aggsenderdb, err := aggsenderdb.NewAggSenderSQLStorage(logger, storageConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AggSender SQL storage: %w", err)
-	}
-	cfg.AggsenderPrivateKey = types.SignerConfig{Method: "mock"}
-	flow, err := flows.NewFlow(
-		ctx,
-		cfg,
-		logger,
-		aggsenderdb,
-		l1Client,
-		l2Client,
-		l1InfoTreeSync,
-		l2Syncer,
-		rollupDataQuerier,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AggSender flow: %w", err)
-	}
-	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
 
-	return aggsender.NewAggsenderValidator(ctx, logger, flow, l1InfoTreeQuerier)
+	signer, err := signer.NewSigner(ctx, 0, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
+	if err != nil {
+		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
+	}
+	if err := signer.Initialize(ctx); err != nil {
+		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
+	}
+
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
+	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
+	lerQuerier, err := query.NewLERDataQuerier(
+		cfg.LerQuerier.RollupManagerAddr, cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)
+	if err != nil {
+		return nil, fmt.Errorf("error creating LER data querier: %w", err)
+	}
+	agglayerClient, err := createAgglayerClient(&cfg.AgglayerClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
+	}
+	flowPP := flows.NewPPFlow(
+		logger,
+		flows.NewBaseFlow(
+			logger,
+			l2BridgeQuerier,
+			nil, // storage
+			l1InfoTreeQuerier,
+			lerQuerier,
+			flows.BaseFlowConfig{
+				MaxCertSize:          cfg.MaxCertSize,
+				StartL2Block:         0,
+				RequireNoFEPBlockGap: false, //  for PP doesnt apply it
+			},
+		),
+		nil, // storage
+		l1InfoTreeQuerier,
+		l2BridgeQuerier,
+		signer,
+		cfg.RequireOneBridgeInPPCertificate,
+		cfg.MaxL2BlockNumber,
+	)
+
+	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP, l1InfoTreeQuerier, agglayerClient)
+}
+
+func createAgglayerClient(cfg *aggkitgrpc.ClientConfig) (*agglayer.AgglayerGRPCClient, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid agglayer client config: %w", err)
+	}
+
+	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
+	}
+	return agglayerClient, nil
 }
 
 func createAggSender(
 	ctx context.Context,
 	cfg aggsendercfg.Config,
+	cfgValidator validator.Config,
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
@@ -264,7 +296,6 @@ func createAggSender(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
-
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
 			BlockFinalityType:     aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),

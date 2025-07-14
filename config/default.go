@@ -238,4 +238,30 @@ GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 ProfilingHost = "localhost"
 ProfilingPort = 6060
 ProfilingEnabled = false
+
+[Validator]
+EnableRPC = true
+Signer = { Method = "mock" }
+MaxCertSize = "{{AggSender.MaxCertSize}}"
+MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
+DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
+[Validator.ServerConfig]
+	Host = "0.0.0.0"
+	Port = 5578
+	EnableReflection = true
+[Validator.LerQuerierConfig]
+	RollupManagerAddr = "{{AggSender.RollupManagerAddr}}"
+	RollupCreationBlockL1 = "{{AggSender.RollupCreationBlockL1}}"
+[Validator.PPConfig]
+	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
+[Validator.AgglayerClient]
+		URL = "{{AggSender.AgglayerClient.URL}}"
+	MinConnectTimeout = "{{AggSender.AgglayerClient.MinConnectTimeout}}"
+		RequestTimeout = "{{AggSender.AgglayerClient.RequestTimeout}}"
+		UseTLS = "{{AggSender.AgglayerClient.UseTLS}}"
+		[Validator.AgglayerClient.Retry]
+			InitialBackoff = "{{AggSender.AgglayerClient.Retry.InitialBackoff}}"
+			MaxBackoff = "{{AggSender.AgglayerClient.Retry.MaxBackoff}}"
+			BackoffMultiplier = "{{AggSender.AgglayerClient.Retry.BackoffMultiplier}}"
+			MaxAttempts = "{{AggSender.AgglayerClient.Retry.MaxAttempts}}"
 `

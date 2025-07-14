@@ -27,12 +27,17 @@ type AggLayerClientRecoveryQuerier interface {
 	GetLatestPendingCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error)
 }
 
+type AggLayerClientCertificateIDQuerier interface {
+	GetCertificateHeader(ctx context.Context, certificateID common.Hash) (*types.CertificateHeader, error)
+}
+
 // AgglayerClientInterface is the interface that defines the methods that the AggLayerClient will implement
 type AgglayerClientInterface interface {
 	SendCertificate(ctx context.Context, certificate *types.Certificate, validatorSignature []byte) (common.Hash, error)
 	GetCertificateHeader(ctx context.Context, certificateHash common.Hash) (*types.CertificateHeader, error)
 	AggLayerClientGetEpochConfiguration
 	AggLayerClientRecoveryQuerier
+	AggLayerClientCertificateIDQuerier
 }
 
 // AggLayerClient is the client that will be used to interact with the AggLayer
