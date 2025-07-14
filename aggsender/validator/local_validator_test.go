@@ -21,11 +21,7 @@ func TestValidateAndSignCertificate_Success(t *testing.T) {
 	validator := mocks.NewCertificateValidator(t)
 	validator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil)
 
-	localValidator := &LocalValidator{
-		log:       logger,
-		storage:   storage,
-		validator: validator,
-	}
+	localValidator := NewLocalValidator(logger, storage, validator)
 
 	certificate := &types.Certificate{
 		Height:    1,
@@ -35,6 +31,7 @@ func TestValidateAndSignCertificate_Success(t *testing.T) {
 	signature, err := localValidator.ValidateAndSignCertificate(context.Background(), certificate)
 	require.NoError(t, err)
 	require.Nil(t, signature)
+	require.NotNil(t, localValidator.String())
 
 	storage.AssertExpectations(t)
 	validator.AssertExpectations(t)
