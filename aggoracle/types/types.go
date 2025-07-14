@@ -44,7 +44,7 @@ type L2GERManagerContract interface {
 	GlobalExitRootUpdater(opts *bind.CallOpts) (common.Address, error)
 }
 
-// AggOracleManagerContract is an interface to interact with the AggOracleManager contract
+// AggOracleManagerContract is an interface to interact with the AggOracleCommittee contract
 type AggOracleManagerContract interface {
 	ProposeGlobalExitRoot(opts *bind.TransactOpts, proposedGlobalExitRoot [32]byte) (*types.Transaction, error)
 

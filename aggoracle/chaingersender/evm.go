@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggoraclemanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggoraclecommittee"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
@@ -131,16 +131,16 @@ func (c *EVMChainGERSender) initializeDirectInjectionMode() error {
 }
 
 func (c *EVMChainGERSender) initializeQuorumProposalMode() error {
-	// Create AggOracleManager contract binding
-	aggOracleManager, err := aggoraclemanager.NewAggoraclemanager(c.aggOracleManagerAddr, c.l2Client)
+	// Create AggOracleCommittee contract binding
+	aggOracleManager, err := aggoraclecommittee.NewAggoraclecommittee(c.aggOracleManagerAddr, c.l2Client)
 	if err != nil {
-		return fmt.Errorf("failed to create binding for AggOracleManager (SC address: %s): %w", c.aggOracleManagerAddr, err)
+		return fmt.Errorf("failed to create binding for AggOracleCommittee (SC address: %s): %w", c.aggOracleManagerAddr, err)
 	}
 
-	// Get the ABI for AggOracleManager
-	aggOracleManagerAbi, err := aggoraclemanager.AggoraclemanagerMetaData.GetAbi()
+	// Get the ABI for AggOracleCommittee
+	aggOracleManagerAbi, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
 	if err != nil {
-		return fmt.Errorf("failed to retrieve AggOracleManager ABI: %w", err)
+		return fmt.Errorf("failed to retrieve AggOracleCommittee ABI: %w", err)
 	}
 
 	c.aggOracleManager = aggOracleManager
@@ -174,7 +174,7 @@ func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) erro
 	return c.submitTransaction(ctx, &c.l2GERManagerAddr, c.l2GERManagerAbi, insertGERFuncName, ger, "inject")
 }
 
-// ProposeGER proposes the provided global exit root to the AggOracleManager contract
+// ProposeGER proposes the provided global exit root to the AggOracleCommittee contract
 func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) error {
 	if c.mode != QuorumProposalMode {
 		return fmt.Errorf("ProposeGER is only available in quorum proposal mode, current mode: %s", c.mode)
