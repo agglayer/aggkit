@@ -79,7 +79,6 @@ DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
 GlobalExitRootAddr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
 RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
 SyncBlockChunkSize = 100
-BlockFinality = "LatestBlock"
 URLRPCL1 = "{{L1URL}}"
 WaitForNewBlocksPeriod = "100ms"
 InitialBlock = {{genesisBlockNumber}}
@@ -90,7 +89,6 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 [AggOracle]
 TargetChainType = "EVM"
 URLRPCL1 = "{{L1URL}}"
-BlockFinality = "FinalizedBlock"
 WaitPeriodNextGER = "10s"
 	[AggOracle.EVMSender]
 		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
@@ -135,7 +133,6 @@ MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
-BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 BridgeAddr = "{{polygonBridgeAddr}}"
 SyncBlockChunkSize = 100

@@ -16,10 +16,8 @@ var (
 )
 
 type Config struct {
-	TargetChainType TargetChainType `mapstructure:"TargetChainType"`
-	URLRPCL1        string          `mapstructure:"URLRPCL1"`
-	// BlockFinality indicates the status of the blocks that will be queried in order to sync
-	BlockFinality     string                   `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
+	TargetChainType   TargetChainType          `mapstructure:"TargetChainType"`
+	URLRPCL1          string                   `mapstructure:"URLRPCL1"`
 	WaitPeriodNextGER types.Duration           `mapstructure:"WaitPeriodNextGER"`
 	EVMSender         chaingersender.EVMConfig `mapstructure:"EVMSender"`
 }

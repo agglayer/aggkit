@@ -54,10 +54,11 @@ func start(cliCtx *cli.Context) error {
 
 	log.Init(cfg.Log)
 
-	if cfg.Log.Environment == log.EnvironmentDevelopment {
+	switch cfg.Log.Environment {
+	case log.EnvironmentDevelopment:
 		aggkit.PrintVersion(os.Stdout)
 		log.Info("Starting application")
-	} else if cfg.Log.Environment == log.EnvironmentProduction {
+	case log.EnvironmentProduction:
 		logVersion()
 	}
 
@@ -369,7 +370,6 @@ func createAggoracle(
 		sender,
 		l1Client,
 		l1InfoTreeSyncer,
-		aggkittypes.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
 	if err != nil {
@@ -452,7 +452,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.GlobalExitRootAddr,
 		cfg.L1InfoTreeSync.RollupManagerAddr,
 		cfg.L1InfoTreeSync.SyncBlockChunkSize,
-		aggkittypes.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
+		aggkittypes.FinalizedBlock,
 		reorgDetector,
 		l1Client,
 		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
@@ -617,7 +617,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.FinalizedBlock,
 		reorgDetectorL1,
 		l1Client,
 		cfg.InitialBlockNum,
@@ -679,10 +679,10 @@ func runBridgeSyncL2IfNeeded(
 func createBridgeService(
 	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
-	l1InfoTree *l1infotreesync.L1InfoTreeSync,
-	injectedGERs *lastgersync.LastGERSync,
-	bridgeL1 *bridgesync.BridgeSync,
-	bridgeL2 *bridgesync.BridgeSync,
+	l1InfoTree bridgeservice.L1InfoTreer,
+	injectedGERs bridgeservice.LastGERer,
+	bridgeL1 bridgeservice.Bridger,
+	bridgeL2 bridgeservice.Bridger,
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 
