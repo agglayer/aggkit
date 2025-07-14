@@ -72,9 +72,11 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 			Certificate: &testCertificate1,
 		}
 		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
 		resp, err := testData.sut.ValidateCertificate(t.Context(), req)
 		require.NoError(t, err)
 		require.IsType(t, &v1.ValidateCertificateResponse{}, resp)
+		require.Equal(t, resp.Signature.Value, []byte("signature"), "Expected signature to match")
 	})
 
 	t.Run("PreviousCertificateId, fail to retrieve it", func(t *testing.T) {
@@ -126,6 +128,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 type testValidatorServiceData struct {
 	mockValidator      *mocks.CertificateValidator
 	mockAgglayerClient *validatormocks.AgglayerClientInterface
+	mockSigner         *mocks.Signer
 	sut                *ValidatorService
 }
 
@@ -133,10 +136,12 @@ func newValidatorServiceTestData(t *testing.T) *testValidatorServiceData {
 	t.Helper()
 	mockValidator := mocks.NewCertificateValidator(t)
 	mockAgglayerClient := validatormocks.NewAgglayerClientInterface(t)
-	sut := NewValidatorService(mockValidator, mockAgglayerClient)
+	mockSigner := mocks.NewSigner(t)
+	sut := NewValidatorService(mockValidator, mockAgglayerClient, mockSigner)
 	return &testValidatorServiceData{
 		mockValidator:      mockValidator,
 		mockAgglayerClient: mockAgglayerClient,
+		mockSigner:         mockSigner,
 		sut:                sut,
 	}
 }

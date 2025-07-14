@@ -118,7 +118,6 @@ func start(cliCtx *cli.Context) error {
 			aggsender, err := createAggSender(
 				cliCtx.Context,
 				cfg.AggSender,
-				cfg.Validator,
 				l1Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
@@ -254,18 +253,16 @@ func createAggSenderValidator(ctx context.Context,
 		nil, // storage
 		l1InfoTreeQuerier,
 		l2BridgeQuerier,
-		signer,
+		nil, // signer, PPFlow can sign certificates
 		cfg.RequireOneBridgeInPPCertificate,
 		cfg.MaxL2BlockNumber,
 	)
-
-	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP, l1InfoTreeQuerier, agglayerClient)
+	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP, l1InfoTreeQuerier, agglayerClient, signer)
 }
 
 func createAggSender(
 	ctx context.Context,
 	cfg aggsendercfg.Config,
-	cfgValidator validator.Config,
 	l1EthClient aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,

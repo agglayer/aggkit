@@ -3,13 +3,16 @@ package validator
 import (
 	"context"
 
+	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	agglayergrpc "github.com/agglayer/aggkit/agglayer/grpc"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/protobuf/types/known/emptypb"
@@ -24,13 +27,16 @@ type ValidatorService struct {
 
 	validator      types.CertificateValidator
 	agglayerClient AgglayerClientInterface
+	signer         signertypes.Signer
 }
 
 func NewValidatorService(validator types.CertificateValidator,
-	agglayerClient AgglayerClientInterface) *ValidatorService {
+	agglayerClient AgglayerClientInterface,
+	signer signertypes.Signer) *ValidatorService {
 	return &ValidatorService{
 		validator:      validator,
 		agglayerClient: agglayerClient,
+		signer:         signer,
 	}
 }
 
@@ -93,5 +99,28 @@ func (s *ValidatorService) ValidateCertificate(
 			Message: "Certificate validation failed: " + err.Error(),
 		}
 	}
-	return &v1.ValidateCertificateResponse{}, nil
+	signature, err := s.signCertificate(ctx, cert)
+	if err != nil {
+		log.Errorf("Error signing certificate: %v", err)
+		return nil, grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "Error signing certificate: " + err.Error(),
+		}
+	}
+	return &v1.ValidateCertificateResponse{
+		Signature: &v1types.FixedBytes65{
+			Value: signature,
+		},
+	}, nil
+}
+
+func (s *ValidatorService) signCertificate(ctx context.Context, cert *agglayertypes.Certificate) ([]byte, error) {
+	if s.signer == nil {
+		return nil, grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "Signer is not initialized",
+		}
+	}
+	hashToSign := HashCertificateToSign(cert)
+	return s.signer.SignHash(ctx, hashToSign)
 }

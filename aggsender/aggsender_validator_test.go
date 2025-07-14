@@ -18,11 +18,10 @@ func TestNewAggsenderValidator(t *testing.T) {
 	mockFlowPP := mocks.NewAggsenderFlow(t)
 	mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockAggLayerClient := validatormocks.NewAgglayerClientInterface(t)
-
 	cfg := validator.Config{}
 	// Call the function
 	validator, err := NewAggsenderValidator(ctx, mockLogger, cfg, mockFlowPP, mockL1InfoTreeDataQuerier,
-		mockAggLayerClient)
+		mockAggLayerClient, nil)
 
 	// Assertions
 	require.NoError(t, err, "Expected no error when creating AggsenderValidator")

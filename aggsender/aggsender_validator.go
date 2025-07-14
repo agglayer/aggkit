@@ -12,6 +12,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 )
 
 var (
@@ -31,16 +32,19 @@ func NewAggsenderValidator(ctx context.Context,
 	cfg validator.Config,
 	flowPP validator.FlowInterface,
 	l1InfoTreeDataQuerier validator.L1InfoTreeRootByLeafQuerier,
-	aggLayerClient validator.AgglayerClientInterface) (*AggsenderValidator, error) {
+	aggLayerClient validator.AgglayerClientInterface,
+	signer signertypes.Signer) (*AggsenderValidator, error) {
 	validatorCert := validator.NewAggsenderValidator(
 		logger, flowPP, l1InfoTreeDataQuerier)
 	grpcServer, err := grpc.NewServer(cfg.ServerConfig)
 	if err != nil {
 		return nil, err
 	}
+
 	v1.RegisterAggsenderValidatorServer(grpcServer.GRPC(), validator.NewValidatorService(
 		validatorCert,
 		aggLayerClient,
+		signer,
 	))
 	return &AggsenderValidator{
 		log:              logger,
