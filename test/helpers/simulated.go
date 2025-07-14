@@ -92,7 +92,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 		return err
 	}
 
-	dataCallProxy, err := bridgeABI.Pack("initialize",
+	dataCallProxy, err := bridgeABI.Pack("initialize0",
 		networkID,
 		common.Address{}, // gasTokenAddressMainnet
 		uint32(0),        // gasTokenNetworkMainnet
