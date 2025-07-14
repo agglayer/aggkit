@@ -151,6 +151,65 @@ func (_c *L1InfoTreeDataQuerier_GetFinalizedL1InfoTreeData_Call) RunAndReturn(ru
 	return _c
 }
 
+// GetL1InfoRootByLeafIndex provides a mock function with given fields: ctx, leafCount
+func (_m *L1InfoTreeDataQuerier) GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*types.Root, error) {
+	ret := _m.Called(ctx, leafCount)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetL1InfoRootByLeafIndex")
+	}
+
+	var r0 *types.Root
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) (*types.Root, error)); ok {
+		return rf(ctx, leafCount)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) *types.Root); ok {
+		r0 = rf(ctx, leafCount)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.Root)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint32) error); ok {
+		r1 = rf(ctx, leafCount)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetL1InfoRootByLeafIndex'
+type L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call struct {
+	*mock.Call
+}
+
+// GetL1InfoRootByLeafIndex is a helper method to define mock.On call
+//   - ctx context.Context
+//   - leafCount uint32
+func (_e *L1InfoTreeDataQuerier_Expecter) GetL1InfoRootByLeafIndex(ctx interface{}, leafCount interface{}) *L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call {
+	return &L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call{Call: _e.mock.On("GetL1InfoRootByLeafIndex", ctx, leafCount)}
+}
+
+func (_c *L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call) Run(run func(ctx context.Context, leafCount uint32)) *L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint32))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call) Return(_a0 *types.Root, _a1 error) *L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call) RunAndReturn(run func(context.Context, uint32) (*types.Root, error)) *L1InfoTreeDataQuerier_GetL1InfoRootByLeafIndex_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetLatestFinalizedL1InfoRoot provides a mock function with given fields: ctx
 func (_m *L1InfoTreeDataQuerier) GetLatestFinalizedL1InfoRoot(ctx context.Context) (*types.Root, *l1infotreesync.L1InfoTreeLeaf, error) {
 	ret := _m.Called(ctx)

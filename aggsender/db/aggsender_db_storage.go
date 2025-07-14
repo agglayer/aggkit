@@ -15,7 +15,6 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	dbtypes "github.com/agglayer/aggkit/db/types"
-	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/russross/meddler"
 )
@@ -85,13 +84,13 @@ type AggSenderSQLStorageConfig struct {
 // AggSenderSQLStorage is the struct that implements the AggSenderStorage interface
 type AggSenderSQLStorage struct {
 	dbtypes.KeyValueStorager
-	logger *log.Logger
+	logger aggkitcommon.Logger
 	db     *sql.DB
 	cfg    AggSenderSQLStorageConfig
 }
 
 // NewAggSenderSQLStorage creates a new AggSenderSQLStorage
-func NewAggSenderSQLStorage(logger *log.Logger, cfg AggSenderSQLStorageConfig) (*AggSenderSQLStorage, error) {
+func NewAggSenderSQLStorage(logger aggkitcommon.Logger, cfg AggSenderSQLStorageConfig) (*AggSenderSQLStorage, error) {
 	database, err := db.NewSQLiteDB(cfg.DBPath)
 	if err != nil {
 		return nil, err

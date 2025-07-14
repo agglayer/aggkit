@@ -11,7 +11,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 trap 'log_error "Script failed at line $LINENO"' ERR
 
 if [ "$#" -lt 3 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | multi-l2-networks-2-chains | multi-l2-networks-3-chains> <kurtosis_repo_path> <e2e_repo_path>"
+    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-pessimistic | single-l2-network-fork12-global-index-pp-old-contracts | multi-l2-networks-2-chains | multi-l2-networks-3-chains> <kurtosis_repo_path> <e2e_repo_path>"
     echo ""
     echo "Arguments:"
     echo "  test_type           Type of test to run"
@@ -19,9 +19,9 @@ if [ "$#" -lt 3 ]; then
     echo "  e2e_repo_path       Path to E2E repo (use '-' to skip tests)"
     echo ""
     echo "Examples:"
-    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo /path/to/e2e-repo    # Run both setup and tests"
-    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo -                    # Run only setup"
-    echo "  $0 single-l2-network-fork12-op-succinct - /path/to/e2e-repo                         # Run only tests"
+    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo /path/to/e2e-repo   # Run both setup and tests"
+    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo -                   # Run only setup"
+    echo "  $0 single-l2-network-fork12-op-succinct - /path/to/e2e-repo                        # Run only tests"
     exit 1
 fi
 
@@ -38,6 +38,9 @@ single-l2-network-fork12-op-succinct)
     ENCLAVE_NAME="op"
     ;;
 single-l2-network-fork12-pessimistic)
+    ENCLAVE_NAME="aggkit"
+    ;;
+single-l2-network-fork12-global-index-pp-old-contracts)
     ENCLAVE_NAME="aggkit"
     ;;
 multi-l2-networks-2-chains)
@@ -85,18 +88,22 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         ;;
+    single-l2-network-fork12-global-index-pp-old-contracts)
+        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_cdk_args_global_index_pp_old_contracts.json" > /tmp/merged_args_1.json
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
+        ;;
     multi-l2-networks-2-chains)
         # Create merged args files using jq
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_2.json
+        jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_2.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         ;;
     multi-l2-networks-3-chains)
         # Create merged args files using jq
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_2.json
-        jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_3.json
+        jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_2.json
+        jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_3.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_3.json .
@@ -148,14 +155,20 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
             ./tests/aggkit/bridge-e2e.bats \
             ./tests/aggkit/e2e-pp.bats \
             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
-            ./tests/aggkit/internal-claims.bats
+            ./tests/aggkit/internal-claims.bats \
+            ./tests/aggkit/claim-reetrancy.bats
         ;;
     single-l2-network-fork12-pessimistic)
         bats \
             ./tests/aggkit/bridge-e2e-custom-gas.bats \
             ./tests/aggkit/bridge-e2e.bats \
             ./tests/aggkit/e2e-pp.bats \
-            ./tests/aggkit/internal-claims.bats
+            ./tests/aggkit/internal-claims.bats \
+            ./tests/aggkit/claim-reetrancy.bats
+        ;;
+    single-l2-network-fork12-global-index-pp-old-contracts)
+        bats \
+            ./tests/aggkit/global-index-pp-old-contracts.bats
         ;;
     multi-l2-networks-2-chains)
         bats ./tests/aggkit/bridge-e2e-2-l2s.bats

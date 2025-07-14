@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	_ "embed"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/types"
-	"github.com/agglayer/aggkit/log"
 )
 
 //go:embed 0001.sql
@@ -40,6 +40,6 @@ var Migrations = []types.Migration{
 	},
 }
 
-func RunMigrations(logger *log.Logger, database *sql.DB) error {
+func RunMigrations(logger aggkitcommon.Logger, database *sql.DB) error {
 	return db.RunMigrationsDB(logger, database, Migrations)
 }

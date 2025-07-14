@@ -62,7 +62,7 @@ func newSimulatedClient(t *testing.T) (
 }
 
 func TestE2E(t *testing.T) {
-	ctx, _ := context.WithCancel(context.Background())
+	ctx := t.Context()
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestE2E.sqlite")
 
 	rdm := mocks_l1infotreesync.NewReorgDetectorMock(t)

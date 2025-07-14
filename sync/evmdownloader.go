@@ -164,10 +164,10 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 			requestToBlock = lastBlock
 			reachTop = true
 		}
-		d.log.Debugf("getting events from blocks [%d to  %d] toBlock: %d. lastFinalizedBlock: %d lastBlock: %d",
+		d.log.Debugf("getting events from blocks [%d to %d] toBlock: %d. lastFinalizedBlock: %d lastBlock: %d",
 			fromBlock, requestToBlock, toBlock, lastFinalizedBlockNumber, lastBlock)
 		blocks := d.GetEventsByBlockRange(ctx, fromBlock, requestToBlock)
-		d.log.Debugf("result events from blocks [%d to  %d] -> len(blocks)=%d",
+		d.log.Debugf("result events from blocks [%d to %d] -> len(blocks)=%d",
 			fromBlock, requestToBlock, len(blocks))
 		if requestToBlock <= lastFinalizedBlockNumber {
 			d.log.Debugf("range is in a safe zone (requestToBlock: %d <= finalized: %d)",
@@ -283,12 +283,13 @@ func (d *EVMDownloaderImplementation) ChainID(ctx context.Context) (uint64, erro
 }
 
 func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context) (*types.Header, error) {
+	blockFinality := d.finalizedBlockType
 	// if the finalized block type is nil, it means that the reorgs are not happening on the network
-	if d.finalizedBlockType == nil {
-		return d.ethClient.HeaderByNumber(ctx, d.blockFinality)
+	if blockFinality == nil {
+		blockFinality = d.blockFinality
 	}
 
-	return d.ethClient.HeaderByNumber(ctx, d.finalizedBlockType)
+	return d.ethClient.HeaderByNumber(ctx, blockFinality)
 }
 
 func (d *EVMDownloaderImplementation) WaitForNewBlocks(
