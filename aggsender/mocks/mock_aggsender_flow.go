@@ -130,6 +130,65 @@ func (_c *AggsenderFlow_CheckInitialStatus_Call) RunAndReturn(run func(context.C
 	return _c
 }
 
+// GenerateBuildParams provides a mock function with given fields: ctx, preParams
+func (_m *AggsenderFlow) GenerateBuildParams(ctx context.Context, preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
+	ret := _m.Called(ctx, preParams)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GenerateBuildParams")
+	}
+
+	var r0 *types.CertificateBuildParams
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)); ok {
+		return rf(ctx, preParams)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *types.CertificatePreBuildParams) *types.CertificateBuildParams); ok {
+		r0 = rf(ctx, preParams)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.CertificateBuildParams)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *types.CertificatePreBuildParams) error); ok {
+		r1 = rf(ctx, preParams)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggsenderFlow_GenerateBuildParams_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GenerateBuildParams'
+type AggsenderFlow_GenerateBuildParams_Call struct {
+	*mock.Call
+}
+
+// GenerateBuildParams is a helper method to define mock.On call
+//   - ctx context.Context
+//   - preParams *types.CertificatePreBuildParams
+func (_e *AggsenderFlow_Expecter) GenerateBuildParams(ctx interface{}, preParams interface{}) *AggsenderFlow_GenerateBuildParams_Call {
+	return &AggsenderFlow_GenerateBuildParams_Call{Call: _e.mock.On("GenerateBuildParams", ctx, preParams)}
+}
+
+func (_c *AggsenderFlow_GenerateBuildParams_Call) Run(run func(ctx context.Context, preParams *types.CertificatePreBuildParams)) *AggsenderFlow_GenerateBuildParams_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*types.CertificatePreBuildParams))
+	})
+	return _c
+}
+
+func (_c *AggsenderFlow_GenerateBuildParams_Call) Return(_a0 *types.CertificateBuildParams, _a1 error) *AggsenderFlow_GenerateBuildParams_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggsenderFlow_GenerateBuildParams_Call) RunAndReturn(run func(context.Context, *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)) *AggsenderFlow_GenerateBuildParams_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetCertificateBuildParams provides a mock function with given fields: ctx
 func (_m *AggsenderFlow) GetCertificateBuildParams(ctx context.Context) (*types.CertificateBuildParams, error) {
 	ret := _m.Called(ctx)

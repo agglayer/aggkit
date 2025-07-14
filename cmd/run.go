@@ -20,7 +20,11 @@ import (
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
+	aggsenderdb "github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/prover"
+	"github.com/agglayer/aggkit/aggsender/query"
+	aggsendervalidator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -35,6 +39,7 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	"github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -138,6 +143,21 @@ func start(cliCtx *cli.Context) error {
 			}
 
 			rpcServices = append(rpcServices, aggchainProofGen.GetRPCServices()...)
+		case aggkitcommon.AGGSENDERVALIDATOR:
+			aggsenderValidator, err := createAggSenderValidator(
+				cliCtx.Context,
+				cfg.AggSender,
+				l1InfoTreeSync,
+				l2BridgeSync,
+				l1Client,
+				l2Client,
+				rollupDataQuerier,
+			)
+			if err != nil {
+				log.Fatal(err)
+			}
+			rpcServices = append(rpcServices, aggsenderValidator.GetRPCServices()...)
+			go aggsenderValidator.Start(cliCtx.Context)
 		}
 	}
 	if len(rpcServices) > 0 {
@@ -189,6 +209,42 @@ func createAggchainProofGen(
 	return aggchainProofGen, nil
 }
 
+func createAggSenderValidator(ctx context.Context,
+	cfg aggsendercfg.Config,
+	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
+	l2Syncer *bridgesync.BridgeSync,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
+	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
+	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
+	storageConfig := aggsenderdb.AggSenderSQLStorageConfig{
+		DBPath:                  cfg.StoragePath,
+		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
+	}
+	aggsenderdb, err := aggsenderdb.NewAggSenderSQLStorage(logger, storageConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggSender SQL storage: %w", err)
+	}
+	cfg.AggsenderPrivateKey = types.SignerConfig{Method: "mock"}
+	flow, err := flows.NewFlow(
+		ctx,
+		cfg,
+		logger,
+		aggsenderdb,
+		l1Client,
+		l2Client,
+		l1InfoTreeSync,
+		l2Syncer,
+		rollupDataQuerier,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggSender flow: %w", err)
+	}
+	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
+
+	return aggsender.NewAggsenderValidator(ctx, logger, flow, l1InfoTreeQuerier)
+}
+
 func createAggSender(
 	ctx context.Context,
 	cfg aggsendercfg.Config,
@@ -233,8 +289,25 @@ func createAggSender(
 	go blockNotifier.Start(ctx)
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
-	return aggsender.New(ctx, logger, cfg, agglayerClient,
+	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
 		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggSender: %w", err)
+	}
+	// TODO: Remove this, just for testing
+	if cfg.Mode == "PessimisticProof" {
+		validator, err := createAggSenderValidator(ctx, cfg, l1InfoTreeSync,
+			l2Syncer, l1EthClient, l2Client, rollupDataQuerier)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create AggSender validator: %w", err)
+		}
+		aggsender.AttachValidator(&aggsendervalidator.LocalValidator{
+			Log:       logger,
+			Storage:   aggsender.GetStorage(),
+			Validator: validator,
+		})
+	}
+	return aggsender, nil
 }
 
 func createAggoracle(
@@ -368,7 +441,7 @@ func runL1InfoTreeSyncerIfNeeded(
 	reorgDetector *reorgdetector.ReorgDetector,
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
@@ -402,6 +475,7 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) aggkittypes.EthCl
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.L1INFOTREESYNC,
 		aggkitcommon.AGGCHAINPROOFGEN,
@@ -422,6 +496,7 @@ func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientC
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
@@ -440,7 +515,7 @@ func runReorgDetectorL1IfNeeded(
 	cfg *reorgdetector.Config,
 ) (*reorgdetector.ReorgDetector, chan error) {
 	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
 		aggkitcommon.AGGCHAINPROOFGEN},
 		components) {
@@ -469,6 +544,7 @@ func runReorgDetectorL2IfNeeded(
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil, nil
 	}
@@ -571,6 +647,7 @@ func runBridgeSyncL2IfNeeded(
 	if !isNeeded([]string{
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
@@ -672,9 +749,10 @@ func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE,
 	}, components) {
-		return nil, nil
+		return &etherman.RollupDataQuerier{}, nil
 	}
 
 	return etherman.NewRollupDataQuerier(cfg,
