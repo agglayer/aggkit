@@ -18,6 +18,10 @@ const (
 	AggchainProofMode    AggsenderMode = "AggchainProof"
 )
 
+func (m AggsenderMode) String() string {
+	return string(m)
+}
+
 type CertificateType uint8
 
 const (
