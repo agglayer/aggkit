@@ -1,6 +1,7 @@
 #!/bin/bash
 
 source $(dirname $0)/../test/scripts/env.sh
+set -euo pipefail
 
 ###############################################################################
 # params:
@@ -15,7 +16,7 @@ function export_value_from_kurtosis_or_fail() {
     shift
     local _END_POINT
     local _RESULT
-    log_debug "Trying to get kurtosis value:$_EXPORTED_VAR_NAME =   $KURTOSIS_ENCLAVE $_SERVICE $*"
+    log_debug "Trying to get kurtosis value:$_EXPORTED_VAR_NAME = $KURTOSIS_ENCLAVE $_SERVICE $*"
     while [ ! -z $1 ]; do
         _END_POINT=$1
         shift

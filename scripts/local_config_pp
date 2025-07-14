@@ -1,5 +1,7 @@
 #!/bin/bash
+
 source $(dirname $0)/local_config_helper
+
 ###############################################################################
 function export_values_of_aggkit_config() {
     local AGGKIT_CONFIG_FILE=$1
