@@ -1,20 +1,11 @@
 {
   "deployment_stages": {
     "deploy_l1": false,
-    "deploy_agglayer": false,
-    "deploy_cdk_bridge_infra": false,
-    "deploy_optimism_rollup": false
+    "deploy_agglayer": false
   },
   "args": {
-    "verbosity": "debug",
     "deployment_suffix": "-002",
     "zkevm_rollup_chain_id": 20202,
-    "zkevm_rollup_id": 2,
-    "cdk_node_image": "aggkit:local",
-    "additional_services": [],
-    "erigon_strict_mode": false,
-    "enable_normalcy": true,
-    "binary_name": "aggkit",
-    "aggkit_components": "aggsender,bridge"
+    "zkevm_rollup_id": 2
   }
 }

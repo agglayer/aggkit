@@ -100,6 +100,23 @@ func NewL1(
 	)
 }
 
+func NewL2ReadOnly(
+	ctx context.Context,
+	dbPath string,
+	originNetwork uint32,
+) (*BridgeSync, error) {
+	syncerID := L2BridgeSyncer
+	logger := log.WithFields("module", syncerID.String())
+	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger)
+	if err != nil {
+		return nil, err
+	}
+	return &BridgeSync{
+		processor:     processor,
+		originNetwork: originNetwork,
+	}, nil
+}
+
 // NewL2 creates a bridge syncer that synchronizes the local exit tree
 func NewL2(
 	ctx context.Context,
@@ -166,6 +183,7 @@ func newBridgeSync(
 			bridge.String(), err)
 		return nil, err
 	}
+
 	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger)
 	if err != nil {
 		return nil, err

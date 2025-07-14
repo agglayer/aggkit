@@ -335,6 +335,7 @@ func (c *Certificate) Hash() common.Hash {
 		c.NewLocalExitRoot.Bytes(),
 		bridgeExitsPart,
 		importedBridgeExitsPart,
+		c.Metadata.Bytes(),
 	)
 }
 
