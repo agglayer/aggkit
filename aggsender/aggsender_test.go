@@ -102,7 +102,6 @@ func TestAggSenderStart(t *testing.T) {
 		nil, // l1 client
 		nil, // l2 client
 		rollupQuerierMock,
-		nil, // validator client
 	)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
@@ -314,7 +313,7 @@ func TestSendCertificate(t *testing.T) {
 	testCases := []struct {
 		name            string
 		mockFn          func(*mocks.AggSenderStorage, *mocks.AggsenderFlow, *agglayer.AgglayerClientMock)
-		mockValidatorFn func() *mocks.ValidatorClient
+		mockValidatorFn func() *mocks.CertificateValidateAndSigner
 		expectedError   string
 	}{
 		{
@@ -400,9 +399,9 @@ func TestSendCertificate(t *testing.T) {
 				}, nil).Once()
 				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
-			mockValidatorFn: func() *mocks.ValidatorClient {
-				mockValidator := mocks.NewValidatorClient(t)
-				mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
+			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
+				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
 				return mockValidator
 			},
 			expectedError: "certificate validation failed: some error",
@@ -424,9 +423,9 @@ func TestSendCertificate(t *testing.T) {
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, []byte{1, 2, 3}).Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
-			mockValidatorFn: func() *mocks.ValidatorClient {
-				mockValidator := mocks.NewValidatorClient(t)
-				mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Once()
+			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
+				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Once()
 				return mockValidator
 			},
 		},
@@ -475,7 +474,7 @@ func TestSendCertificate(t *testing.T) {
 			}
 
 			if tt.mockValidatorFn != nil {
-				aggsender.validatorClient = tt.mockValidatorFn()
+				aggsender.validator = tt.mockValidatorFn()
 			}
 
 			mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{})
@@ -501,7 +500,7 @@ func TestNewAggSender(t *testing.T) {
 			Method: signertypes.MethodNone,
 		},
 		Mode: "PessimisticProof",
-	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil, nil)
+	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")

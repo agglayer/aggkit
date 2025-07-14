@@ -50,7 +50,7 @@ type AggSender struct {
 
 	l2OriginNetwork uint32
 
-	validatorClient types.ValidatorClient
+	validator types.CertificateValidateAndSigner
 }
 
 // New returns a new AggSender instance
@@ -65,7 +65,6 @@ func New(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
-	validatorClient types.ValidatorClient,
 ) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
@@ -116,12 +115,25 @@ func New(
 		compatibilityStoragedChecker: compatibilityStoragedChecker,
 		l2OriginNetwork:              l2OriginNetwork,
 		certStatusChecker:            statuschecker.NewCertStatusChecker(logger, storage, aggLayerClient, l2OriginNetwork),
-		validatorClient:              validatorClient,
 	}, nil
+}
+
+func (a *AggSender) AttachValidator(validator types.CertificateValidateAndSigner) {
+	if validator == nil {
+		a.log.Infof("AggSender validator attached: nil")
+		return
+	}
+
+	a.validator = validator
+	a.log.Infof("AggSender validator attached: %s", a.validator.String())
 }
 
 func (a *AggSender) GetStorage() db.AggSenderStorage {
 	return a.storage
+}
+
+func (a *AggSender) GetFlow() types.AggsenderFlow {
+	return a.flow
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {
@@ -280,7 +292,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
-	validatorSignature, err := a.callValidator(ctx, certificateParams.GetPreviousCertificateID(), certificate)
+	validatorSignature, err := a.callValidator(ctx, certificate)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 		return nil, fmt.Errorf("certificate validation failed: %w", err)
@@ -344,13 +356,12 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 // callValidator calls the validator to validate the certificate
 func (a *AggSender) callValidator(
 	ctx context.Context,
-	previousCertID *common.Hash,
 	certificate *agglayertypes.Certificate) ([]byte, error) {
-	if a.validatorClient == nil {
+	if a.validator == nil {
 		return nil, nil
 	}
 
-	validatorSignature, err := a.validatorClient.ValidateCertificate(ctx, previousCertID, certificate)
+	validatorSignature, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
 	if err != nil {
 		a.log.Errorf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
 		return nil, fmt.Errorf("certificate validation failed: %w", err)

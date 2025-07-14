@@ -264,14 +264,6 @@ func createAggSender(
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
 
-	var validatorClient aggsendertypes.ValidatorClient
-	if cfg.RequireValidatorCall {
-		validatorClient, err = aggsendervalidator.NewValidatorClient(cfg.ValidatorClient)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create validator client: %w", err)
-		}
-	}
-
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
 			BlockFinalityType:     aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
@@ -298,10 +290,31 @@ func createAggSender(
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, validatorClient)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
+
+	var validator aggsendertypes.CertificateValidateAndSigner
+	if cfg.RequireValidatorCall {
+		validator, err = aggsendervalidator.NewRemoteValidatorClient(cfg.ValidatorClient, aggsender.GetStorage())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
+		}
+	} else {
+		// this is only temporary, until we test it in local, then we will only use the remote validator
+		validator = aggsendervalidator.NewLocalValidator(
+			logger,
+			aggsender.GetStorage(),
+			aggsendervalidator.NewAggsenderValidator(
+				logger,
+				aggsender.GetFlow(),
+				query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
+			),
+		)
+	}
+
+	aggsender.AttachValidator(validator)
 
 	return aggsender, nil
 }

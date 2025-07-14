@@ -184,11 +184,3 @@ func (c *CertificateBuildParams) MaxDepositCount() uint32 {
 	}
 	return c.Bridges[len(c.Bridges)-1].DepositCount
 }
-
-// GetPreviousCertificateID returns the previous certificate ID if it exists
-func (c *CertificateBuildParams) GetPreviousCertificateID() *common.Hash {
-	if c.LastSentCertificate == nil {
-		return nil
-	}
-	return &c.LastSentCertificate.CertificateID
-}

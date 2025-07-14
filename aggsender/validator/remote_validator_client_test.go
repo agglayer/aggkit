@@ -10,6 +10,7 @@ import (
 	agglayergrpc "github.com/agglayer/aggkit/agglayer/grpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/types"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -19,7 +20,7 @@ func TestClient_ValidatCertificate(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
-	prevCertHash := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+	prevCertID := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
 	certificate := &agglayertypes.Certificate{
 		NetworkID:         12,
 		Height:            11,
@@ -87,42 +88,60 @@ func TestClient_ValidatCertificate(t *testing.T) {
 	}
 
 	testCases := []struct {
-		name                  string
-		previousCertificateID *common.Hash
-		certificate           *agglayertypes.Certificate
-		mockFn                func(*mocks.AggsenderValidatorClient)
-		expectedError         string
+		name                string
+		previousCertificate *agglayertypes.CertificateHeader
+		certificate         *agglayertypes.Certificate
+		mockFn              func(*mocks.AggsenderValidatorClient, *mocks.AggSenderStorage)
+		expectedError       string
 	}{
 		{
-			name:                  "Invalid certificate - nil certificate",
-			previousCertificateID: nil,
-			certificate:           nil,
-			mockFn:                nil,
-			expectedError:         "nil certificate provided for conversion to proto",
+			name:                "Invalid certificate - nil certificate",
+			previousCertificate: nil,
+			certificate:         nil,
+			mockFn:              nil,
+			expectedError:       "nil certificate provided for conversion to proto",
 		},
 		{
-			name:                  "client returns an error",
-			previousCertificateID: &prevCertHash,
-			certificate:           certificate,
-			mockFn: func(mockClient *mocks.AggsenderValidatorClient) {
+			name: "Storage returns an error",
+			mockFn: func(mockClient *mocks.AggsenderValidatorClient, mockStorage *mocks.AggSenderStorage) {
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(certificate.Height-1).
+					Return(nil, errors.New("storage error"))
+			},
+			certificate:   certificate,
+			expectedError: "error getting previous certificate header by height 10: storage error",
+		},
+		{
+			name:        "client returns an error",
+			certificate: certificate,
+			previousCertificate: &agglayertypes.CertificateHeader{
+				CertificateID: prevCertID,
+			},
+			mockFn: func(mockClient *mocks.AggsenderValidatorClient, mockStorage *mocks.AggSenderStorage) {
 				protoCert, err := agglayergrpc.ConvertCertToProtoCertificate(certificate)
 				require.NoError(t, err)
 
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(certificate.Height-1).
+					Return(&types.CertificateHeader{
+						CertificateID: prevCertID,
+					}, nil)
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
-					PreviousCertificateId: certIDToProtoNullable(&prevCertHash),
-					Certificate:           protoCert,
+					PreviousCertificateId: certIDToProto(&agglayertypes.CertificateHeader{
+						CertificateID: prevCertID,
+					}),
+					Certificate: protoCert,
 				}).Return(nil, errors.New("some error"))
 			},
 			expectedError: "aggsender validator failed to successfully validate certificate: some error",
 		},
 		{
-			name:                  "Valid certificate - no previous certificate",
-			previousCertificateID: nil,
-			certificate:           certificate,
-			mockFn: func(mockClient *mocks.AggsenderValidatorClient) {
+			name:                "Valid certificate - no previous certificate",
+			previousCertificate: nil,
+			certificate:         certificate,
+			mockFn: func(mockClient *mocks.AggsenderValidatorClient, mockStorage *mocks.AggSenderStorage) {
 				protoCert, err := agglayergrpc.ConvertCertToProtoCertificate(certificate)
 				require.NoError(t, err)
 
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(certificate.Height-1).Return(nil, nil)
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
 					PreviousCertificateId: nil,
 					Certificate:           protoCert,
@@ -133,16 +152,24 @@ func TestClient_ValidatCertificate(t *testing.T) {
 			expectedError: "",
 		},
 		{
-			name:                  "Valid certificate - with previous certificate",
-			previousCertificateID: &prevCertHash,
-			certificate:           certificate,
-			mockFn: func(mockClient *mocks.AggsenderValidatorClient) {
+			name: "Valid certificate - with previous certificate",
+			previousCertificate: &agglayertypes.CertificateHeader{
+				CertificateID: prevCertID,
+			},
+			certificate: certificate,
+			mockFn: func(mockClient *mocks.AggsenderValidatorClient, mockStorage *mocks.AggSenderStorage) {
 				protoCert, err := agglayergrpc.ConvertCertToProtoCertificate(certificate)
 				require.NoError(t, err)
 
+				mockStorage.EXPECT().GetCertificateHeaderByHeight(certificate.Height-1).
+					Return(&types.CertificateHeader{
+						CertificateID: prevCertID,
+					}, nil)
 				mockClient.EXPECT().ValidateCertificate(ctx, &v1.ValidateCertificateRequest{
-					PreviousCertificateId: certIDToProtoNullable(&prevCertHash),
-					Certificate:           protoCert,
+					PreviousCertificateId: certIDToProto(&agglayertypes.CertificateHeader{
+						CertificateID: prevCertID,
+					}),
+					Certificate: protoCert,
 				}).Return(&v1.ValidateCertificateResponse{
 					Signature: &typesv1.FixedBytes65{Value: []byte("valid-signature")},
 				}, nil)
@@ -156,15 +183,17 @@ func TestClient_ValidatCertificate(t *testing.T) {
 			t.Parallel()
 
 			mockClient := mocks.NewAggsenderValidatorClient(t)
+			mockStorage := mocks.NewAggSenderStorage(t)
 			if tc.mockFn != nil {
-				tc.mockFn(mockClient)
+				tc.mockFn(mockClient, mockStorage)
 			}
 
-			validatorClient := &ValidatorClient{
-				client: mockClient,
+			validatorClient := &RemoteValidatorClient{
+				client:  mockClient,
+				storage: mockStorage,
 			}
 
-			signature, err := validatorClient.ValidateCertificate(ctx, tc.previousCertificateID, tc.certificate)
+			signature, err := validatorClient.ValidateAndSignCertificate(ctx, tc.certificate)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
@@ -172,7 +201,10 @@ func TestClient_ValidatCertificate(t *testing.T) {
 				require.NotNil(t, signature)
 			}
 
+			require.NotNil(t, validatorClient.String())
+
 			mockClient.AssertExpectations(t)
+			mockStorage.AssertExpectations(t)
 		})
 	}
 }

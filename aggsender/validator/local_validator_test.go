@@ -16,15 +16,15 @@ func TestValidateAndSignCertificate_Success(t *testing.T) {
 	logger := log.WithFields("module", "aggsender.validator.local")
 
 	storage := mocks.NewAggSenderStorage(t)
-	storage.On("GetCertificateHeaderByHeight", mock.Anything).Return(nil, nil)
+	storage.EXPECT().GetCertificateHeaderByHeight(mock.Anything).Return(nil, nil)
 
 	validator := mocks.NewCertificateValidator(t)
-	validator.On("ValidateCertificate", mock.Anything, mock.Anything).Return(nil)
+	validator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil)
 
 	localValidator := &LocalValidator{
-		Log:       logger,
-		Storage:   storage,
-		Validator: validator,
+		log:       logger,
+		storage:   storage,
+		validator: validator,
 	}
 
 	certificate := &types.Certificate{
@@ -34,7 +34,7 @@ func TestValidateAndSignCertificate_Success(t *testing.T) {
 
 	signature, err := localValidator.ValidateAndSignCertificate(context.Background(), certificate)
 	require.NoError(t, err)
-	require.NotNil(t, signature)
+	require.Nil(t, signature)
 
 	storage.AssertExpectations(t)
 	validator.AssertExpectations(t)
@@ -47,8 +47,8 @@ func TestValidateAndSignCertificate_PreviousCertificateError(t *testing.T) {
 	storage.On("GetCertificateHeaderByHeight", mock.Anything).Return(nil, errors.New("storage error"))
 
 	localValidator := &LocalValidator{
-		Log:     logger,
-		Storage: storage,
+		log:     logger,
+		storage: storage,
 	}
 
 	certificate := &types.Certificate{
@@ -72,9 +72,9 @@ func TestValidateAndSignCertificate_ValidationError(t *testing.T) {
 	validator.On("ValidateCertificate", mock.Anything, mock.Anything).Return(errors.New("validation error"))
 
 	localValidator := &LocalValidator{
-		Log:       logger,
-		Storage:   storage,
-		Validator: validator,
+		log:       logger,
+		storage:   storage,
+		validator: validator,
 	}
 
 	certificate := &types.Certificate{
