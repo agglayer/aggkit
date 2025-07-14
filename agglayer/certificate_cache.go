@@ -91,8 +91,8 @@ func (c *CertificateCache) GetCertificateHeader(
 
 // SendCertificate sends a certificate to the Agglayer client. (no cache)
 func (c *CertificateCache) SendCertificate(ctx context.Context,
-	certificate *agglayertypes.Certificate) (common.Hash, error) {
-	return c.agglayerClient.SendCertificate(ctx, certificate)
+	certificate *agglayertypes.Certificate, validatorSignature []byte) (common.Hash, error) {
+	return c.agglayerClient.SendCertificate(ctx, certificate, validatorSignature)
 }
 
 // GetEpochConfiguration retrieves the current epoch configuration from the Agglayer client. (no cache)

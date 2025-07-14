@@ -32,7 +32,6 @@ import (
 	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman"
 	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/healthcheck"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/lastgersync"
@@ -263,18 +262,6 @@ func createAggSenderValidator(ctx context.Context,
 	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP, l1InfoTreeQuerier, agglayerClient)
 }
 
-func createAgglayerClient(cfg *aggkitgrpc.ClientConfig) (*agglayergrpc.AgglayerGRPCClient, error) {
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid agglayer client config: %w", err)
-	}
-
-	agglayerClient, err := agglayergrpc.NewAgglayerGRPCClient(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
-	}
-	return agglayerClient, nil
-}
-
 func createAggSender(
 	ctx context.Context,
 	cfg aggsendercfg.Config,
@@ -290,7 +277,7 @@ func createAggSender(
 		return nil, fmt.Errorf("invalid aggsender config: %w", err)
 	}
 
-	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AgglayerClient)
+	agglayerClient, err := agglayergrpc.NewAgglayerGRPCClient(cfg.AgglayerClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
@@ -326,19 +313,19 @@ func createAggSender(
 	}
 
 	if cfg.Mode == aggsendertypes.PessimisticProofMode.String() {
-		// validator is only supported in PessimisticProof mode
-		var validator aggsendertypes.CertificateValidateAndSigner
+		// validatorObj is only supported in PessimisticProof mode
+		var validatorObj aggsendertypes.CertificateValidateAndSigner
 		if cfg.RequireValidatorCall {
-			validator, err = aggsendervalidator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
+			validatorObj, err = validator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
 			if err != nil {
 				return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
 			}
 		} else {
 			// this is only temporary, until we test it in local, then we will only use the remote validator
-			validator = aggsendervalidator.NewLocalValidator(
+			validatorObj = validator.NewLocalValidator(
 				logger,
 				aggsender.GetStorage(),
-				aggsendervalidator.NewAggsenderValidator(
+				validator.NewAggsenderValidator(
 					logger,
 					aggsender.GetFlow(),
 					query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
@@ -346,7 +333,7 @@ func createAggSender(
 			)
 		}
 
-		aggsender.AttachValidator(validator)
+		aggsender.AttachValidator(validatorObj)
 	}
 
 	return aggsender, nil
