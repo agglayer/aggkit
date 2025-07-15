@@ -87,7 +87,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 		bridgeProxyContract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 	)
 
-	bridgeProxyAddr, _, _, err = transparentupgradableproxy.DeployTransparentupgradableproxy(
+	bridgeProxyAddr, _, _, err = transparentupgradableproxy.DeployProxy(
 		s.DeployerAuth,
 		client.Client(),
 		bridgeAddr,

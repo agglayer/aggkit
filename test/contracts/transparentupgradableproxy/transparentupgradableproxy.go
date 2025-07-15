@@ -29,23 +29,23 @@ var (
 	_ = abi.ConvertType
 )
 
-// TransparentupgradableproxyMetaData contains all meta data concerning the Transparentupgradableproxy contract.
-var TransparentupgradableproxyMetaData = &bind.MetaData{
-	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_logic\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"admin_\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"_data\",\"type\":\"bytes\"}],\"stateMutability\":\"payable\",\"type\":\"constructor\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"previousAdmin\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"newAdmin\",\"type\":\"address\"}],\"name\":\"AdminChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"beacon\",\"type\":\"address\"}],\"name\":\"BeaconUpgraded\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"name\":\"Upgraded\",\"type\":\"event\"},{\"stateMutability\":\"payable\",\"type\":\"fallback\"},{\"inputs\":[],\"name\":\"admin\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"admin_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newAdmin\",\"type\":\"address\"}],\"name\":\"changeAdmin\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[],\"name\":\"implementation\",\"outputs\":[{\"internalType\":\"address\",\"name\":\"implementation_\",\"type\":\"address\"}],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newImplementation\",\"type\":\"address\"}],\"name\":\"upgradeTo\",\"outputs\":[],\"stateMutability\":\"nonpayable\",\"type\":\"function\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"newImplementation\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"data\",\"type\":\"bytes\"}],\"name\":\"upgradeToAndCall\",\"outputs\":[],\"stateMutability\":\"payable\",\"type\":\"function\"},{\"stateMutability\":\"payable\",\"type\":\"receive\"}]",
-	Bin: "0x608060405260405162000f6838038062000f68833981016040819052620000269162000415565b82816200003582825f6200004c565b50620000439050826200007d565b50505062000540565b6200005783620000ee565b5f82511180620000645750805b1562000078576200007683836200012f565b505b505050565b7f7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f620000be5f8051602062000f21833981519152546001600160a01b031690565b604080516001600160a01b03928316815291841660208301520160405180910390a1620000eb816200015e565b50565b620000f981620001fb565b6040516001600160a01b038216907fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b905f90a250565b606062000157838360405180606001604052806027815260200162000f416027913962000292565b9392505050565b6001600160a01b038116620001c95760405162461bcd60e51b815260206004820152602660248201527f455243313936373a206e65772061646d696e20697320746865207a65726f206160448201526564647265737360d01b60648201526084015b60405180910390fd5b805f8051602062000f218339815191525b80546001600160a01b0319166001600160a01b039290921691909117905550565b6001600160a01b0381163b6200026a5760405162461bcd60e51b815260206004820152602d60248201527f455243313936373a206e657720696d706c656d656e746174696f6e206973206e60448201526c1bdd08184818dbdb9d1c9858dd609a1b6064820152608401620001c0565b807f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc620001da565b60605f80856001600160a01b031685604051620002b09190620004ef565b5f60405180830381855af49150503d805f8114620002ea576040519150601f19603f3d011682016040523d82523d5f602084013e620002ef565b606091505b50909250905062000303868383876200030d565b9695505050505050565b60608315620003805782515f0362000378576001600160a01b0385163b620003785760405162461bcd60e51b815260206004820152601d60248201527f416464726573733a2063616c6c20746f206e6f6e2d636f6e74726163740000006044820152606401620001c0565b50816200038c565b6200038c838362000394565b949350505050565b815115620003a55781518083602001fd5b8060405162461bcd60e51b8152600401620001c091906200050c565b80516001600160a01b0381168114620003d8575f80fd5b919050565b634e487b7160e01b5f52604160045260245ffd5b5f5b838110156200040d578181015183820152602001620003f3565b50505f910152565b5f805f6060848603121562000428575f80fd5b6200043384620003c1565b92506200044360208501620003c1565b60408501519092506001600160401b038082111562000460575f80fd5b818601915086601f83011262000474575f80fd5b815181811115620004895762000489620003dd565b604051601f8201601f19908116603f01168101908382118183101715620004b457620004b4620003dd565b81604052828152896020848701011115620004cd575f80fd5b620004e0836020830160208801620003f1565b80955050505050509250925092565b5f825162000502818460208701620003f1565b9190910192915050565b602081525f82518060208401526200052c816040850160208701620003f1565b601f01601f19169190910160400192915050565b6109d3806200054e5f395ff3fe60806040526004361061005d575f3560e01c80635c60da1b116100425780635c60da1b146100a65780638f283970146100e3578063f851a440146101025761006c565b80633659cfe6146100745780634f1ef286146100935761006c565b3661006c5761006a610116565b005b61006a610116565b34801561007f575f80fd5b5061006a61008e366004610854565b610130565b61006a6100a136600461086d565b610178565b3480156100b1575f80fd5b506100ba6101eb565b60405173ffffffffffffffffffffffffffffffffffffffff909116815260200160405180910390f35b3480156100ee575f80fd5b5061006a6100fd366004610854565b610228565b34801561010d575f80fd5b506100ba610255565b61011e610282565b61012e610129610359565b610362565b565b610138610380565b73ffffffffffffffffffffffffffffffffffffffff1633036101705761016d8160405180602001604052805f8152505f6103bf565b50565b61016d610116565b610180610380565b73ffffffffffffffffffffffffffffffffffffffff1633036101e3576101de8383838080601f0160208091040260200160405190810160405280939291908181526020018383808284375f92019190915250600192506103bf915050565b505050565b6101de610116565b5f6101f4610380565b73ffffffffffffffffffffffffffffffffffffffff16330361021d57610218610359565b905090565b610225610116565b90565b610230610380565b73ffffffffffffffffffffffffffffffffffffffff1633036101705761016d816103e9565b5f61025e610380565b73ffffffffffffffffffffffffffffffffffffffff16330361021d57610218610380565b61028a610380565b73ffffffffffffffffffffffffffffffffffffffff16330361012e576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152604260248201527f5472616e73706172656e745570677261646561626c6550726f78793a2061646d60448201527f696e2063616e6e6f742066616c6c6261636b20746f2070726f7879207461726760648201527f6574000000000000000000000000000000000000000000000000000000000000608482015260a4015b60405180910390fd5b5f61021861044a565b365f80375f80365f845af43d5f803e80801561037c573d5ff35b3d5ffd5b5f7fb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d61035b5473ffffffffffffffffffffffffffffffffffffffff16919050565b6103c883610471565b5f825111806103d45750805b156101de576103e383836104bd565b50505050565b7f7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f610412610380565b6040805173ffffffffffffffffffffffffffffffffffffffff928316815291841660208301520160405180910390a161016d816104e9565b5f7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc6103a3565b61047a816105f5565b60405173ffffffffffffffffffffffffffffffffffffffff8216907fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b905f90a250565b60606104e28383604051806060016040528060278152602001610977602791396106c0565b9392505050565b73ffffffffffffffffffffffffffffffffffffffff811661058c576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152602660248201527f455243313936373a206e65772061646d696e20697320746865207a65726f206160448201527f64647265737300000000000000000000000000000000000000000000000000006064820152608401610350565b807fb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d61035b80547fffffffffffffffffffffffff00000000000000000000000000000000000000001673ffffffffffffffffffffffffffffffffffffffff9290921691909117905550565b73ffffffffffffffffffffffffffffffffffffffff81163b610699576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152602d60248201527f455243313936373a206e657720696d706c656d656e746174696f6e206973206e60448201527f6f74206120636f6e7472616374000000000000000000000000000000000000006064820152608401610350565b807f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc6105af565b60605f808573ffffffffffffffffffffffffffffffffffffffff16856040516106e9919061090b565b5f60405180830381855af49150503d805f8114610721576040519150601f19603f3d011682016040523d82523d5f602084013e610726565b606091505b509150915061073786838387610741565b9695505050505050565b606083156107d65782515f036107cf5773ffffffffffffffffffffffffffffffffffffffff85163b6107cf576040517f08c379a000000000000000000000000000000000000000000000000000000000815260206004820152601d60248201527f416464726573733a2063616c6c20746f206e6f6e2d636f6e74726163740000006044820152606401610350565b50816107e0565b6107e083836107e8565b949350505050565b8151156107f85781518083602001fd5b806040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016103509190610926565b803573ffffffffffffffffffffffffffffffffffffffff8116811461084f575f80fd5b919050565b5f60208284031215610864575f80fd5b6104e28261082c565b5f805f6040848603121561087f575f80fd5b6108888461082c565b9250602084013567ffffffffffffffff808211156108a4575f80fd5b818601915086601f8301126108b7575f80fd5b8135818111156108c5575f80fd5b8760208285010111156108d6575f80fd5b6020830194508093505050509250925092565b5f5b838110156109035781810151838201526020016108eb565b50505f910152565b5f825161091c8184602087016108e9565b9190910192915050565b602081525f82518060208401526109448160408501602087016108e9565b601f017fffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe016919091016040019291505056fe416464726573733a206c6f772d6c6576656c2064656c65676174652063616c6c206661696c6564a26469706673582212202ac98acbfbb3d3ac1b74050e18c4e76db25a3ff2801ec69bf85d0c61414d502b64736f6c63430008140033b53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d6103416464726573733a206c6f772d6c6576656c2064656c65676174652063616c6c206661696c6564",
+// ProxyMetaData contains all meta data concerning the Proxy contract.
+var ProxyMetaData = &bind.MetaData{
+	ABI: "[{\"inputs\":[{\"internalType\":\"address\",\"name\":\"_logic\",\"type\":\"address\"},{\"internalType\":\"address\",\"name\":\"initialOwner\",\"type\":\"address\"},{\"internalType\":\"bytes\",\"name\":\"_data\",\"type\":\"bytes\"}],\"stateMutability\":\"payable\",\"type\":\"constructor\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"target\",\"type\":\"address\"}],\"name\":\"AddressEmptyCode\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"admin\",\"type\":\"address\"}],\"name\":\"ERC1967InvalidAdmin\",\"type\":\"error\"},{\"inputs\":[{\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"name\":\"ERC1967InvalidImplementation\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ERC1967NonPayable\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"FailedCall\",\"type\":\"error\"},{\"inputs\":[],\"name\":\"ProxyDeniedAdminAccess\",\"type\":\"error\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":false,\"internalType\":\"address\",\"name\":\"previousAdmin\",\"type\":\"address\"},{\"indexed\":false,\"internalType\":\"address\",\"name\":\"newAdmin\",\"type\":\"address\"}],\"name\":\"AdminChanged\",\"type\":\"event\"},{\"anonymous\":false,\"inputs\":[{\"indexed\":true,\"internalType\":\"address\",\"name\":\"implementation\",\"type\":\"address\"}],\"name\":\"Upgraded\",\"type\":\"event\"},{\"stateMutability\":\"payable\",\"type\":\"fallback\"}]",
+	Bin: "0x60a06040526040516119d23803806119d283398181016040528101906100259190610707565b828161003782826100c160201b60201c565b50508160405161004690610553565b6100509190610782565b604051809103905ff080158015610069573d5f5f3e3d5ffd5b5073ffffffffffffffffffffffffffffffffffffffff1660808173ffffffffffffffffffffffffffffffffffffffff16815250506100b96100ae61014560201b60201c565b61014e60201b60201c565b50505061081c565b6100d0826101a660201b60201c565b8173ffffffffffffffffffffffffffffffffffffffff167fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b60405160405180910390a25f815111156101325761012c828261027560201b60201c565b50610141565b6101406102fb60201b60201c565b5b5050565b5f608051905090565b7f7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f61017d61033760201b60201c565b8260405161018c92919061079b565b60405180910390a16101a38161039060201b60201c565b50565b5f8173ffffffffffffffffffffffffffffffffffffffff163b0361020157806040517f4c9c8ce30000000000000000000000000000000000000000000000000000000081526004016101f89190610782565b60405180910390fd5b806102337f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5f1b61047460201b60201c565b5f015f6101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555050565b60605f5f8473ffffffffffffffffffffffffffffffffffffffff168460405161029e9190610806565b5f60405180830381855af49150503d805f81146102d6576040519150601f19603f3d011682016040523d82523d5f602084013e6102db565b606091505b50915091506102f185838361047d60201b60201c565b9250505092915050565b5f341115610335576040517fb398979f00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b565b5f6103697fb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d61035f1b61047460201b60201c565b5f015f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff16905090565b5f73ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff1603610400575f6040517f62e77ba20000000000000000000000000000000000000000000000000000000081526004016103f79190610782565b60405180910390fd5b806104327fb53127684a568b3173ae13b9f8a6016e243e63b6e8ee1178d6a717850b5d61035f1b61047460201b60201c565b5f015f6101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555050565b5f819050919050565b606082610498576104938261051060201b60201c565b610508565b5f82511480156104be57505f8473ffffffffffffffffffffffffffffffffffffffff163b145b1561050057836040517f9996b3150000000000000000000000000000000000000000000000000000000081526004016104f79190610782565b60405180910390fd5b819050610509565b5b9392505050565b5f8151111561052157805160208201fd5b6040517fd6bda27500000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6109c68061100c83390190565b5f604051905090565b5f5ffd5b5f5ffd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f61059a82610571565b9050919050565b6105aa81610590565b81146105b4575f5ffd5b50565b5f815190506105c5816105a1565b92915050565b5f5ffd5b5f5ffd5b5f601f19601f8301169050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffd5b610619826105d3565b810181811067ffffffffffffffff82111715610638576106376105e3565b5b80604052505050565b5f61064a610560565b90506106568282610610565b919050565b5f67ffffffffffffffff821115610675576106746105e3565b5b61067e826105d3565b9050602081019050919050565b8281835e5f83830152505050565b5f6106ab6106a68461065b565b610641565b9050828152602081018484840111156106c7576106c66105cf565b5b6106d284828561068b565b509392505050565b5f82601f8301126106ee576106ed6105cb565b5b81516106fe848260208601610699565b91505092915050565b5f5f5f6060848603121561071e5761071d610569565b5b5f61072b868287016105b7565b935050602061073c868287016105b7565b925050604084015167ffffffffffffffff81111561075d5761075c61056d565b5b610769868287016106da565b9150509250925092565b61077c81610590565b82525050565b5f6020820190506107955f830184610773565b92915050565b5f6040820190506107ae5f830185610773565b6107bb6020830184610773565b9392505050565b5f81519050919050565b5f81905092915050565b5f6107e0826107c2565b6107ea81856107cc565b93506107fa81856020860161068b565b80840191505092915050565b5f61081182846107d6565b915081905092915050565b6080516107d86108345f395f61010401526107d85ff3fe608060405261000c61000e565b005b610016610101565b73ffffffffffffffffffffffffffffffffffffffff163373ffffffffffffffffffffffffffffffffffffffff16036100f657634f1ef28660e01b7bffffffffffffffffffffffffffffffffffffffffffffffffffffffff19165f357fffffffff00000000000000000000000000000000000000000000000000000000167bffffffffffffffffffffffffffffffffffffffffffffffffffffffff1916146100e9576040517fd2b576ec00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b6100f1610128565b6100ff565b6100fe61015c565b5b565b5f7f0000000000000000000000000000000000000000000000000000000000000000905090565b5f5f5f36600490809261013d939291906104cf565b81019061014a91906106a7565b91509150610158828261016e565b5050565b61016c6101676101e0565b6101ee565b565b6101778261020d565b8173ffffffffffffffffffffffffffffffffffffffff167fbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b60405160405180910390a25f815111156101d3576101cd82826102d6565b506101dc565b6101db610356565b5b5050565b5f6101e9610392565b905090565b365f5f375f5f365f845af43d5f5f3e805f8114610209573d5ff35b3d5ffd5b5f8173ffffffffffffffffffffffffffffffffffffffff163b0361026857806040517f4c9c8ce300000000000000000000000000000000000000000000000000000000815260040161025f9190610721565b60405180910390fd5b806102947f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5f1b6103e5565b5f015f6101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff16021790555050565b60605f5f8473ffffffffffffffffffffffffffffffffffffffff16846040516102ff919061078c565b5f60405180830381855af49150503d805f8114610337576040519150601f19603f3d011682016040523d82523d5f602084013e61033c565b606091505b509150915061034c8583836103ee565b9250505092915050565b5f341115610390576040517fb398979f00000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b565b5f6103be7f360894a13ba1a3210667c828492db98dca3e2076cc3735a920a3ca505d382bbc5f1b6103e5565b5f015f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff16905090565b5f819050919050565b606082610403576103fe8261047b565b610473565b5f825114801561042957505f8473ffffffffffffffffffffffffffffffffffffffff163b145b1561046b57836040517f9996b3150000000000000000000000000000000000000000000000000000000081526004016104629190610721565b60405180910390fd5b819050610474565b5b9392505050565b5f8151111561048c57805160208201fd5b6040517fd6bda27500000000000000000000000000000000000000000000000000000000815260040160405180910390fd5b5f604051905090565b5f5ffd5b5f5ffd5b5f5f858511156104e2576104e16104c7565b5b838611156104f3576104f26104cb565b5b6001850283019150848603905094509492505050565b5f5ffd5b5f5ffd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f61053a82610511565b9050919050565b61054a81610530565b8114610554575f5ffd5b50565b5f8135905061056581610541565b92915050565b5f5ffd5b5f5ffd5b5f601f19601f8301169050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffd5b6105b982610573565b810181811067ffffffffffffffff821117156105d8576105d7610583565b5b80604052505050565b5f6105ea6104be565b90506105f682826105b0565b919050565b5f67ffffffffffffffff82111561061557610614610583565b5b61061e82610573565b9050602081019050919050565b828183375f83830152505050565b5f61064b610646846105fb565b6105e1565b9050828152602081018484840111156106675761066661056f565b5b61067284828561062b565b509392505050565b5f82601f83011261068e5761068d61056b565b5b813561069e848260208601610639565b91505092915050565b5f5f604083850312156106bd576106bc610509565b5b5f6106ca85828601610557565b925050602083013567ffffffffffffffff8111156106eb576106ea61050d565b5b6106f78582860161067a565b9150509250929050565b5f61070b82610511565b9050919050565b61071b81610701565b82525050565b5f6020820190506107345f830184610712565b92915050565b5f81519050919050565b5f81905092915050565b8281835e5f83830152505050565b5f6107668261073a565b6107708185610744565b935061078081856020860161074e565b80840191505092915050565b5f610797828461075c565b91508190509291505056fea264697066735822122019e3bb6be0c262b470489c9bbaccfafabf7a009d12d1c8b11eb3ff62d10c769264736f6c634300081e0033608060405234801561000f575f5ffd5b506040516109c63803806109c6833981810160405281019061003191906101d7565b805f73ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff16036100a2575f6040517f1e4fbdf70000000000000000000000000000000000000000000000000000000081526004016100999190610211565b60405180910390fd5b6100b1816100b860201b60201c565b505061022a565b5f5f5f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff169050815f5f6101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055508173ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff167f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e060405160405180910390a35050565b5f5ffd5b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f6101a68261017d565b9050919050565b6101b68161019c565b81146101c0575f5ffd5b50565b5f815190506101d1816101ad565b92915050565b5f602082840312156101ec576101eb610179565b5b5f6101f9848285016101c3565b91505092915050565b61020b8161019c565b82525050565b5f6020820190506102245f830184610202565b92915050565b61078f806102375f395ff3fe608060405260043610610049575f3560e01c8063715018a61461004d5780638da5cb5b146100635780639623609d1461008d578063ad3cb1cc146100a9578063f2fde38b146100d3575b5f5ffd5b348015610058575f5ffd5b506100616100fb565b005b34801561006e575f5ffd5b5061007761010e565b60405161008491906103f7565b60405180910390f35b6100a760048036038101906100a291906105c2565b610135565b005b3480156100b4575f5ffd5b506100bd6101ac565b6040516100ca919061068e565b60405180910390f35b3480156100de575f5ffd5b506100f960048036038101906100f491906106ae565b6101e5565b005b610103610269565b61010c5f6102f0565b565b5f5f5f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff16905090565b61013d610269565b8273ffffffffffffffffffffffffffffffffffffffff16634f1ef2863484846040518463ffffffff1660e01b815260040161017992919061072b565b5f604051808303818588803b158015610190575f5ffd5b505af11580156101a2573d5f5f3e3d5ffd5b5050505050505050565b6040518060400160405280600581526020017f352e302e3000000000000000000000000000000000000000000000000000000081525081565b6101ed610269565b5f73ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff160361025d575f6040517f1e4fbdf700000000000000000000000000000000000000000000000000000000815260040161025491906103f7565b60405180910390fd5b610266816102f0565b50565b6102716103b1565b73ffffffffffffffffffffffffffffffffffffffff1661028f61010e565b73ffffffffffffffffffffffffffffffffffffffff16146102ee576102b26103b1565b6040517f118cdaa70000000000000000000000000000000000000000000000000000000081526004016102e591906103f7565b60405180910390fd5b565b5f5f5f9054906101000a900473ffffffffffffffffffffffffffffffffffffffff169050815f5f6101000a81548173ffffffffffffffffffffffffffffffffffffffff021916908373ffffffffffffffffffffffffffffffffffffffff1602179055508173ffffffffffffffffffffffffffffffffffffffff168173ffffffffffffffffffffffffffffffffffffffff167f8be0079c531659141344cd1fd0a4f28419497f9722a3daafe3b4186f6b6457e060405160405180910390a35050565b5f33905090565b5f73ffffffffffffffffffffffffffffffffffffffff82169050919050565b5f6103e1826103b8565b9050919050565b6103f1816103d7565b82525050565b5f60208201905061040a5f8301846103e8565b92915050565b5f604051905090565b5f5ffd5b5f5ffd5b5f61042b826103d7565b9050919050565b61043b81610421565b8114610445575f5ffd5b50565b5f8135905061045681610432565b92915050565b610465816103d7565b811461046f575f5ffd5b50565b5f813590506104808161045c565b92915050565b5f5ffd5b5f5ffd5b5f601f19601f8301169050919050565b7f4e487b71000000000000000000000000000000000000000000000000000000005f52604160045260245ffd5b6104d48261048e565b810181811067ffffffffffffffff821117156104f3576104f261049e565b5b80604052505050565b5f610505610410565b905061051182826104cb565b919050565b5f67ffffffffffffffff8211156105305761052f61049e565b5b6105398261048e565b9050602081019050919050565b828183375f83830152505050565b5f61056661056184610516565b6104fc565b9050828152602081018484840111156105825761058161048a565b5b61058d848285610546565b509392505050565b5f82601f8301126105a9576105a8610486565b5b81356105b9848260208601610554565b91505092915050565b5f5f5f606084860312156105d9576105d8610419565b5b5f6105e686828701610448565b93505060206105f786828701610472565b925050604084013567ffffffffffffffff8111156106185761061761041d565b5b61062486828701610595565b9150509250925092565b5f81519050919050565b5f82825260208201905092915050565b8281835e5f83830152505050565b5f6106608261062e565b61066a8185610638565b935061067a818560208601610648565b6106838161048e565b840191505092915050565b5f6020820190508181035f8301526106a68184610656565b905092915050565b5f602082840312156106c3576106c2610419565b5b5f6106d084828501610472565b91505092915050565b5f81519050919050565b5f82825260208201905092915050565b5f6106fd826106d9565b61070781856106e3565b9350610717818560208601610648565b6107208161048e565b840191505092915050565b5f60408201905061073e5f8301856103e8565b818103602083015261075081846106f3565b9050939250505056fea26469706673582212203d7fa3469b6b7940d80599b447ae6cff4f5eb0a539fc07d0a91bc8c9c516385e64736f6c634300081e0033",
 }
 
-// TransparentupgradableproxyABI is the input ABI used to generate the binding from.
-// Deprecated: Use TransparentupgradableproxyMetaData.ABI instead.
-var TransparentupgradableproxyABI = TransparentupgradableproxyMetaData.ABI
+// ProxyABI is the input ABI used to generate the binding from.
+// Deprecated: Use ProxyMetaData.ABI instead.
+var ProxyABI = ProxyMetaData.ABI
 
-// TransparentupgradableproxyBin is the compiled bytecode used for deploying new contracts.
-// Deprecated: Use TransparentupgradableproxyMetaData.Bin instead.
-var TransparentupgradableproxyBin = TransparentupgradableproxyMetaData.Bin
+// ProxyBin is the compiled bytecode used for deploying new contracts.
+// Deprecated: Use ProxyMetaData.Bin instead.
+var ProxyBin = ProxyMetaData.Bin
 
-// DeployTransparentupgradableproxy deploys a new Ethereum contract, binding an instance of Transparentupgradableproxy to it.
-func DeployTransparentupgradableproxy(auth *bind.TransactOpts, backend bind.ContractBackend, _logic common.Address, admin_ common.Address, _data []byte) (common.Address, *types.Transaction, *Transparentupgradableproxy, error) {
-	parsed, err := TransparentupgradableproxyMetaData.GetAbi()
+// DeployProxy deploys a new Ethereum contract, binding an instance of Proxy to it.
+func DeployProxy(auth *bind.TransactOpts, backend bind.ContractBackend, _logic common.Address, initialOwner common.Address, _data []byte) (common.Address, *types.Transaction, *Proxy, error) {
+	parsed, err := ProxyMetaData.GetAbi()
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
@@ -53,111 +53,111 @@ func DeployTransparentupgradableproxy(auth *bind.TransactOpts, backend bind.Cont
 		return common.Address{}, nil, nil, errors.New("GetABI returned nil")
 	}
 
-	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(TransparentupgradableproxyBin), backend, _logic, admin_, _data)
+	address, tx, contract, err := bind.DeployContract(auth, *parsed, common.FromHex(ProxyBin), backend, _logic, initialOwner, _data)
 	if err != nil {
 		return common.Address{}, nil, nil, err
 	}
-	return address, tx, &Transparentupgradableproxy{TransparentupgradableproxyCaller: TransparentupgradableproxyCaller{contract: contract}, TransparentupgradableproxyTransactor: TransparentupgradableproxyTransactor{contract: contract}, TransparentupgradableproxyFilterer: TransparentupgradableproxyFilterer{contract: contract}}, nil
+	return address, tx, &Proxy{ProxyCaller: ProxyCaller{contract: contract}, ProxyTransactor: ProxyTransactor{contract: contract}, ProxyFilterer: ProxyFilterer{contract: contract}}, nil
 }
 
-// Transparentupgradableproxy is an auto generated Go binding around an Ethereum contract.
-type Transparentupgradableproxy struct {
-	TransparentupgradableproxyCaller     // Read-only binding to the contract
-	TransparentupgradableproxyTransactor // Write-only binding to the contract
-	TransparentupgradableproxyFilterer   // Log filterer for contract events
+// Proxy is an auto generated Go binding around an Ethereum contract.
+type Proxy struct {
+	ProxyCaller     // Read-only binding to the contract
+	ProxyTransactor // Write-only binding to the contract
+	ProxyFilterer   // Log filterer for contract events
 }
 
-// TransparentupgradableproxyCaller is an auto generated read-only Go binding around an Ethereum contract.
-type TransparentupgradableproxyCaller struct {
+// ProxyCaller is an auto generated read-only Go binding around an Ethereum contract.
+type ProxyCaller struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
-// TransparentupgradableproxyTransactor is an auto generated write-only Go binding around an Ethereum contract.
-type TransparentupgradableproxyTransactor struct {
+// ProxyTransactor is an auto generated write-only Go binding around an Ethereum contract.
+type ProxyTransactor struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
-// TransparentupgradableproxyFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
-type TransparentupgradableproxyFilterer struct {
+// ProxyFilterer is an auto generated log filtering Go binding around an Ethereum contract events.
+type ProxyFilterer struct {
 	contract *bind.BoundContract // Generic contract wrapper for the low level calls
 }
 
-// TransparentupgradableproxySession is an auto generated Go binding around an Ethereum contract,
+// ProxySession is an auto generated Go binding around an Ethereum contract,
 // with pre-set call and transact options.
-type TransparentupgradableproxySession struct {
-	Contract     *Transparentupgradableproxy // Generic contract binding to set the session for
-	CallOpts     bind.CallOpts               // Call options to use throughout this session
-	TransactOpts bind.TransactOpts           // Transaction auth options to use throughout this session
+type ProxySession struct {
+	Contract     *Proxy            // Generic contract binding to set the session for
+	CallOpts     bind.CallOpts     // Call options to use throughout this session
+	TransactOpts bind.TransactOpts // Transaction auth options to use throughout this session
 }
 
-// TransparentupgradableproxyCallerSession is an auto generated read-only Go binding around an Ethereum contract,
+// ProxyCallerSession is an auto generated read-only Go binding around an Ethereum contract,
 // with pre-set call options.
-type TransparentupgradableproxyCallerSession struct {
-	Contract *TransparentupgradableproxyCaller // Generic contract caller binding to set the session for
-	CallOpts bind.CallOpts                     // Call options to use throughout this session
+type ProxyCallerSession struct {
+	Contract *ProxyCaller  // Generic contract caller binding to set the session for
+	CallOpts bind.CallOpts // Call options to use throughout this session
 }
 
-// TransparentupgradableproxyTransactorSession is an auto generated write-only Go binding around an Ethereum contract,
+// ProxyTransactorSession is an auto generated write-only Go binding around an Ethereum contract,
 // with pre-set transact options.
-type TransparentupgradableproxyTransactorSession struct {
-	Contract     *TransparentupgradableproxyTransactor // Generic contract transactor binding to set the session for
-	TransactOpts bind.TransactOpts                     // Transaction auth options to use throughout this session
+type ProxyTransactorSession struct {
+	Contract     *ProxyTransactor  // Generic contract transactor binding to set the session for
+	TransactOpts bind.TransactOpts // Transaction auth options to use throughout this session
 }
 
-// TransparentupgradableproxyRaw is an auto generated low-level Go binding around an Ethereum contract.
-type TransparentupgradableproxyRaw struct {
-	Contract *Transparentupgradableproxy // Generic contract binding to access the raw methods on
+// ProxyRaw is an auto generated low-level Go binding around an Ethereum contract.
+type ProxyRaw struct {
+	Contract *Proxy // Generic contract binding to access the raw methods on
 }
 
-// TransparentupgradableproxyCallerRaw is an auto generated low-level read-only Go binding around an Ethereum contract.
-type TransparentupgradableproxyCallerRaw struct {
-	Contract *TransparentupgradableproxyCaller // Generic read-only contract binding to access the raw methods on
+// ProxyCallerRaw is an auto generated low-level read-only Go binding around an Ethereum contract.
+type ProxyCallerRaw struct {
+	Contract *ProxyCaller // Generic read-only contract binding to access the raw methods on
 }
 
-// TransparentupgradableproxyTransactorRaw is an auto generated low-level write-only Go binding around an Ethereum contract.
-type TransparentupgradableproxyTransactorRaw struct {
-	Contract *TransparentupgradableproxyTransactor // Generic write-only contract binding to access the raw methods on
+// ProxyTransactorRaw is an auto generated low-level write-only Go binding around an Ethereum contract.
+type ProxyTransactorRaw struct {
+	Contract *ProxyTransactor // Generic write-only contract binding to access the raw methods on
 }
 
-// NewTransparentupgradableproxy creates a new instance of Transparentupgradableproxy, bound to a specific deployed contract.
-func NewTransparentupgradableproxy(address common.Address, backend bind.ContractBackend) (*Transparentupgradableproxy, error) {
-	contract, err := bindTransparentupgradableproxy(address, backend, backend, backend)
+// NewProxy creates a new instance of Proxy, bound to a specific deployed contract.
+func NewProxy(address common.Address, backend bind.ContractBackend) (*Proxy, error) {
+	contract, err := bindProxy(address, backend, backend, backend)
 	if err != nil {
 		return nil, err
 	}
-	return &Transparentupgradableproxy{TransparentupgradableproxyCaller: TransparentupgradableproxyCaller{contract: contract}, TransparentupgradableproxyTransactor: TransparentupgradableproxyTransactor{contract: contract}, TransparentupgradableproxyFilterer: TransparentupgradableproxyFilterer{contract: contract}}, nil
+	return &Proxy{ProxyCaller: ProxyCaller{contract: contract}, ProxyTransactor: ProxyTransactor{contract: contract}, ProxyFilterer: ProxyFilterer{contract: contract}}, nil
 }
 
-// NewTransparentupgradableproxyCaller creates a new read-only instance of Transparentupgradableproxy, bound to a specific deployed contract.
-func NewTransparentupgradableproxyCaller(address common.Address, caller bind.ContractCaller) (*TransparentupgradableproxyCaller, error) {
-	contract, err := bindTransparentupgradableproxy(address, caller, nil, nil)
+// NewProxyCaller creates a new read-only instance of Proxy, bound to a specific deployed contract.
+func NewProxyCaller(address common.Address, caller bind.ContractCaller) (*ProxyCaller, error) {
+	contract, err := bindProxy(address, caller, nil, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &TransparentupgradableproxyCaller{contract: contract}, nil
+	return &ProxyCaller{contract: contract}, nil
 }
 
-// NewTransparentupgradableproxyTransactor creates a new write-only instance of Transparentupgradableproxy, bound to a specific deployed contract.
-func NewTransparentupgradableproxyTransactor(address common.Address, transactor bind.ContractTransactor) (*TransparentupgradableproxyTransactor, error) {
-	contract, err := bindTransparentupgradableproxy(address, nil, transactor, nil)
+// NewProxyTransactor creates a new write-only instance of Proxy, bound to a specific deployed contract.
+func NewProxyTransactor(address common.Address, transactor bind.ContractTransactor) (*ProxyTransactor, error) {
+	contract, err := bindProxy(address, nil, transactor, nil)
 	if err != nil {
 		return nil, err
 	}
-	return &TransparentupgradableproxyTransactor{contract: contract}, nil
+	return &ProxyTransactor{contract: contract}, nil
 }
 
-// NewTransparentupgradableproxyFilterer creates a new log filterer instance of Transparentupgradableproxy, bound to a specific deployed contract.
-func NewTransparentupgradableproxyFilterer(address common.Address, filterer bind.ContractFilterer) (*TransparentupgradableproxyFilterer, error) {
-	contract, err := bindTransparentupgradableproxy(address, nil, nil, filterer)
+// NewProxyFilterer creates a new log filterer instance of Proxy, bound to a specific deployed contract.
+func NewProxyFilterer(address common.Address, filterer bind.ContractFilterer) (*ProxyFilterer, error) {
+	contract, err := bindProxy(address, nil, nil, filterer)
 	if err != nil {
 		return nil, err
 	}
-	return &TransparentupgradableproxyFilterer{contract: contract}, nil
+	return &ProxyFilterer{contract: contract}, nil
 }
 
-// bindTransparentupgradableproxy binds a generic wrapper to an already deployed contract.
-func bindTransparentupgradableproxy(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
-	parsed, err := TransparentupgradableproxyMetaData.GetAbi()
+// bindProxy binds a generic wrapper to an already deployed contract.
+func bindProxy(address common.Address, caller bind.ContractCaller, transactor bind.ContractTransactor, filterer bind.ContractFilterer) (*bind.BoundContract, error) {
+	parsed, err := ProxyMetaData.GetAbi()
 	if err != nil {
 		return nil, err
 	}
@@ -168,190 +168,64 @@ func bindTransparentupgradableproxy(address common.Address, caller bind.Contract
 // sets the output to result. The result type might be a single field for simple
 // returns, a slice of interfaces for anonymous returns and a struct for named
 // returns.
-func (_Transparentupgradableproxy *TransparentupgradableproxyRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
-	return _Transparentupgradableproxy.Contract.TransparentupgradableproxyCaller.contract.Call(opts, result, method, params...)
+func (_Proxy *ProxyRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
+	return _Proxy.Contract.ProxyCaller.contract.Call(opts, result, method, params...)
 }
 
 // Transfer initiates a plain transaction to move funds to the contract, calling
 // its default method if one is available.
-func (_Transparentupgradableproxy *TransparentupgradableproxyRaw) Transfer(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.TransparentupgradableproxyTransactor.contract.Transfer(opts)
+func (_Proxy *ProxyRaw) Transfer(opts *bind.TransactOpts) (*types.Transaction, error) {
+	return _Proxy.Contract.ProxyTransactor.contract.Transfer(opts)
 }
 
 // Transact invokes the (paid) contract method with params as input values.
-func (_Transparentupgradableproxy *TransparentupgradableproxyRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.TransparentupgradableproxyTransactor.contract.Transact(opts, method, params...)
+func (_Proxy *ProxyRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
+	return _Proxy.Contract.ProxyTransactor.contract.Transact(opts, method, params...)
 }
 
 // Call invokes the (constant) contract method with params as input values and
 // sets the output to result. The result type might be a single field for simple
 // returns, a slice of interfaces for anonymous returns and a struct for named
 // returns.
-func (_Transparentupgradableproxy *TransparentupgradableproxyCallerRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
-	return _Transparentupgradableproxy.Contract.contract.Call(opts, result, method, params...)
+func (_Proxy *ProxyCallerRaw) Call(opts *bind.CallOpts, result *[]interface{}, method string, params ...interface{}) error {
+	return _Proxy.Contract.contract.Call(opts, result, method, params...)
 }
 
 // Transfer initiates a plain transaction to move funds to the contract, calling
 // its default method if one is available.
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactorRaw) Transfer(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.contract.Transfer(opts)
+func (_Proxy *ProxyTransactorRaw) Transfer(opts *bind.TransactOpts) (*types.Transaction, error) {
+	return _Proxy.Contract.contract.Transfer(opts)
 }
 
 // Transact invokes the (paid) contract method with params as input values.
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactorRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.contract.Transact(opts, method, params...)
-}
-
-// Admin is a paid mutator transaction binding the contract method 0xf851a440.
-//
-// Solidity: function admin() returns(address admin_)
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactor) Admin(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.contract.Transact(opts, "admin")
-}
-
-// Admin is a paid mutator transaction binding the contract method 0xf851a440.
-//
-// Solidity: function admin() returns(address admin_)
-func (_Transparentupgradableproxy *TransparentupgradableproxySession) Admin() (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.Admin(&_Transparentupgradableproxy.TransactOpts)
-}
-
-// Admin is a paid mutator transaction binding the contract method 0xf851a440.
-//
-// Solidity: function admin() returns(address admin_)
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactorSession) Admin() (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.Admin(&_Transparentupgradableproxy.TransactOpts)
-}
-
-// ChangeAdmin is a paid mutator transaction binding the contract method 0x8f283970.
-//
-// Solidity: function changeAdmin(address newAdmin) returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactor) ChangeAdmin(opts *bind.TransactOpts, newAdmin common.Address) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.contract.Transact(opts, "changeAdmin", newAdmin)
-}
-
-// ChangeAdmin is a paid mutator transaction binding the contract method 0x8f283970.
-//
-// Solidity: function changeAdmin(address newAdmin) returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxySession) ChangeAdmin(newAdmin common.Address) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.ChangeAdmin(&_Transparentupgradableproxy.TransactOpts, newAdmin)
-}
-
-// ChangeAdmin is a paid mutator transaction binding the contract method 0x8f283970.
-//
-// Solidity: function changeAdmin(address newAdmin) returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactorSession) ChangeAdmin(newAdmin common.Address) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.ChangeAdmin(&_Transparentupgradableproxy.TransactOpts, newAdmin)
-}
-
-// Implementation is a paid mutator transaction binding the contract method 0x5c60da1b.
-//
-// Solidity: function implementation() returns(address implementation_)
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactor) Implementation(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.contract.Transact(opts, "implementation")
-}
-
-// Implementation is a paid mutator transaction binding the contract method 0x5c60da1b.
-//
-// Solidity: function implementation() returns(address implementation_)
-func (_Transparentupgradableproxy *TransparentupgradableproxySession) Implementation() (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.Implementation(&_Transparentupgradableproxy.TransactOpts)
-}
-
-// Implementation is a paid mutator transaction binding the contract method 0x5c60da1b.
-//
-// Solidity: function implementation() returns(address implementation_)
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactorSession) Implementation() (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.Implementation(&_Transparentupgradableproxy.TransactOpts)
-}
-
-// UpgradeTo is a paid mutator transaction binding the contract method 0x3659cfe6.
-//
-// Solidity: function upgradeTo(address newImplementation) returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactor) UpgradeTo(opts *bind.TransactOpts, newImplementation common.Address) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.contract.Transact(opts, "upgradeTo", newImplementation)
-}
-
-// UpgradeTo is a paid mutator transaction binding the contract method 0x3659cfe6.
-//
-// Solidity: function upgradeTo(address newImplementation) returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxySession) UpgradeTo(newImplementation common.Address) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.UpgradeTo(&_Transparentupgradableproxy.TransactOpts, newImplementation)
-}
-
-// UpgradeTo is a paid mutator transaction binding the contract method 0x3659cfe6.
-//
-// Solidity: function upgradeTo(address newImplementation) returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactorSession) UpgradeTo(newImplementation common.Address) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.UpgradeTo(&_Transparentupgradableproxy.TransactOpts, newImplementation)
-}
-
-// UpgradeToAndCall is a paid mutator transaction binding the contract method 0x4f1ef286.
-//
-// Solidity: function upgradeToAndCall(address newImplementation, bytes data) payable returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactor) UpgradeToAndCall(opts *bind.TransactOpts, newImplementation common.Address, data []byte) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.contract.Transact(opts, "upgradeToAndCall", newImplementation, data)
-}
-
-// UpgradeToAndCall is a paid mutator transaction binding the contract method 0x4f1ef286.
-//
-// Solidity: function upgradeToAndCall(address newImplementation, bytes data) payable returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxySession) UpgradeToAndCall(newImplementation common.Address, data []byte) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.UpgradeToAndCall(&_Transparentupgradableproxy.TransactOpts, newImplementation, data)
-}
-
-// UpgradeToAndCall is a paid mutator transaction binding the contract method 0x4f1ef286.
-//
-// Solidity: function upgradeToAndCall(address newImplementation, bytes data) payable returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactorSession) UpgradeToAndCall(newImplementation common.Address, data []byte) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.UpgradeToAndCall(&_Transparentupgradableproxy.TransactOpts, newImplementation, data)
+func (_Proxy *ProxyTransactorRaw) Transact(opts *bind.TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
+	return _Proxy.Contract.contract.Transact(opts, method, params...)
 }
 
 // Fallback is a paid mutator transaction binding the contract fallback function.
 //
 // Solidity: fallback() payable returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactor) Fallback(opts *bind.TransactOpts, calldata []byte) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.contract.RawTransact(opts, calldata)
+func (_Proxy *ProxyTransactor) Fallback(opts *bind.TransactOpts, calldata []byte) (*types.Transaction, error) {
+	return _Proxy.contract.RawTransact(opts, calldata)
 }
 
 // Fallback is a paid mutator transaction binding the contract fallback function.
 //
 // Solidity: fallback() payable returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxySession) Fallback(calldata []byte) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.Fallback(&_Transparentupgradableproxy.TransactOpts, calldata)
+func (_Proxy *ProxySession) Fallback(calldata []byte) (*types.Transaction, error) {
+	return _Proxy.Contract.Fallback(&_Proxy.TransactOpts, calldata)
 }
 
 // Fallback is a paid mutator transaction binding the contract fallback function.
 //
 // Solidity: fallback() payable returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactorSession) Fallback(calldata []byte) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.Fallback(&_Transparentupgradableproxy.TransactOpts, calldata)
+func (_Proxy *ProxyTransactorSession) Fallback(calldata []byte) (*types.Transaction, error) {
+	return _Proxy.Contract.Fallback(&_Proxy.TransactOpts, calldata)
 }
 
-// Receive is a paid mutator transaction binding the contract receive function.
-//
-// Solidity: receive() payable returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactor) Receive(opts *bind.TransactOpts) (*types.Transaction, error) {
-	return _Transparentupgradableproxy.contract.RawTransact(opts, nil) // calldata is disallowed for receive function
-}
-
-// Receive is a paid mutator transaction binding the contract receive function.
-//
-// Solidity: receive() payable returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxySession) Receive() (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.Receive(&_Transparentupgradableproxy.TransactOpts)
-}
-
-// Receive is a paid mutator transaction binding the contract receive function.
-//
-// Solidity: receive() payable returns()
-func (_Transparentupgradableproxy *TransparentupgradableproxyTransactorSession) Receive() (*types.Transaction, error) {
-	return _Transparentupgradableproxy.Contract.Receive(&_Transparentupgradableproxy.TransactOpts)
-}
-
-// TransparentupgradableproxyAdminChangedIterator is returned from FilterAdminChanged and is used to iterate over the raw logs and unpacked data for AdminChanged events raised by the Transparentupgradableproxy contract.
-type TransparentupgradableproxyAdminChangedIterator struct {
-	Event *TransparentupgradableproxyAdminChanged // Event containing the contract specifics and raw log
+// ProxyAdminChangedIterator is returned from FilterAdminChanged and is used to iterate over the raw logs and unpacked data for AdminChanged events raised by the Proxy contract.
+type ProxyAdminChangedIterator struct {
+	Event *ProxyAdminChanged // Event containing the contract specifics and raw log
 
 	contract *bind.BoundContract // Generic contract to use for unpacking event data
 	event    string              // Event name to use for unpacking event data
@@ -365,7 +239,7 @@ type TransparentupgradableproxyAdminChangedIterator struct {
 // Next advances the iterator to the subsequent event, returning whether there
 // are any more events found. In case of a retrieval or parsing error, false is
 // returned and Error() can be queried for the exact failure.
-func (it *TransparentupgradableproxyAdminChangedIterator) Next() bool {
+func (it *ProxyAdminChangedIterator) Next() bool {
 	// If the iterator failed, stop iterating
 	if it.fail != nil {
 		return false
@@ -374,7 +248,7 @@ func (it *TransparentupgradableproxyAdminChangedIterator) Next() bool {
 	if it.done {
 		select {
 		case log := <-it.logs:
-			it.Event = new(TransparentupgradableproxyAdminChanged)
+			it.Event = new(ProxyAdminChanged)
 			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 				it.fail = err
 				return false
@@ -389,7 +263,7 @@ func (it *TransparentupgradableproxyAdminChangedIterator) Next() bool {
 	// Iterator still in progress, wait for either a data or an error event
 	select {
 	case log := <-it.logs:
-		it.Event = new(TransparentupgradableproxyAdminChanged)
+		it.Event = new(ProxyAdminChanged)
 		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 			it.fail = err
 			return false
@@ -405,19 +279,19 @@ func (it *TransparentupgradableproxyAdminChangedIterator) Next() bool {
 }
 
 // Error returns any retrieval or parsing error occurred during filtering.
-func (it *TransparentupgradableproxyAdminChangedIterator) Error() error {
+func (it *ProxyAdminChangedIterator) Error() error {
 	return it.fail
 }
 
 // Close terminates the iteration process, releasing any pending underlying
 // resources.
-func (it *TransparentupgradableproxyAdminChangedIterator) Close() error {
+func (it *ProxyAdminChangedIterator) Close() error {
 	it.sub.Unsubscribe()
 	return nil
 }
 
-// TransparentupgradableproxyAdminChanged represents a AdminChanged event raised by the Transparentupgradableproxy contract.
-type TransparentupgradableproxyAdminChanged struct {
+// ProxyAdminChanged represents a AdminChanged event raised by the Proxy contract.
+type ProxyAdminChanged struct {
 	PreviousAdmin common.Address
 	NewAdmin      common.Address
 	Raw           types.Log // Blockchain specific contextual infos
@@ -426,21 +300,21 @@ type TransparentupgradableproxyAdminChanged struct {
 // FilterAdminChanged is a free log retrieval operation binding the contract event 0x7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f.
 //
 // Solidity: event AdminChanged(address previousAdmin, address newAdmin)
-func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) FilterAdminChanged(opts *bind.FilterOpts) (*TransparentupgradableproxyAdminChangedIterator, error) {
+func (_Proxy *ProxyFilterer) FilterAdminChanged(opts *bind.FilterOpts) (*ProxyAdminChangedIterator, error) {
 
-	logs, sub, err := _Transparentupgradableproxy.contract.FilterLogs(opts, "AdminChanged")
+	logs, sub, err := _Proxy.contract.FilterLogs(opts, "AdminChanged")
 	if err != nil {
 		return nil, err
 	}
-	return &TransparentupgradableproxyAdminChangedIterator{contract: _Transparentupgradableproxy.contract, event: "AdminChanged", logs: logs, sub: sub}, nil
+	return &ProxyAdminChangedIterator{contract: _Proxy.contract, event: "AdminChanged", logs: logs, sub: sub}, nil
 }
 
 // WatchAdminChanged is a free log subscription operation binding the contract event 0x7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f.
 //
 // Solidity: event AdminChanged(address previousAdmin, address newAdmin)
-func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) WatchAdminChanged(opts *bind.WatchOpts, sink chan<- *TransparentupgradableproxyAdminChanged) (event.Subscription, error) {
+func (_Proxy *ProxyFilterer) WatchAdminChanged(opts *bind.WatchOpts, sink chan<- *ProxyAdminChanged) (event.Subscription, error) {
 
-	logs, sub, err := _Transparentupgradableproxy.contract.WatchLogs(opts, "AdminChanged")
+	logs, sub, err := _Proxy.contract.WatchLogs(opts, "AdminChanged")
 	if err != nil {
 		return nil, err
 	}
@@ -450,8 +324,8 @@ func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) WatchAdmi
 			select {
 			case log := <-logs:
 				// New log arrived, parse the event and forward to the user
-				event := new(TransparentupgradableproxyAdminChanged)
-				if err := _Transparentupgradableproxy.contract.UnpackLog(event, "AdminChanged", log); err != nil {
+				event := new(ProxyAdminChanged)
+				if err := _Proxy.contract.UnpackLog(event, "AdminChanged", log); err != nil {
 					return err
 				}
 				event.Raw = log
@@ -475,18 +349,18 @@ func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) WatchAdmi
 // ParseAdminChanged is a log parse operation binding the contract event 0x7e644d79422f17c01e4894b5f4f588d331ebfa28653d42ae832dc59e38c9798f.
 //
 // Solidity: event AdminChanged(address previousAdmin, address newAdmin)
-func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) ParseAdminChanged(log types.Log) (*TransparentupgradableproxyAdminChanged, error) {
-	event := new(TransparentupgradableproxyAdminChanged)
-	if err := _Transparentupgradableproxy.contract.UnpackLog(event, "AdminChanged", log); err != nil {
+func (_Proxy *ProxyFilterer) ParseAdminChanged(log types.Log) (*ProxyAdminChanged, error) {
+	event := new(ProxyAdminChanged)
+	if err := _Proxy.contract.UnpackLog(event, "AdminChanged", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log
 	return event, nil
 }
 
-// TransparentupgradableproxyBeaconUpgradedIterator is returned from FilterBeaconUpgraded and is used to iterate over the raw logs and unpacked data for BeaconUpgraded events raised by the Transparentupgradableproxy contract.
-type TransparentupgradableproxyBeaconUpgradedIterator struct {
-	Event *TransparentupgradableproxyBeaconUpgraded // Event containing the contract specifics and raw log
+// ProxyUpgradedIterator is returned from FilterUpgraded and is used to iterate over the raw logs and unpacked data for Upgraded events raised by the Proxy contract.
+type ProxyUpgradedIterator struct {
+	Event *ProxyUpgraded // Event containing the contract specifics and raw log
 
 	contract *bind.BoundContract // Generic contract to use for unpacking event data
 	event    string              // Event name to use for unpacking event data
@@ -500,7 +374,7 @@ type TransparentupgradableproxyBeaconUpgradedIterator struct {
 // Next advances the iterator to the subsequent event, returning whether there
 // are any more events found. In case of a retrieval or parsing error, false is
 // returned and Error() can be queried for the exact failure.
-func (it *TransparentupgradableproxyBeaconUpgradedIterator) Next() bool {
+func (it *ProxyUpgradedIterator) Next() bool {
 	// If the iterator failed, stop iterating
 	if it.fail != nil {
 		return false
@@ -509,7 +383,7 @@ func (it *TransparentupgradableproxyBeaconUpgradedIterator) Next() bool {
 	if it.done {
 		select {
 		case log := <-it.logs:
-			it.Event = new(TransparentupgradableproxyBeaconUpgraded)
+			it.Event = new(ProxyUpgraded)
 			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 				it.fail = err
 				return false
@@ -524,7 +398,7 @@ func (it *TransparentupgradableproxyBeaconUpgradedIterator) Next() bool {
 	// Iterator still in progress, wait for either a data or an error event
 	select {
 	case log := <-it.logs:
-		it.Event = new(TransparentupgradableproxyBeaconUpgraded)
+		it.Event = new(ProxyUpgraded)
 		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
 			it.fail = err
 			return false
@@ -540,163 +414,19 @@ func (it *TransparentupgradableproxyBeaconUpgradedIterator) Next() bool {
 }
 
 // Error returns any retrieval or parsing error occurred during filtering.
-func (it *TransparentupgradableproxyBeaconUpgradedIterator) Error() error {
+func (it *ProxyUpgradedIterator) Error() error {
 	return it.fail
 }
 
 // Close terminates the iteration process, releasing any pending underlying
 // resources.
-func (it *TransparentupgradableproxyBeaconUpgradedIterator) Close() error {
+func (it *ProxyUpgradedIterator) Close() error {
 	it.sub.Unsubscribe()
 	return nil
 }
 
-// TransparentupgradableproxyBeaconUpgraded represents a BeaconUpgraded event raised by the Transparentupgradableproxy contract.
-type TransparentupgradableproxyBeaconUpgraded struct {
-	Beacon common.Address
-	Raw    types.Log // Blockchain specific contextual infos
-}
-
-// FilterBeaconUpgraded is a free log retrieval operation binding the contract event 0x1cf3b03a6cf19fa2baba4df148e9dcabedea7f8a5c07840e207e5c089be95d3e.
-//
-// Solidity: event BeaconUpgraded(address indexed beacon)
-func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) FilterBeaconUpgraded(opts *bind.FilterOpts, beacon []common.Address) (*TransparentupgradableproxyBeaconUpgradedIterator, error) {
-
-	var beaconRule []interface{}
-	for _, beaconItem := range beacon {
-		beaconRule = append(beaconRule, beaconItem)
-	}
-
-	logs, sub, err := _Transparentupgradableproxy.contract.FilterLogs(opts, "BeaconUpgraded", beaconRule)
-	if err != nil {
-		return nil, err
-	}
-	return &TransparentupgradableproxyBeaconUpgradedIterator{contract: _Transparentupgradableproxy.contract, event: "BeaconUpgraded", logs: logs, sub: sub}, nil
-}
-
-// WatchBeaconUpgraded is a free log subscription operation binding the contract event 0x1cf3b03a6cf19fa2baba4df148e9dcabedea7f8a5c07840e207e5c089be95d3e.
-//
-// Solidity: event BeaconUpgraded(address indexed beacon)
-func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) WatchBeaconUpgraded(opts *bind.WatchOpts, sink chan<- *TransparentupgradableproxyBeaconUpgraded, beacon []common.Address) (event.Subscription, error) {
-
-	var beaconRule []interface{}
-	for _, beaconItem := range beacon {
-		beaconRule = append(beaconRule, beaconItem)
-	}
-
-	logs, sub, err := _Transparentupgradableproxy.contract.WatchLogs(opts, "BeaconUpgraded", beaconRule)
-	if err != nil {
-		return nil, err
-	}
-	return event.NewSubscription(func(quit <-chan struct{}) error {
-		defer sub.Unsubscribe()
-		for {
-			select {
-			case log := <-logs:
-				// New log arrived, parse the event and forward to the user
-				event := new(TransparentupgradableproxyBeaconUpgraded)
-				if err := _Transparentupgradableproxy.contract.UnpackLog(event, "BeaconUpgraded", log); err != nil {
-					return err
-				}
-				event.Raw = log
-
-				select {
-				case sink <- event:
-				case err := <-sub.Err():
-					return err
-				case <-quit:
-					return nil
-				}
-			case err := <-sub.Err():
-				return err
-			case <-quit:
-				return nil
-			}
-		}
-	}), nil
-}
-
-// ParseBeaconUpgraded is a log parse operation binding the contract event 0x1cf3b03a6cf19fa2baba4df148e9dcabedea7f8a5c07840e207e5c089be95d3e.
-//
-// Solidity: event BeaconUpgraded(address indexed beacon)
-func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) ParseBeaconUpgraded(log types.Log) (*TransparentupgradableproxyBeaconUpgraded, error) {
-	event := new(TransparentupgradableproxyBeaconUpgraded)
-	if err := _Transparentupgradableproxy.contract.UnpackLog(event, "BeaconUpgraded", log); err != nil {
-		return nil, err
-	}
-	event.Raw = log
-	return event, nil
-}
-
-// TransparentupgradableproxyUpgradedIterator is returned from FilterUpgraded and is used to iterate over the raw logs and unpacked data for Upgraded events raised by the Transparentupgradableproxy contract.
-type TransparentupgradableproxyUpgradedIterator struct {
-	Event *TransparentupgradableproxyUpgraded // Event containing the contract specifics and raw log
-
-	contract *bind.BoundContract // Generic contract to use for unpacking event data
-	event    string              // Event name to use for unpacking event data
-
-	logs chan types.Log        // Log channel receiving the found contract events
-	sub  ethereum.Subscription // Subscription for errors, completion and termination
-	done bool                  // Whether the subscription completed delivering logs
-	fail error                 // Occurred error to stop iteration
-}
-
-// Next advances the iterator to the subsequent event, returning whether there
-// are any more events found. In case of a retrieval or parsing error, false is
-// returned and Error() can be queried for the exact failure.
-func (it *TransparentupgradableproxyUpgradedIterator) Next() bool {
-	// If the iterator failed, stop iterating
-	if it.fail != nil {
-		return false
-	}
-	// If the iterator completed, deliver directly whatever's available
-	if it.done {
-		select {
-		case log := <-it.logs:
-			it.Event = new(TransparentupgradableproxyUpgraded)
-			if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-				it.fail = err
-				return false
-			}
-			it.Event.Raw = log
-			return true
-
-		default:
-			return false
-		}
-	}
-	// Iterator still in progress, wait for either a data or an error event
-	select {
-	case log := <-it.logs:
-		it.Event = new(TransparentupgradableproxyUpgraded)
-		if err := it.contract.UnpackLog(it.Event, it.event, log); err != nil {
-			it.fail = err
-			return false
-		}
-		it.Event.Raw = log
-		return true
-
-	case err := <-it.sub.Err():
-		it.done = true
-		it.fail = err
-		return it.Next()
-	}
-}
-
-// Error returns any retrieval or parsing error occurred during filtering.
-func (it *TransparentupgradableproxyUpgradedIterator) Error() error {
-	return it.fail
-}
-
-// Close terminates the iteration process, releasing any pending underlying
-// resources.
-func (it *TransparentupgradableproxyUpgradedIterator) Close() error {
-	it.sub.Unsubscribe()
-	return nil
-}
-
-// TransparentupgradableproxyUpgraded represents a Upgraded event raised by the Transparentupgradableproxy contract.
-type TransparentupgradableproxyUpgraded struct {
+// ProxyUpgraded represents a Upgraded event raised by the Proxy contract.
+type ProxyUpgraded struct {
 	Implementation common.Address
 	Raw            types.Log // Blockchain specific contextual infos
 }
@@ -704,31 +434,31 @@ type TransparentupgradableproxyUpgraded struct {
 // FilterUpgraded is a free log retrieval operation binding the contract event 0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b.
 //
 // Solidity: event Upgraded(address indexed implementation)
-func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) FilterUpgraded(opts *bind.FilterOpts, implementation []common.Address) (*TransparentupgradableproxyUpgradedIterator, error) {
+func (_Proxy *ProxyFilterer) FilterUpgraded(opts *bind.FilterOpts, implementation []common.Address) (*ProxyUpgradedIterator, error) {
 
 	var implementationRule []interface{}
 	for _, implementationItem := range implementation {
 		implementationRule = append(implementationRule, implementationItem)
 	}
 
-	logs, sub, err := _Transparentupgradableproxy.contract.FilterLogs(opts, "Upgraded", implementationRule)
+	logs, sub, err := _Proxy.contract.FilterLogs(opts, "Upgraded", implementationRule)
 	if err != nil {
 		return nil, err
 	}
-	return &TransparentupgradableproxyUpgradedIterator{contract: _Transparentupgradableproxy.contract, event: "Upgraded", logs: logs, sub: sub}, nil
+	return &ProxyUpgradedIterator{contract: _Proxy.contract, event: "Upgraded", logs: logs, sub: sub}, nil
 }
 
 // WatchUpgraded is a free log subscription operation binding the contract event 0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b.
 //
 // Solidity: event Upgraded(address indexed implementation)
-func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) WatchUpgraded(opts *bind.WatchOpts, sink chan<- *TransparentupgradableproxyUpgraded, implementation []common.Address) (event.Subscription, error) {
+func (_Proxy *ProxyFilterer) WatchUpgraded(opts *bind.WatchOpts, sink chan<- *ProxyUpgraded, implementation []common.Address) (event.Subscription, error) {
 
 	var implementationRule []interface{}
 	for _, implementationItem := range implementation {
 		implementationRule = append(implementationRule, implementationItem)
 	}
 
-	logs, sub, err := _Transparentupgradableproxy.contract.WatchLogs(opts, "Upgraded", implementationRule)
+	logs, sub, err := _Proxy.contract.WatchLogs(opts, "Upgraded", implementationRule)
 	if err != nil {
 		return nil, err
 	}
@@ -738,8 +468,8 @@ func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) WatchUpgr
 			select {
 			case log := <-logs:
 				// New log arrived, parse the event and forward to the user
-				event := new(TransparentupgradableproxyUpgraded)
-				if err := _Transparentupgradableproxy.contract.UnpackLog(event, "Upgraded", log); err != nil {
+				event := new(ProxyUpgraded)
+				if err := _Proxy.contract.UnpackLog(event, "Upgraded", log); err != nil {
 					return err
 				}
 				event.Raw = log
@@ -763,9 +493,9 @@ func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) WatchUpgr
 // ParseUpgraded is a log parse operation binding the contract event 0xbc7cd75a20ee27fd9adebab32041f755214dbc6bffa90cc0225b39da2e5c2d3b.
 //
 // Solidity: event Upgraded(address indexed implementation)
-func (_Transparentupgradableproxy *TransparentupgradableproxyFilterer) ParseUpgraded(log types.Log) (*TransparentupgradableproxyUpgraded, error) {
-	event := new(TransparentupgradableproxyUpgraded)
-	if err := _Transparentupgradableproxy.contract.UnpackLog(event, "Upgraded", log); err != nil {
+func (_Proxy *ProxyFilterer) ParseUpgraded(log types.Log) (*ProxyUpgraded, error) {
+	event := new(ProxyUpgraded)
+	if err := _Proxy.contract.UnpackLog(event, "Upgraded", log); err != nil {
 		return nil, err
 	}
 	event.Raw = log

@@ -320,7 +320,7 @@ func newSimulatedEVML2SovereignChain(t *testing.T) (
 	require.NoError(t, err)
 
 	// Deploy L2 GER manager proxy contract
-	gerProxyAddr, _, _, err := transparentupgradableproxy.DeployTransparentupgradableproxy(
+	gerProxyAddr, _, _, err := transparentupgradableproxy.DeployProxy(
 		setup.DeployerAuth,
 		client.Client(),
 		gerL2Addr,
