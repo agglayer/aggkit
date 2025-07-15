@@ -16,9 +16,8 @@ import (
 )
 
 var (
-	ErrNotImplemented        = errors.New("aggsender-validator not implemented")
-	ErrNilCertificate        = errors.New("aggsender-validator nil certificate")
-	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
+	ErrNotImplemented = errors.New("aggsender-validator not implemented")
+	ErrNilCertificate = errors.New("aggsender-validator nil certificate")
 )
 
 // ConvertProtoCertToAgglayer Convert a certificate from the gRPC (PROTO) format to the agglayer format
