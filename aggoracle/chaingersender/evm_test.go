@@ -133,6 +133,83 @@ func TestEVMChainGERSender_InitializeDirectInjectionMode(t *testing.T) {
 	}
 }
 
+// testCase represents a test case for transaction submission
+type testCase struct {
+	name            string
+	mode            GERMode
+	addReturnTxID   common.Hash
+	addReturnErr    error
+	resultReturn    *types.MonitoredTxResult
+	resultReturnErr error
+	expectedErr     string
+}
+
+// testConfig holds configuration for running transaction tests
+type testConfig struct {
+	funcABI      string
+	targetAddr   common.Address
+	funcName     string
+	action       string
+	expectedMode GERMode
+	wrongModeErr string
+}
+
+// runTransactionTest is a helper function to run transaction submission tests
+func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
+	abi, err := abi.JSON(strings.NewReader(config.funcABI))
+	require.NoError(t, err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancelFn := context.WithTimeout(context.Background(), time.Millisecond*500)
+			defer cancelFn()
+
+			ethTxMan := mocks.NewEthTxManager(t)
+			if tt.mode == config.expectedMode && (tt.addReturnTxID != (common.Hash{}) || tt.addReturnErr != nil) {
+				ethTxMan.EXPECT().
+					Add(ctx, &config.targetAddr, common.Big0, mock.Anything, mock.Anything, mock.Anything).
+					Return(tt.addReturnTxID, tt.addReturnErr)
+				if tt.resultReturn != nil || tt.resultReturnErr != nil {
+					ethTxMan.EXPECT().
+						Result(ctx, tt.addReturnTxID).
+						Return(*tt.resultReturn, tt.resultReturnErr)
+				}
+			}
+
+			sender := &EVMChainGERSender{
+				logger:              log.GetDefaultLogger(),
+				mode:                tt.mode,
+				ethTxMan:            ethTxMan,
+				waitPeriodMonitorTx: time.Millisecond * 10,
+			}
+
+			// Set the appropriate fields based on the mode
+			if config.expectedMode == QuorumProposalMode {
+				sender.aggOracleManagerAddr = config.targetAddr
+				sender.aggOracleManagerAbi = &abi
+			} else {
+				sender.l2GERManagerAddr = config.targetAddr
+				sender.l2GERManagerAbi = &abi
+			}
+
+			var err error
+			ger := common.HexToHash("0x456")
+			if config.funcName == "proposeGlobalExitRoot" {
+				err = sender.ProposeGER(ctx, ger)
+			} else {
+				err = sender.InjectGER(ctx, ger)
+			}
+
+			if tt.expectedErr == "" {
+				require.NoError(t, err)
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr)
+			}
+		})
+	}
+}
+
 func TestEVMChainGERSender_ProposeGER(t *testing.T) {
 	proposeGERFuncABI := `[{
 		"inputs": [
@@ -148,21 +225,18 @@ func TestEVMChainGERSender_ProposeGER(t *testing.T) {
 		"type": "function"
 	}]`
 	aggOracleManagerAddr := common.HexToAddress("0x456")
-	aggOracleManagerAbi, err := abi.JSON(strings.NewReader(proposeGERFuncABI))
-	require.NoError(t, err)
-
-	ger := common.HexToHash("0x456")
 	txID := common.HexToHash("0x789")
 
-	tests := []struct {
-		name            string
-		mode            GERMode
-		addReturnTxID   common.Hash
-		addReturnErr    error
-		resultReturn    *types.MonitoredTxResult
-		resultReturnErr error
-		expectedErr     string
-	}{
+	config := testConfig{
+		funcABI:      proposeGERFuncABI,
+		targetAddr:   aggOracleManagerAddr,
+		funcName:     "proposeGlobalExitRoot",
+		action:       "propose",
+		expectedMode: QuorumProposalMode,
+		wrongModeErr: "ProposeGER is only available in quorum proposal mode",
+	}
+
+	tests := []testCase{
 		{
 			name:            "successful proposal in quorum mode",
 			mode:            QuorumProposalMode,
@@ -206,41 +280,7 @@ func TestEVMChainGERSender_ProposeGER(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancelFn := context.WithTimeout(context.Background(), time.Millisecond*500)
-			defer cancelFn()
-
-			ethTxMan := mocks.NewEthTxManager(t)
-			if tt.mode == QuorumProposalMode && (tt.addReturnTxID != (common.Hash{}) || tt.addReturnErr != nil) {
-				ethTxMan.EXPECT().
-					Add(ctx, &aggOracleManagerAddr, common.Big0, mock.Anything, mock.Anything, mock.Anything).
-					Return(tt.addReturnTxID, tt.addReturnErr)
-				if tt.resultReturn != nil || tt.resultReturnErr != nil {
-					ethTxMan.EXPECT().
-						Result(ctx, tt.addReturnTxID).
-						Return(*tt.resultReturn, tt.resultReturnErr)
-				}
-			}
-
-			sender := &EVMChainGERSender{
-				logger:               log.GetDefaultLogger(),
-				mode:                 tt.mode,
-				aggOracleManagerAddr: aggOracleManagerAddr,
-				aggOracleManagerAbi:  &aggOracleManagerAbi,
-				ethTxMan:             ethTxMan,
-				waitPeriodMonitorTx:  time.Millisecond * 10,
-			}
-
-			err := sender.ProposeGER(ctx, ger)
-			if tt.expectedErr == "" {
-				require.NoError(t, err)
-			} else {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.expectedErr)
-			}
-		})
-	}
+	runTransactionTest(t, config, tests)
 }
 
 func TestEVMChainGERSender_InjectGER(t *testing.T) {
@@ -258,21 +298,18 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 		"type": "function"
 	}]`
 	l2GERManagerAddr := common.HexToAddress("0x123")
-	l2GERManagerAbi, err := abi.JSON(strings.NewReader(insertGERFuncABI))
-	require.NoError(t, err)
-
-	ger := common.HexToHash("0x456")
 	txID := common.HexToHash("0x789")
 
-	tests := []struct {
-		name            string
-		mode            GERMode
-		addReturnTxID   common.Hash
-		addReturnErr    error
-		resultReturn    *types.MonitoredTxResult
-		resultReturnErr error
-		expectedErr     string
-	}{
+	config := testConfig{
+		funcABI:      insertGERFuncABI,
+		targetAddr:   l2GERManagerAddr,
+		funcName:     "insertGlobalExitRoot",
+		action:       "inject",
+		expectedMode: DirectInjectionMode,
+		wrongModeErr: "InjectGER is only available in direct injection mode",
+	}
+
+	tests := []testCase{
 		{
 			name:            "successful injection in direct injection mode",
 			mode:            DirectInjectionMode,
@@ -316,41 +353,7 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ctx, cancelFn := context.WithTimeout(context.Background(), time.Millisecond*500)
-			defer cancelFn()
-
-			ethTxMan := mocks.NewEthTxManager(t)
-			if tt.mode == DirectInjectionMode && (tt.addReturnTxID != (common.Hash{}) || tt.addReturnErr != nil) {
-				ethTxMan.EXPECT().
-					Add(ctx, &l2GERManagerAddr, common.Big0, mock.Anything, mock.Anything, mock.Anything).
-					Return(tt.addReturnTxID, tt.addReturnErr)
-				if tt.resultReturn != nil || tt.resultReturnErr != nil {
-					ethTxMan.EXPECT().
-						Result(ctx, tt.addReturnTxID).
-						Return(*tt.resultReturn, tt.resultReturnErr)
-				}
-			}
-
-			sender := &EVMChainGERSender{
-				logger:              log.GetDefaultLogger(),
-				mode:                tt.mode,
-				l2GERManagerAddr:    l2GERManagerAddr,
-				l2GERManagerAbi:     &l2GERManagerAbi,
-				ethTxMan:            ethTxMan,
-				waitPeriodMonitorTx: time.Millisecond * 10,
-			}
-
-			err := sender.InjectGER(ctx, ger)
-			if tt.expectedErr == "" {
-				require.NoError(t, err)
-			} else {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.expectedErr)
-			}
-		})
-	}
+	runTransactionTest(t, config, tests)
 }
 
 func TestEVMChainGERSender_SubmitTransaction(t *testing.T) {
