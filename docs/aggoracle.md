@@ -41,15 +41,15 @@ The sequence diagram below depicts the interaction in the AggOracle.
 sequenceDiagram
     participant AggOracle
     participant ChainSender
-    participant L1InfoTreer
+    participant L1InfoTreeSyncer
     participant L1Client
 
     AggOracle->>AggOracle: start
     loop trigger on preconfigured frequency
         AggOracle->>AggOracle: process latest GER
-        AggOracle->>L1InfoTreer: get last finalized GER
-        AggOracle->>L1InfoTreer: get latest finalized L1 info tree
-        L1InfoTreer-->>AggOracle: retrieve global exit root (from L1 info tree)
+        AggOracle->>L1InfoTreeSyncer: get last finalized GER
+        AggOracle->>L1InfoTreeSyncer: get latest finalized L1 info tree
+        L1InfoTreeSyncer-->>AggOracle: retrieve global exit root (from L1 info tree)
         AggOracle->>ChainSender: check is GER injected
         ChainSender-->>AggOracle: isGERInjected result
         alt is GER injected

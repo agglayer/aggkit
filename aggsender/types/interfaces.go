@@ -191,3 +191,12 @@ type CertificateValidateAndSigner interface {
 	) ([]byte, error)
 	String() string
 }
+
+// ValidatorClient is an interface defining functions that a ValidatorClient should implement
+type ValidatorClient interface {
+	ValidateCertificate(
+		ctx context.Context,
+		previousCertificateID *common.Hash, // can be nil if there is no previous certificate
+		certificate *agglayertypes.Certificate,
+	) ([]byte, error)
+}

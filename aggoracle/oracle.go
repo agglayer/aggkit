@@ -12,8 +12,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// L1InfoTreer is an interface that defines the methods required to interact with the L1 info tree syncer
-type L1InfoTreer interface {
+// L1InfoTreeSyncer is an interface that defines the methods required to interact with the L1 info tree syncer
+type L1InfoTreeSyncer interface {
 	GetLatestL1InfoLeaf(ctx context.Context) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
@@ -28,7 +28,7 @@ type AggOracle struct {
 	logger            *log.Logger
 	waitPeriodNextGER time.Duration
 	l1Client          ethereum.ChainReader
-	l1Info            L1InfoTreer
+	l1Info            L1InfoTreeSyncer
 	chainSender       ChainSender
 	enableQuorum      bool
 }
@@ -38,7 +38,7 @@ func New(
 	logger *log.Logger,
 	chainSender ChainSender,
 	l1Client ethereum.ChainReader,
-	l1InfoTreeSyncer L1InfoTreer,
+	l1InfoTreeSyncer L1InfoTreeSyncer,
 	waitPeriodNextGER time.Duration,
 	enableAggOracleQuorum bool,
 ) (*AggOracle, error) {
