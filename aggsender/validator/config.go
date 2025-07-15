@@ -27,7 +27,7 @@ type Config struct {
 	DelayBetweenRetries types.Duration `mapstructure:"DelayBetweenRetries"`
 	// LerQuerier contains the configuration for the LER querier
 	// which is used to query the LER data from the RollupManager contract
-	LerQuerier LerQuerierConfig `mapstructure:"PPConfig"`
+	LerQuerier LerQuerierConfig `mapstructure:"LerQuerierConfig"`
 	// PPConfig specific configuration  for Pessimistic mode
 	PPConfig `mapstructure:"PPConfig"`
 	// AgglayerClient is the Agglayer gRPC client configuration
