@@ -293,6 +293,39 @@ func TestGrpcLeafTypeToAgglayer(t *testing.T) {
 	})
 }
 
+func TestGrpcL1LeafToAgglayer(t *testing.T) {
+	t.Run("nil L1InfoTreeLeafWithContext", func(t *testing.T) {
+		result, err := grpcL1LeafToAgglayer(&v1types.L1InfoTreeLeafWithContext{})
+		require.Nil(t, result)
+		require.ErrorIs(t, err, ErrNilCertificate)
+	})
+	t.Run("ok L1InfoTreeLeafWithContext", func(t *testing.T) {
+		result, err := grpcL1LeafToAgglayer(&v1types.L1InfoTreeLeafWithContext{
+			Rer: &v1types.FixedBytes32{Value: common.HexToHash("0x123").Bytes()},
+			Mer: &v1types.FixedBytes32{Value: common.HexToHash("0x123").Bytes()},
+			Inner: &v1types.L1InfoTreeLeaf{
+				GlobalExitRoot: &v1types.FixedBytes32{Value: common.HexToHash("0x123").Bytes()},
+				BlockHash:      &v1types.FixedBytes32{Value: common.HexToHash("0x123").Bytes()},
+				Timestamp:      1234567890,
+			},
+			L1InfoTreeIndex: 1,
+		})
+		require.NotNil(t, result)
+		require.NoError(t, err)
+	})
+
+	t.Run("nil L1InfoTreeLeafWithContext.Inner", func(t *testing.T) {
+		result, err := grpcL1LeafToAgglayer(&v1types.L1InfoTreeLeafWithContext{
+			Rer:             &v1types.FixedBytes32{Value: common.HexToHash("0x123").Bytes()},
+			Mer:             &v1types.FixedBytes32{Value: common.HexToHash("0x123").Bytes()},
+			Inner:           nil,
+			L1InfoTreeIndex: 1,
+		})
+		require.Nil(t, result)
+		require.ErrorIs(t, err, ErrNilCertificate)
+	})
+}
+
 /*
 func TestGrpcMerkleProofToAgglayer(t *testing.T) {
 	t.Run("nil proof", func(t *testing.T) {

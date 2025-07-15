@@ -272,20 +272,18 @@ func grpcL1LeafToAgglayer(l1Leaf *v1types.L1InfoTreeLeafWithContext) (*agglayert
 	if l1Leaf == nil {
 		return nil, fmt.Errorf("grpcL1LeafToAgglayer. l1 leaf is nil. %w", ErrNilCertificate)
 	}
-	if l1Leaf.Rer == nil || l1Leaf.Mer == nil {
-		return nil, fmt.Errorf("grpcL1LeafToAgglayer. l1 leaf has nil Rer or Mer. %w", ErrNilCertificate)
+	if l1Leaf.Rer == nil || l1Leaf.Mer == nil || l1Leaf.Inner == nil {
+		return nil, fmt.Errorf("grpcL1LeafToAgglayer. l1 leaf has nil Rer or Mer or Inner. %w", ErrNilCertificate)
 	}
-	var inner *agglayertypes.L1InfoTreeLeafInner
-	if l1Leaf.Inner != nil {
-		if l1Leaf.Inner.GlobalExitRoot == nil || l1Leaf.Inner.BlockHash == nil {
-			return nil, fmt.Errorf("grpcL1LeafToAgglayer. l1 leaf inner has nil GlobalExitRoot or BlockHash. %w",
-				ErrNilCertificate)
-		}
-		inner = &agglayertypes.L1InfoTreeLeafInner{
-			GlobalExitRoot: common.BytesToHash(l1Leaf.Inner.GlobalExitRoot.Value),
-			BlockHash:      common.BytesToHash(l1Leaf.Inner.BlockHash.Value),
-			Timestamp:      l1Leaf.Inner.Timestamp,
-		}
+
+	if l1Leaf.Inner.GlobalExitRoot == nil || l1Leaf.Inner.BlockHash == nil {
+		return nil, fmt.Errorf("grpcL1LeafToAgglayer. l1 leaf inner has nil GlobalExitRoot or BlockHash. %w",
+			ErrNilCertificate)
+	}
+	inner := &agglayertypes.L1InfoTreeLeafInner{
+		GlobalExitRoot: common.BytesToHash(l1Leaf.Inner.GlobalExitRoot.Value),
+		BlockHash:      common.BytesToHash(l1Leaf.Inner.BlockHash.Value),
+		Timestamp:      l1Leaf.Inner.Timestamp,
 	}
 
 	return &agglayertypes.L1InfoTreeLeaf{
