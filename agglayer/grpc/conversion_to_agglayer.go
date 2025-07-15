@@ -69,7 +69,7 @@ func ConvertProtoCertToAgglayer(cert *v1nodetypes.Certificate) (*agglayertypes.C
 func grpcBridgeExitsToAgglayer(
 	bridgeExits []*v1types.BridgeExit,
 ) ([]*agglayertypes.BridgeExit, error) {
-	if bridgeExits == nil {
+	if len(bridgeExits) == 0 {
 		return nil, nil
 	}
 	exits := make([]*agglayertypes.BridgeExit, len(bridgeExits))
