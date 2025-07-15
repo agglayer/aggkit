@@ -138,6 +138,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	BlockFinality = "FinalizedBlock"
 
 	[LastGERSync]
+	SyncMode = "Legacy"
 	DBPath = "{{PathRWData}}/l2gersync.sqlite"
 `))
 	require.NoError(t, err)
@@ -165,4 +166,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, l1InfoTreeSyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, bridgeL1SyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, lastGERSyncDeprecatedHint)
+	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 }

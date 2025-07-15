@@ -46,7 +46,6 @@ func TestL2GERSyncE2E(t *testing.T) {
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,
-		l2gersync.Legacy,
 	)
 	require.NoError(t, err)
 
@@ -82,7 +81,6 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 		waitForNewBlocksPeriod,
 		syncBlockChunkSize,
 		true,
-		l2gersync.SovereignChain,
 	)
 	require.NoError(t, err)
 

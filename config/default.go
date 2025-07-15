@@ -162,7 +162,6 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-SyncMode = "Legacy" # "Legacy" or "SovereignChain"
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"

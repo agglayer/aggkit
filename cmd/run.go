@@ -606,7 +606,6 @@ func runL2GERSyncIfNeeded(
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
-		cfg.SyncMode,
 	)
 	if err != nil {
 		log.Fatalf("error creating l2GERSync: %s", err)
