@@ -87,29 +87,12 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 		bridgeProxyContract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 	)
 
-	bridgeABI, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
-	if err != nil {
-		return err
-	}
-
-	dataCallProxy, err := bridgeABI.Pack("initialize0",
-		networkID,
-		common.Address{}, // gasTokenAddressMainnet
-		uint32(0),        // gasTokenNetworkMainnet
-		gerAddr,          // global exit root manager
-		common.Address{}, // rollup manager
-		[]byte{},         // gasTokenMetadata
-	)
-	if err != nil {
-		return err
-	}
-
 	bridgeProxyAddr, _, _, err = transparentupgradableproxy.DeployTransparentupgradableproxy(
 		s.DeployerAuth,
 		client.Client(),
 		bridgeAddr,
 		s.DeployerAuth.From,
-		dataCallProxy,
+		[]byte{},
 	)
 	if err != nil {
 		return err
@@ -120,6 +103,20 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 	if err != nil {
 		return err
 	}
+
+	_, err = bridgeProxyContract.Initialize0(
+		s.UserAuth,
+		networkID,
+		common.Address{}, // gasTokenAddressMainnet
+		uint32(0),        // gasTokenNetworkMainnet
+		gerAddr,          // global exit root manager
+		common.Address{}, // rollup manager
+		[]byte{},         // gasTokenMetadata
+	)
+	if err != nil {
+		return err
+	}
+	client.Commit()
 
 	actualGERAddr, err := bridgeProxyContract.GlobalExitRootManager(&bind.CallOpts{})
 	if err != nil {
