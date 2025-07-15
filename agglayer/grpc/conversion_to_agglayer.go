@@ -52,9 +52,8 @@ func ConvertProtoCertToAgglayer(cert *v1nodetypes.Certificate) (*agglayertypes.C
 	}
 
 	agglayerCert := &agglayertypes.Certificate{
-		NetworkID: cert.NetworkId,
-		Height:    cert.Height,
-		//CertificateID:         cert.CertificateId,
+		NetworkID:           cert.NetworkId,
+		Height:              cert.Height,
 		PrevLocalExitRoot:   common.BytesToHash(cert.PrevLocalExitRoot.Value),
 		NewLocalExitRoot:    common.BytesToHash(cert.NewLocalExitRoot.Value),
 		Metadata:            common.BytesToHash(cert.Metadata.Value),
