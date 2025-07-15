@@ -9,7 +9,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
+	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -87,7 +87,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 		bridgeProxyContract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 	)
 
-	bridgeProxyAddr, _, _, err = transparentupgradableproxy.DeployProxy(
+	bridgeProxyAddr, _, _, err = proxy.DeployProxy(
 		s.DeployerAuth,
 		client.Client(),
 		bridgeAddr,

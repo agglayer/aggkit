@@ -10,7 +10,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridgev2"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/reorgdetector"
-	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
+	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -45,7 +45,7 @@ func TestBridgeCallData(t *testing.T) {
 	_, err = waitForReceipt(ctx, client, deployBridgeTx.Hash(), 20)
 	require.NoError(t, err)
 
-	bridgeProxyAddr, deployProxyTx, _, err := transparentupgradableproxy.DeployProxy(
+	bridgeProxyAddr, deployProxyTx, _, err := proxy.DeployProxy(
 		deployerAuth,
 		client,
 		bridgeAddr,

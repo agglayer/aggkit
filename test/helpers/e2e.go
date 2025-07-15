@@ -17,7 +17,7 @@ import (
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
-	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
+	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -320,7 +320,7 @@ func newSimulatedEVML2SovereignChain(t *testing.T) (
 	require.NoError(t, err)
 
 	// Deploy L2 GER manager proxy contract
-	gerProxyAddr, _, _, err := transparentupgradableproxy.DeployProxy(
+	gerProxyAddr, _, _, err := proxy.DeployProxy(
 		setup.DeployerAuth,
 		client.Client(),
 		gerL2Addr,
