@@ -24,7 +24,7 @@ var (
 			MinConnectTimeout: types.Duration{Duration: time.Second},
 		},
 		Cached: true,
-		ConfigurationCache: &ConfigurationCache{
+		ConfigurationCache: &CacheConfig{
 			TTL:      types.Duration{Duration: time.Second},
 			Capacity: 100,
 		},

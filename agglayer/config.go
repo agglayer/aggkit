@@ -9,7 +9,7 @@ import (
 type ClientConfig struct {
 	GRPC               *aggkitgrpc.ClientConfig
 	Cached             bool
-	ConfigurationCache *ConfigurationCache
+	ConfigurationCache *CacheConfig
 }
 
 // Validate checks if the client configuration is valid.

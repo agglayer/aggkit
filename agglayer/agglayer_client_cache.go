@@ -11,7 +11,7 @@ import (
 	"github.com/jellydator/ttlcache/v3"
 )
 
-type ConfigurationCache struct {
+type CacheConfig struct {
 	// TTL that an item is valid in the cache before it is considered stale.
 	TTL types.Duration
 	// Capacity is the maximum number of items that can be stored in the cache.
@@ -20,9 +20,9 @@ type ConfigurationCache struct {
 }
 
 // Validate checks if the configuration cache settings are valid.
-func (c *ConfigurationCache) Validate() error {
+func (c *CacheConfig) Validate() error {
 	if c == nil {
-		return fmt.Errorf("configuration cache is nil")
+		return fmt.Errorf("CacheConfig is nil")
 	}
 	if c.TTL.Duration <= 0 {
 		return fmt.Errorf("invalid TTL %s", c.TTL.String())
@@ -33,9 +33,9 @@ func (c *ConfigurationCache) Validate() error {
 	return nil
 }
 
-func (c *ConfigurationCache) String() string {
+func (c *CacheConfig) String() string {
 	if c == nil {
-		return "configuration cache is nil"
+		return "CacheConfig is nil"
 	}
 	return fmt.Sprintf("TTL: %s, Capacity: %d", c.TTL.String(), c.Capacity)
 }
