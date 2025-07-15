@@ -156,6 +156,7 @@ type testConfig struct {
 
 // runTransactionTest is a helper function to run transaction submission tests
 func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
+	t.Helper()
 	abi, err := abi.JSON(strings.NewReader(config.funcABI))
 	require.NoError(t, err)
 
@@ -210,6 +211,48 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 	}
 }
 
+// createTestCases creates test cases for transaction submission
+func createTestCases(mode GERMode, txID common.Hash, expectedErrPrefix string) []testCase {
+	return []testCase{
+		{
+			name:            "successful transaction",
+			mode:            mode,
+			addReturnTxID:   txID,
+			addReturnErr:    nil,
+			resultReturn:    &types.MonitoredTxResult{Status: types.MonitoredTxStatusMined, MinedAtBlockNumber: big.NewInt(123)},
+			resultReturnErr: nil,
+			expectedErr:     "",
+		},
+		{
+			name:            "transaction fails due to Add method error",
+			mode:            mode,
+			addReturnTxID:   common.Hash{},
+			addReturnErr:    errors.New("add error"),
+			resultReturn:    nil,
+			resultReturnErr: nil,
+			expectedErr:     "add error",
+		},
+		{
+			name:            "transaction fails due to transaction failure",
+			mode:            mode,
+			addReturnTxID:   txID,
+			addReturnErr:    nil,
+			resultReturn:    &types.MonitoredTxResult{Status: types.MonitoredTxStatusFailed},
+			resultReturnErr: nil,
+			expectedErr:     expectedErrPrefix + " tx",
+		},
+		{
+			name:            "transaction fails due to Result method error",
+			mode:            mode,
+			addReturnTxID:   txID,
+			addReturnErr:    nil,
+			resultReturn:    &types.MonitoredTxResult{},
+			resultReturnErr: errors.New("result error"),
+			expectedErr:     "result error",
+		},
+	}
+}
+
 func TestEVMChainGERSender_ProposeGER(t *testing.T) {
 	proposeGERFuncABI := `[{
 		"inputs": [
@@ -236,49 +279,12 @@ func TestEVMChainGERSender_ProposeGER(t *testing.T) {
 		wrongModeErr: "ProposeGER is only available in quorum proposal mode",
 	}
 
-	tests := []testCase{
-		{
-			name:            "successful proposal in quorum mode",
-			mode:            QuorumProposalMode,
-			addReturnTxID:   txID,
-			addReturnErr:    nil,
-			resultReturn:    &types.MonitoredTxResult{Status: types.MonitoredTxStatusMined, MinedAtBlockNumber: big.NewInt(123)},
-			resultReturnErr: nil,
-			expectedErr:     "",
-		},
-		{
-			name:            "proposal fails due to Add method error",
-			mode:            QuorumProposalMode,
-			addReturnTxID:   common.Hash{},
-			addReturnErr:    errors.New("add error"),
-			resultReturn:    nil,
-			resultReturnErr: nil,
-			expectedErr:     "add error",
-		},
-		{
-			name:            "proposal fails due to transaction failure",
-			mode:            QuorumProposalMode,
-			addReturnTxID:   txID,
-			addReturnErr:    nil,
-			resultReturn:    &types.MonitoredTxResult{Status: types.MonitoredTxStatusFailed},
-			resultReturnErr: nil,
-			expectedErr:     "propose GER tx",
-		},
-		{
-			name:            "proposal fails due to Result method error",
-			mode:            QuorumProposalMode,
-			addReturnTxID:   txID,
-			addReturnErr:    nil,
-			resultReturn:    &types.MonitoredTxResult{},
-			resultReturnErr: errors.New("result error"),
-			expectedErr:     "result error",
-		},
-		{
-			name:        "wrong mode - direct injection",
-			mode:        DirectInjectionMode,
-			expectedErr: "ProposeGER is only available in quorum proposal mode",
-		},
-	}
+	tests := createTestCases(QuorumProposalMode, txID, "propose GER")
+	tests = append(tests, testCase{
+		name:        "wrong mode - direct injection",
+		mode:        DirectInjectionMode,
+		expectedErr: "ProposeGER is only available in quorum proposal mode",
+	})
 
 	runTransactionTest(t, config, tests)
 }
@@ -309,49 +315,12 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 		wrongModeErr: "InjectGER is only available in direct injection mode",
 	}
 
-	tests := []testCase{
-		{
-			name:            "successful injection in direct injection mode",
-			mode:            DirectInjectionMode,
-			addReturnTxID:   txID,
-			addReturnErr:    nil,
-			resultReturn:    &types.MonitoredTxResult{Status: types.MonitoredTxStatusMined, MinedAtBlockNumber: big.NewInt(123)},
-			resultReturnErr: nil,
-			expectedErr:     "",
-		},
-		{
-			name:            "injection fails due to Add method error",
-			mode:            DirectInjectionMode,
-			addReturnTxID:   common.Hash{},
-			addReturnErr:    errors.New("add error"),
-			resultReturn:    nil,
-			resultReturnErr: nil,
-			expectedErr:     "add error",
-		},
-		{
-			name:            "injection fails due to transaction failure",
-			mode:            DirectInjectionMode,
-			addReturnTxID:   txID,
-			addReturnErr:    nil,
-			resultReturn:    &types.MonitoredTxResult{Status: types.MonitoredTxStatusFailed},
-			resultReturnErr: nil,
-			expectedErr:     "inject GER tx",
-		},
-		{
-			name:            "injection fails due to Result method error",
-			mode:            DirectInjectionMode,
-			addReturnTxID:   txID,
-			addReturnErr:    nil,
-			resultReturn:    &types.MonitoredTxResult{},
-			resultReturnErr: errors.New("result error"),
-			expectedErr:     "result error",
-		},
-		{
-			name:        "wrong mode - quorum proposal",
-			mode:        QuorumProposalMode,
-			expectedErr: "InjectGER is only available in direct injection mode",
-		},
-	}
+	tests := createTestCases(DirectInjectionMode, txID, "inject GER")
+	tests = append(tests, testCase{
+		name:        "wrong mode - quorum proposal",
+		mode:        QuorumProposalMode,
+		expectedErr: "InjectGER is only available in direct injection mode",
+	})
 
 	runTransactionTest(t, config, tests)
 }
