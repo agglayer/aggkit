@@ -366,17 +366,14 @@ func TestFindCallWithMixedMethods(t *testing.T) {
 	// Test that findCall continues searching and finds the first valid claim method
 	found, err := findCall(rootCall, bridgeAddr, func(call call) (bool, error) {
 		// Simulate tryDecodeClaimCalldata behavior
-		if len(call.Input) < 4 {
+		if len(call.Input) < methodIDLength {
 			return false, fmt.Errorf("input too short")
 		}
-		methodID := call.Input[:4]
+		methodID := call.Input[:methodIDLength]
 
-		if bytes.Equal(methodID, claimAssetEtrogMethodID) || bytes.Equal(methodID, claimMessageEtrogMethodID) {
-			return true, nil // Found a valid claim method
-		}
+		isClaimInvoked := bytes.Equal(methodID, claimAssetEtrogMethodID) || bytes.Equal(methodID, claimMessageEtrogMethodID)
 
-		// Unrecognized method ID - return false, nil to continue searching
-		return false, nil
+		return isClaimInvoked, nil
 	}, logger)
 
 	require.NoError(t, err)
