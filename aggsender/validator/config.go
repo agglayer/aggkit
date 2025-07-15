@@ -28,7 +28,7 @@ type Config struct {
 	// LerQuerier contains the configuration for the LER querier
 	// which is used to query the LER data from the RollupManager contract
 	LerQuerier LerQuerierConfig `mapstructure:"LerQuerierConfig"`
-	// PPConfig specific configuration  for Pessimistic mode
+	// PPConfig specific configuration for Pessimistic mode
 	PPConfig `mapstructure:"PPConfig"`
 	// AgglayerClient is the Agglayer gRPC client configuration
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
