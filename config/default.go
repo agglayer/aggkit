@@ -190,7 +190,7 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
 	[AggSender.AgglayerClient]
-		Cached = true
+		Cached = false
 		[ValidaAggSendertor.AgglayerClient.ConfigurationCache]
 			TTL = "15m"
 			Capacity = 100
