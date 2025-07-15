@@ -121,7 +121,8 @@ func TestGetLatestInfoUntilBlockIfNotFoundReturnsErrNotFound(t *testing.T) {
 	_, err = sut.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
 	require.NoError(t, err)
 
-	_, err = sut.GetLatestInfoUntilBlock(ctx, 1)
+	blockNum := uint64(1)
+	_, err = sut.GetLatestL1InfoLeafUntilBlock(ctx, &blockNum)
 	require.Equal(t, db.ErrNotFound, err)
 }
 
