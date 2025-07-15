@@ -8,9 +8,9 @@ import (
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
-// Config defines the configuration for the aggsender validator service.
+// Config defines the configuration for the validator validator service.
 type Config struct {
-	// EnableRPC is a flag to enable the RPC for aggsender
+	// EnableRPC is a flag to enable the RPC for validator
 	EnableRPC bool `mapstructure:"EnableRPC"`
 	// Signer is the key which is used to sign certificates
 	Signer signertypes.SignerConfig `mapstructure:"Signer"`
@@ -35,7 +35,7 @@ type Config struct {
 }
 
 type PPConfig struct {
-	// RequireOneBridgeInPPCertificate is a flag to force the AggSender to have at least one bridge exit
+	// RequireOneBridgeInPPCertificate is a flag to force the validator to have at least one bridge exit
 	// for the Pessimistic Proof certificates
 	RequireOneBridgeInPPCertificate bool `mapstructure:"RequireOneBridgeInPPCertificate"`
 }
