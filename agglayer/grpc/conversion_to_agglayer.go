@@ -109,7 +109,7 @@ func grpcBridgeExitToAgglayer(bridgeExit *v1types.BridgeExit) (*agglayertypes.Br
 		metadata = bridgeExit.Metadata.Value
 	}
 
-	agglayerBrdigeExit := &agglayertypes.BridgeExit{
+	agglayerBridgeExit := &agglayertypes.BridgeExit{
 		LeafType: leafType,
 		TokenInfo: &agglayertypes.TokenInfo{
 			OriginTokenAddress: common.BytesToAddress(bridgeExit.TokenInfo.OriginTokenAddress.Value),
@@ -121,10 +121,10 @@ func grpcBridgeExitToAgglayer(bridgeExit *v1types.BridgeExit) (*agglayertypes.Br
 		Metadata:           metadata,
 	}
 
-	return agglayerBrdigeExit, nil
+	return agglayerBridgeExit, nil
 }
 
-// leafTypeToProto converts a leaf type to a proto leaf type
+// grpcLeafTypeToAgglayer converts a leaf type to a proto leaf type
 func grpcLeafTypeToAgglayer(leafType v1types.LeafType) (agglayertypes.LeafType, error) {
 	switch leafType {
 	case v1types.LeafType_LEAF_TYPE_TRANSFER:
@@ -139,7 +139,7 @@ func grpcLeafTypeToAgglayer(leafType v1types.LeafType) (agglayertypes.LeafType, 
 func grpcImportedBridgeExitsToAgglayer(
 	importedBridgeExits []*v1types.ImportedBridgeExit,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
-	if importedBridgeExits == nil {
+	if len(importedBridgeExits) == 0 {
 		return nil, nil
 	}
 	exits := make([]*agglayertypes.ImportedBridgeExit, len(importedBridgeExits))
