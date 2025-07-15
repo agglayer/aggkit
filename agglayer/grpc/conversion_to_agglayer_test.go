@@ -130,7 +130,7 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.Nil(t, result)
 		require.ErrorIs(t, err, ErrNilCertificate)
-		require.Contains(t, err.Error(), "Certificate has nil fields")
+		require.ErrorContains(t, err, "Certificate has nil fields")
 	})
 
 	t.Run("nil NewLocalExitRoot", func(t *testing.T) {
@@ -140,7 +140,7 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.Nil(t, result)
 		require.ErrorIs(t, err, ErrNilCertificate)
-		require.Contains(t, err.Error(), "Certificate has nil fields")
+		require.ErrorContains(t, err, "Certificate has nil fields")
 	})
 
 	t.Run("nil Metadata", func(t *testing.T) {
@@ -150,7 +150,7 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.Nil(t, result)
 		require.ErrorIs(t, err, ErrNilCertificate)
-		require.Contains(t, err.Error(), "Certificate has nil fields")
+		require.ErrorContains(t, err, "Certificate has nil fields")
 	})
 
 	t.Run("nil L1InfoTreeLeafCount", func(t *testing.T) {
@@ -161,23 +161,38 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.Nil(t, result)
 		require.ErrorIs(t, err, ErrNilCertificate)
-		require.Contains(t, err.Error(), "has nil L1InfoTreeLeafCount")
+		require.ErrorContains(t, err, "has nil L1InfoTreeLeafCount")
 	})
 
-	t.Run("unsupported AggchainData", func(t *testing.T) {
+	t.Run("nil AggchainData", func(t *testing.T) {
 		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
 		require.NoError(t, err)
-		protoCert.Metadata = nil
+		protoCert.AggchainData = nil
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.Nil(t, result)
 		require.ErrorIs(t, err, ErrNilCertificate)
-		require.Contains(t, err.Error(), "Certificate has nil fields")
+		require.ErrorContains(t, err, "aggchain data is nil")
 	})
 
 	t.Run("successful conversion", func(t *testing.T) {
 		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
 		require.NoError(t, err)
-		protoCert.AggchainData = nil
+		result, err := ConvertProtoCertToAgglayer(protoCert)
+		require.NotNil(t, result)
+		require.Equal(t, exampleTestAgglayerCert.Hash(), result.Hash())
+		require.NoError(t, err)
+	})
+
+	t.Run("successful conversion - aggchain data signature", func(t *testing.T) {
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Signature{
+				Signature: &v1types.FixedBytes65{
+					Value: common.HexToHash("0x0102030405060708090a0b0c0d0e0f1011121314151617181920212223242526").Bytes(),
+				},
+			},
+		}
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.NotNil(t, result)
 		require.Equal(t, exampleTestAgglayerCert.Hash(), result.Hash())
@@ -187,23 +202,99 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 	t.Run("error in bridge exits conversion", func(t *testing.T) {
 		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
 		require.NoError(t, err)
-		protoCert.AggchainData = nil
 		protoCert.BridgeExits[0].TokenInfo = nil // This should cause an error
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.Error(t, err)
 		require.Nil(t, result)
-		require.Contains(t, err.Error(), "error converting grpc bridge exits")
+		require.ErrorContains(t, err, "error converting grpc bridge exits")
 	})
 
 	t.Run("error in imported bridge exits conversion", func(t *testing.T) {
 		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
 		require.NoError(t, err)
-		protoCert.AggchainData = nil
 		protoCert.ImportedBridgeExits = []*v1types.ImportedBridgeExit{nil}
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.Error(t, err)
 		require.Nil(t, result)
-		require.Contains(t, err.Error(), "error converting grpc imported bridge exits")
+		require.ErrorContains(t, err, "error converting grpc imported bridge exits")
+	})
+
+	t.Run("error in aggchain data proof - not sp1 stark", func(t *testing.T) {
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Generic{
+				Generic: &v1types.AggchainProof{},
+			},
+		}
+		result, err := ConvertProtoCertToAgglayer(protoCert)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.ErrorContains(t, err, "expected Sp1Stark proof, got")
+	})
+
+	t.Run("error in aggchain data proof - nil proof", func(t *testing.T) {
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Generic{
+				Generic: &v1types.AggchainProof{
+					Proof: &v1types.AggchainProof_Sp1Stark{},
+				},
+			},
+		}
+		result, err := ConvertProtoCertToAgglayer(protoCert)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.ErrorContains(t, err, "aggchain data has nil Sp1Stark proof")
+	})
+
+	t.Run("error in aggchain data proof - nil aggchain params", func(t *testing.T) {
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Generic{
+				Generic: &v1types.AggchainProof{
+					Proof: &v1types.AggchainProof_Sp1Stark{
+						Sp1Stark: &v1types.SP1StarkProof{
+							Proof:   []byte{0x01, 0x02, 0x03},
+							Version: "1.0",
+							Vkey:    []byte{0x01, 0x02, 0x03},
+						},
+					},
+				},
+			},
+		}
+		result, err := ConvertProtoCertToAgglayer(protoCert)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.ErrorContains(t, err, "aggchain data has nil AggchainParams")
+	})
+
+	t.Run("error in aggchain data proof - nil aggchain proof signature", func(t *testing.T) {
+		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
+		require.NoError(t, err)
+		protoCert.AggchainData = &v1types.AggchainData{
+			Data: &v1types.AggchainData_Generic{
+				Generic: &v1types.AggchainProof{
+					Proof: &v1types.AggchainProof_Sp1Stark{
+						Sp1Stark: &v1types.SP1StarkProof{
+							Proof:   []byte{0x01, 0x02, 0x03},
+							Version: "1.0",
+							Vkey:    []byte{0x01, 0x02, 0x03},
+						},
+					},
+					AggchainParams: &v1types.FixedBytes32{
+						Value: common.HexToHash("0x0102030405060708090a0b0c0d0e0f1011121314151617181920212223242526").Bytes(),
+					},
+					Signature: nil, // This should cause an error
+				},
+			},
+		}
+		result, err := ConvertProtoCertToAgglayer(protoCert)
+		require.Error(t, err)
+		require.Nil(t, result)
+		require.ErrorContains(t, err, "aggchain data has nil Signature")
 	})
 }
 

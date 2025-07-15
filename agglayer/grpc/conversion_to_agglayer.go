@@ -32,13 +32,13 @@ func ConvertProtoCertToAgglayer(cert *v1nodetypes.Certificate) (*agglayertypes.C
 	}
 
 	if cert.L1InfoTreeLeafCount == nil {
-		return nil, fmt.Errorf("convertProtoCertToAgglayer.certificate has nil L1InfoTreeLeafCount. %w",
+		return nil, fmt.Errorf("convertProtoCertToAgglayer. Certificate has nil L1InfoTreeLeafCount. %w",
 			ErrNilCertificate)
 	}
 
-	if cert.AggchainData != nil {
-		return nil, fmt.Errorf("convertProtoCertToAgglayer. not supported AggchainData in incomming certificate. %w",
-			ErrNotImplemented)
+	aggchainData, err := grpcAggchainDataToAgglayer(cert.AggchainData)
+	if err != nil {
+		return nil, fmt.Errorf("convertProtoCertToAgglayer. error converting grpc aggchain data: %w", err)
 	}
 
 	bridgeExits, err := grpcBridgeExitsToAgglayer(cert.BridgeExits)
@@ -60,6 +60,7 @@ func ConvertProtoCertToAgglayer(cert *v1nodetypes.Certificate) (*agglayertypes.C
 		L1InfoTreeLeafCount: *cert.L1InfoTreeLeafCount,
 		BridgeExits:         bridgeExits,
 		ImportedBridgeExits: importedBridgeExits,
+		AggchainData:        aggchainData,
 	}
 
 	return agglayerCert, nil
@@ -291,4 +292,47 @@ func grpcL1LeafToAgglayer(l1Leaf *v1types.L1InfoTreeLeafWithContext) (*agglayert
 		MainnetExitRoot: common.BytesToHash(l1Leaf.Mer.Value),
 		Inner:           inner,
 	}, nil
+}
+
+func grpcAggchainDataToAgglayer(
+	aggchainData *v1types.AggchainData,
+) (agglayertypes.AggchainData, error) {
+	if aggchainData == nil || aggchainData.Data == nil {
+		return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data is nil. %w", ErrNilCertificate)
+	}
+
+	switch ad := aggchainData.Data.(type) {
+	case *v1types.AggchainData_Signature:
+		return &agglayertypes.AggchainDataSignature{
+			Signature: ad.Signature.Value,
+		}, nil
+	case *v1types.AggchainData_Generic:
+		sp1Proof, ok := ad.Generic.Proof.(*v1types.AggchainProof_Sp1Stark)
+		if !ok {
+			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. expected Sp1Stark proof, got: %T", ad.Generic.Proof)
+		}
+
+		if sp1Proof.Sp1Stark == nil {
+			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil Sp1Stark proof. %w", ErrNilCertificate)
+		}
+
+		if ad.Generic.AggchainParams == nil {
+			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil AggchainParams. %w", ErrNilCertificate)
+		}
+
+		if ad.Generic.Signature == nil {
+			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil Signature. %w", ErrNilCertificate)
+		}
+
+		return &agglayertypes.AggchainDataProof{
+			Proof:          sp1Proof.Sp1Stark.Proof,
+			Version:        sp1Proof.Sp1Stark.Version,
+			Vkey:           sp1Proof.Sp1Stark.Vkey,
+			AggchainParams: common.BytesToHash(ad.Generic.AggchainParams.Value),
+			Context:        ad.Generic.Context,
+			Signature:      ad.Generic.Signature.Value,
+		}, nil
+	default:
+		return nil, fmt.Errorf("grpcAggchainDataToAgglayer. unknown aggchain data type: %T", aggchainData)
+	}
 }
