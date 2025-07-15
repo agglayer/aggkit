@@ -137,11 +137,11 @@ type AggchainData interface {
 
 // AggchainDataSelector is a helper struct that allow to decice which type of aggchain data to unmarshal
 type AggchainDataSelector struct {
-	obj AggchainData
+	Obj AggchainData
 }
 
 func (a *AggchainDataSelector) GetObject() AggchainData {
-	return a.obj
+	return a.Obj
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
@@ -155,14 +155,14 @@ func (a *AggchainDataSelector) UnmarshalJSON(data []byte) error {
 	}
 	var ok bool
 	if _, ok = obj["proof"]; ok {
-		a.obj = &AggchainDataProof{}
+		a.Obj = &AggchainDataProof{}
 	} else if _, ok = obj["signature"]; ok {
-		a.obj = &AggchainDataSignature{}
+		a.Obj = &AggchainDataSignature{}
 	} else {
 		return errors.New("invalid aggchain_data type")
 	}
 
-	return json.Unmarshal(data, &a.obj)
+	return json.Unmarshal(data, &a.Obj)
 }
 
 // AggchainDataSignature is the data structure that will hold the signature
