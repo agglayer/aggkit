@@ -21,9 +21,6 @@ func (c *ClientConfig) Validate() error {
 	if err := c.GRPC.Validate(); err != nil {
 		return err
 	}
-	if c.Cached && c.ConfigurationCache == nil {
-		return ErrConfigurationCacheRequired
-	}
 	if c.Cached {
 		return c.ConfigurationCache.Validate()
 	}

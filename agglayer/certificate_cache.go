@@ -21,6 +21,9 @@ type ConfigurationCache struct {
 
 // Validate checks if the configuration cache settings are valid.
 func (c *ConfigurationCache) Validate() error {
+	if c == nil {
+		return fmt.Errorf("configuration cache is nil")
+	}
 	if c.TTL.Duration <= 0 {
 		return fmt.Errorf("invalid TTL %s", c.TTL.String())
 	}
