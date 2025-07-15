@@ -11,7 +11,6 @@ OpNodeURL = "http://localhost:8080"
 AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
 
-
 NetworkID = 1
 SequencerPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
 SequencerPrivateKeyPassword = "test"
