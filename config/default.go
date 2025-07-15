@@ -191,7 +191,7 @@ StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
 	[AggSender.AgglayerClient]
 		Cached = false
-		[ValidaAggSendertor.AgglayerClient.ConfigurationCache]
+		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "15m"
 			Capacity = 100
 		[AggSender.AgglayerClient.GRPC]
