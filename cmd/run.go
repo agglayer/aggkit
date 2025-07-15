@@ -24,6 +24,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/aggsender/query"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggsendervalidator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -54,10 +55,11 @@ func start(cliCtx *cli.Context) error {
 
 	log.Init(cfg.Log)
 
-	if cfg.Log.Environment == log.EnvironmentDevelopment {
+	switch cfg.Log.Environment {
+	case log.EnvironmentDevelopment:
 		aggkit.PrintVersion(os.Stdout)
 		log.Info("Starting application")
-	} else if cfg.Log.Environment == log.EnvironmentProduction {
+	case log.EnvironmentProduction:
 		logVersion()
 	}
 
@@ -254,8 +256,8 @@ func createAggSender(
 	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
-	if err := cfg.AgglayerClient.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid agglayer client config: %w", err)
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid aggsender config: %w", err)
 	}
 
 	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AgglayerClient)
@@ -293,19 +295,31 @@ func createAggSender(
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
-	// TODO: Remove this, just for testing
-	if cfg.Mode == "PessimisticProof" {
-		validator, err := createAggSenderValidator(ctx, cfg, l1InfoTreeSync,
-			l2Syncer, l1EthClient, l2Client, rollupDataQuerier)
-		if err != nil {
-			return nil, fmt.Errorf("failed to create AggSender validator: %w", err)
+
+	if cfg.Mode == aggsendertypes.PessimisticProofMode.String() {
+		// validator is only supported in PessimisticProof mode
+		var validator aggsendertypes.CertificateValidateAndSigner
+		if cfg.RequireValidatorCall {
+			validator, err = aggsendervalidator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
+			if err != nil {
+				return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
+			}
+		} else {
+			// this is only temporary, until we test it in local, then we will only use the remote validator
+			validator = aggsendervalidator.NewLocalValidator(
+				logger,
+				aggsender.GetStorage(),
+				aggsendervalidator.NewAggsenderValidator(
+					logger,
+					aggsender.GetFlow(),
+					query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
+				),
+			)
 		}
-		aggsender.AttachValidator(&aggsendervalidator.LocalValidator{
-			Log:       logger,
-			Storage:   aggsender.GetStorage(),
-			Validator: validator,
-		})
+
+		aggsender.AttachValidator(validator)
 	}
+
 	return aggsender, nil
 }
 
@@ -369,7 +383,6 @@ func createAggoracle(
 		sender,
 		l1Client,
 		l1InfoTreeSyncer,
-		aggkittypes.NewBlockNumberFinality(cfg.AggOracle.BlockFinality),
 		cfg.AggOracle.WaitPeriodNextGER.Duration,
 	)
 	if err != nil {
@@ -452,7 +465,7 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.GlobalExitRootAddr,
 		cfg.L1InfoTreeSync.RollupManagerAddr,
 		cfg.L1InfoTreeSync.SyncBlockChunkSize,
-		aggkittypes.NewBlockNumberFinality(cfg.L1InfoTreeSync.BlockFinality),
+		aggkittypes.FinalizedBlock,
 		reorgDetector,
 		l1Client,
 		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
@@ -617,7 +630,7 @@ func runBridgeSyncL1IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+		aggkittypes.FinalizedBlock,
 		reorgDetectorL1,
 		l1Client,
 		cfg.InitialBlockNum,
@@ -679,10 +692,10 @@ func runBridgeSyncL2IfNeeded(
 func createBridgeService(
 	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
-	l1InfoTree *l1infotreesync.L1InfoTreeSync,
-	injectedGERs *lastgersync.LastGERSync,
-	bridgeL1 *bridgesync.BridgeSync,
-	bridgeL2 *bridgesync.BridgeSync,
+	l1InfoTree bridgeservice.L1InfoTreeSyncer,
+	injectedGERs bridgeservice.LastGERer,
+	bridgeL1 bridgeservice.Bridger,
+	bridgeL2 bridgeservice.Bridger,
 ) *bridgeservice.BridgeService {
 	logger := log.WithFields("module", aggkitcommon.BRIDGE)
 

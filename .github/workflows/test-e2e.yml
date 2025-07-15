@@ -35,7 +35,7 @@ jobs:
             echo "Using latest kurtosis-cdk commit: ${COMMIT}"
           else
             # For push/workflow_dispatch, use the fixed commit
-            COMMIT="167b19f734203dceebe4b0c4306ed45260748183"
+            COMMIT="626b291076a315b484232c92d3e0eddd78bad434"
             echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
           fi
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT

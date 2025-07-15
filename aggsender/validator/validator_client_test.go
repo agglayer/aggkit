@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestClient_ValidatCertificate(t *testing.T) {
+func TestClient_ValidateCertificate(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()

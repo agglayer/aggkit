@@ -10,45 +10,80 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
+var _ types.CertificateValidateAndSigner = (*LocalValidator)(nil)
+
 // LocalValidator is a struct that implements the types.Validator interface
 // and is used to validate and sign certificates locally.
 // This is a temporary check, in the future it will be replaced with a object that
 // calls to aggsender-validator using grpc
 type LocalValidator struct {
-	Log       aggkitcommon.Logger
-	Storage   db.AggSenderStorage
-	Validator types.CertificateValidator
+	log       aggkitcommon.Logger
+	storage   db.AggSenderStorage
+	validator types.CertificateValidator
 }
 
+// NewLocalValidator creates a new LocalValidator instance.
+func NewLocalValidator(
+	log aggkitcommon.Logger,
+	storage db.AggSenderStorage,
+	validator types.CertificateValidator,
+) *LocalValidator {
+	return &LocalValidator{
+		log:       log,
+		storage:   storage,
+		validator: validator,
+	}
+}
+
+// String returns a string representation of the LocalValidator.
 func (a *LocalValidator) String() string {
 	return "LocalValidator"
 }
 
+// ValidateAndSignCertificate validates the certificate.
+// LocalValidator does not sign the certificate, it just validates it.
 func (a *LocalValidator) ValidateAndSignCertificate(
 	ctx context.Context,
 	certificate *agglayertypes.Certificate,
 ) ([]byte, error) {
-	a.Log.Infof("certificate validation: %s ....", certificate.Brief())
+	a.log.Infof("certificate validation: %s ....", certificate.Brief())
 	verifyParams := types.VerifyIncomingRequest{
 		Certificate:         certificate,
 		PreviousCertificate: nil,
 	}
 	if certificate.Height != 0 {
-		previousSettledCertificate, err := a.Storage.GetCertificateHeaderByHeight(certificate.Height - 1)
+		previousSettledCertificate, err := getPreviousCertificate(a.storage, certificate.Height, certificate.NetworkID)
 		if err != nil {
-			a.Log.Errorf("error getting previous certificate header by height %d: %s", certificate.Height-1, err.Error())
+			a.log.Errorf("error getting previous certificate header by height %d: %s", certificate.Height-1, err.Error())
 			return nil, fmt.Errorf("error getting previous certificate header by height %d: %w", certificate.Height-1, err)
 		}
-		if previousSettledCertificate != nil {
-			verifyParams.PreviousCertificate = AggsenderCertificateHeaderToAgglayer(
-				previousSettledCertificate, certificate.NetworkID)
-		}
+
+		verifyParams.PreviousCertificate = previousSettledCertificate
 	}
-	if err := a.Validator.ValidateCertificate(ctx, verifyParams); err != nil {
-		a.Log.Errorf("certificate validation failed: %s. Cert: %s", err.Error(), certificate.Brief())
+	if err := a.validator.ValidateCertificate(ctx, verifyParams); err != nil {
+		a.log.Errorf("certificate validation failed: %s. Cert: %s", err.Error(), certificate.Brief())
 		return nil, fmt.Errorf("certificate validation failed: %w", err)
 	}
-	a.Log.Infof("certificate validation passed: %s", certificate.Brief())
-	// Current code is not able to sign the certificate, so we return a dummy signature.
-	return []byte{1, 2, 3}, nil
+	a.log.Infof("certificate validation passed: %s", certificate.Brief())
+
+	// local validator does not sign the certificate, it just validates it
+	return nil, nil
+}
+
+// getPreviousCertificate retrieves the previous certificate based on the new certificate's height.
+func getPreviousCertificate(
+	storage db.AggSenderStorage,
+	newCertHeight uint64,
+	networkID uint32) (*agglayertypes.CertificateHeader, error) {
+	if newCertHeight == 0 {
+		// No previous certificate for height 0
+		return nil, nil
+	}
+
+	certHeader, err := storage.GetCertificateHeaderByHeight(newCertHeight - 1)
+	if err != nil {
+		return nil, fmt.Errorf("error getting previous certificate header by height %d: %w", newCertHeight-1, err)
+	}
+
+	return AggsenderCertificateHeaderToAgglayer(certHeader, networkID), nil
 }
