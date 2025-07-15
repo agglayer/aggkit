@@ -45,7 +45,7 @@ func TestBridgeCallData(t *testing.T) {
 	_, err = waitForReceipt(ctx, client, deployBridgeTx.Hash(), 20)
 	require.NoError(t, err)
 
-	bridgeProxyAddr, deployProxyTx, _, err := transparentupgradableproxy.DeployTransparentupgradableproxy(
+	bridgeProxyAddr, deployProxyTx, _, err := transparentupgradableproxy.DeployProxy(
 		deployerAuth,
 		client,
 		bridgeAddr,
