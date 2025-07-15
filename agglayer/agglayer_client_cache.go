@@ -34,6 +34,9 @@ func (c *ConfigurationCache) Validate() error {
 }
 
 func (c *ConfigurationCache) String() string {
+	if c == nil {
+		return "configuration cache is nil"
+	}
 	return fmt.Sprintf("TTL: %s, Capacity: %d", c.TTL.String(), c.Capacity)
 }
 
