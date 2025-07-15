@@ -51,6 +51,7 @@ func TestBridgeCallData(t *testing.T) {
 	)
 	require.NoError(t, err)
 	_, err = waitForReceipt(ctx, client, deployProxyTx.Hash(), 20)
+	require.NoError(t, err)
 
 	bridgeProxyContract, err = polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeProxyAddr, client)
 	require.NoError(t, err)
