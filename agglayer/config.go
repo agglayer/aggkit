@@ -1,13 +1,7 @@
 package agglayer
 
 import (
-	"errors"
-
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
-)
-
-var (
-	ErrConfigurationCacheRequired = errors.New("configuration cache is required when Cached is true")
 )
 
 type ClientConfig struct {
