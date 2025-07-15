@@ -12,7 +12,7 @@ import (
 type Config struct {
 	// EnableRPC is a flag to enable the RPC for validator
 	EnableRPC bool `mapstructure:"EnableRPC"`
-	// Signer is the key which is used to sign certificates
+	// Signer is the key which is used to sign valid certificates
 	Signer signertypes.SignerConfig `mapstructure:"Signer"`
 	// ServerConfig contains the configuration for the gRPC server.
 	ServerConfig aggkitgrpc.ServerConfig `mapstructure:"ServerConfig"`
