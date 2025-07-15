@@ -55,7 +55,7 @@ func (s *ValidatorService) ValidateCertificate(
 	if req == nil || req.Certificate == nil {
 		return nil, grpc.GRPCError{
 			Code:    codes.NotFound,
-			Message: "requrired a certificate",
+			Message: "required a certificate",
 		}
 	}
 

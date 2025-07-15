@@ -15,7 +15,7 @@ service AggsenderValidator {
     rpc ValidateCertificate(ValidateCertificateRequest) returns (ValidateCertificateResponse);
 }
 
-// Reponse Status() 
+// Response Status() 
 message StatusResponse {
   string version = 1; // Version of the validator
   string status = 2; // Status of the validator
