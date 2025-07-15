@@ -72,16 +72,16 @@ func TestMigrations_UpDown(t *testing.T) {
 
 	migs := []types.Migration{
 		{
-			ID:  "l2gersync0001",
-			SQL: readFile(t, "l2gersync0001.sql"),
+			ID:  "lastgersync0001",
+			SQL: readFile(t, "lastgersync0001.sql"),
 		},
 		{
-			ID:  "l2gersync0002",
-			SQL: readFile(t, "l2gersync0002.sql"),
+			ID:  "lastgersync0002",
+			SQL: readFile(t, "lastgersync0002.sql"),
 		},
 		{
-			ID:  "l2gersync0003",
-			SQL: readFile(t, "l2gersync0003.sql"),
+			ID:  "lastgersync0003",
+			SQL: readFile(t, "lastgersync0003.sql"),
 		},
 	}
 
