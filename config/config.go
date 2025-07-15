@@ -64,7 +64,10 @@ const (
 	l1NetworkConfigUseRollupAddrHint      = "Use L1NetworkConfig.RollupAddr instead"
 	delayBetweenRetriesHint               = "AggSender.DelayBeetweenRetries is deprecated, " +
 		"use AggSender.DelayBetweenRetries instead"
-	lastGERSyncDeprecatedHint = "LastGERSync is deprecated, use L2GERSync instead"
+	aggOracleBlockFinalityDeprecated      = "AggOracle.BlockFinality is deprecated, remove it from configuration"
+	l1InfoTreeSyncBlockFinalityDeprecated = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
+	bridgeL1SyncBlockFinalityDeprecated   = "BridgeL1Sync.BlockFinality is deprecated, remove it from configuration"
+	lastGERSyncDeprecatedHint             = "LastGERSync is deprecated, use L2GERSync instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -177,6 +180,18 @@ var (
 		{
 			FieldNamePattern: "Aggsender.DelayBeetweenRetries",
 			Reason:           delayBetweenRetriesHint,
+		},
+		{
+			FieldNamePattern: "AggOracle.BlockFinality",
+			Reason:           aggOracleBlockFinalityDeprecated,
+		},
+		{
+			FieldNamePattern: "L1InfoTreeSync.BlockFinality",
+			Reason:           l1InfoTreeSyncBlockFinalityDeprecated,
+		},
+		{
+			FieldNamePattern: "BridgeL1Sync.BlockFinality",
+			Reason:           bridgeL1SyncBlockFinalityDeprecated,
 		},
 		{
 			FieldNamePattern: "LastGERSync",

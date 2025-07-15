@@ -80,7 +80,7 @@ type BridgeService struct {
 	readTimeout  time.Duration
 	writeTimeout time.Duration
 	networkID    uint32
-	l1InfoTree   L1InfoTreer
+	l1InfoTree   L1InfoTreeSyncer
 	injectedGERs L2GERSyncer
 	bridgeL1     Bridger
 	bridgeL2     Bridger
@@ -91,7 +91,7 @@ type BridgeService struct {
 // New returns instance of BridgeService
 func New(
 	cfg *Config,
-	l1InfoTree L1InfoTreer,
+	l1InfoTree L1InfoTreeSyncer,
 	injectedGERs L2GERSyncer,
 	bridgeL1 Bridger,
 	bridgeL2 Bridger,

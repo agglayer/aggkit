@@ -4,7 +4,7 @@
 
 The **AggOracle** component ensures the **Global Exit Root (GER)** is propagated from L1 to the L2 sovereign chain smart contract. This is critical for enabling asset and message bridging between chains.
 
-The GER is picked up from the smart contract by **L2GERSyncer** for local storage.
+The GER is indexed from the smart contract by **L2GERSyncer** component and persisted in local storage.
 
 ### Key Components:
 
@@ -41,22 +41,15 @@ The sequence diagram below depicts the interaction in the AggOracle.
 sequenceDiagram
     participant AggOracle
     participant ChainSender
-    participant L1InfoTreer
+    participant L1InfoTreeSyncer
     participant L1Client
 
     AggOracle->>AggOracle: start
     loop trigger on preconfigured frequency
         AggOracle->>AggOracle: process latest GER
-        AggOracle->>L1InfoTreer: get last finalized GER
-        alt targetBlockNum == 0
-            AggOracle->>L1Client: get (latest) header by number
-            L1Client-->>AggOracle: the latest header
-            AggOracle->>L1InfoTreer: get latest L1 info tree until provided header
-            L1InfoTreer-->>AggOracle: global exit root (from L1 info tree)
-        else
-            AggOracle->>L1InfoTreer: get latest L1 info tree until provided header
-            L1InfoTreer-->>AggOracle: global exit root (from L1 info tree)
-        end
+        AggOracle->>L1InfoTreeSyncer: get last finalized GER
+        AggOracle->>L1InfoTreeSyncer: get latest finalized L1 info tree
+        L1InfoTreeSyncer-->>AggOracle: retrieve global exit root (from L1 info tree)
         AggOracle->>ChainSender: check is GER injected
         ChainSender-->>AggOracle: isGERInjected result
         alt is GER injected
@@ -81,7 +74,6 @@ The `AggOracle` fetches the finalized GER and ensures its injection into the L2 
 
 - **`Start`**: Periodically processes GER updates using a ticker.
 - **`processLatestGER`**: Checks if the GER exists and injects it if necessary.
-- **`getLastFinalizedGER`**: Retrieves the latest finalized GER based on block finality.
 
 ---
 
@@ -89,7 +81,7 @@ The `AggOracle` fetches the finalized GER and ensures its injection into the L2 
 
 Defines the interface for submitting GERs.
 
-```
+```go
 IsGERInjected(ger common.Hash) (bool, error)
 InjectGER(ctx context.Context, ger common.Hash) error
 ```
@@ -120,4 +112,4 @@ Implements `ChainSender` using Ethereum clients and transaction management.
 
 The **AggOracle** component automates the propagation of GERs from L1 to L2, enabling bridging across networks.
 
-Refer to the EVM implementation in [evm.go](https://github.com/agglayer/aggkit/blob/main/aggoracle/chaingersender/evm.go) for guidance on building new chain senders.
+Refer to the EVM implementation in [evm.go](https://github.com/agglayer/aggkit/blob/main/aggoracle/chaingersender/evm.go) for guidance on building chain senders for non-EVM chains.

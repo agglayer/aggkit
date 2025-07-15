@@ -63,7 +63,7 @@ type L1InfoTreeSyncer interface {
 	GetL1InfoTreeRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
 	GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
-	GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement
@@ -189,4 +189,13 @@ type CertificateValidateAndSigner interface {
 		certificate *agglayertypes.Certificate,
 	) ([]byte, error)
 	String() string
+}
+
+// ValidatorClient is an interface defining functions that a ValidatorClient should implement
+type ValidatorClient interface {
+	ValidateCertificate(
+		ctx context.Context,
+		previousCertificateID *common.Hash, // can be nil if there is no previous certificate
+		certificate *agglayertypes.Certificate,
+	) ([]byte, error)
 }
