@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
@@ -19,7 +20,7 @@ type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
 	StoragePath string `mapstructure:"StoragePath"`
 	// AgglayerClient is the Agglayer gRPC client configuration
-	AgglayerClient *grpc.ClientConfig `mapstructure:"AgglayerClient"`
+	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
 	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node

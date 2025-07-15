@@ -1,6 +1,8 @@
 package agglayer
 
 import (
+	"fmt"
+
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 )
 
@@ -19,4 +21,11 @@ func (c *ClientConfig) Validate() error {
 		return c.ConfigurationCache.Validate()
 	}
 	return nil
+}
+
+func (c *ClientConfig) String() string {
+	return fmt.Sprintf("GRPC: %s, Cached: %t, ConfigurationCache: %s",
+		c.GRPC.String(),
+		c.Cached,
+		c.ConfigurationCache.String())
 }

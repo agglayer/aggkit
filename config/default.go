@@ -190,15 +190,20 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
 	[AggSender.AgglayerClient]
-		URL = "{{AggLayerURL}}"
-		MinConnectTimeout = "5s"
-		RequestTimeout = "300s"
-		UseTLS = false
-		[AggSender.AgglayerClient.Retry]
-			InitialBackoff = "1s"
-			MaxBackoff = "10s"
-			BackoffMultiplier = 2.0
-			MaxAttempts = 20
+		Cached = true
+		[ValidaAggSendertor.AgglayerClient.ConfigurationCache]
+			TTL = "15m"
+			Capacity = 100
+		[AggSender.AgglayerClient.GRPC]
+			URL = "{{AggLayerURL}}"
+			MinConnectTimeout = "5s"
+			RequestTimeout = "300s"
+			UseTLS = false
+			[AggSender.AgglayerClient.GRPC.Retry]
+				InitialBackoff = "1s"
+				MaxBackoff = "10s"
+				BackoffMultiplier = 2.0
+				MaxAttempts = 20
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"
@@ -260,13 +265,13 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 			TTL = "15m"
 			Capacity = 100
 		[Validator.AgglayerClient.GRPC]
-		URL = "{{AggSender.AgglayerClient.URL}}"
-		MinConnectTimeout = "{{AggSender.AgglayerClient.MinConnectTimeout}}"
-		RequestTimeout = "{{AggSender.AgglayerClient.RequestTimeout}}"
-		UseTLS = "{{AggSender.AgglayerClient.UseTLS}}"
-		[Validator.AgglayerClient.Retry]
-			InitialBackoff = "{{AggSender.AgglayerClient.Retry.InitialBackoff}}"
-			MaxBackoff = "{{AggSender.AgglayerClient.Retry.MaxBackoff}}"
-			BackoffMultiplier = "{{AggSender.AgglayerClient.Retry.BackoffMultiplier}}"
-			MaxAttempts = "{{AggSender.AgglayerClient.Retry.MaxAttempts}}"
+		URL = "{{AggSender.AgglayerClient.GRPC.URL}}"
+		MinConnectTimeout = "{{AggSender.AgglayerClient.GRPC.MinConnectTimeout}}"
+		RequestTimeout = "{{AggSender.AgglayerClient.GRPC.RequestTimeout}}"
+		UseTLS = "{{AggSender.AgglayerClient.GRPC.UseTLS}}"
+		[Validator.AgglayerClient.GRPC.Retry]
+			InitialBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.InitialBackoff}}"
+			MaxBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.MaxBackoff}}"
+			BackoffMultiplier = "{{AggSender.AgglayerClient.GRPC.Retry.BackoffMultiplier}}"
+			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
 `
