@@ -28,6 +28,8 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.NoError(t, err)
 	AggsenderrollupAddr := "0x1cE29253F94Ae8564c182AD760C18FC2adce77c1"
 	os.Setenv("CDK_AGGSENDER_ROLLUPMANAGERADDR", AggsenderrollupAddr)
+	// Check issue https://github.com/agglayer/aggkit/issues/751
+	os.Setenv("CDK_VALIDATOR_LERQUERIERCONFIG_ROLLUPMANAGERADDR", AggsenderrollupAddr)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
 	cfg, err := Load(ctx)
 	require.NoError(t, err)
@@ -44,11 +46,12 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)
+	require.Equal(t, cfg.Validator.EnableRPC, false)
 	require.Equal(t, cfg.Validator.ServerConfig.EnableReflection, true)
 	require.Equal(t, cfg.Validator.AgglayerClient.Cached, true)
 	require.Equal(t, cfg.Validator.AgglayerClient.ConfigurationCache.Capacity, uint64(100))
 	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.MinConnectTimeout, cfg.AggSender.AgglayerClient.MinConnectTimeout)
-	require.Equal(t, cfg.Validator.LerQuerier.RollupManagerAddr, cfg.AggSender.RollupManagerAddr)
+	require.Equal(t, cfg.AggSender.RollupManagerAddr, cfg.Validator.LerQuerier.RollupManagerAddr)
 	t.Logf("cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey: %+v", cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey)
 }
 

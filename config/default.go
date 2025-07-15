@@ -240,7 +240,7 @@ ProfilingPort = 6060
 ProfilingEnabled = false
 
 [Validator]
-EnableRPC = true
+EnableRPC = false
 Signer = { Method = "mock" }
 MaxCertSize = "{{AggSender.MaxCertSize}}"
 MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
