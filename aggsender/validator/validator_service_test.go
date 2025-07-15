@@ -20,6 +20,9 @@ import (
 )
 
 var (
+	signature = &typesv1.AggchainData_Signature{
+		Signature: &typesv1.FixedBytes65{Value: []byte("test_signature")},
+	}
 	testL1InfoTreeLeafCount = uint32(123)
 	testCertificate1        = nodev1.Certificate{
 		Height:              42,
@@ -27,6 +30,7 @@ var (
 		PrevLocalExitRoot:   &typesv1.FixedBytes32{},
 		Metadata:            &typesv1.FixedBytes32{},
 		L1InfoTreeLeafCount: &testL1InfoTreeLeafCount,
+		AggchainData:        &typesv1.AggchainData{Data: signature},
 	}
 	errTestGenericError = errors.New("generic error")
 )

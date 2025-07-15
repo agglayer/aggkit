@@ -303,6 +303,9 @@ func grpcAggchainDataToAgglayer(
 
 	switch ad := aggchainData.Data.(type) {
 	case *v1types.AggchainData_Signature:
+		if ad.Signature == nil {
+			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil Signature. %w", ErrNilCertificate)
+		}
 		return &agglayertypes.AggchainDataSignature{
 			Signature: ad.Signature.Value,
 		}, nil
