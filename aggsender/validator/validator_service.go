@@ -18,20 +18,18 @@ import (
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
-type AgglayerClientInterface = agglayer.AggLayerClientCertificateIDQuerier
-
 // ValidatorService implements the gRPC server for the AggsenderValidator service.
 type ValidatorService struct {
 	// Embed the generated server interface to ensure forward compatibility
 	v1.UnimplementedAggsenderValidatorServer
 
 	validator      types.CertificateValidator
-	agglayerClient AgglayerClientInterface
+	agglayerClient agglayer.AggLayerClientCertificateIDQuerier
 	signer         signertypes.Signer
 }
 
 func NewValidatorService(validator types.CertificateValidator,
-	agglayerClient AgglayerClientInterface,
+	agglayerClient agglayer.AggLayerClientCertificateIDQuerier,
 	signer signertypes.Signer) *ValidatorService {
 	return &ValidatorService{
 		validator:      validator,
