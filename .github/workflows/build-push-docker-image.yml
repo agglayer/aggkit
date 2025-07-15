@@ -24,8 +24,16 @@ jobs:
         platform:
           - linux/amd64
           - linux/arm64
+        variant:
+          - { suffix: "", include_shell: "false", description: "production" }
+          - {
+              suffix: "-dev",
+              include_shell: "true",
+              description: "development",
+            }
     outputs:
-      IMAGE_NAME: ${{ steps.vars.outputs.FULL_IMAGE }}
+      IMAGE_NAME_PROD: ${{ steps.vars.outputs.FULL_IMAGE_PROD }}
+      IMAGE_NAME_DEV: ${{ steps.vars.outputs.FULL_IMAGE_DEV }}
 
     steps:
       - name: Checkout
@@ -35,7 +43,10 @@ jobs:
         id: platform_vars
         run: |
           PLATFORM_PAIR=$(echo "${{ matrix.platform }}" | tr '/' '-')
+          VARIANT_SUFFIX="${{ matrix.variant.suffix }}"
+          PLATFORM_VARIANT="${PLATFORM_PAIR}${VARIANT_SUFFIX}"
           echo "PLATFORM_PAIR=$PLATFORM_PAIR" >> $GITHUB_ENV
+          echo "PLATFORM_VARIANT=$PLATFORM_VARIANT" >> $GITHUB_ENV
 
       - name: Set image tag components
         id: vars
@@ -45,9 +56,18 @@ jobs:
           TIMESTAMP=$(date -u +'%Y_%m_%d_%H_%M')
           SHORT_SHA=$(git rev-parse --short HEAD)
           IMAGE_TAG="${FORMATTED_BRANCH_NAME}_${TIMESTAMP}_${SHORT_SHA}"
-          FULL_IMAGE="${{ env.REGISTRY_IMAGE }}:${IMAGE_TAG}"
+          IMAGE_TAG_WITH_VARIANT="${IMAGE_TAG}${{ matrix.variant.suffix }}"
+          FULL_IMAGE="${{ env.REGISTRY_IMAGE }}:${IMAGE_TAG_WITH_VARIANT}"
           echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG_WITH_VARIANT=$IMAGE_TAG_WITH_VARIANT" >> $GITHUB_OUTPUT
           echo "FULL_IMAGE=$FULL_IMAGE" >> $GITHUB_OUTPUT
+
+          # Set specific outputs for prod and dev images
+          if [ "${{ matrix.variant.suffix }}" = "" ]; then
+            echo "FULL_IMAGE_PROD=$FULL_IMAGE" >> $GITHUB_OUTPUT
+          else
+            echo "FULL_IMAGE_DEV=$FULL_IMAGE" >> $GITHUB_OUTPUT
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -62,39 +82,66 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push by digest
+      - name: Build and push ${{ matrix.variant.description }} image by digest
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: ${{ matrix.platform }}
           push: true
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=${{ matrix.variant.description }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant.description }}
+          build-args: |
+            INCLUDE_SHELL=${{ matrix.variant.include_shell }}
           outputs: type=image,name=${{ env.REGISTRY_IMAGE }},push-by-digest=true
 
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
-          echo "${{ env.REGISTRY_IMAGE }}@${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ env.PLATFORM_PAIR }}.txt"
+          echo "${{ env.REGISTRY_IMAGE }}@${{ steps.build.outputs.digest }}" > "/tmp/digests/${{ env.PLATFORM_VARIANT }}.txt"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ env.PLATFORM_PAIR }}
-          path: /tmp/digests/${{ env.PLATFORM_PAIR }}.txt
+          name: digests-${{ env.PLATFORM_VARIANT }}
+          path: /tmp/digests/${{ env.PLATFORM_VARIANT }}.txt
           if-no-files-found: error
           retention-days: 1
 
   merge:
     runs-on: arm-runner-2204
     needs: build
+    strategy:
+      matrix:
+        variant:
+          - { suffix: "", description: "production" }
+          - { suffix: "-dev", description: "development" }
     steps:
-      - name: Download digests
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download digests for production
+        if: matrix.variant.suffix == ''
         uses: actions/download-artifact@v4
         with:
           path: /tmp/digests
-          pattern: digests-*
+          pattern: digests-linux-amd64
+          merge-multiple: true
+
+      - name: Download digests for production
+        if: matrix.variant.suffix == ''
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-linux-arm64
+          merge-multiple: true
+
+      - name: Download digests for development
+        if: matrix.variant.suffix != ''
+        uses: actions/download-artifact@v4
+        with:
+          path: /tmp/digests
+          pattern: digests-*-dev
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -107,17 +154,30 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Create manifest list and push
+      - name: Set image tag components
+        id: vars
+        run: |
+          BRANCH_NAME=${GITHUB_HEAD_REF:-${GITHUB_REF#refs/heads/}}
+          FORMATTED_BRANCH_NAME=$(echo "$BRANCH_NAME" | tr '/_' '--')
+          TIMESTAMP=$(date -u +'%Y_%m_%d_%H_%M')
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          IMAGE_TAG="${FORMATTED_BRANCH_NAME}_${TIMESTAMP}_${SHORT_SHA}"
+          IMAGE_TAG_WITH_VARIANT="${IMAGE_TAG}${{ matrix.variant.suffix }}"
+          FULL_IMAGE="${{ env.REGISTRY_IMAGE }}:${IMAGE_TAG_WITH_VARIANT}"
+          echo "FULL_IMAGE=$FULL_IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Create manifest list and push ${{ matrix.variant.description }} image
         working-directory: /tmp/digests
         run: |
-          TAG=${{ needs.build.outputs.IMAGE_NAME }}
+          TAG=${{ steps.vars.outputs.FULL_IMAGE }}
           DIGEST_ARGS=""
-          for file in *.txt; do
+          # Only include digest files matching the current variant suffix
+          for file in *${{ matrix.variant.suffix }}.txt; do
             ref=$(cat "$file")
             DIGEST_ARGS+=" $ref"
           done
           docker buildx imagetools create -t "$TAG" $DIGEST_ARGS
 
-      - name: Inspect final image
+      - name: Inspect final ${{ matrix.variant.description }} image
         run: |
-          docker buildx imagetools inspect ${{ needs.build.outputs.IMAGE_NAME }}
+          docker buildx imagetools inspect ${{ steps.vars.outputs.FULL_IMAGE }}
