@@ -78,7 +78,6 @@ DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
 GlobalExitRootAddr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
 RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
 SyncBlockChunkSize = 100
-BlockFinality = "LatestBlock"
 URLRPCL1 = "{{L1URL}}"
 WaitForNewBlocksPeriod = "100ms"
 InitialBlock = {{genesisBlockNumber}}
@@ -89,7 +88,6 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 [AggOracle]
 TargetChainType = "EVM"
 URLRPCL1 = "{{L1URL}}"
-BlockFinality = "FinalizedBlock"
 WaitPeriodNextGER = "10s"
 	[AggOracle.EVMSender]
 		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
@@ -134,7 +132,6 @@ MaxRequestsPerIPAndSecond = 10
 
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
-BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 BridgeAddr = "{{polygonBridgeAddr}}"
 SyncBlockChunkSize = 100
@@ -191,6 +188,7 @@ RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
+RequireValidatorCall = false
 	[AggSender.AgglayerClient]
 		URL = "{{AggLayerURL}}"
 		MinConnectTimeout = "5s"
@@ -216,6 +214,12 @@ StopOnFinishedSendingAllCertificates = false
 		OpNodeURL = "{{OpNodeURL}}"
 		# TODO: For now set it to false, until it gets fixed on the contracts deployment end
 		RequireKeyMatchTrustedSequencer = false
+	[AggSender.ValidatorClient]
+		URL = ""
+		MinConnectTimeout = "5s"
+		RequestTimeout = "30s"
+		UseTLS = false
+
 [Prometheus]
 Enabled = true
 Host = "localhost"

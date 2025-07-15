@@ -64,7 +64,8 @@ func New(
 	epochNotifier types.EpochNotifier,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier types.RollupDataQuerier) (*AggSender, error) {
+	rollupDataQuerier types.RollupDataQuerier,
+) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
@@ -117,8 +118,22 @@ func New(
 	}, nil
 }
 
+func (a *AggSender) AttachValidator(validator types.CertificateValidateAndSigner) {
+	if validator == nil {
+		a.log.Infof("AggSender validator attached: nil")
+		return
+	}
+
+	a.validator = validator
+	a.log.Infof("AggSender validator attached: %s", a.validator.String())
+}
+
 func (a *AggSender) GetStorage() db.AggSenderStorage {
 	return a.storage
+}
+
+func (a *AggSender) GetFlow() types.AggsenderFlow {
+	return a.flow
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {
@@ -129,15 +144,6 @@ func (a *AggSender) Info() types.AggsenderInfo {
 		NetworkID:                a.l2OriginNetwork,
 	}
 	return res
-}
-
-func (a *AggSender) AttachValidator(validator types.CertificateValidateAndSigner) {
-	a.validator = validator
-	if validator == nil {
-		a.log.Infof("AggSender validator attached: nil")
-		return
-	}
-	a.log.Infof("AggSender validator attached: %s", a.validator.String())
 }
 
 // GetRPCServices returns the list of services that the RPC provider exposes
@@ -286,21 +292,17 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
-	if a.validator != nil {
-		a.log.Infof("certificate validation (%s): %s ....", a.validator.String(), certificate.Brief())
-		_, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
-		if err != nil {
-			a.log.Errorf("certificate validation failed: %s. Cert: %s", err.Error(), certificate.Brief())
-			return nil, fmt.Errorf("certificate validation failed: %w", err)
-		}
-		a.log.Infof("certificate validation passed: %s", certificate.Brief())
+	validatorSignature, err := a.callValidator(ctx, certificate)
+	if err != nil {
+		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
+		return nil, fmt.Errorf("certificate validation failed: %w", err)
 	}
 
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return certificate, nil
 	}
-	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
+	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate, validatorSignature)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 
@@ -349,6 +351,25 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		certInfo.Header.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
 	return certificate, nil
+}
+
+// callValidator calls the validator to validate the certificate
+func (a *AggSender) callValidator(
+	ctx context.Context,
+	certificate *agglayertypes.Certificate) ([]byte, error) {
+	if a.validator == nil {
+		return nil, nil
+	}
+
+	validatorSignature, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
+	if err != nil {
+		a.log.Errorf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
+		return nil, fmt.Errorf("certificate validation failed: %w", err)
+	}
+
+	a.log.Infof("certificate validation passed: %s", certificate.Brief())
+
+	return validatorSignature, nil
 }
 
 // saveCertificateToStorage saves the certificate to the storage
