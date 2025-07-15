@@ -16,7 +16,6 @@ import (
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
-	agglayergrpc "github.com/agglayer/aggkit/agglayer/grpc"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
@@ -274,7 +273,7 @@ func createAggSender(
 		return nil, fmt.Errorf("invalid aggsender config: %w", err)
 	}
 
-	agglayerClient, err := agglayergrpc.NewAgglayerGRPCClient(cfg.AgglayerClient)
+	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
