@@ -4,12 +4,15 @@ name: Bats E2E Tests
 on:
   push:
     branches:
-      - '**'
+      - "**"
   workflow_dispatch: {}
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
 
 jobs:
   build-aggkit-image:
@@ -147,5 +150,168 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ env.ARCHIVE_NAME }}
-          path: ./dump
+          name: aggsender_find_imported_bridge
+          path: ./target/aggsender_find_imported_bridge
+
+  test-single-l2-network-fork12-pessimistic:
+    name: Single L2 chain tests (pessimistic)
+    needs:
+      - build-aggkit-image
+      - read-aggkit-args
+      - get-kurtosis-cdk-commit
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+    secrets: inherit
+    with:
+      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
+      agglayer-e2e-ref: 69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+      kurtosis-cdk-enclave-name: aggkit
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
+      test-name: "test-single-l2-network-fork12-pessimistic"
+
+  check-single-l2-network-fork12-pessimistic-tests-result:
+    name: Check results for single l2 network (pessimistic)
+    needs:
+      - test-single-l2-network-fork12-pessimistic
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-pessimistic.result) }}
+
+  test-single-l2-network-fork12-global-index-pp-old-contracts:
+    name: Single L2 chain tests (global index pp old contracts)
+    needs:
+      - build-aggkit-image
+      - build-tools
+      - read-aggkit-args
+      - get-kurtosis-cdk-commit
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+    secrets: inherit
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
+    with:
+      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
+      agglayer-e2e-ref: 69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+      kurtosis-cdk-enclave-name: aggkit
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts }}
+      test-name: "test-single-l2-network-fork12-global-index-pp-old-contracts"
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+
+  check-single-l2-network-fork12-global-index-pp-old-contracts-tests-result:
+    name: Check results for single l2 network (global index pp old contracts)
+    needs:
+      - test-single-l2-network-fork12-global-index-pp-old-contracts
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-global-index-pp-old-contracts.result) }}
+
+  test-single-l2-network-fork12-op-succinct:
+    name: Single L2 chain tests (op-succinct)
+    needs:
+      - build-aggkit-image
+      - read-aggkit-args
+      - get-kurtosis-cdk-commit
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+    secrets: inherit
+    with:
+      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
+      agglayer-e2e-ref: 69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+      kurtosis-cdk-enclave-name: op
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-op-succinct }}
+      test-name: "test-single-l2-network-fork12-op-succinct"
+
+  check-single-network-fork12-op-succinct-tests-result:
+    name: Check results for single l2 network (op-succinct)
+    needs:
+      - test-single-l2-network-fork12-op-succinct
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-fork12-op-succinct.result) }}
+
+  test-multi-l2-networks-2-chains:
+    name: Multi chains E2E test (2 chains)
+    needs:
+      - build-aggkit-image
+      - build-tools
+      - read-aggkit-args
+      - get-kurtosis-cdk-commit
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+    secrets: inherit
+    with:
+      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
+      agglayer-e2e-ref: 69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+      kurtosis-cdk-enclave-name: aggkit
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
+      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-2 }}
+
+  check-multi-l2-networks-2-chains-tests-result:
+    name: Check results for multi l2 networks (2 chains)
+    needs:
+      - test-multi-l2-networks-2-chains
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-2-chains.result) }}
+
+  test-multi-l2-networks-3-chains:
+    name: Multi chains E2E test (3 chains)
+    needs:
+      - build-aggkit-image
+      - build-tools
+      - read-aggkit-args
+      - get-kurtosis-cdk-commit
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+    secrets: inherit
+    with:
+      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
+      agglayer-e2e-ref: 69bf5cf6cf8853b5f78a7a62d9d1ba9923b8ee95
+      kurtosis-cdk-enclave-name: aggkit
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
+      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-4 }}
+      kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-5 }}
+      number-of-chains: 3
+
+  check-multi-l2-networks-3-chains-tests-result:
+    name: Check results for multi l2 networks (3 chains)
+    needs:
+      - test-multi-l2-networks-3-chains
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains.result) }}
+
+  notify-slack:
+    name: Notify Slack
+    needs:
+      - test-single-l2-network-fork12-pessimistic
+      - test-single-l2-network-fork12-op-succinct
+      - test-multi-l2-networks-2-chains
+      - test-multi-l2-networks-3-chains
+      - test-single-l2-network-fork12-global-index-pp-old-contracts
+      - get-kurtosis-cdk-commit
+    runs-on: ubuntu-latest
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
+    steps:
+      - name: Send Slack notification
+        uses: agglayer/gha-notify-generic@v1
+        with:
+          slack-bot-token: ${{ secrets.SLACK_APP_TOKEN_AGGLAYER_NOTIFY_GENERIC }}
+          channel-id: ${{ env.AGGKIT_REPORT_CHANNEL }}
+          message: |
+            Daily E2E Tests Report
+
+            Kurtosis CDK Commit: `${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}`
+
+            Test Results:
+            • Single L2 (pessimistic): ${{ needs.test-single-l2-network-fork12-pessimistic.result == 'success' && '🟢' || '🔴' }}
+            • Single L2 (op-succinct): ${{ needs.test-single-l2-network-fork12-op-succinct.result == 'success' && '🟢' || '🔴' }}
+            • Multi L2 (2 chains): ${{ needs.test-multi-l2-networks-2-chains.result == 'success' && '🟢' || '🔴' }}
+            • Multi L2 (3 chains): ${{ needs.test-multi-l2-networks-3-chains.result == 'success' && '🟢' || '🔴' }}
+            • Single L2 (global index pp old contracts): ${{ needs.test-single-l2-network-fork12-global-index-pp-old-contracts.result == 'success' && '🟢' || '🔴' }}
+
+            <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Workflow>
