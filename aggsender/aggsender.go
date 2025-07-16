@@ -292,26 +292,26 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
+	validatorSignature, err := a.callValidator(ctx, certificate)
+	if err != nil {
+		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
+		return nil, fmt.Errorf("certificate validation failed: %w", err)
+	}
+	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s , end: %s",
+		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
+	metrics.CertificateBuildTime(time.Since(start).Seconds())
+
+	if a.cfg.DryRun {
+		a.log.Warn("dry run mode enabled, skipping sending certificate")
+		return certificate, nil
+	}
 	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
 		a.log.Warnf("rate limit reached , next cert %s can be submitted after %s so sleeping. Rate:%s",
 			certificate.ID(),
 			rateLimitSleepTime.String(), a.rateLimiter.String())
 		time.Sleep(*rateLimitSleepTime)
 	}
-	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s , end: %s",
-		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
-	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
-	validatorSignature, err := a.callValidator(ctx, certificate)
-	if err != nil {
-		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
-		return nil, fmt.Errorf("certificate validation failed: %w", err)
-	}
-
-	if a.cfg.DryRun {
-		a.log.Warn("dry run mode enabled, skipping sending certificate")
-		return certificate, nil
-	}
 	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate, validatorSignature)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
@@ -370,7 +370,7 @@ func (a *AggSender) callValidator(
 	if a.validator == nil {
 		return nil, nil
 	}
-
+	a.log.Infof("certificate sending to Validator: %s", certificate.Brief())
 	validatorSignature, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
 	if err != nil {
 		a.log.Errorf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
