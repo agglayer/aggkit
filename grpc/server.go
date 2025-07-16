@@ -18,7 +18,7 @@ type ServerConfig struct {
 	// EnableReflection indicates whether gRPC server reflection is enabled
 	// This allows clients to introspect the server's services and methods.
 	EnableReflection bool `mapstructure:"EnableReflection"`
-	// MaxRecvMsgSize is the maximum size of a message that the server can receive.
+	// MaxDecodingMessageSize is the maximum size of a message that the server can receive.
 	MaxDecodingMessageSize uint64 `mapstructure:"MaxDecodingMessageSize"`
 }
 
