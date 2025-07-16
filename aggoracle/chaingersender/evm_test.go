@@ -186,8 +186,8 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 
 			// Set the appropriate fields based on the mode
 			if config.expectedMode == QuorumProposalMode {
-				sender.aggOracleManagerAddr = config.targetAddr
-				sender.aggOracleManagerAbi = &abi
+				sender.aggOracleCommitteeAddr = config.targetAddr
+				sender.aggOracleCommitteeAbi = &abi
 			} else {
 				sender.l2GERManagerAddr = config.targetAddr
 				sender.l2GERManagerAbi = &abi
@@ -267,12 +267,12 @@ func TestEVMChainGERSender_ProposeGER(t *testing.T) {
 		"stateMutability": "nonpayable",
 		"type": "function"
 	}]`
-	aggOracleManagerAddr := common.HexToAddress("0x456")
+	aggOracleCommitteeAddr := common.HexToAddress("0x456")
 	txID := common.HexToHash("0x789")
 
 	config := testConfig{
 		funcABI:      proposeGERFuncABI,
-		targetAddr:   aggOracleManagerAddr,
+		targetAddr:   aggOracleCommitteeAddr,
 		funcName:     "proposeGlobalExitRoot",
 		action:       "propose",
 		expectedMode: QuorumProposalMode,
@@ -510,13 +510,13 @@ func TestValidateGERProposer(t *testing.T) {
 	tests := []struct {
 		name        string
 		gerProposer common.Address
-		setupMock   func(*mocks.AggOracleManagerContract)
+		setupMock   func(*mocks.AggOracleCommitteeContract)
 		expectedErr string
 	}{
 		{
 			name:        "valid proposer",
 			gerProposer: validProposer,
-			setupMock: func(m *mocks.AggOracleManagerContract) {
+			setupMock: func(m *mocks.AggOracleCommitteeContract) {
 				m.EXPECT().GetAggOracleMemberIndex(mock.Anything, validProposer).Return(big.NewInt(1), nil)
 			},
 			expectedErr: "",
@@ -524,7 +524,7 @@ func TestValidateGERProposer(t *testing.T) {
 		{
 			name:        "invalid proposer - not oracle member",
 			gerProposer: invalidProposer,
-			setupMock: func(m *mocks.AggOracleManagerContract) {
+			setupMock: func(m *mocks.AggOracleCommitteeContract) {
 				m.EXPECT().GetAggOracleMemberIndex(mock.Anything, invalidProposer).Return(nil, errors.New("OracleMemberNotFound"))
 			},
 			expectedErr: "invalid GER proposer provided",
@@ -532,7 +532,7 @@ func TestValidateGERProposer(t *testing.T) {
 		{
 			name:        "contract error",
 			gerProposer: validProposer,
-			setupMock: func(m *mocks.AggOracleManagerContract) {
+			setupMock: func(m *mocks.AggOracleCommitteeContract) {
 				m.EXPECT().GetAggOracleMemberIndex(mock.Anything, validProposer).Return(nil, errors.New("contract error"))
 			},
 			expectedErr: "invalid GER proposer provided",
@@ -541,10 +541,10 @@ func TestValidateGERProposer(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			mockAggOracleManager := mocks.NewAggOracleManagerContract(t)
-			tt.setupMock(mockAggOracleManager)
+			mockAggOracleCommittee := mocks.NewAggOracleCommitteeContract(t)
+			tt.setupMock(mockAggOracleCommittee)
 
-			err := validateGERProposer(tt.gerProposer, mockAggOracleManager)
+			err := validateGERProposer(tt.gerProposer, mockAggOracleCommittee)
 
 			if tt.expectedErr != "" {
 				require.Error(t, err)

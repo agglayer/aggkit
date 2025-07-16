@@ -24,11 +24,11 @@ const (
 )
 
 type EVMConfig struct {
-	GlobalExitRootL2Addr common.Address      `mapstructure:"GlobalExitRootL2"`
-	AggOracleManagerAddr common.Address      `mapstructure:"AggOracleManagerAddr"`
-	GasOffset            uint64              `mapstructure:"GasOffset"`
-	WaitPeriodMonitorTx  cfgtypes.Duration   `mapstructure:"WaitPeriodMonitorTx"`
-	EthTxManager         ethtxmanager.Config `mapstructure:"EthTxManager"`
+	GlobalExitRootL2Addr   common.Address      `mapstructure:"GlobalExitRootL2"`
+	AggOracleCommitteeAddr common.Address      `mapstructure:"AggOracleCommitteeAddr"`
+	GasOffset              uint64              `mapstructure:"GasOffset"`
+	WaitPeriodMonitorTx    cfgtypes.Duration   `mapstructure:"WaitPeriodMonitorTx"`
+	EthTxManager           ethtxmanager.Config `mapstructure:"EthTxManager"`
 }
 
 // GERMode represents the mode of GER submission
@@ -49,9 +49,9 @@ type EVMChainGERSender struct {
 	l2GERManagerAbi  *abi.ABI
 
 	// AggOracle Manager (only needed for quorum proposal mode)
-	aggOracleManager     types.AggOracleManagerContract
-	aggOracleManagerAddr common.Address
-	aggOracleManagerAbi  *abi.ABI
+	aggOracleCommittee     types.AggOracleCommitteeContract
+	aggOracleCommitteeAddr common.Address
+	aggOracleCommitteeAbi  *abi.ABI
 
 	// Client for contract bindings
 	l2Client aggkittypes.BaseEthereumClienter
@@ -64,7 +64,7 @@ type EVMChainGERSender struct {
 func NewEVMChainGERSender(
 	logger *log.Logger,
 	l2GERManagerAddr common.Address,
-	aggOracleManagerAddr common.Address,
+	aggOracleCommitteeAddr common.Address,
 	l2Client aggkittypes.BaseEthereumClienter,
 	ethTxMan types.EthTxManager,
 	gasOffset uint64,
@@ -90,16 +90,16 @@ func NewEVMChainGERSender(
 	}
 
 	sender := &EVMChainGERSender{
-		logger:               logger,
-		mode:                 mode,
-		l2GERManager:         l2GERManager,
-		l2GERManagerAddr:     l2GERManagerAddr,
-		l2GERManagerAbi:      l2GERAbi,
-		aggOracleManagerAddr: aggOracleManagerAddr,
-		l2Client:             l2Client,
-		ethTxMan:             ethTxMan,
-		gasOffset:            gasOffset,
-		waitPeriodMonitorTx:  waitPeriodMonitorTx,
+		logger:                 logger,
+		mode:                   mode,
+		l2GERManager:           l2GERManager,
+		l2GERManagerAddr:       l2GERManagerAddr,
+		l2GERManagerAbi:        l2GERAbi,
+		aggOracleCommitteeAddr: aggOracleCommitteeAddr,
+		l2Client:               l2Client,
+		ethTxMan:               ethTxMan,
+		gasOffset:              gasOffset,
+		waitPeriodMonitorTx:    waitPeriodMonitorTx,
 	}
 
 	// Initialize mode-specific components
@@ -132,22 +132,22 @@ func (c *EVMChainGERSender) initializeDirectInjectionMode() error {
 
 func (c *EVMChainGERSender) initializeQuorumProposalMode() error {
 	// Create AggOracleCommittee contract binding
-	aggOracleManager, err := aggoraclecommittee.NewAggoraclecommittee(c.aggOracleManagerAddr, c.l2Client)
+	aggOracleCommittee, err := aggoraclecommittee.NewAggoraclecommittee(c.aggOracleCommitteeAddr, c.l2Client)
 	if err != nil {
-		return fmt.Errorf("failed to create binding for AggOracleCommittee (SC address: %s): %w", c.aggOracleManagerAddr, err)
+		return fmt.Errorf("failed to create binding for AggOracleCommittee (SC address: %s): %w", c.aggOracleCommitteeAddr, err)
 	}
 
 	// Get the ABI for AggOracleCommittee
-	aggOracleManagerAbi, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
+	aggOracleCommitteeAbi, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve AggOracleCommittee ABI: %w", err)
 	}
 
-	c.aggOracleManager = aggOracleManager
-	c.aggOracleManagerAbi = aggOracleManagerAbi
+	c.aggOracleCommittee = aggOracleCommittee
+	c.aggOracleCommitteeAbi = aggOracleCommitteeAbi
 
 	// Validate GER proposer
-	if err := validateGERProposer(c.ethTxMan.From(), aggOracleManager); err != nil {
+	if err := validateGERProposer(c.ethTxMan.From(), aggOracleCommittee); err != nil {
 		return err
 	}
 
@@ -180,7 +180,7 @@ func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) err
 		return fmt.Errorf("ProposeGER is only available in quorum proposal mode, current mode: %s", c.mode)
 	}
 
-	return c.submitTransaction(ctx, &c.aggOracleManagerAddr, c.aggOracleManagerAbi, proposeGERFuncName, ger, "propose")
+	return c.submitTransaction(ctx, &c.aggOracleCommitteeAddr, c.aggOracleCommitteeAbi, proposeGERFuncName, ger, "propose")
 }
 
 // submitTransaction is a generic method to submit and monitor transactions
@@ -259,10 +259,10 @@ func validateGERSender(gerSender common.Address, l2GERManagerSC types.L2GERManag
 }
 
 // validateGERProposer validates whether the provided GER proposer is allowed to propose GERs
-func validateGERProposer(gerProposer common.Address, aggOracleManagerSC types.AggOracleManagerContract) error {
+func validateGERProposer(gerProposer common.Address, aggOracleCommitteeSC types.AggOracleCommitteeContract) error {
 	// Check if the address is an oracle member by trying to get their index
 	// If the address is not an oracle member, getAggOracleMemberIndex will revert with OracleMemberNotFound
-	_, err := aggOracleManagerSC.GetAggOracleMemberIndex(&bind.CallOpts{Pending: false}, gerProposer)
+	_, err := aggOracleCommitteeSC.GetAggOracleMemberIndex(&bind.CallOpts{Pending: false}, gerProposer)
 	if err != nil {
 		return fmt.Errorf("invalid GER proposer provided (address: %s), not an oracle member: %w", gerProposer.Hex(), err)
 	}

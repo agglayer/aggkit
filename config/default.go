@@ -32,7 +32,7 @@ genesisBlockNumber = 0
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
-	AggOracleManagerAddr = "0x0000000000000000000000000000000000000000"
+	AggOracleCommitteeAddr = "0x0000000000000000000000000000000000000000"
 `
 
 // This doesnt below to config, but are the vars used
@@ -92,7 +92,7 @@ WaitPeriodNextGER = "10s"
 EnableAggOracleQuorum = false
 	[AggOracle.EVMSender]
 		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
-		AggOracleManagerAddr = "{{L2Config.AggOracleManagerAddr}}"
+		AggOracleCommitteeAddr = "{{L2Config.AggOracleCommitteeAddr}}"
 		GasOffset = 0
 		WaitPeriodMonitorTx = "1s"
 		[AggOracle.EVMSender.EthTxManager]
