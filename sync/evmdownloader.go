@@ -373,8 +373,8 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 			}
 
 			appenderFn := d.appender[l.Topics[0]]
+			attempts := 0
 			for {
-				attempts := 0
 				err := appenderFn(latestBlock, l)
 				if err != nil {
 					attempts++
