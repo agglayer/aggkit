@@ -14,6 +14,7 @@ import (
 	validatormocks "github.com/agglayer/aggkit/aggsender/validator/mocks"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -141,7 +142,9 @@ func newValidatorServiceTestData(t *testing.T) *testValidatorServiceData {
 	mockValidator := mocks.NewCertificateValidator(t)
 	mockAgglayerClient := validatormocks.NewAgglayerClientInterface(t)
 	mockSigner := mocks.NewSigner(t)
-	sut := NewValidatorService(mockValidator, mockAgglayerClient, mockSigner)
+	sut := NewValidatorService(
+		log.WithFields("module", "aggsender-validator"),
+		mockValidator, mockAgglayerClient, mockSigner)
 	return &testValidatorServiceData{
 		mockValidator:      mockValidator,
 		mockAgglayerClient: mockAgglayerClient,

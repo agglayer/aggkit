@@ -43,6 +43,7 @@ func NewAggsenderValidator(ctx context.Context,
 	}
 
 	v1.RegisterAggsenderValidatorServer(grpcServer.GRPC(), validator.NewValidatorService(
+		logger,
 		validatorCert,
 		aggLayerClient,
 		signer,

@@ -54,7 +54,7 @@ func TestClientConfigValidate(t *testing.T) {
 				Cached:             true,
 				ConfigurationCache: nil,
 			},
-			expectedErr: "configuration cache is nil",
+			expectedErr: "CacheConfig is nil",
 		},
 		{
 			name: "invalid config - GRPC validation fails",

@@ -2,6 +2,7 @@ package validator
 
 import (
 	"context"
+	"fmt"
 
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit"
@@ -10,8 +11,8 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/grpc"
-	"github.com/agglayer/aggkit/log"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"google.golang.org/grpc/codes"
@@ -26,12 +27,16 @@ type ValidatorService struct {
 	validator      types.CertificateValidator
 	agglayerClient agglayer.AggLayerClientCertificateIDQuerier
 	signer         signertypes.Signer
+	log            aggkitcommon.Logger
 }
 
-func NewValidatorService(validator types.CertificateValidator,
+func NewValidatorService(
+	logger aggkitcommon.Logger,
+	validator types.CertificateValidator,
 	agglayerClient agglayer.AggLayerClientCertificateIDQuerier,
 	signer signertypes.Signer) *ValidatorService {
 	return &ValidatorService{
+		log:            logger,
 		validator:      validator,
 		agglayerClient: agglayerClient,
 		signer:         signer,
@@ -57,22 +62,24 @@ func (s *ValidatorService) ValidateCertificate(
 		}
 	}
 
-	log.Infof("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
+	s.log.Infof("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
 
 	params := VerifyIncommingRequests{}
 	if req.PreviousCertificateId != nil && req.PreviousCertificateId.Value != nil {
 		previousCertificateID := common.BytesToHash(req.PreviousCertificateId.Value.Value)
-		log.Debugf("Previous certificate ID: %s", previousCertificateID.Hex())
+		s.log.Debugf("Previous certificate ID: %s", previousCertificateID.Hex())
 		certHeader, err := s.agglayerClient.GetCertificateHeader(ctx, previousCertificateID)
 		if err != nil {
-			log.Errorf("Error getting certificate header: %v", err)
+			msg := fmt.Sprint("fails to request certificate header to agglayer for prevCertID %s: %v",
+				previousCertificateID.Hex(), err.Error())
+			s.log.Errorf(msg)
 			return nil, grpc.GRPCError{
 				Code:    codes.NotFound,
-				Message: "fail to request certificate header to agglayer: " + err.Error(),
+				Message: msg,
 			}
 		}
 		if certHeader == nil {
-			log.Errorf("Certificate header is nil for ID: %s", previousCertificateID.Hex())
+			s.log.Errorf("Certificate header is nil for ID: %s", previousCertificateID.Hex())
 			return nil, grpc.GRPCError{
 				Code:    codes.NotFound,
 				Message: "Certificate header is nil in agglayer",
@@ -82,7 +89,7 @@ func (s *ValidatorService) ValidateCertificate(
 	}
 	cert, err := agglayergrpc.ConvertProtoCertToAgglayer(req.Certificate)
 	if err != nil {
-		log.Errorf("Error converting certificate: %v", err)
+		s.log.Errorf("Error converting certificate: %v", err)
 		return nil, grpc.GRPCError{
 			Code:    codes.InvalidArgument,
 			Message: "Invalid certificate conversion: " + err.Error(),
@@ -91,7 +98,7 @@ func (s *ValidatorService) ValidateCertificate(
 	params.Certificate = cert
 	err = s.validator.ValidateCertificate(ctx, params)
 	if err != nil {
-		log.Errorf("Certificate validation failed: %v", err)
+		s.log.Errorf("Certificate validation failed: %v", err)
 		return nil, grpc.GRPCError{
 			Code:    codes.Internal,
 			Message: "Certificate validation failed: " + err.Error(),
@@ -99,7 +106,7 @@ func (s *ValidatorService) ValidateCertificate(
 	}
 	signature, err := s.signCertificate(ctx, cert)
 	if err != nil {
-		log.Errorf("Error signing certificate: %v", err)
+		s.log.Errorf("Error signing certificate: %v", err)
 		return nil, grpc.GRPCError{
 			Code:    codes.Internal,
 			Message: "Error signing certificate: " + err.Error(),
