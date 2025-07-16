@@ -252,7 +252,7 @@ func createAggSenderValidator(ctx context.Context,
 		nil, // storage
 		l1InfoTreeQuerier,
 		l2BridgeQuerier,
-		nil, // signer, PPFlow can sign certificates
+		signer, // we reuse the signer, but the PP signature is not use
 		cfg.RequireOneBridgeInPPCertificate,
 		cfg.MaxL2BlockNumber,
 	)
