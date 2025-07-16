@@ -6,10 +6,10 @@ name: Bats E2E Tests
 on:
   push:
     branches:
-      - '**'
+      - "**"
   schedule:
     # Run every 24 hours at 00:00 UTC
-    - cron: '0 0 * * *'
+    - cron: "0 0 * * *"
   workflow_dispatch: {}
 
 concurrency:
@@ -17,7 +17,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  AGGKIT_REPORT_CHANNEL: 'C092K6Z0EUT'
+  AGGKIT_REPORT_CHANNEL: "C092K6Z0EUT"
 
 jobs:
   get-kurtosis-cdk-commit:
@@ -257,7 +257,6 @@ jobs:
     runs-on: ubuntu-latest
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
-
       - name: Send Slack notification
         uses: agglayer/gha-notify-generic@v1
         with:
