@@ -25,12 +25,12 @@ type ChainSender interface {
 }
 
 type AggOracle struct {
-	logger            *log.Logger
-	waitPeriodNextGER time.Duration
-	l1Client          ethereum.ChainReader
-	l1Info            L1InfoTreeSyncer
-	chainSender       ChainSender
-	enableQuorum      bool
+	logger                   *log.Logger
+	waitPeriodNextGER        time.Duration
+	l1Client                 ethereum.ChainReader
+	l1Info                   L1InfoTreeSyncer
+	chainSender              ChainSender
+	enableAggOracleCommittee bool
 }
 
 // New creates a new AggOracle instance that will monitor the L1 info tree for new Global Exit Roots (GERs)
@@ -40,15 +40,15 @@ func New(
 	l1Client ethereum.ChainReader,
 	l1InfoTreeSyncer L1InfoTreeSyncer,
 	waitPeriodNextGER time.Duration,
-	enableAggOracleQuorum bool,
+	enableAggOracleCommittee bool,
 ) (*AggOracle, error) {
 	return &AggOracle{
-		logger:            logger,
-		chainSender:       chainSender,
-		l1Client:          l1Client,
-		l1Info:            l1InfoTreeSyncer,
-		waitPeriodNextGER: waitPeriodNextGER,
-		enableQuorum:      enableAggOracleQuorum,
+		logger:                   logger,
+		chainSender:              chainSender,
+		l1Client:                 l1Client,
+		l1Info:                   l1InfoTreeSyncer,
+		waitPeriodNextGER:        waitPeriodNextGER,
+		enableAggOracleCommittee: enableAggOracleCommittee,
 	}, nil
 }
 
@@ -95,7 +95,7 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 	go func() {
 		// Submit GER based on mode
 		var err error
-		if a.enableQuorum {
+		if a.enableAggOracleCommittee {
 			err = a.chainSender.ProposeGER(ctx, latestGER)
 		} else {
 			err = a.chainSender.InjectGER(ctx, latestGER)

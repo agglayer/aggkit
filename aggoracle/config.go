@@ -16,9 +16,9 @@ var (
 )
 
 type Config struct {
-	TargetChainType       TargetChainType          `mapstructure:"TargetChainType"`
-	URLRPCL1              string                   `mapstructure:"URLRPCL1"`
-	WaitPeriodNextGER     types.Duration           `mapstructure:"WaitPeriodNextGER"`
-	EVMSender             chaingersender.EVMConfig `mapstructure:"EVMSender"`
-	EnableAggOracleQuorum bool                     `mapstructure:"EnableAggOracleQuorum"`
+	TargetChainType          TargetChainType          `mapstructure:"TargetChainType"`
+	URLRPCL1                 string                   `mapstructure:"URLRPCL1"`
+	WaitPeriodNextGER        types.Duration           `mapstructure:"WaitPeriodNextGER"`
+	EVMSender                chaingersender.EVMConfig `mapstructure:"EVMSender"`
+	EnableAggOracleCommittee bool                     `mapstructure:"EnableAggOracleCommittee"`
 }

@@ -48,7 +48,7 @@ type EVMChainGERSender struct {
 	l2GERManagerAddr common.Address
 	l2GERManagerAbi  *abi.ABI
 
-	// AggOracle Manager (only needed for quorum proposal mode)
+	// AggOracle Committee (only needed for quorum proposal mode)
 	aggOracleCommittee     types.AggOracleCommitteeContract
 	aggOracleCommitteeAddr common.Address
 	aggOracleCommitteeAbi  *abi.ABI
@@ -69,11 +69,11 @@ func NewEVMChainGERSender(
 	ethTxMan types.EthTxManager,
 	gasOffset uint64,
 	waitPeriodMonitorTx time.Duration,
-	enableAggOracleQuorum bool,
+	enableAggOracleCommittee bool,
 ) (*EVMChainGERSender, error) {
 	// Determine mode based on configuration
 	mode := DirectInjectionMode
-	if enableAggOracleQuorum {
+	if enableAggOracleCommittee {
 		mode = QuorumProposalMode
 	}
 
