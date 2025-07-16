@@ -208,6 +208,12 @@ func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 		if _, err := c.updateLocalStorageWithAggLayerCert(ctx, action.cert); err != nil {
 			return fmt.Errorf("recovery: error new local storage with agglayer certificate: %w", err)
 		}
+
+		if action.settledCert != nil && action.settledCert.CertificateID != action.cert.CertificateID {
+			if _, err := c.updateLocalStorageWithAggLayerCert(ctx, action.settledCert); err != nil {
+				return fmt.Errorf("recovery: error inserting settled cert to local storage: %w", err)
+			}
+		}
 	default:
 		return fmt.Errorf("recovery: unknown action: %s", action.action)
 	}

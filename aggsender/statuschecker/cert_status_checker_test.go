@@ -2,6 +2,7 @@ package statuschecker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 	"testing"
@@ -351,6 +352,36 @@ func TestExecuteInitialStatusAction(t *testing.T) {
 			},
 		},
 		{
+			name: "Action InsertNewCert with settled cert as well - success",
+			action: &initialStatusResult{
+				action:      InitialStatusActionInsertNewCert,
+				cert:        &agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x2")},
+				settledCert: &agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x3")},
+			},
+			mockFn: func(m *mocks.AggSenderStorage) {
+				cert, err := newCertificateInfoFromAgglayerCertHeader(&agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x2")})
+				require.NoError(t, err)
+				m.EXPECT().SaveLastSentCertificate(ctx, *cert).Return(nil).Once()
+
+				cert, err = newCertificateInfoFromAgglayerCertHeader(&agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x3")})
+				require.NoError(t, err)
+				m.EXPECT().SaveLastSentCertificate(ctx, *cert).Return(nil).Once()
+			},
+		},
+		{
+			name: "Action InsertNewCert - settled cert equal to cert",
+			action: &initialStatusResult{
+				action:      InitialStatusActionInsertNewCert,
+				cert:        &agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x2")},
+				settledCert: &agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x2")},
+			},
+			mockFn: func(m *mocks.AggSenderStorage) {
+				cert, err := newCertificateInfoFromAgglayerCertHeader(&agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x2")})
+				require.NoError(t, err)
+				m.EXPECT().SaveLastSentCertificate(ctx, *cert).Return(nil).Once()
+			},
+		},
+		{
 			name: "Action InsertNewCert - error",
 			action: &initialStatusResult{
 				action: InitialStatusActionInsertNewCert,
@@ -360,6 +391,24 @@ func TestExecuteInitialStatusAction(t *testing.T) {
 				m.EXPECT().SaveLastSentCertificate(ctx, mock.Anything).Return(fmt.Errorf("insert error"))
 			},
 			expectedError: "recovery: error new local storage with agglayer certificate",
+		},
+		{
+			name: "Action InsertNewCert with settled cert as well - error",
+			action: &initialStatusResult{
+				action:      InitialStatusActionInsertNewCert,
+				cert:        &agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x2")},
+				settledCert: &agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x3")},
+			},
+			mockFn: func(m *mocks.AggSenderStorage) {
+				cert, err := newCertificateInfoFromAgglayerCertHeader(&agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x2")})
+				require.NoError(t, err)
+				m.EXPECT().SaveLastSentCertificate(ctx, *cert).Return(nil).Once()
+
+				cert, err = newCertificateInfoFromAgglayerCertHeader(&agglayertypes.CertificateHeader{CertificateID: common.HexToHash("0x3")})
+				require.NoError(t, err)
+				m.EXPECT().SaveLastSentCertificate(ctx, *cert).Return(errors.New("some error")).Once()
+			},
+			expectedError: "recovery: error inserting settled cert to local storage: some error",
 		},
 		{
 			name: "Unknown Action",

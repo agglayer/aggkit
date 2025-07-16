@@ -37,9 +37,10 @@ func (i initialStatusAction) String() string {
 }
 
 type initialStatusResult struct {
-	action  initialStatusAction
-	message string
-	cert    *agglayertypes.CertificateHeader
+	action      initialStatusAction
+	message     string
+	cert        *agglayertypes.CertificateHeader
+	settledCert *agglayertypes.CertificateHeader
 }
 
 func (i *initialStatusResult) String() string {
@@ -133,8 +134,10 @@ func (i *initialStatus) process() (*initialStatusResult, error) {
 	// CASE 2: No certificates in local storage but agglayer has one
 	if localLastCert == nil && aggLayerLastCert != nil {
 		return &initialStatusResult{action: InitialStatusActionInsertNewCert,
-			message: "no certificates in local storage but agglayer have one (no InError)",
-			cert:    aggLayerLastCert}, nil
+			message:     "no certificates in local storage but agglayer have one (no InError)",
+			cert:        aggLayerLastCert,
+			settledCert: i.SettledCert,
+		}, nil
 	}
 	// CASE 2.1: certificate in storage but not in agglayer
 	// this is a non-sense, so throw an error
