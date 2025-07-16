@@ -172,9 +172,11 @@ func (c *EVMChainGERSender) IsGERProposed(ger common.Hash) (bool, error) {
 		return false, fmt.Errorf("IsGERProposed is only available in AggOracleCommittee mode, current mode: %s", c.mode)
 	}
 
-	lastProposedGER, err := c.aggOracleCommittee.AddressToLastProposedGER(&bind.CallOpts{Pending: false}, c.ethTxMan.From())
+	lastProposedGER, err := c.aggOracleCommittee.AddressToLastProposedGER(
+		&bind.CallOpts{Pending: false}, c.ethTxMan.From())
 	if err != nil {
-		return false, fmt.Errorf("failed to check last proposed GER for oracle committee member %s: %w", c.ethTxMan.From(), err)
+		return false, fmt.Errorf("failed to check last proposed GER for oracle committee member %s: %w",
+			c.ethTxMan.From(), err)
 	}
 
 	lastProposedGERHash := common.Hash(lastProposedGER)
