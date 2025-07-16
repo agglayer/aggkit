@@ -2,6 +2,7 @@ package helpers
 
 import (
 	"context"
+	"fmt"
 	"math/big"
 	"path"
 	"testing"
@@ -364,7 +365,7 @@ func newSimulatedEVML2SovereignChain(t *testing.T) (
 	require.NotNil(t, aggOracleCommitteeAbi)
 
 	aggOracleMembers := []common.Address{setup.UserAuth.From}
-	aggOracleCommitteeInitData, err := aggOracleCommitteeAbi.Pack("initialize", setup.UserAuth.From, aggOracleMembers, uint64(1))
+	aggOracleCommitteeInitData, err := aggOracleCommitteeAbi.Pack("initialize", setup.DeployerAuth.From, aggOracleMembers, uint64(1))
 	require.NoError(t, err)
 
 	// Deploy a proxy contract for the aggoracle committee
@@ -382,6 +383,16 @@ func newSimulatedEVML2SovereignChain(t *testing.T) (
 	aggOracleCommitteeContract, err := aggoraclecommittee.NewAggoraclecommittee(
 		aggOracleCommitteeProxyAddr, client.Client())
 	require.NoError(t, err)
+
+	// fetch the last proposed GER for the user
+	lastProposedGER, err := aggOracleCommitteeContract.AddressToLastProposedGER(nil, setup.UserAuth.From)
+	require.NoError(t, err)
+	fmt.Println("lastProposedGER", common.Hash(lastProposedGER))
+
+	// fetch oracle committee members
+	oracleCommitteeMembers, err := aggOracleCommitteeContract.GetAllAggOracleMembers(nil)
+	require.NoError(t, err)
+	fmt.Println("oracleCommitteeMembers", oracleCommitteeMembers)
 
 	return client, setup.UserAuth, gerProxyAddr, gerL2Contract, setup.BridgeProxyAddr, setup.BridgeProxyContract, aggOracleCommitteeProxyAddr, aggOracleCommitteeContract
 }
