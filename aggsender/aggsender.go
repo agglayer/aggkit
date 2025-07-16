@@ -172,6 +172,16 @@ func (a *AggSender) Start(ctx context.Context) {
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
+	if a.validator != nil {
+		status, err := a.validator.HealthCheck(ctx)
+		if err != nil {
+			a.log.Warnf("error checking validator health: %v", err)
+		}
+		if !status.IsHealthy() {
+			a.log.Warnf("validator health is not healthy: %s", status.String())
+		}
+		a.log.Infof("Validator health check: %s", status.String())
+	}
 	a.sendCertificates(ctx, 0)
 }
 

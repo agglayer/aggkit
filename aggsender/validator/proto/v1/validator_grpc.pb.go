@@ -23,8 +23,9 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type AggsenderValidatorClient interface {
+	// Method to get the status of the validator
+	HealthCheck(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error)
 	// Method to validate a new certificate
-	Status(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatusResponse, error)
 	ValidateCertificate(ctx context.Context, in *ValidateCertificateRequest, opts ...grpc.CallOption) (*ValidateCertificateResponse, error)
 }
 
@@ -36,9 +37,9 @@ func NewAggsenderValidatorClient(cc grpc.ClientConnInterface) AggsenderValidator
 	return &aggsenderValidatorClient{cc}
 }
 
-func (c *aggsenderValidatorClient) Status(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*StatusResponse, error) {
-	out := new(StatusResponse)
-	err := c.cc.Invoke(ctx, "/aggkit.aggsender.validator.v1.AggsenderValidator/Status", in, out, opts...)
+func (c *aggsenderValidatorClient) HealthCheck(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*HealthCheckResponse, error) {
+	out := new(HealthCheckResponse)
+	err := c.cc.Invoke(ctx, "/aggkit.aggsender.validator.v1.AggsenderValidator/HealthCheck", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -58,8 +59,9 @@ func (c *aggsenderValidatorClient) ValidateCertificate(ctx context.Context, in *
 // All implementations must embed UnimplementedAggsenderValidatorServer
 // for forward compatibility
 type AggsenderValidatorServer interface {
+	// Method to get the status of the validator
+	HealthCheck(context.Context, *emptypb.Empty) (*HealthCheckResponse, error)
 	// Method to validate a new certificate
-	Status(context.Context, *emptypb.Empty) (*StatusResponse, error)
 	ValidateCertificate(context.Context, *ValidateCertificateRequest) (*ValidateCertificateResponse, error)
 	mustEmbedUnimplementedAggsenderValidatorServer()
 }
@@ -68,8 +70,8 @@ type AggsenderValidatorServer interface {
 type UnimplementedAggsenderValidatorServer struct {
 }
 
-func (UnimplementedAggsenderValidatorServer) Status(context.Context, *emptypb.Empty) (*StatusResponse, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method Status not implemented")
+func (UnimplementedAggsenderValidatorServer) HealthCheck(context.Context, *emptypb.Empty) (*HealthCheckResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method HealthCheck not implemented")
 }
 func (UnimplementedAggsenderValidatorServer) ValidateCertificate(context.Context, *ValidateCertificateRequest) (*ValidateCertificateResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method ValidateCertificate not implemented")
@@ -87,20 +89,20 @@ func RegisterAggsenderValidatorServer(s grpc.ServiceRegistrar, srv AggsenderVali
 	s.RegisterService(&AggsenderValidator_ServiceDesc, srv)
 }
 
-func _AggsenderValidator_Status_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _AggsenderValidator_HealthCheck_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(emptypb.Empty)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(AggsenderValidatorServer).Status(ctx, in)
+		return srv.(AggsenderValidatorServer).HealthCheck(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/aggkit.aggsender.validator.v1.AggsenderValidator/Status",
+		FullMethod: "/aggkit.aggsender.validator.v1.AggsenderValidator/HealthCheck",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(AggsenderValidatorServer).Status(ctx, req.(*emptypb.Empty))
+		return srv.(AggsenderValidatorServer).HealthCheck(ctx, req.(*emptypb.Empty))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -131,8 +133,8 @@ var AggsenderValidator_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*AggsenderValidatorServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "Status",
-			Handler:    _AggsenderValidator_Status_Handler,
+			MethodName: "HealthCheck",
+			Handler:    _AggsenderValidator_HealthCheck_Handler,
 		},
 		{
 			MethodName: "ValidateCertificate",

@@ -44,11 +44,12 @@ func NewValidatorService(
 }
 
 // Implementa el método Status
-func (s *ValidatorService) Status(ctx context.Context, in *emptypb.Empty) (*v1.StatusResponse, error) {
+func (s *ValidatorService) HealthCheck(ctx context.Context, in *emptypb.Empty) (*v1.HealthCheckResponse, error) {
 	version := aggkit.GetVersion()
-	return &v1.StatusResponse{
+	return &v1.HealthCheckResponse{
 		Version: version.Brief(),
-		Status:  "OK",
+		Status:  types.HealthCheckStatusOK,
+		Reason:  "",
 	}, nil
 }
 

@@ -26,8 +26,8 @@ func (_m *AggsenderValidatorClient) EXPECT() *AggsenderValidatorClient_Expecter 
 	return &AggsenderValidatorClient_Expecter{mock: &_m.Mock}
 }
 
-// Status provides a mock function with given fields: ctx, in, opts
-func (_m *AggsenderValidatorClient) Status(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*v1.StatusResponse, error) {
+// HealthCheck provides a mock function with given fields: ctx, in, opts
+func (_m *AggsenderValidatorClient) HealthCheck(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption) (*v1.HealthCheckResponse, error) {
 	_va := make([]interface{}, len(opts))
 	for _i := range opts {
 		_va[_i] = opts[_i]
@@ -38,19 +38,19 @@ func (_m *AggsenderValidatorClient) Status(ctx context.Context, in *emptypb.Empt
 	ret := _m.Called(_ca...)
 
 	if len(ret) == 0 {
-		panic("no return value specified for Status")
+		panic("no return value specified for HealthCheck")
 	}
 
-	var r0 *v1.StatusResponse
+	var r0 *v1.HealthCheckResponse
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, *emptypb.Empty, ...grpc.CallOption) (*v1.StatusResponse, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *emptypb.Empty, ...grpc.CallOption) (*v1.HealthCheckResponse, error)); ok {
 		return rf(ctx, in, opts...)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, *emptypb.Empty, ...grpc.CallOption) *v1.StatusResponse); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, *emptypb.Empty, ...grpc.CallOption) *v1.HealthCheckResponse); ok {
 		r0 = rf(ctx, in, opts...)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*v1.StatusResponse)
+			r0 = ret.Get(0).(*v1.HealthCheckResponse)
 		}
 	}
 
@@ -63,21 +63,21 @@ func (_m *AggsenderValidatorClient) Status(ctx context.Context, in *emptypb.Empt
 	return r0, r1
 }
 
-// AggsenderValidatorClient_Status_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Status'
-type AggsenderValidatorClient_Status_Call struct {
+// AggsenderValidatorClient_HealthCheck_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'HealthCheck'
+type AggsenderValidatorClient_HealthCheck_Call struct {
 	*mock.Call
 }
 
-// Status is a helper method to define mock.On call
+// HealthCheck is a helper method to define mock.On call
 //   - ctx context.Context
 //   - in *emptypb.Empty
 //   - opts ...grpc.CallOption
-func (_e *AggsenderValidatorClient_Expecter) Status(ctx interface{}, in interface{}, opts ...interface{}) *AggsenderValidatorClient_Status_Call {
-	return &AggsenderValidatorClient_Status_Call{Call: _e.mock.On("Status",
+func (_e *AggsenderValidatorClient_Expecter) HealthCheck(ctx interface{}, in interface{}, opts ...interface{}) *AggsenderValidatorClient_HealthCheck_Call {
+	return &AggsenderValidatorClient_HealthCheck_Call{Call: _e.mock.On("HealthCheck",
 		append([]interface{}{ctx, in}, opts...)...)}
 }
 
-func (_c *AggsenderValidatorClient_Status_Call) Run(run func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption)) *AggsenderValidatorClient_Status_Call {
+func (_c *AggsenderValidatorClient_HealthCheck_Call) Run(run func(ctx context.Context, in *emptypb.Empty, opts ...grpc.CallOption)) *AggsenderValidatorClient_HealthCheck_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		variadicArgs := make([]grpc.CallOption, len(args)-2)
 		for i, a := range args[2:] {
@@ -90,12 +90,12 @@ func (_c *AggsenderValidatorClient_Status_Call) Run(run func(ctx context.Context
 	return _c
 }
 
-func (_c *AggsenderValidatorClient_Status_Call) Return(_a0 *v1.StatusResponse, _a1 error) *AggsenderValidatorClient_Status_Call {
+func (_c *AggsenderValidatorClient_HealthCheck_Call) Return(_a0 *v1.HealthCheckResponse, _a1 error) *AggsenderValidatorClient_HealthCheck_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AggsenderValidatorClient_Status_Call) RunAndReturn(run func(context.Context, *emptypb.Empty, ...grpc.CallOption) (*v1.StatusResponse, error)) *AggsenderValidatorClient_Status_Call {
+func (_c *AggsenderValidatorClient_HealthCheck_Call) RunAndReturn(run func(context.Context, *emptypb.Empty, ...grpc.CallOption) (*v1.HealthCheckResponse, error)) *AggsenderValidatorClient_HealthCheck_Call {
 	_c.Call.Return(run)
 	return _c
 }

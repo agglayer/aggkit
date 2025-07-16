@@ -39,6 +39,10 @@ func (v *RemoteValidator) String() string {
 	return "RemoteValidator"
 }
 
+func (v *RemoteValidator) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
+	return v.client.HealthCheck(ctx)
+}
+
 // ValidateAndSignCertificate sends a certificate to the AggsenderValidator service for validation.
 func (v *RemoteValidator) ValidateAndSignCertificate(
 	ctx context.Context,
