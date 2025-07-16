@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	cfgTypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
@@ -32,12 +33,12 @@ const (
 	syncBlockChunkSize = 10
 )
 
-type AggoracleWithEVMChain struct {
-	L1Environment
-	L2Environment
-	AggOracle   *aggoracle.AggOracle
-	NetworkIDL2 uint32
-}
+type L2GERManagerContractType int
+
+const (
+	SovereignChainL2GERContract L2GERManagerContractType = iota
+	LegacyL2GERContract
+)
 
 // CommonEnvironment contains common setup results used in both L1 and L2 network setups.
 type CommonEnvironment struct {
@@ -60,48 +61,38 @@ type L1Environment struct {
 // L2Environment contains setup results for L1 network.
 type L2Environment struct {
 	CommonEnvironment
-	GERContract      *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
-	AggoracleSender  aggoracle.ChainSender
-	EthTxManagerMock *EthTxManager
+	GERManagerSovereignSC *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
+	GERManagerLegacySC    *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
+	L2GERSync             *l2gersync.L2GERSync
+	AggoracleSender       aggoracle.ChainSender
+	EthTxManagerMock      *EthTxManager
 }
 
 type EnvironmentConfig struct {
-	L1RPCClient aggkittypes.RPCClienter
-	L2RPCClient aggkittypes.RPCClienter
+	L1RPCClient      aggkittypes.RPCClienter
+	L2RPCClient      aggkittypes.RPCClienter
+	L2GERManagerType L2GERManagerContractType
 }
 
-func DefaultEnvironmentConfig() *EnvironmentConfig {
+func DefaultEnvironmentConfig(l2GERManagerType L2GERManagerContractType) *EnvironmentConfig {
 	return &EnvironmentConfig{
-		L1RPCClient: &aggkittypes.NoopRPCClient{},
-		L2RPCClient: &aggkittypes.NoopRPCClient{},
+		L1RPCClient:      &aggkittypes.NoopRPCClient{},
+		L2RPCClient:      &aggkittypes.NoopRPCClient{},
+		L2GERManagerType: l2GERManagerType,
 	}
 }
 
-// NewE2EEnvWithEVML2 creates a new E2E environment with EVM L1 and L2 chains.
-func NewE2EEnvWithEVML2(t *testing.T, cfg *EnvironmentConfig) *AggoracleWithEVMChain {
+// NewL1SetupWithL2EVM creates a new E2E environment with EVM L1 and L2 chains.
+func NewL1SetupWithL2EVM(t *testing.T, cfg *EnvironmentConfig) (*L1Environment, *L2Environment) {
 	t.Helper()
 
-	ctx := context.Background()
 	// Setup L1
 	l1Setup := L1Setup(t, cfg)
 
 	// Setup L2 EVM
-	l2Setup := L2Setup(t, cfg)
+	l2Setup := L2Setup(t, cfg, l1Setup)
 
-	oracle, err := aggoracle.New(
-		log.GetDefaultLogger(), l2Setup.AggoracleSender,
-		l1Setup.SimBackend.Client(), l1Setup.InfoTreeSync,
-		time.Millisecond*20, //nolint:mnd
-	)
-	require.NoError(t, err)
-	go oracle.Start(ctx)
-
-	return &AggoracleWithEVMChain{
-		L1Environment: *l1Setup,
-		L2Environment: *l2Setup,
-		AggOracle:     oracle,
-		NetworkIDL2:   rollupID,
-	}
+	return l1Setup, l2Setup
 }
 
 // L1Setup creates a new L1 environment.
@@ -180,21 +171,61 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 }
 
 // L2Setup creates a new L2 environment.
-func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
+func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2Environment {
 	t.Helper()
 
-	l2Client, authL2, gerL2Addr, gerL2Contract,
-		bridgeL2Addr, bridgeL2Contract := newSimulatedEVML2SovereignChain(t)
+	ctx := context.Background()
+
+	var (
+		l2Client              *simulated.Backend
+		authL2                *bind.TransactOpts
+		gerL2Addr             common.Address
+		l2GERLegacySC         *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
+		l2GERSovereignChainSC *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
+		bridgeL2Addr          common.Address
+		bridgeL2Contract      *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	)
+
+	switch cfg.L2GERManagerType {
+	case LegacyL2GERContract:
+		l2Client, authL2, gerL2Addr, l2GERLegacySC,
+			bridgeL2Addr, bridgeL2Contract = newSimulatedEVML2LegacyChain(t)
+
+	case SovereignChainL2GERContract:
+		l2Client, authL2, gerL2Addr, l2GERSovereignChainSC,
+			bridgeL2Addr, bridgeL2Contract = newSimulatedEVML2SovereignChain(t)
+
+	default:
+		require.Failf(t, "unknown L2 GER manager type provided", "(l2 ger manager type %d)", int(cfg.L2GERManagerType))
+	}
 
 	ethTxManagerMock := NewEthTxManMock(t, l2Client, authL2)
 
-	const gerCheckFrequency = time.Millisecond * 50
-	sender, err := chaingersender.NewEVMChainGERSender(
-		log.GetDefaultLogger(), gerL2Addr, l2Client.Client(),
-		ethTxManagerMock, 0, gerCheckFrequency,
+	var (
+		sender aggoracle.ChainSender
+		err    error
 	)
-	require.NoError(t, err)
-	ctx := context.Background()
+
+	if cfg.L2GERManagerType == SovereignChainL2GERContract {
+		const (
+			gerCheckFrequency     = time.Millisecond * 50
+			gerInjectionFrequency = time.Millisecond * 20
+		)
+
+		sender, err = chaingersender.NewEVMChainGERSender(
+			log.GetDefaultLogger(), gerL2Addr, l2Client.Client(),
+			ethTxManagerMock, 0, gerCheckFrequency,
+		)
+		require.NoError(t, err)
+
+		oracle, err := aggoracle.New(
+			log.GetDefaultLogger(), sender,
+			l1Setup.SimBackend.Client(), l1Setup.InfoTreeSync,
+			gerInjectionFrequency,
+		)
+		require.NoError(t, err)
+		go oracle.Start(ctx)
+	}
 
 	// Reorg detector
 	dbPathReorgL2 := path.Join(t.TempDir(), "ReorgDetectorL2.sqlite")
@@ -229,7 +260,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 
 	go bridgeL2Sync.Start(ctx)
 
-	return &L2Environment{
+	l2Setup := &L2Environment{
 		CommonEnvironment: CommonEnvironment{
 			SimBackend:     l2Client,
 			GERAddr:        gerL2Addr,
@@ -239,10 +270,21 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 			ReorgDetector:  rdL2,
 			BridgeSync:     bridgeL2Sync,
 		},
-		GERContract:      gerL2Contract,
-		AggoracleSender:  sender,
-		EthTxManagerMock: ethTxManagerMock,
+		GERManagerSovereignSC: l2GERSovereignChainSC,
+		GERManagerLegacySC:    l2GERLegacySC,
+		AggoracleSender:       sender,
+		EthTxManagerMock:      ethTxManagerMock,
 	}
+
+	switch cfg.L2GERManagerType {
+	case SovereignChainL2GERContract:
+		require.NotNil(t, l2Setup.GERManagerSovereignSC)
+		require.NotNil(t, l2Setup.AggoracleSender)
+	case LegacyL2GERContract:
+		require.NotNil(t, l2Setup.GERManagerLegacySC)
+	}
+
+	return l2Setup
 }
 
 func newSimulatedL1(t *testing.T) (
@@ -281,6 +323,8 @@ func newSimulatedL1(t *testing.T) (
 	return client, setup.UserAuth, gerAddr, gerContract, setup.BridgeProxyAddr, setup.BridgeProxyContract
 }
 
+// newSimulatedEVML2SovereignChain creates a new simulated L2 environment with sovereign chain GER contract.
+// It deploys the GlobalExitRootManagerL2SovereignChain contract and the PolygonZkEVMBridgeV2 contract.
 func newSimulatedEVML2SovereignChain(t *testing.T) (
 	*simulated.Backend,
 	*bind.TransactOpts,
@@ -332,6 +376,73 @@ func newSimulatedEVML2SovereignChain(t *testing.T) (
 
 	// Create L2 GER manager contract binding
 	gerL2Contract, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
+		gerProxyAddr, client.Client())
+	require.NoError(t, err)
+
+	err = setup.DeployBridge(client, gerProxyAddr, rollupID)
+	require.NoError(t, err)
+	require.Equal(t, l2BridgeProxyAddr, setup.BridgeProxyAddr)
+
+	bridgeGERAddr, err := setup.BridgeProxyContract.GlobalExitRootManager(nil)
+	require.NoError(t, err)
+	require.Equal(t, gerProxyAddr, bridgeGERAddr)
+
+	return client, setup.UserAuth, gerProxyAddr, gerL2Contract, setup.BridgeProxyAddr, setup.BridgeProxyContract
+}
+
+// newSimulatedEVML2LegacyChain creates a new simulated L2 environment with legacy GER contract.
+// It deploys the PolygonZkEVMGlobalExitRootV2 contract and the PolygonZkEVMBridgeV2 contract.
+func newSimulatedEVML2LegacyChain(t *testing.T) (
+	*simulated.Backend,
+	*bind.TransactOpts,
+	common.Address,
+	*polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2,
+	common.Address,
+	*polygonzkevmbridgev2.Polygonzkevmbridgev2,
+) {
+	t.Helper()
+
+	deployerAuth, err := CreateAccount(big.NewInt(chainID))
+	require.NoError(t, err)
+
+	premineBalance, ok := new(big.Int).SetString(defaultBalance, base10)
+	require.True(t, ok)
+
+	const deployedContractsCount = 3
+	l2BridgeProxyAddr := crypto.CreateAddress(deployerAuth.From, deployedContractsCount)
+
+	genesisAllocMap := map[common.Address]types.Account{
+		l2BridgeProxyAddr: {Balance: premineBalance},
+	}
+	client, setup := NewSimulatedBackend(t, genesisAllocMap, deployerAuth)
+
+	// Deploy L2 GER manager contract
+	gerL2Addr, _, _, err := polygonzkevmglobalexitrootv2.DeployPolygonzkevmglobalexitrootv2(
+		setup.DeployerAuth, client.Client(), setup.UserAuth.From, setup.BridgeProxyAddr)
+	require.NoError(t, err)
+	client.Commit()
+
+	// Prepare initialize data that are going to be called by the L2 GER proxy contract
+	gerL2Abi, err := polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2MetaData.GetAbi()
+	require.NoError(t, err)
+	require.NotNil(t, gerL2Abi)
+
+	gerL2InitData, err := gerL2Abi.Pack("initialize")
+	require.NoError(t, err)
+
+	// Deploy L2 GER manager proxy contract
+	gerProxyAddr, _, _, err := transparentupgradableproxy.DeployTransparentupgradableproxy(
+		setup.DeployerAuth,
+		client.Client(),
+		gerL2Addr,
+		setup.DeployerAuth.From,
+		gerL2InitData,
+	)
+	require.NoError(t, err)
+	client.Commit()
+
+	// Create L2 GER manager contract binding
+	gerL2Contract, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(
 		gerProxyAddr, client.Client())
 	require.NoError(t, err)
 

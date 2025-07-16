@@ -29,17 +29,18 @@ const (
 
 func TestL2GERSyncE2E(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
-	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
+	ctx := t.Context()
+	l1Setup, l2Setup := helpers.NewL1SetupWithL2EVM(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
+
 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
 
 	syncer, err := l2gersync.New(
 		ctx,
 		dbPathSyncer,
-		setup.L2Environment.ReorgDetector,
-		setup.L2Environment.SimBackend.Client(),
-		setup.L2Environment.GERAddr,
-		setup.InfoTreeSync,
+		l2Setup.ReorgDetector,
+		l2Setup.SimBackend.Client(),
+		l2Setup.GERAddr,
+		l1Setup.InfoTreeSync,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
 		aggkittypes.LatestBlock,
@@ -56,25 +57,26 @@ func TestL2GERSyncE2E(t *testing.T) {
 	}()
 
 	for i := range testIterations {
-		updateGlobalExitRoot(t, setup, i)
+		updateGlobalExitRoot(t, l1Setup, i)
 		time.Sleep(syncDelay)
-		testGERSyncer(t, ctx, setup, syncer, i)
+		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i)
 	}
 }
 
 func TestL2GERSync_GERRemoval(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
-	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
+	ctx := t.Context()
+	l1Environment, l2Environment := helpers.NewL1SetupWithL2EVM(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
+
 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
 
 	syncer, err := l2gersync.New(
 		ctx,
 		dbPathSyncer,
-		setup.L2Environment.ReorgDetector,
-		setup.L2Environment.SimBackend.Client(),
-		setup.L2Environment.GERAddr,
-		setup.InfoTreeSync,
+		l2Environment.ReorgDetector,
+		l2Environment.SimBackend.Client(),
+		l2Environment.GERAddr,
+		l1Environment.InfoTreeSync,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
 		aggkittypes.LatestBlock,
@@ -92,13 +94,13 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 
 	updatedGERs := make([]common.Hash, 0, testIterations)
 	for i := range testIterations {
-		ger := updateGlobalExitRoot(t, setup, i)
+		ger := updateGlobalExitRoot(t, l1Environment, i)
 		updatedGERs = append(updatedGERs, ger)
 		time.Sleep(syncDelay)
-		testGERSyncer(t, ctx, setup, syncer, i)
+		testGERSyncer(t, ctx, l1Environment, l2Environment, syncer, i)
 	}
 
-	mainnetExitRoot, err := setup.L1Environment.GERContract.LastMainnetExitRoot(nil)
+	mainnetExitRoot, err := l1Environment.GERContract.LastMainnetExitRoot(nil)
 	require.NoError(t, err)
 
 	removeGERsUntilIdx := testIterations / 2
@@ -108,54 +110,56 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 		gersToRemove = append(gersToRemove, crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:]))
 	}
 
-	_, err = setup.L2Environment.GERContract.RemoveGlobalExitRoots(
-		setup.L2Environment.Auth, gersToRemove)
+	_, err = l2Environment.GERManagerSovereignSC.RemoveGlobalExitRoots(
+		l2Environment.Auth, gersToRemove)
 	require.NoError(t, err)
-	setup.L2Environment.SimBackend.Commit()
+	l2Environment.SimBackend.Commit()
 
 	// wait for the GER removal events to be processed
-	lb, err := setup.L2Environment.SimBackend.Client().BlockNumber(ctx)
+	lb, err := l2Environment.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	helpers.RequireProcessorUpdated(t, syncer, lb)
 
 	for _, removedGER := range gersToRemove {
-		isInjected, err := setup.AggoracleSender.IsGERInjected(removedGER)
+		isInjected, err := l2Environment.AggoracleSender.IsGERInjected(removedGER)
 		require.NoError(t, err)
 		require.False(t, isInjected)
 	}
 
 	for _, updatedGER := range updatedGERs[removeGERsUntilIdx:] {
-		isInjected, err := setup.AggoracleSender.IsGERInjected(updatedGER)
+		isInjected, err := l2Environment.AggoracleSender.IsGERInjected(updatedGER)
 		require.NoError(t, err)
 		require.True(t, isInjected)
 	}
 }
 
-func updateGlobalExitRoot(t *testing.T, setup *helpers.AggoracleWithEVMChain, i int) common.Hash {
+func updateGlobalExitRoot(t *testing.T, l1 *helpers.L1Environment, i int) common.Hash {
 	t.Helper()
 
 	rollupExitRoot := common.HexToHash(strconv.Itoa(i))
-	_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, rollupExitRoot)
+	_, err := l1.GERContract.UpdateExitRoot(l1.Auth, rollupExitRoot)
 	require.NoError(t, err)
-	setup.L1Environment.SimBackend.Commit()
+	l1.SimBackend.Commit()
 
-	mainnetExitRoot, err := setup.L1Environment.GERContract.LastMainnetExitRoot(nil)
+	mainnetExitRoot, err := l1.GERContract.LastMainnetExitRoot(nil)
 	require.NoError(t, err)
 
 	return crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
 }
 
-func testGERSyncer(t *testing.T, ctx context.Context, setup *helpers.AggoracleWithEVMChain, syncer *l2gersync.L2GERSync, i int) {
+func testGERSyncer(t *testing.T, ctx context.Context,
+	l1Setup *helpers.L1Environment, l2Setup *helpers.L2Environment,
+	syncer *l2gersync.L2GERSync, i int) {
 	t.Helper()
 
-	expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
+	expectedGER, err := l1Setup.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
 
-	isInjected, err := setup.AggoracleSender.IsGERInjected(expectedGER)
+	isInjected, err := l2Setup.AggoracleSender.IsGERInjected(expectedGER)
 	require.NoError(t, err)
 	require.True(t, isInjected, fmt.Sprintf("iteration %d, GER: %s", i, common.Hash(expectedGER)))
 
-	lb, err := setup.L2Environment.SimBackend.Client().BlockNumber(ctx)
+	lb, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 	helpers.RequireProcessorUpdated(t, syncer, lb)
 

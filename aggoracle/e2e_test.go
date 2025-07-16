@@ -13,19 +13,19 @@ import (
 )
 
 func TestEVM(t *testing.T) {
-	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
+	l1Setup, l2Setup := helpers.NewL1SetupWithL2EVM(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
 
-	for i := 0; i < 10; i++ {
-		_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, common.HexToHash(strconv.Itoa(i)))
+	for i := range 10 {
+		_, err := l1Setup.GERContract.UpdateExitRoot(l1Setup.Auth, common.HexToHash(strconv.Itoa(i)))
 		require.NoError(t, err)
-		setup.L1Environment.SimBackend.Commit()
+		l1Setup.SimBackend.Commit()
 
 		// wait for the GER to be processed by the InfoTree syncer
 		time.Sleep(time.Millisecond * 100)
-		expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
+		expectedGER, err := l1Setup.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 		require.NoError(t, err)
 
-		isInjected, err := setup.L2Environment.AggoracleSender.IsGERInjected(expectedGER)
+		isInjected, err := l2Setup.AggoracleSender.IsGERInjected(expectedGER)
 		require.NoError(t, err)
 
 		require.True(t, isInjected, fmt.Sprintf("iteration %d, GER: %s", i, common.Bytes2Hex(expectedGER[:])))
