@@ -94,7 +94,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 		}
 		testData.mockAgglayerClient.EXPECT().GetCertificateHeader(mock.Anything, common.HexToHash("0xbeef")).Return(nil, errTestGenericError)
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
-		require.ErrorContains(t, err, "fail to request certificate header to agglayer: generic error")
+		require.ErrorContains(t, err, "fails to request certificate header to agglayer")
 	})
 	t.Run("PreviousCertificateId, retrieved but is nil", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)

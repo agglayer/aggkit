@@ -71,7 +71,7 @@ func (s *ValidatorService) ValidateCertificate(
 		s.log.Debugf("Previous certificate ID: %s", previousCertificateID.Hex())
 		certHeader, err := s.agglayerClient.GetCertificateHeader(ctx, previousCertificateID)
 		if err != nil {
-			msg := fmt.Sprint("fails to request certificate header to agglayer for prevCertID %s: %v",
+			msg := fmt.Sprintf("fails to request certificate header to agglayer for prevCertID %s.Err: %s",
 				previousCertificateID.Hex(), err.Error())
 			s.log.Errorf(msg)
 			return nil, grpc.GRPCError{
