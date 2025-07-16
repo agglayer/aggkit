@@ -24,7 +24,7 @@ const (
 	waitForNewBlocksPeriod     = 30 * time.Millisecond
 	syncBlockChunkSize         = 10
 	testIterations             = 10
-	syncDelay                  = 150 * time.Millisecond
+	syncDelay                  = 50 * time.Millisecond
 )
 
 func TestL2GERSyncE2E(t *testing.T) {
