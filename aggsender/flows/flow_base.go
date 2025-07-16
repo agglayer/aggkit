@@ -24,6 +24,16 @@ var (
 	emptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
+func TimeNowUTC() uint32 {
+	// Use a more precise time function to avoid collisions in tests
+	// and ensure that the time is always in UTC.
+	return uint32(time.Now().UTC().Unix())
+}
+
+// TimeNowFunc is a function that returns the current time in UTC.
+// It can be overridden for testing purposes.
+var TimeNowFunc = TimeNowUTC
+
 // BaseFlowConfig is a struct that holds the configuration for the base flow
 type BaseFlowConfig struct {
 	// MaxCertSize is the maximum size of the certificate in bytes. 0 means no limit
@@ -142,7 +152,7 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 			L1InfoTreeRootToProve: l1InfoRoot.Hash,
 			L1InfoTreeLeafCount:   l1InfoRoot.Index + 1,
 		},
-		CreatedAt: uint32(time.Now().UTC().Unix()),
+		CreatedAt: TimeNowFunc(),
 	}, nil
 }
 
