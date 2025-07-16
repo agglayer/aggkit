@@ -15,7 +15,6 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	cfgTypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
@@ -63,7 +62,6 @@ type L2Environment struct {
 	CommonEnvironment
 	GERManagerSovereignSC *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
 	GERManagerLegacySC    *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
-	L2GERSync             *l2gersync.L2GERSync
 	AggoracleSender       aggoracle.ChainSender
 	EthTxManagerMock      *EthTxManager
 }
@@ -199,14 +197,14 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		require.Failf(t, "unknown L2 GER manager type provided", "(l2 ger manager type %d)", int(cfg.L2GERManagerType))
 	}
 
-	ethTxManagerMock := NewEthTxManMock(t, l2Client, authL2)
-
 	var (
-		sender aggoracle.ChainSender
-		err    error
+		sender           aggoracle.ChainSender
+		ethTxManagerMock *EthTxManager
+		err              error
 	)
 
 	if cfg.L2GERManagerType == SovereignChainL2GERContract {
+		ethTxManagerMock = NewEthTxManMock(t, l2Client, authL2)
 		const (
 			gerCheckFrequency     = time.Millisecond * 50
 			gerInjectionFrequency = time.Millisecond * 20

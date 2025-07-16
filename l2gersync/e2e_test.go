@@ -57,7 +57,7 @@ func TestL2GERSyncE2E(t *testing.T) {
 	}()
 
 	for i := range testIterations {
-		updateGlobalExitRoot(t, l1Setup, i)
+		updateL1GlobalExitRoot(t, l1Setup, i)
 		time.Sleep(syncDelay)
 		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i)
 	}
@@ -94,7 +94,7 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 
 	updatedGERs := make([]common.Hash, 0, testIterations)
 	for i := range testIterations {
-		ger := updateGlobalExitRoot(t, l1Environment, i)
+		ger := updateL1GlobalExitRoot(t, l1Environment, i)
 		updatedGERs = append(updatedGERs, ger)
 		time.Sleep(syncDelay)
 		testGERSyncer(t, ctx, l1Environment, l2Environment, syncer, i)
@@ -133,7 +133,61 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 	}
 }
 
-func updateGlobalExitRoot(t *testing.T, l1 *helpers.L1Environment, i int) common.Hash {
+func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+	l1Setup, l2Setup := helpers.NewL1SetupWithL2EVM(t, helpers.DefaultEnvironmentConfig(helpers.LegacyL2GERContract))
+
+	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
+
+	l2GERSyncer, err := l2gersync.New(
+		ctx,
+		dbPathSyncer,
+		l2Setup.ReorgDetector,
+		l2Setup.SimBackend.Client(),
+		l2Setup.GERAddr,
+		l1Setup.InfoTreeSync,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
+		aggkittypes.LatestBlock,
+		waitForNewBlocksPeriod,
+		syncBlockChunkSize,
+		true,
+	)
+	require.NoError(t, err)
+
+	go func() {
+		err := l2GERSyncer.Start(ctx)
+		require.NoError(t, err, "l2GERSync failed")
+	}()
+
+	startBlockNumber, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
+	require.NoError(t, err)
+	for i := range testIterations {
+		updateL1GlobalExitRoot(t, l1Setup, i)
+		updateL2GlobalExitRoot(t, l2Setup, i)
+		// wait for the GER to be indexed
+		time.Sleep(syncDelay)
+	}
+
+	endBlockNumber, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
+	require.NoError(t, err)
+
+	injectedGERs, err := l2GERSyncer.GetInjectedGERsForRange(ctx, startBlockNumber, endBlockNumber)
+	require.NoError(t, err)
+	require.Len(t, injectedGERs, testIterations)
+
+	mer, err := l2Setup.GERManagerLegacySC.LastMainnetExitRoot(nil)
+	require.NoError(t, err)
+	for i := range testIterations {
+		expectedGER := crypto.Keccak256Hash(mer[:], common.HexToHash(fmt.Sprintf("%x", i)).Bytes())
+		ger, ok := injectedGERs[expectedGER]
+		require.True(t, ok, fmt.Sprintf("GER for iteration %d not found", i))
+		require.Equal(t, expectedGER, ger.GlobalExitRoot, fmt.Sprintf("GER mismatch for iteration %d", i))
+	}
+}
+
+func updateL1GlobalExitRoot(t *testing.T, l1 *helpers.L1Environment, i int) common.Hash {
 	t.Helper()
 
 	rollupExitRoot := common.HexToHash(strconv.Itoa(i))
@@ -142,6 +196,20 @@ func updateGlobalExitRoot(t *testing.T, l1 *helpers.L1Environment, i int) common
 	l1.SimBackend.Commit()
 
 	mainnetExitRoot, err := l1.GERContract.LastMainnetExitRoot(nil)
+	require.NoError(t, err)
+
+	return crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
+}
+
+func updateL2GlobalExitRoot(t *testing.T, l2 *helpers.L2Environment, i int) common.Hash {
+	t.Helper()
+
+	rollupExitRoot := common.HexToHash(strconv.Itoa(i))
+	_, err := l2.GERManagerLegacySC.UpdateExitRoot(l2.Auth, rollupExitRoot)
+	require.NoError(t, err)
+	l2.SimBackend.Commit()
+
+	mainnetExitRoot, err := l2.GERManagerLegacySC.LastMainnetExitRoot(nil)
 	require.NoError(t, err)
 
 	return crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:])
