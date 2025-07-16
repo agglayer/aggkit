@@ -50,4 +50,7 @@ type AggOracleCommitteeContract interface {
 
 	// View method to check oracle manager state
 	GetAggOracleMemberIndex(opts *bind.CallOpts, oracleMember common.Address) (*big.Int, error)
+
+	// View method to check the last proposed GER by an oracle member
+	AddressToLastProposedGER(opts *bind.CallOpts, oracleMember common.Address) ([32]byte, error)
 }

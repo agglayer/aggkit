@@ -134,7 +134,8 @@ func (c *EVMChainGERSender) initializeAggOracleCommitteeMode() error {
 	// Create AggOracleCommittee contract binding
 	aggOracleCommittee, err := aggoraclecommittee.NewAggoraclecommittee(c.aggOracleCommitteeAddr, c.l2Client)
 	if err != nil {
-		return fmt.Errorf("failed to create binding for AggOracleCommittee (SC address: %s): %w", c.aggOracleCommitteeAddr, err)
+		return fmt.Errorf("failed to create binding for AggOracleCommittee (SC address: %s): %w",
+			c.aggOracleCommitteeAddr, err)
 	}
 
 	// Get the ABI for AggOracleCommittee
@@ -165,6 +166,21 @@ func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
 	return gerIndex.Cmp(common.Big0) == 1, nil
 }
 
+// IsGERProposed checks if the provided global exit root has already been proposed by the oracle committee member
+func (c *EVMChainGERSender) IsGERProposed(ger common.Hash) (bool, error) {
+	if c.mode != AggOracleCommitteeMode {
+		return false, fmt.Errorf("IsGERProposed is only available in AggOracleCommittee mode, current mode: %s", c.mode)
+	}
+
+	lastProposedGER, err := c.aggOracleCommittee.AddressToLastProposedGER(&bind.CallOpts{Pending: false}, c.ethTxMan.From())
+	if err != nil {
+		return false, fmt.Errorf("failed to check last proposed GER for oracle committee member %s: %w", c.ethTxMan.From(), err)
+	}
+
+	lastProposedGERHash := common.Hash(lastProposedGER)
+	return lastProposedGERHash == ger, nil
+}
+
 // InjectGER injects the provided global exit root into the L2 GER manager contract
 func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) error {
 	if c.mode != DirectInjectionMode {
@@ -178,6 +194,16 @@ func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) erro
 func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) error {
 	if c.mode != AggOracleCommitteeMode {
 		return fmt.Errorf("ProposeGER is only available in AggOracleCommittee mode, current mode: %s", c.mode)
+	}
+
+	// Check if the GER has already been proposed by the oracle committee member
+	isProposed, err := c.IsGERProposed(ger)
+	if err != nil {
+		return err
+	}
+	if isProposed {
+		c.logger.Infof("GER %s has already been proposed by the oracle committee member", ger.Hex())
+		return nil
 	}
 
 	return c.submitTransaction(ctx, &c.aggOracleCommitteeAddr, c.aggOracleCommitteeAbi, proposeGERFuncName, ger, "propose")

@@ -22,6 +22,7 @@ type ChainSender interface {
 	IsGERInjected(ger common.Hash) (bool, error)
 	InjectGER(ctx context.Context, ger common.Hash) error
 	ProposeGER(ctx context.Context, ger common.Hash) error
+	IsGERProposed(ger common.Hash) (bool, error)
 }
 
 type AggOracle struct {

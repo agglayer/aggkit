@@ -31,3 +31,54 @@ func TestEVM(t *testing.T) {
 		require.True(t, isInjected, fmt.Sprintf("iteration %d, GER: %s", i, common.Bytes2Hex(expectedGER[:])))
 	}
 }
+
+func TestEVM_ProposeGER(t *testing.T) {
+	cfg := helpers.DefaultEnvironmentConfig()
+	cfg.AggOracleCommitteeMode = true
+	setup := helpers.NewE2EEnvWithEVML2(t, cfg)
+
+	// Create a GER on L1 for the oracle to process
+	gerHash := common.HexToHash(strconv.Itoa(55))
+	_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, gerHash)
+	require.NoError(t, err)
+	setup.L1Environment.SimBackend.Commit()
+
+	// Wait for the GER to be processed by the InfoTree syncer
+	time.Sleep(time.Millisecond * 100)
+	expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
+	require.NoError(t, err)
+
+	// Convert expectedGER from bytes32 to common.Hash
+	expectedGERHash := common.Hash(expectedGER)
+
+	// Wait for the oracle to process the GER
+	time.Sleep(time.Millisecond * 200)
+
+	// Check if GER was proposed by the oracle member
+	lastProposedGER, err := setup.L2Environment.AggOracleCommitteeContract.AddressToLastProposedGER(nil, setup.L2Environment.Auth.From)
+	require.NoError(t, err)
+
+	lastProposedGERHash := common.Hash(lastProposedGER)
+	require.Equal(t, expectedGERHash, lastProposedGERHash, fmt.Sprintf("GER: %s was not proposed by oracle member", common.Bytes2Hex(expectedGER[:])))
+}
+
+func TestEVM_DirectProposeGER(t *testing.T) {
+	cfg := helpers.DefaultEnvironmentConfig()
+	cfg.AggOracleCommitteeMode = true
+
+	l2Setup := helpers.L2Setup(t, cfg)
+
+	// Propose a GER directly on L2 using the AggOracleCommittee contract
+	gerHash := common.HexToHash(strconv.Itoa(123))
+	_, err := l2Setup.AggOracleCommitteeContract.ProposeGlobalExitRoot(l2Setup.Auth, gerHash)
+	require.NoError(t, err)
+	l2Setup.SimBackend.Commit()
+
+	// Check if the GER was successfully proposed by checking the last proposed GER for this address
+	lastProposedGER, err := l2Setup.AggOracleCommitteeContract.AddressToLastProposedGER(nil, l2Setup.Auth.From)
+	require.NoError(t, err)
+
+	lastProposedGERHash := common.Hash(lastProposedGER)
+	// Verify that the proposed GER matches what we submitted
+	require.Equal(t, gerHash, lastProposedGERHash, fmt.Sprintf("GER: %s was not successfully proposed to committee contract", gerHash.Hex()))
+}
