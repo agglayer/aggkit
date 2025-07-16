@@ -35,8 +35,8 @@ type EVMConfig struct {
 type GERMode string
 
 const (
-	DirectInjectionMode GERMode = "direct_injection"
-	QuorumProposalMode  GERMode = "quorum_proposal"
+	DirectInjectionMode    GERMode = "direct_injection"
+	AggOracleCommitteeMode GERMode = "aggoracle_committee"
 )
 
 type EVMChainGERSender struct {
@@ -48,7 +48,7 @@ type EVMChainGERSender struct {
 	l2GERManagerAddr common.Address
 	l2GERManagerAbi  *abi.ABI
 
-	// AggOracle Committee (only needed for quorum proposal mode)
+	// AggOracle Committee (only needed for AggOracle committee mode)
 	aggOracleCommittee     types.AggOracleCommitteeContract
 	aggOracleCommitteeAddr common.Address
 	aggOracleCommitteeAbi  *abi.ABI
@@ -74,7 +74,7 @@ func NewEVMChainGERSender(
 	// Determine mode based on configuration
 	mode := DirectInjectionMode
 	if enableAggOracleCommittee {
-		mode = QuorumProposalMode
+		mode = AggOracleCommitteeMode
 	}
 
 	// Always initialize L2 GER Manager (needed for checking if GER is injected)
@@ -116,8 +116,8 @@ func (c *EVMChainGERSender) initializeMode() error {
 	switch c.mode {
 	case DirectInjectionMode:
 		return c.initializeDirectInjectionMode()
-	case QuorumProposalMode:
-		return c.initializeQuorumProposalMode()
+	case AggOracleCommitteeMode:
+		return c.initializeAggOracleCommitteeMode()
 	default:
 		return fmt.Errorf("unknown GER mode: %s", c.mode)
 	}
@@ -130,7 +130,7 @@ func (c *EVMChainGERSender) initializeDirectInjectionMode() error {
 	return nil
 }
 
-func (c *EVMChainGERSender) initializeQuorumProposalMode() error {
+func (c *EVMChainGERSender) initializeAggOracleCommitteeMode() error {
 	// Create AggOracleCommittee contract binding
 	aggOracleCommittee, err := aggoraclecommittee.NewAggoraclecommittee(c.aggOracleCommitteeAddr, c.l2Client)
 	if err != nil {
@@ -176,8 +176,8 @@ func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) erro
 
 // ProposeGER proposes the provided global exit root to the AggOracleCommittee contract
 func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) error {
-	if c.mode != QuorumProposalMode {
-		return fmt.Errorf("ProposeGER is only available in quorum proposal mode, current mode: %s", c.mode)
+	if c.mode != AggOracleCommitteeMode {
+		return fmt.Errorf("ProposeGER is only available in AggOracleCommittee mode, current mode: %s", c.mode)
 	}
 
 	return c.submitTransaction(ctx, &c.aggOracleCommitteeAddr, c.aggOracleCommitteeAbi, proposeGERFuncName, ger, "propose")

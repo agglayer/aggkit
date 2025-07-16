@@ -185,7 +185,7 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 			}
 
 			// Set the appropriate fields based on the mode
-			if config.expectedMode == QuorumProposalMode {
+			if config.expectedMode == AggOracleCommitteeMode {
 				sender.aggOracleCommitteeAddr = config.targetAddr
 				sender.aggOracleCommitteeAbi = &abi
 			} else {
@@ -275,15 +275,15 @@ func TestEVMChainGERSender_ProposeGER(t *testing.T) {
 		targetAddr:   aggOracleCommitteeAddr,
 		funcName:     "proposeGlobalExitRoot",
 		action:       "propose",
-		expectedMode: QuorumProposalMode,
-		wrongModeErr: "ProposeGER is only available in quorum proposal mode",
+		expectedMode: AggOracleCommitteeMode,
+		wrongModeErr: "ProposeGER is only available in AggOracleCommittee mode",
 	}
 
-	tests := createTestCases(QuorumProposalMode, txID, "propose GER")
+	tests := createTestCases(AggOracleCommitteeMode, txID, "propose GER")
 	tests = append(tests, testCase{
 		name:        "wrong mode - direct injection",
 		mode:        DirectInjectionMode,
-		expectedErr: "ProposeGER is only available in quorum proposal mode",
+		expectedErr: "ProposeGER is only available in AggOracleCommittee mode",
 	})
 
 	runTransactionTest(t, config, tests)
@@ -317,8 +317,8 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 
 	tests := createTestCases(DirectInjectionMode, txID, "inject GER")
 	tests = append(tests, testCase{
-		name:        "wrong mode - quorum proposal",
-		mode:        QuorumProposalMode,
+		name:        "wrong mode - agg oracle committee",
+		mode:        AggOracleCommitteeMode,
 		expectedErr: "InjectGER is only available in direct injection mode",
 	})
 
