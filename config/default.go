@@ -254,6 +254,7 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 	Host = "0.0.0.0"
 	Port = 5578
 	EnableReflection = true
+	MaxDecodingMessageSize = 1073741824  # 1GB
 [Validator.LerQuerierConfig]
 	RollupManagerAddr = "{{AggSender.RollupManagerAddr}}"
 	RollupCreationBlockL1 = "{{AggSender.RollupCreationBlockL1}}"

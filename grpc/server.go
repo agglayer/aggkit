@@ -18,6 +18,8 @@ type ServerConfig struct {
 	// EnableReflection indicates whether gRPC server reflection is enabled
 	// This allows clients to introspect the server's services and methods.
 	EnableReflection bool `mapstructure:"EnableReflection"`
+	// MaxRecvMsgSize is the maximum size of a message that the server can receive.
+	MaxDecodingMessageSize uint64 `mapstructure:"MaxDecodingMessageSize"`
 }
 
 // Server encapsulates a gRPC server instance, its network listener, and the address it listens on.
@@ -37,7 +39,9 @@ type Server struct {
 func NewServer(cfg ServerConfig, opts ...grpc.ServerOption) (*Server, error) {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	serverAddr := trimGRPCAddress(addr)
-
+	if cfg.MaxDecodingMessageSize > 0 {
+		opts = append(opts, grpc.MaxRecvMsgSize(int(cfg.MaxDecodingMessageSize)))
+	}
 	listener, err := net.Listen("tcp", serverAddr)
 	if err != nil {
 		return nil, err

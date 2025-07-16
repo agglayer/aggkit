@@ -6,13 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"testing"
+	"time"
 
 	v1nodetypes "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	node "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/v1"
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	"github.com/agglayer/aggkit/agglayer/types"
+	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -20,6 +23,45 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
+
+func TestAgglayerGRPCCLientExploratory(t *testing.T) {
+	t.Skip("This test is for exploratory purposes to check the size of certificate")
+	client, err := NewAgglayerGRPCClient(&aggkitgrpc.ClientConfig{
+		URL: "http://localhost:32863",
+		MinConnectTimeout: configtypes.Duration{
+			Duration: 1000 * time.Second,
+		},
+		RequestTimeout: configtypes.Duration{
+			Duration: 1000 * time.Second,
+		},
+	})
+	require.NoError(t, err)
+	certificate := &types.Certificate{
+		NetworkID: 1,
+		Height:    0,
+		AggchainData: &types.AggchainDataSignature{
+			Signature: make([]byte, 65),
+		},
+	}
+	// 100000 iteration produces a transaction of 12800188 bytes
+	for i := 0; i < 100000; i++ {
+		certificate.BridgeExits = append(certificate.BridgeExits, &types.BridgeExit{
+			LeafType: types.LeafTypeAsset,
+			TokenInfo: &types.TokenInfo{
+				OriginNetwork:      0,
+				OriginTokenAddress: common.HexToAddress("0xbeef"),
+			},
+			DestinationNetwork: 2,
+			DestinationAddress: common.HexToAddress("0x5678"),
+			Amount:             big.NewInt(1234),
+			Metadata:           make([]byte, 1024),
+		})
+	}
+
+	id, err := client.SendCertificate(t.Context(), certificate, nil)
+	require.NoError(t, err)
+	t.Log("Certificate ID:", id.Hex())
+}
 
 func TestGetEpochConfiguration(t *testing.T) {
 	t.Parallel()
