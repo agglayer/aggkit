@@ -187,11 +187,20 @@ func (c *certStatusChecker) checkLastCertificateFromAgglayer(ctx context.Context
 		return fmt.Errorf("recovery: error retrieving initial status: %w", err)
 	}
 	initialStatus.logData()
-	action, err := initialStatus.process()
+	actions, err := initialStatus.process()
 	if err != nil {
 		return fmt.Errorf("recovery: error processing initial status: %w", err)
 	}
-	return c.executeInitialStatusAction(ctx, action, initialStatus.LocalCert)
+
+	for _, action := range actions {
+		if err := c.executeInitialStatusAction(ctx, action, initialStatus.LocalCert); err != nil {
+			return fmt.Errorf("recovery: error executing initial status action: %w", err)
+		}
+	}
+
+	c.log.Info("recovery: initial status actions executed successfully")
+
+	return nil
 }
 
 func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
@@ -207,12 +216,6 @@ func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 	case InitialStatusActionInsertNewCert:
 		if _, err := c.updateLocalStorageWithAggLayerCert(ctx, action.cert); err != nil {
 			return fmt.Errorf("recovery: error new local storage with agglayer certificate: %w", err)
-		}
-
-		if action.settledCert != nil && action.settledCert.CertificateID != action.cert.CertificateID {
-			if _, err := c.updateLocalStorageWithAggLayerCert(ctx, action.settledCert); err != nil {
-				return fmt.Errorf("recovery: error inserting settled cert to local storage: %w", err)
-			}
 		}
 	default:
 		return fmt.Errorf("recovery: unknown action: %s", action.action)
@@ -232,7 +235,7 @@ func (c *certStatusChecker) updateLocalStorageWithAggLayerCert(ctx context.Conte
 	}
 
 	c.log.Infof("setting initial certificate from AggLayer: %s", cert.String())
-	return cert, c.storage.SaveLastSentCertificate(ctx, *cert)
+	return cert, c.storage.SaveOrUpdateCertificate(ctx, *cert)
 }
 
 func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader) (*types.Certificate, error) {

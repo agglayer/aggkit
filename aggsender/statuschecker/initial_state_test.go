@@ -18,10 +18,9 @@ type certTestData struct {
 }
 
 type initialStateResultTest struct {
-	action      initialStatusAction
-	subMsg      string
-	cert        *certTestData
-	settledCert *certTestData
+	action initialStatusAction
+	subMsg string
+	cert   *certTestData
 }
 
 type testCaseData struct {
@@ -30,7 +29,7 @@ type testCaseData struct {
 	agglayerSettled *certTestData
 	agglayerPending *certTestData
 	resultError     bool
-	resultActions   *initialStateResultTest
+	resultActions   []*initialStateResultTest
 }
 
 // ID|LOCAL			    | AGGLAYER SETTLED		| AGGLAYER PENDING			    | ACTION
@@ -156,28 +155,28 @@ func TestRegularCases(t *testing.T) {
 			localCert:       nil,
 			agglayerSettled: nil,
 			agglayerPending: nil,
-			resultActions:   &initialStateResultTest{InitialStatusActionNone, "", nil, nil},
+			resultActions:   []*initialStateResultTest{{InitialStatusActionNone, "", nil}},
 		},
 		{
 			name:            "02| nil 				| nil 					| ID1, h0  , inError		|store(PENDING) h0 so is next cert",
 			localCert:       nil,
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 0, agglayertypes.InError},
-			resultActions:   &initialStateResultTest{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.InError}, nil},
+			resultActions:   []*initialStateResultTest{{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.InError}}},
 		},
 		{
 			name:            "03| nil 				| nil 					| ID1, h1  , inError   			|none",
 			localCert:       nil,
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 1, agglayertypes.InError},
-			resultActions:   &initialStateResultTest{InitialStatusActionNone, "", nil, nil},
+			resultActions:   []*initialStateResultTest{{InitialStatusActionNone, "", nil}},
 		},
 		{
 			name:            "04| nil 				| nil 					| ID1, h0  , !=inError  		| store(PENDING) h0 so is next cert",
 			localCert:       nil,
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 0, agglayertypes.Proven},
-			resultActions:   &initialStateResultTest{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.Proven}, nil},
+			resultActions:   []*initialStateResultTest{{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 0, agglayertypes.Proven}}},
 		},
 		{
 			name:            "05| nil 				| nil 					| ID1, h1  , !=inError  		| wait, h1 is not next cert but we wait until pass to inError",
@@ -191,56 +190,65 @@ func TestRegularCases(t *testing.T) {
 			localCert:       nil,
 			agglayerSettled: &certTestData{hash1, 1, agglayertypes.Proven},
 			agglayerPending: nil,
-			resultActions:   &initialStateResultTest{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 1, agglayertypes.Proven}, &certTestData{hash1, 1, agglayertypes.Proven}},
+			resultActions:   []*initialStateResultTest{{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 1, agglayertypes.Proven}}},
 		},
 		{
 			name:            "07| nil 				| ID1, h1 , NA	 		| ID2, h2  , inError  			| store(PENDING)",
 			localCert:       nil,
 			agglayerSettled: &certTestData{hash1, 1, agglayertypes.Proven},
 			agglayerPending: &certTestData{hash2, 2, agglayertypes.InError},
-			resultActions:   &initialStateResultTest{InitialStatusActionInsertNewCert, "", &certTestData{hash2, 2, agglayertypes.InError}, &certTestData{hash1, 1, agglayertypes.Proven}},
+			resultActions: []*initialStateResultTest{
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash2, 2, agglayertypes.InError}},
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 1, agglayertypes.Proven}},
+			},
 		},
 		{
 			name:            "08| nil 				| ID1, h1 , NA	 		| ID2, h2  , !=inError  		| store(PENDING) h2 is next to h1",
 			localCert:       nil,
 			agglayerSettled: &certTestData{hash1, 1, agglayertypes.Settled},
 			agglayerPending: &certTestData{hash2, 2, agglayertypes.Pending},
-			resultActions:   &initialStateResultTest{InitialStatusActionInsertNewCert, "", &certTestData{hash2, 2, agglayertypes.Pending}, &certTestData{hash1, 1, agglayertypes.Settled}},
+			resultActions: []*initialStateResultTest{
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash2, 2, agglayertypes.Pending}},
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 1, agglayertypes.Settled}},
+			},
 		},
 		{
 			name:            "09|ID1, h1 , NA		    | nil 					| ID1, h1  , inError  			| update(PENDING)",
 			localCert:       &certTestData{hash1, 1, agglayertypes.Proven},
 			agglayerSettled: nil,
 			agglayerPending: &certTestData{hash1, 1, agglayertypes.InError},
-			resultActions:   &initialStateResultTest{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash1, 1, agglayertypes.InError}, nil},
+			resultActions:   []*initialStateResultTest{{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash1, 1, agglayertypes.InError}}},
 		},
 		{
 			name:            "10|ID2, h2 , NA			| ID1, h1 , N/A			| ID2, h2  , N/A		  		| update(PENDING)",
 			localCert:       &certTestData{hash2, 2, agglayertypes.Proven},
 			agglayerSettled: &certTestData{hash1, 1, agglayertypes.Settled},
 			agglayerPending: &certTestData{hash2, 2, agglayertypes.InError},
-			resultActions:   &initialStateResultTest{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash2, 2, agglayertypes.InError}, nil},
+			resultActions: []*initialStateResultTest{
+				{InitialStatusActionUpdateCurrentCert, "", &certTestData{hash2, 2, agglayertypes.InError}},
+				{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 1, agglayertypes.Settled}},
+			},
 		},
 		{
 			name:            "11|ID2, h2 , NA		| ID1, h3 , N/A			| nil               			|  store(SETTLED)",
 			localCert:       &certTestData{hash2, 2, agglayertypes.Proven},
 			agglayerSettled: &certTestData{hash1, 3, agglayertypes.Proven},
 			agglayerPending: nil,
-			resultActions:   &initialStateResultTest{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 3, agglayertypes.Proven}, nil},
+			resultActions:   []*initialStateResultTest{{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 3, agglayertypes.Proven}}},
 		},
 		{
 			name:            "12|ID2, h2 , NA		| ID1, h2 , settled		| ID1, h3 , !=inError           |  store(PENDING)",
 			localCert:       &certTestData{hash2, 2, agglayertypes.Proven},
 			agglayerSettled: &certTestData{hash1, 2, agglayertypes.Settled},
 			agglayerPending: &certTestData{hash1, 3, agglayertypes.Proven},
-			resultActions:   &initialStateResultTest{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 3, agglayertypes.Proven}, nil},
+			resultActions:   []*initialStateResultTest{{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 3, agglayertypes.Proven}}},
 		},
 		{
 			name:            "13|ID2, h2 , NA		| ID1, h2 , settled		| ID1, h3 , inError             | store(PENDING)",
 			localCert:       &certTestData{hash2, 2, agglayertypes.Proven},
 			agglayerSettled: &certTestData{hash1, 2, agglayertypes.Settled},
 			agglayerPending: &certTestData{hash1, 3, agglayertypes.InError},
-			resultActions:   &initialStateResultTest{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 3, agglayertypes.InError}, nil},
+			resultActions:   []*initialStateResultTest{{InitialStatusActionInsertNewCert, "", &certTestData{hash1, 3, agglayertypes.InError}}},
 		},
 	}
 	runTestCases(t, tests)
@@ -274,29 +282,26 @@ func runTestCases(t *testing.T, tests []testCaseData) {
 				}
 			}
 
-			action, err := sut.process()
+			actions, err := sut.process()
 			if tt.resultError {
 				require.Error(t, err)
-				require.Nil(t, action)
+				require.Nil(t, actions)
 			} else {
 				require.NoError(t, err)
 				if tt.resultActions != nil {
-					fmt.Print("test:", tt.name)
-					fmt.Print("result:", action.String())
-					require.Equal(t, tt.resultActions.action, action.action)
-					require.Contains(t, action.message, tt.resultActions.subMsg)
-					if tt.resultActions.cert != nil {
-						require.NotNil(t, action.cert)
-						require.Equal(t, tt.resultActions.cert.CertificateID, action.cert.CertificateID)
-						require.Equal(t, tt.resultActions.cert.Height, action.cert.Height)
-						require.Equal(t, tt.resultActions.cert.Status, action.cert.Status)
-					}
-
-					if tt.resultActions.settledCert != nil {
-						require.NotNil(t, action.settledCert)
-						require.Equal(t, tt.resultActions.settledCert.CertificateID, action.settledCert.CertificateID)
-						require.Equal(t, tt.resultActions.settledCert.Height, action.settledCert.Height)
-						require.Equal(t, tt.resultActions.settledCert.Status, action.settledCert.Status)
+					require.Len(t, actions, len(tt.resultActions))
+					for i, resultAction := range tt.resultActions {
+						action := actions[i]
+						fmt.Print("test:", tt.name)
+						fmt.Print("result:", action.String())
+						require.Equal(t, resultAction.action, action.action)
+						require.Contains(t, action.message, resultAction.subMsg)
+						if resultAction.cert != nil {
+							require.NotNil(t, action.cert)
+							require.Equal(t, resultAction.cert.CertificateID, action.cert.CertificateID)
+							require.Equal(t, resultAction.cert.Height, action.cert.Height)
+							require.Equal(t, resultAction.cert.Status, action.cert.Status)
+						}
 					}
 				}
 			}

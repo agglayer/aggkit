@@ -992,3 +992,46 @@ func Test_GetNonAcceptedCert(t *testing.T) {
 	}
 	require.Equal(t, *certificate, certificateFromDB, "retrieved certificate should match the saved certificate")
 }
+
+func TestSaveOrUpdateCertificate(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
+	cfg := AggSenderSQLStorageConfig{
+		DBPath: dbPath,
+	}
+
+	newTxer = db.NewTx
+
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+
+	signedCert := "signed-cert"
+
+	// Save new certificate
+	certificate := &types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:           1,
+			CertificateID:    common.HexToHash("0x1"),
+			NewLocalExitRoot: common.HexToHash("0x2"),
+			FromBlock:        1,
+			ToBlock:          2,
+			Status:           agglayertypes.Pending,
+			CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
+		},
+		SignedCertificate: &signedCert,
+		ExtraData:         "extra data",
+	}
+
+	require.NoError(t, storage.SaveOrUpdateCertificate(t.Context(), *certificate))
+	certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
+	require.NoError(t, err)
+	require.Equal(t, certificate, certificateFromDB)
+
+	// Update existing certificate
+	certificate.Header.Status = agglayertypes.Settled
+	certificate.Header.UpdatedAt = uint32(time.Now().UTC().UnixMilli())
+	require.NoError(t, storage.SaveOrUpdateCertificate(t.Context(), *certificate))
+
+	certificateFromDB, err = storage.GetCertificateByHeight(certificate.Header.Height)
+	require.NoError(t, err)
+	require.Equal(t, certificate, certificateFromDB, "equal status")
+}

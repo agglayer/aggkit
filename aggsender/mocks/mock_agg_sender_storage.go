@@ -581,6 +581,53 @@ func (_c *AggSenderStorage_SaveNonAcceptedCertificate_Call) RunAndReturn(run fun
 	return _c
 }
 
+// SaveOrUpdateCertificate provides a mock function with given fields: ctx, certificate
+func (_m *AggSenderStorage) SaveOrUpdateCertificate(ctx context.Context, certificate types.Certificate) error {
+	ret := _m.Called(ctx, certificate)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SaveOrUpdateCertificate")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(context.Context, types.Certificate) error); ok {
+		r0 = rf(ctx, certificate)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// AggSenderStorage_SaveOrUpdateCertificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SaveOrUpdateCertificate'
+type AggSenderStorage_SaveOrUpdateCertificate_Call struct {
+	*mock.Call
+}
+
+// SaveOrUpdateCertificate is a helper method to define mock.On call
+//   - ctx context.Context
+//   - certificate types.Certificate
+func (_e *AggSenderStorage_Expecter) SaveOrUpdateCertificate(ctx interface{}, certificate interface{}) *AggSenderStorage_SaveOrUpdateCertificate_Call {
+	return &AggSenderStorage_SaveOrUpdateCertificate_Call{Call: _e.mock.On("SaveOrUpdateCertificate", ctx, certificate)}
+}
+
+func (_c *AggSenderStorage_SaveOrUpdateCertificate_Call) Run(run func(ctx context.Context, certificate types.Certificate)) *AggSenderStorage_SaveOrUpdateCertificate_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(types.Certificate))
+	})
+	return _c
+}
+
+func (_c *AggSenderStorage_SaveOrUpdateCertificate_Call) Return(_a0 error) *AggSenderStorage_SaveOrUpdateCertificate_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *AggSenderStorage_SaveOrUpdateCertificate_Call) RunAndReturn(run func(context.Context, types.Certificate) error) *AggSenderStorage_SaveOrUpdateCertificate_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // UpdateCertificateStatus provides a mock function with given fields: ctx, certificateID, newStatus, updatedAt
 func (_m *AggSenderStorage) UpdateCertificateStatus(ctx context.Context, certificateID common.Hash, newStatus agglayertypes.CertificateStatus, updatedAt uint32) error {
 	ret := _m.Called(ctx, certificateID, newStatus, updatedAt)

@@ -71,6 +71,8 @@ type AggSenderStorage interface {
 	SaveNonAcceptedCertificate(ctx context.Context, nonAcceptedCert *NonAcceptedCertificate) error
 	// GetNonAcceptedCertificate returns the last non-accepted certificate
 	GetNonAcceptedCertificate() (*NonAcceptedCertificate, error)
+	// SaveOrUpdateCertificate saves or updates a certificate in the storage
+	SaveOrUpdateCertificate(ctx context.Context, certificate types.Certificate) error
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -194,6 +196,57 @@ func (a *AggSenderSQLStorage) GetLastSentCertificateHeader() (*types.Certificate
 	return &certificateHeader, nil
 }
 
+// SaveOrUpdateCertificate saves the certificate in the storage
+// It will insert a new certificate or update the existing one if it has the same height and certificate ID
+func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certificate types.Certificate) error {
+	tx, err := newTxer(ctx, a.db)
+	if err != nil {
+		return fmt.Errorf("saveOrUpdateCertificate NewTx. Err: %w", err)
+	}
+	shouldRollback := true
+	defer func() {
+		if shouldRollback {
+			if errRllbck := tx.Rollback(); errRllbck != nil {
+				a.logger.Errorf(errWhileRollbackFormat, errRllbck)
+			}
+		}
+	}()
+
+	certInfo, err := convertCertificateToCertificateInfo(&certificate)
+	if err != nil {
+		return fmt.Errorf("error converting certificate to certificate info: %w", err)
+	}
+
+	var count int
+	err = tx.QueryRow(`SELECT COUNT(*) FROM certificate_info WHERE height = $1;`, certInfo.Height).Scan(&count)
+	if err != nil {
+		return fmt.Errorf("error checking if certificate exists: %w", err)
+	}
+
+	// meddler does not support upsert, so we need to do this manually by checking if the certificate exists
+	if count == 0 {
+		// insert new certificate if it does not exist
+		if err = meddler.Insert(tx, "certificate_info", certInfo); err != nil {
+			return fmt.Errorf("error inserting certificate info: %w", err)
+		}
+	} else {
+		// if the certificate exists, we need to update it
+		if err = updateCertStatus(tx, certInfo.CertificateID, certInfo.Status, certInfo.UpdatedAt); err != nil {
+			return fmt.Errorf("error updating certificate status: %w", err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("saveOrUpdateCertificate commit. Err: %w", err)
+	}
+	shouldRollback = false
+
+	a.logger.Debugf("inserted certificate - Height: %d. Hash: %s",
+		certInfo.Height, certInfo.CertificateID)
+
+	return nil
+}
+
 // SaveLastSentCertificate saves the last certificate sent to the aggLayer
 func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error {
 	tx, err := db.NewTx(ctx, a.db)
@@ -315,16 +368,28 @@ func (a *AggSenderSQLStorage) UpdateCertificateStatus(
 		}
 	}()
 
-	if _, err = tx.Exec(`UPDATE certificate_info SET status = $1, updated_at = $2 WHERE certificate_id = $3;`,
-		newStatus, updatedAt, certificateID.String()); err != nil {
-		return fmt.Errorf("error updating certificate info: %w", err)
+	if err = updateCertStatus(tx, certificateID, newStatus, updatedAt); err != nil {
+		return fmt.Errorf("error updating certificate status: %w", err)
 	}
+
 	if err = tx.Commit(); err != nil {
 		return err
 	}
 	shouldRollback = false
 
 	a.logger.Debugf("updated certificate status - CertificateID: %s", certificateID)
+
+	return nil
+}
+
+func updateCertStatus(tx dbtypes.Querier,
+	certificateID common.Hash,
+	newStatus agglayertypes.CertificateStatus,
+	updatedAt uint32) error {
+	if _, err := tx.Exec(`UPDATE certificate_info SET status = $1, updated_at = $2 WHERE certificate_id = $3;`,
+		newStatus, updatedAt, certificateID.String()); err != nil {
+		return err
+	}
 
 	return nil
 }
