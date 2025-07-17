@@ -26,6 +26,10 @@ const (
 	chainID              = 1337
 
 	base10 = 10
+
+	// Nonce values for contract address calculation
+	bridgeProxyNonce        = 1
+	aggOracleCommitteeNonce = 4
 )
 
 var _ aggkittypes.EthClienter = (*TestClient)(nil)
@@ -159,7 +163,7 @@ func NewSimulatedBackend(t *testing.T,
 	require.NoError(t, err)
 
 	// Create deployer account
-	precalculatedBridgeAddr := crypto.CreateAddress(deployerAuth.From, 1)
+	precalculatedBridgeAddr := crypto.CreateAddress(deployerAuth.From, bridgeProxyNonce)
 
 	// Define balances map
 	if balances == nil {
@@ -172,7 +176,7 @@ func NewSimulatedBackend(t *testing.T,
 	var precalculatedAggOracleCommitteeAddr common.Address
 	if aggOracleCommitteeMode {
 		// Create aggoracle committee address from deployerAuth.From and nonce = 4
-		precalculatedAggOracleCommitteeAddr = crypto.CreateAddress(deployerAuth.From, 4)
+		precalculatedAggOracleCommitteeAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce)
 		balances[precalculatedAggOracleCommitteeAddr] = types.Account{Balance: balance}
 	}
 
