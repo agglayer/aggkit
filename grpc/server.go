@@ -40,7 +40,7 @@ func NewServer(cfg ServerConfig, opts ...grpc.ServerOption) (*Server, error) {
 	addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 	serverAddr := trimGRPCAddress(addr)
 	if cfg.MaxDecodingMessageSize > 0 {
-		opts = append(opts, grpc.MaxRecvMsgSize(int(cfg.MaxDecodingMessageSize)))
+		opts = append(opts, grpc.MaxRecvMsgSize(cfg.MaxDecodingMessageSize))
 	}
 	listener, err := net.Listen("tcp", serverAddr)
 	if err != nil {
