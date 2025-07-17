@@ -25,6 +25,7 @@ type AggsenderValidator struct {
 	log              aggkitcommon.Logger
 	validator        types.CertificateValidator
 	validatorService *grpc.Server
+	cfg              validator.Config
 }
 
 func NewAggsenderValidator(ctx context.Context,
@@ -51,6 +52,7 @@ func NewAggsenderValidator(ctx context.Context,
 		log:              logger,
 		validator:        validatorCert,
 		validatorService: grpcServer,
+		cfg:              cfg,
 	}, nil
 }
 func (a *AggsenderValidator) Start(ctx context.Context) {
@@ -59,6 +61,9 @@ func (a *AggsenderValidator) Start(ctx context.Context) {
 
 // GetRPCServices returns the list of services that the RPC provider exposes
 func (a *AggsenderValidator) GetRPCServices() []jRPC.Service {
+	if !a.cfg.EnableRPC {
+		return []jRPC.Service{}
+	}
 	logger := log.WithFields("aggsender-validator-rpc", aggkitcommon.AGGSENDERVALIDATOR)
 	return []jRPC.Service{
 		{
