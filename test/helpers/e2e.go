@@ -2,7 +2,6 @@ package helpers
 
 import (
 	"context"
-	"fmt"
 	"math/big"
 	"path"
 	"testing"
@@ -359,12 +358,12 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeMode bool) 
 	require.NoError(t, err)
 	require.Equal(t, gerProxyAddr, bridgeGERAddr)
 
+	// Deploy AggOracleCommittee contract if AggOracleCommitteeMode is true
 	var aggOracleCommitteeProxyAddr common.Address
-	var aggOracleCommitteeAddr common.Address
 	var aggOracleCommitteeContract *aggoraclecommittee.Aggoraclecommittee
 	if aggOracleCommitteeMode {
 		// Deploy AggOracleCommittee contract
-		aggOracleCommitteeAddr, _, _, err = aggoraclecommittee.DeployAggoraclecommittee(
+		aggOracleCommitteeAddr, _, _, err := aggoraclecommittee.DeployAggoraclecommittee(
 			setup.DeployerAuth, client.Client(), gerProxyAddr)
 		require.NoError(t, err)
 		client.Commit()
@@ -374,8 +373,8 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeMode bool) 
 		require.NoError(t, err)
 		require.NotNil(t, aggOracleCommitteeAbi)
 
-		aggOracleMembers := []common.Address{setup.UserAuth.From, common.HexToAddress("0xaf8Bc6BA78a854687ae8124D061C52f44e227140"), common.HexToAddress("0xaf8Bc6BA78a854687ae8124D061C52f44e227141")}
-		aggOracleCommitteeInitData, err := aggOracleCommitteeAbi.Pack("initialize", setup.DeployerAuth.From, aggOracleMembers, uint64(3))
+		aggOracleMembers := []common.Address{setup.UserAuth.From}
+		aggOracleCommitteeInitData, err := aggOracleCommitteeAbi.Pack("initialize", setup.DeployerAuth.From, aggOracleMembers, uint64(1))
 		require.NoError(t, err)
 
 		// Deploy a proxy contract for the aggoracle committee
@@ -388,41 +387,6 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeMode bool) 
 		)
 		require.NoError(t, err)
 		client.Commit()
-
-		// Create aggoracle committee contract binding
-		aggOracleCommitteeContract, err = aggoraclecommittee.NewAggoraclecommittee(
-			aggOracleCommitteeProxyAddr, client.Client())
-		require.NoError(t, err)
-
-		// fetch the last proposed GER for the user
-		lastProposedGER, err := aggOracleCommitteeContract.AddressToLastProposedGER(nil, setup.UserAuth.From)
-		require.NoError(t, err)
-		fmt.Println("lastProposedGER", common.Hash(lastProposedGER))
-
-		// fetch oracle committee members
-		oracleCommitteeMembers, err := aggOracleCommitteeContract.GetAllAggOracleMembers(nil)
-		require.NoError(t, err)
-		fmt.Println("oracleCommitteeMembers", oracleCommitteeMembers)
-
-		fmt.Println("aggOracleCommitteeAddr", aggOracleCommitteeAddr.Hex())
-		fmt.Println("aggOracleCommitteeProxyAddr", aggOracleCommitteeProxyAddr.Hex())
-		fmt.Println("UserAuth", setup.UserAuth.From.Hex())
-		fmt.Println("DeployerAuth", setup.DeployerAuth.From.Hex())
-
-		// fetch balance of the aggoracle committee contract
-		balance, err := client.Client().BalanceAt(context.Background(), aggOracleCommitteeAddr, nil)
-		require.NoError(t, err)
-		fmt.Println("aggOracleCommittee balance", balance.String())
-
-		// fetch balance of the aggoracle committee proxy contract
-		balanceProxy, err := client.Client().BalanceAt(context.Background(), aggOracleCommitteeProxyAddr, nil)
-		require.NoError(t, err)
-		fmt.Println("aggOracleCommitteeProxy balance", balanceProxy.String())
-
-		// // fetch current updater
-		// currentUpdater, err := gerL2Contract.GlobalExitRootUpdater(nil)
-		// require.NoError(t, err)
-		// fmt.Println("new currentUpdater", currentUpdater.Hex())
 	}
 
 	return client, setup.UserAuth, gerProxyAddr, gerL2Contract, setup.BridgeProxyAddr, setup.BridgeProxyContract, aggOracleCommitteeProxyAddr, aggOracleCommitteeContract

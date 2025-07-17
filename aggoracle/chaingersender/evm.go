@@ -147,8 +147,6 @@ func (c *EVMChainGERSender) initializeAggOracleCommitteeMode() error {
 	c.aggOracleCommittee = aggOracleCommittee
 	c.aggOracleCommitteeAbi = aggOracleCommitteeAbi
 
-	fmt.Println("ethTxMan.From()", c.ethTxMan.From().Hex())
-	fmt.Println("aggOracleCommitteeAddr", c.aggOracleCommitteeAddr.Hex())
 	// Validate GER proposer
 	if err := validateGERProposer(c.ethTxMan.From(), aggOracleCommittee); err != nil {
 		return err
@@ -225,21 +223,11 @@ func (c *EVMChainGERSender) submitTransaction(
 	ticker := time.NewTicker(c.waitPeriodMonitorTx)
 	defer ticker.Stop()
 
-	fmt.Println("-------------------------------- ger in submitTransaction", ger.Hex())
-
 	// Pack the function call
 	txInput, err := abi.Pack(funcName, ger)
 	if err != nil {
 		return fmt.Errorf("failed to pack %s call: %w", funcName, err)
 	}
-
-	fmt.Println("-------------------------------- txInput", common.Bytes2Hex(txInput))
-	fmt.Println("-------------------------------- funcName", funcName)
-	fmt.Println("-------------------------------- targetAddr", targetAddr.Hex())
-	fmt.Println("-------------------------------- gasOffset", c.gasOffset)
-	fmt.Println("-------------------------------- action", action)
-	fmt.Println("-------------------------------- ethTxMan.From()", c.ethTxMan.From().Hex())
-	fmt.Println("-------------------------------- waitPeriodMonitorTx", c.waitPeriodMonitorTx)
 
 	// Add the transaction to the transaction manager
 	id, err := c.ethTxMan.Add(ctx, targetAddr, common.Big0, txInput, c.gasOffset, nil)
