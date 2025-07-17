@@ -1,5 +1,23 @@
-## Description
+## 🔄 Changes Summary
+- [Brief description of what was added, fixed, or changed in this PR]
 
-Please include a summary of the change and which issue is fixed. Also, include relevant motivation and context. List any dependencies that are required for this change.
+## ⚠️ Breaking Changes
+- 🛠️ **Config**: [Optional: Changes to TOML config]
+- 🔌 **API/CLI**: [Optional: Breaking interface changes]
+- 🗑️ **Deprecated**: [Optional: Removed features]
 
-Fixes # (issue)
+## 📋 Config Updates
+- 🧾 **Diff/Config snippet**: [Optional: Enumerate config changes/provide snippet of changes]
+
+## ✅ Testing
+- 🤖 **Automatic**: [Enumerate E2E tests]
+- 🖱️ **Manual**: [Optional: Steps to verify]
+
+## 🐞 Issues
+- Closes #[issue-number]
+
+## 🔗 Related PRs
+- [Optional: Enumerate related pull requests]
+
+## 📝 Notes
+- [Optional: design decisions, tradeoffs, or TODOs]
