@@ -672,3 +672,256 @@ func TestValidateGERSender(t *testing.T) {
 		})
 	}
 }
+
+func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
+	tests := []struct {
+		name           string
+		mode           GERMode
+		ger            common.Hash
+		mockReturn     [32]byte
+		mockError      error
+		expectedResult bool
+		expectedErrMsg string
+	}{
+		{
+			name:           "GER is proposed - committee mode",
+			mode:           AggOracleCommitteeMode,
+			ger:            common.HexToHash("0x1234567890abcdef"),
+			mockReturn:     common.HexToHash("0x1234567890abcdef"),
+			mockError:      nil,
+			expectedResult: true,
+			expectedErrMsg: "",
+		},
+		{
+			name:           "GER is not proposed - committee mode",
+			mode:           AggOracleCommitteeMode,
+			ger:            common.HexToHash("0x1234567890abcdef"),
+			mockReturn:     [32]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+			mockError:      nil,
+			expectedResult: false,
+			expectedErrMsg: "",
+		},
+		{
+			name:           "Contract error - committee mode",
+			mode:           AggOracleCommitteeMode,
+			ger:            common.HexToHash("0x1234567890abcdef"),
+			mockReturn:     [32]byte{},
+			mockError:      errors.New("contract error"),
+			expectedResult: false,
+			expectedErrMsg: "failed to check last proposed GER for oracle committee member",
+		},
+		{
+			name:           "Wrong mode - direct injection",
+			mode:           DirectInjectionMode,
+			ger:            common.HexToHash("0x1234567890abcdef"),
+			mockReturn:     [32]byte{},
+			mockError:      nil,
+			expectedResult: false,
+			expectedErrMsg: "IsGERProposed is only available in AggOracleCommittee mode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockAggOracleCommittee := mocks.NewAggOracleCommitteeContract(t)
+			mockEthTxManager := mocks.NewEthTxManager(t)
+
+			// Setup mock expectations only for committee mode
+			if tt.mode == AggOracleCommitteeMode {
+				expectedAddress := common.HexToAddress("0x123")
+				mockEthTxManager.EXPECT().From().Return(expectedAddress)
+				mockAggOracleCommittee.EXPECT().
+					AddressToLastProposedGER(mock.Anything, expectedAddress).
+					Return(tt.mockReturn, tt.mockError)
+			}
+
+			evmChainGERSender := &EVMChainGERSender{
+				mode:               tt.mode,
+				aggOracleCommittee: mockAggOracleCommittee,
+				ethTxMan:           mockEthTxManager,
+			}
+
+			result, err := evmChainGERSender.IsGERProposed(tt.ger)
+			if tt.expectedErrMsg != "" {
+				require.ErrorContains(t, err, tt.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+
+			require.Equal(t, tt.expectedResult, result)
+
+			mockAggOracleCommittee.AssertExpectations(t)
+			mockEthTxManager.AssertExpectations(t)
+		})
+	}
+}
+
+func TestEVMChainGERSender_initializeAggOracleCommitteeMode(t *testing.T) {
+	tests := []struct {
+		name                   string
+		aggOracleCommitteeAddr common.Address
+		mockValidationError    error
+		expectedErrMsg         string
+	}{
+		{
+			name:                   "successful validation",
+			aggOracleCommitteeAddr: common.HexToAddress("0x456"),
+			mockValidationError:    nil,
+			expectedErrMsg:         "",
+		},
+		{
+			name:                   "validation error",
+			aggOracleCommitteeAddr: common.HexToAddress("0x456"),
+			mockValidationError:    errors.New("validation failed"),
+			expectedErrMsg:         "validation failed",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockAggOracleCommittee := mocks.NewAggOracleCommitteeContract(t)
+
+			// Setup mock expectations for validation
+			expectedAddress := common.HexToAddress("0x123")
+
+			if tt.mockValidationError == nil {
+				mockAggOracleCommittee.EXPECT().
+					GetAggOracleMemberIndex(mock.Anything, expectedAddress).
+					Return(big.NewInt(1), nil)
+			} else {
+				mockAggOracleCommittee.EXPECT().
+					GetAggOracleMemberIndex(mock.Anything, expectedAddress).
+					Return(nil, tt.mockValidationError)
+			}
+
+			// Test the validation logic that we can properly mock
+			err := validateGERProposer(expectedAddress, mockAggOracleCommittee)
+			if tt.mockValidationError != nil {
+				require.ErrorContains(t, err, tt.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+
+			mockAggOracleCommittee.AssertExpectations(t)
+		})
+	}
+}
+
+func TestEVMChainGERSender_initializeMode(t *testing.T) {
+	tests := []struct {
+		name           string
+		mode           GERMode
+		expectedErrMsg string
+	}{
+		{
+			name:           "direct injection mode",
+			mode:           DirectInjectionMode,
+			expectedErrMsg: "",
+		},
+		{
+			name:           "agg oracle committee mode",
+			mode:           AggOracleCommitteeMode,
+			expectedErrMsg: "",
+		},
+		{
+			name:           "unknown mode",
+			mode:           "unknown_mode",
+			expectedErrMsg: "unknown GER mode: unknown_mode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockL2GERManager := mocks.NewL2GERManagerContract(t)
+			mockEthTxManager := mocks.NewEthTxManager(t)
+
+			evmChainGERSender := &EVMChainGERSender{
+				mode:         tt.mode,
+				l2GERManager: mockL2GERManager,
+				ethTxMan:     mockEthTxManager,
+			}
+
+			// Setup mock expectations for direct injection mode
+			if tt.mode == DirectInjectionMode {
+				expectedAddress := common.HexToAddress("0x123")
+				mockEthTxManager.EXPECT().From().Return(expectedAddress)
+				mockL2GERManager.EXPECT().GlobalExitRootUpdater(nil).Return(expectedAddress, nil)
+			}
+
+			err := evmChainGERSender.initializeMode()
+			if tt.expectedErrMsg != "" {
+				require.ErrorContains(t, err, tt.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+
+			mockL2GERManager.AssertExpectations(t)
+			mockEthTxManager.AssertExpectations(t)
+		})
+	}
+}
+
+func TestEVMChainGERSender_initializeDirectInjectionMode(t *testing.T) {
+	tests := []struct {
+		name             string
+		gerUpdater       common.Address
+		ethTxManagerFrom common.Address
+		mockError        error
+		expectedErrMsg   string
+	}{
+		{
+			name:             "valid GER sender",
+			gerUpdater:       common.HexToAddress("0x123"),
+			ethTxManagerFrom: common.HexToAddress("0x123"),
+			mockError:        nil,
+			expectedErrMsg:   "",
+		},
+		{
+			name:             "zero address updater",
+			gerUpdater:       common.Address{},
+			ethTxManagerFrom: common.HexToAddress("0x123"),
+			mockError:        nil,
+			expectedErrMsg:   "",
+		},
+		{
+			name:             "invalid GER sender",
+			gerUpdater:       common.HexToAddress("0x456"),
+			ethTxManagerFrom: common.HexToAddress("0x123"),
+			mockError:        nil,
+			expectedErrMsg:   "invalid GER sender provided",
+		},
+		{
+			name:             "contract error",
+			gerUpdater:       common.Address{},
+			ethTxManagerFrom: common.HexToAddress("0x123"),
+			mockError:        errors.New("contract error"),
+			expectedErrMsg:   "failed to retrieve GER updater address",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mockL2GERManager := mocks.NewL2GERManagerContract(t)
+			mockEthTxManager := mocks.NewEthTxManager(t)
+
+			// Setup mock expectations
+			mockEthTxManager.EXPECT().From().Return(tt.ethTxManagerFrom)
+			mockL2GERManager.EXPECT().GlobalExitRootUpdater(nil).Return(tt.gerUpdater, tt.mockError)
+
+			evmChainGERSender := &EVMChainGERSender{
+				l2GERManager: mockL2GERManager,
+				ethTxMan:     mockEthTxManager,
+			}
+
+			err := evmChainGERSender.initializeDirectInjectionMode()
+			if tt.expectedErrMsg != "" {
+				require.ErrorContains(t, err, tt.expectedErrMsg)
+			} else {
+				require.NoError(t, err)
+			}
+
+			mockL2GERManager.AssertExpectations(t)
+			mockEthTxManager.AssertExpectations(t)
+		})
+	}
+}
