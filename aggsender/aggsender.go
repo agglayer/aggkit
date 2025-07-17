@@ -297,7 +297,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 		return nil, fmt.Errorf("certificate validation failed: %w", err)
 	}
-	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s , end: %s",
+	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s, end: %s",
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
@@ -370,7 +370,7 @@ func (a *AggSender) callValidator(
 	if a.validator == nil {
 		return nil, nil
 	}
-	a.log.Infof("certificate sending to Validator: %s", certificate.Brief())
+	a.log.Infof("delegating certificate validation: %s", certificate.Brief())
 	validatorSignature, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
 	if err != nil {
 		a.log.Errorf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())

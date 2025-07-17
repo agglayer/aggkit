@@ -1,16 +1,10 @@
 package validator
 
 import (
-	"encoding/binary"
-
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-)
-
-const (
-	u32Size = 4
-	u64Size = 8
 )
 
 // HashCertificateToSign is the hash of the certificate that the validator will sign
@@ -20,10 +14,8 @@ func HashCertificateToSign(cert *agglayertypes.Certificate) common.Hash {
 	for i, importedBridgeExit := range cert.ImportedBridgeExits {
 		globalIndexHashes[i] = importedBridgeExit.GlobalIndex.Hash().Bytes()
 	}
-	networkID := make([]byte, u32Size)
-	binary.BigEndian.PutUint32(networkID, cert.NetworkID)
-	height := make([]byte, u64Size)
-	binary.BigEndian.PutUint64(height, cert.Height)
+	networkID := aggkitcommon.Uint32ToBigEndianBytes(cert.NetworkID)
+	height := aggkitcommon.Uint64ToBigEndianBytes(cert.Height)
 	return crypto.Keccak256Hash(
 		cert.NewLocalExitRoot.Bytes(),
 		crypto.Keccak256Hash(globalIndexHashes...).Bytes(),
