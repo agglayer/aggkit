@@ -28,7 +28,7 @@ import (
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 	t.Parallel()
-	// ovveride TimeNowFunc for testing
+	// override TimeNowFunc for testing
 	TimeNowFunc = timeNowUTCForTest
 	ctx := context.Background()
 

@@ -39,6 +39,7 @@ func (v *RemoteValidator) String() string {
 	return "RemoteValidator"
 }
 
+// HealthCheck performs a health check on the AggsenderValidator service.
 func (v *RemoteValidator) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
 	return v.client.HealthCheck(ctx)
 }

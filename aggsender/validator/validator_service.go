@@ -43,7 +43,7 @@ func NewValidatorService(
 	}
 }
 
-// Implementa el método Status
+// HealthCheck implements the HealthCheck method of the AggsenderValidator service.
 func (s *ValidatorService) HealthCheck(ctx context.Context, in *emptypb.Empty) (*v1.HealthCheckResponse, error) {
 	version := aggkit.GetVersion()
 	return &v1.HealthCheckResponse{
