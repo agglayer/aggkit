@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
+	aggkitdb "github.com/agglayer/aggkit/db"
 )
 
 const (
@@ -96,7 +97,7 @@ func newInitialStatus(ctx context.Context,
 	}
 
 	localSettledCert, err := storage.GetLastSettledCertificate()
-	if err != nil {
+	if err != nil && !errors.Is(err, aggkitdb.ErrNotFound) {
 		return nil, fmt.Errorf("recovery: error getting last settled certificate from local storage: %w", err)
 	}
 
