@@ -18,7 +18,9 @@ func TestNewAggsenderValidator(t *testing.T) {
 	mockFlowPP := mocks.NewAggsenderFlow(t)
 	mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 	mockAggLayerClient := validatormocks.NewAgglayerClientInterface(t)
-	cfg := validator.Config{}
+	cfg := validator.Config{
+		EnableRPC: true,
+	}
 	// Call the function
 	validator, err := NewAggsenderValidator(ctx, mockLogger, cfg, mockFlowPP, mockL1InfoTreeDataQuerier,
 		mockAggLayerClient, nil)

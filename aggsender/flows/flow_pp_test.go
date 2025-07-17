@@ -738,6 +738,9 @@ func generateTestProof(t *testing.T) treetypes.Proof {
 
 func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 	TimeNowFunc = timeNowUTCForTest
+	defer func() {
+		TimeNowFunc = TimeNowUTC
+	}()
 	t.Parallel()
 	// override to have always the same value and not depend on real clock
 	ctx := context.Background()
