@@ -611,11 +611,7 @@ func runL2GERSyncIfNeeded(
 		log.Fatalf("error creating l2GERSync: %s", err)
 	}
 
-	go func() {
-		if err := l2GERSync.Start(ctx); err != nil {
-			log.Fatalf("l2GERSync failed: %s", err)
-		}
-	}()
+	go l2GERSync.Start(ctx)
 
 	return l2GERSync
 }

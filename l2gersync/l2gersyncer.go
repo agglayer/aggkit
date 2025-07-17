@@ -148,9 +148,8 @@ func resolveSyncMode(ctx context.Context, address common.Address, backend bind.C
 }
 
 // Start initiates the synchronization process.
-func (s *L2GERSync) Start(ctx context.Context) error {
+func (s *L2GERSync) Start(ctx context.Context) {
 	s.driver.Sync(ctx)
-	return nil
 }
 
 // GetFirstGERAfterL1InfoTreeIndex returns the first GER after a specified L1 info tree index

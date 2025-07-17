@@ -3,7 +3,6 @@ package l2gersync_test
 import (
 	"context"
 	"fmt"
-	"log"
 	"path"
 	"strconv"
 	"testing"
@@ -50,11 +49,7 @@ func TestL2GERSyncE2E(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	go func() {
-		if err := syncer.Start(ctx); err != nil {
-			log.Fatalf("l2GERSync failed: %s", err)
-		}
-	}()
+	go syncer.Start(ctx)
 
 	for i := range testIterations {
 		updateL1GlobalExitRoot(t, l1Setup, i)
@@ -86,11 +81,7 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	go func() {
-		if err := syncer.Start(ctx); err != nil {
-			log.Fatalf("l2GERsync failed: %s", err)
-		}
-	}()
+	go syncer.Start(ctx)
 
 	updatedGERs := make([]common.Hash, 0, testIterations)
 	for i := range testIterations {
@@ -156,10 +147,7 @@ func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 	)
 	require.NoError(t, err)
 
-	go func() {
-		err := l2GERSyncer.Start(ctx)
-		require.NoError(t, err, "l2GERSync failed")
-	}()
+	go l2GERSyncer.Start(ctx)
 
 	startBlockNumber, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
