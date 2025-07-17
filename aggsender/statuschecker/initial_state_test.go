@@ -287,7 +287,7 @@ func TestRegularCases(t *testing.T) {
 			resultError:      true,
 		},
 		{
-			name:             "14| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID2, h1   | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)",
+			name:             "14| LocalCert: ID3, h1, pending | LocalSettled: ID2, h1 | AgglayerSettled: ID2, h1 | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)",
 			localCert:        &certTestData{hash1, 3, agglayertypes.Pending},
 			localSettledCert: &certTestData{hash2, 2, agglayertypes.Settled},
 			agglayerSettled:  &certTestData{hash2, 2, agglayertypes.Settled},
