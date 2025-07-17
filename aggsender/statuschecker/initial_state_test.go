@@ -327,28 +327,28 @@ func runTestCases(t *testing.T, tests []testCaseData) {
 		t.Run(tt.name, func(t *testing.T) {
 			sut := initialStatus{log: logger}
 			if tt.localCert != nil {
-				sut.LocalCert = &types.CertificateHeader{
+				sut.LocalLastCert = &types.CertificateHeader{
 					CertificateID: tt.localCert.CertificateID,
 					Height:        tt.localCert.Height,
 					Status:        tt.localCert.Status,
 				}
 			}
 			if tt.agglayerSettled != nil {
-				sut.SettledCert = &agglayertypes.CertificateHeader{
+				sut.AgglayerLastSettledCert = &agglayertypes.CertificateHeader{
 					CertificateID: tt.agglayerSettled.CertificateID,
 					Height:        tt.agglayerSettled.Height,
 					Status:        tt.agglayerSettled.Status,
 				}
 			}
 			if tt.agglayerPending != nil {
-				sut.PendingCert = &agglayertypes.CertificateHeader{
+				sut.AgglayerLastPendingCert = &agglayertypes.CertificateHeader{
 					CertificateID: tt.agglayerPending.CertificateID,
 					Height:        tt.agglayerPending.Height,
 					Status:        tt.agglayerPending.Status,
 				}
 			}
 			if tt.localSettledCert != nil {
-				sut.LocalSettledCert = &types.CertificateHeader{
+				sut.LocalLastSettledCert = &types.CertificateHeader{
 					CertificateID: tt.localSettledCert.CertificateID,
 					Height:        tt.localSettledCert.Height,
 					Status:        tt.localSettledCert.Status,

@@ -456,9 +456,9 @@ func TestCheckLastCertificateFromAgglayer(t *testing.T) {
 			}
 
 			mockInitialStatus := &initialStatus{
-				log:         mockLogger,
-				LocalCert:   tt.localCert,
-				SettledCert: tt.agglayerCert,
+				log:                     mockLogger,
+				LocalLastCert:           tt.localCert,
+				AgglayerLastSettledCert: tt.agglayerCert,
 			}
 
 			newInitialStatusFn = func(_ context.Context,

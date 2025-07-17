@@ -29,11 +29,11 @@ var (
 )
 
 type initialStatus struct {
-	SettledCert      *agglayertypes.CertificateHeader
-	PendingCert      *agglayertypes.CertificateHeader
-	LocalCert        *types.CertificateHeader
-	LocalSettledCert *types.CertificateHeader
-	log              common.Logger
+	AgglayerLastSettledCert *agglayertypes.CertificateHeader
+	AgglayerLastPendingCert *agglayertypes.CertificateHeader
+	LocalLastCert           *types.CertificateHeader
+	LocalLastSettledCert    *types.CertificateHeader
+	log                     common.Logger
 }
 
 type initialStatusAction int
@@ -102,21 +102,21 @@ func newInitialStatus(ctx context.Context,
 	}
 
 	return &initialStatus{
-		SettledCert:      aggLayerLastSettledCert, // from Agglayer
-		PendingCert:      aggLayerLastPendingCert, // from Agglayer
-		LocalSettledCert: localSettledCert,        // from local storage
-		LocalCert:        localLastCert,           // from local storage
-		log:              log,
+		AgglayerLastSettledCert: aggLayerLastSettledCert, // from Agglayer
+		AgglayerLastPendingCert: aggLayerLastPendingCert, // from Agglayer
+		LocalLastSettledCert:    localSettledCert,        // from local storage
+		LocalLastCert:           localLastCert,           // from local storage
+		log:                     log,
 	}, nil
 }
 
 // logData logs the data from the initialStatus object
 func (i *initialStatus) logData() {
-	i.log.Infof("recovery: settled certificate from AggLayer: %s", i.SettledCert.ID())
+	i.log.Infof("recovery: settled certificate from AggLayer: %s", i.AgglayerLastSettledCert.ID())
 	i.log.Infof("recovery: pending certificate from AggLayer: %s / status: %s",
-		i.PendingCert.ID(), i.PendingCert.StatusString())
+		i.AgglayerLastPendingCert.ID(), i.AgglayerLastPendingCert.StatusString())
 	i.log.Infof("recovery: certificate from Local           : %s / status: %s",
-		i.LocalCert.ID(), i.LocalCert.StatusString())
+		i.LocalLastCert.ID(), i.LocalLastCert.StatusString())
 }
 
 // process processes the initial status and returns the actions to take
@@ -156,22 +156,22 @@ func (i *initialStatus) process() ([]*initialStatusResult, error) {
 
 // processLastLocalCert checks the last certificates from agglayer vs local certificates and returns the action to take
 func (i *initialStatus) processLastLocalCert() (*initialStatusResult, error) {
-	if i.LocalCert == nil && i.SettledCert == nil && i.PendingCert != nil {
-		if i.PendingCert.Height == 0 {
+	if i.LocalLastCert == nil && i.AgglayerLastSettledCert == nil && i.AgglayerLastPendingCert != nil {
+		if i.AgglayerLastPendingCert.Height == 0 {
 			return newInitialStatusResult(
 				InitialStatusActionInsertNewCert,
 				"no settled cert yet, and the pending cert have the correct height (0) so we use it",
-				i.PendingCert,
+				i.AgglayerLastPendingCert,
 			), nil
 		}
 
 		// We don't known if pendingCert is going to be Settled or InError.
 		// We can't use it because maybe is error wrong height
-		if !i.PendingCert.Status.IsInError() && i.PendingCert.Height > 0 {
+		if !i.AgglayerLastPendingCert.Status.IsInError() && i.AgglayerLastPendingCert.Height > 0 {
 			return nil, fmt.Errorf("recovery: pendingCert %s is in state %s but have a suspicious height, so we wait to finish",
-				i.PendingCert.ID(), i.PendingCert.StatusString())
+				i.AgglayerLastPendingCert.ID(), i.AgglayerLastPendingCert.StatusString())
 		}
-		if i.PendingCert.Status.IsInError() && i.PendingCert.Height > 0 {
+		if i.AgglayerLastPendingCert.Status.IsInError() && i.AgglayerLastPendingCert.Height > 0 {
 			return newInitialStatusResult(
 				InitialStatusActionNone,
 				"the pending cert have wrong height and it's InError. We ignore it",
@@ -181,7 +181,7 @@ func (i *initialStatus) processLastLocalCert() (*initialStatusResult, error) {
 	}
 	aggLayerLastCert := i.getLatestAggLayerCert()
 	i.log.Infof("recovery: last certificate from AggLayer: %s", aggLayerLastCert.String())
-	localLastCert := i.LocalCert
+	localLastCert := i.LocalLastCert
 
 	// CASE 1: No certificates in local storage and agglayer
 	if localLastCert == nil && aggLayerLastCert == nil {
@@ -238,32 +238,33 @@ func (i *initialStatus) processLastLocalCert() (*initialStatusResult, error) {
 }
 
 func (i *initialStatus) checkAgglayerConsistenceCerts() error {
-	if i.PendingCert == nil {
+	if i.AgglayerLastPendingCert == nil {
 		return nil
 	}
 
-	if i.SettledCert == nil {
+	if i.AgglayerLastSettledCert == nil {
 		// If Height>0 and not inError, we have a problem. We should have a settled cert
-		if !i.PendingCert.Status.IsInError() && i.PendingCert.Height != 0 {
+		if !i.AgglayerLastPendingCert.Status.IsInError() && i.AgglayerLastPendingCert.Height != 0 {
 			return fmt.Errorf("consistence: no settled cert, and pending one is height %d and not in error. Err: %w",
-				i.PendingCert.Height, ErrAgglayerInconsistence)
+				i.AgglayerLastPendingCert.Height, ErrAgglayerInconsistence)
 		}
 		return nil
 	}
 
 	// Both settled and pending cert != nil, that is the potential inconsistency
 	// This is there is a settled cert for a height but also a pending cert for the same height
-	if i.PendingCert.Height == i.SettledCert.Height &&
-		!i.SettledCert.Status.IsInError() {
+	if i.AgglayerLastPendingCert.Height == i.AgglayerLastSettledCert.Height &&
+		!i.AgglayerLastSettledCert.Status.IsInError() {
 		return fmt.Errorf("consistence: settled (%s) and pending (%s) certs are different for same height. Err: %w",
-			i.SettledCert.ID(), i.PendingCert.ID(),
+			i.AgglayerLastSettledCert.ID(), i.AgglayerLastPendingCert.ID(),
 			ErrAgglayerInconsistence)
 	}
 
 	// Settled certificate has higher height than pending certificate and it is not InError. This should not happen
-	if i.SettledCert.Height > i.PendingCert.Height && !i.SettledCert.Status.IsInError() {
+	if i.AgglayerLastSettledCert.Height > i.AgglayerLastPendingCert.Height &&
+		!i.AgglayerLastSettledCert.Status.IsInError() {
 		return fmt.Errorf("settled cert height %s is higher than pending cert height %s that is inNoError. Err: %w",
-			i.SettledCert.ID(), i.PendingCert.ID(),
+			i.AgglayerLastSettledCert.ID(), i.AgglayerLastPendingCert.ID(),
 			ErrAgglayerInconsistence)
 	}
 
@@ -271,72 +272,72 @@ func (i *initialStatus) checkAgglayerConsistenceCerts() error {
 }
 
 func (i *initialStatus) getLatestAggLayerCert() *agglayertypes.CertificateHeader {
-	if i.PendingCert == nil {
-		return i.SettledCert
+	if i.AgglayerLastPendingCert == nil {
+		return i.AgglayerLastSettledCert
 	}
-	return i.PendingCert
+	return i.AgglayerLastPendingCert
 }
 
 // processSettledCert checks the last settled certificate from agglayer vs local storage
 func (i *initialStatus) processSettledCert() (*initialStatusResult, error) {
-	if i.PendingCert == nil {
+	if i.AgglayerLastPendingCert == nil {
 		// if pending cert is nil, this will be processed in the processLastLocal function
 		return nil, nil
 	}
 
-	if i.SettledCert == nil {
+	if i.AgglayerLastSettledCert == nil {
 		// CASE 1: Local storage have settled certificate, but agglayer doesn't have one
 		// This is an invalid situation
-		if i.LocalSettledCert != nil {
+		if i.LocalLastSettledCert != nil {
 			return nil, fmt.Errorf("recovery: local settled certificate exists (%s)"+
-				"but agglayer has no settled certificate", i.LocalSettledCert.ID())
+				"but agglayer has no settled certificate", i.LocalLastSettledCert.ID())
 		}
 
 		// CASE 2: Both local and agglayer have no settled certificate
 		return newInitialStatusResult(
 			InitialStatusActionNone,
 			"agglayer and local storage have no settled certificate",
-			i.SettledCert,
+			i.AgglayerLastSettledCert,
 		), nil
 	}
 
-	if i.LocalSettledCert == nil {
+	if i.LocalLastSettledCert == nil {
 		// CASE 3: We have no settled certificate in local storage
 		return newInitialStatusResult(
 			InitialStatusActionInsertNewCert,
 			"no local settled certificate,inserting agglayer settled certificate into local storage",
-			i.SettledCert,
+			i.AgglayerLastSettledCert,
 		), nil
 	}
 
 	// CASE 4: We have a settled certificate in local storage
 	// but its height is higher than the one in the agglayer
-	if i.LocalSettledCert.Height > i.SettledCert.Height {
+	if i.LocalLastSettledCert.Height > i.AgglayerLastSettledCert.Height {
 		return nil, fmt.Errorf("recovery: local settled certificate (%s) has higher height (%d) "+
 			"than agglayer settled certificate (%s) with height (%d)",
-			i.LocalSettledCert.ID(), i.LocalSettledCert.Height,
-			i.SettledCert.ID(), i.SettledCert.Height)
+			i.LocalLastSettledCert.ID(), i.LocalLastSettledCert.Height,
+			i.AgglayerLastSettledCert.ID(), i.AgglayerLastSettledCert.Height)
 	}
 
 	// CASE 5: We have a settled certificate in local storage with same height
-	if i.LocalSettledCert.Height == i.SettledCert.Height {
+	if i.LocalLastSettledCert.Height == i.AgglayerLastSettledCert.Height {
 		// CASE 5.1: We have a settled certificate in local storage
 		// the height is the same but the certificate ID is different
 		// this is a problem, because it means that the local storage has a different certificate
 		// than the one in the agglayer for the same height
-		if i.LocalSettledCert.CertificateID != i.SettledCert.CertificateID {
+		if i.LocalLastSettledCert.CertificateID != i.AgglayerLastSettledCert.CertificateID {
 			return nil, fmt.Errorf("recovery: local settled certificate (%s) has same height (%d) "+
 				"but different certificate ID (%s) than agglayer settled certificate (%s)",
-				i.LocalSettledCert.ID(), i.LocalSettledCert.Height,
-				i.LocalSettledCert.CertificateID,
-				i.SettledCert.ID())
+				i.LocalLastSettledCert.ID(), i.LocalLastSettledCert.Height,
+				i.LocalLastSettledCert.CertificateID,
+				i.AgglayerLastSettledCert.ID())
 		}
 
 		// CASE 5.2: the local settled certificate matches the agglayer settled certificate
 		return newInitialStatusResult(
 			InitialStatusActionNone,
 			"last settled certificate already in local storage with same height and ID",
-			i.SettledCert,
+			i.AgglayerLastSettledCert,
 		), nil
 	}
 
@@ -345,6 +346,6 @@ func (i *initialStatus) processSettledCert() (*initialStatusResult, error) {
 	return newInitialStatusResult(
 		InitialStatusActionInsertNewCert,
 		"updating local storage with agglayer settled certificate",
-		i.SettledCert,
+		i.AgglayerLastSettledCert,
 	), nil
 }

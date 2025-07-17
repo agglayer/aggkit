@@ -193,7 +193,7 @@ func (c *certStatusChecker) checkLastCertificateFromAgglayer(ctx context.Context
 	}
 
 	for _, action := range actions {
-		if err := c.executeInitialStatusAction(ctx, action, initialStatus.LocalCert); err != nil {
+		if err := c.executeInitialStatusAction(ctx, action, initialStatus.LocalLastCert); err != nil {
 			return fmt.Errorf("recovery: error executing initial status action: %w", err)
 		}
 	}
