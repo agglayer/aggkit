@@ -16,7 +16,6 @@ import (
 )
 
 var (
-	ErrNotImplemented = errors.New("aggsender-validator not implemented")
 	ErrNilCertificate = errors.New("aggsender-validator nil certificate")
 )
 

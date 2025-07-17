@@ -178,9 +178,9 @@ func (a *AggSender) Start(ctx context.Context) {
 			a.log.Warnf("error checking validator health: %v", err)
 		}
 		if !status.IsHealthy() {
-			a.log.Warnf("validator health is not healthy: %s", status.String())
+			a.log.Warnf("validator status is not healthy: %s", status.String())
 		}
-		a.log.Infof("Validator health check: %s", status.String())
+		a.log.Infof("validator health check: %s", status.String())
 	}
 	a.sendCertificates(ctx, 0)
 }

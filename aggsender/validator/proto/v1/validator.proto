@@ -37,5 +37,3 @@ message ValidateCertificateResponse {
   // The signature provided by the aggsender validator.
    agglayer.interop.types.v1.FixedBytes65 signature = 1;
 }
-
-

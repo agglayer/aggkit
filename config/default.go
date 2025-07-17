@@ -246,7 +246,8 @@ ProfilingEnabled = false
 
 [Validator]
 EnableRPC = false
-Signer = { Method = "mock" }
+# check SignerConfig in docs/common_config.md for more details
+Signer = {{AggsenderPrivateKey}}
 MaxCertSize = "{{AggSender.MaxCertSize}}"
 MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
 DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
@@ -254,7 +255,7 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 	Host = "0.0.0.0"
 	Port = 5578
 	EnableReflection = true
-	MaxDecodingMessageSize = 1073741824  # 1GB
+	MaxDecodingMessageSize = 26214400  # 25Mb
 [Validator.LerQuerierConfig]
 	RollupManagerAddr = "{{AggSender.RollupManagerAddr}}"
 	RollupCreationBlockL1 = "{{AggSender.RollupCreationBlockL1}}"
