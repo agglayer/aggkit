@@ -10,7 +10,7 @@
 - 🧾 **Diff/Config snippet**: [Optional: Enumerate config changes/provide snippet of changes]
 
 ## ✅ Testing
-- 🤖 **Automatic**: [Enumerate E2E tests]
+- 🤖 **Automatic**: [Optional: Enumerate E2E tests]
 - 🖱️ **Manual**: [Optional: Steps to verify]
 
 ## 🐞 Issues
