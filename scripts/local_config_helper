@@ -1,7 +1,6 @@
 #!/bin/bash
 
 source $(dirname $0)/../test/scripts/env.sh
-set -euo pipefail
 
 ###############################################################################
 # params:
@@ -231,8 +230,8 @@ function create_dest_folder() {
     export DEST=${TMP_AGGKIT_FOLDER}/local_config
     export zkevm_path_rw_data=${TMP_AGGKIT_FOLDER}/runtime
     [ ! -d ${DEST} ] && mkdir -p ${DEST}
-    rm $DEST/*
-    mkdir $zkevm_path_rw_data
+    rm -rf "$DEST"/*
+    mkdir -p $zkevm_path_rw_data
 }
 ###############################################################################
 function download_kurtosis_artifacts() {
