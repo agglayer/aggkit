@@ -106,7 +106,7 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 			ethTxMan := mocks.NewEthTxManager(t)
 
 			// Add From() expectation for ProposeGER tests since it calls IsGERProposed internally
-			if config.funcName == "proposeGlobalExitRoot" && tt.mode == config.expectedMode {
+			if config.funcName == proposeGERFuncName && tt.mode == config.expectedMode {
 				ethTxMan.EXPECT().From().Return(common.HexToAddress("0x123"))
 			}
 
@@ -134,7 +134,7 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 				sender.aggOracleCommitteeAbi = &abi
 
 				// Add mock for aggOracleCommittee when testing ProposeGER
-				if config.funcName == "proposeGlobalExitRoot" && tt.mode == config.expectedMode {
+				if config.funcName == proposeGERFuncName && tt.mode == config.expectedMode {
 					mockAggOracleCommittee := mocks.NewAggOracleCommitteeContract(t)
 					expectedAddress := common.HexToAddress("0x123")
 					// Mock IsGERProposed to return false (not already proposed)
@@ -150,7 +150,7 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 
 			var err error
 			ger := common.HexToHash("0x456")
-			if config.funcName == "proposeGlobalExitRoot" {
+			if config.funcName == proposeGERFuncName {
 				err = sender.ProposeGER(ctx, ger)
 			} else {
 				err = sender.InjectGER(ctx, ger)
@@ -228,7 +228,7 @@ func TestEVMChainGERSender_ProposeGER(t *testing.T) {
 	config := testConfig{
 		funcABI:      proposeGERFuncABI,
 		targetAddr:   aggOracleCommitteeAddr,
-		funcName:     "proposeGlobalExitRoot",
+		funcName:     proposeGERFuncName,
 		action:       "propose",
 		expectedMode: AggOracleCommitteeMode,
 		wrongModeErr: "ProposeGER is only available in AggOracleCommittee mode",
