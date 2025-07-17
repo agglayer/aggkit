@@ -430,6 +430,63 @@ func (_c *AggSenderStorage_GetLastSentCertificateHeaderWithProofIfInError_Call) 
 	return _c
 }
 
+// GetLastSettledCertificate provides a mock function with no fields
+func (_m *AggSenderStorage) GetLastSettledCertificate() (*types.CertificateHeader, error) {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLastSettledCertificate")
+	}
+
+	var r0 *types.CertificateHeader
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (*types.CertificateHeader, error)); ok {
+		return rf()
+	}
+	if rf, ok := ret.Get(0).(func() *types.CertificateHeader); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*types.CertificateHeader)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// AggSenderStorage_GetLastSettledCertificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastSettledCertificate'
+type AggSenderStorage_GetLastSettledCertificate_Call struct {
+	*mock.Call
+}
+
+// GetLastSettledCertificate is a helper method to define mock.On call
+func (_e *AggSenderStorage_Expecter) GetLastSettledCertificate() *AggSenderStorage_GetLastSettledCertificate_Call {
+	return &AggSenderStorage_GetLastSettledCertificate_Call{Call: _e.mock.On("GetLastSettledCertificate")}
+}
+
+func (_c *AggSenderStorage_GetLastSettledCertificate_Call) Run(run func()) *AggSenderStorage_GetLastSettledCertificate_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *AggSenderStorage_GetLastSettledCertificate_Call) Return(_a0 *types.CertificateHeader, _a1 error) *AggSenderStorage_GetLastSettledCertificate_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *AggSenderStorage_GetLastSettledCertificate_Call) RunAndReturn(run func() (*types.CertificateHeader, error)) *AggSenderStorage_GetLastSettledCertificate_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetNonAcceptedCertificate provides a mock function with no fields
 func (_m *AggSenderStorage) GetNonAcceptedCertificate() (*db.NonAcceptedCertificate, error) {
 	ret := _m.Called()

@@ -208,7 +208,7 @@ func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 	c.log.Infof("recovery: action: %s", action.String())
 	switch action.action {
 	case InitialStatusActionNone:
-		c.log.Info("recovery: No certificates in local storage and agglayer: initial state")
+		c.log.Info("recovery: no action needed")
 	case InitialStatusActionUpdateCurrentCert:
 		if err := c.updateCertificateStatus(ctx, localCert, action.cert); err != nil {
 			return fmt.Errorf("recovery: error updating local storage with agglayer certificate: %w", err)

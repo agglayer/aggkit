@@ -73,6 +73,8 @@ type AggSenderStorage interface {
 	GetNonAcceptedCertificate() (*NonAcceptedCertificate, error)
 	// SaveOrUpdateCertificate saves or updates a certificate in the storage
 	SaveOrUpdateCertificate(ctx context.Context, certificate types.Certificate) error
+	// GetLastSettledCertificate returns the last settled certificate from the storage
+	GetLastSettledCertificate() (*types.CertificateHeader, error)
 }
 
 var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
@@ -192,6 +194,20 @@ func (a *AggSenderSQLStorage) GetLastSentCertificateHeader() (*types.Certificate
 	if err := meddler.QueryRow(a.db, &certificateHeader,
 		fmt.Sprintf("%s ORDER BY height DESC LIMIT 1;", selectQueryCertificateHeader)); err != nil {
 		return nil, getSelectQueryError(0, err)
+	}
+	return &certificateHeader, nil
+}
+
+// GetLastSettledCertificate returns the last settled certificate from the storage
+func (a *AggSenderSQLStorage) GetLastSettledCertificate() (*types.CertificateHeader, error) {
+	var certificateHeader types.CertificateHeader
+	if err := meddler.QueryRow(a.db, &certificateHeader,
+		fmt.Sprintf("%s WHERE status = $1 ORDER BY height DESC LIMIT 1;", selectQueryCertificateHeader),
+		agglayertypes.Settled); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, fmt.Errorf("error getting last settled certificate: %w", err)
 	}
 	return &certificateHeader, nil
 }
