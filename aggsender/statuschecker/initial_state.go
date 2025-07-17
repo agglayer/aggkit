@@ -12,17 +12,20 @@ import (
 	"github.com/agglayer/aggkit/common"
 )
 
-var newInitialStatusFn = newInitialStatus
-
 const (
-	initialStatusResultsCapacity = 2
-
 	InitialStatusActionNone initialStatusAction = iota
 	InitialStatusActionUpdateCurrentCert
 	InitialStatusActionInsertNewCert
 )
 
-var ErrAgglayerInconsistence = errors.New("recovery: agglayer inconsistence")
+var (
+	newInitialStatusFn = newInitialStatus
+
+	resultTypes                  = []agglayertypes.CertificateStatus{agglayertypes.Pending, agglayertypes.Settled}
+	initialStatusResultsCapacity = len(resultTypes)
+
+	ErrAgglayerInconsistence = errors.New("recovery: agglayer inconsistence")
+)
 
 type initialStatus struct {
 	SettledCert      *agglayertypes.CertificateHeader
