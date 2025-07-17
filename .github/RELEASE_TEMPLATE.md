@@ -2,14 +2,12 @@
 - [Brief description of new features]
 
 ## ⚠️ Breaking Changes
-- **Config File Changes**: [Describe any configuration file modifications]
-- **API Changes**: [Document any breaking API modifications]
-- **Deprecated Features**: [List any features being removed]
+- 🛠️ **Config**: [Optional: Changes to TOML config]
+- 🔌 **API/CLI**: [Optional: Breaking interface changes]
+- 🗑️ **Deprecated Features**: [Optional: Removed features]
 
 ## 📋 Configuration Updates
-- **Config Diff**: [Link to diff showing configuration changes]
-- **Updated Config File**: [Direct GitHub link to the exact config file version]
-- **Migration Guide**: [Step-by-step instructions for updating existing configs]
+- 🧾 **Config Diff**: [Link to diff showing configuration changes]
 
 ## ✅ Testing & Validation
 - **Test cases**: [Link to added e2e test cases]

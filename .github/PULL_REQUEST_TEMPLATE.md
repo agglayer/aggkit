@@ -4,7 +4,7 @@
 ## ⚠️ Breaking Changes
 - 🛠️ **Config**: [Optional: Changes to TOML config]
 - 🔌 **API/CLI**: [Optional: Breaking interface changes]
-- 🗑️ **Deprecated**: [Optional: Removed features]
+- 🗑️ **Deprecated Features**: [Optional: Removed features]
 
 ## 📋 Config Updates
 - 🧾 **Diff/Config snippet**: [Optional: Enumerate config changes/provide snippet of changes]
