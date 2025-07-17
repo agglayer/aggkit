@@ -129,8 +129,7 @@ func resolveSyncMode(ctx context.Context, address common.Address, backend bind.C
 			return SovereignChain, nil
 		}
 
-		if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) &&
-			!strings.Contains(err.Error(), "function selector was not recognized") {
+		if !strings.Contains(err.Error(), gethvm.ErrExecutionReverted.Error()) {
 			return "", fmt.Errorf("unexpected error when checking l2 ger manager (sovereign chain): %w", err)
 		}
 	}
