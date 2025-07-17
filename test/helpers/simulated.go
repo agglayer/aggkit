@@ -65,10 +65,11 @@ func (t *TestClient) Call(result any, method string, args ...any) error {
 
 // SimulatedBackendSetup defines the setup for a simulated backend.
 type SimulatedBackendSetup struct {
-	UserAuth            *bind.TransactOpts
-	DeployerAuth        *bind.TransactOpts
-	BridgeProxyAddr     common.Address
-	BridgeProxyContract *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	UserAuth               *bind.TransactOpts
+	DeployerAuth           *bind.TransactOpts
+	BridgeProxyAddr        common.Address
+	BridgeProxyContract    *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	AggOracleCommitteeAddr common.Address
 }
 
 // DeployBridge deploys the bridge contract
@@ -144,7 +145,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 // NewSimulatedBackend creates a simulated backend with two accounts: user and deployer.
 func NewSimulatedBackend(t *testing.T,
 	balances map[common.Address]types.Account,
-	deployerAuth *bind.TransactOpts) (*simulated.Backend, *SimulatedBackendSetup) {
+	deployerAuth *bind.TransactOpts, aggOracleCommitteeMode bool) (*simulated.Backend, *SimulatedBackendSetup) {
 	t.Helper()
 
 	// Define default balance
@@ -168,14 +169,22 @@ func NewSimulatedBackend(t *testing.T,
 	balances[deployerAuth.From] = types.Account{Balance: balance}
 	balances[precalculatedBridgeAddr] = types.Account{Balance: balance}
 
+	var precalculatedAggOracleCommitteeAddr common.Address
+	if aggOracleCommitteeMode {
+		// Create aggoracle committee address from deployerAuth.From and nonce = 4
+		precalculatedAggOracleCommitteeAddr = crypto.CreateAddress(deployerAuth.From, 4)
+		balances[precalculatedAggOracleCommitteeAddr] = types.Account{Balance: balance}
+	}
+
 	client := simulated.NewBackend(balances, simulated.WithBlockGasLimit(defaultBlockGasLimit))
 
 	// Mine the first block
 	client.Commit()
 
 	setup := &SimulatedBackendSetup{
-		UserAuth:     userAuth,
-		DeployerAuth: deployerAuth,
+		UserAuth:               userAuth,
+		DeployerAuth:           deployerAuth,
+		AggOracleCommitteeAddr: precalculatedAggOracleCommitteeAddr,
 	}
 
 	return client, setup

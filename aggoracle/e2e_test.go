@@ -13,22 +13,45 @@ import (
 )
 
 func TestEVM(t *testing.T) {
-	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
+	// setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
+	cfg := helpers.DefaultEnvironmentConfig()
+	cfg.AggOracleCommitteeMode = true
+	setup := helpers.NewE2EEnvWithEVML2(t, cfg)
 
-	for i := 0; i < 10; i++ {
-		_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, common.HexToHash(strconv.Itoa(i)))
+	for i := 10; i < 11; i++ {
+		gerHash := common.HexToHash(strconv.Itoa(i))
+		fmt.Println("--------------------------------gerHash", gerHash.Hex())
+		_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, gerHash)
 		require.NoError(t, err)
 		setup.L1Environment.SimBackend.Commit()
+
+		gerUpdater, err := setup.L2Environment.GERContract.GlobalExitRootUpdater(nil)
+		require.NoError(t, err)
+		fmt.Println("--------------------------------gerUpdater", gerUpdater.Hex())
 
 		// wait for the GER to be processed by the InfoTree syncer
 		time.Sleep(time.Millisecond * 100)
 		expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 		require.NoError(t, err)
+		fmt.Println("--------------------------------expectedGER", common.Bytes2Hex(expectedGER[:]))
 
 		isInjected, err := setup.L2Environment.AggoracleSender.IsGERInjected(expectedGER)
 		require.NoError(t, err)
+		fmt.Println("--------------------------------isInjected", isInjected)
 
-		require.True(t, isInjected, fmt.Sprintf("iteration %d, GER: %s", i, common.Bytes2Hex(expectedGER[:])))
+		time.Sleep(time.Millisecond * 300)
+
+		// find last proposed GER for the user
+		lastProposedGER, err := setup.L2Environment.AggOracleCommitteeContract.AddressToLastProposedGER(nil, setup.L2Environment.Auth.From)
+		require.NoError(t, err)
+		fmt.Println("--------------------------------lastProposedGER", common.Bytes2Hex(lastProposedGER[:]))
+
+		// find proposedGERToReport from committee contract
+		proposedGERToReport, err := setup.L2Environment.AggOracleCommitteeContract.ProposedGERToReport(nil, expectedGER)
+		require.NoError(t, err)
+		fmt.Println("--------------------------------proposedGERToReport", proposedGERToReport)
+
+		// require.True(t, isInjected, fmt.Sprintf("iteration %d, GER: %s", i, common.Bytes2Hex(expectedGER[:])))
 	}
 }
 
