@@ -71,68 +71,6 @@ func TestEVMChainGERSender_InitializeMode(t *testing.T) {
 	}
 }
 
-func TestEVMChainGERSender_InitializeDirectInjectionMode(t *testing.T) {
-	validSender := common.HexToAddress("0x789")
-	invalidSender := common.HexToAddress("0x999")
-	updaterAddr := common.HexToAddress("0x789")
-
-	tests := []struct {
-		name        string
-		gerSender   common.Address
-		setupMock   func(*mocks.L2GERManagerContract)
-		expectedErr string
-	}{
-		{
-			name:      "valid sender",
-			gerSender: validSender,
-			setupMock: func(m *mocks.L2GERManagerContract) {
-				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(updaterAddr, nil)
-			},
-			expectedErr: "",
-		},
-		{
-			name:      "invalid sender",
-			gerSender: invalidSender,
-			setupMock: func(m *mocks.L2GERManagerContract) {
-				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(updaterAddr, nil)
-			},
-			expectedErr: "invalid GER sender provided",
-		},
-		{
-			name:      "contract error",
-			gerSender: validSender,
-			setupMock: func(m *mocks.L2GERManagerContract) {
-				m.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(common.Address{}, errors.New("contract error"))
-			},
-			expectedErr: "contract error",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockL2GERManager := mocks.NewL2GERManagerContract(t)
-			ethTxMan := mocks.NewEthTxManager(t)
-
-			ethTxMan.EXPECT().From().Return(tt.gerSender)
-			tt.setupMock(mockL2GERManager)
-
-			sender := &EVMChainGERSender{
-				l2GERManager: mockL2GERManager,
-				ethTxMan:     ethTxMan,
-			}
-
-			err := sender.initializeDirectInjectionMode()
-
-			if tt.expectedErr != "" {
-				require.Error(t, err)
-				require.Contains(t, err.Error(), tt.expectedErr)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
 // testCase represents a test case for transaction submission
 type testCase struct {
 	name            string
@@ -166,6 +104,12 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 			defer cancelFn()
 
 			ethTxMan := mocks.NewEthTxManager(t)
+
+			// Add From() expectation for ProposeGER tests since it calls IsGERProposed internally
+			if config.funcName == "proposeGlobalExitRoot" && tt.mode == config.expectedMode {
+				ethTxMan.EXPECT().From().Return(common.HexToAddress("0x123"))
+			}
+
 			if tt.mode == config.expectedMode && (tt.addReturnTxID != (common.Hash{}) || tt.addReturnErr != nil) {
 				ethTxMan.EXPECT().
 					Add(ctx, &config.targetAddr, common.Big0, mock.Anything, mock.Anything, mock.Anything).
@@ -188,6 +132,17 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 			if config.expectedMode == AggOracleCommitteeMode {
 				sender.aggOracleCommitteeAddr = config.targetAddr
 				sender.aggOracleCommitteeAbi = &abi
+
+				// Add mock for aggOracleCommittee when testing ProposeGER
+				if config.funcName == "proposeGlobalExitRoot" && tt.mode == config.expectedMode {
+					mockAggOracleCommittee := mocks.NewAggOracleCommitteeContract(t)
+					expectedAddress := common.HexToAddress("0x123")
+					// Mock IsGERProposed to return false (not already proposed)
+					mockAggOracleCommittee.EXPECT().
+						AddressToLastProposedGER(mock.Anything, expectedAddress).
+						Return([32]byte{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}, nil)
+					sender.aggOracleCommittee = mockAggOracleCommittee
+				}
 			} else {
 				sender.l2GERManagerAddr = config.targetAddr
 				sender.l2GERManagerAbi = &abi
@@ -807,60 +762,6 @@ func TestEVMChainGERSender_initializeAggOracleCommitteeMode(t *testing.T) {
 	}
 }
 
-func TestEVMChainGERSender_initializeMode(t *testing.T) {
-	tests := []struct {
-		name           string
-		mode           GERMode
-		expectedErrMsg string
-	}{
-		{
-			name:           "direct injection mode",
-			mode:           DirectInjectionMode,
-			expectedErrMsg: "",
-		},
-		{
-			name:           "agg oracle committee mode",
-			mode:           AggOracleCommitteeMode,
-			expectedErrMsg: "",
-		},
-		{
-			name:           "unknown mode",
-			mode:           "unknown_mode",
-			expectedErrMsg: "unknown GER mode: unknown_mode",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			mockL2GERManager := mocks.NewL2GERManagerContract(t)
-			mockEthTxManager := mocks.NewEthTxManager(t)
-
-			evmChainGERSender := &EVMChainGERSender{
-				mode:         tt.mode,
-				l2GERManager: mockL2GERManager,
-				ethTxMan:     mockEthTxManager,
-			}
-
-			// Setup mock expectations for direct injection mode
-			if tt.mode == DirectInjectionMode {
-				expectedAddress := common.HexToAddress("0x123")
-				mockEthTxManager.EXPECT().From().Return(expectedAddress)
-				mockL2GERManager.EXPECT().GlobalExitRootUpdater(nil).Return(expectedAddress, nil)
-			}
-
-			err := evmChainGERSender.initializeMode()
-			if tt.expectedErrMsg != "" {
-				require.ErrorContains(t, err, tt.expectedErrMsg)
-			} else {
-				require.NoError(t, err)
-			}
-
-			mockL2GERManager.AssertExpectations(t)
-			mockEthTxManager.AssertExpectations(t)
-		})
-	}
-}
-
 func TestEVMChainGERSender_initializeDirectInjectionMode(t *testing.T) {
 	tests := []struct {
 		name             string
@@ -906,7 +807,7 @@ func TestEVMChainGERSender_initializeDirectInjectionMode(t *testing.T) {
 
 			// Setup mock expectations
 			mockEthTxManager.EXPECT().From().Return(tt.ethTxManagerFrom)
-			mockL2GERManager.EXPECT().GlobalExitRootUpdater(nil).Return(tt.gerUpdater, tt.mockError)
+			mockL2GERManager.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(tt.gerUpdater, tt.mockError)
 
 			evmChainGERSender := &EVMChainGERSender{
 				l2GERManager: mockL2GERManager,
