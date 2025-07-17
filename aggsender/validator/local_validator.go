@@ -40,6 +40,13 @@ func (a *LocalValidator) String() string {
 	return "LocalValidator"
 }
 
+func (a *LocalValidator) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
+	return &types.HealthCheckResponse{
+		Status:  "OK",
+		Version: "local",
+	}, nil
+}
+
 // ValidateAndSignCertificate validates the certificate.
 // LocalValidator does not sign the certificate, it just validates it.
 func (a *LocalValidator) ValidateAndSignCertificate(

@@ -27,8 +27,10 @@ import (
 )
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
+	// override TimeNowFunc for testing
+	TimeNowFunc = timeNowUTCForTest
+	// Set up the test context
 	t.Parallel()
-
 	ctx := context.Background()
 
 	finalizedL1Root := common.HexToHash("0x1")
@@ -391,7 +393,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					LastProvenBlock: 6,
 					EndBlock:        10,
 				},
-				CreatedAt:       uint32(time.Now().UTC().Unix()),
+				CreatedAt:       timeNowUTCForTest(),
 				CertificateType: types.CertificateTypeFEP,
 			},
 		},
@@ -471,7 +473,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					LastProvenBlock: 6,
 					EndBlock:        8,
 				},
-				CreatedAt:       uint32(time.Now().UTC().Unix()),
+				CreatedAt:       timeNowUTCForTest(),
 				CertificateType: types.CertificateTypeFEP,
 			},
 		},

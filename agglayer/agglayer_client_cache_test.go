@@ -1,4 +1,4 @@
-package cache
+package agglayer
 
 import (
 	"context"
@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jellydator/ttlcache/v3"
@@ -18,14 +17,14 @@ func TestGetCertificateHeader(t *testing.T) {
 
 	ctx := context.Background()
 
-	checkHasCertFn := func(certCache *CertificateCache, expectedCert *agglayertypes.CertificateHeader, certID common.Hash) {
+	checkHasCertFn := func(certCache *AgglayerClientCache, expectedCert *agglayertypes.CertificateHeader, certID common.Hash) {
 		certificateHeader, err := certCache.GetCertificateHeader(ctx, certID)
 		require.NoError(t, err)
 		require.True(t, certCache.cache.Has(certID)) // Ensure the cache has the certificate
-		require.Equal(t, *expectedCert, certificateHeader)
+		require.Equal(t, expectedCert, certificateHeader)
 	}
 
-	checkCacheIsEmptyFn := func(certCache *CertificateCache, certID common.Hash, ttl time.Duration) {
+	checkCacheIsEmptyFn := func(certCache *AgglayerClientCache, certID common.Hash, ttl time.Duration) {
 		time.Sleep(ttl)
 		require.False(t, certCache.cache.Has(certID)) // Ensure the cache is empty after TTL
 		require.Zero(t, certCache.cache.Len())
@@ -41,7 +40,7 @@ func TestGetCertificateHeader(t *testing.T) {
 		Status:        agglayertypes.Settled,
 	}
 
-	mockAgglayerClient := agglayer.NewAgglayerClientMock(t)
+	mockAgglayerClient := NewAgglayerClientMock(t)
 	certCache := NewCertificateCache(mockAgglayerClient, ttl, capacity)
 
 	// Test cache doesn't have the certificate header initially

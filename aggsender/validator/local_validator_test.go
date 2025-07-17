@@ -85,3 +85,17 @@ func TestValidateAndSignCertificate_ValidationError(t *testing.T) {
 	storage.AssertExpectations(t)
 	validator.AssertExpectations(t)
 }
+
+func TestValidateAndSignCertificate_HealthCheck(t *testing.T) {
+	logger := log.WithFields("module", "aggsender.validator.local")
+
+	localValidator := &LocalValidator{
+		log: logger,
+	}
+
+	response, err := localValidator.HealthCheck(context.Background())
+	require.NoError(t, err)
+	require.NotNil(t, response)
+	require.Equal(t, "OK", response.Status)
+	require.Equal(t, "local", response.Version)
+}
