@@ -298,7 +298,7 @@ func TestRegularCases(t *testing.T) {
 			},
 		},
 		{
-			name:             "15| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID2, h2   | AgglayerPending: ID3, h1 | settled cert ID missmatch",
+			name:             "15| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID2, h2   | AgglayerPending: ID3, h1 | settled cert ID mismatch",
 			localCert:        &certTestData{hash1, 3, agglayertypes.Pending},
 			localSettledCert: &certTestData{hash1, 2, agglayertypes.Settled},
 			agglayerSettled:  &certTestData{hash2, 2, agglayertypes.Settled},
