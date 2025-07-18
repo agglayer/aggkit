@@ -404,6 +404,11 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 		)
 		require.NoError(t, err)
 		client.Commit()
+
+		// Create aggoracle committee contract binding
+		aggOracleCommitteeContract, err = aggoraclecommittee.NewAggoraclecommittee(
+			aggOracleCommitteeProxyAddr, client.Client())
+		require.NoError(t, err)
 	}
 
 	return client, setup.UserAuth, gerProxyAddr, gerL2Contract, setup.BridgeProxyAddr, setup.BridgeProxyContract, aggOracleCommitteeProxyAddr, aggOracleCommitteeContract
