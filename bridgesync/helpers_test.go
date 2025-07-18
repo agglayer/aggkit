@@ -9,17 +9,17 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/log"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/require"
 )
 
 // startGeth is a test helper function that starts the Geth Docker image and creates a single account that is pre-funded
-func startGeth(t *testing.T, ctx context.Context, cancelFn context.CancelFunc) (*ethclient.Client, *bind.TransactOpts) {
+func startGeth(t *testing.T, ctx context.Context, cancelFn context.CancelFunc) (aggkittypes.EthClienter, *bind.TransactOpts) {
 	t.Helper()
 
 	log.Debug("starting Geth docker container")
@@ -35,7 +35,7 @@ func startGeth(t *testing.T, ctx context.Context, cancelFn context.CancelFunc) (
 	})
 	log.Debug("Geth docker container is started")
 
-	client, err := dialGeth("http://127.0.0.1:8545", 10, time.Second)
+	client, err := aggkittypes.DialWithRetry("http://127.0.0.1:8545", 10, time.Second)
 	require.NoError(t, err)
 
 	auth := createAuth(t, ctx, "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", client)
@@ -45,7 +45,7 @@ func startGeth(t *testing.T, ctx context.Context, cancelFn context.CancelFunc) (
 
 // createAuth generates a TransactOpts instance for signing Ethereum transactions.
 // It derives an ECDSA key from the given private key and binds it to the client's chain ID.
-func createAuth(t *testing.T, ctx context.Context, rawPrivateKey string, client *ethclient.Client) *bind.TransactOpts {
+func createAuth(t *testing.T, ctx context.Context, rawPrivateKey string, client aggkittypes.EthClienter) *bind.TransactOpts {
 	t.Helper()
 
 	chainID, err := client.ChainID(ctx)
@@ -60,22 +60,9 @@ func createAuth(t *testing.T, ctx context.Context, rawPrivateKey string, client 
 	return auth
 }
 
-// dialGeth pings Geth for predefined number of times and returns an ethclient.Client instance upon successful dial.
-func dialGeth(url string, retries int, delay time.Duration) (*ethclient.Client, error) {
-	for i := range retries {
-		client, err := ethclient.Dial(url)
-		if err == nil {
-			return client, nil
-		}
-		log.Debugf("Waiting for Geth to start... attempt %d/%d", i+1, retries)
-		time.Sleep(delay)
-	}
-	return nil, fmt.Errorf("failed to connect after %d retries", retries)
-}
-
 // waitForReceipt waits for the given transaction to get included in a block (namely there should be a receipt for it).
 // In case it fails for predefined number of times an error is propagated.
-func waitForReceipt(ctx context.Context, client *ethclient.Client, txHash common.Hash, maxAttempts int) (*types.Receipt, error) {
+func waitForReceipt(ctx context.Context, client aggkittypes.EthClienter, txHash common.Hash, maxAttempts int) (*types.Receipt, error) {
 	var (
 		receipt  *types.Receipt
 		err      error

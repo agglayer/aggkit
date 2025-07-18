@@ -105,8 +105,6 @@ func TestBridgeCallData(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, userBalance.Cmp(fundAmount) >= 0)
 
-	ethClient := aggkittypes.NewDefaultEthClient(client, client.Client())
-
 	// Init the reorg detector and bridge syncer
 	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
 	reorgDetector, err := reorgdetector.New(client, reorgdetector.Config{
@@ -117,7 +115,7 @@ func TestBridgeCallData(t *testing.T) {
 	require.NoError(t, err)
 	go reorgDetector.Start(ctx) //nolint:errcheck
 
-	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, aggkittypes.LatestBlock, reorgDetector, ethClient,
+	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, aggkittypes.LatestBlock, reorgDetector, client,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false, false)
 	require.NoError(t, err)
 	go bridgeSync.Start(ctx)

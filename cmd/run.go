@@ -41,7 +41,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
 )
@@ -508,12 +507,12 @@ func runL1ClientIfNeeded(components []string, urlRPCL1 string) aggkittypes.EthCl
 		return nil
 	}
 	log.Debugf("dialing L1 client at: %s", urlRPCL1)
-	l1Client, err := ethclient.Dial(urlRPCL1)
+	ethClient, err := aggkittypes.DialWithRetry(urlRPCL1, aggkittypes.MaxRetries, aggkittypes.InitialBackoff)
 	if err != nil {
 		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", urlRPCL1, err)
 	}
 
-	return aggkittypes.NewDefaultEthClient(l1Client, l1Client.Client())
+	return ethClient
 }
 
 func runL2ClientIfNeeded(components []string, urlRPCL2 ethermanconfig.RPCClientConfig) aggkittypes.EthClienter {
@@ -780,10 +779,12 @@ func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*
 		return &etherman.RollupDataQuerier{}, nil
 	}
 
-	return etherman.NewRollupDataQuerier(cfg,
-		func(url string) (aggkittypes.BaseEthereumClienter, error) {
-			return ethclient.Dial(url)
-		},
+	ethClient, err := aggkittypes.DialWithRetry(cfg.URL, aggkittypes.MaxRetries, aggkittypes.InitialBackoff)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.URL, err)
+	}
+
+	return etherman.NewRollupDataQuerier(cfg, ethClient,
 		func(rollupAddr common.Address,
 			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
 			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
