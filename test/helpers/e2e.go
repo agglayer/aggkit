@@ -327,7 +327,7 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeMode bool) 
 
 	var gerL2InitData []byte
 	if aggOracleCommitteeMode {
-		gerL2InitData, err = gerL2Abi.Pack("initialize", setup.AggOracleCommitteeAddr, setup.AggOracleCommitteeAddr)
+		gerL2InitData, err = gerL2Abi.Pack("initialize", setup.AggOracleCommitteeProxyAddr, setup.AggOracleCommitteeProxyAddr)
 		require.NoError(t, err)
 	} else {
 		gerL2InitData, err = gerL2Abi.Pack("initialize", setup.UserAuth.From, setup.UserAuth.From)

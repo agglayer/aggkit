@@ -46,15 +46,12 @@ func TestEVM_AggOracleCommitteeMode(t *testing.T) {
 	setup.L1Environment.SimBackend.Commit()
 
 	// wait for the GER to be processed by the InfoTree syncer
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 	expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
 
 	isInjected, err := setup.L2Environment.AggoracleSender.IsGERInjected(expectedGER)
 	require.NoError(t, err)
-	fmt.Println("isInjected", isInjected)
 
-	// TODO: @rachit77
-	// Fails here because aggoracle committee contract is not able to inject GER in the L2 GER manager contract
-	// require.True(t, isInjected, fmt.Sprintf("Root: %s", common.Bytes2Hex(expectedGER[:])))
+	require.True(t, isInjected, fmt.Sprintf("Root: %s", common.Bytes2Hex(expectedGER[:])))
 }

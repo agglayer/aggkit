@@ -69,11 +69,12 @@ func (t *TestClient) Call(result any, method string, args ...any) error {
 
 // SimulatedBackendSetup defines the setup for a simulated backend.
 type SimulatedBackendSetup struct {
-	UserAuth               *bind.TransactOpts
-	DeployerAuth           *bind.TransactOpts
-	BridgeProxyAddr        common.Address
-	BridgeProxyContract    *polygonzkevmbridgev2.Polygonzkevmbridgev2
-	AggOracleCommitteeAddr common.Address
+	UserAuth                    *bind.TransactOpts
+	DeployerAuth                *bind.TransactOpts
+	BridgeProxyAddr             common.Address
+	BridgeProxyContract         *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	AggOracleCommitteeAddr      common.Address
+	AggOracleCommitteeProxyAddr common.Address
 }
 
 // DeployBridge deploys the bridge contract
@@ -174,10 +175,13 @@ func NewSimulatedBackend(t *testing.T,
 	balances[precalculatedBridgeAddr] = types.Account{Balance: balance}
 
 	var precalculatedAggOracleCommitteeAddr common.Address
+	var precalculatedAggOracleCommitteeProxyAddr common.Address
 	if aggOracleCommitteeMode {
 		// Create aggoracle committee address from deployerAuth.From and nonce = 4
 		precalculatedAggOracleCommitteeAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce)
+		precalculatedAggOracleCommitteeProxyAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce+1)
 		balances[precalculatedAggOracleCommitteeAddr] = types.Account{Balance: balance}
+		balances[precalculatedAggOracleCommitteeProxyAddr] = types.Account{Balance: balance}
 	}
 
 	client := simulated.NewBackend(balances, simulated.WithBlockGasLimit(defaultBlockGasLimit))
@@ -186,9 +190,10 @@ func NewSimulatedBackend(t *testing.T,
 	client.Commit()
 
 	setup := &SimulatedBackendSetup{
-		UserAuth:               userAuth,
-		DeployerAuth:           deployerAuth,
-		AggOracleCommitteeAddr: precalculatedAggOracleCommitteeAddr,
+		UserAuth:                    userAuth,
+		DeployerAuth:                deployerAuth,
+		AggOracleCommitteeAddr:      precalculatedAggOracleCommitteeAddr,
+		AggOracleCommitteeProxyAddr: precalculatedAggOracleCommitteeProxyAddr,
 	}
 
 	return client, setup
