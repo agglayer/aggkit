@@ -28,7 +28,9 @@ func TestNewClient(t *testing.T) {
 		{
 			name: "success",
 			cfg: config.L1NetworkConfig{
-				URL:               "http://localhost:8545",
+				RPC: config.RPCClientConfig{
+					URL: "http://localhost:8545",
+				},
 				RollupAddr:        mockAddr,
 				RollupManagerAddr: common.HexToAddress("0xabc"),
 			},
@@ -43,7 +45,9 @@ func TestNewClient(t *testing.T) {
 		{
 			name: "rollup manager creation fails",
 			cfg: config.L1NetworkConfig{
-				URL:               "ok",
+				RPC: config.RPCClientConfig{
+					URL: "ok",
+				},
 				RollupManagerAddr: mockAddr,
 			},
 			ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),
@@ -55,7 +59,9 @@ func TestNewClient(t *testing.T) {
 		{
 			name: "invalid rollup ID",
 			cfg: config.L1NetworkConfig{
-				URL:        "ok",
+				RPC: config.RPCClientConfig{
+					URL: "ok",
+				},
 				RollupAddr: mockAddr,
 			},
 			ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),

@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
@@ -45,7 +45,13 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
-	require.Equal(t, ethermanconfig.RPCClientConfig{Mode: ethermanconfig.RPCModeBasic, URL: "http://localhost:8123"}, cfg.Common.L2RPC)
+	require.Equal(t, L2RPCClientConfig{
+		RPCClientConfig: RPCClientConfig{
+			URL:            "http://localhost:8123",
+			MaxRetries:     5,
+			InitialBackoff: types.NewDuration(2 * time.Second)},
+		Mode: RPCModeBasic,
+	}, cfg.Common.L2RPC)
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)

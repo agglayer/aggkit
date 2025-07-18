@@ -207,7 +207,7 @@ type Config struct {
 	Log log.Config
 
 	// Common Config that affects all the services
-	Common common.Config
+	Common CommonConfig
 
 	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
 	L1NetworkConfig L1NetworkConfig

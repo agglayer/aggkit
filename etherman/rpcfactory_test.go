@@ -3,14 +3,16 @@ package etherman
 import (
 	"testing"
 
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/config"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewRPCClient(t *testing.T) {
-	cfg := ethermanconfig.RPCClientConfig{
-		URL:  "http://localhost:1234",
-		Mode: ethermanconfig.RPCModeBasic,
+	cfg := config.L2RPCClientConfig{
+		RPCClientConfig: config.RPCClientConfig{
+			URL: "http://localhost:1234",
+		},
+		Mode: config.RPCModeBasic,
 		ExtraParams: map[string]interface{}{
 			ExtraParamFieldName: "http://anotherURL:1234",
 		},
@@ -19,7 +21,7 @@ func TestNewRPCClient(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, eth)
 
-	cfg.Mode = ethermanconfig.RPCModeOp
+	cfg.Mode = config.RPCModeOp
 	eth, err = NewRPCClientModeOp(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)
@@ -28,7 +30,7 @@ func TestNewRPCClient(t *testing.T) {
 	_, err = NewRPCClientModeOp(cfg)
 	require.Error(t, err)
 
-	cfg = ethermanconfig.RPCClientConfig{}
+	cfg = config.L2RPCClientConfig{}
 	_, err = NewRPCClientModeOp(cfg)
 	require.Error(t, err)
 }

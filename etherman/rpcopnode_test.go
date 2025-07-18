@@ -6,7 +6,7 @@ import (
 	"math/big"
 	"testing"
 
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/etherman/mocks"
 	"github.com/agglayer/aggkit/opnode"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
@@ -16,10 +16,12 @@ import (
 )
 
 func TestNewRPCClientModeOp(t *testing.T) {
-	cfg := ethermanconfig.RPCClientConfig{
-		URL:  "http://localhost:1234",
-		Mode: ethermanconfig.RPCModeBasic,
-		ExtraParams: map[string]interface{}{
+	cfg := config.L2RPCClientConfig{
+		RPCClientConfig: config.RPCClientConfig{
+			URL: "http://localhost:1234",
+		},
+		Mode: config.RPCModeBasic,
+		ExtraParams: map[string]any{
 			ExtraParamFieldName: "http://anotherURL:1234",
 		},
 	}
