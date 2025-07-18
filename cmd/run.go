@@ -15,17 +15,16 @@ import (
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxlog "github.com/0xPolygon/zkevm-ethtx-manager/log"
 	"github.com/agglayer/aggkit"
-	agglayer "github.com/agglayer/aggkit/agglayer/grpc"
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
-	aggsenderdb "github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/aggsender/query"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
-	aggsendervalidator "github.com/agglayer/aggkit/aggsender/validator"
+	"github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgeservice"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -40,7 +39,7 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/agglayer/go_signer/signer/types"
+	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -149,13 +148,11 @@ func start(cliCtx *cli.Context) error {
 		case aggkitcommon.AGGSENDERVALIDATOR:
 			aggsenderValidator, err := createAggSenderValidator(
 				cliCtx.Context,
-				cfg.AggSender,
+				cfg.Validator,
 				l1InfoTreeSync,
 				l2BridgeSync,
 				l1Client,
-				l2Client,
 				rollupDataQuerier,
-				l2GERSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -216,41 +213,54 @@ func createAggchainProofGen(
 }
 
 func createAggSenderValidator(ctx context.Context,
-	cfg aggsendercfg.Config,
+	cfg validator.Config,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
-	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier,
-	gerReader aggsendertypes.ChainGERReader) (*aggsender.AggsenderValidator, error) {
+	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
-	storageConfig := aggsenderdb.AggSenderSQLStorageConfig{
-		DBPath:                  cfg.StoragePath,
-		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
-	}
-	aggsenderdb, err := aggsenderdb.NewAggSenderSQLStorage(logger, storageConfig)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AggSender SQL storage: %w", err)
-	}
-	cfg.AggsenderPrivateKey = types.SignerConfig{Method: "mock"}
-	flow, err := flows.NewFlow(
-		ctx,
-		cfg,
-		logger,
-		aggsenderdb,
-		l1Client,
-		l2Client,
-		l1InfoTreeSync,
-		l2Syncer,
-		rollupDataQuerier,
-		gerReader,
-	)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create AggSender flow: %w", err)
-	}
-	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
 
-	return aggsender.NewAggsenderValidator(ctx, logger, flow, l1InfoTreeQuerier)
+	signer, err := signer.NewSigner(ctx, 0, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
+	if err != nil {
+		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
+	}
+	if err := signer.Initialize(ctx); err != nil {
+		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
+	}
+
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
+	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
+	lerQuerier, err := query.NewLERDataQuerier(
+		cfg.LerQuerier.RollupManagerAddr, cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)
+	if err != nil {
+		return nil, fmt.Errorf("error creating LER data querier: %w", err)
+	}
+	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
+	}
+	flowPP := flows.NewPPFlow(
+		logger,
+		flows.NewBaseFlow(
+			logger,
+			l2BridgeQuerier,
+			nil, // storage
+			l1InfoTreeQuerier,
+			lerQuerier,
+			flows.BaseFlowConfig{
+				MaxCertSize:          cfg.MaxCertSize,
+				StartL2Block:         0,
+				RequireNoFEPBlockGap: false, //  for PP doesnt apply it
+			},
+		),
+		nil, // storage
+		l1InfoTreeQuerier,
+		l2BridgeQuerier,
+		signer, // we reuse the signer, but the PP signature is not use
+		cfg.RequireOneBridgeInPPCertificate,
+		cfg.MaxL2BlockNumber,
+	)
+	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP, l1InfoTreeQuerier, agglayerClient, signer)
 }
 
 func createAggSender(
@@ -268,11 +278,10 @@ func createAggSender(
 		return nil, fmt.Errorf("invalid aggsender config: %w", err)
 	}
 
-	agglayerClient, err := agglayer.NewAgglayerGRPCClient(cfg.AgglayerClient)
+	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
-
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
 			BlockFinalityType:     aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
@@ -305,19 +314,19 @@ func createAggSender(
 	}
 
 	if cfg.Mode == aggsendertypes.PessimisticProofMode.String() {
-		// validator is only supported in PessimisticProof mode
-		var validator aggsendertypes.CertificateValidateAndSigner
+		// validatorObj is only supported in PessimisticProof mode
+		var validatorObj aggsendertypes.CertificateValidateAndSigner
 		if cfg.RequireValidatorCall {
-			validator, err = aggsendervalidator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
+			validatorObj, err = validator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
 			if err != nil {
 				return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
 			}
 		} else {
 			// this is only temporary, until we test it in local, then we will only use the remote validator
-			validator = aggsendervalidator.NewLocalValidator(
+			validatorObj = validator.NewLocalValidator(
 				logger,
 				aggsender.GetStorage(),
-				aggsendervalidator.NewAggsenderValidator(
+				validator.NewAggsenderValidator(
 					logger,
 					aggsender.GetFlow(),
 					query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
@@ -325,7 +334,7 @@ func createAggSender(
 			)
 		}
 
-		aggsender.AttachValidator(validator)
+		aggsender.AttachValidator(validatorObj)
 	}
 
 	return aggsender, nil

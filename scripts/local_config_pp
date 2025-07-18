@@ -15,7 +15,7 @@ function export_values_of_aggkit_config() {
     export_key_from_toml_file_or_fatal zkevm_rollup_address $AGGKIT_CONFIG_FILE L1Config polygonZkEVMAddress
     export_key_from_toml_file_or_fatal zkevm_rollup_manager_address $AGGKIT_CONFIG_FILE L1Config polygonRollupManagerAddress
     export_key_from_toml_file_or_fatal zkevm_global_exit_root_address $AGGKIT_CONFIG_FILE L1Config polygonZkEVMGlobalExitRootAddress
-    export_key_from_toml_file_or_fatal sovereign_ger_proxy_addr $AGGKIT_CONFIG_FILE L2Config GlobalExitRootAddr
+    export_key_from_toml_file_or_fatal zkevm_global_exit_root_l2_address $AGGKIT_CONFIG_FILE L2Config GlobalExitRootAddr
     export_key_from_toml_file_or_fatal zkevm_rollup_chain_id $AGGKIT_CONFIG_FILE AggOracle.EVMSender.EthTxManager.Etherman L1ChainID
 }
 ###############################################################################

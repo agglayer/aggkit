@@ -24,7 +24,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/agglayer/go_signer/signer"
@@ -42,7 +42,7 @@ const (
 func TestConfigString(t *testing.T) {
 	config := config.Config{
 		StoragePath:                 "/path/to/storage",
-		AgglayerClient:              &aggkitgrpc.ClientConfig{URL: "http://agglayer.url"},
+		AgglayerClient:              agglayer.ClientConfig{GRPC: &grpc.ClientConfig{URL: "http://agglayer.url"}},
 		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                    "http://l2.rpc.url",
 		BlockFinality:               "latestBlock",

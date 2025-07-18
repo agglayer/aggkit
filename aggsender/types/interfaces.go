@@ -176,6 +176,35 @@ type VerifyIncomingRequest struct {
 	PreviousCertificate *agglayertypes.CertificateHeader
 }
 
+// HealthCheckStatus defines the status of a health check
+type HealthCheckStatus = string
+
+const (
+	HealthCheckStatusOK HealthCheckStatus = "OK"
+)
+
+// HealthCheckResponse response for health check
+type HealthCheckResponse struct {
+	Status       HealthCheckStatus
+	StatusReason string
+	Version      string
+}
+
+// IsHealthy checks if the health check response is healthy
+func (h *HealthCheckResponse) IsHealthy() bool {
+	return h != nil && h.Status == HealthCheckStatusOK
+}
+
+// String returns a string representation of the HealthCheckResponse
+func (h *HealthCheckResponse) String() string {
+	if h == nil {
+		return "HealthCheckResponse is nil"
+	}
+	return "HealthCheckResponse{Status: " + h.Status +
+		", StatusReason: " + h.StatusReason +
+		", Version: " + h.Version + "}"
+}
+
 type CertificateValidator interface {
 	ValidateCertificate(ctx context.Context, params VerifyIncomingRequest) error
 }
@@ -183,6 +212,8 @@ type CertificateValidator interface {
 // CertificateValidateAndSigner is an interface to attach a certificate validator and signer
 // to aggsender regular flow
 type CertificateValidateAndSigner interface {
+	// HealthCheck checks the health of the validator service
+	HealthCheck(ctx context.Context) (*HealthCheckResponse, error)
 	// ValidateAndSignCertificate validates the certificate and signs it if valid.
 	ValidateAndSignCertificate(
 		ctx context.Context,
@@ -193,6 +224,7 @@ type CertificateValidateAndSigner interface {
 
 // ValidatorClient is an interface defining functions that a ValidatorClient should implement
 type ValidatorClient interface {
+	HealthCheck(ctx context.Context) (*HealthCheckResponse, error)
 	ValidateCertificate(
 		ctx context.Context,
 		previousCertificateID *common.Hash, // can be nil if there is no previous certificate
