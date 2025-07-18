@@ -248,14 +248,13 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			a.log.Infof("Epoch received: %s", epoch.String())
 			checkResult := a.certStatusChecker.CheckPendingCertificatesStatus(ctx)
 			if !checkResult.ExistPendingCerts {
-				_, err := a.sendCertificate(ctx)
-				a.status.SetLastError(err)
+				_, err := a.sendCertificateWithRetries(ctx)
 				if err != nil {
-					a.log.Error(err)
+					a.log.Errorf("error sending certificate: %v", err)
+					a.status.SetLastError(err)
 				}
-				a.checkSendCertificateStopCondition(err)
 			} else {
-				log.Infof("Skipping epoch %s because there are pending certificates",
+				a.log.Infof("Skipping epoch %s because there are pending certificates",
 					epoch.String())
 			}
 
@@ -268,6 +267,22 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			return
 		}
 	}
+}
+
+func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayertypes.Certificate, error) {
+	return aggkitcommon.Execute(&a.cfg.RetriesToBuildAndSendCertificate,
+		ctx,
+		a.log,
+		"sendCertificateWithRetries",
+		func() (*agglayertypes.Certificate, error) {
+			cert, err := a.sendCertificate(ctx)
+			a.status.SetLastError(err)
+			if err != nil {
+				a.log.Error(err)
+			}
+			a.checkSendCertificateStopCondition(err)
+			return cert, err
+		})
 }
 
 // sendCertificate sends certificate for a network

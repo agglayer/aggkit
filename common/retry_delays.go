@@ -94,7 +94,7 @@ func Execute[T any](r *RetryDelays, ctx context.Context,
 				continue
 			}
 		} else {
-			logger.Infof("sucessful run %s in try %d",
+			logger.Infof("successful run %s in try %d",
 				name, retries+1)
 			return result, nil
 		}

@@ -203,7 +203,7 @@ StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
 	[AggSender.RetriesToBuildAndSendCertificate]
 		Delays = [ "30s", "1m", "2m", "5m", "5m", "10m" ]
-		MaxAttempts = 6 # arround 23m 
+		MaxAttempts = 6 # around 23m 
 	[AggSender.AgglayerClient]
 		Cached = false
 		[AggSender.AgglayerClient.ConfigurationCache]
