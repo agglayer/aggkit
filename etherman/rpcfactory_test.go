@@ -13,24 +13,24 @@ func TestNewRPCClient(t *testing.T) {
 			URL: "http://localhost:1234",
 		},
 		Mode: config.RPCModeBasic,
-		ExtraParams: map[string]interface{}{
+		ExtraParams: map[string]any{
 			ExtraParamFieldName: "http://anotherURL:1234",
 		},
 	}
-	eth, err := NewRPCClientModeOp(cfg)
+	eth, err := NewRPCClient(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)
 
 	cfg.Mode = config.RPCModeOp
-	eth, err = NewRPCClientModeOp(cfg)
+	eth, err = NewRPCClient(cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)
 
 	cfg.URL = "noproto://localhost"
-	_, err = NewRPCClientModeOp(cfg)
-	require.Error(t, err)
+	_, err = NewRPCClient(cfg)
+	require.ErrorContains(t, err, "no known transport for URL scheme \"noproto\"")
 
 	cfg = config.L2RPCClientConfig{}
-	_, err = NewRPCClientModeOp(cfg)
-	require.Error(t, err)
+	_, err = NewRPCClient(cfg)
+	require.ErrorContains(t, err, "invalid RPC mode")
 }
