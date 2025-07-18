@@ -40,6 +40,11 @@ type AggoracleWithEVMChain struct {
 	NetworkIDL2 uint32
 }
 
+type AggoraclecommitteeConfig struct {
+	EnableAggOracleCommittee bool
+	Quorum                   uint64
+}
+
 // CommonEnvironment contains common setup results used in both L1 and L2 network setups.
 type CommonEnvironment struct {
 	SimBackend             *simulated.Backend
@@ -69,16 +74,19 @@ type L2Environment struct {
 }
 
 type EnvironmentConfig struct {
-	L1RPCClient            aggkittypes.RPCClienter
-	L2RPCClient            aggkittypes.RPCClienter
-	AggOracleCommitteeMode bool
+	L1RPCClient aggkittypes.RPCClienter
+	L2RPCClient aggkittypes.RPCClienter
+	AggoraclecommitteeConfig
 }
 
 func DefaultEnvironmentConfig() *EnvironmentConfig {
 	return &EnvironmentConfig{
-		L1RPCClient:            &aggkittypes.NoopRPCClient{},
-		L2RPCClient:            &aggkittypes.NoopRPCClient{},
-		AggOracleCommitteeMode: false,
+		L1RPCClient: &aggkittypes.NoopRPCClient{},
+		L2RPCClient: &aggkittypes.NoopRPCClient{},
+		AggoraclecommitteeConfig: AggoraclecommitteeConfig{
+			EnableAggOracleCommittee: false,
+			Quorum:                   1,
+		},
 	}
 }
 
@@ -96,7 +104,7 @@ func NewE2EEnvWithEVML2(t *testing.T, cfg *EnvironmentConfig) *AggoracleWithEVMC
 	oracle, err := aggoracle.New(
 		log.GetDefaultLogger(), l2Setup.AggoracleSender,
 		l1Setup.SimBackend.Client(), l1Setup.InfoTreeSync,
-		time.Millisecond*20, cfg.AggOracleCommitteeMode, //nolint:mnd
+		time.Millisecond*20, cfg.EnableAggOracleCommittee, //nolint:mnd
 	)
 	require.NoError(t, err)
 	go oracle.Start(ctx)
@@ -189,14 +197,14 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 	t.Helper()
 
 	l2Client, authL2, gerL2Addr, gerL2Contract,
-		bridgeL2Addr, bridgeL2Contract, aggOracleCommitteeAddr, aggOracleCommitteeContract := newSimulatedEVML2SovereignChain(t, cfg.AggOracleCommitteeMode)
+		bridgeL2Addr, bridgeL2Contract, aggOracleCommitteeAddr, aggOracleCommitteeContract := newSimulatedEVML2SovereignChain(t, cfg.AggoraclecommitteeConfig)
 
 	ethTxManagerMock := NewEthTxManMock(t, l2Client, authL2)
 
 	const gerCheckFrequency = time.Millisecond * 50
 	sender, err := chaingersender.NewEVMChainGERSender(
 		log.GetDefaultLogger(), gerL2Addr, aggOracleCommitteeAddr,
-		l2Client.Client(), ethTxManagerMock, 0, gerCheckFrequency, cfg.AggOracleCommitteeMode,
+		l2Client.Client(), ethTxManagerMock, 0, gerCheckFrequency, cfg.EnableAggOracleCommittee,
 	)
 	require.NoError(t, err)
 	ctx := context.Background()
@@ -288,7 +296,7 @@ func newSimulatedL1(t *testing.T) (
 	return client, setup.UserAuth, gerAddr, gerContract, setup.BridgeProxyAddr, setup.BridgeProxyContract
 }
 
-func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeMode bool) (
+func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig AggoraclecommitteeConfig) (
 	*simulated.Backend,
 	*bind.TransactOpts,
 	common.Address,
@@ -312,7 +320,7 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeMode bool) 
 	genesisAllocMap := map[common.Address]types.Account{
 		l2BridgeProxyAddr: {Balance: premineBalance},
 	}
-	client, setup := NewSimulatedBackend(t, genesisAllocMap, deployerAuth, aggOracleCommitteeMode)
+	client, setup := NewSimulatedBackend(t, genesisAllocMap, deployerAuth, aggOracleCommitteeConfig.EnableAggOracleCommittee)
 
 	// Deploy L2 GER manager contract
 	gerL2Addr, _, _, err := globalexitrootmanagerl2sovereignchain.DeployGlobalexitrootmanagerl2sovereignchain(
@@ -326,7 +334,9 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeMode bool) 
 	require.NotNil(t, gerL2Abi)
 
 	var gerL2InitData []byte
-	if aggOracleCommitteeMode {
+	if aggOracleCommitteeConfig.EnableAggOracleCommittee {
+		// Use AggOracleCommitteeProxyAddr for initialization when EnableAggOracleCommittee is true
+		// The committee proxy serves as the _globalExitRootUpdater and _globalExitRootRemover
 		gerL2InitData, err = gerL2Abi.Pack("initialize", setup.AggOracleCommitteeProxyAddr, setup.AggOracleCommitteeProxyAddr)
 		require.NoError(t, err)
 	} else {
@@ -358,10 +368,10 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeMode bool) 
 	require.NoError(t, err)
 	require.Equal(t, gerProxyAddr, bridgeGERAddr)
 
-	// Deploy AggOracleCommittee contract if AggOracleCommitteeMode is true
+	// Deploy AggOracleCommittee contract if EnableAggOracleCommittee is true
 	var aggOracleCommitteeProxyAddr common.Address
 	var aggOracleCommitteeContract *aggoraclecommittee.Aggoraclecommittee
-	if aggOracleCommitteeMode {
+	if aggOracleCommitteeConfig.EnableAggOracleCommittee {
 		// Deploy AggOracleCommittee contract
 		aggOracleCommitteeAddr, _, _, err := aggoraclecommittee.DeployAggoraclecommittee(
 			setup.DeployerAuth, client.Client(), gerProxyAddr)
@@ -373,8 +383,15 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeMode bool) 
 		require.NoError(t, err)
 		require.NotNil(t, aggOracleCommitteeAbi)
 
+		// aggOracleMembers are the addresses of the aggoracle committee members
 		aggOracleMembers := []common.Address{setup.UserAuth.From}
-		aggOracleCommitteeInitData, err := aggOracleCommitteeAbi.Pack("initialize", setup.DeployerAuth.From, aggOracleMembers, uint64(1))
+
+		// add other aggoracle committee members to the aggOracleMembers slice based on the quorum
+		for i := 0; i < int(aggOracleCommitteeConfig.Quorum)-1; i++ {
+			aggOracleMembers = append(aggOracleMembers, crypto.CreateAddress(setup.DeployerAuth.From, aggOracleCommitteeNonce+uint64(i+1)))
+		}
+
+		aggOracleCommitteeInitData, err := aggOracleCommitteeAbi.Pack("initialize", setup.DeployerAuth.From, aggOracleMembers, aggOracleCommitteeConfig.Quorum)
 		require.NoError(t, err)
 
 		// Deploy a proxy contract for the aggoracle committee

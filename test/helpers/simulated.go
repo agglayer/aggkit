@@ -150,7 +150,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 // NewSimulatedBackend creates a simulated backend with two accounts: user and deployer.
 func NewSimulatedBackend(t *testing.T,
 	balances map[common.Address]types.Account,
-	deployerAuth *bind.TransactOpts, aggOracleCommitteeMode bool) (*simulated.Backend, *SimulatedBackendSetup) {
+	deployerAuth *bind.TransactOpts, enableAggOracleCommittee bool) (*simulated.Backend, *SimulatedBackendSetup) {
 	t.Helper()
 
 	// Define default balance
@@ -176,7 +176,7 @@ func NewSimulatedBackend(t *testing.T,
 
 	var precalculatedAggOracleCommitteeAddr common.Address
 	var precalculatedAggOracleCommitteeProxyAddr common.Address
-	if aggOracleCommitteeMode {
+	if enableAggOracleCommittee {
 		// Create aggoracle committee address from deployerAuth.From and nonce = 4
 		precalculatedAggOracleCommitteeAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce)
 		precalculatedAggOracleCommitteeProxyAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce+1)
