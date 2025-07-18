@@ -91,14 +91,10 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 		testGERSyncer(t, ctx, l1Environment, l2Environment, syncer, i)
 	}
 
-	mainnetExitRoot, err := l1Environment.GERContract.LastMainnetExitRoot(nil)
-	require.NoError(t, err)
-
 	removeGERsUntilIdx := testIterations / 2
-	gersToRemove := [][common.HashLength]byte{}
-	for i := range removeGERsUntilIdx {
-		rollupExitRoot := common.HexToHash(fmt.Sprintf("%x", i))
-		gersToRemove = append(gersToRemove, crypto.Keccak256Hash(mainnetExitRoot[:], rollupExitRoot[:]))
+	gersToRemove := make([][common.HashLength]byte, 0, removeGERsUntilIdx)
+	for _, ger := range updatedGERs[:removeGERsUntilIdx] {
+		gersToRemove = append(gersToRemove, ger)
 	}
 
 	_, err = l2Environment.GERManagerSovereignSC.RemoveGlobalExitRoots(
