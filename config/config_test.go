@@ -120,6 +120,9 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[L1Config]
 	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 
+	[L1NetworkConfig]
+	URL = "http://localhost:8545"
+
 	[AggSender]
 	BridgeMetaDataAsHash = true
 	AggLayerUrl = "https://localhost:5575"
@@ -182,4 +185,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, aggOracleBlockFinalityDeprecated)
 	require.ErrorContains(t, err, l1InfoTreeSyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, bridgeL1SyncBlockFinalityDeprecated)
+	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 }

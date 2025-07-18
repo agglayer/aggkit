@@ -13,12 +13,6 @@ import (
 const (
 	// Base for exponential backoff
 	backoffBase = 2
-
-	// MaxRetries defines the maximum number of retries for connecting to an Ethereum client.
-	MaxRetries = 5
-
-	// InitialBackoff defines the initial backoff duration for retries.
-	InitialBackoff = 2 * time.Second
 )
 
 var _ EthClienter = (*DefaultEthClient)(nil)
@@ -75,6 +69,11 @@ func DialWithRetry(url string, maxRetries int, initialBackoff time.Duration) (Et
 		client *ethclient.Client
 		err    error
 	)
+
+	// If maxRetries is 0, we try to connect once without retries.
+	if maxRetries == 0 {
+		maxRetries = 1
+	}
 
 	for attempt := range maxRetries {
 		client, err = ethclient.Dial(url)
