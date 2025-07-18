@@ -9,7 +9,6 @@ import (
 )
 
 var (
-	ErrNotImplemented        = errors.New("aggsender-validator not implemented")
 	ErrNilCertificate        = errors.New("aggsender-validator nil certificate")
 	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
