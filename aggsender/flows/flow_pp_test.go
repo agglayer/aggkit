@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
-	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
@@ -20,6 +19,10 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
+
+func timeNowUTCForTest() uint32 {
+	return uint32(12345)
+}
 
 func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 	t.Parallel()
@@ -734,8 +737,12 @@ func generateTestProof(t *testing.T) treetypes.Proof {
 }
 
 func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
+	TimeNowFunc = timeNowUTCForTest
+	t.Cleanup(func() {
+		TimeNowFunc = TimeNowUTC
+	})
 	t.Parallel()
-
+	// override to have always the same value and not depend on real clock
 	ctx := context.Background()
 
 	testCases := []struct {
@@ -850,7 +857,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						MainnetExitRoot: common.HexToHash("0x2"),
 						GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					}},
-				CreatedAt:                      uint32(time.Now().UTC().Unix()),
+				CreatedAt:                      timeNowUTCForTest(),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
 			},
 		},
@@ -912,7 +919,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						MainnetExitRoot: common.HexToHash("0x2"),
 						GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					}},
-				CreatedAt:                      uint32(time.Now().UTC().Unix()),
+				CreatedAt:                      timeNowUTCForTest(),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
 			},
 		},

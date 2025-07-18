@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
+	validator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -250,6 +251,9 @@ type Config struct {
 
 	// Profiling is the configuration of the profiling service
 	Profiling pprof.Config
+
+	// Validator is the configuration of the aggsender validator service
+	Validator validator.Config
 }
 
 // Load loads the configuration
