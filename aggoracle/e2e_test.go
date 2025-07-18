@@ -15,7 +15,7 @@ import (
 func TestEVM_DirectInjectionMode(t *testing.T) {
 	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
 
-	for i := 2; i < 12; i++ {
+	for i := 0; i < 10; i++ {
 		rootHash := common.HexToHash(strconv.Itoa(i))
 		_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, rootHash)
 		require.NoError(t, err)
@@ -38,7 +38,7 @@ func TestEVM_AggOracleCommitteeMode(t *testing.T) {
 	cfg.AggoraclecommitteeConfig.EnableAggOracleCommittee = true
 	setup := helpers.NewE2EEnvWithEVML2(t, cfg)
 
-	for i := 2; i < 12; i++ {
+	for i := 0; i < 10; i++ {
 		rootHash := common.HexToHash(strconv.Itoa(i))
 		_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, rootHash)
 		require.NoError(t, err)

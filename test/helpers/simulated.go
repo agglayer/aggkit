@@ -174,8 +174,11 @@ func NewSimulatedBackend(t *testing.T,
 	balances[deployerAuth.From] = types.Account{Balance: balance}
 	balances[precalculatedBridgeAddr] = types.Account{Balance: balance}
 
-	var precalculatedAggOracleCommitteeAddr common.Address
-	var precalculatedAggOracleCommitteeProxyAddr common.Address
+	var (
+		precalculatedAggOracleCommitteeAddr      common.Address
+		precalculatedAggOracleCommitteeProxyAddr common.Address
+	)
+
 	if enableAggOracleCommittee {
 		// Create aggoracle committee address from deployerAuth.From and nonce = 4
 		precalculatedAggOracleCommitteeAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce)
