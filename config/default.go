@@ -201,6 +201,9 @@ RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
+	[AggSender.RetriesToBuildAndSendCertificate]
+		Delays = [ "30s", "1m", "2m", "5m", "5m", "10m" ]
+		MaxAttempts = 6 # arround 23m 
 	[AggSender.AgglayerClient]
 		Cached = false
 		[AggSender.AgglayerClient.ConfigurationCache]
