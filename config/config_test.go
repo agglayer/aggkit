@@ -26,11 +26,19 @@ func TestLoadDefaultConfig(t *testing.T) {
 	defer os.Remove(tmpFile.Name())
 	_, err = tmpFile.Write([]byte(DefaultMandatoryVars))
 	require.NoError(t, err)
+	AggsenderrollupAddr := "0x1cE29253F94Ae8564c182AD760C18FC2adce77c1"
+	os.Setenv("CDK_AGGSENDER_ROLLUPMANAGERADDR", AggsenderrollupAddr)
+	// Check issue https://github.com/agglayer/aggkit/issues/751
+	os.Setenv("CDK_VALIDATOR_LERQUERIERCONFIG_ROLLUPMANAGERADDR", AggsenderrollupAddr)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
 	cfg, err := Load(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
 	require.Equal(t, aggkittypes.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
+	require.Equal(t, AggsenderrollupAddr, cfg.AggSender.RollupManagerAddr.String())
+	require.Equal(t, cfg.AggSender.AgglayerClient.Cached, false)
+	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.RequestTimeout.Duration, 300*time.Second)
+	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.Retry.MaxAttempts, 20)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.SovereignRollupAddr, cfg.AggSender.SovereignRollupAddr)
@@ -41,6 +49,13 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)
+	require.Equal(t, cfg.Validator.EnableRPC, false)
+	require.Equal(t, cfg.Validator.ServerConfig.EnableReflection, true)
+	require.Equal(t, cfg.Validator.AgglayerClient.Cached, true)
+	require.Equal(t, cfg.Validator.AgglayerClient.ConfigurationCache.Capacity, uint64(100))
+	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.MinConnectTimeout, cfg.AggSender.AgglayerClient.GRPC.MinConnectTimeout)
+	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.Retry.MaxAttempts, cfg.AggSender.AgglayerClient.GRPC.Retry.MaxAttempts)
+	require.Equal(t, cfg.AggSender.RollupManagerAddr, cfg.Validator.LerQuerier.RollupManagerAddr)
 	t.Logf("cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey: %+v", cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey)
 }
 

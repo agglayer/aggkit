@@ -50,6 +50,12 @@ func BytesToUint64(bytes []byte) uint64 {
 	return binary.BigEndian.Uint64(padded)
 }
 
+// Uint32ToBigEndianBytes converts a uint32 to a byte slice in big-endian order
+// it's an alias of Uint32ToBytes
+func Uint32ToBigEndianBytes(num uint32) []byte {
+	return Uint32ToBytes(num)
+}
+
 // Uint32ToBytes converts a uint32 to a byte slice in big-endian order
 func Uint32ToBytes(num uint32) []byte {
 	bytes := make([]byte, Uint32ByteSize)

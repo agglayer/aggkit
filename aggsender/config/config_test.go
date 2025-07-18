@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/agglayer"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/grpc"
@@ -38,9 +39,10 @@ func TestValidate(t *testing.T) {
 				ValidatorClient: &grpc.ClientConfig{
 					URL: "http://localhost:8080",
 				},
-				AgglayerClient: &grpc.ClientConfig{
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				},
 				},
 			},
 		},
@@ -52,9 +54,10 @@ func TestValidate(t *testing.T) {
 				ValidatorClient: &grpc.ClientConfig{
 					URL: "",
 				},
-				AgglayerClient: &grpc.ClientConfig{
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				},
 				},
 			},
 			expectedErr: "ValidatorClient URL must be set when RequireValidatorCall is true",
@@ -62,8 +65,9 @@ func TestValidate(t *testing.T) {
 		{
 			name: "Invalid AgglayerClient configuration",
 			config: Config{
-				AgglayerClient: &grpc.ClientConfig{
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL: "",
+				},
 				},
 			},
 			expectedErr: "invalid agglayer client config",
@@ -72,9 +76,10 @@ func TestValidate(t *testing.T) {
 			name: "AggchainProof mode with AggkitProverClient not set",
 			config: Config{
 				Mode: aggsendertypes.AggchainProofMode.String(),
-				AgglayerClient: &grpc.ClientConfig{
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				},
 				},
 				AggkitProverClient: &grpc.ClientConfig{
 					URL: "",
@@ -86,9 +91,10 @@ func TestValidate(t *testing.T) {
 			name: "PessimisticProof mode with AggkitProverClient not set",
 			config: Config{
 				Mode: aggsendertypes.PessimisticProofMode.String(),
-				AgglayerClient: &grpc.ClientConfig{
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				},
 				},
 				AggkitProverClient: &grpc.ClientConfig{
 					URL: "",

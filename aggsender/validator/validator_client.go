@@ -12,6 +12,7 @@ import (
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/common"
+	"google.golang.org/protobuf/types/known/emptypb"
 )
 
 var _ types.ValidatorClient = (*ValidatorClient)(nil)
@@ -34,6 +35,18 @@ func NewValidatorClient(cfg *grpc.ClientConfig) (*ValidatorClient, error) {
 	return &ValidatorClient{
 		client:        v1.NewAggsenderValidatorClient(grpcClient.Conn()),
 		grpcClientCfg: cfg,
+	}, nil
+}
+
+func (v *ValidatorClient) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
+	response, err := v.client.HealthCheck(ctx, &emptypb.Empty{})
+	if err != nil {
+		return nil, fmt.Errorf("aggsender validator failed to get status: %w", err)
+	}
+	return &types.HealthCheckResponse{
+		Status:       response.Status,
+		StatusReason: response.Reason,
+		Version:      response.Version,
 	}, nil
 }
 

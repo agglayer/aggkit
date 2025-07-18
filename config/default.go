@@ -190,15 +190,20 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
 	[AggSender.AgglayerClient]
-		URL = "{{AggLayerURL}}"
-		MinConnectTimeout = "5s"
-		RequestTimeout = "300s"
-		UseTLS = false
-		[AggSender.AgglayerClient.Retry]
-			InitialBackoff = "1s"
-			MaxBackoff = "10s"
-			BackoffMultiplier = 2.0
-			MaxAttempts = 20
+		Cached = false
+		[AggSender.AgglayerClient.ConfigurationCache]
+			TTL = "15m"
+			Capacity = 100
+		[AggSender.AgglayerClient.GRPC]
+			URL = "{{AggLayerURL}}"
+			MinConnectTimeout = "5s"
+			RequestTimeout = "300s"
+			UseTLS = false
+			[AggSender.AgglayerClient.GRPC.Retry]
+				InitialBackoff = "1s"
+				MaxBackoff = "10s"
+				BackoffMultiplier = 2.0
+				MaxAttempts = 20
 	[AggSender.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"
@@ -238,4 +243,37 @@ GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 ProfilingHost = "localhost"
 ProfilingPort = 6060
 ProfilingEnabled = false
+
+[Validator]
+EnableRPC = false
+# check SignerConfig in docs/common_config.md for more details
+Signer = {{AggsenderPrivateKey}}
+MaxCertSize = "{{AggSender.MaxCertSize}}"
+MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
+DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
+[Validator.ServerConfig]
+	Host = "0.0.0.0"
+	Port = 5578
+	EnableReflection = true
+	MaxDecodingMessageSize = 26214400  # 25Mb
+[Validator.LerQuerierConfig]
+	RollupManagerAddr = "{{AggSender.RollupManagerAddr}}"
+	RollupCreationBlockL1 = "{{AggSender.RollupCreationBlockL1}}"
+[Validator.PPConfig]
+	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
+[Validator.AgglayerClient]
+		Cached = true
+		[Validator.AgglayerClient.ConfigurationCache]
+			TTL = "15m"
+			Capacity = 100
+		[Validator.AgglayerClient.GRPC]
+		URL = "{{AggSender.AgglayerClient.GRPC.URL}}"
+		MinConnectTimeout = "{{AggSender.AgglayerClient.GRPC.MinConnectTimeout}}"
+		RequestTimeout = "{{AggSender.AgglayerClient.GRPC.RequestTimeout}}"
+		UseTLS = "{{AggSender.AgglayerClient.GRPC.UseTLS}}"
+		[Validator.AgglayerClient.GRPC.Retry]
+			InitialBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.InitialBackoff}}"
+			MaxBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.MaxBackoff}}"
+			BackoffMultiplier = "{{AggSender.AgglayerClient.GRPC.Retry.BackoffMultiplier}}"
+			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
 `
