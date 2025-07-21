@@ -186,7 +186,7 @@ func (d *downloaderLegacy) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfo
 	for _, gerInfo := range gerInfos {
 		attempts := 0
 		for {
-			blockHashOrTimestamp, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerInfo.GlobalExitRoot)
+			blockHash, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerInfo.GlobalExitRoot)
 			if err != nil {
 				attempts++
 				log.Errorf("failed to check if global exit root %s is injected on L2: %s", gerInfo.GlobalExitRoot.Hex(), err)
@@ -196,10 +196,7 @@ func (d *downloaderLegacy) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfo
 			}
 
 			// Check if the GER is injected on L2
-			if common.BigToHash(blockHashOrTimestamp) != aggkitcommon.ZeroHash ||
-				common.Big0.Cmp(blockHashOrTimestamp) != 0 {
-				// for GlobalExitRootManagerL2 contract, we are storing the block timestamp
-				// instead of the block hash
+			if common.BigToHash(blockHash) != aggkitcommon.ZeroHash {
 				b.Events = []any{&Event{GERInfo: gerInfo}}
 			}
 
