@@ -83,7 +83,7 @@ func Execute[T any](retryDelaysConfig *RetryDelays,
 	ctx context.Context,
 	logFunc func(format string, args ...interface{}),
 	name string,
-	fn func() (T, error)) (T, error) {
+	payloadFunc func() (T, error)) (T, error) {
 	var zero T
 	if err := retryDelaysConfig.Validate(); err != nil {
 		return zero, err
@@ -98,32 +98,37 @@ func Execute[T any](retryDelaysConfig *RetryDelays,
 		delay := retryDelaysConfig.Delay(attempt)
 		logFunc("executing %s try %d/%d (next delay: %s)",
 			name, attempt+1, retryDelaysConfig.MaxAttempts, delay.String())
-		result, err := fn()
-		if err != nil && errors.Is(err, ErrAbort) {
+		// Execute payload
+		result, err := payloadFunc()
+		if err == nil {
+			logFunc("successful run %s in try %d",
+				name, attempt+1)
+			return result, nil
+		}
+		if errors.Is(err, ErrAbort) {
 			logFunc("aborting execution of %s due to error: %v",
 				name, err)
 			return result, err
 		}
-		if err != nil {
-			logFunc("fails execution %s try %d/%d due to error: %v",
-				name, attempt+1, retryDelaysConfig.MaxAttempts, err)
-			attempt++
-			select {
-			case <-ctx.Done():
-				logFunc("executing %s try %d/%d was canceled",
-					name, attempt, retryDelaysConfig.MaxAttempts)
-				return zero, ctx.Err()
-			case <-time.After(delay):
-				continue
-			}
-		} else {
-			logFunc("successful run %s in try %d",
-				name, attempt+1)
-			return result, nil
+
+		logFunc("fails execution of %s try %d/%d due to error: %v",
+			name, attempt+1, retryDelaysConfig.MaxAttempts, err)
+		attempt++
+		select {
+		case <-ctx.Done():
+			logFunc("executing %s try %d/%d was canceled",
+				name, attempt, retryDelaysConfig.MaxAttempts)
+			return zero, ctx.Err()
+		case <-time.After(delay):
+			continue
 		}
 	}
 	logFunc("fails to execute %s after %d retries",
 		name, attempt)
 	return zero, fmt.Errorf("fails to execute %s after %d retries. %w",
 		name, attempt, ErrExecutionFails)
+}
+
+func executionCheckResult() {
+
 }
