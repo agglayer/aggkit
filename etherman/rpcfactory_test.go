@@ -1,7 +1,6 @@
 package etherman
 
 import (
-	"context"
 	"testing"
 
 	"github.com/agglayer/aggkit/config"
@@ -18,7 +17,7 @@ func TestNewRPCClient(t *testing.T) {
 			ExtraParamFieldName: "http://anotherURL:1234",
 		},
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	eth, err := NewRPCClient(ctx, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)

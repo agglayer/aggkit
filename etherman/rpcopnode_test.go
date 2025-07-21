@@ -25,7 +25,7 @@ func TestNewRPCClientModeOp(t *testing.T) {
 			ExtraParamFieldName: "http://anotherURL:1234",
 		},
 	}
-	ctx := context.Background()
+	ctx := t.Context()
 	eth, err := NewRPCClientModeOp(ctx, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)
