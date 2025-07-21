@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -24,15 +25,27 @@ var (
 	emptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
+var timeNowFunc atomic.Value
+
+func init() {
+	timeNowFunc.Store(TimeNowUTC)
+}
+
+// TimeNow returns the current time as a uint32 timestamp (thread-safe).
+func TimeNow() uint32 {
+	return timeNowFunc.Load().(func() uint32)() //nolint:forcetypeassert
+}
+
+func SetTimeNowFunc(f func() uint32) {
+	timeNowFunc.Store(f)
+}
+
+// TimeNowUTC returns the current time in UTC as a uint32 timestamp.
 func TimeNowUTC() uint32 {
 	// Use a more precise time function to avoid collisions in tests
 	// and ensure that the time is always in UTC.
 	return uint32(time.Now().UTC().Unix())
 }
-
-// TimeNowFunc is a function that returns the current time in UTC.
-// It can be overridden for testing purposes.
-var TimeNowFunc = TimeNowUTC
 
 // BaseFlowConfig is a struct that holds the configuration for the base flow
 type BaseFlowConfig struct {
@@ -152,7 +165,7 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 			L1InfoTreeRootToProve: l1InfoRoot.Hash,
 			L1InfoTreeLeafCount:   l1InfoRoot.Index + 1,
 		},
-		CreatedAt: TimeNowFunc(),
+		CreatedAt: TimeNow(),
 	}, nil
 }
 
