@@ -17,15 +17,9 @@ func TestGetLastProcessedBlock(t *testing.T) {
 	require.NoError(t, err)
 
 	block := sync.Block{
-		Num:  1,
-		Hash: common.Hash{},
-		Events: []interface{}{
-			&Event{
-				GERInfo: &GlobalExitRootInfo{
-					GlobalExitRoot:  common.HexToHash("0x1"),
-					L1InfoTreeIndex: 2,
-				}},
-		},
+		Num:    1,
+		Hash:   common.Hash{},
+		Events: []any{newEvent(newGlobalExitRootInfo(common.HexToHash("0x1"), 2, 1, 0), GEREventTypeInsert)},
 	}
 	err = processor.ProcessBlock(context.TODO(), block)
 	require.NoError(t, err)
@@ -45,15 +39,9 @@ func TestGetFirstGERAfterL1InfoTreeIndex(t *testing.T) {
 
 	ctx := context.TODO()
 	block := sync.Block{
-		Num:  1,
-		Hash: common.Hash{},
-		Events: []interface{}{
-			&Event{
-				GERInfo: &GlobalExitRootInfo{
-					GlobalExitRoot:  common.HexToHash("0x1"),
-					L1InfoTreeIndex: 2,
-				}},
-		},
+		Num:    1,
+		Hash:   common.Hash{},
+		Events: []any{newEvent(newGlobalExitRootInfo(common.HexToHash("0x1"), 2, 1, 0), GEREventTypeInsert)},
 	}
 	err = processor.ProcessBlock(context.TODO(), block)
 	require.NoError(t, err)

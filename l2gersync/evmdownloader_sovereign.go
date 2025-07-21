@@ -108,12 +108,13 @@ func (d *downloaderSovereign) buildAppender(
 		}
 
 		b.Events = []any{
-			&Event{
-				GEREvent: &GEREvent{
-					GlobalExitRoot: removeGEREvent.RemovedGlobalExitRoot,
-					IsRemove:       true,
-				},
-			}}
+			newEvent(
+				newGlobalExitRootInfo(
+					removeGEREvent.RemovedGlobalExitRoot,
+					0,
+					b.Num,
+					uint64(l.Index)),
+				GEREventTypeRemove)}
 		return nil
 	}
 
@@ -130,15 +131,14 @@ func (d *downloaderSovereign) buildAppender(
 		}
 
 		b.Events = []any{
-			&Event{
-				GEREvent: &GEREvent{
-					BlockNum:        l.BlockNumber,
-					BlockPosition:   uint64(l.Index),
-					GlobalExitRoot:  insertGEREvent.NewGlobalExitRoot,
-					L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
-					IsRemove:        false,
-				},
-			}}
+			newEvent(
+				newGlobalExitRootInfo(
+					insertGEREvent.NewGlobalExitRoot,
+					l1InfoTreeLeaf.L1InfoTreeIndex,
+					b.Num,
+					uint64(l.Index)),
+				GEREventTypeInsert),
+		}
 		return nil
 	}
 

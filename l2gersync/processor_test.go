@@ -19,15 +19,9 @@ func Test_getLatestL1InfoTreeIndex(t *testing.T) {
 	require.NoError(t, err)
 
 	block := sync.Block{
-		Num:  1,
-		Hash: common.Hash{},
-		Events: []interface{}{
-			&Event{
-				GERInfo: &GlobalExitRootInfo{
-					GlobalExitRoot:  common.HexToHash("0x1"),
-					L1InfoTreeIndex: 2,
-				}},
-		},
+		Num:    1,
+		Hash:   common.Hash{},
+		Events: []any{newEvent(newGlobalExitRootInfo(common.HexToHash("0x1"), 2, 1, 0), GEREventTypeInsert)},
 	}
 	err = processor.ProcessBlock(context.TODO(), block)
 	require.NoError(t, err)
@@ -54,10 +48,7 @@ func TestProcessBlock(t *testing.T) {
 					Num: 1,
 					Events: []any{
 						&Event{
-							GERInfo: &GlobalExitRootInfo{
-								GlobalExitRoot:  common.HexToHash("0x1234"),
-								L1InfoTreeIndex: l1InfoTreeIndex,
-							},
+							GERInfo: newGlobalExitRootInfo(common.HexToHash("0x1234"), l1InfoTreeIndex, 1, 0),
 						},
 					},
 				},
@@ -71,16 +62,11 @@ func TestProcessBlock(t *testing.T) {
 					Num: 2,
 					Events: []any{
 						&Event{
-							GERInfo: &GlobalExitRootInfo{
-								GlobalExitRoot:  common.HexToHash("0xffee"),
-								L1InfoTreeIndex: l1InfoTreeIndex,
-							},
+							GERInfo: newGlobalExitRootInfo(common.HexToHash("0xffee"), l1InfoTreeIndex, 2, 0),
 						},
 						&Event{
-							GEREvent: &GEREvent{
-								GlobalExitRoot: common.HexToHash("0xffee"),
-								IsRemove:       true,
-							},
+							GERInfo:   newGlobalExitRootInfo(common.HexToHash("0xffee"), 0, 0, 0),
+							EventType: GEREventTypeRemove,
 						},
 					},
 				},
@@ -95,10 +81,7 @@ func TestProcessBlock(t *testing.T) {
 					Num: 3,
 					Events: []any{
 						&Event{
-							GERInfo: &GlobalExitRootInfo{
-								GlobalExitRoot:  common.HexToHash("0x1234"),
-								L1InfoTreeIndex: l1InfoTreeIndex,
-							},
+							GERInfo: newGlobalExitRootInfo(common.HexToHash("0x1234"), l1InfoTreeIndex, 3, 0),
 						},
 					},
 				},
@@ -106,10 +89,7 @@ func TestProcessBlock(t *testing.T) {
 					Num: 4,
 					Events: []any{
 						&Event{
-							GERInfo: &GlobalExitRootInfo{
-								GlobalExitRoot:  common.HexToHash("0x5678"),
-								L1InfoTreeIndex: l1InfoTreeIndex + 1,
-							},
+							GERInfo: newGlobalExitRootInfo(common.HexToHash("0x5678"), l1InfoTreeIndex+1, 4, 0),
 						},
 					},
 				},
@@ -117,10 +97,7 @@ func TestProcessBlock(t *testing.T) {
 					Num: 5,
 					Events: []any{
 						&Event{
-							GERInfo: &GlobalExitRootInfo{
-								GlobalExitRoot:  common.HexToHash("0x9876"),
-								L1InfoTreeIndex: l1InfoTreeIndex + 2,
-							},
+							GERInfo: newGlobalExitRootInfo(common.HexToHash("0x9876"), l1InfoTreeIndex+2, 5, 0),
 						},
 					},
 				},
@@ -128,10 +105,8 @@ func TestProcessBlock(t *testing.T) {
 					Num: 6,
 					Events: []any{
 						&Event{
-							GEREvent: &GEREvent{
-								GlobalExitRoot: common.HexToHash("0x9876"),
-								IsRemove:       true,
-							},
+							GERInfo:   newGlobalExitRootInfo(common.HexToHash("0x9876"), 0, 0, 0),
+							EventType: GEREventTypeRemove,
 						},
 					},
 				},
@@ -175,23 +150,19 @@ func TestReorg(t *testing.T) {
 	block1 := sync.Block{
 		Num:  1,
 		Hash: common.Hash{},
-		Events: []interface{}{
+		Events: []any{
 			&Event{
-				GERInfo: &GlobalExitRootInfo{
-					GlobalExitRoot:  common.HexToHash("0x1"),
-					L1InfoTreeIndex: 2,
-				}},
+				GERInfo: newGlobalExitRootInfo(common.HexToHash("0x1"), 2, 1, 0),
+			},
 		},
 	}
 	block2 := sync.Block{
 		Num:  2,
 		Hash: common.Hash{},
-		Events: []interface{}{
+		Events: []any{
 			&Event{
-				GERInfo: &GlobalExitRootInfo{
-					GlobalExitRoot:  common.HexToHash("0x2"),
-					L1InfoTreeIndex: 3,
-				}},
+				GERInfo: newGlobalExitRootInfo(common.HexToHash("0x2"), 3, 2, 0),
+			},
 		},
 	}
 	err = processor.ProcessBlock(context.TODO(), block1)
@@ -253,10 +224,11 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 			{Num: 3, Events: []any{&Event{GERInfo: gerList[0]}}},
 			{Num: 4, Events: []any{&Event{GERInfo: gerList[1]}}},
 			{Num: 5, Events: []any{&Event{GERInfo: gerList[2]}}},
-			{Num: 6, Events: []any{&Event{GEREvent: &GEREvent{
-				GlobalExitRoot: gerList[2].GlobalExitRoot,
-				IsRemove:       true,
-			}}}},
+			{Num: 6, Events: []any{&Event{
+				GERInfo: newGlobalExitRootInfo(
+					gerList[2].GlobalExitRoot, 0, 0, 0),
+				EventType: GEREventTypeRemove,
+			}}},
 		}
 
 		processor := setupProcessorWithGERs(t, allBlocks)
@@ -273,10 +245,10 @@ func TestGetInjectedGERsForRange(t *testing.T) {
 			{Num: 3, Events: []any{&Event{GERInfo: gerList[0]}}},
 			{Num: 4, Events: []any{&Event{GERInfo: gerList[1]}}},
 			{Num: 5, Events: []any{&Event{GERInfo: gerList[2]}}},
-			{Num: 6, Events: []any{&Event{GEREvent: &GEREvent{
-				GlobalExitRoot: gerList[2].GlobalExitRoot,
-				IsRemove:       true,
-			}}}},
+			{Num: 6, Events: []any{&Event{
+				GERInfo:   &GlobalExitRootInfo{GlobalExitRoot: gerList[2].GlobalExitRoot},
+				EventType: GEREventTypeRemove,
+			}}},
 		}
 
 		processor := setupProcessorWithGERs(t, allBlocks)

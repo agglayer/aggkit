@@ -31,12 +31,16 @@ type GlobalExitRootInfo struct {
 	BlockPosition   uint64         `meddler:"block_pos"`
 }
 
-type GEREvent struct {
-	BlockNum        uint64
-	BlockPosition   uint64
-	GlobalExitRoot  ethcommon.Hash
-	L1InfoTreeIndex uint32
-	IsRemove        bool
+// newGlobalExitRootInfo creates a new GlobalExitRootInfo instance with the provided parameters.
+func newGlobalExitRootInfo(
+	globalExitRoot ethcommon.Hash, l1InfoTreeIndex uint32, blockNum, blockPosition uint64,
+) *GlobalExitRootInfo {
+	return &GlobalExitRootInfo{
+		GlobalExitRoot:  globalExitRoot,
+		L1InfoTreeIndex: l1InfoTreeIndex,
+		BlockNum:        blockNum,
+		BlockPosition:   blockPosition,
+	}
 }
 
 type processor struct {
@@ -93,22 +97,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			return fmt.Errorf("unexpected event type %T", genericEvt)
 		}
 
-		switch {
-		case event.GERInfo != nil:
-			gerEvent := &GEREvent{
-				BlockNum:        block.Num,
-				BlockPosition:   event.GERInfo.BlockPosition,
-				GlobalExitRoot:  event.GERInfo.GlobalExitRoot,
-				L1InfoTreeIndex: event.GERInfo.L1InfoTreeIndex,
-			}
-			if err := p.handleGERInsertion(tx, gerEvent); err != nil {
-				return err
-			}
-
-		case event.GEREvent != nil:
-			if err := p.handleGEREvent(tx, event.GEREvent); err != nil {
-				return err
-			}
+		if err := p.handleGEREvent(tx, event.GERInfo, event.EventType); err != nil {
+			return err
 		}
 	}
 
@@ -121,33 +111,20 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	return nil
 }
 
-// handleGERInsertion inserts the given global exit root entry to `imported_global_exit_root`
-func (*processor) handleGERInsertion(tx dbtypes.Txer, gerInfo *GEREvent) error {
-	gerInfoWithBlockNum := &GlobalExitRootInfo{
-		GlobalExitRoot:  gerInfo.GlobalExitRoot,
-		BlockPosition:   gerInfo.BlockPosition,
-		L1InfoTreeIndex: gerInfo.L1InfoTreeIndex,
-		BlockNum:        gerInfo.BlockNum,
-	}
-
-	if err := meddler.Insert(tx, "imported_global_exit_root", gerInfoWithBlockNum); err != nil {
-		return fmt.Errorf("failed to insert GER entry (value=%x, block=%d): %w",
-			gerInfo.GlobalExitRoot, gerInfo.BlockNum, err)
-	}
-	return nil
-}
-
 // handleGEREvent either inserts or removes the global exit root entry from `imported_global_exit_root` table,
-func (p *processor) handleGEREvent(tx dbtypes.Txer, event *GEREvent) error {
-	if event.IsRemove {
-		_, err := tx.Exec(deleteGERSql, event.GlobalExitRoot.Hex())
-		if err != nil {
-			return fmt.Errorf("failed to remove global exit root %s: %w", event.GlobalExitRoot.Hex(), err)
+func (p *processor) handleGEREvent(tx dbtypes.Txer, gerInfo *GlobalExitRootInfo, eventType GEREventType) error {
+	switch eventType {
+	case GEREventTypeInsert:
+		// Insert the global exit root into the database
+		if err := meddler.Insert(tx, "imported_global_exit_root", gerInfo); err != nil {
+			return fmt.Errorf("failed to insert imported global exit root (value=%x, block=%d): %w",
+				gerInfo.GlobalExitRoot, gerInfo.BlockNum, err)
 		}
-	} else {
-		err := p.handleGERInsertion(tx, event)
+	case GEREventTypeRemove:
+		// Remove the global exit root from the database
+		_, err := tx.Exec(deleteGERSql, gerInfo.GlobalExitRoot.Hex())
 		if err != nil {
-			return fmt.Errorf("failed to insert global exit root %s: %w", event.GlobalExitRoot.Hex(), err)
+			return fmt.Errorf("failed to remove global exit root %s: %w", gerInfo.GlobalExitRoot.Hex(), err)
 		}
 	}
 

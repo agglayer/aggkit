@@ -17,10 +17,27 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+// GEREventType represents the type of Global Exit Root event.
+// It can be either an insertion or a removal of a Global Exit Root.
+type GEREventType int
+
+const (
+	GEREventTypeInsert GEREventType = iota
+	GEREventTypeRemove
+)
+
 // Event is the combination of the events that are emitted by the L2 GER manager
 type Event struct {
-	GERInfo  *GlobalExitRootInfo
-	GEREvent *GEREvent
+	GERInfo   *GlobalExitRootInfo
+	EventType GEREventType
+}
+
+// newEvent creates a new Event instance with the provided block number, GER info, and event type.
+func newEvent(gerInfo *GlobalExitRootInfo, eventType GEREventType) *Event {
+	return &Event{
+		GERInfo:   gerInfo,
+		EventType: eventType,
+	}
 }
 
 type downloaderLegacy struct {
@@ -113,10 +130,12 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 		fromBlock = d.WaitForNewBlocks(ctx, fromBlock)
 
 		// Fetch GERs from the determined index
-		attempts = 0
-		var gers []*GlobalExitRootInfo
+		var (
+			attempts = 0
+			gers     []*GlobalExitRootInfo
+		)
 		for {
-			gers, err = d.getGERsFromIndex(ctx, nextL1InfoTreeIndex)
+			gers, err = d.getGERsFromIndex(ctx, fromBlock, nextL1InfoTreeIndex)
 			if err != nil {
 				log.Errorf("error getting GERs: %v", err)
 				attempts++
@@ -157,7 +176,7 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 }
 
 func (d *downloaderLegacy) getGERsFromIndex(
-	ctx context.Context, fromL1InfoTreeIndex uint32) ([]*GlobalExitRootInfo, error) {
+	ctx context.Context, blockNum uint64, fromL1InfoTreeIndex uint32) ([]*GlobalExitRootInfo, error) {
 	lastRoot, err := d.l1InfoTreeSync.GetLastL1InfoTreeRoot(ctx)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, nil
@@ -172,11 +191,7 @@ func (d *downloaderLegacy) getGERsFromIndex(
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve l1 info tree leaf for index=%d: %w", i, err)
 		}
-		gers = append(gers,
-			&GlobalExitRootInfo{
-				L1InfoTreeIndex: i,
-				GlobalExitRoot:  info.GlobalExitRoot,
-			})
+		gers = append(gers, newGlobalExitRootInfo(info.GlobalExitRoot, i, blockNum, 0))
 	}
 
 	return gers, nil
@@ -197,7 +212,7 @@ func (d *downloaderLegacy) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfo
 
 			// Check if the GER is injected on L2
 			if common.BigToHash(blockHash) != aggkitcommon.ZeroHash {
-				b.Events = []any{&Event{GERInfo: gerInfo}}
+				b.Events = []any{newEvent(gerInfo, GEREventTypeInsert)}
 			}
 
 			break
