@@ -1187,9 +1187,9 @@ func TestCertificate_FEPHashToSign(t *testing.T) {
 			certificate: &Certificate{},
 			expectedHash: crypto.Keccak256Hash(
 				common.Hash{}.Bytes(),
-				emptyBytesHash,
+				aggkitcommon.EmptyBytesHash,
 				aggkitcommon.Uint64ToLittleEndianBytes(0),
-				emptyBytesHash,
+				aggkitcommon.EmptyBytesHash,
 			),
 		},
 		{
@@ -1203,7 +1203,7 @@ func TestCertificate_FEPHashToSign(t *testing.T) {
 			},
 			expectedHash: crypto.Keccak256Hash(
 				common.HexToHash("0xdef456").Bytes(),
-				emptyBytesHash,
+				aggkitcommon.EmptyBytesHash,
 				aggkitcommon.Uint64ToLittleEndianBytes(100),
 				common.HexToHash("0x123abc").Bytes(),
 			),
