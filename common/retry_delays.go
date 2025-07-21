@@ -32,38 +32,42 @@ type RetryDelays struct {
 	MaxAttempts int `mapstructure:"MaxAttempts"`
 }
 
+// Validate checks if the RetryDelays configuration is valid.
 func (r *RetryDelays) Validate() error {
 	if r == nil {
-		return fmt.Errorf("retry delays cannot be nil. %w", ErrInvalidConfig)
+		return fmt.Errorf("%w: retry delays cannot be nil.", ErrInvalidConfig)
 	}
 	if len(r.Delays) == 0 {
-		return fmt.Errorf("retry delays cannot be empty. %w", ErrInvalidConfig)
+		return fmt.Errorf("%w: retry delays cannot be empty.", ErrInvalidConfig)
 	}
 	for _, delay := range r.Delays {
 		if delay.Duration <= 0 {
-			return fmt.Errorf("retry delay must be greater than zero, got %s. %w",
-				delay.Duration, ErrInvalidConfig)
+			return fmt.Errorf("%w: retry delay must be greater than zero, got %s.",
+				ErrInvalidConfig, delay.Duration)
 		}
 	}
 	if r.MaxAttempts < 0 {
-		return fmt.Errorf("max retries cannot be negative, got %d. %w",
-			r.MaxAttempts, ErrInvalidConfig)
+		return fmt.Errorf("%w: max retries cannot be negative, got %d.",
+			ErrInvalidConfig, r.MaxAttempts)
 	}
 	return nil
 }
 
+// String returns a string representation of the RetryDelays struct.
 func (r *RetryDelays) String() string {
 	if r == nil {
-		return "RetryDelays is nil"
+		return "RetryDelays{nil}"
 	}
 	return fmt.Sprintf("RetryDelays{Delays: %v, MaxRetries: %d}", r.Delays, r.MaxAttempts)
 }
 
+// InfiniteRetries return true if the configuration allows infinite retries.
 func (r *RetryDelays) InfiniteRetries() bool {
 	// Infinite retries are allowed if MaxAttempts is 0.
 	return r.MaxAttempts == 0
 }
 
+// Delay returns the delay for the given attempt.
 func (r *RetryDelays) Delay(attempt int) time.Duration {
 	if r == nil || len(r.Delays) == 0 {
 		return 0
@@ -130,8 +134,4 @@ func Execute[T any](retryDelaysConfig *RetryDelays,
 		name, attempt)
 	return zero, fmt.Errorf("fails to execute %s after %d retries. %w",
 		name, attempt, ErrExecutionFails)
-}
-
-func executionCheckResult() {
-
 }

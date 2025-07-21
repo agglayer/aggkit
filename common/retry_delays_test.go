@@ -124,3 +124,14 @@ func TestExecute_ErrAbort(t *testing.T) {
 	require.Equal(t, "", result)
 	require.Equal(t, 2, attempts)
 }
+
+func TestRetryDelays_BadConfig(t *testing.T) {
+	r := &RetryDelays{
+		Delays:      []types.Duration{{Duration: -1 * time.Second}},
+		MaxAttempts: -1,
+	}
+	err := r.Validate()
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "retry delay must be greater than zero")
+
+}
