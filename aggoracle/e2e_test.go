@@ -12,53 +12,61 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEVM_DirectInjectionMode(t *testing.T) {
-	setup := helpers.NewE2EEnvWithEVML2(t, helpers.DefaultEnvironmentConfig())
-
-	for i := 0; i < 10; i++ {
-		rootHash := common.HexToHash(strconv.Itoa(i))
-		_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, rootHash)
-		require.NoError(t, err)
-		setup.L1Environment.SimBackend.Commit()
-
-		// wait for the GER to be processed by the InfoTree syncer
-		time.Sleep(time.Millisecond * 100)
-		expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
-		require.NoError(t, err)
-
-		isInjected, err := setup.L2Environment.AggoracleSender.IsGERInjected(expectedGER)
-		require.NoError(t, err)
-
-		require.True(t, isInjected, fmt.Sprintf("iteration %d, GER: %s", i, common.Bytes2Hex(expectedGER[:])))
+func TestEVM_GERInjection(t *testing.T) {
+	tests := []struct {
+		name                    string
+		enableAggOracleCommittee bool
+		sleepDuration           time.Duration
+		additionalAssertions    func(t *testing.T, setup *helpers.AggoracleWithEVMChain, expectedGER common.Hash)
+	}{
+		{
+			name:                    "DirectInjectionMode",
+			enableAggOracleCommittee: false,
+			sleepDuration:           time.Millisecond * 100,
+			additionalAssertions:    nil,
+		},
+		{
+			name:                    "AggOracleCommitteeMode",
+			enableAggOracleCommittee: true,
+			sleepDuration:           time.Millisecond * 500,
+			additionalAssertions: func(t *testing.T, setup *helpers.AggoracleWithEVMChain, expectedGER common.Hash) {
+				// fetch proposedGERToReport from committee contract
+				proposedGERToReport, err := setup.L2Environment.AggOracleCommitteeContract.ProposedGERToReport(nil, expectedGER)
+				require.NoError(t, err)
+				require.Equal(t, proposedGERToReport.Votes, uint64(0))
+				require.Equal(t, proposedGERToReport.Timestamp, uint64(0))
+			},
+		},
 	}
-}
 
-func TestEVM_AggOracleCommitteeMode(t *testing.T) {
-	cfg := helpers.DefaultEnvironmentConfig()
-	cfg.AggoraclecommitteeConfig.EnableAggOracleCommittee = true
-	setup := helpers.NewE2EEnvWithEVML2(t, cfg)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := helpers.DefaultEnvironmentConfig()
+			cfg.AggoraclecommitteeConfig.EnableAggOracleCommittee = tt.enableAggOracleCommittee
+			setup := helpers.NewE2EEnvWithEVML2(t, cfg)
 
-	for i := 0; i < 10; i++ {
-		rootHash := common.HexToHash(strconv.Itoa(i))
-		_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, rootHash)
-		require.NoError(t, err)
-		setup.L1Environment.SimBackend.Commit()
+			for i := 0; i < 10; i++ {
+				rootHash := common.HexToHash(strconv.Itoa(i))
+				_, err := setup.L1Environment.GERContract.UpdateExitRoot(setup.L1Environment.Auth, rootHash)
+				require.NoError(t, err)
+				setup.L1Environment.SimBackend.Commit()
 
-		// wait for the GER to be processed by the InfoTree syncer
-		time.Sleep(time.Millisecond * 500)
-		expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
-		require.NoError(t, err)
+				// wait for the GER to be processed by the InfoTree syncer
+				time.Sleep(tt.sleepDuration)
+				expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
+				require.NoError(t, err)
 
-		isInjected, err := setup.L2Environment.AggoracleSender.IsGERInjected(expectedGER)
-		require.NoError(t, err)
+				isInjected, err := setup.L2Environment.AggoracleSender.IsGERInjected(expectedGER)
+				require.NoError(t, err)
 
-		// fetch proposedGERToReport from committee contract
-		proposedGERToReport, err := setup.L2Environment.AggOracleCommitteeContract.ProposedGERToReport(nil, expectedGER)
-		require.NoError(t, err)
-		require.Equal(t, proposedGERToReport.Votes, uint64(0))
-		require.Equal(t, proposedGERToReport.Timestamp, uint64(0))
+				// Run additional assertions if provided
+				if tt.additionalAssertions != nil {
+					tt.additionalAssertions(t, setup, expectedGER)
+				}
 
-		require.True(t, isInjected, fmt.Sprintf("Root: %s", common.Bytes2Hex(expectedGER[:])))
+				require.True(t, isInjected, fmt.Sprintf("iteration %d, GER: %s", i, common.Bytes2Hex(expectedGER[:])))
+			}
+		})
 	}
 }
 

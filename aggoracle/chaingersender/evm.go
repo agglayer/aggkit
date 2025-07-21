@@ -185,19 +185,11 @@ func (c *EVMChainGERSender) IsGERProposed(ger common.Hash) (bool, error) {
 
 // InjectGER injects the provided global exit root into the L2 GER manager contract
 func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) error {
-	if c.mode != DirectInjectionMode {
-		return fmt.Errorf("InjectGER is only available in direct injection mode, current mode: %s", c.mode)
-	}
-
 	return c.submitTransaction(ctx, &c.l2GERManagerAddr, c.l2GERManagerAbi, insertGERFuncName, ger, "inject")
 }
 
 // ProposeGER proposes the provided global exit root to the AggOracleCommittee contract
 func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) error {
-	if c.mode != AggOracleCommitteeMode {
-		return fmt.Errorf("ProposeGER is only available in AggOracleCommittee mode, current mode: %s", c.mode)
-	}
-
 	// Check if the GER has already been proposed by the oracle committee member
 	isProposed, err := c.IsGERProposed(ger)
 	if err != nil {
