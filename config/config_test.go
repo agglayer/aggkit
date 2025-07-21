@@ -45,7 +45,7 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")
 	require.Equal(t, cfg.AggSender.RetriesToBuildAndSendCertificate.String(),
-		"RetryDelays{Delays: [1s 2s 5s 10s 30s 1m0s 2m0s 5m0s], MaxRetries: 10}")
+		"RetryDelays{Delays: [30s 1m0s 2m0s 5m0s 5m0s 10m0s], MaxRetries: 6}")
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
 	require.Equal(t, L2RPCClientConfig{
 		RPCClientConfig: RPCClientConfig{
