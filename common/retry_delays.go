@@ -71,6 +71,9 @@ func (r *RetryDelays) Delay(attempt int) time.Duration {
 	return r.Delays[min(attempt, len(r.Delays)-1)].Duration
 }
 
+func silentLog(format string, args ...interface{}) {
+}
+
 // Execute executes the provided function with retry logic.
 // retryDelaysConfig: it's the RetryDelays struct that holds the retry delays and the maximum number of retries.
 // ctx: the context to use for cancellation.
@@ -90,7 +93,7 @@ func Execute[T any](retryDelaysConfig *RetryDelays,
 	}
 	if logFunc == nil {
 		// if logger is nil, we create a silent logger
-		logFunc = func(format string, args ...interface{}) {}
+		logFunc = silentLog
 	}
 
 	attempt := 0
