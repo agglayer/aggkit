@@ -29,7 +29,7 @@ func TestEVM_GERInjection(t *testing.T) {
 			name:                     "AggOracleCommitteeMode",
 			enableAggOracleCommittee: true,
 			sleepDuration:            time.Millisecond * 500,
-			additionalAssertions:     func(t *testing.T, setup *helpers.AggoracleWithEVMChain, expectedGER common.Hash) {
+			additionalAssertions: func(t *testing.T, setup *helpers.AggoracleWithEVMChain, expectedGER common.Hash) {
 				t.Helper()
 				// fetch proposedGERToReport from committee contract
 				proposedGERToReport, err := setup.L2Environment.AggOracleCommitteeContract.ProposedGERToReport(nil, expectedGER)
