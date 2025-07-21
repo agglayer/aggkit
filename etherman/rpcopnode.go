@@ -41,7 +41,8 @@ func NewRPCClientModeOp(cfg config.L2RPCClientConfig) (aggkittypes.EthClienter, 
 	}
 
 	log.Debugf("Creating OPNode RPC client with URL %s %s:%s", cfg.URL, ExtraParamFieldName, opNodeURL)
-	ethClient, err := aggkittypes.DialWithRetry(cfg.URL, cfg.MaxRetries, cfg.InitialBackoff.Duration)
+	ethClient, err := aggkittypes.DialWithRetry(cfg.URL, cfg.MaxRetries,
+		cfg.InitialBackoff.Duration, cfg.MaxBackoff.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("fails to create RPC client. Err: %w", err)
 	}

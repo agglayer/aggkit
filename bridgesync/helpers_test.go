@@ -35,7 +35,7 @@ func startGeth(t *testing.T, ctx context.Context, cancelFn context.CancelFunc) (
 	})
 	log.Debug("Geth docker container is started")
 
-	client, err := aggkittypes.DialWithRetry("http://127.0.0.1:8545", 10, time.Second)
+	client, err := aggkittypes.DialWithRetry("http://127.0.0.1:8545", 10, time.Second, 2*time.Second)
 	require.NoError(t, err)
 
 	auth := createAuth(t, ctx, "ac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80", client)

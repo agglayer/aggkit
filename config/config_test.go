@@ -49,7 +49,9 @@ func TestLoadDefaultConfig(t *testing.T) {
 		RPCClientConfig: RPCClientConfig{
 			URL:            "http://localhost:8123",
 			MaxRetries:     5,
-			InitialBackoff: types.NewDuration(2 * time.Second)},
+			InitialBackoff: types.NewDuration(2 * time.Second),
+			MaxBackoff:     types.NewDuration(10 * time.Second),
+		},
 		Mode: RPCModeBasic,
 	}, cfg.Common.L2RPC)
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)

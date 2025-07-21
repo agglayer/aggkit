@@ -64,7 +64,7 @@ func (c *NoopRPCClient) Call(result any, method string, args ...any) error {
 
 // DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
 // It returns an EthClienter on success or an error if all attempts fail.
-func DialWithRetry(url string, maxRetries int, initialBackoff time.Duration) (EthClienter, error) {
+func DialWithRetry(url string, maxRetries int, initialBackoff, maxBackoff time.Duration) (EthClienter, error) {
 	var (
 		client *ethclient.Client
 		err    error
@@ -81,8 +81,9 @@ func DialWithRetry(url string, maxRetries int, initialBackoff time.Duration) (Et
 			return NewDefaultEthClient(client, client.Client()), nil
 		}
 
-		wait := time.Duration(float64(initialBackoff) * math.Pow(backoffBase, float64(attempt)))
-		log.Warnf("Dialing %s failed (attempt %d/%d): %v. Retrying in %s...", url, attempt+1, maxRetries+1, err, wait)
+		backoff := float64(initialBackoff) * math.Pow(backoffBase, float64(attempt))
+		wait := time.Duration(math.Min(backoff, float64(maxBackoff)))
+		log.Warnf("Dialing %s failed (attempt %d/%d): %v. Retrying in %s...", url, attempt+1, maxRetries+1, err, backoff)
 		time.Sleep(wait)
 	}
 

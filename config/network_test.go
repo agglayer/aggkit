@@ -49,7 +49,7 @@ func TestL1NetworkConfig_Validate(t *testing.T) {
 			cfg: L1NetworkConfig{
 				RPC: RPCClientConfig{MaxRetries: 1}, // empty URL
 			},
-			wantErr: ErrMissingRPCURL,
+			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
 		},
 		{
 			name: "missing RollupAddr",
@@ -122,7 +122,7 @@ func TestL2RPCClientConfig_Validate(t *testing.T) {
 			cfg: L2RPCClientConfig{
 				RPCClientConfig: RPCClientConfig{MaxRetries: 1}, // empty URL
 			},
-			wantErr: ErrMissingRPCURL,
+			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
 		},
 		{
 			name: "invalid RPC mode",

@@ -46,8 +46,8 @@ func (c *L1NetworkConfig) Validate() error {
 	if c.RPC == (RPCClientConfig{}) {
 		return ErrMissingRPCConfig
 	}
-	if c.RPC.URL == "" {
-		return ErrMissingRPCURL
+	if err := c.RPC.Validate(); err != nil {
+		return fmt.Errorf("invalid RPC configuration: %w", err)
 	}
 	if c.RollupAddr == (common.Address{}) {
 		return ErrMissingRollupAddress
@@ -72,6 +72,35 @@ type RPCClientConfig struct {
 	MaxRetries int `mapstructure:"MaxRetries"`
 	// InitialBackoff is the initial backoff duration for retries
 	InitialBackoff types.Duration `mapstructure:"InitialBackoff"`
+	// MaxBackoff is the maximum backoff duration for retries
+	MaxBackoff types.Duration `mapstructure:"MaxBackoff"`
+}
+
+// Validate checks if the RPCClientConfig is valid
+func (c *RPCClientConfig) Validate() error {
+	if c.URL == "" {
+		return ErrMissingRPCURL
+	}
+
+	if c.MaxRetries < 0 {
+		return fmt.Errorf("max retries must be non-negative, got %d", c.MaxRetries)
+	}
+
+	if c.MaxRetries > 0 {
+		if c.InitialBackoff.Duration <= 0 {
+			return fmt.Errorf("initial backoff must be positive, got %s", c.InitialBackoff.Duration)
+		}
+
+		if c.MaxBackoff.Duration <= 0 {
+			return fmt.Errorf("max backoff must be positive, got %s", c.MaxBackoff.Duration)
+		}
+
+		if c.MaxBackoff.Duration < c.InitialBackoff.Duration {
+			return fmt.Errorf("max backoff %s must be greater than or equal to initial backoff %s",
+				c.MaxBackoff.Duration, c.InitialBackoff.Duration)
+		}
+	}
+	return nil
 }
 
 type RPCMode string
@@ -98,8 +127,8 @@ func (c *L2RPCClientConfig) Validate() error {
 	if c.RPCClientConfig == (RPCClientConfig{}) {
 		return ErrMissingRPCConfig
 	}
-	if c.RPCClientConfig.URL == "" {
-		return ErrMissingRPCURL
+	if err := c.RPCClientConfig.Validate(); err != nil {
+		return fmt.Errorf("invalid RPC configuration: %w", err)
 	}
 	if c.Mode != RPCModeBasic && c.Mode != RPCModeOp {
 		return fmt.Errorf("invalid RPC mode: %s", c.Mode)

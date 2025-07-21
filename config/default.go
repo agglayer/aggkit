@@ -46,6 +46,7 @@ GenerateAggchainProofTimeout = "1h"
 	URL = "{{L2URL}}"
 	MaxRetries = 5
 	InitialBackoff = "2s"
+	MaxBackoff = "10s"
 `
 
 // DefaultValues is the default configuration
@@ -71,6 +72,7 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 		URL = "{{L1Config.URL}}"
 		MaxRetries = 5
 		InitialBackoff = "2s"
+		MaxBackoff = "10s"
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"

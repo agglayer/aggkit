@@ -517,7 +517,8 @@ func runL1ClientIfNeeded(components []string, rpcClientCfg config.RPCClientConfi
 	ethClient, err := aggkittypes.DialWithRetry(
 		rpcClientCfg.URL,
 		rpcClientCfg.MaxRetries,
-		rpcClientCfg.InitialBackoff.Duration)
+		rpcClientCfg.InitialBackoff.Duration,
+		rpcClientCfg.MaxBackoff.Duration)
 	if err != nil {
 		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
 	}
@@ -789,7 +790,11 @@ func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*
 		return &etherman.RollupDataQuerier{}, nil
 	}
 
-	ethClient, err := aggkittypes.DialWithRetry(cfg.RPC.URL, cfg.RPC.MaxRetries, cfg.RPC.InitialBackoff.Duration)
+	ethClient, err := aggkittypes.DialWithRetry(
+		cfg.RPC.URL,
+		cfg.RPC.MaxRetries,
+		cfg.RPC.InitialBackoff.Duration,
+		cfg.RPC.MaxBackoff.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.RPC.URL, err)
 	}
