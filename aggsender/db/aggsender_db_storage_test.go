@@ -992,3 +992,162 @@ func Test_GetNonAcceptedCert(t *testing.T) {
 	}
 	require.Equal(t, *certificate, certificateFromDB, "retrieved certificate should match the saved certificate")
 }
+
+func TestSaveOrUpdateCertificate(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
+	cfg := AggSenderSQLStorageConfig{
+		DBPath: dbPath,
+	}
+
+	newTxer = db.NewTx
+
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+
+	signedCert := "signed-cert"
+
+	// Save new certificate
+	certificate := &types.Certificate{
+		Header: &types.CertificateHeader{
+			Height:           1,
+			CertificateID:    common.HexToHash("0x1"),
+			NewLocalExitRoot: common.HexToHash("0x2"),
+			FromBlock:        1,
+			ToBlock:          2,
+			Status:           agglayertypes.Pending,
+			CreatedAt:        uint32(time.Now().UTC().UnixMilli()),
+		},
+		SignedCertificate: &signedCert,
+		ExtraData:         "extra data",
+	}
+
+	require.NoError(t, storage.SaveOrUpdateCertificate(t.Context(), *certificate))
+	certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
+	require.NoError(t, err)
+	require.Equal(t, certificate, certificateFromDB)
+
+	// Update existing certificate
+	certificate.Header.Status = agglayertypes.Settled
+	certificate.Header.UpdatedAt = uint32(time.Now().UTC().UnixMilli())
+	require.NoError(t, storage.SaveOrUpdateCertificate(t.Context(), *certificate))
+
+	certificateFromDB, err = storage.GetCertificateByHeight(certificate.Header.Height)
+	require.NoError(t, err)
+	require.Equal(t, certificate, certificateFromDB, "equal status")
+}
+
+func Test_GetLastSettledCertificate(t *testing.T) {
+	ctx := context.Background()
+	dbPath := path.Join(t.TempDir(), "Test_GetLastSettledCertificate.sqlite")
+	cfg := AggSenderSQLStorageConfig{
+		DBPath:                  dbPath,
+		KeepCertificatesHistory: true,
+	}
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+	require.NotNil(t, storage)
+
+	updateTime := uint32(time.Now().UTC().UnixMilli())
+
+	t.Run("NoSettledCertificates", func(t *testing.T) {
+		header, err := storage.GetLastSettledCertificate()
+		require.ErrorIs(t, err, db.ErrNotFound)
+		require.Nil(t, header)
+	})
+
+	t.Run("SingleSettledCertificate", func(t *testing.T) {
+		cert := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    common.HexToHash("0x1"),
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          2,
+				Status:           agglayertypes.Settled,
+				CreatedAt:        updateTime,
+				UpdatedAt:        updateTime,
+			},
+		}
+		require.NoError(t, storage.SaveLastSentCertificate(ctx, cert))
+
+		header, err := storage.GetLastSettledCertificate()
+		require.NoError(t, err)
+		require.NotNil(t, header)
+		require.Equal(t, cert.Header, header)
+
+		require.NoError(t, storage.clean())
+	})
+
+	t.Run("MultipleCertificatesWithDifferentStatuses", func(t *testing.T) {
+		certs := []*types.Certificate{
+			{
+				Header: &types.CertificateHeader{
+					Height:           2,
+					CertificateID:    common.HexToHash("0x2"),
+					NewLocalExitRoot: common.HexToHash("0x3"),
+					FromBlock:        2,
+					ToBlock:          3,
+					Status:           agglayertypes.Pending,
+					CreatedAt:        updateTime,
+					UpdatedAt:        updateTime,
+				},
+			},
+			{
+				Header: &types.CertificateHeader{
+					Height:           3,
+					CertificateID:    common.HexToHash("0x3"),
+					NewLocalExitRoot: common.HexToHash("0x4"),
+					FromBlock:        3,
+					ToBlock:          4,
+					Status:           agglayertypes.Settled,
+					CreatedAt:        updateTime,
+					UpdatedAt:        updateTime,
+				},
+			},
+			{
+				Header: &types.CertificateHeader{
+					Height:           4,
+					CertificateID:    common.HexToHash("0x4"),
+					NewLocalExitRoot: common.HexToHash("0x5"),
+					FromBlock:        4,
+					ToBlock:          5,
+					Status:           agglayertypes.InError,
+					CreatedAt:        updateTime,
+					UpdatedAt:        updateTime,
+				},
+			},
+			{
+				Header: &types.CertificateHeader{
+					Height:           5,
+					CertificateID:    common.HexToHash("0x5"),
+					NewLocalExitRoot: common.HexToHash("0x6"),
+					FromBlock:        5,
+					ToBlock:          6,
+					Status:           agglayertypes.Settled,
+					CreatedAt:        updateTime,
+					UpdatedAt:        updateTime,
+				},
+			},
+		}
+
+		for _, cert := range certs {
+			require.NoError(t, storage.SaveLastSentCertificate(ctx, *cert))
+		}
+
+		header, err := storage.GetLastSettledCertificate()
+		require.NoError(t, err)
+		require.NotNil(t, header)
+		// Should return the one with the highest height and Settled status
+		require.Equal(t, certs[len(certs)-1].Header, header)
+
+		require.NoError(t, storage.clean())
+	})
+
+	t.Run("ErrorFromDB", func(t *testing.T) {
+		// Close DB to force an error
+		require.NoError(t, storage.db.Close())
+		header, err := storage.GetLastSettledCertificate()
+		require.Error(t, err)
+		require.Nil(t, header)
+	})
+}
