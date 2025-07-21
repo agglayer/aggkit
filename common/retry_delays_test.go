@@ -82,11 +82,33 @@ func TestExecute_ContextCancelled(t *testing.T) {
 func TestExecute_NilRetryDelays(t *testing.T) {
 	logger := log.WithFields("module", "ut")
 	ctx := context.Background()
+	returnErr := errors.New("fail")
+	attempts := 0
 	fn := func() (int, error) {
-		return 1, nil
+		attempts++
+		return 0, returnErr
 	}
-	result, err := Execute[int](nil, ctx, logger.Infof, "test-nil-retrydelays", fn)
-	require.ErrorIs(t, err, ErrInvalidConfig)
+	result, err := Execute(nil, ctx, logger.Infof, "test-nil-retrydelays", fn)
+	require.ErrorIs(t, err, returnErr)
+	require.Equal(t, 0, result)
+	require.Equal(t, 1, attempts) // should only call once since no retry delays are defined
+}
+
+func TestExecute_MaxRetriesZero(t *testing.T) {
+	r := &RetryDelays{
+		Delays:      []types.Duration{},
+		MaxAttempts: 0,
+	}
+	returnErr := errors.New("fail")
+	attempts := 0
+	fn := func() (int, error) {
+		attempts++
+		return 0, returnErr
+	}
+	require.NoError(t, r.Validate())
+	result, err := Execute(r, t.Context(), log.Infof, "test-nil-retrydelays", fn)
+	require.Equal(t, 1, attempts) // should only call once since no retry delays are defined
+	require.ErrorIs(t, err, returnErr)
 	require.Equal(t, 0, result)
 }
 
@@ -95,22 +117,19 @@ func TestExecute_NilLogger(t *testing.T) {
 		Delays:      []types.Duration{{Duration: 1 * time.Millisecond}},
 		MaxAttempts: 1,
 	}
-	ctx := context.Background()
 	fn := func() (string, error) {
 		return "ok", nil
 	}
-	result, err := Execute(r, ctx, nil, "test-nil-logger", fn)
+	result, err := Execute(r, t.Context(), nil, "test-nil-logger", fn)
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
 
 func TestExecute_ErrAbort(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{{Duration: 10 * time.Millisecond}, {Duration: 10 * time.Millisecond}},
+		Delays:      []types.Duration{{Duration: 10 * time.Millisecond}, {Duration: 1 * time.Millisecond}},
 		MaxAttempts: 30,
 	}
-	logger := log.WithFields("module", "ut")
-	ctx := context.Background()
 	attempts := 0
 	fn := func() (string, error) {
 		attempts++
@@ -119,7 +138,7 @@ func TestExecute_ErrAbort(t *testing.T) {
 		}
 		return "", errors.New("fail")
 	}
-	result, err := Execute(r, ctx, logger.Infof, "test-err-abort", fn)
+	result, err := Execute(r, t.Context(), log.Infof, "test-err-abort", fn)
 	require.ErrorIs(t, err, ErrAbort)
 	require.Equal(t, "", result)
 	require.Equal(t, 2, attempts)
@@ -127,11 +146,10 @@ func TestExecute_ErrAbort(t *testing.T) {
 
 func TestRetryDelays_BadConfig(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{{Duration: -1 * time.Second}},
+		Delays:      []types.Duration{},
 		MaxAttempts: -1,
 	}
 	err := r.Validate()
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "retry delay must be greater than zero")
-
+	require.Contains(t, err.Error(), "retry delays cannot be empty if there are retries")
 }
