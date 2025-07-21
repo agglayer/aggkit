@@ -68,11 +68,7 @@ func (r *RetryDelays) Delay(attempt int) time.Duration {
 	if r == nil || len(r.Delays) == 0 {
 		return 0
 	}
-	if attempt < len(r.Delays) {
-		return r.Delays[attempt].Duration
-	} else {
-		return r.Delays[len(r.Delays)-1].Duration
-	}
+	return r.Delays[min(attempt, len(r.Delays)-1)].Duration
 }
 
 // Execute executes the provided function with retry logic.
