@@ -59,6 +59,22 @@ func (r *RetryDelays) String() string {
 	return fmt.Sprintf("RetryDelays{Delays: %v, MaxRetries: %d}", r.Delays, r.MaxAttempts)
 }
 
+func (r *RetryDelays) InfiniteRetries() bool {
+	// Infinite retries are allowed if MaxAttempts is 0.
+	return r.MaxAttempts == 0
+}
+
+func (r *RetryDelays) Delay(attempt int) time.Duration {
+	if r == nil || len(r.Delays) == 0 {
+		return 0
+	}
+	if attempt < len(r.Delays) {
+		return r.Delays[attempt].Duration
+	} else {
+		return r.Delays[len(r.Delays)-1].Duration
+	}
+}
+
 // Execute executes the provided function with retry logic.
 // retryDelaysConfig: it's the RetryDelays struct that holds the retry delays and the maximum number of retries.
 // ctx: the context to use for cancellation.
@@ -81,19 +97,11 @@ func Execute[T any](retryDelaysConfig *RetryDelays,
 		logFunc = func(format string, args ...interface{}) {}
 	}
 
-	retries := 0
-	for {
-		if retryDelaysConfig.MaxAttempts > 0 && retries >= retryDelaysConfig.MaxAttempts {
-			break
-		}
-		var delay types.Duration
-		if retries < len(retryDelaysConfig.Delays) {
-			delay = retryDelaysConfig.Delays[retries]
-		} else {
-			delay = retryDelaysConfig.Delays[len(retryDelaysConfig.Delays)-1]
-		}
+	attempt := 0
+	for attempt := 0; retryDelaysConfig.InfiniteRetries() || attempt < retryDelaysConfig.MaxAttempts; attempt++ {
+		delay := retryDelaysConfig.Delay(attempt)
 		logFunc("executing %s try %d/%d (next delay: %s)",
-			name, retries+1, retryDelaysConfig.MaxAttempts, delay.String())
+			name, attempt+1, retryDelaysConfig.MaxAttempts, delay.String())
 		result, err := fn()
 		if err != nil && errors.Is(err, ErrAbort) {
 			logFunc("aborting execution of %s due to error: %v",
@@ -101,24 +109,25 @@ func Execute[T any](retryDelaysConfig *RetryDelays,
 			return result, err
 		}
 		if err != nil {
-			// The function must log this error if it wants to
-			retries++
+			logFunc("fails execution %s try %d/%d due to error: %v",
+				name, attempt+1, retryDelaysConfig.MaxAttempts, err)
+			attempt++
 			select {
 			case <-ctx.Done():
 				logFunc("executing %s try %d/%d was canceled",
-					name, retries, retryDelaysConfig.MaxAttempts)
+					name, attempt, retryDelaysConfig.MaxAttempts)
 				return zero, ctx.Err()
-			case <-time.After(delay.Duration):
+			case <-time.After(delay):
 				continue
 			}
 		} else {
 			logFunc("successful run %s in try %d",
-				name, retries+1)
+				name, attempt+1)
 			return result, nil
 		}
 	}
 	logFunc("fails to execute %s after %d retries",
-		name, retries)
+		name, attempt)
 	return zero, fmt.Errorf("fails to execute %s after %d retries. %w",
-		name, retries, ErrExecutionFails)
+		name, attempt, ErrExecutionFails)
 }
