@@ -142,7 +142,7 @@ func (i *initialStatus) process() ([]*initialStatusResult, error) {
 		results = append(results, pendingCertAction)
 	}
 
-	settledCertAction, err := i.processSettledCert()
+	settledCertAction, err := i.processLastSettledCert()
 	if err != nil {
 		return nil, fmt.Errorf("recovery: failed processing settled certificate: %w", err)
 	}
@@ -278,8 +278,8 @@ func (i *initialStatus) getLatestAggLayerCert() *agglayertypes.CertificateHeader
 	return i.AgglayerLastPendingCert
 }
 
-// processSettledCert checks the last settled certificate from agglayer vs local storage
-func (i *initialStatus) processSettledCert() (*initialStatusResult, error) {
+// processLastSettledCert checks the last settled certificate from agglayer vs local storage
+func (i *initialStatus) processLastSettledCert() (*initialStatusResult, error) {
 	if i.AgglayerLastPendingCert == nil {
 		// if pending cert is nil, this will be processed in the processLastLocal function
 		return nil, nil
@@ -341,7 +341,7 @@ func (i *initialStatus) processSettledCert() (*initialStatusResult, error) {
 		), nil
 	}
 
-	// CASE 5: We have a settled certificate in local storage that is lower than the one in the agglayer
+	// CASE 6: We have a settled certificate in local storage that is lower than the one in the agglayer
 	// this means that we need to update the local storage with the agglayer settled
 	return newInitialStatusResult(
 		InitialStatusActionInsertNewCert,

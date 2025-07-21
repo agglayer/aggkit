@@ -257,8 +257,13 @@ func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certi
 	}
 	shouldRollback = false
 
-	a.logger.Debugf("inserted certificate - Height: %d. Hash: %s",
-		certInfo.Height, certInfo.CertificateID)
+	action := "inserted"
+	if count > 0 {
+		action = "updated"
+	}
+
+	a.logger.Debugf("%s certificate - Height: %d. Hash: %s",
+		action, certInfo.Height, certInfo.CertificateID)
 
 	return nil
 }

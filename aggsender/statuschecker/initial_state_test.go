@@ -147,8 +147,9 @@ func TestInitialStateInconsistence(t *testing.T) {
 //	 12|ID2, h2 , NA		| ID1, h2 , settled		| ID1, h3 , !=inError           |  store(PENDING)
 //	 13|ID2, h2 , NA		| ID1, h2 , settled		| ID1, h3 , inError             | store(PENDING)
 //	 14| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID1, h2   | AgglayerPending: ID3, h1 | agglayer doesn't have settled cert
-//	 15| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID2, h1   | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)
-//	 16| LocalCert: ID3, h1, pending	| LocalSettled: ID1, h2	| AgglayerSettled: ID2, h3   | AgglayerPending: ID3, h1 | store(PENDING) & store(SETTLED)
+//	 15| LocalCert: ID3, h1, pending    | LocalSettled: ID2, h1 | AgglayerSettled: ID2, h1 | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)
+//	 16| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID2, h2   | AgglayerPending: ID3, h1 | settled cert ID mismatch
+//	 17| LocalCert: ID3, h1, pending	| LocalSettled: ID1, h2	| AgglayerSettled: ID2, h3   | AgglayerPending: ID3, h1 | store(PENDING) & store(SETTLED)
 func TestRegularCases(t *testing.T) {
 	hash1 := common.HexToHash("0xdead")
 	hash2 := common.HexToHash("0xbeef")
@@ -287,7 +288,7 @@ func TestRegularCases(t *testing.T) {
 			resultError:      true,
 		},
 		{
-			name:             "14| LocalCert: ID3, h1, pending | LocalSettled: ID2, h1 | AgglayerSettled: ID2, h1 | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)",
+			name:             "15| LocalCert: ID3, h1, pending | LocalSettled: ID2, h1 | AgglayerSettled: ID2, h1 | AgglayerPending: ID3, h1 | store(PENDING) & none(SETTLED)",
 			localCert:        &certTestData{hash1, 3, agglayertypes.Pending},
 			localSettledCert: &certTestData{hash2, 2, agglayertypes.Settled},
 			agglayerSettled:  &certTestData{hash2, 2, agglayertypes.Settled},
@@ -298,7 +299,7 @@ func TestRegularCases(t *testing.T) {
 			},
 		},
 		{
-			name:             "15| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID2, h2   | AgglayerPending: ID3, h1 | settled cert ID mismatch",
+			name:             "16| LocalCert: ID3, h1, pending	| LocalSettled: ID2, h1	| AgglayerSettled: ID2, h2   | AgglayerPending: ID3, h1 | settled cert ID mismatch",
 			localCert:        &certTestData{hash1, 3, agglayertypes.Pending},
 			localSettledCert: &certTestData{hash1, 2, agglayertypes.Settled},
 			agglayerSettled:  &certTestData{hash2, 2, agglayertypes.Settled},
@@ -306,7 +307,7 @@ func TestRegularCases(t *testing.T) {
 			resultError:      true,
 		},
 		{
-			name:             "16| LocalCert: ID3, h1, pending	| LocalSettled: ID1, h2	| AgglayerSettled: ID2, h3   | AgglayerPending: ID3, h1 | store(PENDING) & store(SETTLED)",
+			name:             "17| LocalCert: ID3, h1, pending	| LocalSettled: ID1, h2	| AgglayerSettled: ID2, h3   | AgglayerPending: ID3, h1 | store(PENDING) & store(SETTLED)",
 			localCert:        &certTestData{hash1, 3, agglayertypes.Pending},
 			localSettledCert: &certTestData{hash2, 1, agglayertypes.Settled},
 			agglayerSettled:  &certTestData{hash3, 2, agglayertypes.Settled},
