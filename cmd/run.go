@@ -72,8 +72,8 @@ func start(cliCtx *cli.Context) error {
 		prometheus.Init()
 	}
 	components := cliCtx.StringSlice(config.FlagComponents)
-	l1Client := runL1ClientIfNeeded(components, cfg.L1NetworkConfig.RPC)
-	l2Client := runL2ClientIfNeeded(components, cfg.Common.L2RPC)
+	l1Client := runL1ClientIfNeeded(cliCtx.Context, components, cfg.L1NetworkConfig.RPC)
+	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
 	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
 	go func() {
 		if err := <-errChanL1; err != nil {
@@ -88,7 +88,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	rollupDataQuerier, err := createRollupDataQuerier(cfg.L1NetworkConfig, components)
+	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig, components)
 	if err != nil {
 		return fmt.Errorf("failed to create etherman client: %w", err)
 	}
@@ -502,7 +502,8 @@ func runL1InfoTreeSyncerIfNeeded(
 	return l1InfoTreeSync
 }
 
-func runL1ClientIfNeeded(components []string, rpcClientCfg config.RPCClientConfig) aggkittypes.EthClienter {
+func runL1ClientIfNeeded(ctx context.Context,
+	components []string, rpcClientCfg config.RPCClientConfig) aggkittypes.EthClienter {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.AGGSENDER,
@@ -515,6 +516,7 @@ func runL1ClientIfNeeded(components []string, rpcClientCfg config.RPCClientConfi
 	}
 	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
 	ethClient, err := aggkittypes.DialWithRetry(
+		ctx,
 		rpcClientCfg.URL,
 		rpcClientCfg.MaxRetries,
 		rpcClientCfg.InitialBackoff.Duration,
@@ -526,7 +528,8 @@ func runL1ClientIfNeeded(components []string, rpcClientCfg config.RPCClientConfi
 	return ethClient
 }
 
-func runL2ClientIfNeeded(components []string, urlRPCL2 config.L2RPCClientConfig) aggkittypes.EthClienter {
+func runL2ClientIfNeeded(ctx context.Context,
+	components []string, urlRPCL2 config.L2RPCClientConfig) aggkittypes.EthClienter {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.BRIDGE,
@@ -535,7 +538,7 @@ func runL2ClientIfNeeded(components []string, urlRPCL2 config.L2RPCClientConfig)
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
-	l2Client, err := etherman.NewRPCClient(urlRPCL2)
+	l2Client, err := etherman.NewRPCClient(ctx, urlRPCL2)
 	if err != nil {
 		log.Fatalf("failed to create client for L2 using URL: %s. Err:%v", urlRPCL2, err)
 	}
@@ -779,7 +782,9 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 // (AGGORACLE, AGGCHAINPROOFGEN, AGGSENDER, BRIDGE) are needed. The client is configured with
 // the provided L1 network configuration and uses default implementations for creating Ethereum
 // clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
-func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*etherman.RollupDataQuerier, error) {
+func createRollupDataQuerier(ctx context.Context,
+	cfg config.L1NetworkConfig,
+	components []string) (*etherman.RollupDataQuerier, error) {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE,
 		aggkitcommon.AGGCHAINPROOFGEN,
@@ -791,6 +796,7 @@ func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*
 	}
 
 	ethClient, err := aggkittypes.DialWithRetry(
+		ctx,
 		cfg.RPC.URL,
 		cfg.RPC.MaxRetries,
 		cfg.RPC.InitialBackoff.Duration,

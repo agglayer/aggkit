@@ -1,6 +1,7 @@
 package etherman
 
 import (
+	"context"
 	"testing"
 
 	"github.com/agglayer/aggkit/config"
@@ -17,20 +18,21 @@ func TestNewRPCClient(t *testing.T) {
 			ExtraParamFieldName: "http://anotherURL:1234",
 		},
 	}
-	eth, err := NewRPCClient(cfg)
+	ctx := context.Background()
+	eth, err := NewRPCClient(ctx, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)
 
 	cfg.Mode = config.RPCModeOp
-	eth, err = NewRPCClient(cfg)
+	eth, err = NewRPCClient(ctx, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)
 
 	cfg.URL = "noproto://localhost"
-	_, err = NewRPCClient(cfg)
+	_, err = NewRPCClient(ctx, cfg)
 	require.ErrorContains(t, err, "no known transport for URL scheme \"noproto\"")
 
 	cfg = config.L2RPCClientConfig{}
-	_, err = NewRPCClient(cfg)
+	_, err = NewRPCClient(ctx, cfg)
 	require.ErrorContains(t, err, "invalid RPC mode")
 }

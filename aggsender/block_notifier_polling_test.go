@@ -23,7 +23,7 @@ func TestExploratoryBlockNotifierPolling(t *testing.T) {
 	t.Skip()
 	urlRPCL1 := os.Getenv("L1URL")
 	fmt.Println("URL=", urlRPCL1)
-	ethClient, err := aggkittypes.DialWithRetry(urlRPCL1, 5, 1*time.Second, 2*time.Second)
+	ethClient, err := aggkittypes.DialWithRetry(context.Background(), urlRPCL1, 5, 1*time.Second, 2*time.Second)
 	require.NoError(t, err)
 
 	sut, errSut := NewBlockNotifierPolling(ethClient,

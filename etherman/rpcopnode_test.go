@@ -25,12 +25,13 @@ func TestNewRPCClientModeOp(t *testing.T) {
 			ExtraParamFieldName: "http://anotherURL:1234",
 		},
 	}
-	eth, err := NewRPCClientModeOp(cfg)
+	ctx := context.Background()
+	eth, err := NewRPCClientModeOp(ctx, cfg)
 	require.NoError(t, err)
 	require.NotNil(t, eth)
 
 	cfg.URL = "noproto://localhost"
-	_, err = NewRPCClientModeOp(cfg)
+	_, err = NewRPCClientModeOp(ctx, cfg)
 	require.Error(t, err)
 }
 

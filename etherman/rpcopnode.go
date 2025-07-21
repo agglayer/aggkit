@@ -31,7 +31,7 @@ type RPCOpNodeDecorator struct {
 }
 
 // NewRPCClientModeOp creates a new RPC client that uses the OPNode client to get the finalized block
-func NewRPCClientModeOp(cfg config.L2RPCClientConfig) (aggkittypes.EthClienter, error) {
+func NewRPCClientModeOp(ctx context.Context, cfg config.L2RPCClientConfig) (aggkittypes.EthClienter, error) {
 	opNodeURL, err := cfg.GetString(ExtraParamFieldName)
 	if err != nil {
 		opNodeURL, err = cfg.GetString(strings.ToLower(ExtraParamFieldName))
@@ -41,7 +41,7 @@ func NewRPCClientModeOp(cfg config.L2RPCClientConfig) (aggkittypes.EthClienter, 
 	}
 
 	log.Debugf("Creating OPNode RPC client with URL %s %s:%s", cfg.URL, ExtraParamFieldName, opNodeURL)
-	ethClient, err := aggkittypes.DialWithRetry(cfg.URL, cfg.MaxRetries,
+	ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.URL, cfg.MaxRetries,
 		cfg.InitialBackoff.Duration, cfg.MaxBackoff.Duration)
 	if err != nil {
 		return nil, fmt.Errorf("fails to create RPC client. Err: %w", err)
