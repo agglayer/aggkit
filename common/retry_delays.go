@@ -10,7 +10,7 @@ import (
 )
 
 var (
-	// If this error in in the erturned error, it means that the function should be aborted
+	// If this error is in the returned error, it means that the function should be aborted
 	// and no more retries should be attempted.
 	ErrAbort          = fmt.Errorf("abort")
 	ErrInvalidConfig  = fmt.Errorf("invalid retry delays config")

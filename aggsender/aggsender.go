@@ -270,7 +270,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 }
 
 func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayertypes.Certificate, error) {
-	return aggkitcommon.Execute(&a.cfg.RetriesToBuildAndSendCertificate,
+	cert, err := aggkitcommon.Execute(&a.cfg.RetriesToBuildAndSendCertificate,
 		ctx,
 		a.log.Infof,
 		"sendCertificateWithRetries",
@@ -280,9 +280,15 @@ func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayerty
 			if err != nil {
 				a.log.Error(err)
 			}
-			a.checkSendCertificateStopCondition(err)
+			// If ErrComplete don't need to retry
+			if errors.Is(err, flows.ErrComplete) {
+				err = fmt.Errorf("%w. %w", err, aggkitcommon.ErrAbort)
+			}
 			return cert, err
 		})
+	// Check error to stop aggsender if needed
+	a.checkSendCertificateStopCondition(err)
+	return cert, err
 }
 
 // sendCertificate sends certificate for a network
