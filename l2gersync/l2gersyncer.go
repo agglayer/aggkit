@@ -90,7 +90,7 @@ func New(
 	case SovereignChain:
 		downloader, err = newDownloaderSovereign(
 			l2Client, l2GERManagerAddr,
-			l1InfoTreeSync, processor,
+			l1InfoTreeSync,
 			rh, bf, waitForNewBlocksPeriod,
 		)
 

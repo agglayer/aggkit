@@ -28,7 +28,6 @@ type downloaderSovereign struct {
 	l2GERManager   *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
 	l2GERAddr      common.Address
 	l1InfoTreeSync L1InfoTreeQuerier
-	processor      *processor
 	rh             *sync.RetryHandler
 }
 
@@ -36,7 +35,6 @@ func newDownloaderSovereign(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
-	processor *processor,
 	rh *sync.RetryHandler,
 	blockFinality *big.Int,
 	waitForNewBlocksPeriod time.Duration) (*downloaderSovereign, error) {
@@ -50,7 +48,6 @@ func newDownloaderSovereign(
 		l2GERManager:   l2GERManager,
 		l2GERAddr:      l2GERAddr,
 		l1InfoTreeSync: l1InfoTreeSync,
-		processor:      processor,
 		rh:             rh,
 	}
 
