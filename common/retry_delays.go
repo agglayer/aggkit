@@ -106,7 +106,7 @@ func Execute[T any](retryDelaysConfig *RetryDelays,
 			select {
 			case <-ctx.Done():
 				logFunc("executing %s try %d/%d was canceled",
-					name, retries+1, retryDelaysConfig.MaxAttempts)
+					name, retries, retryDelaysConfig.MaxAttempts)
 				return zero, ctx.Err()
 			case <-time.After(delay.Duration):
 				continue
