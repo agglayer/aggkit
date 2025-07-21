@@ -79,7 +79,7 @@ func (d *downloaderSovereign) Download(ctx context.Context, fromBlock uint64, do
 	for {
 		select {
 		case <-ctx.Done():
-			log.Debug("aborting the l2GERsync downloader...")
+			log.Debug("aborting the l2GERSync downloader...")
 			close(downloadedCh)
 
 			return

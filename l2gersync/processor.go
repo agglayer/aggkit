@@ -97,6 +97,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		case event.GERInfo != nil:
 			gerEvent := &GEREvent{
 				BlockNum:        block.Num,
+				BlockPosition:   event.GERInfo.BlockPosition,
 				GlobalExitRoot:  event.GERInfo.GlobalExitRoot,
 				L1InfoTreeIndex: event.GERInfo.L1InfoTreeIndex,
 			}
