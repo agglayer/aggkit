@@ -168,8 +168,14 @@ func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
 
 // IsGERProposed checks if the provided global exit root has already been proposed by the oracle committee member
 func (c *EVMChainGERSender) IsGERProposed(ger common.Hash) (bool, error) {
-	if c.mode != AggOracleCommitteeMode {
-		return false, fmt.Errorf("IsGERProposed is only available in AggOracleCommittee mode, current mode: %s", c.mode)
+	isInjected, err := c.IsGERInjected(ger)
+	if err != nil {
+		return false, fmt.Errorf("failed to check if global exit root is injected %s: %w", ger, err)
+	}
+
+	if isInjected {
+		c.logger.Debugf("GER (%s) is already injected", ger.Hex())
+		return true, nil
 	}
 
 	lastProposedGER, err := c.aggOracleCommittee.AddressToLastProposedGER(

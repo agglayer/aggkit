@@ -14,10 +14,10 @@ import (
 
 func TestEVM_GERInjection(t *testing.T) {
 	tests := []struct {
-		name                    string
+		name                     string
 		enableAggOracleCommittee bool
-		sleepDuration           time.Duration
-		additionalAssertions    func(t *testing.T, setup *helpers.AggoracleWithEVMChain, expectedGER common.Hash)
+		sleepDuration            time.Duration
+		additionalAssertions     func(t *testing.T, setup *helpers.AggoracleWithEVMChain, expectedGER common.Hash)
 	}{
 		{
 			name:                    "DirectInjectionMode",
@@ -30,6 +30,7 @@ func TestEVM_GERInjection(t *testing.T) {
 			enableAggOracleCommittee: true,
 			sleepDuration:           time.Millisecond * 500,
 			additionalAssertions: func(t *testing.T, setup *helpers.AggoracleWithEVMChain, expectedGER common.Hash) {
+				t.Helper()
 				// fetch proposedGERToReport from committee contract
 				proposedGERToReport, err := setup.L2Environment.AggOracleCommitteeContract.ProposedGERToReport(nil, expectedGER)
 				require.NoError(t, err)
