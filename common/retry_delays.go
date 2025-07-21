@@ -25,11 +25,11 @@ var (
 // You can also abort the retrying wrapping the error ErrAbort into the result
 // this is useful if there are some conditions that should not be retried
 type RetryDelays struct {
-	Delays []types.Duration
+	Delays []types.Duration `mapstructure:"Delays"`
 	// MaxAttempts is the maximum number of retries to attempt.
 	// if MaxAttempts is 0, it means infinite retries.
 	// if MaxAttempts is 1, it means no retries will be attempted.
-	MaxAttempts int
+	MaxAttempts int `mapstructure:"MaxAttempts"`
 }
 
 func (r *RetryDelays) Validate() error {
@@ -121,18 +121,4 @@ func Execute[T any](retryDelaysConfig *RetryDelays,
 		name, retries)
 	return zero, fmt.Errorf("fails to execute %s after %d retries. %w",
 		name, retries, ErrExecutionFails)
-}
-
-// Execute executes the provided function with retry logic for a non return function
-// check func Execute[T any] for more details
-func (r *RetryDelays) Execute(ctx context.Context,
-	logFunc func(format string, args ...interface{}),
-	name string,
-	fn func() error) error {
-	_, err := Execute(r, ctx, logFunc, name,
-		func() (struct{}, error) {
-			err := fn()
-			return struct{}{}, err
-		})
-	return err
 }
