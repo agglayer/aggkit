@@ -272,7 +272,7 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayertypes.Certificate, error) {
 	return aggkitcommon.Execute(&a.cfg.RetriesToBuildAndSendCertificate,
 		ctx,
-		a.log,
+		a.log.Infof,
 		"sendCertificateWithRetries",
 		func() (*agglayertypes.Certificate, error) {
 			cert, err := a.sendCertificate(ctx)

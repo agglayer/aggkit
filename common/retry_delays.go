@@ -65,7 +65,8 @@ func (r *RetryDelays) String() string {
 // logFunc: a function to log messages, if nil a silent logger will be used.
 // name: the name of the operation, used for logging.
 // fn: the function to execute, it should return a result of type T and an error.
-// If the function returns an error that is wrapped with ErrAbort, the execution will be aborted and no more retries will be attempted.
+// If the function returns an error that is wrapped with ErrAbort,
+// the execution will be aborted and no more retries will be attempted.
 func Execute[T any](retryDelaysConfig *RetryDelays,
 	ctx context.Context,
 	logFunc func(format string, args ...interface{}),
