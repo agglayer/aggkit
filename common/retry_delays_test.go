@@ -103,6 +103,7 @@ func TestExecute_NilLogger(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "ok", result)
 }
+
 func TestExecute_ErrAbort(t *testing.T) {
 	r := &RetryDelays{
 		Delays:      []types.Duration{{Duration: 10 * time.Millisecond}, {Duration: 10 * time.Millisecond}},
