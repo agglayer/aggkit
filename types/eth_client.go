@@ -78,19 +78,20 @@ func DialWithRetry(ctx context.Context, url string,
 	}
 
 	for attempt := range maxRetries {
+		client, err = ethclient.Dial(url)
+		if err == nil {
+			return NewDefaultEthClient(client, client.Client()), nil
+		}
+
+		backoff := float64(initialBackoff) * math.Pow(backoffBase, float64(attempt))
+		wait := time.Duration(math.Min(backoff, float64(maxBackoff)))
+		log.Warnf("Dialing %s failed (attempt %d/%d): %v. Retrying in %s...", url, attempt+1, maxRetries, err, wait)
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
-		default:
-			client, err = ethclient.Dial(url)
-			if err == nil {
-				return NewDefaultEthClient(client, client.Client()), nil
-			}
-
-			backoff := float64(initialBackoff) * math.Pow(backoffBase, float64(attempt))
-			wait := time.Duration(math.Min(backoff, float64(maxBackoff)))
-			log.Warnf("Dialing %s failed (attempt %d/%d): %v. Retrying in %s...", url, attempt+1, maxRetries, err, backoff)
-			time.Sleep(wait)
+		case <-time.After(wait):
+			continue
 		}
 	}
 
