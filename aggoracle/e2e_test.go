@@ -13,7 +13,7 @@ import (
 )
 
 func TestEVM(t *testing.T) {
-	l1Setup, l2Setup := helpers.NewL1SetupWithL2EVM(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
+	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
 
 	for i := range 10 {
 		_, err := l1Setup.GERContract.UpdateExitRoot(l1Setup.Auth, common.HexToHash(strconv.Itoa(i)))

@@ -29,7 +29,7 @@ const (
 func TestL2GERSyncE2E(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	l1Setup, l2Setup := helpers.NewL1SetupWithL2EVM(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
+	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
 
 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
 
@@ -61,7 +61,7 @@ func TestL2GERSyncE2E(t *testing.T) {
 func TestL2GERSync_GERRemoval(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-	l1Environment, l2Environment := helpers.NewL1SetupWithL2EVM(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
+	l1Environment, l2Environment := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
 
 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
 
@@ -123,7 +123,7 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	l1Setup, l2Setup := helpers.NewL1SetupWithL2EVM(t, helpers.DefaultEnvironmentConfig(helpers.LegacyL2GERContract))
+	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.LegacyL2GERContract))
 
 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
 

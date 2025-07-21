@@ -50,14 +50,14 @@ type CommonEnvironment struct {
 	BridgeSync     *bridgesync.BridgeSync
 }
 
-// L1Environment contains setup results for L1 network.
+// L1Environment contains simulated setup for L1 network.
 type L1Environment struct {
 	CommonEnvironment
 	GERContract  *polygonzkevmglobalexitrootv2.Polygonzkevmglobalexitrootv2
 	InfoTreeSync *l1infotreesync.L1InfoTreeSync
 }
 
-// L2Environment contains setup results for L1 network.
+// L2Environment contains simulated setup for L2 network.
 type L2Environment struct {
 	CommonEnvironment
 	GERManagerSovereignSC *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
@@ -80,8 +80,8 @@ func DefaultEnvironmentConfig(l2GERManagerType L2GERManagerContractType) *Enviro
 	}
 }
 
-// NewL1SetupWithL2EVM creates a new E2E environment with EVM L1 and L2 chains.
-func NewL1SetupWithL2EVM(t *testing.T, cfg *EnvironmentConfig) (*L1Environment, *L2Environment) {
+// NewSimulatedEVMEnvironment creates a new simulated environment with EVM L1 and L2 chains.
+func NewSimulatedEVMEnvironment(t *testing.T, cfg *EnvironmentConfig) (*L1Environment, *L2Environment) {
 	t.Helper()
 
 	// Setup L1
