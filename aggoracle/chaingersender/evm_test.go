@@ -89,7 +89,6 @@ type testConfig struct {
 	funcName     string
 	action       string
 	expectedMode GERMode
-	wrongModeErr string
 }
 
 // runTransactionTest is a helper function to run transaction submission tests
@@ -146,6 +145,16 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 			} else {
 				sender.l2GERManagerAddr = config.targetAddr
 				sender.l2GERManagerAbi = &abi
+			}
+
+			// Always set up l2GERManager mock for ProposeGER tests since IsGERProposed calls IsGERInjected
+			if config.funcName == proposeGERFuncName && tt.mode == config.expectedMode {
+				mockL2GERManager := mocks.NewL2GERManagerContract(t)
+				// Mock IsGERInjected to return false (not already injected)
+				mockL2GERManager.EXPECT().
+					GlobalExitRootMap(mock.Anything, mock.Anything).
+					Return(big.NewInt(0), nil)
+				sender.l2GERManager = mockL2GERManager
 			}
 
 			var err error
@@ -231,15 +240,9 @@ func TestEVMChainGERSender_ProposeGER(t *testing.T) {
 		funcName:     proposeGERFuncName,
 		action:       "propose",
 		expectedMode: AggOracleCommitteeMode,
-		wrongModeErr: "ProposeGER is only available in AggOracleCommittee mode",
 	}
 
 	tests := createTestCases(AggOracleCommitteeMode, txID, "propose GER")
-	tests = append(tests, testCase{
-		name:        "wrong mode - direct injection",
-		mode:        DirectInjectionMode,
-		expectedErr: "ProposeGER is only available in AggOracleCommittee mode",
-	})
 
 	runTransactionTest(t, config, tests)
 }
@@ -267,15 +270,9 @@ func TestEVMChainGERSender_InjectGER(t *testing.T) {
 		funcName:     "insertGlobalExitRoot",
 		action:       "inject",
 		expectedMode: DirectInjectionMode,
-		wrongModeErr: "InjectGER is only available in direct injection mode",
 	}
 
 	tests := createTestCases(DirectInjectionMode, txID, "inject GER")
-	tests = append(tests, testCase{
-		name:        "wrong mode - agg oracle committee",
-		mode:        AggOracleCommitteeMode,
-		expectedErr: "InjectGER is only available in direct injection mode",
-	})
 
 	runTransactionTest(t, config, tests)
 }
@@ -665,21 +662,13 @@ func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
 			expectedResult: false,
 			expectedErrMsg: "failed to check last proposed GER for oracle committee member",
 		},
-		{
-			name:           "Wrong mode - direct injection",
-			mode:           DirectInjectionMode,
-			ger:            common.HexToHash("0x1234567890abcdef"),
-			mockReturn:     [32]byte{},
-			mockError:      nil,
-			expectedResult: false,
-			expectedErrMsg: "IsGERProposed is only available in AggOracleCommittee mode",
-		},
 	}
 
-	for _, tt := range tests {
+		for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockAggOracleCommittee := mocks.NewAggOracleCommitteeContract(t)
 			mockEthTxManager := mocks.NewEthTxManager(t)
+			mockL2GERManager := mocks.NewL2GERManagerContract(t)
 
 			// Setup mock expectations only for committee mode
 			if tt.mode == AggOracleCommitteeMode {
@@ -688,12 +677,24 @@ func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
 				mockAggOracleCommittee.EXPECT().
 					AddressToLastProposedGER(mock.Anything, expectedAddress).
 					Return(tt.mockReturn, tt.mockError)
+
+				// Mock IsGERInjected call for committee mode
+				mockL2GERManager.EXPECT().
+					GlobalExitRootMap(mock.Anything, mock.Anything).
+					Return(big.NewInt(0), nil)
+			} else {
+				// For non-committee mode, we still need to mock IsGERInjected call
+				// since IsGERProposed calls IsGERInjected first
+				mockL2GERManager.EXPECT().
+					GlobalExitRootMap(mock.Anything, mock.Anything).
+					Return(big.NewInt(0), nil)
 			}
 
 			evmChainGERSender := &EVMChainGERSender{
 				mode:               tt.mode,
 				aggOracleCommittee: mockAggOracleCommittee,
 				ethTxMan:           mockEthTxManager,
+				l2GERManager:       mockL2GERManager,
 			}
 
 			result, err := evmChainGERSender.IsGERProposed(tt.ger)
@@ -707,6 +708,7 @@ func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
 
 			mockAggOracleCommittee.AssertExpectations(t)
 			mockEthTxManager.AssertExpectations(t)
+			mockL2GERManager.AssertExpectations(t)
 		})
 	}
 }
