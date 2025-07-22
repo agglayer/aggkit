@@ -216,7 +216,7 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
-	var finalizedBlockType aggkittypes.BlockNumberFinality = aggkittypes.FinalizedBlock
+	finalizedBlockType := aggkittypes.FinalizedBlock
 	if rd != nil {
 		finalizedBlockType = rd.GetFinalizedBlockType()
 	}
@@ -257,7 +257,7 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	var rdString string = ""
+	rdString := ""
 	if rd != nil {
 		rdString = rd.String()
 	}

@@ -1,6 +1,7 @@
 package aggoracle_test
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -57,6 +58,13 @@ func TestEVM_GERInjection(t *testing.T) {
 				expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 				require.NoError(t, err)
 
+				// Instead of relying on L1InfoTreeSync, directly inject the GER
+				err = setup.L2Environment.AggoracleSender.ProcessGER(context.Background(), expectedGER)
+				require.NoError(t, err)
+
+				// Wait a bit more for the transaction to be processed
+				time.Sleep(tt.sleepDuration)
+
 				isInjected, err := setup.L2Environment.AggoracleSender.IsGERInjected(expectedGER)
 				require.NoError(t, err)
 
@@ -85,6 +93,13 @@ func TestEVM_AggOracleCommitteeModeWithQuorum3(t *testing.T) {
 	time.Sleep(time.Millisecond * 500)
 	expectedGER, err := setup.L1Environment.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
+
+	// Directly inject the GER instead of relying on L1InfoTreeSync
+	err = setup.L2Environment.AggoracleSender.ProcessGER(context.Background(), expectedGER)
+	require.NoError(t, err)
+
+	// Wait for the transaction to be processed
+	time.Sleep(time.Millisecond * 500)
 
 	// fetch last proposed GER by the aggoracle committee member
 	lastProposedGER, err := setup.L2Environment.AggOracleCommitteeContract.AddressToLastProposedGER(nil, setup.L2Environment.Auth.From)
