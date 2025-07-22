@@ -74,8 +74,8 @@ type L2Environment struct {
 }
 
 type EnvironmentConfig struct {
-	L1RPCClient aggkittypes.RPCClienter
-	L2RPCClient aggkittypes.RPCClienter
+	L1RPCClient              aggkittypes.RPCClienter
+	L2RPCClient              aggkittypes.RPCClienter
 	aggOracleCommitteeConfig AggoraclecommitteeConfig
 }
 
@@ -199,8 +199,8 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 	l2Client, authL2, gerL2Addr, gerL2Contract,
 		bridgeL2Addr, bridgeL2Contract,
 		aggOracleCommitteeAddr, aggOracleCommitteeContract := newSimulatedEVML2SovereignChain(
-			t, cfg.AggoraclecommitteeConfig,
-		)
+		t, cfg.AggoraclecommitteeConfig,
+	)
 
 	ethTxManagerMock := NewEthTxManMock(t, l2Client, authL2)
 
@@ -381,7 +381,7 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 	// Deploy AggOracleCommittee contract if EnableAggOracleCommittee is true
 	var (
 		aggOracleCommitteeProxyAddr common.Address
-		aggOracleCommitteeContract *aggoraclecommittee.Aggoraclecommittee
+		aggOracleCommitteeContract  *aggoraclecommittee.Aggoraclecommittee
 	)
 
 	if aggOracleCommitteeConfig.EnableAggOracleCommittee {
@@ -434,5 +434,5 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 
 	return client, setup.UserAuth, gerProxyAddr, gerL2Contract,
 		setup.BridgeProxyAddr, setup.BridgeProxyContract,
-		aggOracleCommitteeProxyAddr, aggOracleCommitteeContract,
+		aggOracleCommitteeProxyAddr, aggOracleCommitteeContract
 }

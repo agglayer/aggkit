@@ -69,10 +69,10 @@ func (t *TestClient) Call(result any, method string, args ...any) error {
 
 // SimulatedBackendSetup defines the setup for a simulated backend.
 type SimulatedBackendSetup struct {
-	UserAuth                    *bind.TransactOpts
-	DeployerAuth                *bind.TransactOpts
-	BridgeProxyAddr             common.Address
-	BridgeProxyContract         *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	UserAuth            *bind.TransactOpts
+	DeployerAuth        *bind.TransactOpts
+	BridgeProxyAddr     common.Address
+	BridgeProxyContract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 }
 
 // DeployBridge deploys the bridge contract
