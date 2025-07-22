@@ -1,5 +1,5 @@
 {
   "args": {
-    "zkevm_contracts_image": "xavierpolygon/agglayer-contracts:v11.0.0-rc.1-fork.12"
+    "agglayer_contracts_image": "xavierpolygon/agglayer-contracts:v11.0.0-rc.1-fork.12"
   }
 }
