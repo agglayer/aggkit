@@ -103,7 +103,7 @@ func NewEVMChainGERSender(
 		waitPeriodMonitorTx:    waitPeriodMonitorTx,
 	}
 
-	// Initialize mode-specific components
+	// Initialize and validate mode-specific components
 	if err := sender.initializeAndValidateMode(); err != nil {
 		return nil, err
 	}
