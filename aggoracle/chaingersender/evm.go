@@ -10,6 +10,7 @@ import (
 	"github.com/0xPolygon/zkevm-ethtx-manager/ethtxmanager"
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
 	"github.com/agglayer/aggkit/aggoracle/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -73,7 +74,7 @@ func NewEVMChainGERSender(
 ) (*EVMChainGERSender, error) {
 	// Determine mode based on configuration
 	mode := DirectInjectionMode
-	if enableAggOracleCommittee {
+	if enableAggOracleCommittee && aggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
 		mode = AggOracleCommitteeMode
 	}
 
@@ -140,6 +141,11 @@ func (c *EVMChainGERSender) initializeAggOracleCommitteeMode() error {
 	aggOracleCommitteeAbi, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
 	if err != nil {
 		return fmt.Errorf("failed to retrieve AggOracleCommittee ABI: %w", err)
+	}
+
+	_, err = aggOracleCommittee.AggOracleMembers(&bind.CallOpts{Pending: false}, common.Big0)
+	if err != nil {
+		return fmt.Errorf("failed to retrieve AggOracleCommittee members: %w", err)
 	}
 
 	c.aggOracleCommittee = aggOracleCommittee
