@@ -13,7 +13,7 @@ import (
 )
 
 func TestExecute_SuccessFirstTry(t *testing.T) {
-	r := &RetryDelays{
+	r := &RetryHandler{
 		Delays:     []types.Duration{{Duration: 10 * time.Millisecond}},
 		MaxRetries: 3,
 	}
@@ -28,7 +28,7 @@ func TestExecute_SuccessFirstTry(t *testing.T) {
 }
 
 func TestExecute_RetryAndSuccess(t *testing.T) {
-	r := &RetryDelays{
+	r := &RetryHandler{
 		Delays:     []types.Duration{{Duration: 10 * time.Millisecond}, {Duration: 10 * time.Millisecond}},
 		MaxRetries: 3,
 	}
@@ -49,7 +49,7 @@ func TestExecute_RetryAndSuccess(t *testing.T) {
 }
 
 func TestExecute_ExceedMaxAttempts(t *testing.T) {
-	r := &RetryDelays{
+	r := &RetryHandler{
 		Delays:     []types.Duration{{Duration: 5 * time.Millisecond}},
 		MaxRetries: 2,
 	}
@@ -65,7 +65,7 @@ func TestExecute_ExceedMaxAttempts(t *testing.T) {
 }
 
 func TestExecute_ContextCancelled(t *testing.T) {
-	r := &RetryDelays{
+	r := &RetryHandler{
 		Delays:     []types.Duration{{Duration: 50 * time.Millisecond}},
 		MaxRetries: 3,
 	}
@@ -96,7 +96,7 @@ func TestExecute_NilRetryDelays(t *testing.T) {
 }
 
 func TestExecute_MaxRetriesZero(t *testing.T) {
-	r := &RetryDelays{
+	r := &RetryHandler{
 		Delays:     []types.Duration{},
 		MaxRetries: 0,
 	}
@@ -114,7 +114,7 @@ func TestExecute_MaxRetriesZero(t *testing.T) {
 }
 
 func TestExecute_NilLogger(t *testing.T) {
-	r := &RetryDelays{
+	r := &RetryHandler{
 		Delays:     []types.Duration{{Duration: 1 * time.Millisecond}},
 		MaxRetries: 1,
 	}
@@ -127,7 +127,7 @@ func TestExecute_NilLogger(t *testing.T) {
 }
 
 func TestExecute_ErrAbort(t *testing.T) {
-	r := &RetryDelays{
+	r := &RetryHandler{
 		Delays:     []types.Duration{{Duration: 10 * time.Millisecond}, {Duration: 1 * time.Millisecond}},
 		MaxRetries: 30,
 	}
@@ -146,7 +146,7 @@ func TestExecute_ErrAbort(t *testing.T) {
 }
 
 func TestRetryDelays_BadConfig(t *testing.T) {
-	r := &RetryDelays{
+	r := &RetryHandler{
 		Delays:     []types.Duration{},
 		MaxRetries: -1,
 	}

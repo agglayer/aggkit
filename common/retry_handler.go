@@ -21,14 +21,14 @@ const (
 	MaxAttemptsInfinite = -1 // MaxAttemptsInfinite means infinite retries are allowed
 )
 
-// RetryDelays is a struct that holds the retry delays and the maximum number of retries.
+// RetryHandler is a struct that holds the retry delays and the maximum number of retries.
 // It implements the RetryDelayer interface, which allows executing a function with retry logic.
 // The delays are specified as a slice of types.Duration, and the maximum number of retries can be set.
 // If maxRetries is set to 0, it means infinite retries are allowed.
 //
 // You can also abort the retrying wrapping the error ErrAbort into the result
 // this is useful if there are some conditions that should not be retried
-type RetryDelays struct {
+type RetryHandler struct {
 	Delays []types.Duration `mapstructure:"Delays"`
 	// MaxRetries is the maximum number of retries to attempt.
 	// if MaxRetries is -1, it means infinite retries.
@@ -36,8 +36,16 @@ type RetryDelays struct {
 	MaxRetries int `mapstructure:"MaxRetries"`
 }
 
+// NewRetryHandler creates a new RetryHandler with the specified delays and maximum retries.
+func NewRetryHandler(delays []types.Duration, maxRetries int) *RetryHandler {
+	return &RetryHandler{
+		Delays:     delays,
+		MaxRetries: maxRetries,
+	}
+}
+
 // Validate checks if the RetryDelays configuration is valid.
-func (r *RetryDelays) Validate() error {
+func (r *RetryHandler) Validate() error {
 	// nil means no retries at all
 	if r == nil {
 		return nil
@@ -62,7 +70,7 @@ func (r *RetryDelays) Validate() error {
 }
 
 // String returns a string representation of the RetryDelays struct.
-func (r *RetryDelays) String() string {
+func (r *RetryHandler) String() string {
 	if r == nil {
 		return "RetryDelays{nil}"
 	}
@@ -70,18 +78,18 @@ func (r *RetryDelays) String() string {
 }
 
 // InfiniteRetries return true if the configuration allows infinite retries.
-func (r *RetryDelays) InfiniteRetries() bool {
+func (r *RetryHandler) InfiniteRetries() bool {
 	// Infinite retries are allowed if MaxAttempts is 0.
 	return r != nil && r.MaxRetries == MaxAttemptsInfinite
 }
 
-func (r *RetryDelays) NoRetries() bool {
+func (r *RetryHandler) NoRetries() bool {
 	// No Retries is MaxAttempts is 0 (just 1 first try)
 	return r == nil || r.MaxRetries == 0
 }
 
 // Delay returns the delay for the given attempt.
-func (r *RetryDelays) Delay(attempt int) time.Duration {
+func (r *RetryHandler) Delay(attempt int) time.Duration {
 	if r == nil || len(r.Delays) == 0 {
 		return 0
 	}
@@ -89,7 +97,7 @@ func (r *RetryDelays) Delay(attempt int) time.Duration {
 }
 
 // MustExecuteAttempt returns true if must execute `attempt`
-func (r *RetryDelays) MustExecuteAttempt(attempt int) bool {
+func (r *RetryHandler) MustExecuteAttempt(attempt int) bool {
 	if r.InfiniteRetries() {
 		return true
 	}
@@ -100,7 +108,7 @@ func (r *RetryDelays) MustExecuteAttempt(attempt int) bool {
 }
 
 // StringAttempt returns the string representation of the number of attempts.
-func (r *RetryDelays) StringAttempt(attempt int) string {
+func (r *RetryHandler) StringAttempt(attempt int) string {
 	if r.InfiniteRetries() {
 		return fmt.Sprintf("%d/INFINITE", attempt+1)
 	}
@@ -121,7 +129,7 @@ func silentLog(format string, args ...interface{}) {
 // fn: the function to execute, it should return a result of type T and an error.
 // If the function returns an error that is wrapped with ErrAbort,
 // the execution will be aborted and no more retries will be attempted.
-func Execute[T any](retryDelaysConfig *RetryDelays,
+func Execute[T any](retryDelaysConfig *RetryHandler,
 	ctx context.Context,
 	logFunc func(format string, args ...interface{}),
 	name string,

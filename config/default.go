@@ -202,6 +202,7 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
 	[AggSender.RetriesToBuildAndSendCertificate]
+		Mode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
 		MaxRetries = 6 # 1+6 attempts, around 22m 
 	[AggSender.AgglayerClient]
