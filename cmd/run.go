@@ -541,32 +541,6 @@ func runL2ClientIfNeeded(ctx context.Context,
 	return l2Client
 }
 
-func runReorgDetectorL1IfNeeded(
-	ctx context.Context,
-	components []string,
-	l1Client aggkittypes.BaseEthereumClienter,
-	cfg *reorgdetector.Config,
-) (*reorgdetector.ReorgDetector, chan error) {
-	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
-		aggkitcommon.AGGCHAINPROOFGEN},
-		components) {
-		return nil, nil
-	}
-	rd := newReorgDetector(cfg, l1Client, reorgdetector.L1)
-
-	errChan := make(chan error)
-	go func() {
-		if err := rd.Start(ctx); err != nil {
-			errChan <- err
-		}
-		close(errChan)
-	}()
-
-	return rd, errChan
-}
-
 func runReorgDetectorL2IfNeeded(
 	ctx context.Context,
 	components []string,
