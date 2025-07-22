@@ -223,9 +223,6 @@ type Config struct {
 	// RPC is the config for the RPC server
 	RPC jRPC.Config
 
-	// Configuration of the reorg detector service to be used for the L1
-	ReorgDetectorL1 reorgdetector.Config
-
 	// Configuration of the reorg detector service to be used for the L2
 	ReorgDetectorL2 reorgdetector.Config
 

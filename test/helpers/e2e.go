@@ -137,7 +137,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx, dbPathL1InfoTreeSync,
 		gerL1Addr, common.Address{},
-		syncBlockChunkSize, aggkittypes.LatestBlock,
+		syncBlockChunkSize, aggkittypes.FinalizedBlock,
 		l1Client.Client(),
 		time.Millisecond, 0, l1InfoTreeSyncerRetryFreq,
 		l1InfoTreeSyncerRetries, l1infotreesync.FlagAllowWrongContractsAddrs,
@@ -161,7 +161,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
-		syncBlockChunkSize, aggkittypes.LatestBlock, testClient,
+		syncBlockChunkSize, aggkittypes.FinalizedBlock, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
 		retriesCount, originNetwork, false, true)
 	require.NoError(t, err)
