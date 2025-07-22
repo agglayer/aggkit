@@ -18,6 +18,7 @@ const KB = 1 << 10 // 1024
 var (
 	ZeroHash       = common.HexToHash("0x0")
 	EmptyBytesHash = crypto.Keccak256(nil)
+	ZeroAddress    = common.HexToAddress("0x0")
 )
 
 const (
