@@ -33,7 +33,7 @@ type RetryDelays struct {
 	// MaxRetries is the maximum number of retries to attempt.
 	// if MaxRetries is -1, it means infinite retries.
 	// if MaxRetries is 0, it means no retries will be attempted.
-	MaxRetries int `mapstructure:"MaxAttempts"`
+	MaxRetries int `mapstructure:"MaxRetries"`
 }
 
 // Validate checks if the RetryDelays configuration is valid.

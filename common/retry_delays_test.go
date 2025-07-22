@@ -53,12 +53,13 @@ func TestExecute_ExceedMaxAttempts(t *testing.T) {
 		Delays:     []types.Duration{{Duration: 5 * time.Millisecond}},
 		MaxRetries: 2,
 	}
-	logger := log.WithFields("module", "ut")
-	ctx := context.Background()
+	attempts := 0
 	fn := func() (int, error) {
+		attempts++
 		return 0, errors.New("fail")
 	}
-	result, err := Execute(r, ctx, logger.Infof, "test-max-attempts", fn)
+	result, err := Execute(r, t.Context(), log.Infof, "test-max-attempts", fn)
+	require.Equal(t, 3, attempts, "first call + 2 retries")
 	require.ErrorIs(t, err, ErrExecutionFails)
 	require.Equal(t, 0, result)
 }
