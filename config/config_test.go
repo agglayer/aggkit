@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
@@ -45,7 +45,16 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
-	require.Equal(t, ethermanconfig.RPCClientConfig{Mode: ethermanconfig.RPCModeBasic, URL: "http://localhost:8123"}, cfg.Common.L2RPC)
+	require.Equal(t, L2RPCClientConfig{
+		RPCClientConfig: RPCClientConfig{
+			URL:               "http://localhost:8123",
+			MaxRetries:        5,
+			InitialBackoff:    types.NewDuration(2 * time.Second),
+			MaxBackoff:        types.NewDuration(10 * time.Second),
+			BackoffMultiplier: 2.0,
+		},
+		Mode: RPCModeBasic,
+	}, cfg.Common.L2RPC)
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)
@@ -113,6 +122,9 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 
 	[L1Config]
 	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
+
+	[L1NetworkConfig]
+	URL = "http://localhost:8545"
 
 	[AggSender]
 	BridgeMetaDataAsHash = true
@@ -182,4 +194,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, bridgeL1SyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, lastGERSyncDeprecatedHint)
 	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
+	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 }

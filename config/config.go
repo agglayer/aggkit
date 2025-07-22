@@ -70,6 +70,7 @@ const (
 	bridgeL1SyncBlockFinalityDeprecated   = "BridgeL1Sync.BlockFinality is deprecated, remove it from configuration"
 	lastGERSyncDeprecatedHint             = "LastGERSync is deprecated, use L2GERSync instead"
 	lastGERSyncSyncModeDeprecatedHint     = "LastGERSync.SyncMode is deprecated, remove it from configuration"
+	l1NetworkConfigURLDeprecatedHint      = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -203,6 +204,10 @@ var (
 			FieldNamePattern: "LastGERSync",
 			Reason:           lastGERSyncDeprecatedHint,
 		},
+		{
+			FieldNamePattern: "L1NetworkConfig.URL",
+			Reason:           l1NetworkConfigURLDeprecatedHint,
+		},
 	}
 )
 
@@ -217,7 +222,7 @@ type Config struct {
 	Log log.Config
 
 	// Common Config that affects all the services
-	Common common.Config
+	Common CommonConfig
 
 	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
 	L1NetworkConfig L1NetworkConfig

@@ -337,16 +337,10 @@ func (f *baseFlow) getNewLocalExitRoot(
 }
 
 // convertBridgeMetadata converts the bridge metadata to a hash using crypto.Keccak256.
-// If the metadata is empty, it returns nil (the zero value for a slice in Go).
-// Note: The "previous flag" is no longer returned by this function.
+// If the metadata is empty, it returns an empty array hash
+// which is basically Keccak256(nil) = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470.
 func convertBridgeMetadata(metadata []byte) []byte {
-	var metaData []byte
-
-	if len(metadata) > 0 {
-		metaData = crypto.Keccak256(metadata)
-	}
-
-	return metaData
+	return crypto.Keccak256(metadata)
 }
 
 // ConvertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
@@ -355,7 +349,6 @@ func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 	if claim.IsMessage {
 		leafType = agglayertypes.LeafTypeMessage
 	}
-	metaData := convertBridgeMetadata(claim.Metadata)
 
 	bridgeExit := &agglayertypes.BridgeExit{
 		LeafType: leafType,
@@ -366,7 +359,7 @@ func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*ag
 		DestinationNetwork: claim.DestinationNetwork,
 		DestinationAddress: claim.DestinationAddress,
 		Amount:             claim.Amount,
-		Metadata:           metaData,
+		Metadata:           convertBridgeMetadata(claim.Metadata),
 	}
 
 	mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
@@ -389,7 +382,6 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 	bridgeExits := make([]*agglayertypes.BridgeExit, 0, len(bridges))
 
 	for _, bridge := range bridges {
-		metaData := convertBridgeMetadata(bridge.Metadata)
 		bridgeExits = append(bridgeExits, &agglayertypes.BridgeExit{
 			LeafType: agglayertypes.LeafType(bridge.LeafType),
 			TokenInfo: &agglayertypes.TokenInfo{
@@ -399,7 +391,7 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 			DestinationNetwork: bridge.DestinationNetwork,
 			DestinationAddress: bridge.DestinationAddress,
 			Amount:             bridge.Amount,
-			Metadata:           metaData,
+			Metadata:           convertBridgeMetadata(bridge.Metadata),
 		})
 	}
 

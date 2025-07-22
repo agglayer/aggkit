@@ -1,26 +1,30 @@
 package etherman
 
 import (
+	"context"
 	"fmt"
 
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-func NewRPCClient(cfg ethermanconfig.RPCClientConfig) (aggkittypes.EthClienter, error) {
+// NewRPCClient creates a new RPC client based on the provided configuration.
+// It supports both basic RPC mode and OPNode mode.
+// In basic mode, it simply creates a client with the given URL.
+// In OPNode mode, it creates a client that uses the OPNode client to get the finalized block.
+func NewRPCClient(ctx context.Context, cfg config.L2RPCClientConfig) (aggkittypes.EthClienter, error) {
 	switch cfg.Mode {
-	case ethermanconfig.RPCModeBasic:
+	case config.RPCModeBasic:
 		log.Debugf("Creating basic RPC client with URL %s", cfg.URL)
-		basicClient, err := ethclient.Dial(cfg.URL)
+		ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.URL, cfg.MaxRetries,
+			cfg.InitialBackoff.Duration, cfg.MaxBackoff.Duration, cfg.BackoffMultiplier)
 		if err != nil {
 			return nil, fmt.Errorf("fails to create basic RPC client. Err: %w", err)
 		}
-		return aggkittypes.NewDefaultEthClient(basicClient, basicClient.Client()), nil
-	case ethermanconfig.RPCModeOp:
-		return NewRPCClientModeOp(cfg)
+		return ethClient, nil
+	case config.RPCModeOp:
+		return NewRPCClientModeOp(ctx, cfg)
 	}
-	log.Fatalf("Invalid RPC mode %s", cfg.Mode)
-	return nil, fmt.Errorf("Invalid RPC mode %s", cfg.Mode)
+	return nil, fmt.Errorf("invalid RPC mode %s", cfg.Mode)
 }

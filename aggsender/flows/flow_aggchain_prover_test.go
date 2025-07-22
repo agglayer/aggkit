@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -41,6 +42,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		BridgeExit: &agglayertypes.BridgeExit{
 			LeafType:  0,
 			TokenInfo: &agglayertypes.TokenInfo{},
+			Metadata:  aggkitcommon.EmptyBytesHash,
 		},
 		GlobalIndex: &agglayertypes.GlobalIndex{
 			LeafIndex: 1,
@@ -51,6 +53,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		BridgeExit: &agglayertypes.BridgeExit{
 			LeafType:  0,
 			TokenInfo: &agglayertypes.TokenInfo{},
+			Metadata:  aggkitcommon.EmptyBytesHash,
 		},
 		GlobalIndex: &agglayertypes.GlobalIndex{
 			LeafIndex: 2,

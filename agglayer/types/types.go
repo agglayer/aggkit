@@ -38,8 +38,6 @@ const (
 var (
 	NonSettledStatuses = []CertificateStatus{Pending, Candidate, Proven}
 	ClosedStatuses     = []CertificateStatus{Settled, InError}
-
-	emptyBytesHash = crypto.Keccak256(nil)
 )
 
 // String representation of the enum
@@ -369,7 +367,7 @@ func (c *Certificate) FEPHashToSign() common.Hash {
 
 	importedBridgeExitsHash := crypto.Keccak256(chunks...)
 
-	aggchainParams := emptyBytesHash
+	aggchainParams := aggkitcommon.EmptyBytesHash
 	aggchainDataProof, ok := c.AggchainData.(*AggchainDataProof)
 	if ok {
 		aggchainParams = aggchainDataProof.AggchainParams.Bytes()
@@ -514,7 +512,7 @@ func (b *BridgeExit) Hash() common.Hash {
 
 	metaDataHash := b.Metadata
 	if len(metaDataHash) == 0 {
-		metaDataHash = emptyBytesHash
+		metaDataHash = aggkitcommon.EmptyBytesHash
 	}
 
 	return crypto.Keccak256Hash(
