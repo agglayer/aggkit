@@ -182,7 +182,7 @@ func TestReorg(t *testing.T) {
 	require.Equal(t, uint32(2), index)
 }
 
-func TestGetInjectedGERsForRange(t *testing.T) {
+func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()

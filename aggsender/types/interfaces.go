@@ -61,6 +61,7 @@ type L1InfoTreeSyncer interface {
 		ctx context.Context, index uint32, root common.Hash,
 	) (treetypes.Proof, error)
 	GetL1InfoTreeRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
+	GetLastL1InfoTreeRoot(ctx context.Context) (treetypes.Root, error)
 	GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)

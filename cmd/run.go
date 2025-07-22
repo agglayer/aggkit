@@ -122,7 +122,6 @@ func start(cliCtx *cli.Context) error {
 				l2BridgeSync,
 				l2Client,
 				rollupDataQuerier,
-				l2GERSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -138,7 +137,6 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
-				l2GERSync,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -192,7 +190,7 @@ func createAggchainProofGen(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
-	chainGERReader aggsendertypes.ChainGERReader) (*prover.AggchainProofGenerationTool, error) {
+) (*prover.AggchainProofGenerationTool, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGCHAINPROOFGEN)
 
 	aggchainProofGen, err := prover.NewAggchainProofGenerationTool(
@@ -203,7 +201,6 @@ func createAggchainProofGen(
 		l2Client,
 		l2Syncer,
 		l1InfoTreeSync,
-		chainGERReader,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofGenerationTool: %w", err)
@@ -270,8 +267,7 @@ func createAggSender(
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier,
-	gerReader aggsendertypes.ChainGERReader) (*aggsender.AggSender, error) {
+	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	if err := cfg.Validate(); err != nil {
@@ -307,8 +303,13 @@ func createAggSender(
 	go blockNotifier.Start(ctx)
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
+	l2GERReader, err := l2gersync.NewL2EVMGERReader(
+		cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSync)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create L2 GER reader: %w", err)
+	}
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, gerReader)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, l2GERReader)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}

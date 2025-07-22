@@ -211,7 +211,7 @@ func TestValidateGERSender(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockGERManager := mocks.NewL2GERManagerContract(t)
 			tt.setupMock(mockGERManager)
-			err := validateGERSender(tt.gerSender, mockGERManager)
+			err := validateGERSender(tt.gerSender, mockGERManager, otherAddr)
 			if tt.expectErrMsg == "" {
 				require.NoError(t, err)
 			} else {

@@ -52,7 +52,7 @@ func NewEVMChainGERSender(
 		return nil, fmt.Errorf("failed to create binding for GER L2 manager (SC address: %s): %w", l2GERManagerAddr, err)
 	}
 
-	if err := validateGERSender(ethTxMan.From(), l2GERManager); err != nil {
+	if err := validateGERSender(ethTxMan.From(), l2GERManager, l2GERManagerAddr); err != nil {
 		return nil, err
 	}
 
@@ -73,16 +73,19 @@ func NewEVMChainGERSender(
 }
 
 // validateGERSender validates whether the provided GER sender is allowed to send and remove GERs
-func validateGERSender(gerSender common.Address, l2GERManagerSC types.L2GERManagerContract) error {
+func validateGERSender(gerSender common.Address,
+	l2GERManagerSC types.L2GERManagerContract, l2GERManagerAddr common.Address) error {
 	zeroAddr := common.Address{}
 	gerUpdater, err := l2GERManagerSC.GlobalExitRootUpdater(nil)
 	if err != nil {
-		return fmt.Errorf("failed to retrieve GER updater address from GER L2 manager: %w", err)
+		return fmt.Errorf("failed to retrieve GER updater address from GER L2 manager (SC address %s): %w",
+			l2GERManagerAddr, err)
 	}
 
 	if gerUpdater != zeroAddr && gerSender != gerUpdater {
 		return fmt.Errorf("invalid GER sender provided (in the EthTxManager configuration), "+
-			"and it is not allowed to update GERs. Expected GER updater by the L2 GER manager contract: %s", gerUpdater)
+			"and it is not allowed to update GERs. Expected GER updater by the L2 GER manager contract (SC address: %s): %s",
+			l2GERManagerAddr, gerUpdater)
 	}
 
 	return nil

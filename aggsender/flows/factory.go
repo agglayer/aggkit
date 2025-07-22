@@ -31,7 +31,7 @@ func NewFlow(
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
-	gerReader types.ChainGERReader,
+	l2GERReader types.ChainGERReader,
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
@@ -77,7 +77,7 @@ func NewFlow(
 
 		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {
-			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
+			return nil, fmt.Errorf("aggchainProverFlow - error creating aggkit prover client: %w", err)
 		}
 
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
@@ -95,7 +95,7 @@ func NewFlow(
 		lerQuerier, err := query.NewLERDataQuerier(
 			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, rollupDataQuerier)
 		if err != nil {
-			return nil, fmt.Errorf("error creating LER data querier: %w", err)
+			return nil, fmt.Errorf("aggchainProverFlow - error creating LER data querier: %w", err)
 		}
 
 		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
@@ -112,7 +112,7 @@ func NewFlow(
 			storage,
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
-			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
+			query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
 			l1Client,
 			signer,
 			optimisticModeQuerier,

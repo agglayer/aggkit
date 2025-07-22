@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -70,7 +71,6 @@ func NewAggchainProofGenerationTool(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2Syncer types.L2BridgeSyncer,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	chainGERReader types.ChainGERReader,
 ) (*AggchainProofGenerationTool, error) {
 	if err := cfg.AggkitProverClient.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
@@ -79,6 +79,11 @@ func NewAggchainProofGenerationTool(
 	aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
+	}
+
+	l2GERReader, err := l2gersync.NewL2EVMGERReader(cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSyncer)
+	if err != nil {
+		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
@@ -100,7 +105,7 @@ func NewAggchainProofGenerationTool(
 		nil, // storage
 		l1InfoTreeQuerier,
 		l2BridgeQuerier,
-		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
+		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
 		l1Client,
 		nil,                               // signer
 		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode,

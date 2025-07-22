@@ -127,7 +127,7 @@ func TestNewFlow(t *testing.T) {
 				mockL1InfoTreeSyncer,
 				mockL2BridgeSyncer,
 				mockRollupDataQuerier,
-				nil,
+				nil, // l2GERReader is not used in this test
 			)
 
 			if tc.expectedError != "" {
