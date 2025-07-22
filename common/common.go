@@ -10,12 +10,14 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 const KB = 1 << 10 // 1024
 
 var (
-	ZeroHash = common.HexToHash("0x0")
+	ZeroHash       = common.HexToHash("0x0")
+	EmptyBytesHash = crypto.Keccak256(nil)
 )
 
 const (
