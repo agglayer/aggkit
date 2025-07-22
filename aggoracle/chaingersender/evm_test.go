@@ -669,7 +669,6 @@ func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockAggOracleCommittee := mocks.NewAggOracleCommitteeContract(t)
 			mockEthTxManager := mocks.NewEthTxManager(t)
-			mockL2GERManager := mocks.NewL2GERManagerContract(t)
 
 			// Setup mock expectations only for committee mode
 			if tt.mode == AggOracleCommitteeMode {
@@ -678,24 +677,12 @@ func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
 				mockAggOracleCommittee.EXPECT().
 					AddressToLastProposedGER(mock.Anything, expectedAddress).
 					Return(tt.mockReturn, tt.mockError)
-
-				// Mock IsGERInjected call for committee mode
-				mockL2GERManager.EXPECT().
-					GlobalExitRootMap(mock.Anything, mock.Anything).
-					Return(big.NewInt(0), nil)
-			} else {
-				// For non-committee mode, we still need to mock IsGERInjected call
-				// since IsGERProposed calls IsGERInjected first
-				mockL2GERManager.EXPECT().
-					GlobalExitRootMap(mock.Anything, mock.Anything).
-					Return(big.NewInt(0), nil)
 			}
 
 			evmChainGERSender := &EVMChainGERSender{
 				mode:               tt.mode,
 				aggOracleCommittee: mockAggOracleCommittee,
 				ethTxMan:           mockEthTxManager,
-				l2GERManager:       mockL2GERManager,
 			}
 
 			result, err := evmChainGERSender.IsGERProposed(tt.ger)
@@ -709,7 +696,6 @@ func TestEVMChainGERSender_IsGERProposed(t *testing.T) {
 
 			mockAggOracleCommittee.AssertExpectations(t)
 			mockEthTxManager.AssertExpectations(t)
-			mockL2GERManager.AssertExpectations(t)
 		})
 	}
 }

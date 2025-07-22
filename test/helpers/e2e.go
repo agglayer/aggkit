@@ -105,7 +105,7 @@ func NewE2EEnvWithEVML2(t *testing.T, cfg *EnvironmentConfig) *AggoracleWithEVMC
 	oracle, err := aggoracle.New(
 		log.GetDefaultLogger(), l2Setup.AggoracleSender,
 		l1Setup.SimBackend.Client(), l1Setup.InfoTreeSync,
-		time.Millisecond*20, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee, //nolint:mnd
+		time.Millisecond*20, //nolint:mnd
 	)
 	require.NoError(t, err)
 	go oracle.Start(ctx)

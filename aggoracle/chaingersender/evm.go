@@ -77,6 +77,7 @@ func NewEVMChainGERSender(
 	if enableAggOracleCommittee && aggOracleCommitteeAddr != aggkitcommon.ZeroAddress {
 		mode = AggOracleCommitteeMode
 	}
+	logger.Infof("EVMChainGERSender initialized in %s mode", mode)
 
 	// Always initialize L2 GER Manager (needed for checking if GER is injected)
 	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
@@ -108,7 +109,6 @@ func NewEVMChainGERSender(
 		return nil, err
 	}
 
-	logger.Infof("EVMChainGERSender initialized in %s mode", mode)
 	return sender, nil
 }
 
@@ -273,6 +273,17 @@ func (c *EVMChainGERSender) submitTransaction(
 				c.logger.Error("unexpected tx status:", res.Status)
 			}
 		}
+	}
+}
+
+func (c *EVMChainGERSender) ProcessGER(ctx context.Context, ger common.Hash) error {
+	switch c.mode {
+	case DirectInjectionMode:
+		return c.InjectGER(ctx, ger)
+	case AggOracleCommitteeMode:
+		return c.ProposeGER(ctx, ger)
+	default:
+		return fmt.Errorf("unknown GER mode: %s", c.mode)
 	}
 }
 
