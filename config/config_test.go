@@ -47,10 +47,11 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
 	require.Equal(t, L2RPCClientConfig{
 		RPCClientConfig: RPCClientConfig{
-			URL:            "http://localhost:8123",
-			MaxRetries:     5,
-			InitialBackoff: types.NewDuration(2 * time.Second),
-			MaxBackoff:     types.NewDuration(10 * time.Second),
+			URL:               "http://localhost:8123",
+			MaxRetries:        5,
+			InitialBackoff:    types.NewDuration(2 * time.Second),
+			MaxBackoff:        types.NewDuration(10 * time.Second),
+			BackoffMultiplier: 2.0,
 		},
 		Mode: RPCModeBasic,
 	}, cfg.Common.L2RPC)

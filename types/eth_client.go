@@ -11,11 +11,6 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient"
 )
 
-const (
-	// Base for exponential backoff
-	backoffBase = 2
-)
-
 var _ EthClienter = (*DefaultEthClient)(nil)
 
 // DefaultEthClient is the default implementation of EthClienter.
@@ -65,8 +60,8 @@ func (c *NoopRPCClient) Call(result any, method string, args ...any) error {
 
 // DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
 // It returns an EthClienter on success or an error if all attempts fail.
-func DialWithRetry(ctx context.Context, url string,
-	maxRetries int, initialBackoff, maxBackoff time.Duration) (EthClienter, error) {
+func DialWithRetry(ctx context.Context, url string, maxRetries int,
+	initialBackoff, maxBackoff time.Duration, backoffMultiplier float64) (EthClienter, error) {
 	var (
 		client *ethclient.Client
 		err    error
@@ -83,7 +78,7 @@ func DialWithRetry(ctx context.Context, url string,
 			return NewDefaultEthClient(client, client.Client()), nil
 		}
 
-		backoff := float64(initialBackoff) * math.Pow(backoffBase, float64(attempt))
+		backoff := float64(initialBackoff) * math.Pow(backoffMultiplier, float64(attempt))
 		wait := time.Duration(math.Min(backoff, float64(maxBackoff)))
 		log.Warnf("Dialing %s failed (attempt %d/%d): %v. Retrying in %s...", url, attempt+1, maxRetries, err, wait)
 

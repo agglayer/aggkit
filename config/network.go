@@ -74,6 +74,8 @@ type RPCClientConfig struct {
 	InitialBackoff types.Duration `mapstructure:"InitialBackoff"`
 	// MaxBackoff is the maximum backoff duration for retries
 	MaxBackoff types.Duration `mapstructure:"MaxBackoff"`
+	// BackoffMultiplier is the multiplier for exponential backoff
+	BackoffMultiplier float64 `mapstructure:"BackoffMultiplier"`
 }
 
 // Validate checks if the RPCClientConfig is valid
@@ -99,7 +101,12 @@ func (c *RPCClientConfig) Validate() error {
 			return fmt.Errorf("max backoff %s must be greater than or equal to initial backoff %s",
 				c.MaxBackoff.Duration, c.InitialBackoff.Duration)
 		}
+
+		if c.BackoffMultiplier <= 1.0 {
+			return fmt.Errorf("backoff multiplier must be greater than 1.0, got %f", c.BackoffMultiplier)
+		}
 	}
+
 	return nil
 }
 
