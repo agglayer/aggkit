@@ -68,6 +68,7 @@ const (
 	aggOracleBlockFinalityDeprecated      = "AggOracle.BlockFinality is deprecated, remove it from configuration"
 	l1InfoTreeSyncBlockFinalityDeprecated = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
 	bridgeL1SyncBlockFinalityDeprecated   = "BridgeL1Sync.BlockFinality is deprecated, remove it from configuration"
+	l1NetworkConfigURLDeprecatedHint      = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -193,6 +194,10 @@ var (
 			FieldNamePattern: "BridgeL1Sync.BlockFinality",
 			Reason:           bridgeL1SyncBlockFinalityDeprecated,
 		},
+		{
+			FieldNamePattern: "L1NetworkConfig.URL",
+			Reason:           l1NetworkConfigURLDeprecatedHint,
+		},
 	}
 )
 
@@ -207,7 +212,7 @@ type Config struct {
 	Log log.Config
 
 	// Common Config that affects all the services
-	Common common.Config
+	Common CommonConfig
 
 	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
 	L1NetworkConfig L1NetworkConfig

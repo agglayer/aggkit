@@ -26,10 +26,6 @@ type RollupManagerContract interface {
 }
 
 // mockery:ignore
-// DialFunc is callback function that creates BaseEthereumClienter, used to interact with Ethereum nodes
-type DialFunc func(url string) (aggkittypes.BaseEthereumClienter, error)
-
-// mockery:ignore
 // RollupManagerFactoryFunc is a callback function that creates RollupManager contrat instance
 type RollupManagerFactoryFunc func(rollupAddress common.Address,
 	client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error)
@@ -43,14 +39,9 @@ type RollupDataQuerier struct {
 // NewRollupDataQuerier creates a new rollup data querier instance
 func NewRollupDataQuerier(
 	l1Config config.L1NetworkConfig,
-	ethClientFactory DialFunc,
+	ethClient aggkittypes.BaseEthereumClienter,
 	rollupManagerFactory RollupManagerFactoryFunc,
 ) (*RollupDataQuerier, error) {
-	ethClient, err := dialRPC(l1Config.URL, ethClientFactory)
-	if err != nil {
-		return nil, err
-	}
-
 	rmContract, err := bindRollupManagerContract(l1Config.RollupManagerAddr, ethClient, rollupManagerFactory)
 	if err != nil {
 		return nil, err
@@ -67,17 +58,6 @@ func NewRollupDataQuerier(
 		rollupManagerSC: rmContract,
 		RollupID:        rollupID,
 	}, nil
-}
-
-// dialRPC creates an Ethereum RPC client by invoking the provided DialFunc with the given URL.
-// It logs and returns an error if the connection attempt fails.
-func dialRPC(url string, dial DialFunc) (aggkittypes.BaseEthereumClienter, error) {
-	client, err := dial(url)
-	if err != nil {
-		log.Errorf("error connecting to %s: %v", url, err)
-		return nil, err
-	}
-	return client, nil
 }
 
 // bindRollupManagerContract creates a RollupManager smart contract binding using the provided factory function.

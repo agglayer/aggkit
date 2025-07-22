@@ -40,8 +40,14 @@ genesisBlockNumber = 0
 const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = true
-L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
 GenerateAggchainProofTimeout = "1h"
+[L2RPC]
+	Mode = "basic"
+	URL = "{{L2URL}}"
+	MaxRetries = 5
+	InitialBackoff = "2s"
+	MaxBackoff = "10s"
+	BackoffMultiplier = 2.0
 `
 
 // DefaultValues is the default configuration
@@ -58,12 +64,17 @@ NetworkID = {{NetworkID}}
 L2RPC = {{L2RPC}}
 
 [L1NetworkConfig]
-URL = "{{L1Config.URL}}"
 L1ChainID = {{L1Config.chainId}}
 POLTokenAddr = "{{L1Config.polTokenAddress}}"
 RollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+	[L1NetworkConfig.RPC]
+		URL = "{{L1Config.URL}}"
+		MaxRetries = 5
+		InitialBackoff = "2s"
+		MaxBackoff = "10s"
+		BackoffMultiplier = 2.0
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
@@ -262,11 +273,11 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 [Validator.PPConfig]
 	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
 [Validator.AgglayerClient]
-		Cached = true
-		[Validator.AgglayerClient.ConfigurationCache]
-			TTL = "15m"
-			Capacity = 100
-		[Validator.AgglayerClient.GRPC]
+	Cached = true
+	[Validator.AgglayerClient.ConfigurationCache]
+		TTL = "15m"
+		Capacity = 100
+	[Validator.AgglayerClient.GRPC]
 		URL = "{{AggSender.AgglayerClient.GRPC.URL}}"
 		MinConnectTimeout = "{{AggSender.AgglayerClient.GRPC.MinConnectTimeout}}"
 		RequestTimeout = "{{AggSender.AgglayerClient.GRPC.RequestTimeout}}"
