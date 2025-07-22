@@ -55,8 +55,8 @@ func (r *RetryDelays) Validate() error {
 		}
 	}
 	if r.MaxRetries < MaxAttemptsInfinite {
-		return fmt.Errorf("%w: max retries cannot %d",
-			ErrInvalidConfig, r.MaxRetries)
+		return fmt.Errorf("%w: max retries cannot %d be less than %d",
+			ErrInvalidConfig, r.MaxRetries, MaxAttemptsInfinite)
 	}
 	return nil
 }
@@ -99,8 +99,8 @@ func (r *RetryDelays) MustExecuteAttempt(attempt int) bool {
 	return attempt <= r.MaxRetries
 }
 
-// StringAttemp returns the string representation of the number of attempts.
-func (r *RetryDelays) StringAttemp(attempt int) string {
+// StringAttempt returns the string representation of the number of attempts.
+func (r *RetryDelays) StringAttempt(attempt int) string {
 	if r.InfiniteRetries() {
 		return fmt.Sprintf("%d/INFINITE", attempt+1)
 	}
@@ -135,35 +135,35 @@ func Execute[T any](retryDelaysConfig *RetryDelays,
 		logFunc = silentLog
 	}
 	var err error
-	attempt := 0
-	for attempt := 0; retryDelaysConfig.MustExecuteAttempt(attempt); attempt++ {
+	var attempt int
+	for attempt = 0; retryDelaysConfig.MustExecuteAttempt(attempt); attempt++ {
 		delay := retryDelaysConfig.Delay(attempt)
 		logFunc("executing %s try %s (next delay: %s)",
-			name, retryDelaysConfig.StringAttemp(attempt), delay.String())
+			name, retryDelaysConfig.StringAttempt(attempt), delay.String())
 		// Execute payload
 		var result T
 		result, err = payloadFunc()
 		if err == nil {
 			logFunc("successful run %s in try %s",
-				name, retryDelaysConfig.StringAttemp(attempt))
+				name, retryDelaysConfig.StringAttempt(attempt))
 			return result, nil
 		}
 		if errors.Is(err, ErrAbort) {
 			logFunc("aborting execution of %s, try %s due to error: %v",
 				name,
-				retryDelaysConfig.StringAttemp(attempt),
+				retryDelaysConfig.StringAttempt(attempt),
 				err)
 			return result, err
 		}
 
 		logFunc("fails execution of %s try %s. delay %s.  due to error: %v",
-			name, retryDelaysConfig.StringAttemp(attempt),
+			name, retryDelaysConfig.StringAttempt(attempt),
 			delay, err)
 
 		select {
 		case <-ctx.Done():
 			logFunc("executing %s try %d/%d was canceled",
-				name, retryDelaysConfig.StringAttemp(attempt))
+				name, retryDelaysConfig.StringAttempt(attempt))
 			return zero, ctx.Err()
 		case <-time.After(delay):
 			continue
