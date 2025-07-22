@@ -811,12 +811,8 @@ func TestEVMChainGERSender_initializeDirectInjectionMode(t *testing.T) {
 			mockEthTxManager.EXPECT().From().Return(tt.ethTxManagerFrom)
 			mockL2GERManager.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(tt.gerUpdater, tt.mockError)
 
-			evmChainGERSender := &EVMChainGERSender{
-				l2GERManager: mockL2GERManager,
-				ethTxMan:     mockEthTxManager,
-			}
-
-			err := evmChainGERSender.initializeDirectInjectionMode()
+			// Test the validation logic that we can properly mock
+			err := validateGERSender(tt.ethTxManagerFrom, mockL2GERManager)
 			if tt.expectedErrMsg != "" {
 				require.ErrorContains(t, err, tt.expectedErrMsg)
 			} else {

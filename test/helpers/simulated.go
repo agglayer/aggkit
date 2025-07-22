@@ -73,8 +73,6 @@ type SimulatedBackendSetup struct {
 	DeployerAuth                *bind.TransactOpts
 	BridgeProxyAddr             common.Address
 	BridgeProxyContract         *polygonzkevmbridgev2.Polygonzkevmbridgev2
-	AggOracleCommitteeAddr      common.Address
-	AggOracleCommitteeProxyAddr common.Address
 }
 
 // DeployBridge deploys the bridge contract

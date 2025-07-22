@@ -115,19 +115,12 @@ func NewEVMChainGERSender(
 func (c *EVMChainGERSender) initializeMode() error {
 	switch c.mode {
 	case DirectInjectionMode:
-		return c.initializeDirectInjectionMode()
+		return validateGERSender(c.ethTxMan.From(), c.l2GERManager)
 	case AggOracleCommitteeMode:
 		return c.initializeAggOracleCommitteeMode()
 	default:
 		return fmt.Errorf("unknown GER mode: %s", c.mode)
 	}
-}
-
-func (c *EVMChainGERSender) initializeDirectInjectionMode() error {
-	if err := validateGERSender(c.ethTxMan.From(), c.l2GERManager); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c *EVMChainGERSender) initializeAggOracleCommitteeMode() error {
@@ -170,7 +163,7 @@ func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
 func (c *EVMChainGERSender) IsGERProposed(ger common.Hash) (bool, error) {
 	isInjected, err := c.IsGERInjected(ger)
 	if err != nil {
-		return false, fmt.Errorf("failed to check if global exit root is injected %s: %w", ger, err)
+		return false, err
 	}
 
 	if isInjected {
@@ -202,7 +195,7 @@ func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) err
 		return err
 	}
 	if isProposed {
-		c.logger.Infof("GER %s has already been proposed by the oracle committee member", ger.Hex())
+		c.logger.Infof("GER %s has already been proposed by the aggoracle committee member", ger.Hex())
 		return nil
 	}
 

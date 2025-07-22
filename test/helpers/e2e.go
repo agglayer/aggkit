@@ -76,14 +76,14 @@ type L2Environment struct {
 type EnvironmentConfig struct {
 	L1RPCClient aggkittypes.RPCClienter
 	L2RPCClient aggkittypes.RPCClienter
-	AggoraclecommitteeConfig
+	aggOracleCommitteeConfig AggoraclecommitteeConfig
 }
 
 func DefaultEnvironmentConfig() *EnvironmentConfig {
 	return &EnvironmentConfig{
 		L1RPCClient: &aggkittypes.NoopRPCClient{},
 		L2RPCClient: &aggkittypes.NoopRPCClient{},
-		AggoraclecommitteeConfig: AggoraclecommitteeConfig{
+		aggOracleCommitteeConfig: AggoraclecommitteeConfig{
 			EnableAggOracleCommittee: false,
 			Quorum:                   1,
 		},
@@ -197,7 +197,10 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 	t.Helper()
 
 	l2Client, authL2, gerL2Addr, gerL2Contract,
-		bridgeL2Addr, bridgeL2Contract, aggOracleCommitteeAddr, aggOracleCommitteeContract := newSimulatedEVML2SovereignChain(t, cfg.AggoraclecommitteeConfig)
+		bridgeL2Addr, bridgeL2Contract,
+		aggOracleCommitteeAddr, aggOracleCommitteeContract := newSimulatedEVML2SovereignChain(
+			t, cfg.AggoraclecommitteeConfig,
+		)
 
 	ethTxManagerMock := NewEthTxManMock(t, l2Client, authL2)
 
@@ -308,6 +311,8 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 ) {
 	t.Helper()
 
+	const aggOracleCommitteeNonce = 4
+
 	deployerAuth, err := CreateAccount(big.NewInt(chainID))
 	require.NoError(t, err)
 
@@ -320,7 +325,12 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 	genesisAllocMap := map[common.Address]types.Account{
 		l2BridgeProxyAddr: {Balance: premineBalance},
 	}
-	client, setup := NewSimulatedBackend(t, genesisAllocMap, deployerAuth, aggOracleCommitteeConfig.EnableAggOracleCommittee)
+	client, setup := NewSimulatedBackend(
+		t,
+		genesisAllocMap,
+		deployerAuth,
+		aggOracleCommitteeConfig.EnableAggOracleCommittee,
+	)
 
 	// Deploy L2 GER manager contract
 	gerL2Addr, _, _, err := globalexitrootmanagerl2sovereignchain.DeployGlobalexitrootmanagerl2sovereignchain(
@@ -369,8 +379,11 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 	require.Equal(t, gerProxyAddr, bridgeGERAddr)
 
 	// Deploy AggOracleCommittee contract if EnableAggOracleCommittee is true
-	var aggOracleCommitteeProxyAddr common.Address
-	var aggOracleCommitteeContract *aggoraclecommittee.Aggoraclecommittee
+	var (
+		aggOracleCommitteeProxyAddr common.Address
+		aggOracleCommitteeContract *aggoraclecommittee.Aggoraclecommittee
+	)
+
 	if aggOracleCommitteeConfig.EnableAggOracleCommittee {
 		// Deploy AggOracleCommittee contract
 		aggOracleCommitteeAddr, _, _, err := aggoraclecommittee.DeployAggoraclecommittee(
@@ -388,10 +401,18 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 
 		// add other aggoracle committee members to the aggOracleMembers slice based on the quorum
 		for i := 0; i < int(aggOracleCommitteeConfig.Quorum)-1; i++ {
-			aggOracleMembers = append(aggOracleMembers, crypto.CreateAddress(setup.DeployerAuth.From, aggOracleCommitteeNonce+uint64(i+1)))
+			aggOracleMembers = append(
+				aggOracleMembers,
+				crypto.CreateAddress(setup.DeployerAuth.From, aggOracleCommitteeNonce+uint64(i+1)),
+			)
 		}
 
-		aggOracleCommitteeInitData, err := aggOracleCommitteeAbi.Pack("initialize", setup.DeployerAuth.From, aggOracleMembers, aggOracleCommitteeConfig.Quorum)
+		aggOracleCommitteeInitData, err := aggOracleCommitteeAbi.Pack(
+			"initialize",
+			setup.DeployerAuth.From,
+			aggOracleMembers,
+			aggOracleCommitteeConfig.Quorum,
+		)
 		require.NoError(t, err)
 
 		// Deploy a proxy contract for the aggoracle committee
@@ -411,5 +432,7 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 		require.NoError(t, err)
 	}
 
-	return client, setup.UserAuth, gerProxyAddr, gerL2Contract, setup.BridgeProxyAddr, setup.BridgeProxyContract, aggOracleCommitteeProxyAddr, aggOracleCommitteeContract
+	return client, setup.UserAuth, gerProxyAddr, gerL2Contract,
+		setup.BridgeProxyAddr, setup.BridgeProxyContract,
+		aggOracleCommitteeProxyAddr, aggOracleCommitteeContract,
 }

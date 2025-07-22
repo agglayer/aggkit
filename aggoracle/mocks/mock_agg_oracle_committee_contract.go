@@ -8,8 +8,6 @@ import (
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
 	common "github.com/ethereum/go-ethereum/common"
 
-	coretypes "github.com/ethereum/go-ethereum/core/types"
-
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -140,123 +138,6 @@ func (_c *AggOracleCommitteeContract_GetAggOracleMemberIndex_Call) Return(_a0 *b
 }
 
 func (_c *AggOracleCommitteeContract_GetAggOracleMemberIndex_Call) RunAndReturn(run func(*bind.CallOpts, common.Address) (*big.Int, error)) *AggOracleCommitteeContract_GetAggOracleMemberIndex_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// GetAllAggOracleMembers provides a mock function with given fields: opts
-func (_m *AggOracleCommitteeContract) GetAllAggOracleMembers(opts *bind.CallOpts) ([]common.Address, error) {
-	ret := _m.Called(opts)
-
-	if len(ret) == 0 {
-		panic("no return value specified for GetAllAggOracleMembers")
-	}
-
-	var r0 []common.Address
-	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]common.Address, error)); ok {
-		return rf(opts)
-	}
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []common.Address); ok {
-		r0 = rf(opts)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]common.Address)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
-		r1 = rf(opts)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AggOracleCommitteeContract_GetAllAggOracleMembers_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAllAggOracleMembers'
-type AggOracleCommitteeContract_GetAllAggOracleMembers_Call struct {
-	*mock.Call
-}
-
-// GetAllAggOracleMembers is a helper method to define mock.On call
-//   - opts *bind.CallOpts
-func (_e *AggOracleCommitteeContract_Expecter) GetAllAggOracleMembers(opts interface{}) *AggOracleCommitteeContract_GetAllAggOracleMembers_Call {
-	return &AggOracleCommitteeContract_GetAllAggOracleMembers_Call{Call: _e.mock.On("GetAllAggOracleMembers", opts)}
-}
-
-func (_c *AggOracleCommitteeContract_GetAllAggOracleMembers_Call) Run(run func(opts *bind.CallOpts)) *AggOracleCommitteeContract_GetAllAggOracleMembers_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*bind.CallOpts))
-	})
-	return _c
-}
-
-func (_c *AggOracleCommitteeContract_GetAllAggOracleMembers_Call) Return(_a0 []common.Address, _a1 error) *AggOracleCommitteeContract_GetAllAggOracleMembers_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AggOracleCommitteeContract_GetAllAggOracleMembers_Call) RunAndReturn(run func(*bind.CallOpts) ([]common.Address, error)) *AggOracleCommitteeContract_GetAllAggOracleMembers_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// ProposeGlobalExitRoot provides a mock function with given fields: opts, proposedGlobalExitRoot
-func (_m *AggOracleCommitteeContract) ProposeGlobalExitRoot(opts *bind.TransactOpts, proposedGlobalExitRoot [32]byte) (*coretypes.Transaction, error) {
-	ret := _m.Called(opts, proposedGlobalExitRoot)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ProposeGlobalExitRoot")
-	}
-
-	var r0 *coretypes.Transaction
-	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.TransactOpts, [32]byte) (*coretypes.Transaction, error)); ok {
-		return rf(opts, proposedGlobalExitRoot)
-	}
-	if rf, ok := ret.Get(0).(func(*bind.TransactOpts, [32]byte) *coretypes.Transaction); ok {
-		r0 = rf(opts, proposedGlobalExitRoot)
-	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*coretypes.Transaction)
-		}
-	}
-
-	if rf, ok := ret.Get(1).(func(*bind.TransactOpts, [32]byte) error); ok {
-		r1 = rf(opts, proposedGlobalExitRoot)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// AggOracleCommitteeContract_ProposeGlobalExitRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ProposeGlobalExitRoot'
-type AggOracleCommitteeContract_ProposeGlobalExitRoot_Call struct {
-	*mock.Call
-}
-
-// ProposeGlobalExitRoot is a helper method to define mock.On call
-//   - opts *bind.TransactOpts
-//   - proposedGlobalExitRoot [32]byte
-func (_e *AggOracleCommitteeContract_Expecter) ProposeGlobalExitRoot(opts interface{}, proposedGlobalExitRoot interface{}) *AggOracleCommitteeContract_ProposeGlobalExitRoot_Call {
-	return &AggOracleCommitteeContract_ProposeGlobalExitRoot_Call{Call: _e.mock.On("ProposeGlobalExitRoot", opts, proposedGlobalExitRoot)}
-}
-
-func (_c *AggOracleCommitteeContract_ProposeGlobalExitRoot_Call) Run(run func(opts *bind.TransactOpts, proposedGlobalExitRoot [32]byte)) *AggOracleCommitteeContract_ProposeGlobalExitRoot_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*bind.TransactOpts), args[1].([32]byte))
-	})
-	return _c
-}
-
-func (_c *AggOracleCommitteeContract_ProposeGlobalExitRoot_Call) Return(_a0 *coretypes.Transaction, _a1 error) *AggOracleCommitteeContract_ProposeGlobalExitRoot_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *AggOracleCommitteeContract_ProposeGlobalExitRoot_Call) RunAndReturn(run func(*bind.TransactOpts, [32]byte) (*coretypes.Transaction, error)) *AggOracleCommitteeContract_ProposeGlobalExitRoot_Call {
 	_c.Call.Return(run)
 	return _c
 }
