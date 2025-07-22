@@ -30,10 +30,10 @@ const (
 // this is useful if there are some conditions that should not be retried
 type RetryDelays struct {
 	Delays []types.Duration `mapstructure:"Delays"`
-	// MaxAttempts is the maximum number of retries to attempt.
-	// if MaxAttempts is -1, it means infinite retries.
-	// if MaxAttempts is 0, it means no retries will be attempted.
-	MaxAttempts int `mapstructure:"MaxAttempts"`
+	// MaxRetries is the maximum number of retries to attempt.
+	// if MaxRetries is -1, it means infinite retries.
+	// if MaxRetries is 0, it means no retries will be attempted.
+	MaxRetries int `mapstructure:"MaxAttempts"`
 }
 
 // Validate checks if the RetryDelays configuration is valid.
@@ -42,7 +42,7 @@ func (r *RetryDelays) Validate() error {
 	if r == nil {
 		return nil
 	}
-	if len(r.Delays) == 0 && r.MaxAttempts == 0 {
+	if len(r.Delays) == 0 && r.MaxRetries == 0 {
 		return nil
 	}
 	if len(r.Delays) == 0 {
@@ -54,9 +54,9 @@ func (r *RetryDelays) Validate() error {
 				ErrInvalidConfig, delay.Duration)
 		}
 	}
-	if r.MaxAttempts < MaxAttemptsInfinite {
+	if r.MaxRetries < MaxAttemptsInfinite {
 		return fmt.Errorf("%w: max retries cannot %d",
-			ErrInvalidConfig, r.MaxAttempts)
+			ErrInvalidConfig, r.MaxRetries)
 	}
 	return nil
 }
@@ -66,18 +66,18 @@ func (r *RetryDelays) String() string {
 	if r == nil {
 		return "RetryDelays{nil}"
 	}
-	return fmt.Sprintf("RetryDelays{Delays: %v, MaxRetries: %d}", r.Delays, r.MaxAttempts)
+	return fmt.Sprintf("RetryDelays{Delays: %v, MaxRetries: %d}", r.Delays, r.MaxRetries)
 }
 
 // InfiniteRetries return true if the configuration allows infinite retries.
 func (r *RetryDelays) InfiniteRetries() bool {
 	// Infinite retries are allowed if MaxAttempts is 0.
-	return r != nil && r.MaxAttempts == MaxAttemptsInfinite
+	return r != nil && r.MaxRetries == MaxAttemptsInfinite
 }
 
 func (r *RetryDelays) NoRetries() bool {
 	// No Retries is MaxAttempts is 0 (just 1 first try)
-	return r == nil || r.MaxAttempts == 0
+	return r == nil || r.MaxRetries == 0
 }
 
 // Delay returns the delay for the given attempt.
@@ -96,7 +96,7 @@ func (r *RetryDelays) MustExecuteAttempt(attempt int) bool {
 	if r == nil {
 		return attempt == 0
 	}
-	return attempt <= r.MaxAttempts
+	return attempt <= r.MaxRetries
 }
 
 // StringAttemp returns the string representation of the number of attempts.
@@ -107,7 +107,7 @@ func (r *RetryDelays) StringAttemp(attempt int) string {
 	if r.NoRetries() {
 		return fmt.Sprintf("%d/NO RETRIES", attempt+1)
 	}
-	return fmt.Sprintf("%d/%d", attempt+1, r.MaxAttempts)
+	return fmt.Sprintf("%d/%d", attempt+1, r.MaxRetries)
 }
 
 func silentLog(format string, args ...interface{}) {

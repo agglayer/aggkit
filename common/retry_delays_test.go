@@ -14,8 +14,8 @@ import (
 
 func TestExecute_SuccessFirstTry(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{{Duration: 10 * time.Millisecond}},
-		MaxAttempts: 3,
+		Delays:     []types.Duration{{Duration: 10 * time.Millisecond}},
+		MaxRetries: 3,
 	}
 	logger := log.WithFields("module", "ut")
 	ctx := context.Background()
@@ -29,8 +29,8 @@ func TestExecute_SuccessFirstTry(t *testing.T) {
 
 func TestExecute_RetryAndSuccess(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{{Duration: 10 * time.Millisecond}, {Duration: 10 * time.Millisecond}},
-		MaxAttempts: 3,
+		Delays:     []types.Duration{{Duration: 10 * time.Millisecond}, {Duration: 10 * time.Millisecond}},
+		MaxRetries: 3,
 	}
 	logger := log.WithFields("module", "ut")
 	ctx := context.Background()
@@ -50,8 +50,8 @@ func TestExecute_RetryAndSuccess(t *testing.T) {
 
 func TestExecute_ExceedMaxAttempts(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{{Duration: 5 * time.Millisecond}},
-		MaxAttempts: 2,
+		Delays:     []types.Duration{{Duration: 5 * time.Millisecond}},
+		MaxRetries: 2,
 	}
 	logger := log.WithFields("module", "ut")
 	ctx := context.Background()
@@ -65,8 +65,8 @@ func TestExecute_ExceedMaxAttempts(t *testing.T) {
 
 func TestExecute_ContextCancelled(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{{Duration: 50 * time.Millisecond}},
-		MaxAttempts: 3,
+		Delays:     []types.Duration{{Duration: 50 * time.Millisecond}},
+		MaxRetries: 3,
 	}
 	logger := log.WithFields("module", "ut")
 	ctx, cancel := context.WithCancel(context.Background())
@@ -96,8 +96,8 @@ func TestExecute_NilRetryDelays(t *testing.T) {
 
 func TestExecute_MaxRetriesZero(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{},
-		MaxAttempts: 0,
+		Delays:     []types.Duration{},
+		MaxRetries: 0,
 	}
 	returnErr := errors.New("fail")
 	attempts := 0
@@ -114,8 +114,8 @@ func TestExecute_MaxRetriesZero(t *testing.T) {
 
 func TestExecute_NilLogger(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{{Duration: 1 * time.Millisecond}},
-		MaxAttempts: 1,
+		Delays:     []types.Duration{{Duration: 1 * time.Millisecond}},
+		MaxRetries: 1,
 	}
 	fn := func() (string, error) {
 		return "ok", nil
@@ -127,8 +127,8 @@ func TestExecute_NilLogger(t *testing.T) {
 
 func TestExecute_ErrAbort(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{{Duration: 10 * time.Millisecond}, {Duration: 1 * time.Millisecond}},
-		MaxAttempts: 30,
+		Delays:     []types.Duration{{Duration: 10 * time.Millisecond}, {Duration: 1 * time.Millisecond}},
+		MaxRetries: 30,
 	}
 	attempts := 0
 	fn := func() (string, error) {
@@ -146,8 +146,8 @@ func TestExecute_ErrAbort(t *testing.T) {
 
 func TestRetryDelays_BadConfig(t *testing.T) {
 	r := &RetryDelays{
-		Delays:      []types.Duration{},
-		MaxAttempts: -1,
+		Delays:     []types.Duration{},
+		MaxRetries: -1,
 	}
 	err := r.Validate()
 	require.Error(t, err)
