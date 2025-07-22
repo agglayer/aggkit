@@ -18,7 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestEVMChainGERSender_InitializeMode(t *testing.T) {
+func TestEVMChainGERSender_InitializeAndValidateMode(t *testing.T) {
 	tests := []struct {
 		name        string
 		mode        GERMode
@@ -59,7 +59,7 @@ func TestEVMChainGERSender_InitializeMode(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			sender := tt.setupSender()
 			sender.mode = tt.mode
-			err := sender.initializeMode()
+			err := sender.initializeAndValidateMode()
 
 			if tt.expectedErr != "" {
 				require.Error(t, err)

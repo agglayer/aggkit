@@ -104,7 +104,7 @@ func NewEVMChainGERSender(
 	}
 
 	// Initialize mode-specific components
-	if err := sender.initializeMode(); err != nil {
+	if err := sender.initializeAndValidateMode(); err != nil {
 		return nil, err
 	}
 
@@ -112,19 +112,19 @@ func NewEVMChainGERSender(
 	return sender, nil
 }
 
-// initializeMode initializes mode-specific components and validations
-func (c *EVMChainGERSender) initializeMode() error {
+// initializeAndValidateMode initializes mode-specific components and validations
+func (c *EVMChainGERSender) initializeAndValidateMode() error {
 	switch c.mode {
 	case DirectInjectionMode:
 		return validateGERSender(c.ethTxMan.From(), c.l2GERManager)
 	case AggOracleCommitteeMode:
-		return c.initializeAggOracleCommitteeMode()
+		return c.initializeAndValidateAggOracleCommitteeMode()
 	default:
 		return fmt.Errorf("unknown GER mode: %s", c.mode)
 	}
 }
 
-func (c *EVMChainGERSender) initializeAggOracleCommitteeMode() error {
+func (c *EVMChainGERSender) initializeAndValidateAggOracleCommitteeMode() error {
 	// Create AggOracleCommittee contract binding
 	aggOracleCommittee, err := aggoraclecommittee.NewAggoraclecommittee(c.aggOracleCommitteeAddr, c.l2Client)
 	if err != nil {
@@ -167,16 +167,6 @@ func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
 
 // IsGERProposed checks if the provided global exit root has already been proposed by the oracle committee member
 func (c *EVMChainGERSender) IsGERProposed(ger common.Hash) (bool, error) {
-	isInjected, err := c.IsGERInjected(ger)
-	if err != nil {
-		return false, err
-	}
-
-	if isInjected {
-		c.logger.Debugf("GER (%s) is already injected", ger.Hex())
-		return true, nil
-	}
-
 	lastProposedGER, err := c.aggOracleCommittee.AddressToLastProposedGER(
 		&bind.CallOpts{Pending: false}, c.ethTxMan.From())
 	if err != nil {
@@ -204,6 +194,16 @@ func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) erro
 
 // ProposeGER proposes the provided global exit root to the AggOracleCommittee contract
 func (c *EVMChainGERSender) ProposeGER(ctx context.Context, ger common.Hash) error {
+	isGERInjected, err := c.IsGERInjected(ger)
+	if err != nil {
+		return fmt.Errorf("error checking if GER (%s) is already injected: %w", ger, err)
+	}
+
+	if isGERInjected {
+		c.logger.Debugf("GER (%s) is already injected", ger.Hex())
+		return nil
+	}
+
 	// Check if the GER has already been proposed by the oracle committee member
 	isProposed, err := c.IsGERProposed(ger)
 	if err != nil {
