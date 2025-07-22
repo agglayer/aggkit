@@ -29,8 +29,9 @@ import (
 )
 
 const (
-	rollupID           = uint32(1)
-	syncBlockChunkSize = 10
+	rollupID                = uint32(1)
+	aggOracleCommitteeNonce = 4
+	syncBlockChunkSize      = 10
 )
 
 type AggoracleWithEVMChain struct {
@@ -74,16 +75,16 @@ type L2Environment struct {
 }
 
 type EnvironmentConfig struct {
-	L1RPCClient              aggkittypes.RPCClienter
-	L2RPCClient              aggkittypes.RPCClienter
-	aggOracleCommitteeConfig AggoraclecommitteeConfig
+	L1RPCClient           aggkittypes.RPCClienter
+	L2RPCClient           aggkittypes.RPCClienter
+	AggOracleCommitteeCfg AggoraclecommitteeConfig
 }
 
 func DefaultEnvironmentConfig() *EnvironmentConfig {
 	return &EnvironmentConfig{
 		L1RPCClient: &aggkittypes.NoopRPCClient{},
 		L2RPCClient: &aggkittypes.NoopRPCClient{},
-		aggOracleCommitteeConfig: AggoraclecommitteeConfig{
+		AggOracleCommitteeCfg: AggoraclecommitteeConfig{
 			EnableAggOracleCommittee: false,
 			Quorum:                   1,
 		},
@@ -104,7 +105,7 @@ func NewE2EEnvWithEVML2(t *testing.T, cfg *EnvironmentConfig) *AggoracleWithEVMC
 	oracle, err := aggoracle.New(
 		log.GetDefaultLogger(), l2Setup.AggoracleSender,
 		l1Setup.SimBackend.Client(), l1Setup.InfoTreeSync,
-		time.Millisecond*20, cfg.EnableAggOracleCommittee, //nolint:mnd
+		time.Millisecond*20, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee, //nolint:mnd
 	)
 	require.NoError(t, err)
 	go oracle.Start(ctx)
@@ -199,7 +200,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 	l2Client, authL2, gerL2Addr, gerL2Contract,
 		bridgeL2Addr, bridgeL2Contract,
 		aggOracleCommitteeAddr, aggOracleCommitteeContract := newSimulatedEVML2SovereignChain(
-		t, cfg.AggoraclecommitteeConfig,
+		t, cfg.AggOracleCommitteeCfg,
 	)
 
 	ethTxManagerMock := NewEthTxManMock(t, l2Client, authL2)
@@ -207,7 +208,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig) *L2Environment {
 	const gerCheckFrequency = time.Millisecond * 50
 	sender, err := chaingersender.NewEVMChainGERSender(
 		log.GetDefaultLogger(), gerL2Addr, aggOracleCommitteeAddr,
-		l2Client.Client(), ethTxManagerMock, 0, gerCheckFrequency, cfg.EnableAggOracleCommittee,
+		l2Client.Client(), ethTxManagerMock, 0, gerCheckFrequency, cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee,
 	)
 	require.NoError(t, err)
 	ctx := context.Background()
@@ -276,7 +277,7 @@ func newSimulatedL1(t *testing.T) (
 	deployerAuth, err := CreateAccount(big.NewInt(chainID))
 	require.NoError(t, err)
 
-	client, setup := NewSimulatedBackend(t, nil, deployerAuth, false)
+	client, setup := NewSimulatedBackend(t, nil, deployerAuth)
 
 	ctx := context.Background()
 	nonce, err := client.Client().PendingNonceAt(ctx, setup.DeployerAuth.From)
@@ -325,11 +326,23 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 	genesisAllocMap := map[common.Address]types.Account{
 		l2BridgeProxyAddr: {Balance: premineBalance},
 	}
+	var (
+		precalculatedAggOracleCommitteeAddr      common.Address
+		precalculatedAggOracleCommitteeProxyAddr common.Address
+	)
+
+	if aggOracleCommitteeConfig.EnableAggOracleCommittee {
+		// Create aggoracle committee address from deployerAuth.From and nonce = 4
+		precalculatedAggOracleCommitteeAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce)
+		precalculatedAggOracleCommitteeProxyAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce+1)
+		genesisAllocMap[precalculatedAggOracleCommitteeAddr] = types.Account{Balance: premineBalance}
+		genesisAllocMap[precalculatedAggOracleCommitteeProxyAddr] = types.Account{Balance: premineBalance}
+	}
+
 	client, setup := NewSimulatedBackend(
 		t,
 		genesisAllocMap,
 		deployerAuth,
-		aggOracleCommitteeConfig.EnableAggOracleCommittee,
 	)
 
 	// Deploy L2 GER manager contract
@@ -347,7 +360,7 @@ func newSimulatedEVML2SovereignChain(t *testing.T, aggOracleCommitteeConfig Aggo
 	if aggOracleCommitteeConfig.EnableAggOracleCommittee {
 		// Use AggOracleCommitteeProxyAddr for initialization when EnableAggOracleCommittee is true
 		// The committee proxy serves as the _globalExitRootUpdater and _globalExitRootRemover
-		gerL2InitData, err = gerL2Abi.Pack("initialize", setup.AggOracleCommitteeProxyAddr, setup.AggOracleCommitteeProxyAddr)
+		gerL2InitData, err = gerL2Abi.Pack("initialize", precalculatedAggOracleCommitteeProxyAddr, precalculatedAggOracleCommitteeProxyAddr)
 		require.NoError(t, err)
 	} else {
 		gerL2InitData, err = gerL2Abi.Pack("initialize", setup.UserAuth.From, setup.UserAuth.From)

@@ -28,8 +28,7 @@ const (
 	base10 = 10
 
 	// Nonce values for contract address calculation
-	bridgeProxyNonce        = 1
-	aggOracleCommitteeNonce = 4
+	bridgeProxyNonce = 1
 )
 
 var _ aggkittypes.EthClienter = (*TestClient)(nil)
@@ -148,7 +147,7 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 // NewSimulatedBackend creates a simulated backend with two accounts: user and deployer.
 func NewSimulatedBackend(t *testing.T,
 	balances map[common.Address]types.Account,
-	deployerAuth *bind.TransactOpts, enableAggOracleCommittee bool) (*simulated.Backend, *SimulatedBackendSetup) {
+	deployerAuth *bind.TransactOpts) (*simulated.Backend, *SimulatedBackendSetup) {
 	t.Helper()
 
 	// Define default balance
@@ -172,29 +171,14 @@ func NewSimulatedBackend(t *testing.T,
 	balances[deployerAuth.From] = types.Account{Balance: balance}
 	balances[precalculatedBridgeAddr] = types.Account{Balance: balance}
 
-	var (
-		precalculatedAggOracleCommitteeAddr      common.Address
-		precalculatedAggOracleCommitteeProxyAddr common.Address
-	)
-
-	if enableAggOracleCommittee {
-		// Create aggoracle committee address from deployerAuth.From and nonce = 4
-		precalculatedAggOracleCommitteeAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce)
-		precalculatedAggOracleCommitteeProxyAddr = crypto.CreateAddress(deployerAuth.From, aggOracleCommitteeNonce+1)
-		balances[precalculatedAggOracleCommitteeAddr] = types.Account{Balance: balance}
-		balances[precalculatedAggOracleCommitteeProxyAddr] = types.Account{Balance: balance}
-	}
-
 	client := simulated.NewBackend(balances, simulated.WithBlockGasLimit(defaultBlockGasLimit))
 
 	// Mine the first block
 	client.Commit()
 
 	setup := &SimulatedBackendSetup{
-		UserAuth:                    userAuth,
-		DeployerAuth:                deployerAuth,
-		AggOracleCommitteeAddr:      precalculatedAggOracleCommitteeAddr,
-		AggOracleCommitteeProxyAddr: precalculatedAggOracleCommitteeProxyAddr,
+		UserAuth:     userAuth,
+		DeployerAuth: deployerAuth,
 	}
 
 	return client, setup

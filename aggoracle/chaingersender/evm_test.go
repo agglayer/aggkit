@@ -147,8 +147,9 @@ func runTransactionTest(t *testing.T, config testConfig, tests []testCase) {
 				sender.l2GERManagerAbi = &abi
 			}
 
-			// Always set up l2GERManager mock for ProposeGER tests since IsGERProposed calls IsGERInjected
-			if config.funcName == proposeGERFuncName && tt.mode == config.expectedMode {
+			// Set up l2GERManager mock for tests that need IsGERInjected
+			if (config.funcName == proposeGERFuncName && tt.mode == config.expectedMode) ||
+				(config.funcName == "insertGlobalExitRoot" && tt.mode == config.expectedMode) {
 				mockL2GERManager := mocks.NewL2GERManagerContract(t)
 				// Mock IsGERInjected to return false (not already injected)
 				mockL2GERManager.EXPECT().
@@ -805,10 +806,8 @@ func TestEVMChainGERSender_initializeDirectInjectionMode(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mockL2GERManager := mocks.NewL2GERManagerContract(t)
-			mockEthTxManager := mocks.NewEthTxManager(t)
 
 			// Setup mock expectations
-			mockEthTxManager.EXPECT().From().Return(tt.ethTxManagerFrom)
 			mockL2GERManager.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(tt.gerUpdater, tt.mockError)
 
 			// Test the validation logic that we can properly mock
@@ -820,7 +819,6 @@ func TestEVMChainGERSender_initializeDirectInjectionMode(t *testing.T) {
 			}
 
 			mockL2GERManager.AssertExpectations(t)
-			mockEthTxManager.AssertExpectations(t)
 		})
 	}
 }

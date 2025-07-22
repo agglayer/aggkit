@@ -43,7 +43,7 @@ func TestEVM_GERInjection(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := helpers.DefaultEnvironmentConfig()
-			cfg.AggoraclecommitteeConfig.EnableAggOracleCommittee = tt.enableAggOracleCommittee
+			cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee = tt.enableAggOracleCommittee
 			setup := helpers.NewE2EEnvWithEVML2(t, cfg)
 
 			for i := 0; i < 10; i++ {
@@ -73,8 +73,8 @@ func TestEVM_GERInjection(t *testing.T) {
 
 func TestEVM_AggOracleCommitteeModeWithQuorum3(t *testing.T) {
 	cfg := helpers.DefaultEnvironmentConfig()
-	cfg.AggoraclecommitteeConfig.EnableAggOracleCommittee = true
-	cfg.AggoraclecommitteeConfig.Quorum = 3
+	cfg.AggOracleCommitteeCfg.EnableAggOracleCommittee = true
+	cfg.AggOracleCommitteeCfg.Quorum = 3
 	setup := helpers.NewE2EEnvWithEVML2(t, cfg)
 
 	rootHash := common.HexToHash(strconv.Itoa(10))

@@ -40,7 +40,7 @@ func newSimulatedClient(t *testing.T) (
 	deployerAuth, err := helpers.CreateAccount(big.NewInt(1337))
 	require.NoError(t, err)
 
-	client, setup := helpers.NewSimulatedBackend(t, nil, deployerAuth, false)
+	client, setup := helpers.NewSimulatedBackend(t, nil, deployerAuth)
 
 	nonce, err := client.Client().PendingNonceAt(ctx, setup.UserAuth.From)
 	require.NoError(t, err)

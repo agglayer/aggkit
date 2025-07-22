@@ -131,6 +131,11 @@ func (c *EVMChainGERSender) initializeAggOracleCommitteeMode() error {
 			c.aggOracleCommitteeAddr, err)
 	}
 
+	// Validate GER proposer
+	if err := validateGERProposer(c.ethTxMan.From(), aggOracleCommittee); err != nil {
+		return err
+	}
+
 	// Get the ABI for AggOracleCommittee
 	aggOracleCommitteeAbi, err := aggoraclecommittee.AggoraclecommitteeMetaData.GetAbi()
 	if err != nil {
@@ -139,11 +144,6 @@ func (c *EVMChainGERSender) initializeAggOracleCommitteeMode() error {
 
 	c.aggOracleCommittee = aggOracleCommittee
 	c.aggOracleCommitteeAbi = aggOracleCommitteeAbi
-
-	// Validate GER proposer
-	if err := validateGERProposer(c.ethTxMan.From(), aggOracleCommittee); err != nil {
-		return err
-	}
 
 	return nil
 }
@@ -184,6 +184,15 @@ func (c *EVMChainGERSender) IsGERProposed(ger common.Hash) (bool, error) {
 
 // InjectGER injects the provided global exit root into the L2 GER manager contract
 func (c *EVMChainGERSender) InjectGER(ctx context.Context, ger common.Hash) error {
+	isGERInjected, err := c.IsGERInjected(ger)
+	if err != nil {
+		return fmt.Errorf("error checking if GER (%s) is already injected: %w", ger, err)
+	}
+
+	if isGERInjected {
+		c.logger.Debugf("GER (%s) is already injected", ger.Hex())
+		return nil
+	}
 	return c.submitTransaction(ctx, &c.l2GERManagerAddr, c.l2GERManagerAbi, insertGERFuncName, ger, "inject")
 }
 

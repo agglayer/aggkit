@@ -3,7 +3,6 @@ package aggoracle
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -82,16 +81,6 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 	a.logger.Debugf("latest l1 info leaf retrieved: %s", latestL1InfoLeaf.String())
 
 	latestGER := latestL1InfoLeaf.GlobalExitRoot
-
-	isGERInjected, err := a.chainSender.IsGERInjected(latestGER)
-	if err != nil {
-		return fmt.Errorf("error checking if GER (%s) is already injected: %w", latestGER, err)
-	}
-
-	if isGERInjected {
-		a.logger.Debugf("GER (%s) is already injected", latestGER.Hex())
-		return nil
-	}
 
 	go func() {
 		// Submit GER based on mode
