@@ -216,6 +216,11 @@ func newBridgeSync(
 	if err != nil {
 		return nil, err
 	}
+	var finalizedBlockType aggkittypes.BlockNumberFinality = aggkittypes.FinalizedBlock
+	if rd != nil {
+		finalizedBlockType = rd.GetFinalizedBlockType()
+	}
+
 	downloader, err := sync.NewEVMDownloader(
 		syncerID.String(),
 		ethClient,
@@ -225,7 +230,7 @@ func newBridgeSync(
 		appender,
 		[]common.Address{bridge},
 		rh,
-		rd.GetFinalizedBlockType(),
+		finalizedBlockType,
 	)
 	if err != nil {
 		return nil, err
@@ -252,6 +257,11 @@ func newBridgeSync(
 		return nil, err
 	}
 
+	var rdString string = ""
+	if rd != nil {
+		rdString = rd.String()
+	}
+
 	logger.Infof(
 		"%s created:\n"+
 			"  dbPath: %s\n"+
@@ -271,7 +281,7 @@ func newBridgeSync(
 		maxRetryAttemptsAfterError,
 		retryAfterErrorPeriod.String(),
 		syncBlockChunkSize,
-		rd.String(),
+		rdString,
 		waitForNewBlocksPeriod.String(),
 	)
 

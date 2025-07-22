@@ -18,6 +18,7 @@ import (
 
 const (
 	downloadBufferSize = 1000
+	reorgDetectorID    = "l1infotreesync"
 )
 
 type CreationFlags uint64
@@ -117,7 +118,7 @@ func New(
 		requireStorageContentCompatibility,
 		downloader.RuntimeData,
 		processor)
-	driver, err := sync.NewEVMDriver(nil, processor, downloader, "",
+	driver, err := sync.NewEVMDriver(nil, processor, downloader, reorgDetectorID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
