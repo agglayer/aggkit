@@ -74,12 +74,6 @@ func start(cliCtx *cli.Context) error {
 	components := cliCtx.StringSlice(config.FlagComponents)
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, components, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
-	reorgDetectorL1, errChanL1 := runReorgDetectorL1IfNeeded(cliCtx.Context, components, l1Client, &cfg.ReorgDetectorL1)
-	go func() {
-		if err := <-errChanL1; err != nil {
-			log.Fatal("Error from ReorgDetectorL1: ", err)
-		}
-	}()
 
 	reorgDetectorL2, errChanL2 := runReorgDetectorL2IfNeeded(cliCtx.Context, components, l2Client, &cfg.ReorgDetectorL2)
 	go func() {
@@ -93,8 +87,8 @@ func start(cliCtx *cli.Context) error {
 		return fmt.Errorf("failed to create etherman client: %w", err)
 	}
 
-	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client, reorgDetectorL1)
-	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, reorgDetectorL1,
+	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client)
+	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync,
 		l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID)
@@ -471,7 +465,6 @@ func runL1InfoTreeSyncerIfNeeded(
 	components []string,
 	cfg config.Config,
 	l1Client aggkittypes.BaseEthereumClienter,
-	reorgDetector *reorgdetector.ReorgDetector,
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
@@ -644,7 +637,6 @@ func runBridgeSyncL1IfNeeded(
 	ctx context.Context,
 	components []string,
 	cfg bridgesync.Config,
-	reorgDetectorL1 *reorgdetector.ReorgDetector,
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
 ) *bridgesync.BridgeSync {
@@ -658,7 +650,6 @@ func runBridgeSyncL1IfNeeded(
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
 		aggkittypes.FinalizedBlock,
-		reorgDetectorL1,
 		l1Client,
 		cfg.InitialBlockNum,
 		cfg.WaitForNewBlocksPeriod.Duration,

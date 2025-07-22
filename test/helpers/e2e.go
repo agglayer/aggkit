@@ -161,7 +161,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
-		syncBlockChunkSize, aggkittypes.LatestBlock, nil, testClient,
+		syncBlockChunkSize, aggkittypes.LatestBlock, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
 		retriesCount, originNetwork, false, true)
 	require.NoError(t, err)

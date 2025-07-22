@@ -8,8 +8,6 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
-	cfgtypes "github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	ethereum "github.com/ethereum/go-ethereum"
@@ -105,17 +103,7 @@ func TestBridgeCallData(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, originNetwork, networkID)
 
-	// Init the reorg detector and bridge syncer
-	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
-	reorgDetector, err := reorgdetector.New(client, reorgdetector.Config{
-		DBPath:              dbPathReorgDetectorL1,
-		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100},
-		FinalizedBlock:      aggkittypes.LatestBlock,
-	}, reorgdetector.L1)
-	require.NoError(t, err)
-	go reorgDetector.Start(ctx) //nolint:errcheck
-
-	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, aggkittypes.LatestBlock, reorgDetector, client,
+	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, aggkittypes.LatestBlock, client,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false, false)
 	require.NoError(t, err)
 	go bridgeSync.Start(ctx)
