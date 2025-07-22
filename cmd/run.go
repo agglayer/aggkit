@@ -486,7 +486,6 @@ func runL1InfoTreeSyncerIfNeeded(
 		cfg.L1InfoTreeSync.RollupManagerAddr,
 		cfg.L1InfoTreeSync.SyncBlockChunkSize,
 		aggkittypes.FinalizedBlock,
-		reorgDetector,
 		l1Client,
 		cfg.L1InfoTreeSync.WaitForNewBlocksPeriod.Duration,
 		cfg.L1InfoTreeSync.InitialBlock,
