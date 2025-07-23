@@ -1267,4 +1267,27 @@ func TestCertificate_Validate(t *testing.T) {
 		}
 		require.ErrorContains(t, cert.Validate(), "importedBridge is nil")
 	})
+	t.Run("fails globalIndex nil", func(t *testing.T) {
+		cert := Certificate{
+			ImportedBridgeExits: []*ImportedBridgeExit{
+				{
+					BridgeExit: &BridgeExit{
+						LeafType: LeafTypeAsset,
+						TokenInfo: &TokenInfo{
+							OriginNetwork:      0,
+							OriginTokenAddress: common.HexToAddress("0x1234"),
+						},
+						DestinationNetwork: 1,
+						DestinationAddress: common.HexToAddress("0x1234"),
+					},
+					ClaimData: &ClaimFromMainnnet{
+						ProofLeafMER:     &MerkleProof{},
+						ProofGERToL1Root: &MerkleProof{},
+						L1Leaf:           &L1InfoTreeLeaf{},
+					},
+				},
+			},
+		}
+		require.ErrorContains(t, cert.Validate(), "globalIndex is nil")
+	})
 }
