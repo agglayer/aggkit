@@ -119,17 +119,26 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
 		require.ErrorContains(t, err, "Invalid certificate conversion")
 	})
-	t.Run("converted certificate don't pass Validate()", func(t *testing.T) {
+	t.Run("converted certificate with bridgeExits", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		cert := testCertificate1
 		cert.BridgeExits = []*typesv1.BridgeExit{
-			{},
+			{
+				LeafType: 1,
+				TokenInfo: &typesv1.TokenInfo{
+					OriginTokenAddress: &typesv1.FixedBytes20{},
+				},
+				DestAddress: &typesv1.FixedBytes20{},
+			},
 		}
+		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
+
 		req := &v1.ValidateCertificateRequest{
 			Certificate: &cert,
 		}
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
-		require.ErrorContains(t, err, "Invalid certificate conversion")
+		require.NoError(t, err)
 	})
 	t.Run("fails validate certificate", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)

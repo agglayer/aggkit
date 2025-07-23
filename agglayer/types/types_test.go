@@ -1249,3 +1249,22 @@ func TestCertificate_FEPHashToSign(t *testing.T) {
 		})
 	}
 }
+
+func TestCertificate_Validate(t *testing.T) {
+	t.Run("fails cert nil", func(t *testing.T) {
+		var cert *Certificate
+		require.Error(t, cert.Validate(), "should fail with nil certificate")
+	})
+	t.Run("fails bridgeExit nil", func(t *testing.T) {
+		cert := Certificate{
+			BridgeExits: []*BridgeExit{nil},
+		}
+		require.ErrorContains(t, cert.Validate(), "bridgeExit is nil")
+	})
+	t.Run("fails importedBridgeExit nil", func(t *testing.T) {
+		cert := Certificate{
+			ImportedBridgeExits: []*ImportedBridgeExit{nil},
+		}
+		require.ErrorContains(t, cert.Validate(), "importedBridge is nil")
+	})
+}

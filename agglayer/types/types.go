@@ -528,6 +528,9 @@ func (b *BridgeExit) Validate() error {
 	if b == nil {
 		return errors.New("bridgeExit is nil")
 	}
+	if b.LeafType.Uint8() > LeafTypeMessage.Uint8() {
+		return fmt.Errorf("bridgeExit leaf type %d is invalid", b.LeafType.Uint8())
+	}
 	if err := b.TokenInfo.Validate(); err != nil {
 		return fmt.Errorf("bridgeExit token info is invalid: %w", err)
 	}
