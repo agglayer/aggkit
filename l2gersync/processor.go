@@ -78,9 +78,10 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 
 	shouldRollback := true
+
 	defer func() {
 		if shouldRollback {
-			p.log.Errorf("transaction rollback due to error: %v", err)
+			p.log.Errorf("transaction rollback due to an error")
 			if errRollback := tx.Rollback(); errRollback != nil {
 				log.Errorf("error while rolling back tx %v", errRollback)
 			}
@@ -88,7 +89,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}()
 
 	if _, err := tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String()); err != nil {
-		return err
+		return fmt.Errorf("failed to insert block %d: %w", block.Num, err)
 	}
 
 	for _, genericEvt := range block.Events {

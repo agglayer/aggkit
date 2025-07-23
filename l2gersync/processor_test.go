@@ -106,7 +106,7 @@ func TestProcessBlock(t *testing.T) {
 					Num: 6,
 					Events: []any{
 						&Event{
-							GERInfo:   newGlobalExitRootInfo(common.HexToHash("0x9876"), 0, 0, 0),
+							GERInfo:   newGlobalExitRootInfo(common.HexToHash("0x9876"), 0, 6, 0),
 							EventType: GEREventTypeRemove,
 						},
 					},
@@ -222,10 +222,10 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 
 		gerList := makeGERs()
 		allBlocks := []sync.Block{
-			{Num: 3, Events: []any{&Event{GERInfo: gerList[0]}}},
-			{Num: 4, Events: []any{&Event{GERInfo: gerList[1]}}},
-			{Num: 5, Events: []any{&Event{GERInfo: gerList[2]}}},
-			{Num: 6, Events: []any{&Event{
+			{Num: 93, Events: []any{&Event{GERInfo: gerList[0]}}},
+			{Num: 94, Events: []any{&Event{GERInfo: gerList[1]}}},
+			{Num: 95, Events: []any{&Event{GERInfo: gerList[2]}}},
+			{Num: 96, Events: []any{&Event{
 				GERInfo: newGlobalExitRootInfo(
 					gerList[2].GlobalExitRoot, 0, 0, 0),
 				EventType: GEREventTypeRemove,
@@ -233,8 +233,8 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 		}
 
 		processor := setupProcessorWithGERs(t, allBlocks)
-		injectedGERsMap, err := processor.GetInjectedGERsForRange(ctx, 10, 1)
-		require.ErrorContains(t, err, "invalid block range: fromBlock(10) > toBlock(1)")
+		injectedGERsMap, err := processor.GetInjectedGERsForRange(ctx, 100, 10)
+		require.ErrorContains(t, err, "invalid block range: fromBlock(100) > toBlock(10)")
 		require.Empty(t, injectedGERsMap)
 	})
 
@@ -243,17 +243,18 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 
 		gerList := makeGERs()
 		allBlocks := []sync.Block{
-			{Num: 3, Events: []any{&Event{GERInfo: gerList[0]}}},
-			{Num: 4, Events: []any{&Event{GERInfo: gerList[1]}}},
-			{Num: 5, Events: []any{&Event{GERInfo: gerList[2]}}},
-			{Num: 6, Events: []any{&Event{
+			{Num: 93, Events: []any{&Event{GERInfo: gerList[0]}}},
+			{Num: 94, Events: []any{&Event{GERInfo: gerList[1]}}},
+			{Num: 95, Events: []any{&Event{GERInfo: gerList[2]}}},
+			{Num: 96, Events: []any{&Event{
 				GERInfo:   &GlobalExitRootInfo{GlobalExitRoot: gerList[2].GlobalExitRoot},
 				EventType: GEREventTypeRemove,
 			}}},
 		}
 
 		processor := setupProcessorWithGERs(t, allBlocks)
-		injectedGERsMap, err := processor.GetInjectedGERsForRange(ctx, 3, 5)
+		injectedGERsMap, err := processor.GetInjectedGERsForRange(ctx,
+			allBlocks[0].Num, allBlocks[2].Num)
 		require.NoError(t, err)
 
 		expectedGERs := gerList[:2] // The 3rd was removed
@@ -271,13 +272,15 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 
 		gerList := makeGERs()
 		blocksExcludingRemoval := []sync.Block{
-			{Num: 3, Events: []any{&Event{GERInfo: gerList[0]}}},
-			{Num: 4, Events: []any{&Event{GERInfo: gerList[1]}}},
-			{Num: 5, Events: []any{&Event{GERInfo: gerList[2]}}},
+			{Num: 93, Events: []any{&Event{GERInfo: gerList[0]}}},
+			{Num: 94, Events: []any{&Event{GERInfo: gerList[1]}}},
+			{Num: 95, Events: []any{&Event{GERInfo: gerList[2]}}},
 		}
 
 		processor := setupProcessorWithGERs(t, blocksExcludingRemoval)
-		injectedGERsMap, err := processor.GetInjectedGERsForRange(ctx, 3, 5)
+		injectedGERsMap, err := processor.GetInjectedGERsForRange(ctx,
+			blocksExcludingRemoval[0].Num,
+			blocksExcludingRemoval[len(blocksExcludingRemoval)-1].Num)
 		require.NoError(t, err)
 
 		require.Len(t, injectedGERsMap, 3)

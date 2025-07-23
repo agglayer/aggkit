@@ -135,7 +135,7 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 			gers     []*GlobalExitRootInfo
 		)
 		for {
-			gers, err = d.getGERsFromIndex(ctx, nextL1InfoTreeIndex)
+			gers, err = d.getGERsFromIndex(ctx, fromBlock, nextL1InfoTreeIndex)
 			if err != nil {
 				log.Errorf("error getting GERs: %v", err)
 				attempts++
@@ -150,17 +150,12 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 		// Find the latest GER injected from retrieved GERs
 		gerInfo := d.findLatestInjectedGER(gers)
 
-		blockNum := fromBlock
-		if gerInfo != nil {
-			blockNum = gerInfo.BlockNum
-		}
-
-		header, isCanceled := d.GetBlockHeader(ctx, blockNum)
+		header, isCanceled := d.GetBlockHeader(ctx, fromBlock)
 		if isCanceled {
 			return
 		}
 		if header == (sync.EVMBlockHeader{}) {
-			log.Warnf("no block header found for block number %d", blockNum)
+			log.Warnf("no block header found for block number %d", fromBlock)
 			continue
 		}
 
@@ -180,12 +175,13 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 			nextL1InfoTreeIndex = gerInfo.L1InfoTreeIndex + 1
 		}
 
+		// Report the block to the processor
 		downloadedCh <- *block
 	}
 }
 
 func (d *downloaderLegacy) getGERsFromIndex(
-	ctx context.Context, fromL1InfoTreeIndex uint32) ([]*GlobalExitRootInfo, error) {
+	ctx context.Context, blockNum uint64, fromL1InfoTreeIndex uint32) ([]*GlobalExitRootInfo, error) {
 	lastRoot, err := d.l1InfoTreeSync.GetLastL1InfoTreeRoot(ctx)
 	if errors.Is(err, db.ErrNotFound) {
 		return nil, nil
@@ -200,14 +196,20 @@ func (d *downloaderLegacy) getGERsFromIndex(
 		if err != nil {
 			return nil, fmt.Errorf("failed to retrieve l1 info tree leaf for index=%d: %w", i, err)
 		}
-		gers = append(gers, newGlobalExitRootInfo(info.GlobalExitRoot, i, info.BlockNumber, info.BlockPosition))
+
+		// For the legacy downloader, we cannot determine the block position,
+		// because we are querying the global exit root map
+		gers = append(gers, newGlobalExitRootInfo(info.GlobalExitRoot, i, blockNum, 0))
 	}
 
 	return gers, nil
 }
 
+// findLatestInjectedGER finds the latest injected Global Exit Root from the provided GER infos.
+// It is asumed that the GERs are ordered by their L1 info tree index in ascending order.
 func (d *downloaderLegacy) findLatestInjectedGER(gerInfos []*GlobalExitRootInfo) *GlobalExitRootInfo {
-	for _, gerInfo := range gerInfos {
+	for i := len(gerInfos) - 1; i >= 0; i-- {
+		gerInfo := gerInfos[i]
 		attempts := 0
 		for {
 			blockHash, err := d.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, gerInfo.GlobalExitRoot)
@@ -215,7 +217,6 @@ func (d *downloaderLegacy) findLatestInjectedGER(gerInfos []*GlobalExitRootInfo)
 				attempts++
 				log.Errorf("failed to check if global exit root %s is injected on L2: %s", gerInfo.GlobalExitRoot.Hex(), err)
 				d.rh.Handle("GlobalExitRootMap", attempts)
-
 				continue
 			}
 
