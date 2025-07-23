@@ -97,7 +97,7 @@ func TestE2E(t *testing.T) {
 	}
 }
 
-func TestStressAndReorgs(t *testing.T) {
+func TestStress(t *testing.T) {
 	const (
 		totalIterations   = 3
 		blocksInIteration = 140
