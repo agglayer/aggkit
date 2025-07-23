@@ -59,7 +59,6 @@ func New(
 	globalExitRoot, rollupManager common.Address,
 	syncBlockChunkSize uint64,
 	blockFinalityType aggkittypes.BlockNumberFinality,
-	rd sync.ReorgDetector,
 	l1Client aggkittypes.BaseEthereumClienter,
 	waitForNewBlocksPeriod time.Duration,
 	initialBlock uint64,
@@ -119,7 +118,8 @@ func New(
 		requireStorageContentCompatibility,
 		downloader.RuntimeData,
 		processor)
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
+
+	driver, err := sync.NewEVMDriver(nil, processor, downloader, reorgDetectorID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err

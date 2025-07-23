@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/agglayer/aggkit/config/types"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
 )
@@ -34,7 +33,6 @@ func TestLoadDefaultConfig(t *testing.T) {
 	cfg, err := Load(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, cfg)
-	require.Equal(t, aggkittypes.FinalizedBlock, cfg.ReorgDetectorL1.FinalizedBlock)
 	require.Equal(t, AggsenderrollupAddr, cfg.AggSender.RollupManagerAddr.String())
 	require.Equal(t, cfg.AggSender.AgglayerClient.Cached, false)
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.RequestTimeout.Duration, 300*time.Second)

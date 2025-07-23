@@ -71,7 +71,6 @@ func NewL1(
 	bridge common.Address,
 	syncBlockChunkSize uint64,
 	blockFinalityType aggkittypes.BlockNumberFinality,
-	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
 	waitForNewBlocksPeriod time.Duration,
@@ -87,7 +86,7 @@ func NewL1(
 		bridge,
 		syncBlockChunkSize,
 		blockFinalityType,
-		rd,
+		nil, // No reorg detector for L1 since we're moving to FinalizedBlock
 		ethClient,
 		initialBlock,
 		L1BridgeSyncer,
@@ -226,7 +225,12 @@ func newBridgeSync(
 		appender,
 		[]common.Address{bridge},
 		rh,
-		rd.GetFinalizedBlockType(),
+		func() aggkittypes.BlockNumberFinality {
+			if rd != nil {
+				return rd.GetFinalizedBlockType()
+			}
+			return blockFinalityType
+		}(),
 	)
 	if err != nil {
 		return nil, err
@@ -253,6 +257,11 @@ func newBridgeSync(
 		return nil, err
 	}
 
+	reorgDetectorString := "nil"
+	if rd != nil {
+		reorgDetectorString = rd.String()
+	}
+
 	logger.Infof(
 		"%s created:\n"+
 			"  dbPath: %s\n"+
@@ -272,7 +281,7 @@ func newBridgeSync(
 		maxRetryAttemptsAfterError,
 		retryAfterErrorPeriod.String(),
 		syncBlockChunkSize,
-		rd.String(),
+		reorgDetectorString,
 		waitForNewBlocksPeriod.String(),
 	)
 

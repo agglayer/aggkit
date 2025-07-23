@@ -127,28 +127,19 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	// Simulated L1
 	l1Client, authL1, gerL1Addr, gerL1Contract, bridgeL1Addr, bridgeL1Contract := newSimulatedL1(t)
 
-	// Reorg detector
-	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
-	rdL1, err := reorgdetector.New(l1Client.Client(), reorgdetector.Config{
-		DBPath:              dbPathReorgDetectorL1,
-		CheckReorgsInterval: cfgTypes.Duration{Duration: time.Millisecond * 100}, //nolint:mnd
-		FinalizedBlock:      aggkittypes.FinalizedBlock,
-	}, reorgdetector.L1)
-	require.NoError(t, err)
-	go rdL1.Start(ctx) //nolint:errcheck
+	// L1 info tree sync
+	dbPathL1InfoTreeSync := path.Join(t.TempDir(), "L1InfoTreeSync.sqlite")
 
 	const (
 		l1InfoTreeSyncerRetries   = 3
 		l1InfoTreeSyncerRetryFreq = time.Millisecond * 100
 	)
 
-	// L1 info tree sync
-	dbPathL1InfoTreeSync := path.Join(t.TempDir(), "L1InfoTreeSync.sqlite")
 	l1InfoTreeSync, err := l1infotreesync.New(
 		ctx, dbPathL1InfoTreeSync,
 		gerL1Addr, common.Address{},
 		syncBlockChunkSize, aggkittypes.LatestBlock,
-		rdL1, l1Client.Client(),
+		l1Client.Client(),
 		time.Millisecond, 0, l1InfoTreeSyncerRetryFreq,
 		l1InfoTreeSyncerRetries, l1infotreesync.FlagAllowWrongContractsAddrs,
 		aggkittypes.SafeBlock,
@@ -171,7 +162,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
-		syncBlockChunkSize, aggkittypes.LatestBlock, rdL1, testClient,
+		syncBlockChunkSize, aggkittypes.LatestBlock, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
 		retriesCount, originNetwork, false, true)
 	require.NoError(t, err)
@@ -185,7 +176,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 			BridgeContract: bridgeL1Contract,
 			BridgeAddr:     bridgeL1Addr,
 			Auth:           authL1,
-			ReorgDetector:  rdL1,
+			ReorgDetector:  nil, // No reorg detector for L1 since we're moving to FinalizedBlock
 			BridgeSync:     bridgeL1Sync,
 		},
 		GERContract:  gerL1Contract,
