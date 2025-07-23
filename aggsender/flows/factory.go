@@ -11,14 +11,20 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signerTypes "github.com/agglayer/go_signer/signer/types"
 )
 
-// funcGetL2StartBlock is a intermediate func that allow to override this call in UT
-var funcGetL2StartBlock = getL2StartBlock
+var (
+	// funcGetL2StartBlock is a intermediate func that allow to override this call in UT
+	funcGetL2StartBlock = getL2StartBlock
+
+	// l2GERReaderFactory is a factory function to create L2 GER reader
+	l2GERReaderFactory = l2gersync.NewL2EVMGERReader
+)
 
 // NewFlow creates a new Aggsender flow based on the provided configuration.
 func NewFlow(
@@ -31,7 +37,6 @@ func NewFlow(
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
-	l2GERReader types.ChainGERReader,
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
@@ -103,6 +108,11 @@ func NewFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
 			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, cfg.RequireNoFEPBlockGap),
 		)
+
+		l2GERReader, err := l2GERReaderFactory(cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSyncer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create L2 GER reader: %w", err)
+		}
 
 		return NewAggchainProverFlow(
 			logger,

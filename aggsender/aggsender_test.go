@@ -102,7 +102,6 @@ func TestAggSenderStart(t *testing.T) {
 		nil, // l1 client
 		nil, // l2 client
 		rollupQuerierMock,
-		nil, // l2 ger reader
 	)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
@@ -501,7 +500,7 @@ func TestNewAggSender(t *testing.T) {
 			Method: signertypes.MethodNone,
 		},
 		Mode: "PessimisticProof",
-	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil, nil)
+	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")

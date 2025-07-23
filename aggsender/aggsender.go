@@ -64,7 +64,6 @@ func New(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
-	l2GERReader types.ChainGERReader,
 ) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
@@ -87,7 +86,6 @@ func New(
 		l1InfoTreeSyncer,
 		l2Syncer,
 		rollupDataQuerier,
-		l2GERReader,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)

@@ -309,13 +309,9 @@ func createAggSender(
 	go blockNotifier.Start(ctx)
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
-	l2GERReader, err := l2gersync.NewL2EVMGERReader(
-		cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSync)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create L2 GER reader: %w", err)
-	}
+
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, l2GERReader)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
