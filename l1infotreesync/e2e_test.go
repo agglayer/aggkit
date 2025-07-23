@@ -31,28 +31,33 @@ func newSimulatedClient(t *testing.T) (
 	*verifybatchesmock.Verifybatchesmock,
 ) {
 	t.Helper()
+	ctx := context.Background()
 
-	// Create a new simulated backend
-	client := simulated.NewBackend(nil)
-
-	// Create a new account
-	privateKey, err := crypto.GenerateKey()
+	deployerAuth, err := helpers.CreateAccount(big.NewInt(1337))
 	require.NoError(t, err)
 
-	auth, err := bind.NewKeyedTransactorWithChainID(privateKey, big.NewInt(1337))
+	client, setup := helpers.NewSimulatedBackend(t, nil, deployerAuth)
+
+	nonce, err := client.Client().PendingNonceAt(ctx, setup.UserAuth.From)
+
 	require.NoError(t, err)
 
-	// Deploy the GER contract first
-	gerAddr, _, gerContract, err := polygonzkevmglobalexitrootv2.DeployPolygonzkevmglobalexitrootv2(auth, client.Client(), auth.From, common.Address{})
+	precalculatedGERAddr := crypto.CreateAddress(setup.UserAuth.From, nonce+1)
+	verifyAddr, _, verifyContract, err := verifybatchesmock.DeployVerifybatchesmock(setup.UserAuth, client.Client(), precalculatedGERAddr)
 	require.NoError(t, err)
-
-	// Deploy the verify contract with the GER contract as the global exit root manager
-	verifyAddr, _, verifyContract, err := verifybatchesmock.DeployVerifybatchesmock(auth, client.Client(), gerAddr)
-	require.NoError(t, err)
-
 	client.Commit()
 
-	return client, auth, gerAddr, verifyAddr, gerContract, verifyContract
+	gerAddr, _, gerContract, err := polygonzkevmglobalexitrootv2.DeployPolygonzkevmglobalexitrootv2(setup.UserAuth, client.Client(), verifyAddr, setup.UserAuth.From)
+
+	require.NoError(t, err)
+	require.Equal(t, precalculatedGERAddr, gerAddr)
+	client.Commit()
+
+	err = setup.DeployBridge(client, gerAddr, 0)
+
+	require.NoError(t, err)
+
+	return client, setup.UserAuth, gerAddr, verifyAddr, gerContract, verifyContract
 }
 
 func TestE2E(t *testing.T) {
