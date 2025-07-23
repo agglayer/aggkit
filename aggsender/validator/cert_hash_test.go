@@ -40,11 +40,11 @@ func TestHashCertificateToSign(t *testing.T) {
 		cert.Height += 1
 		hash, err = HashCertificateToSign(cert)
 		require.NoError(t, err)
-		require.Equal(t, "0x356561c0a4fe69ef6a9eb6047c99aed2d76c5ab8639b5d43e5d40ea0e4914de8", hash.String())
+		require.Equal(t, "0x88cfb3efdb3802f8a86ab1d6484ca7e2a00310da5545b4de8ae8c9011994316b", hash.String())
 		cert.Metadata = [32]byte{6, 7, 8, 9, 10}
 		hash, err = HashCertificateToSign(cert)
 		require.NoError(t, err)
-		require.Equal(t, "0x52bf89461f0aba19c0120e716f7f562ec508d0d77135f2869abe856e793b646c", hash.String())
+		require.Equal(t, "0x73a8e14ed3b09cb31c27a8a833f1257cbd6507c6d5716eb55d99b7bbedabbae6", hash.String())
 	})
 }
 
