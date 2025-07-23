@@ -96,6 +96,13 @@ func (s *ValidatorService) ValidateCertificate(
 			Message: "Invalid certificate conversion: " + err.Error(),
 		}
 	}
+	if err = cert.Validate(); err != nil {
+		s.log.Errorf("Certificate validation failed: %v", err)
+		return nil, grpc.GRPCError{
+			Code:    codes.InvalidArgument,
+			Message: "Invalid certificate: " + err.Error(),
+		}
+	}
 	params.Certificate = cert
 	err = s.validator.ValidateCertificate(ctx, params)
 	if err != nil {
@@ -127,6 +134,12 @@ func (s *ValidatorService) signCertificate(ctx context.Context, cert *agglayerty
 			Message: "Signer is not initialized",
 		}
 	}
-	hashToSign := HashCertificateToSign(cert)
+	hashToSign, err := HashCertificateToSign(cert)
+	if err != nil {
+		return nil, grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "Error hashing certificate: " + err.Error(),
+		}
+	}
 	return s.signer.SignHash(ctx, hashToSign)
 }
