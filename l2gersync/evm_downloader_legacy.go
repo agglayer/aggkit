@@ -149,31 +149,38 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 
 		// Find the latest GER injected from retrieved GERs
 		gerInfo := d.findLatestInjectedGER(gers)
+
+		blockNum := fromBlock
 		if gerInfo != nil {
-			blockNum := gerInfo.BlockNum
-			header, isCanceled := d.GetBlockHeader(ctx, blockNum)
-			if isCanceled {
-				return
-			}
-			if header == (sync.EVMBlockHeader{}) {
-				log.Warnf("no block header found for block number %d", blockNum)
-				continue
-			}
+			blockNum = gerInfo.BlockNum
+		}
 
-			block := &sync.EVMBlock{
-				EVMBlockHeader: sync.EVMBlockHeader{
-					Num:        header.Num,
-					Hash:       header.Hash,
-					ParentHash: header.ParentHash,
-					Timestamp:  header.Timestamp,
-				},
-				Events: []any{newEvent(gerInfo, GEREventTypeInsert)},
-			}
+		header, isCanceled := d.GetBlockHeader(ctx, blockNum)
+		if isCanceled {
+			return
+		}
+		if header == (sync.EVMBlockHeader{}) {
+			log.Warnf("no block header found for block number %d", blockNum)
+			continue
+		}
 
-			downloadedCh <- *block
+		block := &sync.EVMBlock{
+			EVMBlockHeader: sync.EVMBlockHeader{
+				Num:        header.Num,
+				Hash:       header.Hash,
+				ParentHash: header.ParentHash,
+				Timestamp:  header.Timestamp,
+			},
+		}
+
+		if gerInfo != nil {
+			block.Events = []any{newEvent(gerInfo, GEREventTypeInsert)}
+
 			// Update nextIndex based on the last injected GER info
 			nextL1InfoTreeIndex = gerInfo.L1InfoTreeIndex + 1
 		}
+
+		downloadedCh <- *block
 	}
 }
 

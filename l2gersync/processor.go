@@ -175,7 +175,7 @@ func (p *processor) GetFirstGERAfterL1InfoTreeIndex(
 	ctx context.Context, l1InfoTreeIndex uint32) (GlobalExitRootInfo, error) {
 	e := GlobalExitRootInfo{}
 	err := meddler.QueryRow(p.database, &e, `
-		SELECT l1_info_tree_index, block_num, global_exit_root
+		SELECT l1_info_tree_index, block_num, global_exit_root, block_pos
 		FROM imported_global_exit_root
 		WHERE l1_info_tree_index >= $1
 		ORDER BY l1_info_tree_index ASC LIMIT 1;
