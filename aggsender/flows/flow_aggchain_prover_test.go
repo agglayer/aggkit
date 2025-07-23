@@ -30,28 +30,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 	finalizedL1Root := common.HexToHash("0x1")
 
-	// ibe1 := &agglayertypes.ImportedBridgeExit{
-	// 	BridgeExit: &agglayertypes.BridgeExit{
-	// 		LeafType:  0,
-	// 		TokenInfo: &agglayertypes.TokenInfo{},
-	// 		Metadata:  aggkitcommon.EmptyBytesHash,
-	// 	},
-	// 	GlobalIndex: &agglayertypes.GlobalIndex{
-	// 		LeafIndex: 1,
-	// 	},
-	// }
-
-	// ibe2 := &agglayertypes.ImportedBridgeExit{
-	// 	BridgeExit: &agglayertypes.BridgeExit{
-	// 		LeafType:  0,
-	// 		TokenInfo: &agglayertypes.TokenInfo{},
-	// 		Metadata:  aggkitcommon.EmptyBytesHash,
-	// 	},
-	// 	GlobalIndex: &agglayertypes.GlobalIndex{
-	// 		LeafIndex: 2,
-	// 	},
-	// }
-
 	testCases := []struct {
 		name   string
 		mockFn func(*mocks.AggSenderStorage,
