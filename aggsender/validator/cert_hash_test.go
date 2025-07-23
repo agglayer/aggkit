@@ -28,6 +28,21 @@ func TestHashCertificateToSign(t *testing.T) {
 		require.Equal(t, "0x7f79b617b1ee18f06b6b5104d065ef71370688bbdf22d13c756e63a2b8b24f1e", hash.String())
 	})
 
+	t.Run("error hashing invalid cert ", func(t *testing.T) {
+		cert := &agglayertypes.Certificate{
+			NetworkID:           1,
+			Height:              100,
+			NewLocalExitRoot:    common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+			ImportedBridgeExits: nil,
+			Metadata:            [32]byte{1, 2, 3, 4, 5},
+			BridgeExits: []*agglayertypes.BridgeExit{
+				{},
+			},
+		}
+		_, err := HashCertificateToSign(cert)
+		require.Error(t, err)
+	})
+
 	t.Run("check imported fields on hash", func(t *testing.T) {
 		_, cert := getCertFromAggsenderDBForTest(t)
 		hash, err := HashCertificateToSign(cert)
