@@ -7,6 +7,7 @@ import (
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -73,7 +74,7 @@ func (b *DBValidator) ValidateDB(dbPath string) (string, rpc.Error) {
 					return result, rpc.NewRPCError(rpc.DefaultErrorCode, "failed to get previous certificate header: "+err.Error())
 				}
 				if prevCertHeader != nil {
-					previousCertificate = AggsenderCertificateHeaderToAgglayer(prevCertHeader, unmarshalCert.NetworkID)
+					previousCertificate = converters.ConvertAggsenderCertHeaderToAgglayer(prevCertHeader, unmarshalCert.NetworkID)
 				}
 			}
 			params := types.VerifyIncomingRequest{
