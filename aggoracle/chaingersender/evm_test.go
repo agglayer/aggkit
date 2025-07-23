@@ -751,7 +751,7 @@ func TestEVMChainGERSender_initializeAggOracleCommitteeMode(t *testing.T) {
 	}
 }
 
-func TestEVMChainGERSender_initializeDirectInjectionMode(t *testing.T) {
+func TestEVMChainGERSender_ValidateGERSender(t *testing.T) {
 	tests := []struct {
 		name             string
 		gerUpdater       common.Address
@@ -797,7 +797,7 @@ func TestEVMChainGERSender_initializeDirectInjectionMode(t *testing.T) {
 			mockL2GERManager.EXPECT().GlobalExitRootUpdater(mock.Anything).Return(tt.gerUpdater, tt.mockError)
 
 			// Test the validation logic that we can properly mock
-			err := validateGERSender(tt.ethTxManagerFrom, mockL2GERManager)
+			err := validateGERSender(tt.ethTxManagerFrom, mockL2GERManager, common.Address{})
 			if tt.expectedErrMsg != "" {
 				require.ErrorContains(t, err, tt.expectedErrMsg)
 			} else {
