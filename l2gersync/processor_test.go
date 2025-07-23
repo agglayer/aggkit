@@ -62,10 +62,11 @@ func TestProcessBlock(t *testing.T) {
 					Num: 2,
 					Events: []any{
 						&Event{
-							GERInfo: newGlobalExitRootInfo(common.HexToHash("0xffee"), l1InfoTreeIndex, 2, 0),
+							GERInfo:   newGlobalExitRootInfo(common.HexToHash("0xffee"), l1InfoTreeIndex, 2, 0),
+							EventType: GEREventTypeInsert,
 						},
 						&Event{
-							GERInfo:   newGlobalExitRootInfo(common.HexToHash("0xffee"), 0, 0, 0),
+							GERInfo:   newGlobalExitRootInfo(common.HexToHash("0xffee"), 0, 2, 0),
 							EventType: GEREventTypeRemove,
 						},
 					},
