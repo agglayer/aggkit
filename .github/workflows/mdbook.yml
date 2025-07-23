@@ -44,13 +44,16 @@ jobs:
         id: pages
         uses: actions/configure-pages@v5
 
-      - name: Build with mdBook
-        run: mdbook build
+      - name: Make build script executable
+        run: chmod +x scripts/build-versioned-docs.sh
+
+      - name: Build versioned documentation
+        run: ./scripts/build-versioned-docs.sh
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./book
+          path: ./versions
 
 # Deployment job
   deploy:

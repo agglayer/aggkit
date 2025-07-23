@@ -9,6 +9,13 @@ title = "Aggkit Docs"
 command = "mdbook-mermaid"
 
 [output.html]
-additional-js = ["docs/assets/mermaid.min.js", "docs/assets/mermaid-init.js"]
+additional-js = ["docs/assets/mermaid.min.js", "docs/assets/mermaid-init.js", "docs/assets/version-selector.js"]
+git-repository-url = "https://github.com/agglayer/aggkit"
+git-repository-icon = "fa fa-github"
+additional-css = ["docs/assets/version-selector.css"]
 
 [preprocessor.alerts]
+
+[output.html.fold]
+enable = true
+level = 1

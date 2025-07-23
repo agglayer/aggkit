@@ -10,3 +10,4 @@
 - [Release lifecycle](./release_lifecycle.md)
 - [End-to-end tests](./e2e_tests.md)
 - [Common config artifacts](./common_config.md)
+- [Documentation Versioning](./VERSIONING.md)

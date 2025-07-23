@@ -117,6 +117,29 @@ vulncheck: ## Runs the vulnerability checker tool
 	@echo "Running govulncheck on all packages..."
 	@go list ./... | xargs -n1 govulncheck
 
+.PHONY: docs-build
+docs-build: ## Builds the versioned documentation (uses cache for releases)
+	@echo "Building versioned documentation..."
+	@chmod +x scripts/build-versioned-docs.sh
+	@./scripts/build-versioned-docs.sh
+
+.PHONY: docs-serve
+docs-serve: ## Serves the documentation locally for testing
+	@echo "Building and serving documentation locally..."
+	@chmod +x scripts/test-versioned-docs.sh
+	@./scripts/test-versioned-docs.sh
+
+.PHONY: docs-cache-setup
+docs-cache-setup: ## Sets up the documentation cache (builds all release versions)
+	@echo "Setting up documentation cache..."
+	@chmod +x scripts/setup-docs-cache.sh
+	@./scripts/setup-docs-cache.sh
+
+.PHONY: docs-clean
+docs-clean: ## Cleans the built documentation and cache
+	@echo "Cleaning built documentation and cache..."
+	@rm -rf versions book .docs_cache
+
 ## Help display.
 ## Pulls comments from beside commands and prints a nicely formatted
 ## display with the commands and their usage information.
