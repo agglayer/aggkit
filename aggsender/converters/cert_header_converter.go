@@ -1,20 +1,14 @@
-package validator
+package converters
 
 import (
-	"errors"
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
 )
 
-var (
-	ErrNilCertificate        = errors.New("aggsender-validator nil certificate")
-	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
-)
-
-// AgglayerCertificateHeaderToAggsender converts an agglayer CertificateHeader to an aggsender CertificateHeader
-func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader) (*types.CertificateHeader, error) {
+// ConvertAgglayerCertHeaderToAggsender converts an agglayer CertificateHeader to an aggsender CertificateHeader
+func ConvertAgglayerCertHeaderToAggsender(cert *agglayertypes.CertificateHeader) (*types.CertificateHeader, error) {
 	if cert == nil {
 		return nil, nil
 	}
@@ -44,8 +38,8 @@ func AgglayerCertificateHeaderToAggsender(cert *agglayertypes.CertificateHeader)
 	}, nil
 }
 
-// AggsenderCertificateHeaderToAgglayer converts an aggsender CertificateHeader to an agglayer CertificateHeader
-func AggsenderCertificateHeaderToAgglayer(cert *types.CertificateHeader,
+// ConvertAggsenderCertHeaderToAgglayer converts an aggsender CertificateHeader to an agglayer CertificateHeader
+func ConvertAggsenderCertHeaderToAgglayer(cert *types.CertificateHeader,
 	networkID uint32) *agglayertypes.CertificateHeader {
 	if cert == nil {
 		return nil
