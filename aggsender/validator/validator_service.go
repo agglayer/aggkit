@@ -96,13 +96,6 @@ func (s *ValidatorService) ValidateCertificate(
 			Message: "Invalid certificate conversion: " + err.Error(),
 		}
 	}
-	if err = cert.Validate(); err != nil {
-		s.log.Errorf("Certificate validation failed: %v", err)
-		return nil, grpc.GRPCError{
-			Code:    codes.InvalidArgument,
-			Message: "Invalid certificate: " + err.Error(),
-		}
-	}
 	params.Certificate = cert
 	err = s.validator.ValidateCertificate(ctx, params)
 	if err != nil {

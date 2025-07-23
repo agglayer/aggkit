@@ -10,6 +10,7 @@ import (
 
 	nodev1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	typesv1 "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
+	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	validatormocks "github.com/agglayer/aggkit/aggsender/validator/mocks"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
@@ -113,6 +114,18 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		cert := testCertificate1
 		cert.NewLocalExitRoot = nil
+		req := &v1.ValidateCertificateRequest{
+			Certificate: &cert,
+		}
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "Invalid certificate conversion")
+	})
+	t.Run("converted certificate don't pass Validate()", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		cert := testCertificate1
+		cert.BridgeExits = []*v1types.BridgeExit{
+			{},
+		}
 		req := &v1.ValidateCertificateRequest{
 			Certificate: &cert,
 		}
