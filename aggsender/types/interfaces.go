@@ -247,3 +247,20 @@ type AggchainProofQuerier interface {
 		certBuildParams *CertificateBuildParams,
 	) (*AggchainProof, *treetypes.Root, error)
 }
+
+// CommonCertParamsBuilder is an interface defining functions that a CommonCertParamsBuilder should implement
+type CommonCertParamsBuilder interface {
+	GeneratePreBuildParams(ctx context.Context, certType CertificateType) (*CertificatePreBuildParams, error)
+	GenerateBuildParams(ctx context.Context, preParams CertificatePreBuildParams) (*CertificateBuildParams, error)
+	GetCommonCertificateBuildParams(ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
+	LimitCertSize(certParams *CertificateBuildParams) (*CertificateBuildParams, error)
+}
+
+// CommonCertParamsVerifier is an interface defining functions that a CommonCertParamsVerifier should implement
+type CommonCertParamsVerifier interface {
+	VerifyBuildParams(ctx context.Context, fullCert *CertificateBuildParams) error
+	VerifyBlockRangeGaps(
+		ctx context.Context,
+		lastSentCertificate *CertificateHeader,
+		newFromBlock, newToBlock uint64) error
+}
