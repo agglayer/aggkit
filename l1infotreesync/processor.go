@@ -276,6 +276,8 @@ func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64)
 	return processedBlockNum, hash, nil
 }
 
+// Reorg is intentionally left as a no-op. This method is retained for compatibility
+// with the processor interface and to allow for potential future implementation.
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	return nil
 }
