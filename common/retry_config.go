@@ -9,8 +9,9 @@ import (
 type RetryConfigMode string
 
 const (
-	RetryConfigModeDelays  RetryConfigMode = "delays"
-	RetryConfigModeBackoff RetryConfigMode = "backoff"
+	RetryConfigModeNoRetries RetryConfigMode = ""
+	RetryConfigModeDelays    RetryConfigMode = "delays"
+	RetryConfigModeBackoff   RetryConfigMode = "backoff"
 )
 
 var (
@@ -70,6 +71,9 @@ func (r *RetryPolicyConfig) Factory() (RetryHandlerConfigurer, error) {
 			BackoffMultiplier: r.BackoffMultiplier,
 			MaxRetries:        r.MaxRetries,
 		}, nil
+	case RetryConfigModeNoRetries:
+		return &RetryDelaysConfig{MaxRetries: 0}, nil
+
 	default:
 		return nil, fmt.Errorf("%w: bad mode %s", ErrInvalidRetryConfigMode, r.Mode)
 	}
