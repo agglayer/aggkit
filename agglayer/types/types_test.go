@@ -1290,4 +1290,90 @@ func TestCertificate_Validate(t *testing.T) {
 		}
 		require.ErrorContains(t, cert.Validate(), "globalIndex is nil")
 	})
+
+	t.Run("bridgeExit bad leaftype", func(t *testing.T) {
+		bridgeExit := &BridgeExit{
+			LeafType: 5,
+			TokenInfo: &TokenInfo{
+				OriginNetwork:      0,
+				OriginTokenAddress: common.HexToAddress("0x1234"),
+			},
+			DestinationNetwork: 1,
+			DestinationAddress: common.HexToAddress("0x1234"),
+		}
+		require.ErrorContains(t, bridgeExit.Validate(), "bridgeExit leaf type 5 is invalid")
+	})
+
+	t.Run("L1InfoTreeLeaf nil", func(t *testing.T) {
+		var sut *L1InfoTreeLeaf
+		require.ErrorContains(t, sut.Validate(), "L1InfoTreeLeaf is nil")
+		sut = &L1InfoTreeLeaf{}
+		require.ErrorContains(t, sut.Validate(), "L1InfoTreeLeaf inner is nil")
+		sut = &L1InfoTreeLeaf{
+			Inner: &L1InfoTreeLeafInner{},
+		}
+		require.NoError(t, sut.Validate())
+	})
+
+	t.Run("ClaimFromMainnnet nil", func(t *testing.T) {
+		var sut *ClaimFromMainnnet
+		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet is nil")
+		sut = &ClaimFromMainnnet{}
+		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet has nil proofs")
+		sut = &ClaimFromMainnnet{
+			ProofLeafMER:     &MerkleProof{},
+			ProofGERToL1Root: &MerkleProof{},
+		}
+		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet has nil L1Leaf")
+		sut = &ClaimFromMainnnet{
+			ProofLeafMER:     &MerkleProof{},
+			ProofGERToL1Root: &MerkleProof{},
+			L1Leaf:           &L1InfoTreeLeaf{},
+		}
+		require.NoError(t, sut.Validate())
+	})
+
+	t.Run("ClaimFromRollup nil", func(t *testing.T) {
+		var sut *ClaimFromRollup
+		require.ErrorContains(t, sut.Validate(), "ClaimFromRollup is nil")
+		sut = &ClaimFromRollup{}
+		require.ErrorContains(t, sut.Validate(), "ClaimFromRollup has nil proofs")
+		sut = &ClaimFromRollup{
+			ProofLeafLER:     &MerkleProof{},
+			ProofLERToRER:    &MerkleProof{},
+			ProofGERToL1Root: &MerkleProof{},
+		}
+		require.ErrorContains(t, sut.Validate(), "ClaimFromRollup has nil L1Leaf")
+		sut.L1Leaf = &L1InfoTreeLeaf{}
+		require.NoError(t, sut.Validate())
+	})
+
+	t.Run("ImportedBridgeExit nil", func(t *testing.T) {
+		var sut *ImportedBridgeExit
+		require.ErrorContains(t, sut.Validate(), "ImportedBridgeExit is nil")
+		sut = &ImportedBridgeExit{}
+		require.ErrorContains(t, sut.Validate(), "ImportedBridgeExit.BridgeExit not valid")
+	})
+
+}
+
+func TestBrigeExitHash(t *testing.T) {
+	var sut *BridgeExit
+	require.Equal(t, common.Hash{}, sut.Hash())
+	var sut2 BridgeExit
+	require.Equal(t, common.Hash{}, sut2.Hash())
+}
+
+func TestClaimFromMainnnetHash(t *testing.T) {
+	var sut *ClaimFromMainnnet
+	require.Equal(t, common.Hash{}, sut.Hash())
+	var sut2 ClaimFromMainnnet
+	require.Equal(t, common.Hash{}, sut2.Hash())
+}
+
+func TestCClaimFromRolluptHash(t *testing.T) {
+	var sut *ClaimFromRollup
+	require.Equal(t, common.Hash{}, sut.Hash())
+	var sut2 ClaimFromRollup
+	require.Equal(t, common.Hash{}, sut2.Hash())
 }

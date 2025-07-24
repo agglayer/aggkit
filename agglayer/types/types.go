@@ -553,7 +553,7 @@ func (b *BridgeExit) String() string {
 
 // Hash returns a hash that uniquely identifies the bridge exit
 func (b *BridgeExit) Hash() common.Hash {
-	if b == nil {
+	if b.Validate() != nil {
 		return common.Hash{}
 	}
 	if b.Amount == nil {
@@ -823,7 +823,7 @@ func (c *ClaimFromMainnnet) UnmarshalJSON(data []byte) error {
 
 // Hash is the implementation of Claim interface
 func (c *ClaimFromMainnnet) Hash() common.Hash {
-	if c == nil {
+	if c.Validate() != nil {
 		return common.Hash{}
 	}
 	return crypto.Keccak256Hash(
@@ -840,13 +840,13 @@ func (c *ClaimFromMainnnet) String() string {
 
 func (c *ClaimFromMainnnet) Validate() error {
 	if c == nil {
-		return errors.New("claim from mainnet is nil")
+		return errors.New("ClaimFromMainnnet is nil")
 	}
 	if c.ProofLeafMER == nil || c.ProofGERToL1Root == nil {
-		return errors.New("claim from mainnet has nil proofs")
+		return errors.New("ClaimFromMainnnet has nil proofs")
 	}
 	if c.L1Leaf == nil {
-		return errors.New("claim from mainnet has nil L1Leaf")
+		return errors.New("ClaimFromMainnnet has nil L1Leaf")
 	}
 	return nil
 }
@@ -905,7 +905,7 @@ func (c *ClaimFromRollup) UnmarshalJSON(data []byte) error {
 
 // Hash is the implementation of Claim interface
 func (c *ClaimFromRollup) Hash() common.Hash {
-	if c == nil {
+	if c.Validate() != nil {
 		return common.Hash{}
 	}
 	return crypto.Keccak256Hash(
@@ -918,13 +918,13 @@ func (c *ClaimFromRollup) Hash() common.Hash {
 
 func (c *ClaimFromRollup) Validate() error {
 	if c == nil {
-		return errors.New("claim from rollup is nil")
+		return errors.New("ClaimFromRollup is nil")
 	}
 	if c.ProofLeafLER == nil || c.ProofLERToRER == nil || c.ProofGERToL1Root == nil {
-		return errors.New("claim from rollup has nil proofs")
+		return errors.New("ClaimFromRollup has nil proofs")
 	}
 	if c.L1Leaf == nil {
-		return errors.New("claim from rollup has nil L1Leaf")
+		return errors.New("ClaimFromRollup has nil L1Leaf")
 	}
 	return nil
 }
@@ -1019,16 +1019,16 @@ func (c *ImportedBridgeExit) Hash() common.Hash {
 
 func (c *ImportedBridgeExit) Validate() error {
 	if c == nil {
-		return errors.New("importedBridge is nil")
+		return errors.New("ImportedBridgeExit is nil")
 	}
 	if err := c.BridgeExit.Validate(); err != nil {
-		return fmt.Errorf("importedBridge.BridgeExit not valid: %w", err)
+		return fmt.Errorf("ImportedBridgeExit.BridgeExit not valid: %w", err)
 	}
 	if err := c.ClaimData.Validate(); err != nil {
-		return fmt.Errorf("importedBridge.ClaimData exit not valid: %w", err)
+		return fmt.Errorf("ImportedBridgeExit.ClaimData exit not valid: %w", err)
 	}
 	if err := c.GlobalIndex.Validate(); err != nil {
-		return fmt.Errorf("importedBridge.GlobalIndex exit not valid: %w", err)
+		return fmt.Errorf("ImportedBridgeExit.GlobalIndex exit not valid: %w", err)
 	}
 	return nil
 }
