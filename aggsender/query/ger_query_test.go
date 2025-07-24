@@ -45,8 +45,9 @@ func Test_GetInjectedGERsProofs(t *testing.T) {
 		{
 			name: "success",
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader, mockL1InfoTreeQuery *mocks.L1InfoTreeDataQuerier) {
+				blockPos := uint64(0)
 				mockChainGERReader.EXPECT().GetInjectedGERsForRange(ctx, uint64(1), uint64(10)).Return(map[common.Hash]l2gersync.GlobalExitRootInfo{
-					common.HexToHash("0x1"): {GlobalExitRoot: common.HexToHash("0x1"), BlockNum: 111},
+					common.HexToHash("0x1"): {GlobalExitRoot: common.HexToHash("0x1"), BlockNum: 111, BlockPosition: &blockPos},
 				}, nil)
 				mockL1InfoTreeQuery.EXPECT().GetProofForGER(ctx, common.HexToHash("0x1"), common.HexToHash("0x2")).Return(
 					&l1infotreesync.L1InfoTreeLeaf{

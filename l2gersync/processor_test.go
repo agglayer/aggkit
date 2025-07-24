@@ -188,9 +188,10 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 
 	ctx := context.Background()
 
+	blockPosition := uint64(0)
 	makeGERs := func() []*GlobalExitRootInfo {
 		return []*GlobalExitRootInfo{
-			{GlobalExitRoot: common.HexToHash("0x1234")},
+			{GlobalExitRoot: common.HexToHash("0x1234"), BlockPosition: &blockPosition},
 			{GlobalExitRoot: common.HexToHash("0x5678")},
 			{GlobalExitRoot: common.HexToHash("0x9876")},
 		}
@@ -263,7 +264,7 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 		for _, expected := range expectedGERs {
 			actual, ok := injectedGERsMap[expected.GlobalExitRoot]
 			require.True(t, ok, "GER %s not found", expected.GlobalExitRoot.Hex())
-			require.Equal(t, expected.GlobalExitRoot, actual.GlobalExitRoot)
+			require.Equal(t, expected, &actual)
 		}
 	})
 
@@ -285,8 +286,9 @@ func TestProcessor_GetInjectedGERsForRange(t *testing.T) {
 
 		require.Len(t, injectedGERsMap, 3)
 		for _, expected := range gerList {
-			_, ok := injectedGERsMap[expected.GlobalExitRoot]
+			actual, ok := injectedGERsMap[expected.GlobalExitRoot]
 			require.True(t, ok, "GER %s not found", expected.GlobalExitRoot.Hex())
+			require.Equal(t, expected, &actual)
 		}
 	})
 }

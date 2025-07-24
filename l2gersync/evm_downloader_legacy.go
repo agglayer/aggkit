@@ -199,7 +199,7 @@ func (d *downloaderLegacy) getGERsFromIndex(
 
 		// For the legacy downloader, we cannot determine the block position,
 		// because we are querying the global exit root map
-		gers = append(gers, newGlobalExitRootInfo(info.GlobalExitRoot, i, blockNum, 0))
+		gers = append(gers, newLegacyGlobalExitRootInfo(info.GlobalExitRoot, i, blockNum))
 	}
 
 	return gers, nil

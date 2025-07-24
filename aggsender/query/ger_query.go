@@ -63,9 +63,14 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 			return nil, fmt.Errorf("aggchainProverFlow - error getting proof for GER: %s: %w", ger.String(), err)
 		}
 
+		if injectedGER.BlockPosition == nil {
+			return nil, fmt.Errorf("aggchainProverFlow - block position for GER %s is undefined", ger.String())
+		}
+
+		blockPos := uint(*injectedGER.BlockPosition)
 		proofs[ger] = &agglayertypes.ProvenInsertedGERWithBlockNumber{
 			BlockNumber: injectedGER.BlockNum,
-			BlockIndex:  uint(injectedGER.BlockPosition),
+			BlockIndex:  blockPos,
 			ProvenInsertedGERLeaf: agglayertypes.ProvenInsertedGER{
 				ProofGERToL1Root: &agglayertypes.MerkleProof{Root: finalizedL1InfoTreeRoot.Hash, Proof: proof},
 				L1Leaf: &agglayertypes.L1InfoTreeLeaf{

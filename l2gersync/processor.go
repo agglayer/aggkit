@@ -28,18 +28,29 @@ type GlobalExitRootInfo struct {
 	GlobalExitRoot  ethcommon.Hash `meddler:"global_exit_root,hash"`
 	L1InfoTreeIndex uint32         `meddler:"l1_info_tree_index"`
 	BlockNum        uint64         `meddler:"block_num"`
-	BlockPosition   uint64         `meddler:"block_pos"`
+	BlockPosition   *uint64        `meddler:"block_pos"`
 }
 
 // newGlobalExitRootInfo creates a new GlobalExitRootInfo instance with the provided parameters.
 func newGlobalExitRootInfo(
-	globalExitRoot ethcommon.Hash, l1InfoTreeIndex uint32, blockNum, blockPosition uint64,
+	globalExitRoot ethcommon.Hash, l1InfoTreeIndex uint32, blockNum uint64, blockPosition uint64,
 ) *GlobalExitRootInfo {
 	return &GlobalExitRootInfo{
 		GlobalExitRoot:  globalExitRoot,
 		L1InfoTreeIndex: l1InfoTreeIndex,
 		BlockNum:        blockNum,
-		BlockPosition:   blockPosition,
+		BlockPosition:   &blockPosition,
+	}
+}
+
+// newLegacyGlobalExitRootInfo creates a new GlobalExitRootInfo instance without block position
+func newLegacyGlobalExitRootInfo(
+	globalExitRoot ethcommon.Hash, l1InfoTreeIndex uint32, blockNum uint64) *GlobalExitRootInfo {
+	return &GlobalExitRootInfo{
+		GlobalExitRoot:  globalExitRoot,
+		L1InfoTreeIndex: l1InfoTreeIndex,
+		BlockNum:        blockNum,
+		BlockPosition:   nil,
 	}
 }
 
