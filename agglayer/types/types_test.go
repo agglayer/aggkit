@@ -1283,7 +1283,9 @@ func TestCertificate_Validate(t *testing.T) {
 					ClaimData: &ClaimFromMainnnet{
 						ProofLeafMER:     &MerkleProof{},
 						ProofGERToL1Root: &MerkleProof{},
-						L1Leaf:           &L1InfoTreeLeaf{},
+						L1Leaf: &L1InfoTreeLeaf{
+							Inner: &L1InfoTreeLeafInner{},
+						},
 					},
 				},
 			},

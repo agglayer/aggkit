@@ -65,7 +65,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &newGRPCCertificateForTest(t),
+			Certificate: newGRPCCertificateForTest(t),
 		}
 		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
@@ -78,7 +78,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 	t.Run("PreviousCertificateId, fail to retrieve it", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &newGRPCCertificateForTest(t),
+			Certificate: newGRPCCertificateForTest(t),
 			PreviousCertificateId: &nodev1.CertificateId{
 				Value: &typesv1.FixedBytes32{Value: common.HexToHash("0xbeef").Bytes()},
 			},
@@ -90,7 +90,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 	t.Run("PreviousCertificateId, retrieved but is nil", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &newGRPCCertificateForTest(t),
+			Certificate: newGRPCCertificateForTest(t),
 			PreviousCertificateId: &nodev1.CertificateId{
 				Value: &typesv1.FixedBytes32{Value: common.HexToHash("0xbeef").Bytes()},
 			},
@@ -105,7 +105,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 		cert := newGRPCCertificateForTest(t)
 		cert.NewLocalExitRoot = nil
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &cert,
+			Certificate: cert,
 		}
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
 		require.ErrorContains(t, err, "Invalid certificate conversion")
@@ -126,7 +126,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
 
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &cert,
+			Certificate: cert,
 		}
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
 		require.NoError(t, err)
@@ -134,7 +134,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 	t.Run("fails validate certificate", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &newGRPCCertificateForTest(t),
+			Certificate: newGRPCCertificateForTest(t),
 		}
 		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(errTestGenericError).Once()
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
@@ -165,10 +165,10 @@ func newValidatorServiceTestData(t *testing.T) *testValidatorServiceData {
 	}
 }
 
-func newGRPCCertificateForTest(t *testing.T) nodev1.Certificate {
+func newGRPCCertificateForTest(t *testing.T) *nodev1.Certificate {
 	t.Helper()
-	testL1InfoTreeLeafCount = uint32(123)
-	return nodev1.Certificate{
+	testL1InfoTreeLeafCount := uint32(123)
+	return &nodev1.Certificate{
 		Height:              42,
 		NewLocalExitRoot:    &typesv1.FixedBytes32{},
 		PrevLocalExitRoot:   &typesv1.FixedBytes32{},
