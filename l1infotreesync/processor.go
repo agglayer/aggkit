@@ -33,6 +33,7 @@ type processor struct {
 	l1InfoTree     *tree.AppendOnlyTree
 	rollupExitTree *tree.UpdatableTree
 	mu             mutex.RWMutex
+	dbMutex        mutex.RWMutex
 	halted         bool
 	haltedReason   string
 	log            *log.Logger
@@ -281,10 +282,14 @@ func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64)
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	p.log.Infof("reorging to block %d", firstReorgedBlock)
 
+	p.dbMutex.Lock()
+	defer p.dbMutex.Unlock()
+
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
 		return err
 	}
+
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
@@ -306,6 +311,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	if err = p.rollupExitTree.Reorg(tx, firstReorgedBlock); err != nil {
 		return err
 	}
+
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {
 		return err
@@ -332,16 +338,21 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
 		return sync.ErrInconsistentState
 	}
+
+	p.dbMutex.Lock()
+	defer p.dbMutex.Unlock()
+
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
 		return err
 	}
+
 	p.log.Debugf("init block processing for block %d", block.Num)
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
 			p.log.Debugf("rolling back block processing for block %d", block.Num)
-			if errRllbck := tx.Rollback(); errRllbck != nil {
+			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
 				p.log.Errorf("error while rolling back tx %v", errRllbck)
 			}
 		}
