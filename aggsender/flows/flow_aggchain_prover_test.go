@@ -32,6 +32,9 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 	// override TimeNowFunc for testing
 	SetTimeNowFunc(timeNowUTCForTest)
+	t.Cleanup(func() {
+		SetTimeNowFunc(TimeNowUTC)
+	})
 
 	// Set up the test context
 	ctx := context.Background()

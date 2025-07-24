@@ -259,6 +259,24 @@ type Certificate struct {
 	L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
 }
 
+// Validate certificate
+func (c *Certificate) Validate() error {
+	if c == nil {
+		return errors.New("certificate is nil")
+	}
+	for i, bridgeExit := range c.BridgeExits {
+		if err := bridgeExit.Validate(); err != nil {
+			return fmt.Errorf("bridge exit %d is invalid: %w", i, err)
+		}
+	}
+	for i, importedBridgeExit := range c.ImportedBridgeExits {
+		if err := importedBridgeExit.Validate(); err != nil {
+			return fmt.Errorf("imported bridge exit %d is invalid: %w", i, err)
+		}
+	}
+	return nil
+}
+
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (c *Certificate) UnmarshalJSON(data []byte) error {
 	aux := &struct {
@@ -311,8 +329,9 @@ func (c *Certificate) Brief() string {
 	return res
 }
 
-// Hash returns a hash that uniquely identifies the certificate
-func (c *Certificate) Hash() common.Hash {
+// CertificateID returns a certificateID that identifies the certificate
+// next fields are not included: CustomChainData, AggchainData, L1InfoTreeLeafCount
+func (c *Certificate) CertificateID() common.Hash {
 	bridgeExitsHashes := make([][]byte, len(c.BridgeExits))
 	for i, bridgeExit := range c.BridgeExits {
 		bridgeExitsHashes[i] = bridgeExit.Hash().Bytes()
@@ -432,6 +451,14 @@ type TokenInfo struct {
 	OriginTokenAddress common.Address `json:"origin_token_address"`
 }
 
+// Validate checks if the TokenInfo is valid
+func (t *TokenInfo) Validate() error {
+	if t == nil {
+		return errors.New("tokenInfo is nil")
+	}
+	return nil
+}
+
 // String returns a string representation of the TokenInfo struct
 func (t *TokenInfo) String() string {
 	return fmt.Sprintf("OriginNetwork: %d, OriginTokenAddress: %s", t.OriginNetwork, t.OriginTokenAddress.String())
@@ -442,6 +469,13 @@ type GlobalIndex struct {
 	MainnetFlag bool   `json:"mainnet_flag"`
 	RollupIndex uint32 `json:"rollup_index"`
 	LeafIndex   uint32 `json:"leaf_index"`
+}
+
+func (g *GlobalIndex) Validate() error {
+	if g == nil {
+		return errors.New("globalIndex is nil")
+	}
+	return nil
 }
 
 // String returns a string representation of the GlobalIndex struct
@@ -490,6 +524,19 @@ type BridgeExit struct {
 	Metadata           []byte         `json:"metadata"`
 }
 
+func (b *BridgeExit) Validate() error {
+	if b == nil {
+		return errors.New("bridgeExit is nil")
+	}
+	if b.LeafType.Uint8() > LeafTypeMessage.Uint8() {
+		return fmt.Errorf("bridgeExit leaf type %d is invalid", b.LeafType.Uint8())
+	}
+	if err := b.TokenInfo.Validate(); err != nil {
+		return fmt.Errorf("bridgeExit token info is invalid: %w", err)
+	}
+	return nil
+}
+
 func (b *BridgeExit) String() string {
 	res := fmt.Sprintf("LeafType: %s, DestinationNetwork: %d, DestinationAddress: %s, Amount: %s, Metadata: %s",
 		b.LeafType.String(), b.DestinationNetwork, b.DestinationAddress.String(),
@@ -506,6 +553,9 @@ func (b *BridgeExit) String() string {
 
 // Hash returns a hash that uniquely identifies the bridge exit
 func (b *BridgeExit) Hash() common.Hash {
+	if b.Validate() != nil {
+		return common.Hash{}
+	}
 	if b.Amount == nil {
 		b.Amount = big.NewInt(0)
 	}
@@ -680,6 +730,16 @@ func (l *L1InfoTreeLeaf) String() string {
 	)
 }
 
+func (l *L1InfoTreeLeaf) Validate() error {
+	if l == nil {
+		return errors.New("L1InfoTreeLeaf is nil")
+	}
+	if l.Inner == nil {
+		return errors.New("L1InfoTreeLeaf inner is nil")
+	}
+	return nil
+}
+
 type ProvenInsertedGERWithBlockNumber struct {
 	BlockNumber           uint64            `json:"block_number"`
 	ProvenInsertedGERLeaf ProvenInsertedGER `json:"inserted_ger_leaf"`
@@ -711,6 +771,7 @@ type Claim interface {
 	Hash() common.Hash
 	MarshalJSON() ([]byte, error)
 	String() string
+	Validate() error
 }
 
 // ClaimFromMainnnet represents a claim originating from the mainnet
@@ -762,6 +823,9 @@ func (c *ClaimFromMainnnet) UnmarshalJSON(data []byte) error {
 
 // Hash is the implementation of Claim interface
 func (c *ClaimFromMainnnet) Hash() common.Hash {
+	if c.Validate() != nil {
+		return common.Hash{}
+	}
 	return crypto.Keccak256Hash(
 		c.ProofLeafMER.Hash().Bytes(),
 		c.ProofGERToL1Root.Hash().Bytes(),
@@ -772,6 +836,19 @@ func (c *ClaimFromMainnnet) Hash() common.Hash {
 func (c *ClaimFromMainnnet) String() string {
 	return fmt.Sprintf("ProofLeafMER: %s, ProofGERToL1Root: %s, L1Leaf: %s",
 		c.ProofLeafMER.String(), c.ProofGERToL1Root.String(), c.L1Leaf.String())
+}
+
+func (c *ClaimFromMainnnet) Validate() error {
+	if c == nil {
+		return errors.New("ClaimFromMainnnet is nil")
+	}
+	if c.ProofLeafMER == nil || c.ProofGERToL1Root == nil {
+		return errors.New("ClaimFromMainnnet has nil proofs")
+	}
+	if c.L1Leaf == nil {
+		return errors.New("ClaimFromMainnnet has nil L1Leaf")
+	}
+	return nil
 }
 
 // ClaimFromRollup represents a claim originating from a rollup
@@ -828,12 +905,28 @@ func (c *ClaimFromRollup) UnmarshalJSON(data []byte) error {
 
 // Hash is the implementation of Claim interface
 func (c *ClaimFromRollup) Hash() common.Hash {
+	if c.Validate() != nil {
+		return common.Hash{}
+	}
 	return crypto.Keccak256Hash(
 		c.ProofLeafLER.Hash().Bytes(),
 		c.ProofLERToRER.Hash().Bytes(),
 		c.ProofGERToL1Root.Hash().Bytes(),
 		c.L1Leaf.Hash().Bytes(),
 	)
+}
+
+func (c *ClaimFromRollup) Validate() error {
+	if c == nil {
+		return errors.New("ClaimFromRollup is nil")
+	}
+	if c.ProofLeafLER == nil || c.ProofLERToRER == nil || c.ProofGERToL1Root == nil {
+		return errors.New("ClaimFromRollup has nil proofs")
+	}
+	if c.L1Leaf == nil {
+		return errors.New("ClaimFromRollup has nil L1Leaf")
+	}
+	return nil
 }
 
 func (c *ClaimFromRollup) String() string {
@@ -922,6 +1015,22 @@ func (c *ImportedBridgeExit) Hash() common.Hash {
 		c.ClaimData.Hash().Bytes(),
 		c.GlobalIndex.Hash().Bytes(),
 	)
+}
+
+func (c *ImportedBridgeExit) Validate() error {
+	if c == nil {
+		return errors.New("ImportedBridgeExit is nil")
+	}
+	if err := c.BridgeExit.Validate(); err != nil {
+		return fmt.Errorf("ImportedBridgeExit.BridgeExit not valid: %w", err)
+	}
+	if err := c.ClaimData.Validate(); err != nil {
+		return fmt.Errorf("ImportedBridgeExit.ClaimData exit not valid: %w", err)
+	}
+	if err := c.GlobalIndex.Validate(); err != nil {
+		return fmt.Errorf("ImportedBridgeExit.GlobalIndex exit not valid: %w", err)
+	}
+	return nil
 }
 
 // GlobalIndexToLittleEndianBytes converts the global index to a byte slice in little-endian format

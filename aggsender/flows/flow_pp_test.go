@@ -266,6 +266,9 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 
 	// override to have always the same value and not depend on real clock
 	SetTimeNowFunc(timeNowUTCForTest)
+	t.Cleanup(func() {
+		SetTimeNowFunc(TimeNowUTC)
+	})
 
 	ctx := context.Background()
 
