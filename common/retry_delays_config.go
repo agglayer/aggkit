@@ -3,10 +3,11 @@ package common
 import (
 	"fmt"
 
+	commontypes "github.com/agglayer/aggkit/common/types"
 	"github.com/agglayer/aggkit/config/types"
 )
 
-var _ RetryPolicyConfigurer = (*RetryDelaysConfig)(nil)
+var _ commontypes.RetryPolicyConfigurer = (*RetryDelaysConfig)(nil)
 
 // RetryDelaysConfig defines the configuration for retry delays.
 type RetryDelaysConfig struct {
@@ -19,9 +20,20 @@ type RetryDelaysConfig struct {
 	Delays []types.Duration `mapstructure:"Delays"`
 }
 
+// New creates a new instance of RetryDelaysConfig based on the generic retry policy configuration.
+func NewRetryDelaysConfig(cfg *RetryPolicyGenericConfig) (commontypes.RetryPolicyConfigurer, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("%w: cannot create RetryDelaysConfig from nil", ErrInvalidConfig)
+	}
+	return &RetryDelaysConfig{
+		Delays:     cfg.Delays,
+		MaxRetries: cfg.MaxRetries,
+	}, nil
+}
+
 // RetryHandler returns a object that implements the logic
-func (r *RetryDelaysConfig) NewRetryHandler() *RetryHandler {
-	return NewRetryHandler(r.Delays, r.MaxRetries)
+func (r *RetryDelaysConfig) NewRetryHandler() (commontypes.RetryHandler, error) {
+	return NewRetryHandler(r.Delays, r.MaxRetries), nil
 }
 
 func (r *RetryDelaysConfig) Validate() error {

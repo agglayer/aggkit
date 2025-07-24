@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	commontypes "github.com/agglayer/aggkit/common/types"
 	"github.com/agglayer/aggkit/config/types"
 )
 
@@ -21,75 +22,53 @@ const (
 	MaxAttemptsInfinite = -1 // MaxAttemptsInfinite means infinite retries are allowed
 )
 
-// RetryHandler is a struct that holds the retry delays and the maximum number of retries.
+// RetryHandlerDelays is a struct that holds the retry delays and the maximum number of retries.
 // It implements the RetryDelayer interface, which allows executing a function with retry logic.
 // The delays are specified as a slice of types.Duration, and the maximum number of retries can be set.
 // If maxRetries is set to 0, it means infinite retries are allowed.
 //
 // You can also abort the retrying wrapping the error ErrAbort into the result
 // this is useful if there are some conditions that should not be retried
-type RetryHandler struct {
-	Delays []types.Duration `mapstructure:"Delays"`
-	// MaxRetries is the maximum number of retries to attempt.
-	// if MaxRetries is -1, it means infinite retries.
-	// if MaxRetries is 0, it means no retries will be attempted.
-	MaxRetries int `mapstructure:"MaxRetries"`
+type RetryHandlerDelays struct {
+	RetryDelaysConfig
 }
 
 // NewRetryHandler creates a new RetryHandler with the specified delays and maximum retries.
-func NewRetryHandler(delays []types.Duration, maxRetries int) *RetryHandler {
-	return &RetryHandler{
-		Delays:     delays,
-		MaxRetries: maxRetries,
+func NewRetryHandler(delays []types.Duration, maxRetries int) *RetryHandlerDelays {
+	return &RetryHandlerDelays{
+		RetryDelaysConfig: RetryDelaysConfig{
+			Delays:     delays,
+			MaxRetries: maxRetries,
+		},
 	}
 }
 
 // Validate checks if the RetryDelays configuration is valid.
-func (r *RetryHandler) Validate() error {
-	// nil means no retries at all
-	if r == nil {
-		return nil
-	}
-	if len(r.Delays) == 0 && r.MaxRetries == 0 {
-		return nil
-	}
-	if len(r.Delays) == 0 {
-		return fmt.Errorf("%w: retry delays cannot be empty if there are retries", ErrInvalidConfig)
-	}
-	for _, delay := range r.Delays {
-		if delay.Duration <= 0 {
-			return fmt.Errorf("%w: retry delay must be greater than zero, got %s",
-				ErrInvalidConfig, delay.Duration)
-		}
-	}
-	if r.MaxRetries < MaxAttemptsInfinite {
-		return fmt.Errorf("%w: max retries cannot %d be less than %d",
-			ErrInvalidConfig, r.MaxRetries, MaxAttemptsInfinite)
-	}
-	return nil
+func (r *RetryHandlerDelays) Validate() error {
+	return r.RetryDelaysConfig.Validate()
 }
 
 // String returns a string representation of the RetryDelays struct.
-func (r *RetryHandler) String() string {
+func (r *RetryHandlerDelays) String() string {
 	if r == nil {
 		return "RetryDelays{nil}"
 	}
-	return fmt.Sprintf("RetryDelays{Delays: %v, MaxRetries: %d}", r.Delays, r.MaxRetries)
+	return fmt.Sprintf("RetryDelays{%s}", r.RetryDelaysConfig.String())
 }
 
 // InfiniteRetries return true if the configuration allows infinite retries.
-func (r *RetryHandler) InfiniteRetries() bool {
+func (r *RetryHandlerDelays) InfiniteRetries() bool {
 	// Infinite retries are allowed if MaxAttempts is 0.
 	return r != nil && r.MaxRetries == MaxAttemptsInfinite
 }
 
-func (r *RetryHandler) NoRetries() bool {
+func (r *RetryHandlerDelays) NoRetries() bool {
 	// No Retries is MaxAttempts is 0 (just 1 first try)
 	return r == nil || r.MaxRetries == 0
 }
 
 // Delay returns the delay for the given attempt.
-func (r *RetryHandler) Delay(attempt int) time.Duration {
+func (r *RetryHandlerDelays) Delay(attempt int) time.Duration {
 	if r == nil || len(r.Delays) == 0 {
 		return 0
 	}
@@ -97,7 +76,7 @@ func (r *RetryHandler) Delay(attempt int) time.Duration {
 }
 
 // MustExecuteAttempt returns true if must execute `attempt`
-func (r *RetryHandler) MustExecuteAttempt(attempt int) bool {
+func (r *RetryHandlerDelays) MustExecuteAttempt(attempt int) bool {
 	if r.InfiniteRetries() {
 		return true
 	}
@@ -108,7 +87,7 @@ func (r *RetryHandler) MustExecuteAttempt(attempt int) bool {
 }
 
 // StringAttempt returns the string representation of the number of attempts.
-func (r *RetryHandler) StringAttempt(attempt int) string {
+func (r *RetryHandlerDelays) StringAttempt(attempt int) string {
 	if r.InfiniteRetries() {
 		return fmt.Sprintf("%d/INFINITE", attempt+1)
 	}
@@ -129,13 +108,13 @@ func silentLog(format string, args ...interface{}) {
 // fn: the function to execute, it should return a result of type T and an error.
 // If the function returns an error that is wrapped with ErrAbort,
 // the execution will be aborted and no more retries will be attempted.
-func Execute[T any](retryDelaysConfig *RetryHandler,
+func Execute[T any](retryHandler commontypes.RetryHandler,
 	ctx context.Context,
 	logFunc func(format string, args ...interface{}),
 	name string,
 	payloadFunc func() (T, error)) (T, error) {
 	var zero T
-	if err := retryDelaysConfig.Validate(); err != nil {
+	if err := retryHandler.Validate(); err != nil {
 		return zero, err
 	}
 	if logFunc == nil {
@@ -144,34 +123,34 @@ func Execute[T any](retryDelaysConfig *RetryHandler,
 	}
 	var err error
 	var attempt int
-	for attempt = 0; retryDelaysConfig.MustExecuteAttempt(attempt); attempt++ {
-		delay := retryDelaysConfig.Delay(attempt)
+	for attempt = 0; retryHandler.MustExecuteAttempt(attempt); attempt++ {
+		delay := retryHandler.Delay(attempt)
 		logFunc("executing %s try %s (next delay: %s)",
-			name, retryDelaysConfig.StringAttempt(attempt), delay.String())
+			name, retryHandler.StringAttempt(attempt), delay.String())
 		// Execute payload
 		var result T
 		result, err = payloadFunc()
 		if err == nil {
 			logFunc("successful run %s in try %s",
-				name, retryDelaysConfig.StringAttempt(attempt))
+				name, retryHandler.StringAttempt(attempt))
 			return result, nil
 		}
 		if errors.Is(err, ErrAbort) {
 			logFunc("aborting execution of %s, try %s due to error: %v",
 				name,
-				retryDelaysConfig.StringAttempt(attempt),
+				retryHandler.StringAttempt(attempt),
 				err)
 			return result, err
 		}
 
 		logFunc("fails execution of %s try %s. delay %s.  due to error: %v",
-			name, retryDelaysConfig.StringAttempt(attempt),
+			name, retryHandler.StringAttempt(attempt),
 			delay, err)
 
 		select {
 		case <-ctx.Done():
 			logFunc("executing %s try %d/%d was canceled",
-				name, retryDelaysConfig.StringAttempt(attempt))
+				name, retryHandler.StringAttempt(attempt))
 			return zero, ctx.Err()
 		case <-time.After(delay):
 			continue

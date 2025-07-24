@@ -5,10 +5,11 @@ import (
 	"math"
 	"time"
 
+	commontypes "github.com/agglayer/aggkit/common/types"
 	"github.com/agglayer/aggkit/config/types"
 )
 
-var _ RetryPolicyConfigurer = (*RetryBackoffConfig)(nil)
+var _ commontypes.RetryPolicyConfigurer = (*RetryBackoffConfig)(nil)
 
 type RetryBackoffConfig struct {
 	InitialBackoff    types.Duration
@@ -17,7 +18,19 @@ type RetryBackoffConfig struct {
 	MaxRetries        int
 }
 
-func (r *RetryBackoffConfig) NewRetryHandler() *RetryHandler {
+func NewRetryBackoffConfig(cfg *RetryPolicyGenericConfig) (commontypes.RetryPolicyConfigurer, error) {
+	if cfg == nil {
+		return nil, fmt.Errorf("%w: cannot create RetryBackoffConfig from nil", ErrInvalidConfig)
+	}
+	return &RetryBackoffConfig{
+		InitialBackoff:    cfg.InitialBackoff,
+		MaxBackoff:        cfg.MaxBackoff,
+		BackoffMultiplier: cfg.BackoffMultiplier,
+		MaxRetries:        cfg.MaxRetries,
+	}, nil
+}
+
+func (r *RetryBackoffConfig) NewRetryHandler() (commontypes.RetryHandler, error) {
 	// TODO: check that implementation
 	delays := []types.Duration{}
 	for attempt := range r.MaxRetries {
@@ -30,7 +43,7 @@ func (r *RetryBackoffConfig) NewRetryHandler() *RetryHandler {
 		delays = append(delays, types.Duration{Duration: time.Duration(backoff)})
 	}
 
-	return NewRetryHandler(delays, r.MaxRetries)
+	return NewRetryHandler(delays, r.MaxRetries), nil
 }
 
 func (r *RetryBackoffConfig) Validate() error {

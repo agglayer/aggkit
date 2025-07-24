@@ -120,3 +120,8 @@ packages:
     config:
       dir: "{{ .InterfaceDir }}/mocks"
       all: true
+
+  github.com/agglayer/aggkit/common/types:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true      

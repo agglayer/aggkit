@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 
+	commontypes "github.com/agglayer/aggkit/common/types"
 	"github.com/agglayer/aggkit/config/types"
 )
 
@@ -15,8 +16,8 @@ const (
 )
 
 var (
-	ErrInvalidRetryConfigMode                       = fmt.Errorf("invalid retry config mode")
-	_                         RetryPolicyConfigurer = (*RetryPolicyGenericConfig)(nil)
+	ErrInvalidRetryConfigMode                                   = fmt.Errorf("invalid retry config mode")
+	_                         commontypes.RetryPolicyConfigurer = (*RetryPolicyGenericConfig)(nil)
 )
 
 // RetryPolicyGenericConfig defines the configuration for retry policies in the system.
@@ -30,20 +31,7 @@ type RetryPolicyGenericConfig struct {
 	MaxBackoff        types.Duration
 	BackoffMultiplier float64
 	// internal field to cache the underlaying config
-	cache RetryPolicyConfigurer `mapstructure:"-"`
-}
-
-// RetryPolicyConfigurer is an interface that defines methods for configuring retry policies.
-// Each class that implements a retry policy configuration should implement this interface.
-type RetryPolicyConfigurer interface {
-	// Validate configuration
-	Validate() error
-	// NewRetryHandler returns a RetryHandler based on the configuration
-	NewRetryHandler() *RetryHandler
-	// String returns a string representation of the configuration
-	String() string
-	// Brief is a brief string representation of the object
-	Brief() string
+	cache commontypes.RetryPolicyConfigurer `mapstructure:"-"`
 }
 
 func (r *RetryPolicyGenericConfig) Validate() error {
@@ -54,10 +42,10 @@ func (r *RetryPolicyGenericConfig) Validate() error {
 	return cfg.Validate()
 }
 
-func (r *RetryPolicyGenericConfig) NewRetryHandler() *RetryHandler {
+func (r *RetryPolicyGenericConfig) NewRetryHandler() (commontypes.RetryHandler, error) {
 	cfg, err := r.Factory()
 	if err != nil {
-		return NewRetryHandler(nil, 0) // return a no-op handler
+		return nil, err
 	}
 	return cfg.NewRetryHandler()
 }
@@ -86,30 +74,30 @@ func (r *RetryPolicyGenericConfig) CleanCache() {
 	r.cache = nil
 }
 
-func (r *RetryPolicyGenericConfig) Factory() (RetryPolicyConfigurer, error) {
+func (r *RetryPolicyGenericConfig) SetCache(instance commontypes.RetryPolicyConfigurer) {
+	r.cache = instance
+}
+
+func (r *RetryPolicyGenericConfig) Factory() (commontypes.RetryPolicyConfigurer, error) {
 	if r.cache != nil {
 		return r.cache, nil
 	}
-	var cache RetryPolicyConfigurer
+	var cache commontypes.RetryPolicyConfigurer
+	var err error
 	switch r.Mode {
 	case RetryConfigModeDelays:
-		cache = &RetryDelaysConfig{
-			Delays:     r.Delays,
-			MaxRetries: r.MaxRetries,
-		}
+		cache, err = NewRetryDelaysConfig(r)
 	case RetryConfigModeBackoff:
-		cache = &RetryBackoffConfig{
-			InitialBackoff:    r.InitialBackoff,
-			MaxBackoff:        r.MaxBackoff,
-			BackoffMultiplier: r.BackoffMultiplier,
-			MaxRetries:        r.MaxRetries,
-		}
+		cache, err = NewRetryBackoffConfig(r)
 	case RetryConfigModeNoRetries:
 		cache = &RetryDelaysConfig{MaxRetries: 0}
 
 	default:
-		return nil, fmt.Errorf("%w: bad mode %s", ErrInvalidRetryConfigMode, r.Mode)
+		return nil, fmt.Errorf("%w: unknown mode %s", ErrInvalidRetryConfigMode, r.Mode)
 	}
-	r.cache = cache
+	if err != nil {
+		return nil, fmt.Errorf("failed to create retry policy config: %w", err)
+	}
+	r.SetCache(cache)
 	return cache, nil
 }
