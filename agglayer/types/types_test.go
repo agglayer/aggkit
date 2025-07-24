@@ -1354,7 +1354,6 @@ func TestCertificate_Validate(t *testing.T) {
 		sut = &ImportedBridgeExit{}
 		require.ErrorContains(t, sut.Validate(), "ImportedBridgeExit.BridgeExit not valid")
 	})
-
 }
 
 func TestBrigeExitHash(t *testing.T) {
