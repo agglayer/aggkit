@@ -2,7 +2,6 @@ package sync
 
 import (
 	"log"
-	"sync"
 	"time"
 )
 
@@ -26,13 +25,4 @@ func (h *RetryHandler) Handle(funcName string, attempts int) {
 		)
 	}
 	time.Sleep(h.RetryAfterErrorPeriod)
-}
-
-func UnhaltIfAffectedRows(halted *bool, haltedReason *string, mu *sync.RWMutex, rowsAffected int64) {
-	if rowsAffected > 0 {
-		mu.Lock()
-		defer mu.Unlock()
-		*halted = false
-		*haltedReason = ""
-	}
 }
