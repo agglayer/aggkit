@@ -25,11 +25,6 @@ func timeNowUTCForTest() uint32 {
 func Test_GeneratePreBuildParams(t *testing.T) {
 	t.Parallel()
 
-	SetTimeNowFunc(timeNowUTCForTest)
-	t.Cleanup(func() {
-		SetTimeNowFunc(TimeNowUTC)
-	})
-
 	testCases := []struct {
 		name           string
 		certType       types.CertificateType
@@ -118,6 +113,9 @@ func Test_GeneratePreBuildParams(t *testing.T) {
 				nil, // lerQuerier
 				NewCommonBuildConfig(0, 0, false),
 			)
+			bl, ok := builder.(*commonParamsBuilder)
+			require.True(t, ok, "builder should be of type *commonParamsBuilder")
+			bl.timeNowFunc = timeNowUTCForTest
 
 			result, err := builder.GeneratePreBuildParams(t.Context(), tc.certType)
 
@@ -137,11 +135,6 @@ func Test_GeneratePreBuildParams(t *testing.T) {
 
 func Test_GenerateBuildParams(t *testing.T) {
 	t.Parallel()
-
-	SetTimeNowFunc(timeNowUTCForTest)
-	t.Cleanup(func() {
-		SetTimeNowFunc(TimeNowUTC)
-	})
 
 	testCases := []struct {
 		name           string
@@ -237,6 +230,9 @@ func Test_GenerateBuildParams(t *testing.T) {
 				nil, // lerQuerier
 				NewCommonBuildConfig(0, 0, false),
 			)
+			bl, ok := builder.(*commonParamsBuilder)
+			require.True(t, ok, "builder should be of type *commonParamsBuilder")
+			bl.timeNowFunc = timeNowUTCForTest
 
 			result, err := builder.GenerateBuildParams(t.Context(), tc.preParams)
 
@@ -378,7 +374,7 @@ func Test_LimitCertSize(t *testing.T) {
 	}
 }
 
-func Test_GetNewLocalExitRootForCert(t *testing.T) {
+func Test_GetNewLocalExitRoot(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -453,7 +449,7 @@ func Test_GetNewLocalExitRootForCert(t *testing.T) {
 			}
 
 			ctx := context.TODO()
-			result, err := builder.GetNewLocalExitRootForCert(ctx, tt.certParams)
+			result, err := builder.GetNewLocalExitRoot(ctx, tt.certParams)
 
 			if tt.expectedError != "" {
 				require.Error(t, err)
@@ -468,11 +464,6 @@ func Test_GetNewLocalExitRootForCert(t *testing.T) {
 
 func Test_GetCommonCertificateBuildParams(t *testing.T) {
 	t.Parallel()
-
-	SetTimeNowFunc(timeNowUTCForTest)
-	t.Cleanup(func() {
-		SetTimeNowFunc(TimeNowUTC)
-	})
 
 	type mocksSetup struct {
 		storage           *mocks.AggSenderStorage
@@ -571,6 +562,10 @@ func Test_GetCommonCertificateBuildParams(t *testing.T) {
 				m.lerQuerier,
 				cfg,
 			)
+			bl, ok := builder.(*commonParamsBuilder)
+			require.True(t, ok, "builder should be of type *commonParamsBuilder")
+			bl.timeNowFunc = timeNowUTCForTest
+
 			result, err := builder.GetCommonCertificateBuildParams(context.Background(), tt.certType)
 			if tt.expectedError != "" {
 				require.Error(t, err)
@@ -697,7 +692,7 @@ func Test_getNextHeightAndPreviousLER(t *testing.T) {
 			name:           "no last sent certificate - zero start LER",
 			lastSentCert:   nil,
 			expectedHeight: 0,
-			expectedLER:    emptyLER,
+			expectedLER:    EmptyLER,
 			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
 				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(aggkitcommon.ZeroHash, nil)
 			},
@@ -760,9 +755,9 @@ func Test_getNextHeightAndPreviousLER(t *testing.T) {
 				NewLocalExitRoot:      common.HexToHash("0x789"),
 			},
 			expectedHeight: 0,
-			expectedLER:    emptyLER,
+			expectedLER:    EmptyLER,
 			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(emptyLER, nil)
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(EmptyLER, nil)
 			},
 		},
 		{

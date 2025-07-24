@@ -7,7 +7,7 @@ import (
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
-	"github.com/agglayer/aggkit/aggsender/flows"
+	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
@@ -43,6 +43,9 @@ type Config struct {
 
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`
+
+	// RollupCreationBlockL1 is the block number when the rollup was created on L1
+	RollupCreationBlockL1 uint64 `mapstructure:"RollupCreationBlockL1"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs
@@ -71,6 +74,7 @@ func NewAggchainProofGenerationTool(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2Syncer types.L2BridgeSyncer,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
+	rollupDataQuerier types.RollupDataQuerier,
 ) (*AggchainProofGenerationTool, error) {
 	if err := cfg.AggkitProverClient.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
@@ -86,23 +90,28 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
+	lerQuerier, err := query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier)
+	if err != nil {
+		return nil, fmt.Errorf("error creating LER data querier: %w", err)
+	}
+
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second)
 
-	baseFlow := flows.NewBaseFlow(
+	certBuilder := certificatebuild.NewCommonParamsBuilder(
 		logger,
-		l2BridgeQuerier,
-		nil, // storage
+		nil, // storage is not used in the tool, so we pass nil
 		l1InfoTreeQuerier,
-		nil, // lerQuerier
-		flows.NewBaseFlowConfigDefault(),
+		l2BridgeQuerier,
+		lerQuerier,
+		certificatebuild.NewCommonBuildConfigDefault(),
 	)
 	aggchainProofQuerier := query.NewAggchainProofQuery(
 		logger,
 		aggchainProofClient,
 		l1InfoTreeQuerier,
 		nil, // optimistic signer is not used in the tool, so we pass nil
-		baseFlow,
+		certBuilder,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
 	)
 

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
+	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/query"
@@ -16,7 +17,6 @@ import (
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
 	"github.com/agglayer/go_signer/signer"
 	signerTypes "github.com/agglayer/go_signer/signer/types"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -48,19 +48,19 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 	)
 	require.NoError(t, err)
 	l1InfoTreeDataQuerier := query.NewL1InfoTreeDataQuerier(mockL1EthClient, l1InfoTreeSync)
-
 	mockRollupDataQuerier := mocks.NewRollupDataQuerier(t)
-	lerQuerier, err := query.NewLERDataQuerier(common.Address{}, 1, mockRollupDataQuerier)
+	lerQuerier, err := query.NewLERDataQuerier(1, mockRollupDataQuerier)
 	require.NoError(t, err)
+
 	signer, err := signer.NewSigner(ctx, 0, signerTypes.SignerConfig{
 		Method: signerTypes.MethodMock,
 	}, "test", logger)
 	require.NoError(t, err)
 
-	cfgBase := flows.NewBaseFlowConfigDefault()
 	ppFlow := flows.NewPPFlow(
 		logger,
-		flows.NewBaseFlow(logger, l2BridgeQuerier, nil, l1InfoTreeDataQuerier, lerQuerier, cfgBase),
+		certificatebuild.NewCommonParamsBuilder(logger, nil, l1InfoTreeDataQuerier, l2BridgeQuerier, lerQuerier, certificatebuild.NewCommonBuildConfigDefault()),
+		certificatebuild.NewCommonParamsVerifier(l2BridgeQuerier, false),
 		nil, // storage
 		l1InfoTreeDataQuerier,
 		l2BridgeQuerier,

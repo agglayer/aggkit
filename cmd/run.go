@@ -19,6 +19,7 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	"github.com/agglayer/aggkit/aggoracle/chaingersender"
 	"github.com/agglayer/aggkit/aggsender"
+	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/prover"
@@ -143,6 +144,7 @@ func start(cliCtx *cli.Context) error {
 				l2Client,
 				l1InfoTreeSync,
 				l2BridgeSync,
+				rollupDataQuerier,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -196,6 +198,7 @@ func createAggchainProofGen(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
+	rollupDataQuerier *etherman.RollupDataQuerier,
 ) (*prover.AggchainProofGenerationTool, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGCHAINPROOFGEN)
 
@@ -207,6 +210,7 @@ func createAggchainProofGen(
 		l2Client,
 		l2Syncer,
 		l1InfoTreeSync,
+		rollupDataQuerier,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofGenerationTool: %w", err)
@@ -233,8 +237,7 @@ func createAggSenderValidator(ctx context.Context,
 
 	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
-	lerQuerier, err := query.NewLERDataQuerier(
-		cfg.LerQuerier.RollupManagerAddr, cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)
+	lerQuerier, err := query.NewLERDataQuerier(cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)
 	if err != nil {
 		return nil, fmt.Errorf("error creating LER data querier: %w", err)
 	}
@@ -244,19 +247,20 @@ func createAggSenderValidator(ctx context.Context,
 	}
 	flowPP := flows.NewPPFlow(
 		logger,
-		flows.NewBaseFlow(
+		certificatebuild.NewCommonParamsBuilder(
 			logger,
-			l2BridgeQuerier,
-			nil, // storage
+			nil, // storage is not used on validator
 			l1InfoTreeQuerier,
+			l2BridgeQuerier,
 			lerQuerier,
-			flows.BaseFlowConfig{
-				MaxCertSize:          cfg.MaxCertSize,
-				StartL2Block:         0,
-				RequireNoFEPBlockGap: false, //  for PP doesnt apply it
-			},
+			certificatebuild.NewCommonBuildConfig(
+				cfg.MaxCertSize,
+				0,     // on PP networks we always start from block 0
+				false, // no FEP block gap on PP networks
+			),
 		),
-		nil, // storage
+		certificatebuild.NewCommonParamsVerifier(l2BridgeQuerier, false), // no FEP block gap on PP networks
+		nil, // storage is not used on validator
 		l1InfoTreeQuerier,
 		l2BridgeQuerier,
 		signer, // we reuse the signer, but the PP signature is not use

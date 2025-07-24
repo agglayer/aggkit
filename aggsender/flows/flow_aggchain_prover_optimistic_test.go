@@ -48,7 +48,7 @@ func Test_AggchainProverFlow_getCertificateTypeToGenerate(t *testing.T) {
 			t.Parallel()
 
 			data := NewAggchainProverFlowTestData(t,
-				NewBaseFlowConfigDefault())
+				NewAggchainProverFlowConfigDefault())
 			data.mockOptimisticModeQuerier.EXPECT().IsOptimisticModeOn().Return(tc.optimisticModeReturn, tc.optimisticModeError).Once()
 			certificateType, err := data.sut.getCertificateTypeToGenerate()
 			if tc.optimisticModeError != nil {
@@ -65,7 +65,7 @@ func Test_AggchainProverFlow_getCertificateTypeToGenerate(t *testing.T) {
 // the key part of it is the call to GetCertificateBuildParamsInternal that means that are getting
 // a new block range and is not taking advantage of previous proofs
 func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *testing.T) {
-	data := NewAggchainProverFlowTestData(t, NewBaseFlowConfigDefault())
+	data := NewAggchainProverFlowTestData(t, NewAggchainProverFlowConfigDefault())
 	lastCert := &types.CertificateHeader{
 		Height:    3,
 		FromBlock: 10,
@@ -86,10 +86,10 @@ func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *
 	data.mockOptimisticModeQuerier.EXPECT().IsOptimisticModeOn().Return(false, nil).Once()
 	// then because last cert type doesnt match is going to act as a new one
 	// requesting to GetCertificateBuildParamsInternal to create a new cert
-	data.mockFlowBase.EXPECT().GetCertificateBuildParamsInternal(data.ctx, types.CertificateTypeFEP).Return(
+	data.mockParamsBuilder.EXPECT().GetCommonCertificateBuildParams(data.ctx, types.CertificateTypeFEP).Return(
 		nextCert, nil).Once()
 	// After the function verifyBuildParamsAndGenerateProof calls to baseFlow.VerifyBuildParams()
-	data.mockFlowBase.EXPECT().VerifyBuildParams(mock.Anything, mock.Anything).Return(nil).Once()
+	data.mockParamsVerifier.EXPECT().VerifyBuildParams(mock.Anything, mock.Anything).Return(nil).Once()
 	// Now calls to aggkit-prover service:
 	data.mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(mock.Anything, uint64(9), uint64(70), mock.Anything).Return(&types.AggchainProof{
 		SP1StarkProof: &types.SP1StarkProof{
@@ -106,45 +106,39 @@ func Test_AggchainProverFlow_PreviousCertNotSameTypeItRecalculateCertificate(t *
 type AggchainProverFlowTestData struct {
 	mockStorage               *mocks.AggSenderStorage
 	mockL2BridgeQuerier       *mocks.BridgeQuerier
-	mockL1InfoTreeQuerier     *mocks.L1InfoTreeDataQuerier
-	mockGERQuerier            *mocks.GERQuerier
 	mockL1Client              *aggkittypesmocks.BaseEthereumClienter
 	mockOptimisticModeQuerier *mocks.OptimisticModeQuerier
 	mockSigner                *mocks.Signer
-	mockFlowBase              *mocks.AggsenderFlowBaser
 	mockAggchainProofQuerier  *mocks.AggchainProofQuerier
+	mockParamsBuilder         *mocks.CommonCertParamsBuilder
+	mockParamsVerifier        *mocks.CommonCertParamsVerifier
 
 	ctx context.Context
 
 	sut *AggchainProverFlow
 }
 
-func NewAggchainProverFlowTestData(t *testing.T, cfgBase BaseFlowConfig) *AggchainProverFlowTestData {
+func NewAggchainProverFlowTestData(t *testing.T, cfgBase AggchainProverFlowConfig) *AggchainProverFlowTestData {
 	t.Helper()
 	res := &AggchainProverFlowTestData{
 		mockStorage:               mocks.NewAggSenderStorage(t),
 		mockL2BridgeQuerier:       mocks.NewBridgeQuerier(t),
-		mockL1InfoTreeQuerier:     mocks.NewL1InfoTreeDataQuerier(t),
-		mockGERQuerier:            mocks.NewGERQuerier(t),
 		mockL1Client:              aggkittypesmocks.NewBaseEthereumClienter(t),
 		mockOptimisticModeQuerier: mocks.NewOptimisticModeQuerier(t),
 		mockSigner:                mocks.NewSigner(t),
 		mockAggchainProofQuerier:  mocks.NewAggchainProofQuerier(t),
-		mockFlowBase:              mocks.NewAggsenderFlowBaser(t),
-		ctx:                       context.TODO(),
+		mockParamsBuilder:         mocks.NewCommonCertParamsBuilder(t),
+		mockParamsVerifier:        mocks.NewCommonCertParamsVerifier(t),
+		ctx:                       t.Context(),
 	}
-
-	// Simulate the access to baseFlow variables
-	res.mockFlowBase.EXPECT().StartL2Block().Return(cfgBase.StartL2Block).Maybe()
 
 	res.sut = NewAggchainProverFlow(
 		log.WithFields("flowManager", "AggchainProverFlowTestData"),
 		NewAggchainProverFlowConfigDefault(),
-		res.mockFlowBase,
+		res.mockParamsBuilder,
+		res.mockParamsVerifier,
 		res.mockStorage,
-		res.mockL1InfoTreeQuerier,
 		res.mockL2BridgeQuerier,
-		res.mockGERQuerier,
 		res.mockL1Client,
 		res.mockSigner,
 		res.mockOptimisticModeQuerier,

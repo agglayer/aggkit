@@ -7,6 +7,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -17,19 +18,18 @@ import (
 
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type AggchainProverFlow struct {
-	baseFlow types.AggsenderFlowBaser
+	log             types.Logger
+	cfg             AggchainProverFlowConfig
+	storage         db.AggSenderStorage
+	l2BridgeQuerier types.BridgeQuerier
 
-	log                   types.Logger
-	storage               db.AggSenderStorage
-	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-	l2BridgeQuerier       types.BridgeQuerier
-
-	gerQuerier            types.GERQuerier
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	aggchainProofQuerier  types.AggchainProofQuerier
-	config                AggchainProverFlowConfig
 	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
+
+	commonParamsBuilder  types.CommonCertParamsBuilder
+	commonParamsVerifier types.CommonCertParamsVerifier
 }
 
 func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.BaseEthereumClienter) (uint64, error) {
@@ -51,20 +51,24 @@ func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.Ba
 // AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {
 	maxL2BlockNumber uint64
+	startL2Block     uint64
 }
 
 // NewAggchainProverFlowConfigDefault returns a default configuration for the AggchainProverFlow
 func NewAggchainProverFlowConfigDefault() AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		maxL2BlockNumber: 0,
+		startL2Block:     0,
 	}
 }
 
 // NewAggchainProverFlowConfig creates a new AggchainProverFlowConfig with the given base flow config
 func NewAggchainProverFlowConfig(
-	maxL2BlockNumber uint64) AggchainProverFlowConfig {
+	maxL2BlockNumber uint64,
+	startL2Block uint64) AggchainProverFlowConfig {
 	return AggchainProverFlowConfig{
 		maxL2BlockNumber: maxL2BlockNumber,
+		startL2Block:     startL2Block,
 	}
 }
 
@@ -72,35 +76,33 @@ func NewAggchainProverFlowConfig(
 // creating it
 func NewAggchainProverFlow(
 	log types.Logger,
-	aggChainProverConfig AggchainProverFlowConfig,
-	baseFlow types.AggsenderFlowBaser,
+	cfg AggchainProverFlowConfig,
+	commonParamsBuilder types.CommonCertParamsBuilder,
+	commonParamsVerifier types.CommonCertParamsVerifier,
 	storage db.AggSenderStorage,
-	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
-	gerQuerier types.GERQuerier,
 	l1Client aggkittypes.BaseEthereumClienter,
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
 	aggchainProofQuerier types.AggchainProofQuerier,
 ) *AggchainProverFlow {
 	feature := NewMaxL2BlockNumberLimiter(
-		aggChainProverConfig.maxL2BlockNumber,
+		cfg.maxL2BlockNumber,
 		log,
 		false, // AggchainProverFlow allows to resize retry certs
 		false, // AggchainProverFlow allows to send no bridges certs
 	)
 	return &AggchainProverFlow{
 		log:                   log,
+		cfg:                   cfg,
 		storage:               storage,
-		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		l2BridgeQuerier:       l2BridgeQuerier,
-		gerQuerier:            gerQuerier,
-		config:                aggChainProverConfig,
 		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
 		aggchainProofQuerier:  aggchainProofQuerier,
-		baseFlow:              baseFlow,
 		featureMaxL2Block:     feature,
+		commonParamsBuilder:   commonParamsBuilder,
+		commonParamsVerifier:  commonParamsVerifier,
 	}
 }
 
@@ -114,7 +116,7 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 
 	// we check if there are gaps between start L2 block and last sent certificate on startup
 	// if there are gaps with bridge transactions, we can not allow the start of aggsender
-	startL2Block := a.baseFlow.StartL2Block()
+	startL2Block := a.cfg.startL2Block
 
 	// we need to wait for the syncer to catch up to the start L2 block (start FEP block)
 	// in order to check if there are any bridge transactions in the gap
@@ -122,7 +124,7 @@ func (a *AggchainProverFlow) CheckInitialStatus(ctx context.Context) error {
 		return fmt.Errorf("aggchainProverFlow - error waiting for syncer to catch up: %w", err)
 	}
 
-	if err := a.baseFlow.VerifyBlockRangeGaps(
+	if err := a.commonParamsVerifier.VerifyBlockRangeGaps(
 		ctx, lastSentCertificate, startL2Block, startL2Block); err != nil {
 		return fmt.Errorf("aggchainProverFlow - error verifying block range gaps on startup. Err: %w", err)
 	}
@@ -225,9 +227,9 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 			lastSentCert.CertType, typeCert)
 	}
 
-	buildParams, err := a.baseFlow.GetCertificateBuildParamsInternal(ctx, typeCert)
+	buildParams, err := a.commonParamsBuilder.GetCommonCertificateBuildParams(ctx, typeCert)
 	if err != nil {
-		if errors.Is(err, errNoNewBlocks) {
+		if errors.Is(err, certificatebuild.ErrNoNewBlocks) {
 			// no new blocks to send a certificate
 			// this is a valid case, so just return nil without error
 			return nil, nil
@@ -256,7 +258,7 @@ func (a *AggchainProverFlow) GetCertificateBuildParams(ctx context.Context) (*ty
 // it also calls the prover to get the aggchain proof
 func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	ctx context.Context, buildParams *types.CertificateBuildParams) (*types.CertificateBuildParams, error) {
-	if err := a.baseFlow.VerifyBuildParams(ctx, buildParams); err != nil {
+	if err := a.commonParamsVerifier.VerifyBuildParams(ctx, buildParams); err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error verifying build params: %w", err)
 	}
 
@@ -291,7 +293,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 // this function is the implementation of the FlowManager interface
 func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error) {
-	cert, err := a.baseFlow.BuildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
+	cert, err := a.commonParamsBuilder.BuildCertificate(ctx, buildParams, buildParams.LastSentCertificate, true)
 	if err != nil {
 		return nil, fmt.Errorf("aggchainProverFlow - error building certificate: %w", err)
 	}
@@ -335,20 +337,20 @@ func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificat
 		// if this is the first certificate, we need to start from the starting L2 block
 		// that we got from the sovereign rollup
 		a.log.Infof("aggchainProverFlow - getLastProvenBlock - fromBlock is 0, returns startL2Block: %d",
-			a.baseFlow.StartL2Block())
-		return a.baseFlow.StartL2Block()
+			a.cfg.startL2Block)
+		return a.cfg.startL2Block
 	}
-	if lastCertificate != nil && lastCertificate.ToBlock < a.baseFlow.StartL2Block() {
+	if lastCertificate != nil && lastCertificate.ToBlock < a.cfg.startL2Block {
 		// if the last certificate is settled on PP, the last proven block is the starting L2 block
 		a.log.Infof("aggchainProverFlow - getLastProvenBlock. Last certificate block: %d < startL2Block: %d",
-			lastCertificate.ToBlock, a.baseFlow.StartL2Block())
-		return a.baseFlow.StartL2Block()
+			lastCertificate.ToBlock, a.cfg.startL2Block)
+		return a.cfg.startL2Block
 	}
-	if fromBlock-1 < a.baseFlow.StartL2Block() {
+	if fromBlock-1 < a.cfg.startL2Block {
 		// if the fromBlock is less than the starting L2 block, we need to start from the starting L2 block
 		a.log.Infof("aggchainProverFlow - getLastProvenBlock. FromBlock: %d < startL2Block: %d",
-			fromBlock, a.baseFlow.StartL2Block())
-		return a.baseFlow.StartL2Block()
+			fromBlock, a.cfg.startL2Block)
+		return a.cfg.startL2Block
 	}
 
 	return fromBlock - 1

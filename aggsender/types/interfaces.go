@@ -30,30 +30,6 @@ type AggsenderFlow interface {
 		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
 }
 
-type AggsenderFlowBaser interface {
-	GetCertificateBuildParamsInternal(
-		ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
-	BuildCertificate(ctx context.Context,
-		certParams *CertificateBuildParams,
-		lastSentCertificate *CertificateHeader,
-		allowEmptyCert bool) (*agglayertypes.Certificate, error)
-	GetNewLocalExitRoot(ctx context.Context,
-		certParams *CertificateBuildParams) (common.Hash, error)
-	VerifyBuildParams(ctx context.Context, fullCert *CertificateBuildParams) error
-	VerifyBlockRangeGaps(
-		ctx context.Context,
-		lastSentCertificate *CertificateHeader,
-		newFromBlock, newToBlock uint64) error
-	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
-	StartL2Block() uint64
-
-	GeneratePreBuildParams(ctx context.Context,
-		certType CertificateType) (*CertificatePreBuildParams, error)
-	GenerateBuildParams(ctx context.Context,
-		preParams CertificatePreBuildParams) (*CertificateBuildParams, error)
-	LimitCertSize(certParams *CertificateBuildParams) (*CertificateBuildParams, error)
-}
-
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
 type L1InfoTreeSyncer interface {
 	GetInfoByGlobalExitRoot(globalExitRoot common.Hash) (*l1infotreesync.L1InfoTreeLeaf, error)
@@ -254,6 +230,11 @@ type CommonCertParamsBuilder interface {
 	GenerateBuildParams(ctx context.Context, preParams CertificatePreBuildParams) (*CertificateBuildParams, error)
 	GetCommonCertificateBuildParams(ctx context.Context, certType CertificateType) (*CertificateBuildParams, error)
 	LimitCertSize(certParams *CertificateBuildParams) (*CertificateBuildParams, error)
+	GetNewLocalExitRoot(ctx context.Context, certParams *CertificateBuildParams) (common.Hash, error)
+	BuildCertificate(ctx context.Context,
+		certParams *CertificateBuildParams,
+		lastSentCertificate *CertificateHeader,
+		allowEmptyCert bool) (*agglayertypes.Certificate, error)
 }
 
 // CommonCertParamsVerifier is an interface defining functions that a CommonCertParamsVerifier should implement

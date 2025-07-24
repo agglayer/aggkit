@@ -48,7 +48,7 @@ func TestGetLastLocalExitRoot(t *testing.T) {
 				tc.mockFn(mockRollupQuerier)
 			}
 
-			querier, err := NewLERDataQuerier(common.Address{}, 0, mockRollupQuerier)
+			querier, err := NewLERDataQuerier(0, mockRollupQuerier)
 			require.NoError(t, err)
 
 			result, err := querier.GetLastLocalExitRoot()

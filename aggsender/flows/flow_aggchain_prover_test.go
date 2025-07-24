@@ -11,6 +11,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/certificatebuild"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -26,18 +27,17 @@ import (
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 	t.Parallel()
-	// Set up the test context
-	ctx := context.Background()
 
 	finalizedL1Root := common.HexToHash("0x1")
+	ctx := t.Context()
 
 	testCases := []struct {
 		name   string
 		mockFn func(*mocks.AggSenderStorage,
 			*mocks.BridgeQuerier,
 			*mocks.AggchainProofQuerier,
-			*mocks.L1InfoTreeDataQuerier,
-			*mocks.GERQuerier,
+			*mocks.CommonCertParamsVerifier,
+			*mocks.CommonCertParamsBuilder,
 		)
 		expectedParams *types.CertificateBuildParams
 		expectedError  string
@@ -47,8 +47,8 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
-				mockGERQuerier *mocks.GERQuerier) {
+				mockParamsVerifier *mocks.CommonCertParamsVerifier,
+				mockParamsBuilder *mocks.CommonCertParamsBuilder) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, errors.New("some error"))
 			},
 			expectedError: "some error",
@@ -58,11 +58,10 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
-				mockGERQuerier *mocks.GERQuerier) {
+				mockParamsVerifier *mocks.CommonCertParamsVerifier,
+				mockParamsBuilder *mocks.CommonCertParamsBuilder) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{
 					Height:                  0,
 					FromBlock:               1,
@@ -80,7 +79,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
-						GlobalExitRoot:  ger,
 						MainnetExitRoot: mer,
 						RollupExitRoot:  rer,
 					}}, nil)
@@ -94,7 +92,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
-					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
@@ -118,11 +115,10 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
-				mockGERQuerier *mocks.GERQuerier) {
+				mockParamsVerifier *mocks.CommonCertParamsVerifier,
+				mockParamsBuilder *mocks.CommonCertParamsBuilder) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{
 					Height:        0,
 					FromBlock:     1,
@@ -134,11 +130,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
 					{
 						GlobalIndex:     big.NewInt(1),
-						GlobalExitRoot:  ger,
 						MainnetExitRoot: mer,
 						RollupExitRoot:  rer,
 					}}, nil)
-				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
+				mockParamsVerifier.EXPECT().VerifyBuildParams(ctx, mock.Anything).Return(nil).Once()
+				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), mock.Anything).
 					Return(&types.AggchainProof{
 						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
 						LastProvenBlock: 0,
@@ -163,7 +159,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
-					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
@@ -178,24 +173,16 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
-				mockGERQuerier *mocks.GERQuerier) {
-				rer := common.HexToHash("0x1")
-				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				mockParamsVerifier *mocks.CommonCertParamsVerifier,
+				mockParamsBuilder *mocks.CommonCertParamsBuilder) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
-				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
-					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
-				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
-					{
-						GlobalIndex:     big.NewInt(1),
-						GlobalExitRoot:  ger,
-						MainnetExitRoot: mer,
-						RollupExitRoot:  rer,
-					}}, nil)
-				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
+				mockParamsBuilder.EXPECT().GetCommonCertificateBuildParams(ctx, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
+					FromBlock:       1,
+					ToBlock:         10,
+					CertificateType: types.CertificateTypeFEP,
+				}, nil).Once()
+				mockParamsVerifier.EXPECT().VerifyBuildParams(ctx, mock.Anything).Return(nil).Once()
+				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), mock.Anything).
 					Return(nil, nil, errors.New("some error"))
 			},
 			expectedError: "aggchainProverFlow - error generating aggchain proof: some error",
@@ -205,16 +192,17 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
-				mockGERQuerier *mocks.GERQuerier) {
+				mockParamsVerifier *mocks.CommonCertParamsVerifier,
+				mockParamsBuilder *mocks.CommonCertParamsBuilder) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
-				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
-				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
-					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
+				mockParamsBuilder.EXPECT().GetCommonCertificateBuildParams(ctx, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
+					FromBlock:       1,
+					ToBlock:         10,
+					CertificateType: types.CertificateTypeFEP,
+				}, nil).Once()
+				mockParamsVerifier.EXPECT().VerifyBuildParams(ctx, mock.Anything).Return(nil).Once()
 				wrappedErr := fmt.Errorf("wrapped error: %w", query.ErrNoProofBuiltYet)
-				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
+				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(ctx, uint64(0), uint64(10), mock.Anything).
 					Return(nil, nil, wrappedErr)
 			},
 			expectedError:  "",
@@ -225,23 +213,22 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
-				mockGERQuerier *mocks.GERQuerier) {
-				rer := common.HexToHash("0x1")
-				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				mockParamsVerifier *mocks.CommonCertParamsVerifier,
+				mockParamsBuilder *mocks.CommonCertParamsBuilder) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{ToBlock: 5, Status: agglayertypes.Settled}, nil, nil).Once()
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
-				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
-					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
-				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{{
-					GlobalIndex:     big.NewInt(1),
-					GlobalExitRoot:  ger,
-					MainnetExitRoot: mer,
-					RollupExitRoot:  rer,
-				}}, nil)
-				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(5), uint64(10), mock.Anything).
+				mockParamsBuilder.EXPECT().GetCommonCertificateBuildParams(ctx, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
+					FromBlock:       6,
+					ToBlock:         10,
+					CertificateType: types.CertificateTypeFEP,
+					Bridges:         []bridgesync.Bridge{},
+					Claims:          []bridgesync.Claim{},
+					LastSentCertificate: &types.CertificateHeader{
+						ToBlock: 5,
+						Status:  agglayertypes.Settled,
+					},
+				}, nil).Once()
+				mockParamsVerifier.EXPECT().VerifyBuildParams(ctx, mock.Anything).Return(nil).Once()
+				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(ctx, uint64(5), uint64(10), mock.Anything).
 					Return(&types.AggchainProof{
 						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
 						LastProvenBlock: 6,
@@ -254,22 +241,17 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				RetryCount: 0,
 				LastSentCertificate: &types.CertificateHeader{
 					ToBlock: 5,
+					Status:  agglayertypes.Settled,
 				},
-				Bridges:             []bridgesync.Bridge{{}},
-				L1InfoTreeLeafCount: 11,
-				Claims: []bridgesync.Claim{{
-					GlobalIndex:     big.NewInt(1),
-					RollupExitRoot:  common.HexToHash("0x1"),
-					MainnetExitRoot: common.HexToHash("0x2"),
-					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
-				}},
+				Bridges:                        []bridgesync.Bridge{},
+				Claims:                         []bridgesync.Claim{},
+				L1InfoTreeLeafCount:            11,
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
 					SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
 					LastProvenBlock: 6,
 					EndBlock:        10,
 				},
-				CreatedAt:       timeNowUTCForTest(),
 				CertificateType: types.CertificateTypeFEP,
 			},
 		},
@@ -278,23 +260,27 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockFn: func(mockStorage *mocks.AggSenderStorage,
 				mockL2BridgeQuerier *mocks.BridgeQuerier,
 				mockAggchainProofQuerier *mocks.AggchainProofQuerier,
-				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier,
-				mockGERQuerier *mocks.GERQuerier) {
-				rer := common.HexToHash("0x1")
-				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				mockParamsVerifier *mocks.CommonCertParamsVerifier,
+				mockParamsBuilder *mocks.CommonCertParamsBuilder) {
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{ToBlock: 5, Status: agglayertypes.Settled}, nil, nil).Once()
-				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
-				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
-					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
-				mockL2BridgeQuerier.On("GetLastProcessedBlock", ctx).Return(uint64(10), nil)
-				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return(
-					[]bridgesync.Bridge{{BlockNum: 6}, {BlockNum: 10}},
-					[]bridgesync.Claim{
-						{BlockNum: 8, GlobalIndex: big.NewInt(1), GlobalExitRoot: ger, MainnetExitRoot: mer, RollupExitRoot: rer},
-						{BlockNum: 9, GlobalIndex: big.NewInt(2), GlobalExitRoot: ger, MainnetExitRoot: mer, RollupExitRoot: rer}},
-					nil)
-				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(5), uint64(10), mock.Anything).
+				mockParamsBuilder.EXPECT().GetCommonCertificateBuildParams(ctx, types.CertificateTypeFEP).Return(&types.CertificateBuildParams{
+					FromBlock:       6,
+					ToBlock:         10,
+					CertificateType: types.CertificateTypeFEP,
+					Bridges:         []bridgesync.Bridge{{BlockNum: 6}, {BlockNum: 10}},
+					Claims: []bridgesync.Claim{{
+						BlockNum:        8,
+						GlobalIndex:     big.NewInt(1),
+						RollupExitRoot:  common.HexToHash("0x1"),
+						MainnetExitRoot: common.HexToHash("0x2"),
+					}},
+					LastSentCertificate: &types.CertificateHeader{
+						ToBlock: 5,
+						Status:  agglayertypes.Settled,
+					},
+				}, nil).Once()
+				mockParamsVerifier.EXPECT().VerifyBuildParams(ctx, mock.Anything).Return(nil).Once()
+				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(ctx, uint64(5), uint64(10), mock.Anything).
 					Return(&types.AggchainProof{
 						SP1StarkProof:   &types.SP1StarkProof{Proof: []byte("some-proof")},
 						LastProvenBlock: 6,
@@ -308,6 +294,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				L1InfoTreeLeafCount: 11,
 				LastSentCertificate: &types.CertificateHeader{
 					ToBlock: 5,
+					Status:  agglayertypes.Settled,
 				},
 				Bridges: []bridgesync.Bridge{{BlockNum: 6}},
 				Claims: []bridgesync.Claim{{
@@ -315,7 +302,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
-					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
@@ -323,7 +309,6 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					LastProvenBlock: 6,
 					EndBlock:        8,
 				},
-				CreatedAt:       timeNowUTCForTest(),
 				CertificateType: types.CertificateTypeFEP,
 			},
 		},
@@ -337,37 +322,27 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 			mockAggchainProofQuerier := mocks.NewAggchainProofQuerier(t)
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
-			mockGERQuerier := mocks.NewGERQuerier(t)
 			mockOptimistic := mocks.NewOptimisticModeQuerier(t)
-			mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-			mockLERQuerier := mocks.NewLERQuerier(t)
 			mockSigner := mocks.NewSigner(t)
+			mockParamsBuilder := mocks.NewCommonCertParamsBuilder(t)
+			mockParamsVerifier := mocks.NewCommonCertParamsVerifier(t)
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams")
-			flowBase := NewBaseFlow(
-				logger,
-				mockL2BridgeQuerier,
-				mockStorage,
-				mockL1InfoTreeDataQuerier,
-				mockLERQuerier,
-				NewBaseFlowConfigDefault())
-			flowBase.timeNowFunc = timeNowUTCForTest
 			aggchainFlow := NewAggchainProverFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),
-				flowBase,
+				mockParamsBuilder,
+				mockParamsVerifier,
 				mockStorage,
-				mockL1InfoTreeDataQuerier,
 				mockL2BridgeQuerier,
-				mockGERQuerier,
-				nil,
+				nil, // l1Client
 				mockSigner,
 				mockOptimistic,
 				mockAggchainProofQuerier,
 			)
 			mockOptimistic.EXPECT().IsOptimisticModeOn().Return(false, nil).Maybe()
-			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockAggchainProofQuerier, mockL1InfoTreeDataQuerier, mockGERQuerier)
+			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockAggchainProofQuerier, mockParamsVerifier, mockParamsBuilder)
 
-			params, err := aggchainFlow.GetCertificateBuildParams(ctx)
+			params, err := aggchainFlow.GetCertificateBuildParams(t.Context())
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
@@ -377,9 +352,11 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 
 			mockStorage.AssertExpectations(t)
 			mockL2BridgeQuerier.AssertExpectations(t)
-			mockL1InfoTreeDataQuerier.AssertExpectations(t)
-			mockL1InfoTreeDataQuerier.AssertExpectations(t)
 			mockAggchainProofQuerier.AssertExpectations(t)
+			mockParamsBuilder.AssertExpectations(t)
+			mockParamsVerifier.AssertExpectations(t)
+			mockSigner.AssertExpectations(t)
+			mockOptimistic.AssertExpectations(t)
 		})
 	}
 }
@@ -463,22 +440,13 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 			t.Parallel()
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_GetCertificateBuildParams")
 
-			flowBase := NewBaseFlow(
-				logger,
-				nil, // l2BridgeQuerier
-				nil, // sotrage
-				nil, // l1InfoTreeDataQuerier,
-				nil, // lerQuerier
-				NewBaseFlowConfig(0, tc.startL2Block, false),
-			)
 			flow := NewAggchainProverFlow(
 				logger,
-				NewAggchainProverFlowConfigDefault(),
-				flowBase,
+				NewAggchainProverFlowConfig(0, tc.startL2Block),
+				nil, // mockParamsBuilder
+				nil, // mockParamsVerifier
 				nil, // mockStorage
-				nil, // mockL1InfoTreeDataQuerier
 				nil, // mockL2BridgeQuerier
-				nil, // mockGERQuerier
 				nil, // mockOptimistic
 				nil, // mockSigner
 				nil, // optimisticModeQuerier
@@ -499,16 +467,15 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		mockFn         func(*mocks.BridgeQuerier, *mocks.LERQuerier, *mocks.Signer)
+		mockFn         func(*mocks.CommonCertParamsBuilder, *mocks.Signer)
 		buildParams    *types.CertificateBuildParams
 		expectedError  string
 		expectedResult *agglayertypes.Certificate
 	}{
 		{
 			name: "error building certificate",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier, mockSigner *mocks.Signer) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(emptyLER, nil)
-				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(common.Hash{}, errors.New("some error"))
+			mockFn: func(mockParamsBuilder *mocks.CommonCertParamsBuilder, mockSigner *mocks.Signer) {
+				mockParamsBuilder.EXPECT().BuildCertificate(ctx, mock.Anything, mock.Anything, true).Return(nil, errors.New("build error")).Once()
 			},
 			buildParams: &types.CertificateBuildParams{
 				FromBlock:                      1,
@@ -517,15 +484,23 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				Claims:                         []bridgesync.Claim{},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 			},
-			expectedError: "error getting exit root by index",
+			expectedError: "aggchainProverFlow - error building certificate",
 		},
 		{
 			name: "success building certificate",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier, mockSigner *mocks.Signer) {
-				mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
+			mockFn: func(mockParamsBuilder *mocks.CommonCertParamsBuilder, mockSigner *mocks.Signer) {
+				mockParamsBuilder.EXPECT().BuildCertificate(ctx, mock.Anything, mock.Anything, true).Return(&agglayertypes.Certificate{
+					NetworkID:           1,
+					Height:              0,
+					NewLocalExitRoot:    certificatebuild.EmptyLER,
+					Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix()), types.CertificateTypeFEP.ToInt()).ToHash(),
+					BridgeExits:         []*agglayertypes.BridgeExit{},
+					ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
+					PrevLocalExitRoot:   certificatebuild.EmptyLER,
+					L1InfoTreeLeafCount: 0,
+				}, nil).Once()
 				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0x123"))
 				mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil)
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(emptyLER, nil)
 			},
 			buildParams: &types.CertificateBuildParams{
 				FromBlock:                      1,
@@ -554,12 +529,12 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			expectedResult: &agglayertypes.Certificate{
 				NetworkID:           1,
 				Height:              0,
-				NewLocalExitRoot:    emptyLER,
+				NewLocalExitRoot:    certificatebuild.EmptyLER,
 				CustomChainData:     []byte("some-data"),
 				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix()), types.CertificateTypeFEP.ToInt()).ToHash(),
 				BridgeExits:         []*agglayertypes.BridgeExit{},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
-				PrevLocalExitRoot:   emptyLER,
+				PrevLocalExitRoot:   certificatebuild.EmptyLER,
 				L1InfoTreeLeafCount: 0,
 				AggchainData: &agglayertypes.AggchainDataProof{
 					Proof:          []byte("some-proof"),
@@ -581,27 +556,18 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			t.Parallel()
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_BuildCertificate")
 			mockSigner := mocks.NewSigner(t)
-			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
-			mockLERQuerier := mocks.NewLERQuerier(t)
+			mockParamsBuilder := mocks.NewCommonCertParamsBuilder(t)
 			if tc.mockFn != nil {
-				tc.mockFn(mockL2BridgeQuerier, mockLERQuerier, mockSigner)
+				tc.mockFn(mockParamsBuilder, mockSigner)
 			}
-			flowBase := NewBaseFlow(
-				logger,
-				mockL2BridgeQuerier,
-				nil, // mockStorage
-				nil, // mockL1InfoTreeDataQuerier
-				mockLERQuerier,
-				NewBaseFlowConfigDefault(),
-			)
+
 			aggchainFlow := NewAggchainProverFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),
-				flowBase,
+				mockParamsBuilder,
+				nil, // mockParamsVerifier
 				nil, // mockStorage
-				nil, // mockL1InfoTreeDataQuerier
-				mockL2BridgeQuerier,
-				nil, // mockGERQuerier
+				nil, // mockL2BridgeQuerier
 				nil, // mockOptimistic
 				mockSigner,
 				nil, // optimisticModeQuerier
@@ -616,6 +582,9 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				require.NotNil(t, certificate)
 				require.Equal(t, tc.expectedResult, certificate)
 			}
+
+			mockSigner.AssertExpectations(t)
+			mockParamsBuilder.AssertExpectations(t)
 		})
 	}
 }
@@ -696,9 +665,10 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 	testCases := []struct {
 		name                 string
 		requireNoFEPBlockGap bool
+		startL2Block         uint64
 		mockFn               func(
 			mockStorage *mocks.AggSenderStorage,
-			mockBaseFlow *mocks.AggsenderFlowBaser,
+			mockBaseFlow *mocks.CommonCertParamsVerifier,
 			mockL2BridgeSyncer *mocks.BridgeQuerier,
 		)
 		expectedError string
@@ -707,7 +677,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 			name: "error getting last sent certificate",
 			mockFn: func(
 				mockStorage *mocks.AggSenderStorage,
-				mockBaseFlow *mocks.AggsenderFlowBaser,
+				mockBaseFlow *mocks.CommonCertParamsVerifier,
 				mockL2BridgeSyncer *mocks.BridgeQuerier,
 			) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, errors.New("db error")).Once()
@@ -715,29 +685,29 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 			expectedError: "aggchainProverFlow - error getting last sent certificate: db error",
 		},
 		{
-			name: "error waiting for syncer to catch up",
+			name:         "error waiting for syncer to catch up",
+			startL2Block: 15,
 			mockFn: func(
 				mockStorage *mocks.AggSenderStorage,
-				mockBaseFlow *mocks.AggsenderFlowBaser,
+				mockBaseFlow *mocks.CommonCertParamsVerifier,
 				mockL2BridgeSyncer *mocks.BridgeQuerier,
 			) {
 				lastCert := &types.CertificateHeader{ToBlock: 10}
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
-				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(15)).Once()
 				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(15)).Return(errors.New("sync error")).Once()
 			},
 			expectedError: "aggchainProverFlow - error waiting for syncer to catch up: sync error",
 		},
 		{
-			name: "error verifying block range gaps - has bridge transactions in gap",
+			name:         "error verifying block range gaps - has bridge transactions in gap",
+			startL2Block: 15,
 			mockFn: func(
 				mockStorage *mocks.AggSenderStorage,
-				mockBaseFlow *mocks.AggsenderFlowBaser,
+				mockBaseFlow *mocks.CommonCertParamsVerifier,
 				mockL2BridgeSyncer *mocks.BridgeQuerier,
 			) {
 				lastCert := &types.CertificateHeader{ToBlock: 10}
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
-				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(15)).Once()
 				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(15)).Return(nil).Once()
 				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(15), uint64(15)).
 					Return(errors.New("gap error")).Once()
@@ -746,15 +716,15 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 		},
 		{
 			name:                 "success ",
+			startL2Block:         11,
 			requireNoFEPBlockGap: true,
 			mockFn: func(
 				mockStorage *mocks.AggSenderStorage,
-				mockBaseFlow *mocks.AggsenderFlowBaser,
+				mockBaseFlow *mocks.CommonCertParamsVerifier,
 				mockL2BridgeSyncer *mocks.BridgeQuerier,
 			) {
 				lastCert := &types.CertificateHeader{ToBlock: 10}
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(lastCert, nil).Once()
-				mockBaseFlow.EXPECT().StartL2Block().Return(uint64(11)).Once()
 				mockL2BridgeSyncer.EXPECT().WaitForSyncerToCatchUp(ctx, uint64(11)).Return(nil).Once()
 				mockBaseFlow.EXPECT().VerifyBlockRangeGaps(ctx, lastCert, uint64(11), uint64(11)).
 					Return(nil).Once()
@@ -767,18 +737,19 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			mockStorage := mocks.NewAggSenderStorage(t)
-			mockBaseFlow := mocks.NewAggsenderFlowBaser(t)
+			mockParamsVerifier := mocks.NewCommonCertParamsVerifier(t)
 			mockL2BridgeSyncer := mocks.NewBridgeQuerier(t)
 			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_CheckInitialStatus")
 
 			flow := &AggchainProverFlow{
-				log:             logger,
-				storage:         mockStorage,
-				baseFlow:        mockBaseFlow,
-				l2BridgeQuerier: mockL2BridgeSyncer,
+				log:                  logger,
+				storage:              mockStorage,
+				commonParamsVerifier: mockParamsVerifier,
+				l2BridgeQuerier:      mockL2BridgeSyncer,
+				cfg:                  NewAggchainProverFlowConfig(0, tc.startL2Block),
 			}
 
-			tc.mockFn(mockStorage, mockBaseFlow, mockL2BridgeSyncer)
+			tc.mockFn(mockStorage, mockParamsVerifier, mockL2BridgeSyncer)
 
 			err := flow.CheckInitialStatus(ctx)
 			if tc.expectedError != "" {
@@ -788,7 +759,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 			}
 
 			mockStorage.AssertExpectations(t)
-			mockBaseFlow.AssertExpectations(t)
+			mockParamsVerifier.AssertExpectations(t)
 			mockL2BridgeSyncer.AssertExpectations(t)
 		})
 	}

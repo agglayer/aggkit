@@ -23,7 +23,6 @@ type lerDataQuerier struct {
 // It initializes the RollupManager contract using the provided address and Ethereum client.
 //
 // Parameters:
-//   - rollupManagerAddr: The Ethereum address of the RollupManager contract.
 //   - l1GenesisBlock: The block number of the Layer 1 genesis block.
 //   - l1Client: An implementation of BaseEthereumClienter for interacting with the Ethereum network.
 //
@@ -31,7 +30,6 @@ type lerDataQuerier struct {
 //   - types.LERQuerier: An initialized LERQuerier for querying rollup data.
 //   - error: An error if the RollupManager contract could not be created.
 func NewLERDataQuerier(
-	rollupManagerAddr common.Address,
 	l1GenesisBlock uint64,
 	rollupDataQuerier types.RollupDataQuerier) (types.LERQuerier, error) {
 	return &lerDataQuerier{

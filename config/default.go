@@ -249,6 +249,7 @@ Port = 9091
 [AggchainProofGen]
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
 		MinConnectTimeout = "5s"

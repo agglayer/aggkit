@@ -146,14 +146,13 @@ func TestGetRPCServices(t *testing.T) {
 }
 
 func TestNewAggchainProofGenerationTool(t *testing.T) {
-	mockL2Syncer := mocks.NewL2BridgeSyncer(t)
 	mockL1Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 	mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
 	mockL1Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL1Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL2Client.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
 	mockL2Client.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Maybe()
-	_, err := NewAggchainProofGenerationTool(context.TODO(), log.WithFields("module", "test"),
-		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, mockL2Syncer, nil)
+	_, err := NewAggchainProofGenerationTool(t.Context(), log.WithFields("module", "test"),
+		Config{AggkitProverClient: aggkitgrpc.DefaultConfig()}, mockL1Client, mockL2Client, nil, nil, nil)
 	require.Error(t, err)
 }
