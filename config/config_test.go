@@ -148,6 +148,10 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[BridgeL1Sync]
 	BlockFinality = "LatestBlock"
 
+	[ReorgDetectorL1]
+	DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
+	FinalizedBlock = "FinalizedBlock"
+
 	[Etherman]
 	URL = "{{L1URL}}"
 	ForkIDChunkSize = 100
@@ -187,4 +191,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, l1InfoTreeSyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, bridgeL1SyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
+	require.ErrorContains(t, err, reorgDetectorL1DeprecatedHint)
 }

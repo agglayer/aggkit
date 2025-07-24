@@ -69,6 +69,7 @@ const (
 	l1InfoTreeSyncBlockFinalityDeprecated = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
 	bridgeL1SyncBlockFinalityDeprecated   = "BridgeL1Sync.BlockFinality is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint      = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
+	reorgDetectorL1DeprecatedHint         = "ReorgDetectorL1 is deprecated, remove it from configuration"
 )
 
 type DeprecatedFieldsError struct {
@@ -197,6 +198,10 @@ var (
 		{
 			FieldNamePattern: "L1NetworkConfig.URL",
 			Reason:           l1NetworkConfigURLDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "ReorgDetectorL1",
+			Reason:           reorgDetectorL1DeprecatedHint,
 		},
 	}
 )
