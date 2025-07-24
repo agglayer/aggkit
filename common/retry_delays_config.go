@@ -6,15 +6,21 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 )
 
+var _ RetryPolicyConfigurer = (*RetryDelaysConfig)(nil)
+
+// RetryDelaysConfig defines the configuration for retry delays.
 type RetryDelaysConfig struct {
-	Delays []types.Duration `mapstructure:"Delays"`
 	// MaxRetries is the maximum number of retries to attempt.
 	// if MaxRetries is -1, it means infinite retries.
 	// if MaxRetries is 0, it means no retries will be attempted.
 	MaxRetries int `mapstructure:"MaxRetries"`
+	// Delays is a list of durations to wait before each retry.
+	// if there are more attempts that item o the list is used the last one
+	Delays []types.Duration `mapstructure:"Delays"`
 }
 
-func (r *RetryDelaysConfig) RetryHandler() *RetryHandler {
+// RetryHandler returns a object that implements the logic
+func (r *RetryDelaysConfig) NewRetryHandler() *RetryHandler {
 	return NewRetryHandler(r.Delays, r.MaxRetries)
 }
 

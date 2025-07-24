@@ -18,27 +18,32 @@ var (
 	ErrInvalidRetryConfigMode = fmt.Errorf("invalid retry config mode")
 )
 
-type RetryPolicyConfig struct {
+// RetryPolicyGenericConfig defines the configuration for retry policies in the system.
+// it's a merge of struct RetryBackoffConfig and RetryDelaysConfig in order of
+// simplify reading from config file (check types)
+type RetryPolicyGenericConfig struct {
+	Mode              RetryConfigMode // "delays", "backoff", or "" for no retries
 	MaxRetries        int
+	Delays            []types.Duration
 	InitialBackoff    types.Duration
 	MaxBackoff        types.Duration
 	BackoffMultiplier float64
-	Delays            []types.Duration
-	Mode              RetryConfigMode
 }
 
-type RetryHandlerConfigurer interface {
+// RetryPolicyConfigurer is an interface that defines methods for configuring retry policies.
+// Each class that implements a retry policy configuration should implement this interface.
+type RetryPolicyConfigurer interface {
 	// Validate configuration
 	Validate() error
-	// RetryHandler returns a RetryHandler based on the configuration
-	RetryHandler() *RetryHandler
+	// NewRetryHandler returns a RetryHandler based on the configuration
+	NewRetryHandler() *RetryHandler
 	// String returns a string representation of the configuration
 	String() string
 	// Brief is a brief string representation of the object
 	Brief() string
 }
 
-func (r *RetryPolicyConfig) Validate() error {
+func (r *RetryPolicyGenericConfig) Validate() error {
 	cfg, err := r.Factory()
 	if err != nil {
 		return err
@@ -46,7 +51,7 @@ func (r *RetryPolicyConfig) Validate() error {
 	return cfg.Validate()
 }
 
-func (r *RetryPolicyConfig) String() string {
+func (r *RetryPolicyGenericConfig) String() string {
 	cfg, err := r.Factory()
 	if err != nil {
 		return fmt.Sprintf("RetryPolicyConfig{Error: %s}", err)
@@ -57,7 +62,7 @@ func (r *RetryPolicyConfig) String() string {
 	return fmt.Sprintf("RetryPolicyConfig{Mode: %s, Config: %s}", r.Mode, cfg.String())
 }
 
-func (r *RetryPolicyConfig) Factory() (RetryHandlerConfigurer, error) {
+func (r *RetryPolicyGenericConfig) Factory() (RetryPolicyConfigurer, error) {
 	switch r.Mode {
 	case RetryConfigModeDelays:
 		return &RetryDelaysConfig{

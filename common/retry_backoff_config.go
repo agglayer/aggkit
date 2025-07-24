@@ -8,6 +8,8 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 )
 
+var _ RetryPolicyConfigurer = (*RetryBackoffConfig)(nil)
+
 type RetryBackoffConfig struct {
 	InitialBackoff    types.Duration
 	MaxBackoff        types.Duration
@@ -15,7 +17,7 @@ type RetryBackoffConfig struct {
 	MaxRetries        int
 }
 
-func (r *RetryBackoffConfig) RetryHandler() *RetryHandler {
+func (r *RetryBackoffConfig) NewRetryHandler() *RetryHandler {
 	// TODO: check that implementation
 	delays := []types.Duration{}
 	for attempt := range r.MaxRetries {

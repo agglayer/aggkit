@@ -90,7 +90,7 @@ type Config struct {
 	// ValidatorClient is the configuration for the ValidatorClient
 	ValidatorClient *grpc.ClientConfig `mapstructure:"ValidatorClient"`
 	// RetriesToBuildAndSendCertificate is the configuration for the retries to build and send a certificate
-	RetriesToBuildAndSendCertificate common.RetryPolicyConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
+	RetriesToBuildAndSendCertificate common.RetryPolicyGenericConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
