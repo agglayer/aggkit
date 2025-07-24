@@ -22,12 +22,14 @@ func NewRetryBackoffConfig(cfg *RetryPolicyGenericConfig) (commontypes.RetryPoli
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: cannot create RetryBackoffConfig from nil", ErrInvalidConfig)
 	}
-	return &RetryBackoffConfig{
+
+	res := &RetryBackoffConfig{
 		InitialBackoff:    cfg.InitialBackoff,
 		MaxBackoff:        cfg.MaxBackoff,
 		BackoffMultiplier: cfg.BackoffMultiplier,
 		MaxRetries:        cfg.MaxRetries,
-	}, nil
+	}
+	return res, res.Validate()
 }
 
 func (r *RetryBackoffConfig) NewRetryHandler() (commontypes.RetryHandler, error) {

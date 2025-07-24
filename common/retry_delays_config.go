@@ -25,10 +25,11 @@ func NewRetryDelaysConfig(cfg *RetryPolicyGenericConfig) (commontypes.RetryPolic
 	if cfg == nil {
 		return nil, fmt.Errorf("%w: cannot create RetryDelaysConfig from nil", ErrInvalidConfig)
 	}
-	return &RetryDelaysConfig{
+	res := &RetryDelaysConfig{
 		Delays:     cfg.Delays,
 		MaxRetries: cfg.MaxRetries,
-	}, nil
+	}
+	return res, res.Validate()
 }
 
 // RetryHandler returns a object that implements the logic
