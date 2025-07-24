@@ -114,6 +114,9 @@ func Execute[T any](retryHandler commontypes.RetryHandler,
 	name string,
 	payloadFunc func() (T, error)) (T, error) {
 	var zero T
+	if retryHandler == nil {
+		retryHandler = NewRetryHandler(nil, 0) // no retries
+	}
 	if err := retryHandler.Validate(); err != nil {
 		return zero, err
 	}

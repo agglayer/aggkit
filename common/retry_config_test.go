@@ -49,7 +49,7 @@ func TestRetryPolicyGenericConfig_Brief(t *testing.T) {
 		mockCfg := mocks.NewRetryPolicyConfigurer(t)
 		sut.SetCache(mockCfg)
 		mockCfg.EXPECT().Brief().Return("mock brief")
-		require.Equal(t, " /mock brief", sut.Brief())
+		require.Equal(t, "/mock brief", sut.Brief())
 	})
 	t.Run("Brief factory error", func(t *testing.T) {
 		sut := &RetryPolicyGenericConfig{
@@ -90,7 +90,7 @@ func TestRetryPolicyGenericConfig_Cache(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, mockCfg, i)
 		sut.CleanCache()
-		i, err = sut.Factory()
+		_, err = sut.Factory()
 		require.Error(t, err)
 	})
 }
