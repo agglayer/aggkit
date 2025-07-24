@@ -16,7 +16,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/lastgersync"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
@@ -68,6 +68,8 @@ const (
 	aggOracleBlockFinalityDeprecated      = "AggOracle.BlockFinality is deprecated, remove it from configuration"
 	l1InfoTreeSyncBlockFinalityDeprecated = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
 	bridgeL1SyncBlockFinalityDeprecated   = "BridgeL1Sync.BlockFinality is deprecated, remove it from configuration"
+	lastGERSyncDeprecatedHint             = "LastGERSync is deprecated, use L2GERSync instead"
+	lastGERSyncSyncModeDeprecatedHint     = "LastGERSync.SyncMode is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint      = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
 )
 
@@ -195,6 +197,14 @@ var (
 			Reason:           bridgeL1SyncBlockFinalityDeprecated,
 		},
 		{
+			FieldNamePattern: "LastGERSync.SyncMode",
+			Reason:           lastGERSyncSyncModeDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "LastGERSync",
+			Reason:           lastGERSyncDeprecatedHint,
+		},
+		{
 			FieldNamePattern: "L1NetworkConfig.URL",
 			Reason:           l1NetworkConfigURLDeprecatedHint,
 		},
@@ -241,9 +251,9 @@ type Config struct {
 	// BridgeL2Sync is the configuration for the synchronizer of the bridge of the L2
 	BridgeL2Sync bridgesync.Config
 
-	// LastGERSync is the config for the synchronizer in charge of syncing the last GER injected on L2.
+	// L2GERSync is the config for the synchronizer in charge of syncing the GER injected on L2.
 	// Needed for the bridge service (RPC)
-	LastGERSync lastgersync.Config
+	L2GERSync l2gersync.Config
 
 	// AggSender is the configuration of the agg sender service
 	AggSender aggsendercfg.Config

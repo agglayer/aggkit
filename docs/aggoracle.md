@@ -4,7 +4,7 @@
 
 The **AggOracle** component ensures the **Global Exit Root (GER)** is propagated from L1 to the L2 sovereign chain smart contract. This is critical for enabling asset and message bridging between chains.
 
-The GER is indexed from the smart contract by **LastGERSyncer** component and persisted in local storage.
+The GER is indexed from the smart contract by **L2GERSyncer** component and persisted in local storage.
 
 ### Key Components:
 
@@ -33,7 +33,7 @@ The **Global Exit Root** consolidates:
 3. **Inject GER**:
     - If missing, AggOracle submits the GER via the `insertGlobalExitRoot` function.
 4. **Sync Locally**:
-    - LastGERSyncer fetches and stores the GER locally for downstream use.
+    - L2GERSyncer fetches and stores the GER locally for downstream use.
 
 The sequence diagram below depicts the interaction in the AggOracle.
 
