@@ -274,7 +274,7 @@ func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayerty
 	if err != nil {
 		return nil, fmt.Errorf("error creating retry config: %w", err)
 	}
-	retryHandler := retryCfg.RetryHandler()
+	retryHandler := retryCfg.NewRetryHandler()
 	cert, err := aggkitcommon.Execute(retryHandler,
 		ctx,
 		a.log.Infof,
