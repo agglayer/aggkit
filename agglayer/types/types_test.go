@@ -1265,7 +1265,7 @@ func TestCertificate_Validate(t *testing.T) {
 		cert := Certificate{
 			ImportedBridgeExits: []*ImportedBridgeExit{nil},
 		}
-		require.ErrorContains(t, cert.Validate(), "importedBridge is nil")
+		require.ErrorContains(t, cert.Validate(), "ImportedBridgeExit is nil")
 	})
 	t.Run("fails globalIndex nil", func(t *testing.T) {
 		cert := Certificate{
