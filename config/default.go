@@ -204,7 +204,7 @@ RequireValidatorCall = false
 	[AggSender.AgglayerClient]
 		Cached = false
 		[AggSender.AgglayerClient.ConfigurationCache]
-			TTL = "15m"
+			TTL = "5m"
 			Capacity = 100
 		[AggSender.AgglayerClient.GRPC]
 			URL = "{{AggLayerURL}}"
@@ -276,7 +276,7 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 [Validator.AgglayerClient]
 	Cached = true
 	[Validator.AgglayerClient.ConfigurationCache]
-		TTL = "15m"
+		TTL = "5m"
 		Capacity = 100
 	[Validator.AgglayerClient.GRPC]
 		URL = "{{AggSender.AgglayerClient.GRPC.URL}}"
