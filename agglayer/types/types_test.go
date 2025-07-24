@@ -44,6 +44,34 @@ func TestBridgeExit_Hash(t *testing.T) {
 		bridge.Hash().String(), "metadata is nil and it's empty,use it")
 }
 
+func TestBridgeExit_Validate(t *testing.T) {
+	t.Run("bridgeExit bad leaftype", func(t *testing.T) {
+		bridgeExit := &BridgeExit{
+			LeafType: 5,
+			TokenInfo: &TokenInfo{
+				OriginNetwork:      0,
+				OriginTokenAddress: common.HexToAddress("0x1234"),
+			},
+			DestinationNetwork: 1,
+			DestinationAddress: common.HexToAddress("0x1234"),
+		}
+		require.ErrorContains(t, bridgeExit.Validate(), "bridgeExit leaf type 5 is invalid")
+	})
+	t.Run("bridgeExit amount negative", func(t *testing.T) {
+		bridgeExit := &BridgeExit{
+			LeafType: 1,
+			TokenInfo: &TokenInfo{
+				OriginNetwork:      0,
+				OriginTokenAddress: common.HexToAddress("0x1234"),
+			},
+			DestinationNetwork: 1,
+			DestinationAddress: common.HexToAddress("0x1234"),
+			Amount:             big.NewInt(-100),
+		}
+		require.ErrorContains(t, bridgeExit.Validate(), "bridgeExit amount -100 is negative")
+	})
+}
+
 func TestGenericError_Error(t *testing.T) {
 	t.Parallel()
 
@@ -624,6 +652,16 @@ func TestBridgeExit_String(t *testing.T) {
 				Metadata:           []byte{0xff, 0xee, 0xdd},
 			},
 			expectedOutput: "LeafType: Message, DestinationNetwork: 200, DestinationAddress: 0x0000000000000000000000000000000000000001, Amount: 5000, Metadata: ffeedd, TokenInfo: nil",
+		},
+		{
+			name: "Without Amount",
+			bridgeExit: &BridgeExit{
+				LeafType:           LeafTypeMessage,
+				DestinationNetwork: 200,
+				DestinationAddress: common.HexToAddress("0x1"),
+				Metadata:           []byte{0xff, 0xee, 0xdd},
+			},
+			expectedOutput: "LeafType: Message, DestinationNetwork: 200, DestinationAddress: 0x0000000000000000000000000000000000000001, Amount: <nil>, Metadata: ffeedd, TokenInfo: nil",
 		},
 	}
 
@@ -1291,19 +1329,6 @@ func TestCertificate_Validate(t *testing.T) {
 			},
 		}
 		require.ErrorContains(t, cert.Validate(), "globalIndex is nil")
-	})
-
-	t.Run("bridgeExit bad leaftype", func(t *testing.T) {
-		bridgeExit := &BridgeExit{
-			LeafType: 5,
-			TokenInfo: &TokenInfo{
-				OriginNetwork:      0,
-				OriginTokenAddress: common.HexToAddress("0x1234"),
-			},
-			DestinationNetwork: 1,
-			DestinationAddress: common.HexToAddress("0x1234"),
-		}
-		require.ErrorContains(t, bridgeExit.Validate(), "bridgeExit leaf type 5 is invalid")
 	})
 
 	t.Run("L1InfoTreeLeaf nil", func(t *testing.T) {
