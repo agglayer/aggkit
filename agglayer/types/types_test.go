@@ -1315,7 +1315,7 @@ func TestCertificate_Validate(t *testing.T) {
 		require.NoError(t, sut.Validate())
 	})
 
-	t.Run("ClaimFromMainnnet nil", func(t *testing.T) {
+	t.Run("ClaimFromMainnnet validate", func(t *testing.T) {
 		var sut *ClaimFromMainnnet
 		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet is nil")
 		sut = &ClaimFromMainnnet{}
@@ -1324,11 +1324,13 @@ func TestCertificate_Validate(t *testing.T) {
 			ProofLeafMER:     &MerkleProof{},
 			ProofGERToL1Root: &MerkleProof{},
 		}
-		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet has nil L1Leaf")
+		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet L1Leaf error")
 		sut = &ClaimFromMainnnet{
 			ProofLeafMER:     &MerkleProof{},
 			ProofGERToL1Root: &MerkleProof{},
-			L1Leaf:           &L1InfoTreeLeaf{},
+			L1Leaf: &L1InfoTreeLeaf{
+				Inner: &L1InfoTreeLeafInner{},
+			},
 		}
 		require.NoError(t, sut.Validate())
 	})

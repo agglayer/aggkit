@@ -845,8 +845,8 @@ func (c *ClaimFromMainnnet) Validate() error {
 	if c.ProofLeafMER == nil || c.ProofGERToL1Root == nil {
 		return errors.New("ClaimFromMainnnet has nil proofs")
 	}
-	if c.L1Leaf == nil {
-		return errors.New("ClaimFromMainnnet has nil L1Leaf")
+	if err := c.L1Leaf.Validate(); err != nil {
+		return fmt.Errorf("ClaimFromMainnnet L1Leaf error: %w", err)
 	}
 	return nil
 }
