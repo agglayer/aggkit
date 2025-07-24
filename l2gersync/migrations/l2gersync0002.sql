@@ -1,5 +1,7 @@
 -- +migrate Down
-ALTER TABLE block DROP COLUMN hash;
+ALTER TABLE block
+DROP COLUMN hash;
 
 -- +migrate Up
-ALTER TABLE block ADD COLUMN hash VARCHAR;
+ALTER TABLE block
+ADD COLUMN hash VARCHAR;
