@@ -19,7 +19,7 @@ import (
 )
 
 func TestMigration0001(t *testing.T) {
-	dbPath := path.Join(t.TempDir(), "lastgersyncTest0001.sqlite")
+	dbPath := path.Join(t.TempDir(), "l2gersyncTest0001.sqlite")
 
 	err := RunMigrations(dbPath)
 	require.NoError(t, err)
@@ -68,16 +68,20 @@ func TestMigration0001(t *testing.T) {
 func TestMigrations_UpDown(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
-	const totalMigrations = 3
+	const totalMigrations = 4
 
 	migs := []types.Migration{
 		{
-			ID:  "lastgersync0001",
-			SQL: readFile(t, "lastgersync0001.sql"),
+			ID:  "l2gersync0001",
+			SQL: readFile(t, "l2gersync0001.sql"),
 		},
 		{
-			ID:  "lastgersync0002",
-			SQL: readFile(t, "lastgersync0002.sql"),
+			ID:  "l2gersync0002",
+			SQL: readFile(t, "l2gersync0002.sql"),
+		},
+		{
+			ID:  "l2gersync0003",
+			SQL: readFile(t, "l2gersync0003.sql"),
 		},
 	}
 

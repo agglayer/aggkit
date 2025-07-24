@@ -1,4 +1,4 @@
-package validator
+package converters
 
 import (
 	"testing"
@@ -11,7 +11,7 @@ import (
 
 func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 	t.Run("NilCertificate", func(t *testing.T) {
-		result, err := AgglayerCertificateHeaderToAggsender(nil)
+		result, err := ConvertAgglayerCertHeaderToAggsender(nil)
 		require.Nil(t, result)
 		require.NoError(t, err)
 	})
@@ -22,7 +22,7 @@ func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 		cert := &agglayertypes.CertificateHeader{
 			Metadata: common.Hash(badMetadata),
 		}
-		result, err := AgglayerCertificateHeaderToAggsender(cert)
+		result, err := ConvertAgglayerCertHeaderToAggsender(cert)
 		require.Nil(t, result)
 		require.ErrorContains(t, err, "unsupported certificate metadata")
 	})
@@ -33,7 +33,7 @@ func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 		cert := &agglayertypes.CertificateHeader{
 			Metadata: common.Hash(badMetadata),
 		}
-		result, err := AgglayerCertificateHeaderToAggsender(cert)
+		result, err := ConvertAgglayerCertHeaderToAggsender(cert)
 		require.Nil(t, result)
 		require.Error(t, err)
 	})
@@ -44,7 +44,7 @@ func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 		cert := &agglayertypes.CertificateHeader{
 			Metadata: common.Hash(badMetadata),
 		}
-		result, err := AgglayerCertificateHeaderToAggsender(cert)
+		result, err := ConvertAgglayerCertHeaderToAggsender(cert)
 		require.NotNil(t, result)
 		require.NoError(t, err)
 	})
@@ -52,7 +52,7 @@ func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 
 func TestAggsenderCertificateHeaderToAgglayer(t *testing.T) {
 	t.Run("NilCertificate", func(t *testing.T) {
-		result := AggsenderCertificateHeaderToAgglayer(nil, 1)
+		result := ConvertAggsenderCertHeaderToAgglayer(nil, 1)
 		require.Nil(t, result)
 	})
 
@@ -69,7 +69,7 @@ func TestAggsenderCertificateHeaderToAgglayer(t *testing.T) {
 			CreatedAt:             1234567890,
 			CertType:              types.CertificateType(1),
 		}
-		result := AggsenderCertificateHeaderToAgglayer(cert, 42)
+		result := ConvertAggsenderCertHeaderToAgglayer(cert, 42)
 		require.NotNil(t, result)
 		require.Equal(t, uint32(42), result.NetworkID)
 		require.Equal(t, cert.Height, result.Height)

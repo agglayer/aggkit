@@ -4,16 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -24,15 +24,27 @@ var (
 	emptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
+var timeNowFunc atomic.Value
+
+func init() {
+	timeNowFunc.Store(TimeNowUTC)
+}
+
+// TimeNow returns the current time as a uint32 timestamp (thread-safe).
+func TimeNow() uint32 {
+	return timeNowFunc.Load().(func() uint32)() //nolint:forcetypeassert
+}
+
+func SetTimeNowFunc(f func() uint32) {
+	timeNowFunc.Store(f)
+}
+
+// TimeNowUTC returns the current time in UTC as a uint32 timestamp.
 func TimeNowUTC() uint32 {
 	// Use a more precise time function to avoid collisions in tests
 	// and ensure that the time is always in UTC.
 	return uint32(time.Now().UTC().Unix())
 }
-
-// TimeNowFunc is a function that returns the current time in UTC.
-// It can be overridden for testing purposes.
-var TimeNowFunc = TimeNowUTC
 
 // BaseFlowConfig is a struct that holds the configuration for the base flow
 type BaseFlowConfig struct {
@@ -152,7 +164,7 @@ func (f *baseFlow) GeneratePreBuildParams(ctx context.Context,
 			L1InfoTreeRootToProve: l1InfoRoot.Hash,
 			L1InfoTreeLeafCount:   l1InfoRoot.Index + 1,
 		},
-		CreatedAt: TimeNowFunc(),
+		CreatedAt: TimeNow(),
 	}, nil
 }
 
@@ -323,66 +335,14 @@ func (f *baseFlow) getNewLocalExitRoot(
 	return exitRoot, nil
 }
 
-// convertBridgeMetadata converts the bridge metadata to a hash using crypto.Keccak256.
-// If the metadata is empty, it returns an empty array hash
-// which is basically Keccak256(nil) = 0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470.
-func convertBridgeMetadata(metadata []byte) []byte {
-	return crypto.Keccak256(metadata)
-}
-
 // ConvertClaimToImportedBridgeExit converts a claim to an ImportedBridgeExit object
 func (f *baseFlow) ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error) {
-	leafType := agglayertypes.LeafTypeAsset
-	if claim.IsMessage {
-		leafType = agglayertypes.LeafTypeMessage
-	}
-
-	bridgeExit := &agglayertypes.BridgeExit{
-		LeafType: leafType,
-		TokenInfo: &agglayertypes.TokenInfo{
-			OriginNetwork:      claim.OriginNetwork,
-			OriginTokenAddress: claim.OriginAddress,
-		},
-		DestinationNetwork: claim.DestinationNetwork,
-		DestinationAddress: claim.DestinationAddress,
-		Amount:             claim.Amount,
-		Metadata:           convertBridgeMetadata(claim.Metadata),
-	}
-
-	mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
-	if err != nil {
-		return nil, fmt.Errorf("error decoding global index: %w", err)
-	}
-
-	return &agglayertypes.ImportedBridgeExit{
-		BridgeExit: bridgeExit,
-		GlobalIndex: &agglayertypes.GlobalIndex{
-			MainnetFlag: mainnetFlag,
-			RollupIndex: rollupIndex,
-			LeafIndex:   leafIndex,
-		},
-	}, nil
+	return converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
 }
 
 // getBridgeExits converts bridges to agglayer.BridgeExit objects
 func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.BridgeExit {
-	bridgeExits := make([]*agglayertypes.BridgeExit, 0, len(bridges))
-
-	for _, bridge := range bridges {
-		bridgeExits = append(bridgeExits, &agglayertypes.BridgeExit{
-			LeafType: agglayertypes.LeafType(bridge.LeafType),
-			TokenInfo: &agglayertypes.TokenInfo{
-				OriginNetwork:      bridge.OriginNetwork,
-				OriginTokenAddress: bridge.OriginAddress,
-			},
-			DestinationNetwork: bridge.DestinationNetwork,
-			DestinationAddress: bridge.DestinationAddress,
-			Amount:             bridge.Amount,
-			Metadata:           convertBridgeMetadata(bridge.Metadata),
-		})
-	}
-
-	return bridgeExits
+	return converters.ConvertToBridgeExits(bridges)
 }
 
 // getImportedBridgeExits converts claims to agglayertypes.ImportedBridgeExit objects and calculates necessary proofs
@@ -390,84 +350,8 @@ func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context, claims []bridgesync.Claim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
-	if len(claims) == 0 {
-		// no claims to convert
-		return []*agglayertypes.ImportedBridgeExit{}, nil
-	}
-
-	importedBridgeExits := make([]*agglayertypes.ImportedBridgeExit, 0, len(claims))
-
-	for i, claim := range claims {
-		f.log.Debugf("claim[%d]: destAddr: %s GER: %s Block: %d Pos: %d GlobalIndex: 0x%x",
-			i, claim.DestinationAddress.String(), claim.GlobalExitRoot.String(),
-			claim.BlockNum, claim.BlockPos, claim.GlobalIndex)
-		ibe, err := f.ConvertClaimToImportedBridgeExit(claim)
-		if err != nil {
-			return nil, fmt.Errorf("error converting claim to imported bridge exit: %w", err)
-		}
-
-		importedBridgeExits = append(importedBridgeExits, ibe)
-
-		l1Info, gerToL1Proof, err := f.l1InfoTreeDataQuerier.GetProofForGER(ctx,
-			claim.GlobalExitRoot, rootFromWhichToProve)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"error getting L1 Info tree merkle proof for GER: %s and root: %s. Error: %w",
-				claim.GlobalExitRoot, rootFromWhichToProve, err,
-			)
-		}
-
-		if ibe.GlobalIndex.MainnetFlag {
-			ibe.ClaimData = &agglayertypes.ClaimFromMainnnet{
-				L1Leaf: &agglayertypes.L1InfoTreeLeaf{
-					L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
-					RollupExitRoot:  claim.RollupExitRoot,
-					MainnetExitRoot: claim.MainnetExitRoot,
-					Inner: &agglayertypes.L1InfoTreeLeafInner{
-						GlobalExitRoot: l1Info.GlobalExitRoot,
-						Timestamp:      l1Info.Timestamp,
-						BlockHash:      l1Info.PreviousBlockHash,
-					},
-				},
-				ProofLeafMER: &agglayertypes.MerkleProof{
-					Root:  claim.MainnetExitRoot,
-					Proof: claim.ProofLocalExitRoot,
-				},
-				ProofGERToL1Root: &agglayertypes.MerkleProof{
-					Root:  rootFromWhichToProve,
-					Proof: gerToL1Proof,
-				},
-			}
-		} else {
-			ibe.ClaimData = &agglayertypes.ClaimFromRollup{
-				L1Leaf: &agglayertypes.L1InfoTreeLeaf{
-					L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
-					RollupExitRoot:  claim.RollupExitRoot,
-					MainnetExitRoot: claim.MainnetExitRoot,
-					Inner: &agglayertypes.L1InfoTreeLeafInner{
-						GlobalExitRoot: l1Info.GlobalExitRoot,
-						Timestamp:      l1Info.Timestamp,
-						BlockHash:      l1Info.PreviousBlockHash,
-					},
-				},
-				ProofLeafLER: &agglayertypes.MerkleProof{
-					Root: tree.CalculateRoot(ibe.BridgeExit.Hash(),
-						claim.ProofLocalExitRoot, ibe.GlobalIndex.LeafIndex),
-					Proof: claim.ProofLocalExitRoot,
-				},
-				ProofLERToRER: &agglayertypes.MerkleProof{
-					Root:  claim.RollupExitRoot,
-					Proof: claim.ProofRollupExitRoot,
-				},
-				ProofGERToL1Root: &agglayertypes.MerkleProof{
-					Root:  rootFromWhichToProve,
-					Proof: gerToL1Proof,
-				},
-			}
-		}
-	}
-
-	return importedBridgeExits, nil
+	return converters.ConvertToImportedBridgeExits(
+		ctx, claims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
 }
 
 // getStartLER returns the last local exit root (LER) based on the configuration

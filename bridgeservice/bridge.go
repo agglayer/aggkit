@@ -81,7 +81,7 @@ type BridgeService struct {
 	writeTimeout time.Duration
 	networkID    uint32
 	l1InfoTree   L1InfoTreeSyncer
-	injectedGERs LastGERer
+	injectedGERs L2GERSyncer
 	bridgeL1     Bridger
 	bridgeL2     Bridger
 
@@ -92,7 +92,7 @@ type BridgeService struct {
 func New(
 	cfg *Config,
 	l1InfoTree L1InfoTreeSyncer,
-	injectedGERs LastGERer,
+	injectedGERs L2GERSyncer,
 	bridgeL1 Bridger,
 	bridgeL2 Bridger,
 ) *BridgeService {

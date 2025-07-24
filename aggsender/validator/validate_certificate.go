@@ -2,14 +2,21 @@ package validator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+)
+
+var (
+	ErrNilCertificate        = errors.New("aggsender-validator nil certificate")
+	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
 
 type FlowInterface interface {
@@ -200,7 +207,7 @@ func (a *CertificateValidator) getCertificatePreBuildParams(ctx context.Context,
 	if params.Certificate == nil {
 		return nil, fmt.Errorf("preBuildParams. Err: %w", ErrNilCertificate)
 	}
-	lastSentCertificate, err := AgglayerCertificateHeaderToAggsender(params.PreviousCertificate)
+	lastSentCertificate, err := converters.ConvertAgglayerCertHeaderToAggsender(params.PreviousCertificate)
 	if err != nil {
 		return nil, fmt.Errorf("preBuildParams. failed to convert previous certificate to Aggsender format: %w", err)
 	}
