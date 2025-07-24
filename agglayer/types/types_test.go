@@ -1356,7 +1356,7 @@ func TestCertificate_Validate(t *testing.T) {
 	})
 }
 
-func TestBrigeExitHash(t *testing.T) {
+func TestBridgeExitHash(t *testing.T) {
 	var sut *BridgeExit
 	require.Equal(t, common.Hash{}, sut.Hash())
 	var sut2 BridgeExit
@@ -1370,7 +1370,7 @@ func TestClaimFromMainnnetHash(t *testing.T) {
 	require.Equal(t, common.Hash{}, sut2.Hash())
 }
 
-func TestCClaimFromRolluptHash(t *testing.T) {
+func TestClaimFromRollupHash(t *testing.T) {
 	var sut *ClaimFromRollup
 	require.Equal(t, common.Hash{}, sut.Hash())
 	var sut2 ClaimFromRollup

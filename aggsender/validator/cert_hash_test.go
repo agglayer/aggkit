@@ -2,7 +2,6 @@ package validator
 
 import (
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -87,7 +86,6 @@ func getCertFromAggsenderDBForTest(t *testing.T) (*types.Certificate, *agglayert
 	cert, err := database.GetLastSentCertificate()
 	require.NoError(t, err)
 	var unmarshalCert *agglayertypes.Certificate
-	fmt.Println(*cert.SignedCertificate)
 	err = json.Unmarshal([]byte(*cert.SignedCertificate), &unmarshalCert)
 	require.NoError(t, err)
 	return cert, unmarshalCert
