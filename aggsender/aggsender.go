@@ -8,7 +8,7 @@ import (
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
-	zkevm "github.com/agglayer/aggkit"
+	aggkit "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/config"
@@ -20,7 +20,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -59,7 +58,7 @@ func New(
 	logger *log.Logger,
 	cfg config.Config,
 	aggLayerClient agglayer.AgglayerClientInterface,
-	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	epochNotifier types.EpochNotifier,
 	l1Client aggkittypes.BaseEthereumClienter,
@@ -139,7 +138,7 @@ func (a *AggSender) GetFlow() types.AggsenderFlow {
 func (a *AggSender) Info() types.AggsenderInfo {
 	res := types.AggsenderInfo{
 		AggsenderStatus:          *a.status,
-		Version:                  zkevm.GetVersion(),
+		Version:                  aggkit.GetVersion(),
 		EpochNotifierDescription: a.epochNotifier.String(),
 		NetworkID:                a.l2OriginNetwork,
 	}

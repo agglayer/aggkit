@@ -32,7 +32,7 @@ import (
 	"github.com/agglayer/aggkit/etherman"
 	"github.com/agglayer/aggkit/healthcheck"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/lastgersync"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
@@ -91,8 +91,8 @@ func start(cliCtx *cli.Context) error {
 	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
 		l2Client, rollupDataQuerier.RollupID)
-	lastGERSync := runLastGERSyncIfNeeded(
-		cliCtx.Context, components, cfg.LastGERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
+	l2GERSync := runL2GERSyncIfNeeded(
+		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
 	var rpcServices []jRPC.Service
 	for _, component := range components {
@@ -106,7 +106,7 @@ func start(cliCtx *cli.Context) error {
 				cfg.REST,
 				cfg.Common.NetworkID,
 				l1InfoTreeSync,
-				lastGERSync,
+				l2GERSync,
 				l1BridgeSync,
 				l2BridgeSync,
 			)
@@ -188,17 +188,18 @@ func createAggchainProofGen(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-	l2Syncer *bridgesync.BridgeSync) (*prover.AggchainProofGenerationTool, error) {
+	l2Syncer *bridgesync.BridgeSync,
+) (*prover.AggchainProofGenerationTool, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGCHAINPROOFGEN)
 
 	aggchainProofGen, err := prover.NewAggchainProofGenerationTool(
 		ctx,
 		logger,
 		cfg,
-		l2Syncer,
-		l1InfoTreeSync,
 		l1Client,
 		l2Client,
+		l2Syncer,
+		l1InfoTreeSync,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggchainProofGenerationTool: %w", err)
@@ -301,6 +302,7 @@ func createAggSender(
 	go blockNotifier.Start(ctx)
 	log.Infof("Starting epochNotifier: %s", epochNotifier.String())
 	go epochNotifier.Start(ctx)
+
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
 		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
 	if err != nil {
@@ -567,18 +569,18 @@ func runReorgDetectorL2IfNeeded(
 	return rd, errChan
 }
 
-func runLastGERSyncIfNeeded(
+func runL2GERSyncIfNeeded(
 	ctx context.Context,
 	components []string,
-	cfg lastgersync.Config,
+	cfg l2gersync.Config,
 	reorgDetectorL2 *reorgdetector.ReorgDetector,
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-) *lastgersync.LastGERSync {
+) *l2gersync.L2GERSync {
 	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) {
 		return nil
 	}
-	lastGERSync, err := lastgersync.New(
+	l2GERSync, err := l2gersync.New(
 		ctx,
 		cfg.DBPath,
 		reorgDetectorL2,
@@ -591,19 +593,14 @@ func runLastGERSyncIfNeeded(
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
-		cfg.SyncMode,
 	)
 	if err != nil {
-		log.Fatalf("error creating lastGERSync: %s", err)
+		log.Fatalf("error creating l2GERSync: %s", err)
 	}
 
-	go func() {
-		if err := lastGERSync.Start(ctx); err != nil {
-			log.Fatalf("lastGERSync failed: %s", err)
-		}
-	}()
+	go l2GERSync.Start(ctx)
 
-	return lastGERSync
+	return l2GERSync
 }
 
 func runBridgeSyncL1IfNeeded(
@@ -684,7 +681,7 @@ func createBridgeService(
 	cfg aggkitcommon.RESTConfig,
 	l2NetworkID uint32,
 	l1InfoTree bridgeservice.L1InfoTreeSyncer,
-	injectedGERs bridgeservice.LastGERer,
+	injectedGERs bridgeservice.L2GERSyncer,
 	bridgeL1 bridgeservice.Bridger,
 	bridgeL2 bridgeservice.Bridger,
 ) *bridgeservice.BridgeService {
