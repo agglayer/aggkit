@@ -57,6 +57,7 @@ func (r *RetryPolicyGenericConfig) Brief() string {
 	}
 	return fmt.Sprintf("%s/%s", r.Mode, cfg.Brief())
 }
+
 func (r *RetryPolicyGenericConfig) String() string {
 	cfg, err := r.Factory()
 	if err != nil {
