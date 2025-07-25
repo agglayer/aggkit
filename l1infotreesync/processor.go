@@ -345,7 +345,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	defer func() {
 		if shouldRollback {
 			p.log.Debugf("rolling back block processing for block %d", block.Num)
-			if errRllbck := tx.Rollback(); errRllbck != nil && !errors.Is(errRllbck, sql.ErrTxDone) {
+			if errRllbck := tx.Rollback(); errRllbck != nil {
 				p.log.Errorf("error while rolling back tx %v", errRllbck)
 			}
 		}
