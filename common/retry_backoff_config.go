@@ -35,7 +35,7 @@ func NewRetryBackoffConfig(cfg *RetryPolicyGenericConfig) (commontypes.RetryPoli
 func (r *RetryBackoffConfig) NewRetryHandler() (commontypes.RetryHandler, error) {
 	// TODO: check that implementation
 	delays := []types.Duration{}
-	for attempt := range r.MaxRetries {
+	for attempt := 0; r.MaxRetries == MaxAttemptsInfinite || attempt < r.MaxRetries; attempt++ {
 		backoff := float64(r.InitialBackoff.Duration) * math.Pow(r.BackoffMultiplier,
 			float64(attempt))
 		if backoff > float64(r.MaxBackoff.Duration) {
@@ -49,7 +49,18 @@ func (r *RetryBackoffConfig) NewRetryHandler() (commontypes.RetryHandler, error)
 }
 
 func (r *RetryBackoffConfig) Validate() error {
-	// TODO: check config
+	if r == nil {
+		return fmt.Errorf("%w: RetryBackoffConfig is nil", ErrInvalidConfig)
+	}
+	if r.MaxRetries < MaxAttemptsInfinite {
+		return fmt.Errorf("%w: RetryBackoffConfig max retries cannot %d be less than %d",
+			ErrInvalidConfig, r.MaxRetries, MaxAttemptsInfinite)
+	}
+	if r.BackoffMultiplier <= 0.0 {
+		return fmt.Errorf("%w: RetryBackoffConfig backoff multiplier must be greater than zero, got %f",
+			ErrInvalidConfig, r.BackoffMultiplier)
+	}
+
 	return nil
 }
 

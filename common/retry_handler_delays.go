@@ -14,7 +14,7 @@ var (
 	// If this error is in the returned error, it means that the function should be aborted
 	// and no more retries should be attempted.
 	ErrAbort          = fmt.Errorf("abort")
-	ErrInvalidConfig  = fmt.Errorf("invalid retry delays config")
+	ErrInvalidConfig  = fmt.Errorf("invalid config")
 	ErrExecutionFails = fmt.Errorf("execution fails after retries exceeded")
 )
 
@@ -51,9 +51,9 @@ func (r *RetryHandlerDelays) Validate() error {
 // String returns a string representation of the RetryDelays struct.
 func (r *RetryHandlerDelays) String() string {
 	if r == nil {
-		return "RetryDelays{nil}"
+		return "RetryHandlerDelays{nil}"
 	}
-	return fmt.Sprintf("RetryDelays{%s}", r.RetryDelaysConfig.String())
+	return fmt.Sprintf("RetryHandlerDelays{%s}", r.RetryDelaysConfig.String())
 }
 
 // InfiniteRetries return true if the configuration allows infinite retries.

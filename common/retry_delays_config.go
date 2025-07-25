@@ -65,7 +65,16 @@ func (r *RetryDelaysConfig) String() string {
 	if r == nil {
 		return "RetryDelaysConfig{nil}"
 	}
-	return fmt.Sprintf("RetryDelaysConfig{Delays: %v, MaxRetries: %d}", r.Delays, r.MaxRetries)
+	var maxRetriesStr string
+	switch r.MaxRetries {
+	case MaxAttemptsInfinite:
+		maxRetriesStr = "INFINTE"
+	case 0:
+		maxRetriesStr = "NO RETRIES"
+	default:
+		maxRetriesStr = fmt.Sprintf("%d", r.MaxRetries)
+	}
+	return fmt.Sprintf("RetryDelaysConfig{Delays: %v, MaxRetries: %s}", r.Delays, maxRetriesStr)
 }
 
 func (r *RetryDelaysConfig) Brief() string {

@@ -7,6 +7,7 @@ type RetryHandler interface {
 	MustExecuteAttempt(attempt int) bool
 	Delay(attempt int) time.Duration
 	StringAttempt(attempt int) string
+	String() string
 }
 
 // RetryPolicyConfigurer is an interface that defines methods for configuring retry policies.
