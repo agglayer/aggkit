@@ -8,18 +8,12 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
-	"google.golang.org/grpc/codes"
 )
-
-var errNoProofBuiltYet = &aggkitgrpc.GRPCError{
-	Code:    codes.Unavailable,
-	Message: "Proposer service has not built any proof yet",
-}
 
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type AggchainProverFlow struct {
@@ -271,7 +265,7 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 	aggchainProof, rootFromWhichToProveClaims, err := a.aggchainProofQuerier.GenerateAggchainProof(
 		ctx, lastProvenBlock, buildParams.ToBlock, buildParams)
 	if err != nil {
-		if errors.Is(err, errNoProofBuiltYet) {
+		if errors.Is(err, query.ErrNoProofBuiltYet) {
 			a.log.Infof("aggchainProverFlow - no proof built yet for lastProvenBlock: %d, maxEndBlock: %d",
 				lastProvenBlock, buildParams.ToBlock)
 			return nil, nil

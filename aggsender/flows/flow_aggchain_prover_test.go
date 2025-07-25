@@ -12,6 +12,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
@@ -212,7 +213,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
 					&treetypes.Root{Hash: common.HexToHash("0x123"), BlockNum: 10}, nil, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(1), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
-				wrappedErr := fmt.Errorf("wrapped error: %w", errNoProofBuiltYet)
+				wrappedErr := fmt.Errorf("wrapped error: %w", query.ErrNoProofBuiltYet)
 				mockAggchainProofQuerier.EXPECT().GenerateAggchainProof(context.Background(), uint64(0), uint64(10), mock.Anything).
 					Return(nil, nil, wrappedErr)
 			},

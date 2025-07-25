@@ -8,8 +8,15 @@ import (
 	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	"google.golang.org/grpc/codes"
 )
+
+var ErrNoProofBuiltYet = &grpc.GRPCError{
+	Code:    codes.Unavailable,
+	Message: "Proposer service has not built any proof yet",
+}
 
 var _ types.AggchainProofQuerier = (*aggchainProofQuery)(nil)
 
