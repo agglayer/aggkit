@@ -14,10 +14,10 @@ type RetryDelaysConfig struct {
 	// MaxRetries is the maximum number of retries to attempt.
 	// if MaxRetries is -1, it means infinite retries.
 	// if MaxRetries is 0, it means no retries will be attempted.
-	MaxRetries int `mapstructure:"MaxRetries"`
+	MaxRetries int
 	// Delays is a list of durations to wait before each retry.
 	// if there are more attempts that item o the list is used the last one
-	Delays []types.Duration `mapstructure:"Delays"`
+	Delays []types.Duration
 }
 
 // New creates a new instance of RetryDelaysConfig based on the generic retry policy configuration.
