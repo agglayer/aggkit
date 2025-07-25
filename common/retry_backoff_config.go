@@ -45,7 +45,7 @@ func (r *RetryBackoffConfig) NewRetryHandler() (commontypes.RetryHandler, error)
 		delays = append(delays, types.Duration{Duration: time.Duration(backoff)})
 	}
 
-	return NewRetryHandler(delays, r.MaxRetries), nil
+	return NewRetryHandler(delays, r.MaxRetries), r.Validate()
 }
 
 func (r *RetryBackoffConfig) Validate() error {
