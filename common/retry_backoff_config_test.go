@@ -33,21 +33,25 @@ func TestRetryBackoffConfig_NewRetryBackoffConfig(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.IsType(t, &RetryBackoffConfig{}, cfg)
+		require.Equal(t, retryBackoffConfigExample.String(), cfg.String())
 	})
 }
 
 func TestRetryBackoffConfig_NewRetryHandler(t *testing.T) {
 	t.Run("NewRetryHandler ok", func(t *testing.T) {
-		sut := retryBackoffConfigExample
-		handler, err := sut.NewRetryHandler()
+		handler, err := retryBackoffConfigExample.NewRetryHandler()
 		require.NoError(t, err)
 		require.NotNil(t, handler)
 		require.Equal(t, "RetryHandlerDelays{RetryDelaysConfig{Delays: [10ms 20ms 40ms], MaxRetries: 3}}", handler.String())
 	})
 
 	t.Run("NewRetryHandler reach MaxBackoff", func(t *testing.T) {
-		sut := retryBackoffConfigExample
-		sut.MaxRetries = 200
+		sut := RetryBackoffConfig{
+			InitialBackoff:    types.Duration{Duration: 10 * time.Millisecond},
+			MaxBackoff:        types.Duration{Duration: 100 * time.Millisecond},
+			BackoffMultiplier: 2.0,
+			MaxRetries:        200,
+		}
 		handler, err := sut.NewRetryHandler()
 		require.NoError(t, err)
 		require.NotNil(t, handler)
