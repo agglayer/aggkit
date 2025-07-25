@@ -49,6 +49,7 @@ func (r *RetryPolicyGenericConfig) NewRetryHandler() (commontypes.RetryHandler, 
 	}
 	return cfg.NewRetryHandler()
 }
+
 func (r *RetryPolicyGenericConfig) Brief() string {
 	cfg, err := r.Factory()
 	if err != nil {
