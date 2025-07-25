@@ -148,7 +148,7 @@ func Execute[T any](retryHandler commontypes.RetryHandler,
 
 		select {
 		case <-ctx.Done():
-			logFunc("executing %s try %d/%d was canceled",
+			logFunc("executing %s try %s was canceled",
 				name, retryHandler.StringAttempt(attempt))
 			return zero, ctx.Err()
 		case <-time.After(delay):
