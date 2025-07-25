@@ -29,13 +29,6 @@ import (
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 	t.Parallel()
-
-	// override TimeNowFunc for testing
-	SetTimeNowFunc(timeNowUTCForTest)
-	t.Cleanup(func() {
-		SetTimeNowFunc(TimeNowUTC)
-	})
-
 	// Set up the test context
 	ctx := context.Background()
 
@@ -508,7 +501,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeDataQuerier,
 				mockLERQuerier,
 				NewBaseFlowConfigDefault())
-
+			flowBase.timeNowFunc = timeNowUTCForTest
 			aggchainFlow := NewAggchainProverFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),
