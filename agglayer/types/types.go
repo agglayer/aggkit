@@ -531,6 +531,9 @@ func (b *BridgeExit) Validate() error {
 	if b.LeafType.Uint8() > LeafTypeMessage.Uint8() {
 		return fmt.Errorf("bridgeExit leaf type %d is invalid", b.LeafType.Uint8())
 	}
+	if b.Amount != nil && b.Amount.Sign() < 0 {
+		return fmt.Errorf("bridgeExit amount %s is negative", b.Amount.String())
+	}
 	if err := b.TokenInfo.Validate(); err != nil {
 		return fmt.Errorf("bridgeExit token info is invalid: %w", err)
 	}
@@ -845,8 +848,8 @@ func (c *ClaimFromMainnnet) Validate() error {
 	if c.ProofLeafMER == nil || c.ProofGERToL1Root == nil {
 		return errors.New("ClaimFromMainnnet has nil proofs")
 	}
-	if c.L1Leaf == nil {
-		return errors.New("ClaimFromMainnnet has nil L1Leaf")
+	if err := c.L1Leaf.Validate(); err != nil {
+		return fmt.Errorf("ClaimFromMainnnet L1Leaf error: %w", err)
 	}
 	return nil
 }
