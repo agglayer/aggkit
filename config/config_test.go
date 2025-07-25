@@ -152,7 +152,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 
 	[Etherman]
 	URL = "{{L1URL}}"
-	ForkIDChunkSize = 100
 	[Etherman.EthermanConfig]
 		URL = "{{L1URL}}"
 		MultiGasProvider = false
@@ -161,8 +160,13 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 		[Etherman.EthermanConfig.Etherscan]
 			ApiKey = ""
 			Url = "https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
+
 	[AggOracle]
 	BlockFinality = "FinalizedBlock"
+
+	[LastGERSync]
+	SyncMode = "Legacy"
+	DBPath = "{{PathRWData}}/l2gersync.sqlite"
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
@@ -188,5 +192,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, aggOracleBlockFinalityDeprecated)
 	require.ErrorContains(t, err, l1InfoTreeSyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, bridgeL1SyncBlockFinalityDeprecated)
+	require.ErrorContains(t, err, lastGERSyncDeprecatedHint)
+	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 }

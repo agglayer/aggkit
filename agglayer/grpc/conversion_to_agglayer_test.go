@@ -179,7 +179,7 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		require.NoError(t, err)
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.NotNil(t, result)
-		require.Equal(t, exampleTestAgglayerCert.Hash(), result.Hash())
+		require.Equal(t, exampleTestAgglayerCert.CertificateID(), result.CertificateID())
 		require.NoError(t, err)
 	})
 
@@ -195,7 +195,7 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		}
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.NotNil(t, result)
-		require.Equal(t, exampleTestAgglayerCert.Hash(), result.Hash())
+		require.Equal(t, exampleTestAgglayerCert.CertificateID(), result.CertificateID())
 		require.NoError(t, err)
 	})
 

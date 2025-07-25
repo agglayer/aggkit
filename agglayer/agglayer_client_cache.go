@@ -60,6 +60,8 @@ func NewCertificateCache(
 	c := ttlcache.New(
 		ttlcache.WithTTL[common.Hash, agglayertypes.CertificateHeader](ttl),
 		ttlcache.WithCapacity[common.Hash, agglayertypes.CertificateHeader](capacity),
+		// disable extension of the TTL on cache hits
+		ttlcache.WithDisableTouchOnHit[common.Hash, agglayertypes.CertificateHeader](),
 	)
 	return &AgglayerClientCache{
 		cache:          c,
@@ -82,6 +84,8 @@ func NewCertificateCache(
 //   - error: An error if the certificate header could not be retrieved.
 func (c *AgglayerClientCache) GetCertificateHeader(
 	ctx context.Context, certificateID common.Hash) (*agglayertypes.CertificateHeader, error) {
+	c.cache.DeleteExpired()
+
 	if c.cache.Has(certificateID) {
 		tmp := c.cache.Get(certificateID).Value()
 		return &tmp, nil

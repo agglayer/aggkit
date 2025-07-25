@@ -28,10 +28,15 @@ import (
 )
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
-	// override TimeNowFunc for testing
-	TimeNowFunc = timeNowUTCForTest
-	// Set up the test context
 	t.Parallel()
+
+	// override TimeNowFunc for testing
+	SetTimeNowFunc(timeNowUTCForTest)
+	t.Cleanup(func() {
+		SetTimeNowFunc(TimeNowUTC)
+	})
+
+	// Set up the test context
 	ctx := context.Background()
 
 	finalizedL1Root := common.HexToHash("0x1")

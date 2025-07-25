@@ -164,8 +164,8 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
-[LastGERSync]
-DBPath = "{{PathRWData}}/lastgersync.sqlite"
+[L2GERSync]
+DBPath = "{{PathRWData}}/l2gersync.sqlite"
 BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"
@@ -174,7 +174,6 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-SyncMode = "FEP"
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
@@ -205,7 +204,7 @@ RequireValidatorCall = false
 	[AggSender.AgglayerClient]
 		Cached = false
 		[AggSender.AgglayerClient.ConfigurationCache]
-			TTL = "15m"
+			TTL = "5m"
 			Capacity = 100
 		[AggSender.AgglayerClient.GRPC]
 			URL = "{{AggLayerURL}}"
@@ -277,7 +276,7 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 [Validator.AgglayerClient]
 	Cached = true
 	[Validator.AgglayerClient.ConfigurationCache]
-		TTL = "15m"
+		TTL = "5m"
 		Capacity = 100
 	[Validator.AgglayerClient.GRPC]
 		URL = "{{AggSender.AgglayerClient.GRPC.URL}}"
