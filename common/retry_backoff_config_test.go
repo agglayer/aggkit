@@ -34,7 +34,6 @@ func TestRetryBackoffConfig_NewRetryBackoffConfig(t *testing.T) {
 		require.NotNil(t, cfg)
 		require.IsType(t, &RetryBackoffConfig{}, cfg)
 	})
-
 }
 
 func TestRetryBackoffConfig_NewRetryHandler(t *testing.T) {
