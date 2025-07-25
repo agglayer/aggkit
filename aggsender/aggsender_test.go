@@ -581,7 +581,6 @@ func TestSendCertificatesRetry(t *testing.T) {
 		chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
 		fmt.Println("send epoch 2")
 		chEpoch <- aggsendertypes.EpochEvent{Epoch: 2}
-
 	}()
 	aggSender.sendCertificates(ctx, 2)
 }
