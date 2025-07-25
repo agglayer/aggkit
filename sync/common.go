@@ -1,6 +1,7 @@
 package sync
 
 import (
+	"context"
 	"log"
 	"time"
 )
@@ -17,12 +18,18 @@ type RetryHandler struct {
 // Otherwise, it will sleep for RetryAfterErrorPeriod
 // For be able to test it, the Fatalf function can be override
 // with var LogFatalf and change it for a panic that be catched by the test
-func (h *RetryHandler) Handle(funcName string, attempts int) {
+func (h *RetryHandler) Handle(ctx context.Context, funcName string, attempts int) {
 	if h.MaxRetryAttemptsAfterError > -1 && attempts >= h.MaxRetryAttemptsAfterError {
 		LogFatalf(
 			"%s failed too many times (%d)",
 			funcName, h.MaxRetryAttemptsAfterError,
 		)
 	}
-	time.Sleep(h.RetryAfterErrorPeriod)
+
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(h.RetryAfterErrorPeriod):
+		return
+	}
 }

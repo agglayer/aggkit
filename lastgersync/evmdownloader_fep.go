@@ -89,7 +89,7 @@ func (d *downloaderFEP) Download(ctx context.Context, fromBlock uint64, download
 		} else if err != nil {
 			log.Errorf("error getting latest l1 info tree index: %v", err)
 			attempts++
-			d.rh.Handle("getLatestL1InfoTreeIndex", attempts)
+			d.rh.Handle(ctx, "getLatestL1InfoTreeIndex", attempts)
 
 			continue
 		}
@@ -120,7 +120,7 @@ func (d *downloaderFEP) Download(ctx context.Context, fromBlock uint64, download
 			if err != nil {
 				log.Errorf("error getting GERs: %v", err)
 				attempts++
-				d.rh.Handle("getGERsFromIndex", attempts)
+				d.rh.Handle(ctx, "getGERsFromIndex", attempts)
 
 				continue
 			}
@@ -143,7 +143,7 @@ func (d *downloaderFEP) Download(ctx context.Context, fromBlock uint64, download
 		}
 
 		// Set the greatest GER injected from retrieved GERs
-		d.populateGreatestInjectedGER(block, gers)
+		d.populateGreatestInjectedGER(ctx, block, gers)
 
 		downloadedCh <- *block
 
@@ -182,7 +182,8 @@ func (d *downloaderFEP) getGERsFromIndex(
 	return gers, nil
 }
 
-func (d *downloaderFEP) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos []*GlobalExitRootInfo) {
+func (d *downloaderFEP) populateGreatestInjectedGER(
+	ctx context.Context, b *sync.EVMBlock, gerInfos []*GlobalExitRootInfo) {
 	for _, gerInfo := range gerInfos {
 		attempts := 0
 		for {
@@ -190,7 +191,7 @@ func (d *downloaderFEP) populateGreatestInjectedGER(b *sync.EVMBlock, gerInfos [
 			if err != nil {
 				attempts++
 				log.Errorf("failed to check if global exit root %s is injected on L2: %s", gerInfo.GlobalExitRoot.Hex(), err)
-				d.rh.Handle("GlobalExitRootMap", attempts)
+				d.rh.Handle(ctx, "GlobalExitRootMap", attempts)
 
 				continue
 			}
