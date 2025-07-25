@@ -69,7 +69,7 @@ func TestRetryBackoffConfig_NewRetryHandler(t *testing.T) {
 		handler, err := sut.NewRetryHandler()
 		require.NoError(t, err)
 		require.NotNil(t, handler)
-		require.Equal(t, "RetryHandlerDelays{RetryDelaysConfig{Delays: [10ms 20ms 40ms 80ms 100ms], MaxRetries: INFINTE}}", handler.String())
+		require.Equal(t, "RetryHandlerDelays{RetryDelaysConfig{Delays: [10ms 20ms 40ms 80ms 100ms], MaxRetries: INFINITE}}", handler.String())
 	})
 }
 
@@ -86,7 +86,7 @@ func TestRetryBackoffConfig_Validate(t *testing.T) {
 	require.NoError(t, retryBackoffConfigExample.Validate())
 	cfg2 := newRetryBackoffConfigForTest(t)
 	cfg2.MaxRetries = -2
-	require.ErrorContains(t, cfg2.Validate(), "max retries cannot -2 be less than -1")
+	require.ErrorContains(t, cfg2.Validate(), "max retries -2 cannot be less than -1")
 	cfg2 = newRetryBackoffConfigForTest(t)
 	cfg2.BackoffMultiplier = 0.0
 	require.ErrorContains(t, cfg2.Validate(), "backoff multiplier must be greater than zero")

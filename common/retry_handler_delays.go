@@ -24,11 +24,7 @@ const (
 
 // RetryHandlerDelays is a struct that holds the retry delays and the maximum number of retries.
 // It implements the RetryDelayer interface, which allows executing a function with retry logic.
-// The delays are specified as a slice of types.Duration, and the maximum number of retries can be set.
-// If maxRetries is set to 0, it means infinite retries are allowed.
-//
-// You can also abort the retrying wrapping the error ErrAbort into the result
-// this is useful if there are some conditions that should not be retried
+// You can check object RetryDelaysConfig for more details
 type RetryHandlerDelays struct {
 	RetryDelaysConfig
 }
@@ -56,13 +52,13 @@ func (r *RetryHandlerDelays) String() string {
 	return fmt.Sprintf("RetryHandlerDelays{%s}", r.RetryDelaysConfig.String())
 }
 
-// InfiniteRetries return true if the configuration allows infinite retries.
-func (r *RetryHandlerDelays) InfiniteRetries() bool {
+// IsInfiniteRetriesConfigured return true if the configuration allows infinite retries.
+func (r *RetryHandlerDelays) IsInfiniteRetriesConfigured() bool {
 	// Infinite retries are allowed if MaxAttempts is 0.
 	return r != nil && r.MaxRetries == MaxAttemptsInfinite
 }
 
-func (r *RetryHandlerDelays) NoRetries() bool {
+func (r *RetryHandlerDelays) IsNoRetriesConfigured() bool {
 	// No Retries is MaxAttempts is 0 (just 1 first try)
 	return r == nil || r.MaxRetries == 0
 }
@@ -77,7 +73,7 @@ func (r *RetryHandlerDelays) Delay(attempt int) time.Duration {
 
 // MustExecuteAttempt returns true if must execute `attempt`
 func (r *RetryHandlerDelays) MustExecuteAttempt(attempt int) bool {
-	if r.InfiniteRetries() {
+	if r.IsInfiniteRetriesConfigured() {
 		return true
 	}
 	if r == nil {
@@ -88,10 +84,10 @@ func (r *RetryHandlerDelays) MustExecuteAttempt(attempt int) bool {
 
 // StringAttempt returns the string representation of the number of attempts.
 func (r *RetryHandlerDelays) StringAttempt(attempt int) string {
-	if r.InfiniteRetries() {
+	if r.IsInfiniteRetriesConfigured() {
 		return fmt.Sprintf("%d/INFINITE", attempt+1)
 	}
-	if r.NoRetries() {
+	if r.IsNoRetriesConfigured() {
 		return fmt.Sprintf("%d/NO RETRIES", attempt+1)
 	}
 	return fmt.Sprintf("%d/%d", attempt+1, r.MaxRetries)

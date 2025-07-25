@@ -284,7 +284,7 @@ func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayerty
 			if err != nil {
 				a.log.Error(err)
 			}
-			// If ErrComplete don't need to retry
+			// If ErrComplete, don't need to retry
 			if errors.Is(err, flows.ErrComplete) {
 				err = fmt.Errorf("%w. %w", err, aggkitcommon.ErrAbort)
 			}

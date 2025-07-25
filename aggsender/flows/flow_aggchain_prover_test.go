@@ -501,7 +501,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeDataQuerier,
 				mockLERQuerier,
 				NewBaseFlowConfigDefault())
-			flowBase.SetTimeNowFunc(timeNowUTCForTest)
+			flowBase.timeNowFunc = timeNowUTCForTest
 			aggchainFlow := NewAggchainProverFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),

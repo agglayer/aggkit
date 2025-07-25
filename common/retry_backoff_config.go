@@ -53,7 +53,7 @@ func (r *RetryBackoffConfig) Validate() error {
 		return fmt.Errorf("%w: RetryBackoffConfig is nil", ErrInvalidConfig)
 	}
 	if r.MaxRetries < MaxAttemptsInfinite {
-		return fmt.Errorf("%w: RetryBackoffConfig max retries cannot %d be less than %d",
+		return fmt.Errorf("%w: RetryBackoffConfig max retries %d cannot be less than %d",
 			ErrInvalidConfig, r.MaxRetries, MaxAttemptsInfinite)
 	}
 	if r.BackoffMultiplier <= 0.0 {

@@ -92,9 +92,6 @@ func NewBaseFlow(
 		timeNowFunc:           TimeNowUTC,
 	}
 }
-func (f *baseFlow) SetTimeNowFunc(timeNow func() uint32) {
-	f.timeNowFunc = timeNow
-}
 
 // StartL2Block returns the L2 block number from which to start sending certificates.
 func (f *baseFlow) StartL2Block() uint64 {

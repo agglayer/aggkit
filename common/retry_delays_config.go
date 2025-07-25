@@ -16,7 +16,8 @@ type RetryDelaysConfig struct {
 	// if MaxRetries is 0, it means no retries will be attempted.
 	MaxRetries int
 	// Delays is a list of durations to wait before each retry.
-	// if there are more attempts that item o the list is used the last one
+	// If there are more retry attempts than items in the list, the last item
+	// in the list is reused for all subsequent attempts.
 	Delays []types.Duration
 }
 
@@ -55,7 +56,7 @@ func (r *RetryDelaysConfig) Validate() error {
 		}
 	}
 	if r.MaxRetries < MaxAttemptsInfinite {
-		return fmt.Errorf("%w: max retries cannot %d be less than %d",
+		return fmt.Errorf("%w: max retries %d cannot be less than %d",
 			ErrInvalidConfig, r.MaxRetries, MaxAttemptsInfinite)
 	}
 	return nil
@@ -68,7 +69,7 @@ func (r *RetryDelaysConfig) String() string {
 	var maxRetriesStr string
 	switch r.MaxRetries {
 	case MaxAttemptsInfinite:
-		maxRetriesStr = "INFINTE"
+		maxRetriesStr = "INFINITE"
 	case 0:
 		maxRetriesStr = "NO RETRIES"
 	default:

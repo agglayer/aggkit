@@ -70,7 +70,7 @@ func (r *RetryPolicyGenericConfig) String() string {
 }
 
 // CleanCache clears the internal cache of the RetryPolicyGenericConfig.
-// useful is you modify any params and want to rebuild the underlaying object
+// useful if you modify any params and want to rebuild the underlying object
 func (r *RetryPolicyGenericConfig) CleanCache() {
 	// Clean the cache to force a new Factory call next time
 	r.cache = nil
