@@ -33,7 +33,6 @@ type processor struct {
 	l1InfoTree     *tree.AppendOnlyTree
 	rollupExitTree *tree.UpdatableTree
 	mu             mutex.RWMutex
-	dbMutex        mutex.RWMutex
 	halted         bool
 	haltedReason   string
 	log            *log.Logger
@@ -282,9 +281,6 @@ func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64)
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	p.log.Infof("reorging to block %d", firstReorgedBlock)
 
-	p.dbMutex.Lock()
-	defer p.dbMutex.Unlock()
-
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
 		return err
@@ -338,9 +334,6 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
 		return sync.ErrInconsistentState
 	}
-
-	p.dbMutex.Lock()
-	defer p.dbMutex.Unlock()
 
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
