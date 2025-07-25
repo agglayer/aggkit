@@ -30,7 +30,7 @@ type RetryPolicyGenericConfig struct {
 	InitialBackoff    types.Duration
 	MaxBackoff        types.Duration
 	BackoffMultiplier float64
-	// internal field to cache the underlaying config
+	// internal field to cache the underlying config
 	cache commontypes.RetryPolicyConfigurer `mapstructure:"-"`
 }
 
