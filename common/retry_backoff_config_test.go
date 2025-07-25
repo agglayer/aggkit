@@ -46,12 +46,8 @@ func TestRetryBackoffConfig_NewRetryHandler(t *testing.T) {
 	})
 
 	t.Run("NewRetryHandler reach MaxBackoff", func(t *testing.T) {
-		sut := RetryBackoffConfig{
-			InitialBackoff:    types.Duration{Duration: 10 * time.Millisecond},
-			MaxBackoff:        types.Duration{Duration: 100 * time.Millisecond},
-			BackoffMultiplier: 2.0,
-			MaxRetries:        200,
-		}
+		sut := newRetryBackoffConfigForTest(t)
+		sut.MaxRetries = 200
 		handler, err := sut.NewRetryHandler()
 		require.NoError(t, err)
 		require.NotNil(t, handler)
@@ -59,7 +55,7 @@ func TestRetryBackoffConfig_NewRetryHandler(t *testing.T) {
 	})
 
 	t.Run("NewRetryHandler MaxRetries=0", func(t *testing.T) {
-		sut := retryBackoffConfigExample
+		sut := newRetryBackoffConfigForTest(t)
 		sut.MaxRetries = 0
 		handler, err := sut.NewRetryHandler()
 		require.NoError(t, err)
@@ -68,7 +64,7 @@ func TestRetryBackoffConfig_NewRetryHandler(t *testing.T) {
 	})
 
 	t.Run("NewRetryHandler MaxRetries=-1", func(t *testing.T) {
-		sut := retryBackoffConfigExample
+		sut := newRetryBackoffConfigForTest(t)
 		sut.MaxRetries = MaxAttemptsInfinite
 		handler, err := sut.NewRetryHandler()
 		require.NoError(t, err)
@@ -88,19 +84,20 @@ func TestRetryBackoffConfig_Brief(t *testing.T) {
 
 func TestRetryBackoffConfig_Validate(t *testing.T) {
 	require.NoError(t, retryBackoffConfigExample.Validate())
-	cfg2 := RetryBackoffConfig{
+	cfg2 := newRetryBackoffConfigForTest(t)
+	cfg2.MaxRetries = -2
+	require.ErrorContains(t, cfg2.Validate(), "max retries cannot -2 be less than -1")
+	cfg2 = newRetryBackoffConfigForTest(t)
+	cfg2.BackoffMultiplier = 0.0
+	require.ErrorContains(t, cfg2.Validate(), "backoff multiplier must be greater than zero")
+}
+
+func newRetryBackoffConfigForTest(t *testing.T) *RetryBackoffConfig {
+	t.Helper()
+	return &RetryBackoffConfig{
 		InitialBackoff:    types.Duration{Duration: 10 * time.Millisecond},
 		MaxBackoff:        types.Duration{Duration: 100 * time.Millisecond},
 		BackoffMultiplier: 2.0,
-		MaxRetries:        -2,
+		MaxRetries:        3,
 	}
-
-	require.ErrorContains(t, cfg2.Validate(), "max retries cannot -2 be less than -1")
-	cfg2 = RetryBackoffConfig{
-		InitialBackoff:    types.Duration{Duration: 10 * time.Millisecond},
-		MaxBackoff:        types.Duration{Duration: 100 * time.Millisecond},
-		BackoffMultiplier: 0.0,
-		MaxRetries:        0,
-	}
-	require.ErrorContains(t, cfg2.Validate(), "backoff multiplier must be greater than zero")
 }
