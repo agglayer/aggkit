@@ -64,7 +64,8 @@ func TestConfigString(t *testing.T) {
 		"RetryCertAfterInError: false\n"+
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
-		"RequireNoFEPBlockGap: false\n",
+		"RequireNoFEPBlockGap: false\n"+
+		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
@@ -532,7 +533,57 @@ func TestAggSenderStartFailsCompatibilityChecker(t *testing.T) {
 		testData.sut.Start(testData.ctx)
 	}, "Expected panic when starting AggSender")
 }
+func TestSendCertificatesRetry(t *testing.T) {
+	mockCertStatusChecker := mocks.NewCertificateStatusChecker(t)
+	mockEpochNotifier := mocks.NewEpochNotifier(t)
+	mockStorage := mocks.NewAggSenderStorage(t)
+	mockFlow := mocks.NewAggsenderFlow(t)
 
+	logger := log.WithFields("aggsender-test", "TestSendCertificatesRetry")
+	aggSender := &AggSender{
+		log:               logger,
+		certStatusChecker: mockCertStatusChecker,
+		epochNotifier:     mockEpochNotifier,
+		storage:           mockStorage,
+		flow:              mockFlow,
+		cfg: config.Config{
+			RetryCertAfterInError:          true,
+			CheckStatusCertificateInterval: types.NewDuration(0),
+			RetriesToBuildAndSendCertificate: aggkitcommon.RetryPolicyGenericConfig{
+				Mode:       aggkitcommon.RetryConfigModeDelays,
+				MaxRetries: 1,
+				Delays: []types.Duration{{Duration: time.Millisecond},
+					{Duration: time.Millisecond},
+				},
+			},
+		},
+		status: &aggsendertypes.AggsenderStatus{},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	chEpoch := make(chan aggsendertypes.EpochEvent)
+	mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
+	expectedNumAttempts := 4
+	mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+		ExistPendingCerts:   false,
+		ExistNewInErrorCert: false,
+	}).Times(2)
+	mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{
+		Epoch:        123,
+		PercentEpoch: 0.2,
+	}).Times(expectedNumAttempts)
+	mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).
+		Return(nil, errors.New("err")).Times(expectedNumAttempts)
+	go func() {
+		fmt.Println("send epoch 1")
+		chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
+		fmt.Println("send epoch 2")
+		chEpoch <- aggsendertypes.EpochEvent{Epoch: 2}
+	}()
+	aggSender.sendCertificates(ctx, 2)
+}
 func TestSendCertificates(t *testing.T) {
 	t.Parallel()
 

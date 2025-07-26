@@ -78,8 +78,7 @@ func TestGetCertificateHeader(t *testing.T) {
 
 func TestExpiration(t *testing.T) {
 	t.Parallel()
-
-	ttl := 3 * time.Second
+	ttl := 500 * time.Millisecond
 	capacity := uint64(1)
 	certificateID := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
 	certificateHeader := &agglayertypes.CertificateHeader{
@@ -92,29 +91,15 @@ func TestExpiration(t *testing.T) {
 	mockAgglayerClient := NewAgglayerClientMock(t)
 	certCache := NewCertificateCache(mockAgglayerClient, ttl, capacity)
 
-	timer := time.NewTimer(ttl)
-	mockAgglayerClient.EXPECT().GetCertificateHeader(t.Context(), certificateID).Return(certificateHeader, nil).Once()
-
-	ch := make(chan struct{})
-	go func() {
-		for {
-			// constantly check if the certificate is in the cache
-			// until its ttl expires so that we always touch that cache entry
-			cachedCert, err := certCache.GetCertificateHeader(t.Context(), certificateID)
-			require.NoError(t, err)
-			require.Equal(t, certificateHeader, cachedCert)
-
-			select {
-			case <-time.After(100 * time.Millisecond):
-				continue
-			case <-timer.C:
-				close(ch)
-				return
-			}
-		}
-	}()
-
-	<-ch
-
-	require.False(t, certCache.cache.Has(certificateID)) // Ensure the cache is empty after TTL
+	mockAgglayerClient.EXPECT().GetCertificateHeader(t.Context(), certificateID).Return(certificateHeader, nil).Times(2)
+	// Insert item on cache
+	_, err := certCache.GetCertificateHeader(t.Context(), certificateID)
+	require.NoError(t, err)
+	// Hit cache
+	_, err = certCache.GetCertificateHeader(t.Context(), certificateID)
+	require.NoError(t, err)
+	time.Sleep(ttl)
+	// Cache is expire and request again the Certificate
+	_, err = certCache.GetCertificateHeader(t.Context(), certificateID)
+	require.NoError(t, err)
 }
