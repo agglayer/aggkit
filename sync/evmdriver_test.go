@@ -114,6 +114,91 @@ func TestSync(t *testing.T) {
 	require.True(t, ok)
 }
 
+func TestSync_ReorgCancelsRetryHandlerInHandleNewBlock(t *testing.T) {
+	rh := &RetryHandler{
+		MaxRetryAttemptsAfterError: -1, // infinite retries
+		RetryAfterErrorPeriod:      100 * time.Millisecond,
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	rdm := NewReorgDetectorMock(t)
+	pm := NewProcessorMock(t)
+	dm := NewDownloaderMock(t)
+	compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
+	compatibilityCheckerMock.EXPECT().Check(ctx, mock.Anything).Return(nil)
+
+	var (
+		reorgedBlockCh   = make(chan uint64)
+		reorgProcessedCh = make(chan bool)
+	)
+
+	rdm.EXPECT().Subscribe(reorgDetectorID).
+		Return(&reorgdetector.Subscription{
+			ReorgedBlock:   reorgedBlockCh,
+			ReorgProcessed: reorgProcessedCh,
+		}, nil)
+
+	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatibilityCheckerMock)
+	require.NoError(t, err)
+
+	reorgedBlock := uint64(5)
+
+	expectedBlock := EVMBlock{
+		EVMBlockHeader: EVMBlockHeader{
+			Num:  10,
+			Hash: common.HexToHash("a"),
+		},
+	}
+
+	cancelObserved := make(chan struct{})
+
+	// infinite loop that keeps feeding the same block
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ uint64, ch chan EVMBlock) {
+			for {
+				ch <- expectedBlock
+				select {
+				case <-ctx.Done():
+					close(ch)
+					return
+				case <-time.After(50 * time.Millisecond):
+					continue
+				}
+			}
+		})
+
+	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), nil)
+
+	// AddBlockToTrack always returns nil
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock.Num, expectedBlock.Hash).
+		Return(nil)
+
+	// ProcessBlock always errors, until cancelled
+	pm.EXPECT().
+		ProcessBlock(mock.Anything, Block{Num: expectedBlock.Num, Hash: expectedBlock.Hash}).
+		RunAndReturn(func(ctx context.Context, _ Block) error {
+			select {
+			case <-ctx.Done():
+				close(cancelObserved)
+				return ctx.Err()
+			case <-time.After(50 * time.Millisecond):
+				return errors.New("processing failed")
+			}
+		})
+
+	go driver.Sync(ctx)
+
+	time.Sleep(300 * time.Millisecond) // Let it retry a few times
+
+	// trigger reorg while it's retrying
+	pm.EXPECT().Reorg(ctx, reorgedBlock).Return(nil)
+	reorgedBlockCh <- reorgedBlock
+
+	ok := <-reorgProcessedCh
+	require.True(t, ok)
+}
+
 func TestHandleNewBlock(t *testing.T) {
 	type call struct {
 		addBlockErrs []error
