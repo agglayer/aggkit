@@ -183,7 +183,7 @@ reset:
 		d.log.Warnf("Reorg detected from block %d, stopping block processing...", firstReorgedBlock)
 		cancel()
 		<-blockProcessingDone // wait for block processing to exit cleanly
-		d.handleReorg(ctx, cancel, firstReorgedBlock)
+		d.handleReorg(ctx, firstReorgedBlock)
 		goto reset
 	}
 }
@@ -250,10 +250,7 @@ func (d *EVMDriver) handleNewBlock(ctx context.Context, b EVMBlock) error {
 	return nil
 }
 
-func (d *EVMDriver) handleReorg(ctx context.Context, cancel context.CancelFunc, firstReorgedBlock uint64) {
-	// stop downloader
-	cancel()
-
+func (d *EVMDriver) handleReorg(ctx context.Context, firstReorgedBlock uint64) {
 	// handle reorg
 	attempts := 0
 	for {
