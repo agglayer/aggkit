@@ -322,7 +322,11 @@ func TestHandleReorg(t *testing.T) {
 		{
 			name:              "processor fails twice then succeeds",
 			firstReorgedBlock: 7,
-			reorgReturns:      []error{errors.New("foo"), errors.New("foo"), nil},
+			reorgReturns: []error{
+				errors.New("first failure"),
+				errors.New("second failure"),
+				nil,
+			},
 		},
 	}
 
@@ -330,37 +334,42 @@ func TestHandleReorg(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			rh := &RetryHandler{
 				MaxRetryAttemptsAfterError: 5,
-				RetryAfterErrorPeriod:      100 * time.Millisecond,
+				RetryAfterErrorPeriod:      10 * time.Millisecond,
 			}
 
 			rdm := NewReorgDetectorMock(t)
 			pm := NewProcessorMock(t)
 			dm := NewDownloaderMock(t)
-			compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
-			reorgProcessed := make(chan bool)
+			compatChecker := compmocks.NewCompatibilityChecker(t)
 
-			rdm.EXPECT().Subscribe(reorgDetectorID).Return(
-				&reorgdetector.Subscription{ReorgProcessed: reorgProcessed}, nil)
+			reorgProcessed := make(chan bool, 1) // buffer to avoid blocking
+
+			rdm.EXPECT().Subscribe(reorgDetectorID).
+				Return(&reorgdetector.Subscription{ReorgProcessed: reorgProcessed}, nil)
 
 			ctx := t.Context()
-			driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatibilityCheckerMock)
+			driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatChecker)
 			require.NoError(t, err)
 
-			// Set expectations based on test case
+			// Set expectations for Reorg calls
 			for _, ret := range tt.reorgReturns {
-				pm.EXPECT().Reorg(ctx, tt.firstReorgedBlock).Return(ret).Once()
+				pm.EXPECT().
+					Reorg(mock.Anything, tt.firstReorgedBlock).
+					Return(ret).
+					Once()
 			}
 
-			_, cancel := context.WithCancel(ctx)
-			defer cancel()
+			// Call the method
+			err = driver.handleReorg(ctx, tt.firstReorgedBlock)
+			require.NoError(t, err)
 
-			errCh := make(chan error)
-			go func() {
-				errCh <- driver.handleReorg(ctx, tt.firstReorgedBlock)
-			}()
-			require.NoError(t, <-errCh)
-			done := <-reorgProcessed
-			require.True(t, done)
+			// Wait for signal with timeout
+			select {
+			case ok := <-reorgProcessed:
+				require.True(t, ok, "expected true on reorgProcessed channel")
+			case <-time.After(100 * time.Millisecond):
+				t.Fatal("timeout waiting for ReorgProcessed signal")
+			}
 		})
 	}
 }

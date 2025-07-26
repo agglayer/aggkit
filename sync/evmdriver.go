@@ -224,12 +224,13 @@ func (d *EVMDriver) processBlock(ctx context.Context, b EVMBlock) error {
 }
 
 func (d *EVMDriver) handleReorg(ctx context.Context, firstReorgedBlock uint64) error {
-	err := d.withRetry(ctx, "handleReorg", func() error {
+	defer func() {
+		d.reorgSub.ReorgProcessed <- true
+	}()
+
+	return d.withRetry(ctx, "handleReorg", func() error {
 		return d.processor.Reorg(ctx, firstReorgedBlock)
 	})
-
-	d.reorgSub.ReorgProcessed <- true
-	return err
 }
 
 // withRetry is a helper wrapper function that invokes the fn callback on failed attempts
