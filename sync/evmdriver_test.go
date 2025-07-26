@@ -354,7 +354,11 @@ func TestHandleReorg(t *testing.T) {
 			_, cancel := context.WithCancel(ctx)
 			defer cancel()
 
-			go driver.handleReorg(ctx, tt.firstReorgedBlock)
+			errCh := make(chan error)
+			go func() {
+				errCh <- driver.handleReorg(ctx, tt.firstReorgedBlock)
+			}()
+			require.NoError(t, <-errCh)
 			done := <-reorgProcessed
 			require.True(t, done)
 		})

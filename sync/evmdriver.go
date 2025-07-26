@@ -183,86 +183,94 @@ reset:
 		d.log.Warnf("Reorg detected from block %d, stopping block processing...", firstReorgedBlock)
 		cancel()
 		<-blockProcessingDone // wait for block processing to exit cleanly
-		d.handleReorg(ctx, firstReorgedBlock)
+		if err := d.handleReorg(ctx, firstReorgedBlock); err != nil {
+			d.log.Errorf("failed to process reorg at block %d: %w", firstReorgedBlock, err)
+		}
 		goto reset
 	}
 }
 
 func (d *EVMDriver) handleNewBlock(ctx context.Context, b EVMBlock) error {
-	attempts := 0
-	succeed := false
-	for {
-		select {
-		case <-ctx.Done():
-			// If the context is canceled, exit the function
-			d.log.Warnf("context canceled while adding block %d to tracker", b.Num)
-			return nil
-		default:
-			if !b.IsFinalizedBlock {
-				err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, b.Num, b.Hash)
-				if err != nil {
-					attempts++
-					d.log.Errorf("error adding block %d to tracker: %v", b.Num, err)
-					d.rh.Handle(ctx, "handleNewBlock", attempts)
-				} else {
-					succeed = true
-				}
-			} else {
-				succeed = true
-			}
-		}
-		if succeed {
-			break
-		}
-	}
-	attempts = 0
-	succeed = false
-	for {
-		select {
-		case <-ctx.Done():
-			// If the context is canceled, exit the function
-			d.log.Warnf("context canceled while processing block %d", b.Num)
-			return nil
-		default:
-			blockToProcess := Block{
-				Num:    b.Num,
-				Events: b.Events,
-				Hash:   b.Hash,
-			}
-			err := d.processor.ProcessBlock(ctx, blockToProcess)
-			if err != nil {
-				if errors.Is(err, ErrInconsistentState) {
-					d.log.Warn("state got inconsistent after processing this block. Stopping downloader until there is a reorg")
-					return err
-				}
-				attempts++
-				d.log.Errorf("error processing events for block %d, err: %v", b.Num, err)
-				d.rh.Handle(ctx, "handleNewBlock", attempts)
-			} else {
-				succeed = true
-			}
-		}
-		if succeed {
-			break
-		}
+	if err := d.trackNonFinalizedBlock(ctx, b); err != nil {
+		return nil
 	}
 
-	return nil
+	return d.processBlock(ctx, b)
 }
 
-func (d *EVMDriver) handleReorg(ctx context.Context, firstReorgedBlock uint64) {
-	// handle reorg
+func (d *EVMDriver) trackNonFinalizedBlock(ctx context.Context, b EVMBlock) error {
+	if b.IsFinalizedBlock {
+		return nil
+	}
+
+	return d.withRetry(ctx, "trackBlock", func() error {
+		return d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, b.Num, b.Hash)
+	})
+}
+
+func (d *EVMDriver) processBlock(ctx context.Context, b EVMBlock) error {
+	return d.withRetry(ctx, "processBlock", func() error {
+		err := d.processor.ProcessBlock(ctx, Block{
+			Num:    b.Num,
+			Hash:   b.Hash,
+			Events: b.Events,
+		})
+		if errors.Is(err, ErrInconsistentState) {
+			d.log.Warn("state got inconsistent after processing this block; halting until reorg")
+			return backoffPermanent(err)
+		}
+		return err
+	})
+}
+
+func (d *EVMDriver) handleReorg(ctx context.Context, firstReorgedBlock uint64) error {
+	err := d.withRetry(ctx, "handleReorg", func() error {
+		return d.processor.Reorg(ctx, firstReorgedBlock)
+	})
+
+	d.reorgSub.ReorgProcessed <- true
+	return err
+}
+
+// withRetry is a helper wrapper function that invokes the fn callback on failed attempts
+func (d *EVMDriver) withRetry(ctx context.Context, opName string, fn func() error) error {
 	attempts := 0
 	for {
-		err := d.processor.Reorg(ctx, firstReorgedBlock)
-		if err != nil {
-			attempts++
-			d.log.Errorf("error processing reorg, last valid block %d, err: %v",
-				firstReorgedBlock, err)
-			d.rh.Handle(ctx, "handleReorg", attempts)
-			continue
+		select {
+		case <-ctx.Done():
+			d.log.Warnf("context canceled during %s", opName)
+			return nil
+		default:
+			err := fn()
+			if err != nil {
+				attempts++
+				d.log.Errorf("error during %s (attempt %d): %v", opName, attempts, err)
+
+				// Stop retrying on permanent errors
+				if isBackoffPermanent(err) {
+					return err
+				}
+
+				d.rh.Handle(ctx, opName, attempts)
+			} else {
+				return nil
+			}
 		}
-		break
 	}
-	d.reorgSub.ReorgProcessed <- true
+}
+
+type permanentError struct {
+	err error
+}
+
+func (e *permanentError) Error() string { return e.err.Error() }
+func (e *permanentError) Unwrap() error { return e.err }
+
+func backoffPermanent(err error) error {
+	return &permanentError{err: err}
+}
+
+func isBackoffPermanent(err error) bool {
+	var perr *permanentError
+	return errors.As(err, &perr)
 }
