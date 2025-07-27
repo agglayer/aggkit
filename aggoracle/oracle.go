@@ -80,12 +80,11 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 
 	latestGER := latestL1InfoLeaf.GlobalExitRoot
 
-	go func() {
-		err := a.chainSender.ProcessGER(ctx, latestGER)
-		if err != nil {
-			a.logger.Error(err)
-		}
-	}()
+	// Process GER synchronously to avoid data races with the simulated backend
+	err = a.chainSender.ProcessGER(ctx, latestGER)
+	if err != nil {
+		a.logger.Error(err)
+	}
 
 	return nil
 }
