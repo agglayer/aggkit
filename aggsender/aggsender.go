@@ -8,7 +8,7 @@ import (
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
-	zkevm "github.com/agglayer/aggkit"
+	aggkit "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/config"
@@ -20,7 +20,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -59,7 +58,7 @@ func New(
 	logger *log.Logger,
 	cfg config.Config,
 	aggLayerClient agglayer.AgglayerClientInterface,
-	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	epochNotifier types.EpochNotifier,
 	l1Client aggkittypes.BaseEthereumClienter,
@@ -139,7 +138,7 @@ func (a *AggSender) GetFlow() types.AggsenderFlow {
 func (a *AggSender) Info() types.AggsenderInfo {
 	res := types.AggsenderInfo{
 		AggsenderStatus:          *a.status,
-		Version:                  zkevm.GetVersion(),
+		Version:                  aggkit.GetVersion(),
 		EpochNotifierDescription: a.epochNotifier.String(),
 		NetworkID:                a.l2OriginNetwork,
 	}
@@ -249,14 +248,13 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			a.log.Infof("Epoch received: %s", epoch.String())
 			checkResult := a.certStatusChecker.CheckPendingCertificatesStatus(ctx)
 			if !checkResult.ExistPendingCerts {
-				_, err := a.sendCertificate(ctx)
-				a.status.SetLastError(err)
+				_, err := a.sendCertificateWithRetries(ctx)
 				if err != nil {
-					a.log.Error(err)
+					a.log.Errorf("error sending certificate: %v", err)
+					a.status.SetLastError(err)
 				}
-				a.checkSendCertificateStopCondition(err)
 			} else {
-				log.Infof("Skipping epoch %s because there are pending certificates",
+				a.log.Infof("Skipping epoch %s because there are pending certificates",
 					epoch.String())
 			}
 
@@ -269,6 +267,32 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			return
 		}
 	}
+}
+
+func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayertypes.Certificate, error) {
+	retryHandler, err := a.cfg.RetriesToBuildAndSendCertificate.NewRetryHandler()
+	if err != nil {
+		return nil, fmt.Errorf("error creating retry config: %w", err)
+	}
+	cert, err := aggkitcommon.Execute(retryHandler,
+		ctx,
+		a.log.Infof,
+		"sendCertificateWithRetries",
+		func() (*agglayertypes.Certificate, error) {
+			cert, err := a.sendCertificate(ctx)
+			a.status.SetLastError(err)
+			if err != nil {
+				a.log.Error(err)
+			}
+			// If ErrComplete, don't need to retry
+			if errors.Is(err, flows.ErrComplete) {
+				err = fmt.Errorf("%w. %w", err, aggkitcommon.ErrAbort)
+			}
+			return cert, err
+		})
+	// Check error to stop aggsender if needed
+	a.checkSendCertificateStopCondition(err)
+	return cert, err
 }
 
 // sendCertificate sends certificate for a network

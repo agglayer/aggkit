@@ -32,7 +32,7 @@ genesisBlockNumber = 0
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
-
+	AggOracleCommitteeAddr = "0x0000000000000000000000000000000000000000"
 `
 
 // This doesnt below to config, but are the vars used
@@ -40,8 +40,14 @@ genesisBlockNumber = 0
 const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = true
-L2RPC = "{ Mode= \"basic\", URL= \"{{L2URL}}\" }"
 GenerateAggchainProofTimeout = "1h"
+[L2RPC]
+	Mode = "basic"
+	URL = "{{L2URL}}"
+	MaxRetries = 5
+	InitialBackoff = "2s"
+	MaxBackoff = "10s"
+	BackoffMultiplier = 2.0
 `
 
 // DefaultValues is the default configuration
@@ -58,12 +64,17 @@ NetworkID = {{NetworkID}}
 L2RPC = {{L2RPC}}
 
 [L1NetworkConfig]
-URL = "{{L1Config.URL}}"
 L1ChainID = {{L1Config.chainId}}
 POLTokenAddr = "{{L1Config.polTokenAddress}}"
 RollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+	[L1NetworkConfig.RPC]
+		URL = "{{L1Config.URL}}"
+		MaxRetries = 5
+		InitialBackoff = "2s"
+		MaxBackoff = "10s"
+		BackoffMultiplier = 2.0
 
 [ReorgDetectorL1]
 DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
@@ -89,8 +100,10 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 TargetChainType = "EVM"
 URLRPCL1 = "{{L1URL}}"
 WaitPeriodNextGER = "10s"
+EnableAggOracleCommittee = false
 	[AggOracle.EVMSender]
 		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+		AggOracleCommitteeAddr = "{{L2Config.AggOracleCommitteeAddr}}"
 		GasOffset = 0
 		WaitPeriodMonitorTx = "1s"
 		[AggOracle.EVMSender.EthTxManager]
@@ -151,8 +164,8 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
-[LastGERSync]
-DBPath = "{{PathRWData}}/lastgersync.sqlite"
+[L2GERSync]
+DBPath = "{{PathRWData}}/l2gersync.sqlite"
 BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"
@@ -161,7 +174,6 @@ MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "1s"
 DownloadBufferSize = 100
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-SyncMode = "FEP"
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
@@ -189,10 +201,14 @@ RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
+	[AggSender.RetriesToBuildAndSendCertificate]
+		Mode = "delays"
+		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
+		MaxRetries = 6 # 1+6 attempts, around 22m 
 	[AggSender.AgglayerClient]
 		Cached = false
 		[AggSender.AgglayerClient.ConfigurationCache]
-			TTL = "15m"
+			TTL = "5m"
 			Capacity = 100
 		[AggSender.AgglayerClient.GRPC]
 			URL = "{{AggLayerURL}}"
@@ -262,11 +278,11 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 [Validator.PPConfig]
 	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
 [Validator.AgglayerClient]
-		Cached = true
-		[Validator.AgglayerClient.ConfigurationCache]
-			TTL = "15m"
-			Capacity = 100
-		[Validator.AgglayerClient.GRPC]
+	Cached = true
+	[Validator.AgglayerClient.ConfigurationCache]
+		TTL = "5m"
+		Capacity = 100
+	[Validator.AgglayerClient.GRPC]
 		URL = "{{AggSender.AgglayerClient.GRPC.URL}}"
 		MinConnectTimeout = "{{AggSender.AgglayerClient.GRPC.MinConnectTimeout}}"
 		RequestTimeout = "{{AggSender.AgglayerClient.GRPC.RequestTimeout}}"

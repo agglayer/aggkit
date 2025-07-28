@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/config/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
@@ -44,8 +44,19 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.SovereignRollupAddr, cfg.AggSender.SovereignRollupAddr)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")
+	require.Equal(t, cfg.AggSender.RetriesToBuildAndSendCertificate.String(),
+		"RetryPolicyConfig{Mode: delays, Config: RetryDelaysConfig{Delays: [1m0s 1m0s 2m0s 5m0s 5m0s 8m0s], MaxRetries: 6}}")
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
-	require.Equal(t, ethermanconfig.RPCClientConfig{Mode: ethermanconfig.RPCModeBasic, URL: "http://localhost:8123"}, cfg.Common.L2RPC)
+	require.Equal(t, L2RPCClientConfig{
+		RPCClientConfig: RPCClientConfig{
+			URL:               "http://localhost:8123",
+			MaxRetries:        5,
+			InitialBackoff:    types.NewDuration(2 * time.Second),
+			MaxBackoff:        types.NewDuration(10 * time.Second),
+			BackoffMultiplier: 2.0,
+		},
+		Mode: RPCModeBasic,
+	}, cfg.Common.L2RPC)
 	require.Equal(t, cfg.Profiling.ProfilingEnabled, false)
 	require.Equal(t, cfg.Profiling.ProfilingHost, "localhost")
 	require.Equal(t, cfg.Profiling.ProfilingPort, 6060)
@@ -114,6 +125,9 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[L1Config]
 	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 
+	[L1NetworkConfig]
+	URL = "http://localhost:8545"
+
 	[AggSender]
 	BridgeMetaDataAsHash = true
 	AggLayerUrl = "https://localhost:5575"
@@ -140,7 +154,6 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 
 	[Etherman]
 	URL = "{{L1URL}}"
-	ForkIDChunkSize = 100
 	[Etherman.EthermanConfig]
 		URL = "{{L1URL}}"
 		MultiGasProvider = false
@@ -149,8 +162,13 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 		[Etherman.EthermanConfig.Etherscan]
 			ApiKey = ""
 			Url = "https://api.etherscan.io/api?module=gastracker&action=gasoracle&apikey="
+
 	[AggOracle]
 	BlockFinality = "FinalizedBlock"
+
+	[LastGERSync]
+	SyncMode = "Legacy"
+	DBPath = "{{PathRWData}}/l2gersync.sqlite"
 `))
 	require.NoError(t, err)
 	ctx := newCliContextConfigFlag(t, tmpFile.Name())
@@ -176,4 +194,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, aggOracleBlockFinalityDeprecated)
 	require.ErrorContains(t, err, l1InfoTreeSyncBlockFinalityDeprecated)
 	require.ErrorContains(t, err, bridgeL1SyncBlockFinalityDeprecated)
+	require.ErrorContains(t, err, lastGERSyncDeprecatedHint)
+	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
+	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 }

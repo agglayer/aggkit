@@ -2,14 +2,21 @@ package validator
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
+)
+
+var (
+	ErrNilCertificate        = errors.New("aggsender-validator nil certificate")
+	ErrMetadataNotCompatible = errors.New("aggsender-validator metadata not compatible with the current version")
 )
 
 type FlowInterface interface {
@@ -159,13 +166,9 @@ func (a *CertificateValidator) compareCertificates(
 	diffs := DiffsCertificate(incomingCertificate, localCertificate)
 	diffStr := strings.Join(diffs, "\n")
 	// This is redudant, but just in case
-	if incomingCertificate.Hash() != localCertificate.Hash() {
+	if incomingCertificate.CertificateID() != localCertificate.CertificateID() {
 		return fmt.Errorf("certificates hash mismatch, incoming: %s, local: %s.\n FullDiff: %s",
-			incomingCertificate.Hash().Hex(), localCertificate.Hash().Hex(), diffStr)
-	}
-	if incomingCertificate.Metadata != localCertificate.Metadata {
-		return fmt.Errorf("certificates metadata mismatch, incoming: %s, local: %s.\n FullDiff: %s",
-			incomingCertificate.Metadata.Hex(), localCertificate.Metadata.Hex(), diffStr)
+			incomingCertificate.CertificateID().Hex(), localCertificate.CertificateID().Hex(), diffStr)
 	}
 	if len(diffs) > 0 {
 		return fmt.Errorf("certificates mismatch. FullDiff: %s",
@@ -200,7 +203,7 @@ func (a *CertificateValidator) getCertificatePreBuildParams(ctx context.Context,
 	if params.Certificate == nil {
 		return nil, fmt.Errorf("preBuildParams. Err: %w", ErrNilCertificate)
 	}
-	lastSentCertificate, err := AgglayerCertificateHeaderToAggsender(params.PreviousCertificate)
+	lastSentCertificate, err := converters.ConvertAgglayerCertHeaderToAggsender(params.PreviousCertificate)
 	if err != nil {
 		return nil, fmt.Errorf("preBuildParams. failed to convert previous certificate to Aggsender format: %w", err)
 	}

@@ -8,7 +8,7 @@ require (
 	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.6-20250519093743-85e8a3d9f59c.1
 	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.6-20250520163122-7efa0a2f81a8.1
-	github.com/0xPolygon/cdk-contracts-tooling v0.0.4
+	github.com/0xPolygon/cdk-contracts-tooling v0.0.5-0.20250716091746-57b1cac5324d
 	github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.15
 	github.com/agglayer/go_signer v0.0.7
@@ -34,7 +34,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/swaggo/files v1.0.1
 	github.com/swaggo/gin-swagger v1.6.0
-	github.com/swaggo/swag v1.16.4
+	github.com/swaggo/swag v1.16.5
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/valyala/fasttemplate v1.2.2
 	go.opentelemetry.io/otel v1.37.0

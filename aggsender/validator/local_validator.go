@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -92,5 +93,5 @@ func getPreviousCertificate(
 		return nil, fmt.Errorf("error getting previous certificate header by height %d: %w", newCertHeight-1, err)
 	}
 
-	return AggsenderCertificateHeaderToAgglayer(certHeader, networkID), nil
+	return converters.ConvertAggsenderCertHeaderToAgglayer(certHeader, networkID), nil
 }

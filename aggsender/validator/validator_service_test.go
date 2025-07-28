@@ -24,15 +24,6 @@ var (
 	signature = &typesv1.AggchainData_Signature{
 		Signature: &typesv1.FixedBytes65{Value: []byte("test_signature")},
 	}
-	testL1InfoTreeLeafCount = uint32(123)
-	testCertificate1        = nodev1.Certificate{
-		Height:              42,
-		NewLocalExitRoot:    &typesv1.FixedBytes32{},
-		PrevLocalExitRoot:   &typesv1.FixedBytes32{},
-		Metadata:            &typesv1.FixedBytes32{},
-		L1InfoTreeLeafCount: &testL1InfoTreeLeafCount,
-		AggchainData:        &typesv1.AggchainData{Data: signature},
-	}
 	errTestGenericError = errors.New("generic error")
 )
 
@@ -74,7 +65,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &testCertificate1,
+			Certificate: newGRPCCertificateForTest(t),
 		}
 		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
@@ -87,7 +78,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 	t.Run("PreviousCertificateId, fail to retrieve it", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &testCertificate1,
+			Certificate: newGRPCCertificateForTest(t),
 			PreviousCertificateId: &nodev1.CertificateId{
 				Value: &typesv1.FixedBytes32{Value: common.HexToHash("0xbeef").Bytes()},
 			},
@@ -99,7 +90,7 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 	t.Run("PreviousCertificateId, retrieved but is nil", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &testCertificate1,
+			Certificate: newGRPCCertificateForTest(t),
 			PreviousCertificateId: &nodev1.CertificateId{
 				Value: &typesv1.FixedBytes32{Value: common.HexToHash("0xbeef").Bytes()},
 			},
@@ -111,18 +102,39 @@ func TestValidatorService_ValidateCertificate(t *testing.T) {
 
 	t.Run("fails to convert certificate", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
-		cert := testCertificate1
+		cert := newGRPCCertificateForTest(t)
 		cert.NewLocalExitRoot = nil
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &cert,
+			Certificate: cert,
 		}
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
 		require.ErrorContains(t, err, "Invalid certificate conversion")
 	})
+	t.Run("converted certificate with bridgeExits", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		cert := newGRPCCertificateForTest(t)
+		cert.BridgeExits = []*typesv1.BridgeExit{
+			{
+				LeafType: 1,
+				TokenInfo: &typesv1.TokenInfo{
+					OriginTokenAddress: &typesv1.FixedBytes20{},
+				},
+				DestAddress: &typesv1.FixedBytes20{},
+			},
+		}
+		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
+
+		req := &v1.ValidateCertificateRequest{
+			Certificate: cert,
+		}
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.NoError(t, err)
+	})
 	t.Run("fails validate certificate", func(t *testing.T) {
 		testData := newValidatorServiceTestData(t)
 		req := &v1.ValidateCertificateRequest{
-			Certificate: &testCertificate1,
+			Certificate: newGRPCCertificateForTest(t),
 		}
 		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(errTestGenericError).Once()
 		_, err := testData.sut.ValidateCertificate(t.Context(), req)
@@ -150,5 +162,18 @@ func newValidatorServiceTestData(t *testing.T) *testValidatorServiceData {
 		mockAgglayerClient: mockAgglayerClient,
 		mockSigner:         mockSigner,
 		sut:                sut,
+	}
+}
+
+func newGRPCCertificateForTest(t *testing.T) *nodev1.Certificate {
+	t.Helper()
+	testL1InfoTreeLeafCount := uint32(123)
+	return &nodev1.Certificate{
+		Height:              42,
+		NewLocalExitRoot:    &typesv1.FixedBytes32{},
+		PrevLocalExitRoot:   &typesv1.FixedBytes32{},
+		Metadata:            &typesv1.FixedBytes32{},
+		L1InfoTreeLeafCount: &testL1InfoTreeLeafCount,
+		AggchainData:        &typesv1.AggchainData{Data: signature},
 	}
 }

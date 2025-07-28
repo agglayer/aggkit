@@ -1,0 +1,81 @@
+package converters
+
+import (
+	"testing"
+
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/require"
+)
+
+func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
+	t.Run("NilCertificate", func(t *testing.T) {
+		result, err := ConvertAgglayerCertHeaderToAggsender(nil)
+		require.Nil(t, result)
+		require.NoError(t, err)
+	})
+
+	t.Run("MetadataNotCompatible", func(t *testing.T) {
+		badMetadata := make([]byte, common.HashLength)
+		badMetadata[0] = 0xff // Version = 0xff
+		cert := &agglayertypes.CertificateHeader{
+			Metadata: common.Hash(badMetadata),
+		}
+		result, err := ConvertAgglayerCertHeaderToAggsender(cert)
+		require.Nil(t, result)
+		require.ErrorContains(t, err, "unsupported certificate metadata")
+	})
+
+	t.Run("Can't get blockRange'", func(t *testing.T) {
+		badMetadata := make([]byte, common.HashLength)
+		badMetadata[0] = 0x0 // Version = 0x0 doesn't have blockrange
+		cert := &agglayertypes.CertificateHeader{
+			Metadata: common.Hash(badMetadata),
+		}
+		result, err := ConvertAgglayerCertHeaderToAggsender(cert)
+		require.Nil(t, result)
+		require.Error(t, err)
+	})
+
+	t.Run("ok", func(t *testing.T) {
+		badMetadata := make([]byte, common.HashLength)
+		badMetadata[0] = 0x1 // Version = 0xff
+		cert := &agglayertypes.CertificateHeader{
+			Metadata: common.Hash(badMetadata),
+		}
+		result, err := ConvertAgglayerCertHeaderToAggsender(cert)
+		require.NotNil(t, result)
+		require.NoError(t, err)
+	})
+}
+
+func TestAggsenderCertificateHeaderToAgglayer(t *testing.T) {
+	t.Run("NilCertificate", func(t *testing.T) {
+		result := ConvertAggsenderCertHeaderToAgglayer(nil, 1)
+		require.Nil(t, result)
+	})
+
+	t.Run("ValidConversion", func(t *testing.T) {
+		prevLER := common.HexToHash("0x4444")
+		cert := &types.CertificateHeader{
+			Height:                10,
+			CertificateID:         common.HexToHash("0x123"),
+			PreviousLocalExitRoot: &prevLER,
+			NewLocalExitRoot:      common.HexToHash("0x5555"),
+			Status:                1,
+			FromBlock:             100,
+			ToBlock:               200,
+			CreatedAt:             1234567890,
+			CertType:              types.CertificateType(1),
+		}
+		result := ConvertAggsenderCertHeaderToAgglayer(cert, 42)
+		require.NotNil(t, result)
+		require.Equal(t, uint32(42), result.NetworkID)
+		require.Equal(t, cert.Height, result.Height)
+		require.Equal(t, cert.CertificateID, result.CertificateID)
+		require.Equal(t, cert.PreviousLocalExitRoot, result.PreviousLocalExitRoot)
+		require.Equal(t, cert.NewLocalExitRoot, result.NewLocalExitRoot)
+		require.Equal(t, cert.Status, result.Status)
+	})
+}
