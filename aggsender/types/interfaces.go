@@ -7,9 +7,9 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -61,6 +61,7 @@ type L1InfoTreeSyncer interface {
 		ctx context.Context, index uint32, root common.Hash,
 	) (treetypes.Proof, error)
 	GetL1InfoTreeRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
+	GetLastL1InfoTreeRoot(ctx context.Context) (treetypes.Root, error)
 	GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
@@ -91,9 +92,8 @@ type BridgeQuerier interface {
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
-	GetInjectedGERsForRange(
-		ctx context.Context,
-		fromBlock, toBlock uint64) (map[common.Hash]chaingerreader.InjectedGER, error)
+	GetInjectedGERsForRange(ctx context.Context,
+		fromBlock, toBlock uint64) (map[common.Hash]l2gersync.GlobalExitRootInfo, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
@@ -177,6 +177,35 @@ type VerifyIncomingRequest struct {
 	PreviousCertificate *agglayertypes.CertificateHeader
 }
 
+// HealthCheckStatus defines the status of a health check
+type HealthCheckStatus = string
+
+const (
+	HealthCheckStatusOK HealthCheckStatus = "OK"
+)
+
+// HealthCheckResponse response for health check
+type HealthCheckResponse struct {
+	Status       HealthCheckStatus
+	StatusReason string
+	Version      string
+}
+
+// IsHealthy checks if the health check response is healthy
+func (h *HealthCheckResponse) IsHealthy() bool {
+	return h != nil && h.Status == HealthCheckStatusOK
+}
+
+// String returns a string representation of the HealthCheckResponse
+func (h *HealthCheckResponse) String() string {
+	if h == nil {
+		return "HealthCheckResponse is nil"
+	}
+	return "HealthCheckResponse{Status: " + h.Status +
+		", StatusReason: " + h.StatusReason +
+		", Version: " + h.Version + "}"
+}
+
 type CertificateValidator interface {
 	ValidateCertificate(ctx context.Context, params VerifyIncomingRequest) error
 }
@@ -184,6 +213,8 @@ type CertificateValidator interface {
 // CertificateValidateAndSigner is an interface to attach a certificate validator and signer
 // to aggsender regular flow
 type CertificateValidateAndSigner interface {
+	// HealthCheck checks the health of the validator service
+	HealthCheck(ctx context.Context) (*HealthCheckResponse, error)
 	// ValidateAndSignCertificate validates the certificate and signs it if valid.
 	ValidateAndSignCertificate(
 		ctx context.Context,
@@ -194,6 +225,7 @@ type CertificateValidateAndSigner interface {
 
 // ValidatorClient is an interface defining functions that a ValidatorClient should implement
 type ValidatorClient interface {
+	HealthCheck(ctx context.Context) (*HealthCheckResponse, error)
 	ValidateCertificate(
 		ctx context.Context,
 		previousCertificateID *common.Hash, // can be nil if there is no previous certificate

@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
@@ -19,7 +20,7 @@ type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
 	StoragePath string `mapstructure:"StoragePath"`
 	// AgglayerClient is the Agglayer gRPC client configuration
-	AgglayerClient *grpc.ClientConfig `mapstructure:"AgglayerClient"`
+	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
 	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
@@ -88,6 +89,8 @@ type Config struct {
 	RequireValidatorCall bool `mapstructure:"RequireValidatorCall"`
 	// ValidatorClient is the configuration for the ValidatorClient
 	ValidatorClient *grpc.ClientConfig `mapstructure:"ValidatorClient"`
+	// RetriesToBuildAndSendCertificate is the configuration for the retries to build and send a certificate
+	RetriesToBuildAndSendCertificate common.RetryPolicyGenericConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -109,7 +112,8 @@ func (c Config) String() string {
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
-		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n"
+		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
+		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n"
 }
 
 // Validate checks if the configuration is valid
@@ -133,6 +137,8 @@ func (c Config) Validate() error {
 			return fmt.Errorf("invalid aggkit prover client config: %w", err)
 		}
 	}
-
+	if err := c.RetriesToBuildAndSendCertificate.Validate(); err != nil {
+		return fmt.Errorf("invalid RetriesToBuildAndSendCertificate config: %w", err)
+	}
 	return nil
 }

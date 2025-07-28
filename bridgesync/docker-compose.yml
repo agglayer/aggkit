@@ -1,7 +1,7 @@
 services:
   test-claimdata-l1:
     container_name: test-claimdata-l1
-    image: hermeznetwork/geth-zkevm-contracts:elderberry-fork.9-geth1.13.11
+    image: hermeznetwork/geth-zkevm-contracts:latest
     environment:
       - DEV_PERIOD
     ports:

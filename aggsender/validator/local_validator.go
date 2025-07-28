@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -38,6 +39,13 @@ func NewLocalValidator(
 // String returns a string representation of the LocalValidator.
 func (a *LocalValidator) String() string {
 	return "LocalValidator"
+}
+
+func (a *LocalValidator) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
+	return &types.HealthCheckResponse{
+		Status:  "OK",
+		Version: "local",
+	}, nil
 }
 
 // ValidateAndSignCertificate validates the certificate.
@@ -85,5 +93,5 @@ func getPreviousCertificate(
 		return nil, fmt.Errorf("error getting previous certificate header by height %d: %w", newCertHeight-1, err)
 	}
 
-	return AggsenderCertificateHeaderToAgglayer(certHeader, networkID), nil
+	return converters.ConvertAggsenderCertHeaderToAgglayer(certHeader, networkID), nil
 }

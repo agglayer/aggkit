@@ -4,16 +4,7 @@ import (
 	"fmt"
 
 	"github.com/agglayer/aggkit/config/types"
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
 )
-
-// Config holds the configuration for the Aggkit.
-type Config struct {
-	// NetworkID is the networkID of the Aggkit being run
-	NetworkID uint32 `mapstructure:"NetworkID"`
-	// L2URL is the URL of the L2 node
-	L2RPC ethermanconfig.RPCClientConfig `mapstructure:"L2RPC"`
-}
 
 // RESTConfig contains the configuration settings for the REST service in the Aggkit application.
 type RESTConfig struct {

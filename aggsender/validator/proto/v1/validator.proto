@@ -10,8 +10,18 @@ import "google/protobuf/empty.proto";
 
 // Service for validating new certificates
 service AggsenderValidator {
+    // Method to get the status of the validator
+    rpc HealthCheck(google.protobuf.Empty) returns (HealthCheckResponse);
     // Method to validate a new certificate
     rpc ValidateCertificate(ValidateCertificateRequest) returns (ValidateCertificateResponse);
+}
+
+// Response Status() 
+message HealthCheckResponse {
+  string version = 1; // Version of the validator
+  string status = 2; // Status of the validator
+  string reason = 3; // Reason of the validator status
+
 }
 
 // Request to validate a certificate

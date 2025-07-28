@@ -14,6 +14,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -28,7 +29,7 @@ import (
 
 func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 	t.Parallel()
-
+	// Set up the test context
 	ctx := context.Background()
 
 	finalizedL1Root := common.HexToHash("0x1")
@@ -37,6 +38,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		BridgeExit: &agglayertypes.BridgeExit{
 			LeafType:  0,
 			TokenInfo: &agglayertypes.TokenInfo{},
+			Metadata:  aggkitcommon.EmptyBytesHash,
 		},
 		GlobalIndex: &agglayertypes.GlobalIndex{
 			LeafIndex: 1,
@@ -47,6 +49,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 		BridgeExit: &agglayertypes.BridgeExit{
 			LeafType:  0,
 			TokenInfo: &agglayertypes.TokenInfo{},
+			Metadata:  aggkitcommon.EmptyBytesHash,
 		},
 		GlobalIndex: &agglayertypes.GlobalIndex{
 			LeafIndex: 2,
@@ -391,7 +394,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					LastProvenBlock: 6,
 					EndBlock:        10,
 				},
-				CreatedAt:       uint32(time.Now().UTC().Unix()),
+				CreatedAt:       timeNowUTCForTest(),
 				CertificateType: types.CertificateTypeFEP,
 			},
 		},
@@ -471,7 +474,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					LastProvenBlock: 6,
 					EndBlock:        8,
 				},
-				CreatedAt:       uint32(time.Now().UTC().Unix()),
+				CreatedAt:       timeNowUTCForTest(),
 				CertificateType: types.CertificateTypeFEP,
 			},
 		},
@@ -498,7 +501,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeDataQuerier,
 				mockLERQuerier,
 				NewBaseFlowConfigDefault())
-
+			flowBase.timeNowFunc = timeNowUTCForTest
 			aggchainFlow := NewAggchainProverFlow(
 				logger,
 				NewAggchainProverFlowConfigDefault(),

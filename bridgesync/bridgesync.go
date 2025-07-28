@@ -447,7 +447,7 @@ func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2) error {
 	lastUpdatedDespositCount, err := bridgeContractV2.LastUpdatedDepositCount(nil)
 	if err != nil {
-		logger.Error("failed to get last updated deposit count", "error", err)
+		logger.Errorf("failed to get last updated deposit count: %s", err)
 		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w",
 			bridgeAddr.String(), err)
 	}

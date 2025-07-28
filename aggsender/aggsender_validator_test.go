@@ -1,28 +1,29 @@
 package aggsender
 
 import (
-	"context"
 	"testing"
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
+	validatormocks "github.com/agglayer/aggkit/aggsender/validator/mocks"
 	"github.com/agglayer/aggkit/log"
 	"github.com/stretchr/testify/require"
 )
 
 func TestNewAggsenderValidator(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
-	// Mock logger
 	mockLogger := log.WithFields("test", "TestNewAggsenderValidator")
-	// Mock FlowInterface
 	mockFlowPP := mocks.NewAggsenderFlow(t)
-
-	// Mock L1InfoTreeRootByLeafQuerier
 	mockL1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
-
+	mockAggLayerClient := validatormocks.NewAgglayerClientInterface(t)
+	cfg := validator.Config{
+		EnableRPC: true,
+	}
 	// Call the function
-	validator, err := NewAggsenderValidator(ctx, mockLogger, mockFlowPP, mockL1InfoTreeDataQuerier)
+	validator, err := NewAggsenderValidator(ctx, mockLogger, cfg, mockFlowPP, mockL1InfoTreeDataQuerier,
+		mockAggLayerClient, nil)
 
 	// Assertions
 	require.NoError(t, err, "Expected no error when creating AggsenderValidator")

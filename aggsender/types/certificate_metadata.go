@@ -78,18 +78,19 @@ func NewCertificateMetadata(fromBlock uint64, offset uint32, createdAt uint32, c
 func NewCertificateMetadataFromHash(hash common.Hash) (*CertificateMetadata, error) {
 	b := hash.Bytes()
 	version := b[0]
-	if version == CertificateMetadataV0 {
+	switch version {
+	case CertificateMetadataV0:
 		return &CertificateMetadata{
 			ToBlock: hash.Big().Uint64(),
 		}, nil
-	} else if version == CertificateMetadataV1 {
+	case CertificateMetadataV1:
 		return &CertificateMetadata{
 			Version:   version,
 			FromBlock: binary.BigEndian.Uint64(b[1:9]),
 			Offset:    binary.BigEndian.Uint32(b[9:13]),
 			CreatedAt: binary.BigEndian.Uint32(b[13:17]),
 		}, nil
-	} else if version == CertificateMetadataV2 {
+	case CertificateMetadataV2:
 		return &CertificateMetadata{
 			Version:   version,
 			FromBlock: binary.BigEndian.Uint64(b[1:9]),
@@ -97,7 +98,7 @@ func NewCertificateMetadataFromHash(hash common.Hash) (*CertificateMetadata, err
 			CreatedAt: binary.BigEndian.Uint32(b[13:17]),
 			CertType:  b[17],
 		}, nil
-	} else {
+	default:
 		// Unsupported version
 		return nil, fmt.Errorf("newCertificateMetadataFromHash. unsupported certificate metadata version: %d", version)
 	}

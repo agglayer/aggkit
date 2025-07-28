@@ -112,3 +112,16 @@ packages:
       dir: "{{ .InterfaceDir }}/../../../mocks"
     interfaces:
       AggsenderValidatorClient:
+  github.com/agglayer/aggkit/aggsender/validator:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true
+  github.com/agglayer/aggkit/l2gersync:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true
+
+  github.com/agglayer/aggkit/common/types:
+    config:
+      dir: "{{ .InterfaceDir }}/mocks"
+      all: true      
