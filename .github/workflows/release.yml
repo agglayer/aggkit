@@ -3,8 +3,8 @@ name: Release
 on:
   push:
     tags:
-      - 'v*.*.*'
-      - 'v*.*.*-*'
+      - "v*.*.*"
+      - "v*.*.*-*"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
@@ -28,21 +28,35 @@ jobs:
         platform:
           - linux/amd64
           - linux/arm64
+        variant:
+          - { suffix: "", include_shell: "false", description: "production" }
+          - {
+              suffix: "-dev",
+              include_shell: "true",
+              description: "development",
+            }
     outputs:
-      IMAGE_NAME: ${{ steps.image_builder.outputs.IMAGE }}
-      TAGS: ${{ steps.meta.outputs.tags }}
-      VERSION: ${{ steps.meta.outputs.version }}
+      IMAGE_NAME_PROD: ${{ steps.image_builder_prod.outputs.IMAGE }}
+      IMAGE_NAME_DEV: ${{ steps.image_builder_dev.outputs.IMAGE }}
+      TAGS_PROD: ${{ steps.meta_prod.outputs.tags }}
+      TAGS_DEV: ${{ steps.meta_dev.outputs.tags }}
+      VERSION: ${{ steps.meta_prod.outputs.version }}
     steps:
       - name: Prepare
         run: |
           platform=${{ matrix.platform }}
           echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+          VARIANT_SUFFIX="${{ matrix.variant.suffix }}"
+          echo "VARIANT_SUFFIX=$VARIANT_SUFFIX" >> $GITHUB_ENV
+          PLATFORM_VARIANT="${platform//\//-}${VARIANT_SUFFIX}"
+          echo "PLATFORM_VARIANT=$PLATFORM_VARIANT" >> $GITHUB_ENV
 
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Docker meta
-        id: meta
+      - name: Docker meta (prod)
+        id: meta_prod
+        if: matrix.variant.suffix == ''
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY_IMAGE }}
@@ -52,10 +66,30 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
 
-      - name: Image name builder
-        id: image_builder
+      - name: Docker meta (dev)
+        id: meta_dev
+        if: matrix.variant.suffix != ''
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+          tags: |
+            type=ref,event=branch,suffix=-dev
+            type=ref,event=pr,suffix=-dev
+            type=semver,pattern={{version}}-dev
+            type=semver,pattern={{major}}.{{minor}}-dev
+
+      - name: Image name builder (prod)
+        id: image_builder_prod
+        if: matrix.variant.suffix == ''
         run: |
           IMAGE=$(jq -ecr '.tags | map(select(match("${{ env.REGEX_IMAGE }}", "i"))) | first| sub(":.*$";"")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
+
+      - name: Image name builder (dev)
+        id: image_builder_dev
+        if: matrix.variant.suffix != ''
+        run: |
+          IMAGE=$(jq -ecr '.tags | map(select(match("${{ env.REGEX_IMAGE }}-dev", "i"))) | first| sub(":.*$";"")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
           echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
@@ -78,21 +112,23 @@ jobs:
           context: .
           push: false
           platforms: ${{ matrix.platform }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: ${{ (matrix.variant.suffix == '') && steps.meta_prod.outputs.labels || steps.meta_dev.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          outputs: type=image,name=${{ steps.image_builder.outputs.IMAGE }},push-by-digest=true,push=true
+          build-args: |
+            INCLUDE_SHELL=${{ matrix.variant.include_shell }}
+          outputs: type=image,name=${{ (matrix.variant.suffix == '') && steps.image_builder_prod.outputs.IMAGE || steps.image_builder_dev.outputs.IMAGE }},push-by-digest=true,push=true
 
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
+          touch "/tmp/digests/${digest#sha256:}.${{ env.PLATFORM_VARIANT }}"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
         with:
-          name: digests-${{ env.PLATFORM_PAIR }}
+          name: digests-${{ env.PLATFORM_VARIANT }}
           path: /tmp/digests/*
           if-no-files-found: error
           retention-days: 1
@@ -101,12 +137,17 @@ jobs:
     runs-on: arm-runner-2204
     needs:
       - build
+    strategy:
+      matrix:
+        variant:
+          - { suffix: "", description: "production" }
+          - { suffix: "-dev", description: "development" }
     steps:
       - name: Download digests
         uses: actions/download-artifact@v4
         with:
           path: /tmp/digests
-          pattern: digests-*
+          pattern: digests-*${{ matrix.variant.suffix }}
           merge-multiple: true
 
       - name: Set up Docker Buildx
@@ -122,9 +163,15 @@ jobs:
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          docker buildx imagetools create $(jq -cRr 'split("\n") | map(gsub("\\s+";"")) | map("-t "+ .) | join(" ")' <<< '${{ needs.build.outputs.TAGS }}') \
-            $(printf '${{ needs.build.outputs.IMAGE_NAME }}@sha256:%s ' *)
+          IMAGE_NAME="${{ (matrix.variant.suffix == '') && needs.build.outputs.IMAGE_NAME_PROD || needs.build.outputs.IMAGE_NAME_DEV }}"
+          TAGS="${{ (matrix.variant.suffix == '') && needs.build.outputs.TAGS_PROD || needs.build.outputs.TAGS_DEV }}"
+          docker buildx imagetools create $(jq -cRr 'split("\n") | map(gsub("\\s+";"")) | map("-t "+ .) | join(" ")' <<< "$TAGS") \
+            $(for f in *${{ matrix.variant.suffix }}; do echo "${IMAGE_NAME}@sha256:${f%%.*}"; done)
 
       - name: Inspect image
         run: |
-          docker buildx imagetools inspect ${{ needs.build.outputs.IMAGE_NAME }}:${{ needs.build.outputs.VERSION }} 
+          IMAGE_NAME="${{ (matrix.variant.suffix == '') && needs.build.outputs.IMAGE_NAME_PROD || needs.build.outputs.IMAGE_NAME_DEV }}"
+          TAGS="${{ (matrix.variant.suffix == '') && needs.build.outputs.TAGS_PROD || needs.build.outputs.TAGS_DEV }}"
+          # Use the first tag for inspection
+          FIRST_TAG=$(echo "$TAGS" | head -n1)
+          docker buildx imagetools inspect "$FIRST_TAG"

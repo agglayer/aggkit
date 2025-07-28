@@ -10,12 +10,15 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/accounts/keystore"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 const KB = 1 << 10 // 1024
 
 var (
-	ZeroHash = common.HexToHash("0x0")
+	ZeroHash       = common.HexToHash("0x0")
+	EmptyBytesHash = crypto.Keccak256(nil)
+	ZeroAddress    = common.HexToAddress("0x0")
 )
 
 const (
@@ -48,6 +51,12 @@ func BytesToUint64(bytes []byte) uint64 {
 	padded := make([]byte, Uint64ByteSize)
 	copy(padded[Uint64ByteSize-len(bytes):], bytes)
 	return binary.BigEndian.Uint64(padded)
+}
+
+// Uint32ToBigEndianBytes converts a uint32 to a byte slice in big-endian order
+// it's an alias of Uint32ToBytes
+func Uint32ToBigEndianBytes(num uint32) []byte {
+	return Uint32ToBytes(num)
 }
 
 // Uint32ToBytes converts a uint32 to a byte slice in big-endian order

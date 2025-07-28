@@ -15,7 +15,6 @@ import (
 	aggkittypes "github.com/agglayer/aggkit/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -24,7 +23,7 @@ func TestExploratoryBlockNotifierPolling(t *testing.T) {
 	t.Skip()
 	urlRPCL1 := os.Getenv("L1URL")
 	fmt.Println("URL=", urlRPCL1)
-	ethClient, err := ethclient.Dial(urlRPCL1)
+	ethClient, err := aggkittypes.DialWithRetry(t.Context(), urlRPCL1, 5, 1*time.Second, 2*time.Second, 2.0)
 	require.NoError(t, err)
 
 	sut, errSut := NewBlockNotifierPolling(ethClient,

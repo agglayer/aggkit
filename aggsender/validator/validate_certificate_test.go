@@ -249,6 +249,20 @@ func TestGetCertificatePreBuildParams(t *testing.T) {
 	})
 }
 
+func TestCompareCertificates(t *testing.T) {
+	t.Run("TestCompareCertificates not same CertificateID", func(t *testing.T) {
+		cert1 := &agglayertypes.Certificate{
+			Height: 1,
+		}
+		cert2 := &agglayertypes.Certificate{
+			Height: 2,
+		}
+		sut := &CertificateValidator{}
+		err := sut.compareCertificates(cert1, cert2)
+		require.ErrorContains(t, err, "height mismatch")
+	})
+}
+
 type testDataCertificateValidator struct {
 	ctx                   context.Context
 	logger                *log.Logger

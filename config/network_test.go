@@ -1,0 +1,250 @@
+package config
+
+import (
+	"errors"
+	"fmt"
+	"testing"
+	"time"
+
+	"github.com/agglayer/aggkit/config/types"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/require"
+)
+
+func TestGetString(t *testing.T) {
+	cfg := L2RPCClientConfig{
+		RPCClientConfig: RPCClientConfig{
+			URL:            "http://localhost:8123",
+			MaxRetries:     3,
+			InitialBackoff: types.Duration{Duration: 1000},
+		},
+		ExtraParams: map[string]any{
+			"key":         "value",
+			"another_key": 1234,
+		},
+		Mode: RPCModeBasic,
+	}
+	value, err := cfg.GetString("key")
+	require.NoError(t, err)
+	require.Equal(t, "value", value)
+	_, err = cfg.GetString("another_key")
+	require.Error(t, err)
+	_, err = cfg.GetString("dont_exists_key")
+	require.Error(t, err)
+}
+
+func TestL1NetworkConfig_Validate(t *testing.T) {
+	validAddr := common.HexToAddress("0xDEAD")
+
+	tests := []struct {
+		name    string
+		cfg     L1NetworkConfig
+		wantErr error
+	}{
+		{
+			name:    "missing RPC config",
+			cfg:     L1NetworkConfig{},
+			wantErr: ErrMissingRPCConfig,
+		},
+		{
+			name: "missing RPC URL",
+			cfg: L1NetworkConfig{
+				RPC: RPCClientConfig{MaxRetries: 1}, // empty URL
+			},
+			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
+		},
+		{
+			name: "missing RollupAddr",
+			cfg: L1NetworkConfig{
+				RPC: RPCClientConfig{URL: "http://localhost:8545"},
+			},
+			wantErr: ErrMissingRollupAddress,
+		},
+		{
+			name: "missing RollupManagerAddr",
+			cfg: L1NetworkConfig{
+				RPC:        RPCClientConfig{URL: "http://localhost:8545"},
+				RollupAddr: validAddr,
+			},
+			wantErr: ErrMissingRollupManagerAddress,
+		},
+		{
+			name: "missing POLTokenAddr",
+			cfg: L1NetworkConfig{
+				RPC:               RPCClientConfig{URL: "http://localhost:8545"},
+				RollupAddr:        validAddr,
+				RollupManagerAddr: validAddr,
+			},
+			wantErr: ErrMissingPOLTokenAddress,
+		},
+		{
+			name: "missing GlobalExitRootManagerAddr",
+			cfg: L1NetworkConfig{
+				RPC:               RPCClientConfig{URL: "http://localhost:8545"},
+				RollupAddr:        validAddr,
+				RollupManagerAddr: validAddr,
+				POLTokenAddr:      validAddr,
+			},
+			wantErr: ErrMissingGlobalExitRootManagerAddress,
+		},
+		{
+			name: "valid config",
+			cfg: L1NetworkConfig{
+				RPC:                       RPCClientConfig{URL: "http://localhost:8545"},
+				RollupAddr:                validAddr,
+				RollupManagerAddr:         validAddr,
+				POLTokenAddr:              validAddr,
+				GlobalExitRootManagerAddr: validAddr,
+			},
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			require.Equal(t, tt.wantErr, err)
+		})
+	}
+}
+
+func TestL2RPCClientConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     L2RPCClientConfig
+		wantErr error
+	}{
+		{
+			name:    "missing RPC config",
+			cfg:     L2RPCClientConfig{},
+			wantErr: ErrMissingRPCConfig,
+		},
+		{
+			name: "missing RPC URL",
+			cfg: L2RPCClientConfig{
+				RPCClientConfig: RPCClientConfig{MaxRetries: 1}, // empty URL
+			},
+			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
+		},
+		{
+			name: "invalid RPC mode",
+			cfg: L2RPCClientConfig{
+				RPCClientConfig: RPCClientConfig{URL: "http://localhost:8545"},
+				Mode:            "invalid_mode",
+			},
+			wantErr: fmt.Errorf("invalid RPC mode: %s", "invalid_mode"),
+		},
+		{
+			name: "valid config with basic mode",
+			cfg: L2RPCClientConfig{
+				RPCClientConfig: RPCClientConfig{URL: "http://localhost:8545"},
+				Mode:            RPCModeBasic,
+			},
+			wantErr: nil,
+		},
+		{
+			name: "valid config with OP mode",
+			cfg: L2RPCClientConfig{
+				RPCClientConfig: RPCClientConfig{URL: "http://localhost:8545"},
+				Mode:            RPCModeOp,
+			},
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			require.Equal(t, tt.wantErr, err)
+		})
+	}
+}
+
+func TestRPCClientConfig_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  RPCClientConfig
+		wantErr error
+	}{
+		{
+			name:    "missing URL",
+			config:  RPCClientConfig{},
+			wantErr: ErrMissingRPCURL,
+		},
+		{
+			name: "negative MaxRetries",
+			config: RPCClientConfig{
+				URL:        "http://localhost:8545",
+				MaxRetries: -1,
+			},
+			wantErr: errors.New("max retries must be non-negative, got -1"),
+		},
+		{
+			name: "initial backoff is zero",
+			config: RPCClientConfig{
+				URL:               "http://localhost:8545",
+				MaxRetries:        3,
+				InitialBackoff:    types.Duration{Duration: 0},
+				MaxBackoff:        types.Duration{Duration: time.Second},
+				BackoffMultiplier: 2.0,
+			},
+			wantErr: errors.New("initial backoff must be positive, got 0s"),
+		},
+		{
+			name: "max backoff is zero",
+			config: RPCClientConfig{
+				URL:               "http://localhost:8545",
+				MaxRetries:        3,
+				InitialBackoff:    types.Duration{Duration: time.Second},
+				MaxBackoff:        types.Duration{Duration: 0},
+				BackoffMultiplier: 2.0,
+			},
+			wantErr: errors.New("max backoff must be positive, got 0s"),
+		},
+		{
+			name: "max backoff < initial backoff",
+			config: RPCClientConfig{
+				URL:               "http://localhost:8545",
+				MaxRetries:        3,
+				InitialBackoff:    types.Duration{Duration: 2 * time.Second},
+				MaxBackoff:        types.Duration{Duration: time.Second},
+				BackoffMultiplier: 2.0,
+			},
+			wantErr: errors.New("max backoff 1s must be greater than or equal to initial backoff 2s"),
+		},
+		{
+			name: "backoff multiplier <= 1.0",
+			config: RPCClientConfig{
+				URL:               "http://localhost:8545",
+				MaxRetries:        3,
+				InitialBackoff:    types.Duration{Duration: time.Second},
+				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+				BackoffMultiplier: 1.0,
+			},
+			wantErr: errors.New("backoff multiplier must be greater than 1.0, got 1.000000"),
+		},
+		{
+			name: "valid config",
+			config: RPCClientConfig{
+				URL:               "http://localhost:8545",
+				MaxRetries:        3,
+				InitialBackoff:    types.Duration{Duration: time.Second},
+				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+				BackoffMultiplier: 2.0,
+			},
+			wantErr: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.config.Validate()
+
+			if tt.wantErr == nil {
+				require.NoError(t, err, "expected no error, got: %v", err)
+			} else {
+				require.Error(t, err, tt.wantErr, "expected error %q, got %q", tt.wantErr.Error(), err.Error())
+			}
+		})
+	}
+}
