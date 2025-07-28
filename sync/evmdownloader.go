@@ -308,7 +308,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				if ctx.Err() == nil {
 					attempts++
 					d.log.Error("error getting last block num from eth client: ", err)
-					d.rh.Handle("WaitForNewBlocks", attempts)
+					d.rh.Handle(ctx, "WaitForNewBlocks", attempts)
 				} else {
 					d.log.Warn("context has been canceled while trying to get header by number")
 				}
@@ -379,7 +379,7 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 				if err != nil {
 					attempts++
 					d.log.Error("error trying to append log: ", err)
-					d.rh.Handle("appendLogs", attempts)
+					d.rh.Handle(ctx, "appendLogs", attempts)
 					continue
 				}
 				break
@@ -421,7 +421,7 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 				filterQueryToString(query),
 				err,
 			)
-			d.rh.Handle("getLogs", attempts)
+			d.rh.Handle(ctx, "getLogs", attempts)
 			continue
 		}
 		break
@@ -463,7 +463,7 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 
 			attempts++
 			d.log.Errorf("error getting block header for block %d, err: %v", blockNum, err)
-			d.rh.Handle("getBlockHeader", attempts)
+			d.rh.Handle(ctx, "getBlockHeader", attempts)
 			continue
 		}
 		return EVMBlockHeader{

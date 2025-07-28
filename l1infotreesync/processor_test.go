@@ -2,11 +2,18 @@ package l1infotreesync
 
 import (
 	"database/sql"
+	"fmt"
+	"math"
+	"math/rand"
 	"path"
+	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/sync"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -48,7 +55,7 @@ func TestGetInfo(t *testing.T) {
 	}
 	expected1.GlobalExitRoot = expected1.GetGlobalExitRoot()
 	expected1.Hash = expected1.GetHash()
-	err = p.ProcessBlock(ctx, sync.Block{
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
 		Num: 1,
 		Events: []interface{}{
 			Event{UpdateL1InfoTree: info1},
@@ -88,7 +95,7 @@ func TestGetInfo(t *testing.T) {
 	}
 	expected2.GlobalExitRoot = expected2.GetGlobalExitRoot()
 	expected2.Hash = expected2.GetHash()
-	err = p.ProcessBlock(ctx, sync.Block{
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
 		Num: 2,
 		Events: []interface{}{
 			Event{UpdateL1InfoTree: info2},
@@ -161,7 +168,7 @@ func Test_processor_GetL1InfoTreeMerkleProof(t *testing.T) {
 					ParentHash:      common.HexToHash("1010101"),
 					Timestamp:       420,
 				}
-				err = p.ProcessBlock(context.Background(), sync.Block{
+				err = p.ProcessBlock(context.Background(), aggkitsync.Block{
 					Num: 1,
 					Events: []interface{}{
 						Event{UpdateL1InfoTree: info},
@@ -236,7 +243,7 @@ func Test_processor_Reorg(t *testing.T) {
 					ParentHash:      common.HexToHash("1010101"),
 					Timestamp:       420,
 				}
-				err = p.ProcessBlock(context.Background(), sync.Block{
+				err = p.ProcessBlock(context.Background(), aggkitsync.Block{
 					Num: 1,
 					Events: []interface{}{
 						Event{UpdateL1InfoTree: info},
@@ -270,7 +277,7 @@ func Test_processor_Reorg(t *testing.T) {
 func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
 	sut, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTestProcessBlockUpdateL1InfoTreeV2DontMatchTree.sqlite"))
 	require.NoError(t, err)
-	block := sync.Block{
+	block := aggkitsync.Block{
 		Num: 10,
 		Events: []interface{}{
 			Event{UpdateL1InfoTree: &UpdateL1InfoTree{
@@ -286,7 +293,7 @@ func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
 		},
 	}
 	err = sut.ProcessBlock(context.Background(), block)
-	require.ErrorIs(t, err, sync.ErrInconsistentState)
+	require.ErrorIs(t, err, aggkitsync.ErrInconsistentState)
 	require.True(t, sut.halted)
 }
 
@@ -344,4 +351,108 @@ func TestGetProcessedBlockUntil(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, uint64(4), blockNum)
 	require.Equal(t, common.Hash{}, blockHash)
+}
+
+func TestProcessor_ConcurrentProcessBlockAndReorg(t *testing.T) {
+	dbPath := path.Join(t.TempDir(), "processor_concurrent_process_block_reorg.sqlite")
+	p, err := newProcessor(dbPath)
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
+	const maxBlockNum = 30
+	var (
+		wg    sync.WaitGroup
+		errCh = make(chan error, 2)
+	)
+
+	reorgBlock := uint64(rand.Intn(int(maxBlockNum/2)) + int(maxBlockNum/4)) // middle 50%
+	t.Logf("📍 Chosen reorg block: %d", reorgBlock)
+
+	var maxAllowedBlock atomic.Uint64
+	maxAllowedBlock.Store(math.MaxUint64)
+
+	// Block processing goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for i := uint64(0); i <= maxBlockNum; i++ {
+			select {
+			case <-ctx.Done():
+				t.Logf("🛑 Stopping block processing at block %d", i)
+				return
+			default:
+			}
+
+			if i >= maxAllowedBlock.Load() {
+				t.Logf("🚫 Skipping ProcessBlock(%d) due to reorg limit", i)
+				return
+			}
+
+			block := aggkitsync.Block{Num: i}
+			block.Events = []any{
+				Event{
+					UpdateL1InfoTree: &UpdateL1InfoTree{
+						BlockPosition:   i,
+						MainnetExitRoot: common.HexToHash(fmt.Sprintf("%x", i)),
+						RollupExitRoot:  common.HexToHash(fmt.Sprintf("%x", i)),
+					},
+				},
+			}
+
+			if err := p.ProcessBlock(ctx, block); err != nil && !strings.Contains(err.Error(), "context canceled") {
+				errCh <- fmt.Errorf("❌ ProcessBlock(%d) failed: %w", i, err)
+				return
+			}
+			t.Logf("✅ Processed block %d", i)
+
+			time.Sleep(time.Duration(rand.Intn(10)) * time.Millisecond)
+		}
+	}()
+
+	// Reorg goroutine
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		time.Sleep(time.Duration(rand.Intn(200)+50) * time.Millisecond)
+
+		t.Logf("🔄 Starting Reorg to block %d", reorgBlock)
+		if err := p.Reorg(ctx, reorgBlock); err != nil {
+			errCh <- fmt.Errorf("❌ Reorg to block %d failed: %w", reorgBlock, err)
+			return
+		} else {
+			t.Logf("✅ Reorg to %d succeeded", reorgBlock)
+		}
+
+		maxAllowedBlock.Store(reorgBlock)
+
+		// Cancel context to stop block processing
+		cancel()
+	}()
+
+	wg.Wait()
+	close(errCh)
+
+	for err := range errCh {
+		require.NoError(t, err)
+	}
+
+	// Assert DB state
+	rows, err := p.db.QueryContext(context.Background(), `SELECT num FROM block`)
+	require.NoError(t, err)
+	defer rows.Close()
+
+	var remaining []uint64
+	for rows.Next() {
+		var n uint64
+		require.NoError(t, rows.Scan(&n))
+		remaining = append(remaining, n)
+	}
+	require.NoError(t, rows.Err())
+
+	t.Logf("🧾 Remaining blocks in DB: %v", remaining)
+	for _, n := range remaining {
+		require.Truef(t, n < reorgBlock, "Block %d should not be in DB (>= reorgBlock %d)", n, reorgBlock)
+	}
 }

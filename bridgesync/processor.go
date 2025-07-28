@@ -715,7 +715,9 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 
 	shouldRollback = false
 
-	sync.UnhaltIfAffectedRows(&p.halted, &p.haltedReason, &p.mu, rowsAffected)
+	if rowsAffected > 0 {
+		p.unhalt()
+	}
 	return nil
 }
 
@@ -756,11 +758,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				Hash:  event.Bridge.Hash(),
 			}); err != nil {
 				if errors.Is(err, tree.ErrInvalidIndex) {
-					p.mu.Lock()
-					p.halted = true
-					p.haltedReason = fmt.Sprintf("error adding leaf to the exit tree: %v", err)
-					p.mu.Unlock()
-					p.log.Errorf("processor halted: %s", p.haltedReason)
+					p.halt(fmt.Sprintf("error adding leaf to the exit tree: %v", err))
 				}
 				return sync.ErrInconsistentState
 			}
@@ -976,8 +974,30 @@ func (p *processor) calculateOffset(pageNumber, pageSize uint32,
 	return offset, nil
 }
 
+// isHalted checks if the processor is halted
 func (p *processor) isHalted() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
+
 	return p.halted
+}
+
+// halt sets the processor to a halted state, preventing it from processing blocks
+func (p *processor) halt(reason string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.halted = true
+	p.haltedReason = reason
+	p.log.Errorf("processor is halted due to the following reason: %s", reason)
+}
+
+// unhalt sets the processor to a non-halted state, allowing it to process blocks again
+func (p *processor) unhalt() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.halted = false
+	p.haltedReason = ""
+	p.log.Info("processor unhalted")
 }
