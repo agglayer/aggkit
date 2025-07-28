@@ -217,7 +217,7 @@ func (d *EVMDriver) processBlock(ctx context.Context, b EVMBlock) error {
 		})
 		if errors.Is(err, ErrInconsistentState) {
 			d.log.Warn("state got inconsistent after processing this block; halting until reorg")
-			return backoffPermanent(err)
+			return newStopRetryError(err)
 		}
 		return err
 	})
@@ -248,7 +248,7 @@ func (d *EVMDriver) withRetry(ctx context.Context, opName string, fn func() erro
 				d.log.Errorf("error during %s (attempt %d): %v", opName, attempts, err)
 
 				// Stop retrying on permanent errors
-				if isBackoffPermanent(err) {
+				if isStopRetryError(err) {
 					return err
 				}
 
@@ -260,18 +260,18 @@ func (d *EVMDriver) withRetry(ctx context.Context, opName string, fn func() erro
 	}
 }
 
-type permanentError struct {
+type stopRetryError struct {
 	err error
 }
 
-func (e *permanentError) Error() string { return e.err.Error() }
-func (e *permanentError) Unwrap() error { return e.err }
+func (e *stopRetryError) Error() string { return e.err.Error() }
+func (e *stopRetryError) Unwrap() error { return e.err }
 
-func backoffPermanent(err error) error {
-	return &permanentError{err: err}
+func newStopRetryError(err error) error {
+	return &stopRetryError{err: err}
 }
 
-func isBackoffPermanent(err error) bool {
-	var perr *permanentError
+func isStopRetryError(err error) bool {
+	var perr *stopRetryError
 	return errors.As(err, &perr)
 }
