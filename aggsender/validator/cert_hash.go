@@ -9,18 +9,11 @@ import (
 
 // HashCertificateToSign is the hash of the certificate that the validator will sign
 // before returning result to the aggsender
-func HashCertificateToSign(cert *agglayertypes.Certificate) common.Hash {
-	globalIndexHashes := make([][]byte, len(cert.ImportedBridgeExits))
-	for i, importedBridgeExit := range cert.ImportedBridgeExits {
-		globalIndexHashes[i] = importedBridgeExit.GlobalIndex.Hash().Bytes()
+func HashCertificateToSign(cert *agglayertypes.Certificate) (common.Hash, error) {
+	if err := cert.Validate(); err != nil {
+		return common.Hash{}, err
 	}
-	networkID := aggkitcommon.Uint32ToBigEndianBytes(cert.NetworkID)
-	height := aggkitcommon.Uint64ToBigEndianBytes(cert.Height)
 	return crypto.Keccak256Hash(
-		cert.NewLocalExitRoot.Bytes(),
-		crypto.Keccak256Hash(globalIndexHashes...).Bytes(),
-		networkID,
-		height,
-		cert.Metadata[:],
-	)
+		cert.CertificateID().Bytes(),
+		aggkitcommon.Uint32ToBytes(cert.L1InfoTreeLeafCount)), nil
 }

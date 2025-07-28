@@ -17,7 +17,7 @@ var ErrInconsistentState = errors.New("state is inconsistent, try again later on
 
 type Block struct {
 	Num    uint64
-	Events []interface{}
+	Events []any
 	Hash   common.Hash
 }
 
@@ -129,21 +129,24 @@ reset:
 		if err = d.compatibilityChecker.Check(ctx, nil); err != nil {
 			attempts++
 			d.log.Error("error checking compatibility data between downloader (runtime) and processor (db): ", err)
-			d.rh.Handle("CompatibilityChecker", attempts)
+			d.rh.Handle(ctx, "CompatibilityChecker", attempts)
 			continue
 		}
 		break
 	}
+
 	for {
 		lastProcessedBlock, err = d.processor.GetLastProcessedBlock(ctx)
 		if err != nil {
 			attempts++
 			d.log.Error("error getting last processed block: ", err)
-			d.rh.Handle("Sync", attempts)
+			d.rh.Handle(ctx, "Sync", attempts)
 			continue
 		}
 		break
 	}
+
+	// setup context to cancel downloader and/or block processor
 	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -152,122 +155,140 @@ reset:
 	downloadCh := make(chan EVMBlock, d.downloadBufferSize)
 	go d.downloader.Download(cancellableCtx, lastProcessedBlock+1, downloadCh)
 
-	for {
-		if d.reorgSub != nil {
-			select {
-			case <-ctx.Done():
-				d.log.Debug("context cancelled")
-				return
-			case b, ok := <-downloadCh:
-				if ok {
-					// when channel is closing, it is sending an empty block with num = 0, and empty hash
-					// because it is not passing object by reference, but by value, so do not handle that since it is closing
-					d.log.Debugf("handleNewBlock, blockNum: %d, blockHash: %s", b.Num, b.Hash)
-					d.handleNewBlock(ctx, cancel, b)
-				}
-			case firstReorgedBlock := <-d.reorgSub.ReorgedBlock:
-				d.log.Debug("handleReorg from block: ", firstReorgedBlock)
-				d.handleReorg(ctx, cancel, firstReorgedBlock)
-				goto reset
-			}
-		} else {
-			select {
-			case <-ctx.Done():
-				d.log.Debug("context cancelled")
-				return
-			case b, ok := <-downloadCh:
-				if ok {
-					// when channel is closing, it is sending an empty block with num = 0, and empty hash
-					// because it is not passing object by reference, but by value, so do not handle that since it is closing
-					d.log.Debugf("handleNewBlock, blockNum: %d, blockHash: %s", b.Num, b.Hash)
-					d.handleNewBlock(ctx, cancel, b)
-				}
-			}
-		}
-	}
-}
+	// Block processing goroutine
+	blockProcessingDone := make(chan struct{})
+	go func() {
+		defer close(blockProcessingDone)
 
-func (d *EVMDriver) handleNewBlock(ctx context.Context, cancel context.CancelFunc, b EVMBlock) {
-	attempts := 0
-	succeed := false
-	for {
-		select {
-		case <-ctx.Done():
-			// If the context is canceled, exit the function
-			d.log.Warnf("context canceled while adding block %d to tracker", b.Num)
-			return
-		default:
-			if !b.IsFinalizedBlock && d.reorgDetector != nil {
-				err := d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, b.Num, b.Hash)
-				if err != nil {
-					attempts++
-					d.log.Errorf("error adding block %d to tracker: %v", b.Num, err)
-					d.rh.Handle("handleNewBlock", attempts)
-				} else {
-					succeed = true
-				}
-			} else {
-				succeed = true
-			}
-		}
-		if succeed {
-			break
-		}
-	}
-	attempts = 0
-	succeed = false
-	for {
-		select {
-		case <-ctx.Done():
-			// If the context is canceled, exit the function
-			d.log.Warnf("context canceled while processing block %d", b.Num)
-			return
-		default:
-			blockToProcess := Block{
-				Num:    b.Num,
-				Events: b.Events,
-				Hash:   b.Hash,
-			}
-			err := d.processor.ProcessBlock(ctx, blockToProcess)
-			if err != nil {
-				if errors.Is(err, ErrInconsistentState) {
-					d.log.Warn("state got inconsistent after processing this block. Stopping downloader until there is a reorg")
-					cancel()
+		for {
+			select {
+			case <-cancellableCtx.Done():
+				d.log.Info("cancellableCtx done, exiting block handler goroutine")
+				return
+			case b, ok := <-downloadCh:
+				if !ok {
+					d.log.Info("downloadCh closed, stopping block processing")
 					return
 				}
-				attempts++
-				d.log.Errorf("error processing events for block %d, err: %v", b.Num, err)
-				d.rh.Handle("handleNewBlock", attempts)
-			} else {
-				succeed = true
+
+				d.log.Debugf("handleNewBlock, blockNum: %d, blockHash: %s", b.Num, b.Hash)
+				if err := d.handleNewBlock(cancellableCtx, b); err != nil {
+					cancel()
+				}
 			}
 		}
-		if succeed {
-			break
+	}()
+
+	// Wait for reorg and then interrupt
+	if d.reorgSub != nil {
+		select {
+		case <-ctx.Done():
+			d.log.Info("sync stopped due to context done")
+			cancel()
+			<-blockProcessingDone
+			return
+		case firstReorgedBlock := <-d.reorgSub.ReorgedBlock:
+			d.log.Warnf("Reorg detected from block %d, stopping block processing...", firstReorgedBlock)
+			cancel()
+			<-blockProcessingDone // wait for block processing to exit cleanly
+			if err := d.handleReorg(ctx, firstReorgedBlock); err != nil {
+				d.log.Errorf("failed to process reorg at block %d: %w", firstReorgedBlock, err)
+			}
+			goto reset
+		}
+	} else {
+		<-ctx.Done()
+		d.log.Info("sync stopped due to context done")
+		cancel()
+		<-blockProcessingDone
+		return
+	}
+}
+
+func (d *EVMDriver) handleNewBlock(ctx context.Context, b EVMBlock) error {
+	if err := d.trackNonFinalizedBlock(ctx, b); err != nil {
+		return nil
+	}
+
+	return d.processBlock(ctx, b)
+}
+
+func (d *EVMDriver) trackNonFinalizedBlock(ctx context.Context, b EVMBlock) error {
+	if b.IsFinalizedBlock {
+		return nil
+	}
+
+	return d.withRetry(ctx, "trackBlock", func() error {
+		return d.reorgDetector.AddBlockToTrack(ctx, d.reorgDetectorID, b.Num, b.Hash)
+	})
+}
+
+func (d *EVMDriver) processBlock(ctx context.Context, b EVMBlock) error {
+	return d.withRetry(ctx, "processBlock", func() error {
+		err := d.processor.ProcessBlock(ctx, Block{
+			Num:    b.Num,
+			Hash:   b.Hash,
+			Events: b.Events,
+		})
+		if errors.Is(err, ErrInconsistentState) {
+			d.log.Warn("state got inconsistent after processing this block; halting until reorg")
+			return newStopRetryError(err)
+		}
+		return err
+	})
+}
+
+func (d *EVMDriver) handleReorg(ctx context.Context, firstReorgedBlock uint64) error {
+	defer func() {
+		if d.reorgSub != nil {
+			d.reorgSub.ReorgProcessed <- true
+		}
+	}()
+
+	return d.withRetry(ctx, "handleReorg", func() error {
+		return d.processor.Reorg(ctx, firstReorgedBlock)
+	})
+}
+
+// withRetry is a helper wrapper function that invokes the fn callback on failed attempts
+func (d *EVMDriver) withRetry(ctx context.Context, opName string, fn func() error) error {
+	attempts := 0
+	for {
+		select {
+		case <-ctx.Done():
+			d.log.Warnf("context canceled during %s", opName)
+			return nil
+		default:
+			err := fn()
+			if err != nil {
+				attempts++
+				d.log.Errorf("error during %s (attempt %d): %v", opName, attempts, err)
+
+				// Stop retrying on permanent errors
+				if isStopRetryError(err) {
+					return err
+				}
+
+				d.rh.Handle(ctx, opName, attempts)
+			} else {
+				return nil
+			}
 		}
 	}
 }
 
-func (d *EVMDriver) handleReorg(ctx context.Context, cancel context.CancelFunc, firstReorgedBlock uint64) {
-	// stop downloader
-	cancel()
+type stopRetryError struct {
+	err error
+}
 
-	// handle reorg
-	attempts := 0
-	for {
-		err := d.processor.Reorg(ctx, firstReorgedBlock)
-		if err != nil {
-			attempts++
-			d.log.Errorf(
-				"error processing reorg, last valid Block %d, err: %v",
-				firstReorgedBlock, err,
-			)
-			d.rh.Handle("handleReorg", attempts)
-			continue
-		}
-		break
-	}
-	if d.reorgSub != nil {
-		d.reorgSub.ReorgProcessed <- true
-	}
+func (e *stopRetryError) Error() string { return e.err.Error() }
+func (e *stopRetryError) Unwrap() error { return e.err }
+
+func newStopRetryError(err error) error {
+	return &stopRetryError{err: err}
+}
+
+func isStopRetryError(err error) bool {
+	var perr *stopRetryError
+	return errors.As(err, &perr)
 }

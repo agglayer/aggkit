@@ -263,10 +263,6 @@ func generateTestProof(t *testing.T) treetypes.Proof {
 
 func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 	t.Parallel()
-
-	// override to have always the same value and not depend on real clock
-	SetTimeNowFunc(timeNowUTCForTest)
-
 	ctx := context.Background()
 
 	testCases := []struct {
@@ -458,10 +454,12 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 			mockL1InfoTreeQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 			mockLERQuerier := mocks.NewLERQuerier(t)
 			logger := log.WithFields("test", "Test_PPFlow_GetCertificateBuildParams")
+			baseFlow := NewBaseFlow(logger, mockL2BridgeQuerier,
+				mockStorage, mockL1InfoTreeQuerier, mockLERQuerier, NewBaseFlowConfigDefault())
+			baseFlow.timeNowFunc = timeNowUTCForTest
 			ppFlow := NewPPFlow(
 				logger,
-				NewBaseFlow(logger, mockL2BridgeQuerier,
-					mockStorage, mockL1InfoTreeQuerier, mockLERQuerier, NewBaseFlowConfigDefault()),
+				baseFlow,
 				mockStorage, mockL1InfoTreeQuerier, mockL2BridgeQuerier, nil, tc.forceOneBridgeExit, 0)
 
 			tc.mockFn(mockStorage, mockL2BridgeQuerier, mockL1InfoTreeQuerier)

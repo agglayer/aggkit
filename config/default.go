@@ -197,10 +197,14 @@ RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
+	[AggSender.RetriesToBuildAndSendCertificate]
+		Mode = "delays"
+		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
+		MaxRetries = 6 # 1+6 attempts, around 22m 
 	[AggSender.AgglayerClient]
 		Cached = false
 		[AggSender.AgglayerClient.ConfigurationCache]
-			TTL = "15m"
+			TTL = "5m"
 			Capacity = 100
 		[AggSender.AgglayerClient.GRPC]
 			URL = "{{AggLayerURL}}"
@@ -272,7 +276,7 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 [Validator.AgglayerClient]
 	Cached = true
 	[Validator.AgglayerClient.ConfigurationCache]
-		TTL = "15m"
+		TTL = "5m"
 		Capacity = 100
 	[Validator.AgglayerClient.GRPC]
 		URL = "{{AggSender.AgglayerClient.GRPC.URL}}"

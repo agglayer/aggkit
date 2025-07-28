@@ -44,6 +44,34 @@ func TestBridgeExit_Hash(t *testing.T) {
 		bridge.Hash().String(), "metadata is nil and it's empty,use it")
 }
 
+func TestBridgeExit_Validate(t *testing.T) {
+	t.Run("bridgeExit bad leaftype", func(t *testing.T) {
+		bridgeExit := &BridgeExit{
+			LeafType: 5,
+			TokenInfo: &TokenInfo{
+				OriginNetwork:      0,
+				OriginTokenAddress: common.HexToAddress("0x1234"),
+			},
+			DestinationNetwork: 1,
+			DestinationAddress: common.HexToAddress("0x1234"),
+		}
+		require.ErrorContains(t, bridgeExit.Validate(), "bridgeExit leaf type 5 is invalid")
+	})
+	t.Run("bridgeExit amount negative", func(t *testing.T) {
+		bridgeExit := &BridgeExit{
+			LeafType: 1,
+			TokenInfo: &TokenInfo{
+				OriginNetwork:      0,
+				OriginTokenAddress: common.HexToAddress("0x1234"),
+			},
+			DestinationNetwork: 1,
+			DestinationAddress: common.HexToAddress("0x1234"),
+			Amount:             big.NewInt(-100),
+		}
+		require.ErrorContains(t, bridgeExit.Validate(), "bridgeExit amount -100 is negative")
+	})
+}
+
 func TestGenericError_Error(t *testing.T) {
 	t.Parallel()
 
@@ -230,7 +258,7 @@ func TestMarshalJSON(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, expectedJSON, string(data))
 
-		require.Equal(t, "0x097c92944055caf6e8082fa9311cb809c29e714b97a69e7f425cd203e39fd0e4", cert.Hash().String())
+		require.Equal(t, "0x097c92944055caf6e8082fa9311cb809c29e714b97a69e7f425cd203e39fd0e4", cert.CertificateID().String())
 		require.Equal(t, "0x2f01782930cbf2bc2ab4ec16759a2288ad7df865dea387aadf55f96136269cf4", cert.BridgeExits[0].Hash().String())
 		require.Equal(t, "0xe1a594db4275e6e5ab302057e48955c7faf53a8910497590a742b3da89046320", cert.ImportedBridgeExits[0].Hash().String())
 		require.Equal(t, "0xcc9e20b86e9984d9f68b0252f224cb4bc774981c320ef375fb63706220f5af4d", cert.ImportedBridgeExits[1].Hash().String())
@@ -514,7 +542,7 @@ func TestCertificate_Hash(t *testing.T) {
 	)
 
 	// Test the certificate hash
-	calculatedHash := certificate.Hash()
+	calculatedHash := certificate.CertificateID()
 
 	require.Equal(t, calculatedHash, expectedHash)
 }
@@ -624,6 +652,16 @@ func TestBridgeExit_String(t *testing.T) {
 				Metadata:           []byte{0xff, 0xee, 0xdd},
 			},
 			expectedOutput: "LeafType: Message, DestinationNetwork: 200, DestinationAddress: 0x0000000000000000000000000000000000000001, Amount: 5000, Metadata: ffeedd, TokenInfo: nil",
+		},
+		{
+			name: "Without Amount",
+			bridgeExit: &BridgeExit{
+				LeafType:           LeafTypeMessage,
+				DestinationNetwork: 200,
+				DestinationAddress: common.HexToAddress("0x1"),
+				Metadata:           []byte{0xff, 0xee, 0xdd},
+			},
+			expectedOutput: "LeafType: Message, DestinationNetwork: 200, DestinationAddress: 0x0000000000000000000000000000000000000001, Amount: <nil>, Metadata: ffeedd, TokenInfo: nil",
 		},
 	}
 
@@ -1248,4 +1286,122 @@ func TestCertificate_FEPHashToSign(t *testing.T) {
 			require.Equal(t, tc.expectedHash, hash)
 		})
 	}
+}
+
+func TestCertificate_Validate(t *testing.T) {
+	t.Run("fails cert nil", func(t *testing.T) {
+		var cert *Certificate
+		require.Error(t, cert.Validate(), "should fail with nil certificate")
+	})
+	t.Run("fails bridgeExit nil", func(t *testing.T) {
+		cert := Certificate{
+			BridgeExits: []*BridgeExit{nil},
+		}
+		require.ErrorContains(t, cert.Validate(), "bridgeExit is nil")
+	})
+	t.Run("fails importedBridgeExit nil", func(t *testing.T) {
+		cert := Certificate{
+			ImportedBridgeExits: []*ImportedBridgeExit{nil},
+		}
+		require.ErrorContains(t, cert.Validate(), "ImportedBridgeExit is nil")
+	})
+	t.Run("fails globalIndex nil", func(t *testing.T) {
+		cert := Certificate{
+			ImportedBridgeExits: []*ImportedBridgeExit{
+				{
+					BridgeExit: &BridgeExit{
+						LeafType: LeafTypeAsset,
+						TokenInfo: &TokenInfo{
+							OriginNetwork:      0,
+							OriginTokenAddress: common.HexToAddress("0x1234"),
+						},
+						DestinationNetwork: 1,
+						DestinationAddress: common.HexToAddress("0x1234"),
+					},
+					ClaimData: &ClaimFromMainnnet{
+						ProofLeafMER:     &MerkleProof{},
+						ProofGERToL1Root: &MerkleProof{},
+						L1Leaf: &L1InfoTreeLeaf{
+							Inner: &L1InfoTreeLeafInner{},
+						},
+					},
+				},
+			},
+		}
+		require.ErrorContains(t, cert.Validate(), "globalIndex is nil")
+	})
+
+	t.Run("L1InfoTreeLeaf nil", func(t *testing.T) {
+		var sut *L1InfoTreeLeaf
+		require.ErrorContains(t, sut.Validate(), "L1InfoTreeLeaf is nil")
+		sut = &L1InfoTreeLeaf{}
+		require.ErrorContains(t, sut.Validate(), "L1InfoTreeLeaf inner is nil")
+		sut = &L1InfoTreeLeaf{
+			Inner: &L1InfoTreeLeafInner{},
+		}
+		require.NoError(t, sut.Validate())
+	})
+
+	t.Run("ClaimFromMainnnet validate", func(t *testing.T) {
+		var sut *ClaimFromMainnnet
+		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet is nil")
+		sut = &ClaimFromMainnnet{}
+		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet has nil proofs")
+		sut = &ClaimFromMainnnet{
+			ProofLeafMER:     &MerkleProof{},
+			ProofGERToL1Root: &MerkleProof{},
+		}
+		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet L1Leaf error")
+		sut = &ClaimFromMainnnet{
+			ProofLeafMER:     &MerkleProof{},
+			ProofGERToL1Root: &MerkleProof{},
+			L1Leaf: &L1InfoTreeLeaf{
+				Inner: &L1InfoTreeLeafInner{},
+			},
+		}
+		require.NoError(t, sut.Validate())
+	})
+
+	t.Run("ClaimFromRollup nil", func(t *testing.T) {
+		var sut *ClaimFromRollup
+		require.ErrorContains(t, sut.Validate(), "ClaimFromRollup is nil")
+		sut = &ClaimFromRollup{}
+		require.ErrorContains(t, sut.Validate(), "ClaimFromRollup has nil proofs")
+		sut = &ClaimFromRollup{
+			ProofLeafLER:     &MerkleProof{},
+			ProofLERToRER:    &MerkleProof{},
+			ProofGERToL1Root: &MerkleProof{},
+		}
+		require.ErrorContains(t, sut.Validate(), "ClaimFromRollup has nil L1Leaf")
+		sut.L1Leaf = &L1InfoTreeLeaf{}
+		require.NoError(t, sut.Validate())
+	})
+
+	t.Run("ImportedBridgeExit nil", func(t *testing.T) {
+		var sut *ImportedBridgeExit
+		require.ErrorContains(t, sut.Validate(), "ImportedBridgeExit is nil")
+		sut = &ImportedBridgeExit{}
+		require.ErrorContains(t, sut.Validate(), "ImportedBridgeExit.BridgeExit not valid")
+	})
+}
+
+func TestBridgeExitHash(t *testing.T) {
+	var sut *BridgeExit
+	require.Equal(t, common.Hash{}, sut.Hash())
+	var sut2 BridgeExit
+	require.Equal(t, common.Hash{}, sut2.Hash())
+}
+
+func TestClaimFromMainnnetHash(t *testing.T) {
+	var sut *ClaimFromMainnnet
+	require.Equal(t, common.Hash{}, sut.Hash())
+	var sut2 ClaimFromMainnnet
+	require.Equal(t, common.Hash{}, sut2.Hash())
+}
+
+func TestClaimFromRollupHash(t *testing.T) {
+	var sut *ClaimFromRollup
+	require.Equal(t, common.Hash{}, sut.Hash())
+	var sut2 ClaimFromRollup
+	require.Equal(t, common.Hash{}, sut2.Hash())
 }

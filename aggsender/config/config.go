@@ -89,6 +89,8 @@ type Config struct {
 	RequireValidatorCall bool `mapstructure:"RequireValidatorCall"`
 	// ValidatorClient is the configuration for the ValidatorClient
 	ValidatorClient *grpc.ClientConfig `mapstructure:"ValidatorClient"`
+	// RetriesToBuildAndSendCertificate is the configuration for the retries to build and send a certificate
+	RetriesToBuildAndSendCertificate common.RetryPolicyGenericConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -110,7 +112,8 @@ func (c Config) String() string {
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
-		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n"
+		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
+		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n"
 }
 
 // Validate checks if the configuration is valid
@@ -134,6 +137,8 @@ func (c Config) Validate() error {
 			return fmt.Errorf("invalid aggkit prover client config: %w", err)
 		}
 	}
-
+	if err := c.RetriesToBuildAndSendCertificate.Validate(); err != nil {
+		return fmt.Errorf("invalid RetriesToBuildAndSendCertificate config: %w", err)
+	}
 	return nil
 }

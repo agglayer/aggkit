@@ -127,6 +127,12 @@ func (s *ValidatorService) signCertificate(ctx context.Context, cert *agglayerty
 			Message: "Signer is not initialized",
 		}
 	}
-	hashToSign := HashCertificateToSign(cert)
+	hashToSign, err := HashCertificateToSign(cert)
+	if err != nil {
+		return nil, grpc.GRPCError{
+			Code:    codes.Internal,
+			Message: "Error hashing certificate: " + err.Error(),
+		}
+	}
 	return s.signer.SignHash(ctx, hashToSign)
 }
