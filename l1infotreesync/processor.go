@@ -285,6 +285,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	if err != nil {
 		return err
 	}
+
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
@@ -306,6 +307,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	if err = p.rollupExitTree.Reorg(tx, firstReorgedBlock); err != nil {
 		return err
 	}
+
 	rowsAffected, err := res.RowsAffected()
 	if err != nil {
 		return err
@@ -319,7 +321,9 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 
 	shouldRollback = false
 
-	sync.UnhaltIfAffectedRows(&p.halted, &p.haltedReason, &p.mu, rowsAffected)
+	if rowsAffected > 0 {
+		p.unhalt()
+	}
 	return nil
 }
 
@@ -330,10 +334,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
 		return sync.ErrInconsistentState
 	}
+
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
 		return err
 	}
+
 	p.log.Debugf("init block processing for block %d", block.Num)
 	shouldRollback := true
 	defer func() {
@@ -418,11 +424,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 					root.Index, event.UpdateL1InfoTreeV2.LeafCount,
 					block.Num,
 				)
-				p.log.Error(errStr)
-				p.mu.Lock()
-				p.haltedReason = errStr
-				p.halted = true
-				p.mu.Unlock()
+				p.halt(errStr)
 				return sync.ErrInconsistentState
 			}
 		}
@@ -528,8 +530,38 @@ func (p *processor) getDBQuerier(tx dbtypes.Txer) dbtypes.Querier {
 	return p.db
 }
 
+// isHalted checks if the processor is in a halted state
 func (p *processor) isHalted() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.halted
+}
+
+// halt sets the processor to a halted state with a reason
+func (p *processor) halt(reason string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.halted {
+		return
+	}
+
+	p.halted = true
+	p.haltedReason = reason
+	p.log.Errorf("processor is halted, due to the following reason: %s", reason)
+}
+
+// unhalt sets the processor to an unhalted state
+// It should be called when the processor is ready to process blocks again
+func (p *processor) unhalt() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if !p.halted {
+		return
+	}
+
+	p.halted = false
+	p.haltedReason = ""
+	p.log.Info("processor is unhalted")
 }
