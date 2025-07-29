@@ -66,8 +66,8 @@ func TestE2E(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "l1infotreesyncTestE2E.sqlite")
 
 	rdm := mocks_l1infotreesync.NewReorgDetectorMock(t)
-	rdm.On("Subscribe", mock.Anything).Return(&reorgdetector.Subscription{}, nil)
-	rdm.On("AddBlockToTrack", mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
+	rdm.EXPECT().Subscribe(mock.Anything).Return(&reorgdetector.Subscription{}, nil)
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
 	client, auth, gerAddr, verifyAddr, gerSc, _ := newSimulatedClient(t)
 	syncer, err := l1infotreesync.New(ctx, dbPath, gerAddr, verifyAddr, 10, aggkittypes.LatestBlock, rdm, client.Client(), time.Millisecond, 0, 100*time.Millisecond, 25,

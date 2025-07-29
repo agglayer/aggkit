@@ -106,7 +106,7 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 		} else if err != nil {
 			log.Errorf("error getting latest l1 info tree index: %v", err)
 			attempts++
-			d.rh.Handle("getLatestL1InfoTreeIndex", attempts)
+			d.rh.Handle(ctx, "getLatestL1InfoTreeIndex", attempts)
 
 			continue
 		}
@@ -139,7 +139,7 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 			if err != nil {
 				log.Errorf("error getting GERs: %v", err)
 				attempts++
-				d.rh.Handle("getGERsFromIndex", attempts)
+				d.rh.Handle(ctx, "getGERsFromIndex", attempts)
 
 				continue
 			}
@@ -148,7 +148,7 @@ func (d *downloaderLegacy) Download(ctx context.Context, fromBlock uint64, downl
 		}
 
 		// Find the latest GER injected from retrieved GERs
-		gerInfo := d.findLatestInjectedGER(gers)
+		gerInfo := d.findLatestInjectedGER(ctx, gers)
 
 		header, isCanceled := d.GetBlockHeader(ctx, fromBlock)
 		if isCanceled {
@@ -207,7 +207,8 @@ func (d *downloaderLegacy) getGERsFromIndex(
 
 // findLatestInjectedGER finds the latest injected Global Exit Root from the provided GER infos.
 // It is asumed that the GERs are ordered by their L1 info tree index in ascending order.
-func (d *downloaderLegacy) findLatestInjectedGER(gerInfos []*GlobalExitRootInfo) *GlobalExitRootInfo {
+func (d *downloaderLegacy) findLatestInjectedGER(
+	ctx context.Context, gerInfos []*GlobalExitRootInfo) *GlobalExitRootInfo {
 	for i := len(gerInfos) - 1; i >= 0; i-- {
 		gerInfo := gerInfos[i]
 		attempts := 0
@@ -216,7 +217,7 @@ func (d *downloaderLegacy) findLatestInjectedGER(gerInfos []*GlobalExitRootInfo)
 			if err != nil {
 				attempts++
 				log.Errorf("failed to check if global exit root %s is injected on L2: %s", gerInfo.GlobalExitRoot.Hex(), err)
-				d.rh.Handle("GlobalExitRootMap", attempts)
+				d.rh.Handle(ctx, "GlobalExitRootMap", attempts)
 				continue
 			}
 
