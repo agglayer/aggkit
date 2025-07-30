@@ -94,15 +94,9 @@ func NewEVMDriver(
 ) (*EVMDriver, error) {
 	logger := log.WithFields("syncer", reorgDetectorID)
 
-	var reorgSub *reorgdetector.Subscription
-	var err error
-
-	// Only subscribe to reorg detector if it's not nil
-	if reorgDetector != nil {
-		reorgSub, err = reorgDetector.Subscribe(reorgDetectorID)
-		if err != nil {
-			return nil, err
-		}
+	reorgSub, err := reorgDetector.Subscribe(reorgDetectorID)
+	if err != nil {
+		return nil, err
 	}
 
 	return &EVMDriver{
@@ -180,28 +174,20 @@ reset:
 	}()
 
 	// Wait for reorg and then interrupt
-	if d.reorgSub != nil {
-		select {
-		case <-ctx.Done():
-			d.log.Info("sync stopped due to context done")
-			cancel()
-			<-blockProcessingDone
-			return
-		case firstReorgedBlock := <-d.reorgSub.ReorgedBlock:
-			d.log.Warnf("Reorg detected from block %d, stopping block processing...", firstReorgedBlock)
-			cancel()
-			<-blockProcessingDone // wait for block processing to exit cleanly
-			if err := d.handleReorg(ctx, firstReorgedBlock); err != nil {
-				d.log.Errorf("failed to process reorg at block %d: %w", firstReorgedBlock, err)
-			}
-			goto reset
-		}
-	} else {
-		<-ctx.Done()
+	select {
+	case <-ctx.Done():
 		d.log.Info("sync stopped due to context done")
 		cancel()
 		<-blockProcessingDone
 		return
+	case firstReorgedBlock := <-d.reorgSub.ReorgedBlock:
+		d.log.Warnf("Reorg detected from block %d, stopping block processing...", firstReorgedBlock)
+		cancel()
+		<-blockProcessingDone // wait for block processing to exit cleanly
+		if err := d.handleReorg(ctx, firstReorgedBlock); err != nil {
+			d.log.Errorf("failed to process reorg at block %d: %w", firstReorgedBlock, err)
+		}
+		goto reset
 	}
 }
 
@@ -240,9 +226,7 @@ func (d *EVMDriver) processBlock(ctx context.Context, b EVMBlock) error {
 
 func (d *EVMDriver) handleReorg(ctx context.Context, firstReorgedBlock uint64) error {
 	defer func() {
-		if d.reorgSub != nil {
-			d.reorgSub.ReorgProcessed <- true
-		}
+		d.reorgSub.ReorgProcessed <- true
 	}()
 
 	return d.withRetry(ctx, "handleReorg", func() error {

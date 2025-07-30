@@ -64,6 +64,15 @@ type BridgeSync struct {
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
 }
 
+// noOpReorgDetectorWrapper wraps NoOpReorgDetector to implement bridgesync.ReorgDetector interface
+type noOpReorgDetectorWrapper struct {
+	reorgdetector.NoOpReorgDetector
+}
+
+func (w *noOpReorgDetectorWrapper) GetLastReorgEvent(ctx context.Context) (reorgdetector.ReorgEvent, error) {
+	return reorgdetector.ReorgEvent{}, nil
+}
+
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
 func NewL1(
 	ctx context.Context,
@@ -86,7 +95,7 @@ func NewL1(
 		bridge,
 		syncBlockChunkSize,
 		blockFinalityType,
-		nil, // No reorg detector for L1 since we're moving to FinalizedBlock
+		&noOpReorgDetectorWrapper{*reorgdetector.NewNoOpReorgDetector()}, // Use wrapper instead of nil
 		ethClient,
 		initialBlock,
 		L1BridgeSyncer,
@@ -225,12 +234,7 @@ func newBridgeSync(
 		appender,
 		[]common.Address{bridge},
 		rh,
-		func() aggkittypes.BlockNumberFinality {
-			if rd != nil {
-				return rd.GetFinalizedBlockType()
-			}
-			return blockFinalityType
-		}(),
+		rd.GetFinalizedBlockType(), // Remove nil check, always call GetFinalizedBlockType
 	)
 	if err != nil {
 		return nil, err
@@ -257,11 +261,6 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	reorgDetectorString := "nil"
-	if rd != nil {
-		reorgDetectorString = rd.String()
-	}
-
 	logger.Infof(
 		"%s created:\n"+
 			"  dbPath: %s\n"+
@@ -281,7 +280,7 @@ func newBridgeSync(
 		maxRetryAttemptsAfterError,
 		retryAfterErrorPeriod.String(),
 		syncBlockChunkSize,
-		reorgDetectorString,
+		rd.String(), // Remove nil check, always call String
 		waitForNewBlocksPeriod.String(),
 	)
 
