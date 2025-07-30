@@ -69,10 +69,6 @@ type noOpReorgDetectorWrapper struct {
 	reorgdetector.NoOpReorgDetector
 }
 
-func (w *noOpReorgDetectorWrapper) GetLastReorgEvent(ctx context.Context) (reorgdetector.ReorgEvent, error) {
-	return reorgdetector.ReorgEvent{}, nil
-}
-
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
 func NewL1(
 	ctx context.Context,
