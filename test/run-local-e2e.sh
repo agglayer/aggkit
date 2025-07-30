@@ -140,7 +140,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
 
     log_info "Setting up e2e environment..."
     set -a
-    source ./tests/.env
+    source ./tests/aggkit/.env
     set +a
 
     export BATS_LIB_PATH="$PWD/core/helpers/lib"
