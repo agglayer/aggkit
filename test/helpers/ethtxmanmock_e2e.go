@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	big "math/big"
+	"sync"
 	"testing"
 
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
@@ -16,6 +17,9 @@ import (
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
 	"github.com/stretchr/testify/mock"
 )
+
+// Global mutex to synchronize access to simulated backend
+var simBackendMutex sync.Mutex
 
 func NewEthTxManMock(
 	t *testing.T,
@@ -125,7 +129,10 @@ func SendTx(ctx context.Context, client *simulated.Backend, auth *bind.TransactO
 		return err
 	}
 
+	// Synchronize access to the simulated backend to prevent race conditions
+	simBackendMutex.Lock()
 	client.Commit()
+	simBackendMutex.Unlock()
 
 	return nil
 }
