@@ -465,8 +465,8 @@ func (p *processor) GetBridgesPaged(
 		return nil, 0, err
 	}
 	defer func() {
-		if err := rows.Close(); err != nil {
-			p.log.Warnf("error closing rows: %v", err)
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
 
@@ -537,8 +537,8 @@ func (p *processor) GetClaimsPaged(
 		return nil, 0, err
 	}
 	defer func() {
-		if err := rows.Close(); err != nil {
-			p.log.Warnf("error closing rows: %v", err)
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
 
@@ -598,8 +598,8 @@ func (p *processor) GetLegacyTokenMigrations(
 		return nil, 0, err
 	}
 	defer func() {
-		if err := rows.Close(); err != nil {
-			p.log.Warnf("error closing rows: %v", err)
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
 	tokenMigrations := []*LegacyTokenMigration{}
@@ -870,8 +870,8 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 	}
 
 	defer func() {
-		if err := rows.Close(); err != nil {
-			p.log.Warnf("error closing rows: %v", err)
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
 
