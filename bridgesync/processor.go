@@ -680,6 +680,7 @@ func (p *processor) getLastProcessedBlockWithTx(tx dbtypes.Querier) (uint64, err
 // Reorg triggers a purge and reset process on the processor to leaf it on a state
 // as if the last block processed was firstReorgedBlock-1
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
+	p.log.Infof("reorg detected at %d block", firstReorgedBlock)
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
 		p.log.Errorf("failed to start transaction for reorg: %v", err)
@@ -718,6 +719,9 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	if rowsAffected > 0 {
 		p.unhalt()
 	}
+
+	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
+
 	return nil
 }
 
@@ -804,7 +808,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 	shouldRollback = false
 
-	p.log.Debugf("processed %d events until block %d", len(block.Events), block.Num)
+	logMsg := fmt.Sprintf("block %d processed with %d events", len(block.Events), block.Num)
+	if len(block.Events) > 0 {
+		p.log.Info(logMsg)
+	} else {
+		p.log.Debugf(logMsg)
+	}
 	return nil
 }
 
