@@ -258,12 +258,12 @@ func (b *BridgeService) HealthCheckHandler(c *gin.Context) {
 // @Summary Get bridges
 // @Description Returns a paginated list of bridge events for the specified network.
 // @Tags bridges
-// @Param network_id query uint32 true "Target network ID"
+// @Param network_id query uint32 true "Origin network ID"
 // @Param page_number query uint32 false "Page number (default 1)"
 // @Param page_size query uint32 false "Page size (default 100)"
 // @Param deposit_count query uint64 false "Filter by deposit count"
 // @Param from_address query string false "Filter by from address"
-// @Param network_ids query []uint32 false "Filter by one or more network IDs"
+// @Param network_ids query []uint32 false "Filter by one or more destination network IDs"
 // @Produce json
 // @Success 200 {object} types.BridgesResult
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
@@ -356,10 +356,10 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 // @Summary Get claims
 // @Description Returns a paginated list of claims for the specified network.
 // @Tags claims
-// @Param network_id query uint32 true "Target network ID"
+// @Param network_id query uint32 true "Origin network ID"
 // @Param page_number query uint32 false "Page number (default 1)"
 // @Param page_size query uint32 false "Page size (default 100)"
-// @Param network_ids query []uint32 false "Filter by one or more network IDs"
+// @Param network_ids query []uint32 false "Filter by one or more destination network IDs"
 // @Param from_address query string false "Filter by from address"
 // @Param include_all_fields query bool false "Whether to include full response fields (default false)"
 // @Produce json
@@ -730,7 +730,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 // @Description Returns the Merkle proofs (local and rollup exit root) and
 // @Description the corresponding L1 info tree leaf needed to verify a claim.
 // @Tags claims
-// @Param network_id query uint32 true "Target network ID"
+// @Param network_id query uint32 true "Origin network ID"
 // @Param leaf_index query uint32 true "Index in the L1 info tree"
 // @Param deposit_count query uint32 true "Number of deposits in the bridge"
 // @Produce json
