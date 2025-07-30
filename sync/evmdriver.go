@@ -93,7 +93,6 @@ func NewEVMDriver(
 	compatibilityChecker compatibility.CompatibilityChecker,
 ) (*EVMDriver, error) {
 	logger := log.WithFields("syncer", reorgDetectorID)
-
 	reorgSub, err := reorgDetector.Subscribe(reorgDetectorID)
 	if err != nil {
 		return nil, err

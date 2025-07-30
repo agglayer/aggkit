@@ -95,7 +95,7 @@ func NewL1(
 		bridge,
 		syncBlockChunkSize,
 		blockFinalityType,
-		&noOpReorgDetectorWrapper{*reorgdetector.NewNoOpReorgDetector()}, // Use wrapper instead of nil
+		&noOpReorgDetectorWrapper{*reorgdetector.NewNoOpReorgDetector()},
 		ethClient,
 		initialBlock,
 		L1BridgeSyncer,
@@ -234,7 +234,7 @@ func newBridgeSync(
 		appender,
 		[]common.Address{bridge},
 		rh,
-		rd.GetFinalizedBlockType(), // Remove nil check, always call GetFinalizedBlockType
+		rd.GetFinalizedBlockType(),
 	)
 	if err != nil {
 		return nil, err
@@ -280,7 +280,7 @@ func newBridgeSync(
 		maxRetryAttemptsAfterError,
 		retryAfterErrorPeriod.String(),
 		syncBlockChunkSize,
-		rd.String(), // Remove nil check, always call String
+		rd.String(),
 		waitForNewBlocksPeriod.String(),
 	)
 
