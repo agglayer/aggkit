@@ -27,7 +27,12 @@ func (n *NoOpReorgDetector) Subscribe(id string) (*Subscription, error) {
 }
 
 // AddBlockToTrack implements sync.ReorgDetector interface
-func (n *NoOpReorgDetector) AddBlockToTrack(ctx context.Context, id string, blockNum uint64, blockHash common.Hash) error {
+func (n *NoOpReorgDetector) AddBlockToTrack(
+	ctx context.Context,
+	id string,
+	blockNum uint64,
+	blockHash common.Hash,
+) error {
 	// No-op: do nothing
 	return nil
 }

@@ -505,18 +505,3 @@ func (p *processor) halt(reason string) {
 	p.haltedReason = reason
 	p.log.Errorf("processor is halted, due to the following reason: %s", reason)
 }
-
-// unhalt sets the processor to an unhalted state
-// It should be called when the processor is ready to process blocks again
-func (p *processor) unhalt() {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if !p.halted {
-		return
-	}
-
-	p.halted = false
-	p.haltedReason = ""
-	p.log.Info("processor is unhalted")
-}
