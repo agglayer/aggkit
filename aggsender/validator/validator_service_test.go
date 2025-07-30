@@ -2,15 +2,29 @@ package validator
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
 	"testing"
 
 	nodev1 "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
+	typesv1 "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
+	"github.com/agglayer/aggkit/aggsender/mocks"
+	validatormocks "github.com/agglayer/aggkit/aggsender/validator/mocks"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
 	"github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/log"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+)
+
+var (
+	signature = &typesv1.AggchainData_Signature{
+		Signature: &typesv1.FixedBytes65{Value: []byte("test_signature")},
+	}
+	errTestGenericError = errors.New("generic error")
 )
 
 func TestValidatorService(t *testing.T) {
@@ -42,14 +56,124 @@ func TestValidatorService(t *testing.T) {
 }
 
 func TestValidatorService_ValidateCertificate(t *testing.T) {
-	svc := &ValidatorService{}
-	req := &v1.ValidateCertificateRequest{
-		Certificate: &nodev1.Certificate{
-			Height: 42,
-		},
-	}
+	t.Run("nil request", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		_, err := testData.sut.ValidateCertificate(t.Context(), nil)
+		require.Error(t, err)
+	})
 
-	resp, err := svc.ValidateCertificate(context.Background(), req)
-	require.NoError(t, err)
-	require.IsType(t, &v1.ValidateCertificateResponse{}, resp)
+	t.Run("ok", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := &v1.ValidateCertificateRequest{
+			Certificate: newGRPCCertificateForTest(t),
+		}
+		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
+		resp, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.NoError(t, err)
+		require.IsType(t, &v1.ValidateCertificateResponse{}, resp)
+		require.Equal(t, resp.Signature.Value, []byte("signature"), "Expected signature to match")
+	})
+
+	t.Run("PreviousCertificateId, fail to retrieve it", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := &v1.ValidateCertificateRequest{
+			Certificate: newGRPCCertificateForTest(t),
+			PreviousCertificateId: &nodev1.CertificateId{
+				Value: &typesv1.FixedBytes32{Value: common.HexToHash("0xbeef").Bytes()},
+			},
+		}
+		testData.mockAgglayerClient.EXPECT().GetCertificateHeader(mock.Anything, common.HexToHash("0xbeef")).Return(nil, errTestGenericError)
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "fails to request certificate header to agglayer")
+	})
+	t.Run("PreviousCertificateId, retrieved but is nil", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := &v1.ValidateCertificateRequest{
+			Certificate: newGRPCCertificateForTest(t),
+			PreviousCertificateId: &nodev1.CertificateId{
+				Value: &typesv1.FixedBytes32{Value: common.HexToHash("0xbeef").Bytes()},
+			},
+		}
+		testData.mockAgglayerClient.EXPECT().GetCertificateHeader(mock.Anything, common.HexToHash("0xbeef")).Return(nil, nil)
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "Certificate header is nil in agglayer")
+	})
+
+	t.Run("fails to convert certificate", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		cert := newGRPCCertificateForTest(t)
+		cert.NewLocalExitRoot = nil
+		req := &v1.ValidateCertificateRequest{
+			Certificate: cert,
+		}
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "Invalid certificate conversion")
+	})
+	t.Run("converted certificate with bridgeExits", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		cert := newGRPCCertificateForTest(t)
+		cert.BridgeExits = []*typesv1.BridgeExit{
+			{
+				LeafType: 1,
+				TokenInfo: &typesv1.TokenInfo{
+					OriginTokenAddress: &typesv1.FixedBytes20{},
+				},
+				DestAddress: &typesv1.FixedBytes20{},
+			},
+		}
+		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+		testData.mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil).Once()
+
+		req := &v1.ValidateCertificateRequest{
+			Certificate: cert,
+		}
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.NoError(t, err)
+	})
+	t.Run("fails validate certificate", func(t *testing.T) {
+		testData := newValidatorServiceTestData(t)
+		req := &v1.ValidateCertificateRequest{
+			Certificate: newGRPCCertificateForTest(t),
+		}
+		testData.mockValidator.EXPECT().ValidateCertificate(mock.Anything, mock.Anything).Return(errTestGenericError).Once()
+		_, err := testData.sut.ValidateCertificate(t.Context(), req)
+		require.ErrorContains(t, err, "Certificate validation failed")
+	})
+}
+
+type testValidatorServiceData struct {
+	mockValidator      *mocks.CertificateValidator
+	mockAgglayerClient *validatormocks.AgglayerClientInterface
+	mockSigner         *mocks.Signer
+	sut                *ValidatorService
+}
+
+func newValidatorServiceTestData(t *testing.T) *testValidatorServiceData {
+	t.Helper()
+	mockValidator := mocks.NewCertificateValidator(t)
+	mockAgglayerClient := validatormocks.NewAgglayerClientInterface(t)
+	mockSigner := mocks.NewSigner(t)
+	sut := NewValidatorService(
+		log.WithFields("module", "aggsender-validator"),
+		mockValidator, mockAgglayerClient, mockSigner)
+	return &testValidatorServiceData{
+		mockValidator:      mockValidator,
+		mockAgglayerClient: mockAgglayerClient,
+		mockSigner:         mockSigner,
+		sut:                sut,
+	}
+}
+
+func newGRPCCertificateForTest(t *testing.T) *nodev1.Certificate {
+	t.Helper()
+	testL1InfoTreeLeafCount := uint32(123)
+	return &nodev1.Certificate{
+		Height:              42,
+		NewLocalExitRoot:    &typesv1.FixedBytes32{},
+		PrevLocalExitRoot:   &typesv1.FixedBytes32{},
+		Metadata:            &typesv1.FixedBytes32{},
+		L1InfoTreeLeafCount: &testL1InfoTreeLeafCount,
+		AggchainData:        &typesv1.AggchainData{Data: signature},
+	}
 }

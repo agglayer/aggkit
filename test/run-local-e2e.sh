@@ -65,7 +65,7 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
     if [ "$(docker images -q aggkit:local | wc -l)" -eq 0 ]; then
         log_info "Building aggkit:local docker image..."
         pushd "$PROJECT_ROOT" >/dev/null
-        make build-docker
+        make build-docker-ci
         make build-tools
         chmod +x "./target/aggsender_find_imported_bridge"
         popd >/dev/null

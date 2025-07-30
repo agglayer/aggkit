@@ -3,7 +3,6 @@ package aggoracle
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/agglayer/aggkit/l1infotreesync"
@@ -21,6 +20,9 @@ type L1InfoTreeSyncer interface {
 type ChainSender interface {
 	IsGERInjected(ger common.Hash) (bool, error)
 	InjectGER(ctx context.Context, ger common.Hash) error
+	ProposeGER(ctx context.Context, ger common.Hash) error
+	IsGERProposed(ger common.Hash) (bool, error)
+	ProcessGER(ctx context.Context, ger common.Hash) error
 }
 
 type AggOracle struct {
@@ -78,33 +80,13 @@ func (a *AggOracle) processLatestGER(ctx context.Context) error {
 
 	latestGER := latestL1InfoLeaf.GlobalExitRoot
 
-	isGERInjected, err := a.chainSender.IsGERInjected(latestGER)
-	if err != nil {
-		return fmt.Errorf("error checking if GER (%s) is already injected: %w", latestGER, err)
-	}
-
-	if isGERInjected {
-		a.logger.Debugf("GER (%s) is already injected", latestGER.Hex())
-		return nil
-	}
-
 	go func() {
-		if err := a.injectGER(ctx, latestGER); err != nil {
+		err := a.chainSender.ProcessGER(ctx, latestGER)
+		if err != nil {
 			a.logger.Error(err)
 		}
 	}()
 
-	return nil
-}
-
-// injectGER injects the provided Global Exit Root (GER) into the chain
-func (a *AggOracle) injectGER(ctx context.Context, ger common.Hash) error {
-	a.logger.Debugf("injecting GER (%s)", ger.Hex())
-	if err := a.chainSender.InjectGER(ctx, ger); err != nil {
-		return fmt.Errorf("failed to inject GER (%s): %w", ger.Hex(), err)
-	}
-
-	a.logger.Infof("GER (%s) injected successfully", ger.Hex())
 	return nil
 }
 

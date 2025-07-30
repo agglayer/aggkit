@@ -6,12 +6,11 @@ import (
 	"math/big"
 	"strings"
 
-	ethermanconfig "github.com/agglayer/aggkit/etherman/config"
+	"github.com/agglayer/aggkit/config"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/ethereum/go-ethereum/rpc"
 )
 
@@ -32,21 +31,22 @@ type RPCOpNodeDecorator struct {
 }
 
 // NewRPCClientModeOp creates a new RPC client that uses the OPNode client to get the finalized block
-func NewRPCClientModeOp(cfg ethermanconfig.RPCClientConfig) (aggkittypes.EthClienter, error) {
+func NewRPCClientModeOp(ctx context.Context, cfg config.L2RPCClientConfig) (aggkittypes.EthClienter, error) {
 	opNodeURL, err := cfg.GetString(ExtraParamFieldName)
 	if err != nil {
 		opNodeURL, err = cfg.GetString(strings.ToLower(ExtraParamFieldName))
+		if err != nil {
+			return nil, fmt.Errorf("field %s not found in extra params (%+v). Err: %w", ExtraParamFieldName, cfg, err)
+		}
 	}
-	if err != nil {
-		return nil, fmt.Errorf("field %s not found in extra params (%+v). Err: %w", ExtraParamFieldName, cfg, err)
-	}
+
 	log.Debugf("Creating OPNode RPC client with URL %s %s:%s", cfg.URL, ExtraParamFieldName, opNodeURL)
-	basicClient, err := ethclient.Dial(cfg.URL)
+	ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.URL, cfg.MaxRetries,
+		cfg.InitialBackoff.Duration, cfg.MaxBackoff.Duration, cfg.BackoffMultiplier)
 	if err != nil {
 		return nil, fmt.Errorf("fails to create RPC client. Err: %w", err)
 	}
 	opNodeClient := opnode.NewOpNodeClient(opNodeURL)
-	ethClient := aggkittypes.NewDefaultEthClient(basicClient, basicClient.Client())
 	return NewRPCOpNodeDecorator(ethClient, opNodeClient), nil
 }
 

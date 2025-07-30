@@ -12,10 +12,11 @@ import (
 	"github.com/agglayer/aggkit/aggoracle"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/prover"
+	validator "github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/lastgersync"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/pprof"
 	"github.com/agglayer/aggkit/prometheus"
@@ -67,6 +68,9 @@ const (
 	aggOracleBlockFinalityDeprecated      = "AggOracle.BlockFinality is deprecated, remove it from configuration"
 	l1InfoTreeSyncBlockFinalityDeprecated = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
 	bridgeL1SyncBlockFinalityDeprecated   = "BridgeL1Sync.BlockFinality is deprecated, remove it from configuration"
+	lastGERSyncDeprecatedHint             = "LastGERSync is deprecated, use L2GERSync instead"
+	lastGERSyncSyncModeDeprecatedHint     = "LastGERSync.SyncMode is deprecated, remove it from configuration"
+	l1NetworkConfigURLDeprecatedHint      = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
 )
 
 type DeprecatedFieldsError struct {
@@ -192,6 +196,18 @@ var (
 			FieldNamePattern: "BridgeL1Sync.BlockFinality",
 			Reason:           bridgeL1SyncBlockFinalityDeprecated,
 		},
+		{
+			FieldNamePattern: "LastGERSync.SyncMode",
+			Reason:           lastGERSyncSyncModeDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "LastGERSync",
+			Reason:           lastGERSyncDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "L1NetworkConfig.URL",
+			Reason:           l1NetworkConfigURLDeprecatedHint,
+		},
 	}
 )
 
@@ -206,7 +222,7 @@ type Config struct {
 	Log log.Config
 
 	// Common Config that affects all the services
-	Common common.Config
+	Common CommonConfig
 
 	// L1NetworkConfig represents the L1 network config and contains RPC URL alongside L1 contract addresses.
 	L1NetworkConfig L1NetworkConfig
@@ -235,9 +251,9 @@ type Config struct {
 	// BridgeL2Sync is the configuration for the synchronizer of the bridge of the L2
 	BridgeL2Sync bridgesync.Config
 
-	// LastGERSync is the config for the synchronizer in charge of syncing the last GER injected on L2.
+	// L2GERSync is the config for the synchronizer in charge of syncing the GER injected on L2.
 	// Needed for the bridge service (RPC)
-	LastGERSync lastgersync.Config
+	L2GERSync l2gersync.Config
 
 	// AggSender is the configuration of the agg sender service
 	AggSender aggsendercfg.Config
@@ -250,6 +266,9 @@ type Config struct {
 
 	// Profiling is the configuration of the profiling service
 	Profiling pprof.Config
+
+	// Validator is the configuration of the aggsender validator service
+	Validator validator.Config
 }
 
 // Load loads the configuration
