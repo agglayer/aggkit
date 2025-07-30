@@ -18,12 +18,15 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
-// Global mutex to synchronize access to simulated backend
-var simBackendMutex sync.Mutex
+// Wrapper struct to associate a mutex with each simulated backend instance
+type SimulatedBackendWithMutex struct {
+	Backend *simulated.Backend
+	Mutex   sync.Mutex
+}
 
 func NewEthTxManMock(
 	t *testing.T,
-	client *simulated.Backend,
+	client *SimulatedBackendWithMutex,
 	auth *bind.TransactOpts,
 ) *EthTxManager {
 	t.Helper()
@@ -43,11 +46,11 @@ func NewEthTxManMock(
 					Data: data,
 				}
 
-				_, err := client.Client().EstimateGas(ctx, msg)
+				_, err := client.Backend.Client().EstimateGas(ctx, msg)
 				if err != nil {
 					log.Errorf("eth_estimateGas invocation failed: %w", ExtractRPCErrorData(err))
 
-					res, err := client.Client().CallContract(ctx, msg, nil)
+					res, err := client.Backend.Client().CallContract(ctx, msg, nil)
 					if err != nil {
 						log.Errorf("eth_call invocation failed: %w", ExtractRPCErrorData(err))
 					} else {
@@ -72,9 +75,9 @@ func NewEthTxManMock(
 }
 
 // SendTx is a helper function that creates the legacy transaction, sings it and sends against simulated environment
-func SendTx(ctx context.Context, client *simulated.Backend, auth *bind.TransactOpts,
+func SendTx(ctx context.Context, client *SimulatedBackendWithMutex, auth *bind.TransactOpts,
 	to *common.Address, data []byte, value *big.Int) error {
-	nonce, err := client.Client().PendingNonceAt(ctx, auth.From)
+	nonce, err := client.Backend.Client().PendingNonceAt(ctx, auth.From)
 	if err != nil {
 		return err
 	}
@@ -89,18 +92,18 @@ func SendTx(ctx context.Context, client *simulated.Backend, auth *bind.TransactO
 			Value: value,
 		}
 
-		gas, err = client.Client().EstimateGas(ctx, msg)
+		gas, err = client.Backend.Client().EstimateGas(ctx, msg)
 		if err != nil {
 			return ExtractRPCErrorData(err)
 		}
 	}
 
-	price, err := client.Client().SuggestGasPrice(ctx)
+	price, err := client.Backend.Client().SuggestGasPrice(ctx)
 	if err != nil {
 		return err
 	}
 
-	senderBalance, err := client.Client().BalanceAt(ctx, auth.From, nil)
+	senderBalance, err := client.Backend.Client().BalanceAt(ctx, auth.From, nil)
 	if err != nil {
 		return err
 	}
@@ -124,15 +127,15 @@ func SendTx(ctx context.Context, client *simulated.Backend, auth *bind.TransactO
 		return err
 	}
 
-	err = client.Client().SendTransaction(ctx, signedTx)
+	err = client.Backend.Client().SendTransaction(ctx, signedTx)
 	if err != nil {
 		return err
 	}
 
 	// Synchronize access to the simulated backend to prevent race conditions
-	simBackendMutex.Lock()
-	client.Commit()
-	simBackendMutex.Unlock()
+	client.Mutex.Lock()
+	client.Backend.Commit()
+	client.Mutex.Unlock()
 
 	return nil
 }
