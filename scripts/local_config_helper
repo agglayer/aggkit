@@ -265,6 +265,7 @@ function parse_command_line_args() {
         -h | --help)
             echo "Usage: $0"
             echo "  -h: help"
+            echo "  -e: kurtosis enclave name (default $KURTOSIS_ENCLAVE)"
             exit 0
             ;;
         -e | --enclave)
