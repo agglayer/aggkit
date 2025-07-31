@@ -97,26 +97,20 @@ func NewAggchainProofGenerationTool(
 		nil, // lerQuerier
 		flows.NewBaseFlowConfigDefault(),
 	)
-	aggchainProverFlow := flows.NewAggchainProverFlow(
+	aggchainProofQuerier := query.NewAggchainProofQuery(
 		logger,
-		flows.NewAggchainProverFlowConfigDefault(),
-		baseFlow,
 		aggchainProofClient,
-		nil, // storage
 		l1InfoTreeQuerier,
-		l2BridgeQuerier,
+		nil, // optimistic signer is not used in the tool, so we pass nil
+		baseFlow,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
-		l1Client,
-		nil,                               // signer
-		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode,
-		nil,                               // optimisticSigner
 	)
 
 	return &AggchainProofGenerationTool{
 		cfg:                 cfg,
 		logger:              logger,
 		l2Syncer:            l2Syncer,
-		flow:                aggchainProverFlow,
+		flow:                aggchainProofQuerier,
 		aggchainProofClient: aggchainProofClient,
 	}, nil
 }

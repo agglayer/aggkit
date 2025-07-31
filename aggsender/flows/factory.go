@@ -114,19 +114,29 @@ func NewFlow(
 			return nil, fmt.Errorf("failed to create L2 GER reader: %w", err)
 		}
 
+		gerQuerier := query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader)
+
+		aggchainProofQuerier := query.NewAggchainProofQuery(
+			logger,
+			aggchainProofClient,
+			l1InfoTreeQuerier,
+			optimisticSigner,
+			baseFlow,
+			gerQuerier,
+		)
+
 		return NewAggchainProverFlow(
 			logger,
 			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
 			baseFlow,
-			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
-			query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
+			gerQuerier,
 			l1Client,
 			signer,
 			optimisticModeQuerier,
-			optimisticSigner,
+			aggchainProofQuerier,
 		), nil
 
 	default:

@@ -64,6 +64,11 @@ type BridgeSync struct {
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
 }
 
+// noOpReorgDetectorWrapper wraps NoOpReorgDetector to implement bridgesync.ReorgDetector interface
+type noOpReorgDetectorWrapper struct {
+	reorgdetector.NoOpReorgDetector
+}
+
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
 func NewL1(
 	ctx context.Context,
@@ -71,7 +76,6 @@ func NewL1(
 	bridge common.Address,
 	syncBlockChunkSize uint64,
 	blockFinalityType aggkittypes.BlockNumberFinality,
-	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
 	waitForNewBlocksPeriod time.Duration,
@@ -87,7 +91,7 @@ func NewL1(
 		bridge,
 		syncBlockChunkSize,
 		blockFinalityType,
-		rd,
+		&noOpReorgDetectorWrapper{*reorgdetector.NewNoOpReorgDetector()},
 		ethClient,
 		initialBlock,
 		L1BridgeSyncer,
