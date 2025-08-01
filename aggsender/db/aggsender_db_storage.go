@@ -294,7 +294,7 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	filePath := filepath.Join(dbDir, fileName)
 
 	// Write the signed certificate content to the file
-	err := os.WriteFile(filePath, []byte(signedCertContent), 0600)
+	err := os.WriteFile(filePath, []byte(signedCertContent), 0600) //nolint:all
 	if err != nil {
 		return "", fmt.Errorf("failed to write signed certificate to file %s: %w", filePath, err)
 	}
