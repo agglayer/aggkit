@@ -3,9 +3,11 @@ set -euo pipefail
 
 GREEN='\033[0;32m'
 RED='\033[0;31m'
+ORANGE='\033[0;33m'
 NC='\033[0m'
 
 log_info() { echo -e "${GREEN}[INFO]${NC} $*"; }
+log_warn() { echo -e "${ORANGE}[WARN]${NC} $*"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
 trap 'log_error "Script failed at line $LINENO"' ERR
@@ -71,6 +73,11 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
         popd >/dev/null
     else
         log_info "Docker image aggkit:local already exists."
+    fi
+    if docker run --entrypoint /bin/sh --rm aggkit:local > /dev/null 2>&1 ; then
+        log_info "Docker image aggkit:local ✅🖥️   have shell."
+    else
+        log_warn "Docker image aggkit:local ❌🖥️   have no shell  (you can generate with shell using make build-docker-ci)."
     fi
 
     log_info "Using provided Kurtosis CDK repo at: $KURTOSIS_REPO_PATH"
