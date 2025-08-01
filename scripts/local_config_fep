@@ -5,29 +5,18 @@ export KURTOSIS_ENCLAVE=op
 
 ###############################################################################
 function export_values_of_aggkit_config() {
-    local AGGKIT_CONFIG_FILE=$1
-    export_key_from_toml_file_or_fatal zkevm_rollup_id $AGGKIT_CONFIG_FILE "." NetworkID
-    export_key_from_toml_file_or_fatal zkevm_rollup_manager_block_number $AGGKIT_CONFIG_FILE "." genesisBlockNumber
-    export_key_from_toml_file_or_fatal zkevm_bridge_address $AGGKIT_CONFIG_FILE "." polygonBridgeAddr
-    export_key_from_toml_file_or_fatal zkevm_l2_keystore_password $AGGKIT_CONFIG_FILE "." SequencerPrivateKeyPassword
+    local AGGKIT_CONFIG_FILE="$1"
+    common_export_values_of_aggkit_config "$AGGKIT_CONFIG_FILE"
     export_key_from_toml_file_or_fatal sovereign_bridge_proxy_addr $AGGKIT_CONFIG_FILE BridgeL2Sync BridgeAddr
-    export_key_from_toml_file_or_fatal l1_chain_id $AGGKIT_CONFIG_FILE L1Config chainId
-    export_key_from_toml_file_or_fatal pol_token_address $AGGKIT_CONFIG_FILE L1Config polTokenAddress
     export_key_from_toml_file_or_fatal sovereign_rollup_addr $AGGKIT_CONFIG_FILE L1Config polygonZkEVMAddress
-    export_key_from_toml_file_or_fatal zkevm_rollup_manager_address $AGGKIT_CONFIG_FILE L1Config polygonRollupManagerAddress
-    export_key_from_toml_file_or_fatal zkevm_global_exit_root_address $AGGKIT_CONFIG_FILE L1Config polygonZkEVMGlobalExitRootAddress
     export_key_from_toml_file_or_fatal sovereign_ger_proxy_addr $AGGKIT_CONFIG_FILE L2Config GlobalExitRootAddr
-    export_key_from_toml_file_or_fatal zkevm_rollup_chain_id $AGGKIT_CONFIG_FILE AggOracle.EVMSender.EthTxManager.Etherman L1ChainID
 }
 ###############################################################################
 function export_ports_from_kurtosis() {
-    export_portnum_from_kurtosis_or_fail l1_rpc_port el-1-geth-lighthouse rpc
+    common_export_ports_from_kurtosis
     export_portnum_from_kurtosis_or_fail op_el_rpc_port op-el-1-op-geth-op-node-001 rpc
-    export_portnum_from_kurtosis_or_fail agglayer_grpc_port agglayer aglr-grpc
     export_portnum_from_kurtosis_or_fail aggkit_prover_grpc_port aggkit-prover-001 grpc
     export_portnum_from_kurtosis_or_fail op_cl_rpc_url_port op-cl-1-op-node-op-geth-001 http
-    export l1_rpc_url="http://localhost:${l1_rpc_port}"
-    export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
     export op_el_rpc_url="http://localhost:${op_el_rpc_port}"
     export aggchain_proof_url="http://localhost:${aggkit_prover_grpc_port}"
     export op_cl_rpc_url="http://localhost:${op_cl_rpc_url_port}"
@@ -35,55 +24,6 @@ function export_ports_from_kurtosis() {
 ###############################################################################
 # MAIN
 ###############################################################################
-set -o pipefail # enable strict command pipe error detection
-parse_command_line_args $*
-check_requirements
-create_dest_folder
-
-download_kurtosis_artifacts
-
-export_ports_from_kurtosis
-export_values_of_aggkit_config $DEST/config.toml
-export_forced_values
-
 ORIG_TEMPLATE_FILE=test/config/fep-config.toml.template
 DEST_TEMPLATE_FILE=$DEST/test.kurtosis.toml
-
-# Generate config file
-go run scripts/run_template.go $ORIG_TEMPLATE_FILE >$DEST_TEMPLATE_FILE
-ok_or_fatal "Error generating template"
-
-check_generated_config_file
-
-echo " "
-echo "file generated at:" $DEST/test.kurtosis.toml
-
-echo "- to restart kurtosis:"
-echo "    kurtosis clean --all; kurtosis run --enclave op --args-file params.yml --image-download always ."
-echo " "
-echo "- Stop aggkit:"
-echo "    kurtosis service stop aggkit aggkit-001"
-echo " "
-echo "- Add next configuration to vscode launch.json"
-echo " -----------------------------------------------------------"
-cat <<EOF
-         {
-            "name": "Debug aggkit",
-            "type": "go",
-            "request": "launch",
-            "mode": "auto",
-            "program": "cmd/",
-            "cwd": "\${workspaceFolder}",
-            "args":[
-                "run",
-                "-cfg", "$DEST_TEMPLATE_FILE",
-                "-components", "aggsender,bridge,aggoracle",
-            ]
-        },
-
-EOF
-
-echo " -----------------------------------------------------------"
-echo " "
-echo " - rembember to clean previous execution data: "
-echo "     rm -Rf ${zkevm_path_rw_data}/*"
+main $*
