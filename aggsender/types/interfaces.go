@@ -232,3 +232,18 @@ type ValidatorClient interface {
 		certificate *agglayertypes.Certificate,
 	) ([]byte, error)
 }
+
+// LocalExitRootQuery is an interface defining functions that a LocalExitRootQuery should implement
+type LocalExitRootQuery interface {
+	GetNewLocalExitRoot(ctx context.Context,
+		certParams *CertificateBuildParams) (common.Hash, error)
+}
+
+// AggchainProofQuerier is an interface defining functions that an AggchainProofQuerier should implement
+type AggchainProofQuerier interface {
+	GenerateAggchainProof(
+		ctx context.Context,
+		lastProvenBlock, toBlock uint64,
+		certBuildParams *CertificateBuildParams,
+	) (*AggchainProof, *treetypes.Root, error)
+}

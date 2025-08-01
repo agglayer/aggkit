@@ -59,7 +59,6 @@ func TestNewLx(t *testing.T) {
 		bridge,
 		syncBlockChunkSize,
 		blockFinalityType,
-		mockReorgDetector,
 		mockEthClient,
 		initialBlock,
 		waitForNewBlocksPeriod,

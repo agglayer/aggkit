@@ -76,10 +76,6 @@ GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 		MaxBackoff = "10s"
 		BackoffMultiplier = 2.0
 
-[ReorgDetectorL1]
-DBPath = "{{PathRWData}}/reorgdetectorl1.sqlite"
-FinalizedBlock = "FinalizedBlock"
-
 [ReorgDetectorL2]
 DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
 FinalizedBlock = "LatestBlock"

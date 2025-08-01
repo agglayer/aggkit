@@ -159,7 +159,7 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@afb105b9b74aec0885d15add406e2a365d7e49b1
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@3f4bbb6c2d2b0f061b3cafacd5f8a76ebbe3139f
     secrets: inherit
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
