@@ -3,9 +3,12 @@ package db
 import (
 	"context"
 	"database/sql"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -215,6 +218,16 @@ func (a *AggSenderSQLStorage) GetLastSettledCertificate() (*types.CertificateHea
 // SaveOrUpdateCertificate saves the certificate in the storage
 // It will insert a new certificate or update the existing one if it has the same height and certificate ID
 func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certificate types.Certificate) error {
+	// Handle signed certificate file storage before database operations
+	if certificate.SignedCertificate != nil && *certificate.SignedCertificate != "" {
+		filePath, err := a.saveSignedCertificateToFile(certificate.Header.CertificateID, *certificate.SignedCertificate)
+		if err != nil {
+			return fmt.Errorf("error saving signed certificate to file: %w", err)
+		}
+		// Update the certificate to store the file path instead of the content
+		certificate.SignedCertificate = &filePath
+	}
+
 	tx, err := newTxer(ctx, a.db)
 	if err != nil {
 		return fmt.Errorf("saveOrUpdateCertificate NewTx. Err: %w", err)
@@ -268,8 +281,38 @@ func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certi
 	return nil
 }
 
+// saveSignedCertificateToFile saves the signed certificate content to a file in the same directory as the database
+// and returns the file path
+func (a *AggSenderSQLStorage) saveSignedCertificateToFile(certificateID common.Hash, signedCertContent string) (string, error) {
+	// Get the directory where the database is stored
+	dbDir := filepath.Dir(a.cfg.DBPath)
+
+	// Create a filename using the certificate ID
+	fileName := fmt.Sprintf("signed_cert_%s.pem", hex.EncodeToString(certificateID[:]))
+	filePath := filepath.Join(dbDir, fileName)
+
+	// Write the signed certificate content to the file
+	err := os.WriteFile(filePath, []byte(signedCertContent), 0644)
+	if err != nil {
+		return "", fmt.Errorf("failed to write signed certificate to file %s: %w", filePath, err)
+	}
+
+	a.logger.Debugf("Saved signed certificate to file: %s", filePath)
+	return filePath, nil
+}
+
 // SaveLastSentCertificate saves the last certificate sent to the aggLayer
 func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error {
+	// Handle signed certificate file storage before database operations
+	if certificate.SignedCertificate != nil && *certificate.SignedCertificate != "" {
+		filePath, err := a.saveSignedCertificateToFile(certificate.Header.CertificateID, *certificate.SignedCertificate)
+		if err != nil {
+			return fmt.Errorf("error saving signed certificate to file: %w", err)
+		}
+		// Update the certificate to store the file path instead of the content
+		certificate.SignedCertificate = &filePath
+	}
+
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
 		return fmt.Errorf("saveLastSentCertificate NewTx. Err: %w", err)
