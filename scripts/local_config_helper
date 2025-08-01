@@ -297,7 +297,7 @@ function parse_command_line_args() {
             echo "Usage: $0"
             echo "  -h: help"
             echo "  -e: kurtosis enclave name (default $KURTOSIS_ENCLAVE)"
-            echo "  -p: expose same ports as service in kurtosis"
+            echo "  -p: expose same ports as service in kurtosis (RPC and REST)"
             exit 0
             ;;
         -e | --enclave)
