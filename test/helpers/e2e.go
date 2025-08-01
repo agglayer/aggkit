@@ -215,7 +215,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 	if cfg.L2GERManagerType == SovereignChainL2GERContract {
 		l2ClientWithMutex := &SimulatedBackendWithMutex{
 			Backend: l2Client,
-			Mutex:   sync.Mutex{},
+			Mutex:   sync.RWMutex{},
 		}
 		ethTxManagerMock = NewEthTxManMock(t, l2ClientWithMutex, authL2)
 		const (

@@ -20,8 +20,8 @@ import (
 
 // Wrapper struct to associate a mutex with each simulated backend instance
 type SimulatedBackendWithMutex struct {
-	Backend *simulated.Backend
-	Mutex   sync.Mutex
+	*simulated.Backend
+	Mutex sync.RWMutex
 }
 
 func NewEthTxManMock(
@@ -46,11 +46,11 @@ func NewEthTxManMock(
 					Data: data,
 				}
 
-				_, err := client.Backend.Client().EstimateGas(ctx, msg)
+				_, err := client.Client().EstimateGas(ctx, msg)
 				if err != nil {
 					log.Errorf("eth_estimateGas invocation failed: %w", ExtractRPCErrorData(err))
 
-					res, err := client.Backend.Client().CallContract(ctx, msg, nil)
+					res, err := client.Client().CallContract(ctx, msg, nil)
 					if err != nil {
 						log.Errorf("eth_call invocation failed: %w", ExtractRPCErrorData(err))
 					} else {
@@ -77,7 +77,7 @@ func NewEthTxManMock(
 // SendTx is a helper function that creates the legacy transaction, sings it and sends against simulated environment
 func SendTx(ctx context.Context, client *SimulatedBackendWithMutex, auth *bind.TransactOpts,
 	to *common.Address, data []byte, value *big.Int) error {
-	nonce, err := client.Backend.Client().PendingNonceAt(ctx, auth.From)
+	nonce, err := client.Client().PendingNonceAt(ctx, auth.From)
 	if err != nil {
 		return err
 	}
@@ -92,18 +92,18 @@ func SendTx(ctx context.Context, client *SimulatedBackendWithMutex, auth *bind.T
 			Value: value,
 		}
 
-		gas, err = client.Backend.Client().EstimateGas(ctx, msg)
+		gas, err = client.Client().EstimateGas(ctx, msg)
 		if err != nil {
 			return ExtractRPCErrorData(err)
 		}
 	}
 
-	price, err := client.Backend.Client().SuggestGasPrice(ctx)
+	price, err := client.Client().SuggestGasPrice(ctx)
 	if err != nil {
 		return err
 	}
 
-	senderBalance, err := client.Backend.Client().BalanceAt(ctx, auth.From, nil)
+	senderBalance, err := client.Client().BalanceAt(ctx, auth.From, nil)
 	if err != nil {
 		return err
 	}
@@ -127,7 +127,7 @@ func SendTx(ctx context.Context, client *SimulatedBackendWithMutex, auth *bind.T
 		return err
 	}
 
-	err = client.Backend.Client().SendTransaction(ctx, signedTx)
+	err = client.Client().SendTransaction(ctx, signedTx)
 	if err != nil {
 		return err
 	}
