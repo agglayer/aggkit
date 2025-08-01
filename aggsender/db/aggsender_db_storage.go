@@ -283,7 +283,9 @@ func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certi
 
 // saveSignedCertificateToFile saves the signed certificate content to a file in the same directory as the database
 // and returns the file path
-func (a *AggSenderSQLStorage) saveSignedCertificateToFile(certificateID common.Hash, signedCertContent string) (string, error) {
+func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
+	certificateID common.Hash,
+	signedCertContent string) (string, error) {
 	// Get the directory where the database is stored
 	dbDir := filepath.Dir(a.cfg.DBPath)
 
@@ -292,7 +294,7 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(certificateID common.H
 	filePath := filepath.Join(dbDir, fileName)
 
 	// Write the signed certificate content to the file
-	err := os.WriteFile(filePath, []byte(signedCertContent), 0644)
+	err := os.WriteFile(filePath, []byte(signedCertContent), 0600)
 	if err != nil {
 		return "", fmt.Errorf("failed to write signed certificate to file %s: %w", filePath, err)
 	}
