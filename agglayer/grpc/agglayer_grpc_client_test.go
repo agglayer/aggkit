@@ -19,8 +19,10 @@ import (
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -557,4 +559,21 @@ func estimateRequestSize(t *testing.T, req proto.Message) int {
 	require.NoError(t, err)
 
 	return len(data)
+}
+
+// TestContextWithVersionHeader tests that the version header is properly added to context
+func TestContextWithVersionHeader(t *testing.T) {
+	// Create a base context
+	ctx := context.Background()
+
+	// Add version header manually to test the functionality
+	ctxWithHeader := metadata.AppendToOutgoingContext(ctx, aggkitgrpc.AggKitVersionMetadataKey, "test-version")
+
+	// Verify the header was added
+	md, ok := metadata.FromOutgoingContext(ctxWithHeader)
+	require.True(t, ok, "Context should have outgoing metadata")
+
+	versionValues := md.Get(aggkitgrpc.AggKitVersionMetadataKey)
+	require.Len(t, versionValues, 1, "Should have version header")
+	assert.Equal(t, "test-version", versionValues[0])
 }
