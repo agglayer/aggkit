@@ -9,7 +9,10 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const NilStr = "nil"
+const (
+	NilStr = "nil"
+	NAStr  = "N/A"
+)
 
 type AggsenderMode string
 
@@ -200,6 +203,16 @@ func (c *CertificateHeader) String() string {
 		finalizedL1InfoTreeRoot = c.FinalizedL1InfoTreeRoot.String()
 	}
 
+	createdAt := NAStr
+	if c.CreatedAt != 0 {
+		createdAt = time.Unix(int64(c.CreatedAt), 0).Format(time.RFC1123) // For a more human-readable format
+	}
+
+	updatedAt := NAStr
+	if c.UpdatedAt != 0 {
+		updatedAt = time.Unix(int64(c.UpdatedAt), 0).Format(time.RFC1123) // For a more human-readable format
+	}
+
 	return fmt.Sprintf("aggsender.CertificateHeader: \n"+
 		"Type: %s \n"+
 		"Height: %d \n"+
@@ -223,8 +236,8 @@ func (c *CertificateHeader) String() string {
 		c.Status.String(),
 		c.FromBlock,
 		c.ToBlock,
-		time.Unix(int64(c.CreatedAt), 0),
-		time.Unix(int64(c.UpdatedAt), 0),
+		createdAt,
+		updatedAt,
 		finalizedL1InfoTreeRoot,
 		c.CertSource.String(),
 	)
@@ -256,11 +269,11 @@ func (c *CertificateHeader) IsClosed() bool {
 }
 
 // ElapsedTimeSinceCreation returns the time elapsed since the certificate was created
-func (c *CertificateHeader) ElapsedTimeSinceCreation() time.Duration {
-	if c == nil {
-		return 0
+func (c *CertificateHeader) ElapsedTimeSinceCreation() string {
+	if c == nil || c.CreatedAt == 0 {
+		return NAStr
 	}
-	return time.Now().UTC().Sub(time.Unix(int64(c.CreatedAt), 0))
+	return time.Now().UTC().Sub(time.Unix(int64(c.CreatedAt), 0)).String()
 }
 
 type Certificate struct {
