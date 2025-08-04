@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	big "math/big"
+	"sync"
 	"testing"
 
 	ethtxtypes "github.com/0xPolygon/zkevm-ethtx-manager/types"
@@ -17,9 +18,15 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+// Wrapper struct to associate a mutex with each simulated backend instance
+type SimulatedBackendWithMutex struct {
+	*simulated.Backend
+	Mutex sync.RWMutex
+}
+
 func NewEthTxManMock(
 	t *testing.T,
-	client *simulated.Backend,
+	client *SimulatedBackendWithMutex,
 	auth *bind.TransactOpts,
 ) *EthTxManager {
 	t.Helper()
@@ -68,7 +75,7 @@ func NewEthTxManMock(
 }
 
 // SendTx is a helper function that creates the legacy transaction, sings it and sends against simulated environment
-func SendTx(ctx context.Context, client *simulated.Backend, auth *bind.TransactOpts,
+func SendTx(ctx context.Context, client *SimulatedBackendWithMutex, auth *bind.TransactOpts,
 	to *common.Address, data []byte, value *big.Int) error {
 	nonce, err := client.Client().PendingNonceAt(ctx, auth.From)
 	if err != nil {
@@ -125,7 +132,10 @@ func SendTx(ctx context.Context, client *simulated.Backend, auth *bind.TransactO
 		return err
 	}
 
-	client.Commit()
+	// Synchronize access to the simulated backend to prevent race conditions
+	client.Mutex.Lock()
+	client.Backend.Commit()
+	client.Mutex.Unlock()
 
 	return nil
 }

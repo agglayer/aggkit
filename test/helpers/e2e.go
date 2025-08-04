@@ -4,6 +4,7 @@ import (
 	"context"
 	"math/big"
 	"path"
+	"sync"
 	"testing"
 	"time"
 
@@ -212,7 +213,11 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 	)
 
 	if cfg.L2GERManagerType == SovereignChainL2GERContract {
-		ethTxManagerMock = NewEthTxManMock(t, l2Client, authL2)
+		l2ClientWithMutex := &SimulatedBackendWithMutex{
+			Backend: l2Client,
+			Mutex:   sync.RWMutex{},
+		}
+		ethTxManagerMock = NewEthTxManMock(t, l2ClientWithMutex, authL2)
 		const (
 			gerCheckFrequency     = time.Millisecond * 50
 			gerInjectionFrequency = time.Millisecond * 20
