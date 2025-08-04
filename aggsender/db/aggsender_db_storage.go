@@ -155,7 +155,7 @@ func (a *AggSenderSQLStorage) GetCertificateByHeight(height uint64) (*types.Cert
 		return nil, nil
 	}
 
-	return certInfo.toCertificate(), nil
+	return certInfo.toCertificate()
 }
 
 // GetCertificateHeaderByHeight returns a certificate by its height
@@ -188,7 +188,7 @@ func (a *AggSenderSQLStorage) GetLastSentCertificate() (*types.Certificate, erro
 		return nil, getSelectQueryError(0, err)
 	}
 
-	return certificateInfo.toCertificate(), nil
+	return certificateInfo.toCertificate()
 }
 
 // GetLastSentCertificateHeader returns the last certificate header sent to the aggLayer
@@ -218,14 +218,8 @@ func (a *AggSenderSQLStorage) GetLastSettledCertificate() (*types.CertificateHea
 // SaveOrUpdateCertificate saves the certificate in the storage
 // It will insert a new certificate or update the existing one if it has the same height and certificate ID
 func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certificate types.Certificate) error {
-	// Handle signed certificate file storage before database operations
-	if certificate.SignedCertificate != nil && *certificate.SignedCertificate != "" {
-		filePath, err := a.saveSignedCertificateToFile(certificate.Header.CertificateID, *certificate.SignedCertificate)
-		if err != nil {
-			return fmt.Errorf("error saving signed certificate to file: %w", err)
-		}
-		// Update the certificate to store the file path instead of the content
-		certificate.SignedCertificate = &filePath
+	if err := a.handleCertificateFile(&certificate); err != nil {
+		return err
 	}
 
 	tx, err := newTxer(ctx, a.db)
@@ -290,11 +284,11 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	dbDir := filepath.Dir(a.cfg.DBPath)
 
 	// Create a filename using the certificate ID
-	fileName := fmt.Sprintf("signed_cert_%s.pem", hex.EncodeToString(certificateID[:]))
+	fileName := fmt.Sprintf("signed_cert_%s.json", hex.EncodeToString(certificateID[:]))
 	filePath := filepath.Join(dbDir, fileName)
 
 	// Write the signed certificate content to the file
-	err := os.WriteFile(filePath, []byte(signedCertContent), 0600) //nolint:all
+	err := os.WriteFile(filePath, []byte(signedCertContent), 0600) //nolint:gosec
 	if err != nil {
 		return "", fmt.Errorf("failed to write signed certificate to file %s: %w", filePath, err)
 	}
@@ -305,14 +299,8 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 
 // SaveLastSentCertificate saves the last certificate sent to the aggLayer
 func (a *AggSenderSQLStorage) SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error {
-	// Handle signed certificate file storage before database operations
-	if certificate.SignedCertificate != nil && *certificate.SignedCertificate != "" {
-		filePath, err := a.saveSignedCertificateToFile(certificate.Header.CertificateID, *certificate.SignedCertificate)
-		if err != nil {
-			return fmt.Errorf("error saving signed certificate to file: %w", err)
-		}
-		// Update the certificate to store the file path instead of the content
-		certificate.SignedCertificate = &filePath
+	if err := a.handleCertificateFile(&certificate); err != nil {
+		return err
 	}
 
 	tx, err := db.NewTx(ctx, a.db)
@@ -371,7 +359,7 @@ func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx dbtypes.Querie
 		}
 	}
 	a.logger.Debugf("deleting certificate - CertificateID: %s", certificate.ID())
-	if err := deleteCertificate(tx, certificate.CertificateID); err != nil {
+	if err := deleteCertificate(tx, certificate); err != nil {
 		return fmt.Errorf("deleteCertificate %s . Error: %w", certificate.ID(), err)
 	}
 
@@ -379,7 +367,7 @@ func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx dbtypes.Querie
 }
 
 // DeleteCertificate deletes a certificate from the storage
-func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificateID common.Hash) error {
+func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificate types.Certificate) error {
 	tx, err := db.NewTx(ctx, a.db)
 	if err != nil {
 		return err
@@ -393,7 +381,7 @@ func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificate
 		}
 	}()
 
-	if err = deleteCertificate(tx, certificateID); err != nil {
+	if err = deleteCertificate(tx, certificate.Header.CertificateID); err != nil {
 		return err
 	}
 
@@ -402,7 +390,18 @@ func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificate
 	}
 	shouldRollback = false
 
-	a.logger.Debugf("deleted certificate - CertificateID: %s", certificateID)
+	a.logger.Debugf("deleted certificate - CertificateID: %s", certificate.Header.CertificateID.String())
+
+	// Delete the certificate file also in case it's a certificate file and it exists
+	if IsJSONFilePath(*certificate.SignedCertificate) {
+		filename := fmt.Sprintf("%s.json", certificate.Header.CertificateID.String())
+		// Try to delete the file
+		if err := os.Remove(filename); err != nil {
+			return fmt.Errorf("error deleting certificate file: %w", err)
+		}
+		a.logger.Debugf("deleted certificate file %s", filename)
+	}
+
 	return nil
 }
 
@@ -556,6 +555,20 @@ func (a *AggSenderSQLStorage) GetNonAcceptedCertificate() (*NonAcceptedCertifica
 	}
 
 	return &nonAcceptedCert, nil
+}
+
+// handleCertificateFile Handle signed certificate file storage before database operations
+func (a *AggSenderSQLStorage) handleCertificateFile(certificate *types.Certificate) error {
+	if certificate.SignedCertificate != nil && *certificate.SignedCertificate != "" {
+		filePath, err := a.saveSignedCertificateToFile(certificate.Header.CertificateID, *certificate.SignedCertificate)
+		if err != nil {
+			return fmt.Errorf("error saving signed certificate to file: %w", err)
+		}
+		// Update the certificate to store the file path instead of the content
+		certificate.SignedCertificate = &filePath
+	}
+
+	return nil
 }
 
 func getSelectQueryError(height uint64, err error) error {
