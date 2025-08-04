@@ -9,7 +9,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/log"
-	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
+	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
@@ -26,6 +26,9 @@ const (
 	chainID              = 1337
 
 	base10 = 10
+
+	// Nonce values for contract address calculation
+	bridgeProxyNonce = 1
 )
 
 var _ aggkittypes.EthClienter = (*TestClient)(nil)
@@ -87,29 +90,12 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 		bridgeProxyContract *polygonzkevmbridgev2.Polygonzkevmbridgev2
 	)
 
-	bridgeABI, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
-	if err != nil {
-		return err
-	}
-
-	dataCallProxy, err := bridgeABI.Pack("initialize",
-		networkID,
-		common.Address{}, // gasTokenAddressMainnet
-		uint32(0),        // gasTokenNetworkMainnet
-		gerAddr,          // global exit root manager
-		common.Address{}, // rollup manager
-		[]byte{},         // gasTokenMetadata
-	)
-	if err != nil {
-		return err
-	}
-
-	bridgeProxyAddr, _, _, err = transparentupgradableproxy.DeployTransparentupgradableproxy(
+	bridgeProxyAddr, _, _, err = proxy.DeployProxy(
 		s.DeployerAuth,
 		client.Client(),
 		bridgeAddr,
 		s.DeployerAuth.From,
-		dataCallProxy,
+		[]byte{},
 	)
 	if err != nil {
 		return err
@@ -120,6 +106,20 @@ func (s *SimulatedBackendSetup) DeployBridge(client *simulated.Backend,
 	if err != nil {
 		return err
 	}
+
+	_, err = bridgeProxyContract.Initialize0(
+		s.UserAuth,
+		networkID,
+		common.Address{}, // gasTokenAddressMainnet
+		uint32(0),        // gasTokenNetworkMainnet
+		gerAddr,          // global exit root manager
+		common.Address{}, // rollup manager
+		[]byte{},         // gasTokenMetadata
+	)
+	if err != nil {
+		return err
+	}
+	client.Commit()
 
 	actualGERAddr, err := bridgeProxyContract.GlobalExitRootManager(&bind.CallOpts{})
 	if err != nil {
@@ -161,7 +161,7 @@ func NewSimulatedBackend(t *testing.T,
 	require.NoError(t, err)
 
 	// Create deployer account
-	precalculatedBridgeAddr := crypto.CreateAddress(deployerAuth.From, 1)
+	precalculatedBridgeAddr := crypto.CreateAddress(deployerAuth.From, bridgeProxyNonce)
 
 	// Define balances map
 	if balances == nil {

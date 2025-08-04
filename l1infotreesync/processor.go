@@ -177,12 +177,9 @@ func (p *processor) GetL1InfoTreeMerkleProof(
 	return proof, root, err
 }
 
-// GetLatestInfoUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
+// GetLatestL1InfoLeafUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
 // If the blockNum has not been processed yet the error ErrBlockNotProcessed will be returned
-func (p *processor) GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64) (*L1InfoTreeLeaf, error) {
-	if blockNum == 0 {
-		return nil, ErrNoBlock0
-	}
+func (p *processor) GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum *uint64) (*L1InfoTreeLeaf, error) {
 	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, err
@@ -193,20 +190,33 @@ func (p *processor) GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64
 		}
 	}()
 
-	lpb, err := p.getLastProcessedBlockWithTx(tx)
-	if err != nil {
-		return nil, err
+	if blockNum != nil {
+		if *blockNum == 0 {
+			return nil, ErrNoBlock0
+		}
+		lpb, err := p.getLastProcessedBlockWithTx(tx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to retrieve the last processed block: %w", err)
+		}
+		if lpb < *blockNum {
+			return nil, ErrBlockNotProcessed
+		}
 	}
-	if lpb < blockNum {
-		return nil, ErrBlockNotProcessed
+
+	var (
+		query string
+		args  []any
+	)
+
+	if blockNum != nil {
+		query = `SELECT * FROM l1info_leaf WHERE block_num <= $1 ORDER BY block_num DESC, block_pos DESC LIMIT 1;`
+		args = append(args, *blockNum)
+	} else {
+		query = `SELECT * FROM l1info_leaf ORDER BY block_num DESC, block_pos DESC LIMIT 1;`
 	}
 
 	info := &L1InfoTreeLeaf{}
-	err = meddler.QueryRow(
-		tx, info,
-		`SELECT * FROM l1info_leaf WHERE block_num <= $1 ORDER BY block_num DESC, block_pos DESC LIMIT 1;`,
-		blockNum,
-	)
+	err = meddler.QueryRow(tx, info, query, args...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, db.ErrNotFound
@@ -266,50 +276,9 @@ func (p *processor) GetProcessedBlockUntil(ctx context.Context, blockNum uint64)
 	return processedBlockNum, hash, nil
 }
 
-// Reorg triggers a purge and reset process on the processor to leaf it on a state
-// as if the last block processed was firstReorgedBlock-1
+// Reorg is intentionally left as a no-op. This method is retained for compatibility
+// with the processor interface and to allow for potential future implementation.
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
-	p.log.Infof("reorging to block %d", firstReorgedBlock)
-
-	tx, err := db.NewTx(ctx, p.db)
-	if err != nil {
-		return err
-	}
-	shouldRollback := true
-	defer func() {
-		if shouldRollback {
-			if errRllbck := tx.Rollback(); errRllbck != nil {
-				p.log.Errorf("error while rolling back tx %v", errRllbck)
-			}
-		}
-	}()
-
-	res, err := tx.Exec(`DELETE FROM block WHERE num >= $1;`, firstReorgedBlock)
-	if err != nil {
-		return err
-	}
-
-	if err = p.l1InfoTree.Reorg(tx, firstReorgedBlock); err != nil {
-		return err
-	}
-
-	if err = p.rollupExitTree.Reorg(tx, firstReorgedBlock); err != nil {
-		return err
-	}
-	rowsAffected, err := res.RowsAffected()
-	if err != nil {
-		return err
-	}
-
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-
-	p.log.Infof("reorged to block %d, %d rows affected", firstReorgedBlock, rowsAffected)
-
-	shouldRollback = false
-
-	sync.UnhaltIfAffectedRows(&p.halted, &p.haltedReason, &p.mu, rowsAffected)
 	return nil
 }
 
@@ -320,10 +289,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
 		return sync.ErrInconsistentState
 	}
+
 	tx, err := db.NewTx(ctx, p.db)
 	if err != nil {
 		return err
 	}
+
 	p.log.Debugf("init block processing for block %d", block.Num)
 	shouldRollback := true
 	defer func() {
@@ -360,6 +331,8 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			return errors.New("failed to convert from sync.Block.Event into Event")
 		}
 		if event.UpdateL1InfoTree != nil {
+			p.log.Debugf("handle UpdateL1InfoTree event. Block: %d, block hash: %s, mainnet exit root: %s, rollup exit root: %s",
+				block.Num, block.Hash, event.UpdateL1InfoTree.MainnetExitRoot, event.UpdateL1InfoTree.RollupExitRoot)
 			index := initialL1InfoIndex + l1InfoLeavesAdded
 			info := &L1InfoTreeLeaf{
 				BlockNumber:       block.Num,
@@ -383,11 +356,11 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			if err != nil {
 				return fmt.Errorf("AddLeaf(%s). err: %w", info.String(), err)
 			}
-			p.log.Infof("inserted L1InfoTreeLeaf %s", info.String())
+			p.log.Debugf("inserted L1InfoTreeLeaf %s", info.String())
 			l1InfoLeavesAdded++
 		}
 		if event.UpdateL1InfoTreeV2 != nil {
-			p.log.Infof("handle UpdateL1InfoTreeV2 event. Block: %d, block hash: %s. Event root: %s. Event leaf count: %d.",
+			p.log.Debugf("handle UpdateL1InfoTreeV2 event. Block: %d, block hash: %s. Event root: %s. Event leaf count: %d.",
 				block.Num, block.Hash, event.UpdateL1InfoTreeV2.CurrentL1InfoRoot.String(), event.UpdateL1InfoTreeV2.LeafCount)
 
 			root, err := p.l1InfoTree.GetLastRoot(tx)
@@ -406,11 +379,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 					root.Index, event.UpdateL1InfoTreeV2.LeafCount,
 					block.Num,
 				)
-				p.log.Error(errStr)
-				p.mu.Lock()
-				p.haltedReason = errStr
-				p.halted = true
-				p.mu.Unlock()
+				p.halt(errStr)
 				return sync.ErrInconsistentState
 			}
 		}
@@ -516,8 +485,23 @@ func (p *processor) getDBQuerier(tx dbtypes.Txer) dbtypes.Querier {
 	return p.db
 }
 
+// isHalted checks if the processor is in a halted state
 func (p *processor) isHalted() bool {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
 	return p.halted
+}
+
+// halt sets the processor to a halted state with a reason
+func (p *processor) halt(reason string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.halted {
+		return
+	}
+
+	p.halted = true
+	p.haltedReason = reason
+	p.log.Errorf("processor is halted, due to the following reason: %s", reason)
 }

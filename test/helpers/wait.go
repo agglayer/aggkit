@@ -17,7 +17,7 @@ func RequireProcessorUpdated(t *testing.T, processor Processorer, targetBlock ui
 	t.Helper()
 	const (
 		maxIterations         = 100
-		sleepTimePerIteration = time.Millisecond * 10
+		sleepTimePerIteration = 20 * time.Millisecond
 	)
 	var (
 		lpb uint64

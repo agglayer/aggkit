@@ -9,6 +9,7 @@ import (
 
 	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/db/compatibility"
+	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
@@ -37,6 +38,20 @@ type L1InfoTreeSync struct {
 	driver    *sync.EVMDriver
 }
 
+func NewReadOnly(
+	ctx context.Context,
+	dbPath string,
+) (*L1InfoTreeSync, error) {
+	processor, err := newProcessor(dbPath)
+	if err != nil {
+		return nil, err
+	}
+	return &L1InfoTreeSync{
+		processor: processor,
+		driver:    nil,
+	}, nil
+}
+
 // New creates a L1 Info tree syncer that syncs the L1 info tree
 // and the rollup exit tree
 func New(
@@ -45,7 +60,6 @@ func New(
 	globalExitRoot, rollupManager common.Address,
 	syncBlockChunkSize uint64,
 	blockFinalityType aggkittypes.BlockNumberFinality,
-	rd sync.ReorgDetector,
 	l1Client aggkittypes.BaseEthereumClienter,
 	waitForNewBlocksPeriod time.Duration,
 	initialBlock uint64,
@@ -105,7 +119,8 @@ func New(
 		requireStorageContentCompatibility,
 		downloader.RuntimeData,
 		processor)
-	driver, err := sync.NewEVMDriver(rd, processor, downloader, reorgDetectorID,
+
+	driver, err := sync.NewEVMDriver(reorgdetector.NewNoOpReorgDetector(), processor, downloader, reorgDetectorID,
 		downloadBufferSize, rh, compatibilityChecker)
 	if err != nil {
 		return nil, err
@@ -153,16 +168,28 @@ func translateError(err error) error {
 	return err
 }
 
-// GetLatestInfoUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
+// GetLatestL1InfoLeafUntilBlock returns the most recent L1InfoTreeLeaf that occurred before or at blockNum.
 // If the blockNum has not been processed yet the error ErrBlockNotProcessed will be returned
 // It can returns next errors:
 // - ErrBlockNotProcessed,
 // - ErrNotFound
-func (s *L1InfoTreeSync) GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64) (*L1InfoTreeLeaf, error) {
+func (s *L1InfoTreeSync) GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*L1InfoTreeLeaf, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
-	leaf, err := s.processor.GetLatestInfoUntilBlock(ctx, blockNum)
+	leaf, err := s.processor.GetLatestL1InfoLeafUntilBlock(ctx, &blockNum)
+	return leaf, translateError(err)
+}
+
+// GetLatestL1InfoLeaf returns the most recent L1InfoTreeLeaf that has been indexed
+// It can return next errors:
+// - ErrInconsistentState
+// - ErrNotFound
+func (s *L1InfoTreeSync) GetLatestL1InfoLeaf(ctx context.Context) (*L1InfoTreeLeaf, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	leaf, err := s.processor.GetLatestL1InfoLeafUntilBlock(ctx, nil)
 	return leaf, translateError(err)
 }
 

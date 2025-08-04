@@ -8,20 +8,60 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	v1nodetypes "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
 	node "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/v1"
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	"github.com/agglayer/aggkit/agglayer/types"
+	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
-	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
+
+func TestAgglayerGRPCCLientExploratory(t *testing.T) {
+	t.Skip("This test is for exploratory purposes to check the size of certificate")
+	client, err := NewAgglayerGRPCClient(&aggkitgrpc.ClientConfig{
+		URL: "http://localhost:32863",
+		MinConnectTimeout: configtypes.Duration{
+			Duration: 1000 * time.Second,
+		},
+		RequestTimeout: configtypes.Duration{
+			Duration: 1000 * time.Second,
+		},
+	})
+	require.NoError(t, err)
+	certificate := &types.Certificate{
+		NetworkID: 1,
+		Height:    0,
+		AggchainData: &types.AggchainDataSignature{
+			Signature: make([]byte, 65),
+		},
+	}
+	// 100000 iteration produces a transaction of 12800188 bytes
+	for i := 0; i < 100000; i++ {
+		certificate.BridgeExits = append(certificate.BridgeExits, &types.BridgeExit{
+			LeafType: types.LeafTypeAsset,
+			TokenInfo: &types.TokenInfo{
+				OriginNetwork:      0,
+				OriginTokenAddress: common.HexToAddress("0xbeef"),
+			},
+			DestinationNetwork: 2,
+			DestinationAddress: common.HexToAddress("0x5678"),
+			Amount:             big.NewInt(1234),
+			Metadata:           make([]byte, 1024),
+		})
+	}
+
+	id, err := client.SendCertificate(t.Context(), certificate, nil)
+	require.NoError(t, err)
+	t.Log("Certificate ID:", id.Hex())
+}
 
 func TestGetEpochConfiguration(t *testing.T) {
 	t.Parallel()
@@ -304,7 +344,7 @@ func TestSendCertificate(t *testing.T) {
 
 		certificate := &types.Certificate{}
 
-		_, err := client.SendCertificate(ctx, certificate)
+		_, err := client.SendCertificate(ctx, certificate, nil)
 		require.ErrorIs(t, err, errUndefinedAggchainData)
 	})
 
@@ -325,8 +365,38 @@ func TestSendCertificate(t *testing.T) {
 
 		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
-		_, err := client.SendCertificate(ctx, certificate)
+		_, err := client.SendCertificate(ctx, certificate, nil)
 		require.ErrorContains(t, err, "test error")
+	})
+
+	t.Run("has validator signature", func(t *testing.T) {
+		t.Parallel()
+
+		signature := crypto.Keccak256Hash([]byte("test signature"))
+		submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
+		client := &AgglayerGRPCClient{
+			submissionService: submissionServiceMock,
+			cfg:               aggkitgrpc.DefaultConfig(),
+		}
+
+		certificate := &types.Certificate{
+			Height:    100,
+			NetworkID: 1,
+			AggchainData: &types.AggchainDataSignature{
+				Signature: []byte{0x01}, // regular aggsender signature
+			},
+		}
+
+		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(&node.SubmitCertificateResponse{
+			CertificateId: &v1nodetypes.CertificateId{
+				Value: &v1types.FixedBytes32{
+					Value: common.HexToHash("0x010203").Bytes(),
+				},
+			},
+		}, nil)
+
+		_, err := client.SendCertificate(ctx, certificate, signature.Bytes())
+		require.NoError(t, err)
 	})
 
 	t.Run("returns certificate ID on success", func(t *testing.T) {
@@ -338,110 +408,7 @@ func TestSendCertificate(t *testing.T) {
 			cfg:               aggkitgrpc.DefaultConfig(),
 		}
 
-		certificate := &types.Certificate{
-			AggchainData: &types.AggchainDataProof{
-				Proof:          []byte{0x01},
-				AggchainParams: common.HexToHash("0x010203"),
-			},
-			NetworkID:           1,
-			Height:              100,
-			PrevLocalExitRoot:   common.HexToHash("0x010201"),
-			NewLocalExitRoot:    common.HexToHash("0x010202"),
-			Metadata:            common.HexToHash("0x011201"),
-			CustomChainData:     []byte{0x1, 0x2, 0x3},
-			L1InfoTreeLeafCount: 11,
-			BridgeExits: []*types.BridgeExit{
-				{
-					LeafType: types.LeafTypeAsset,
-					TokenInfo: &types.TokenInfo{
-						OriginNetwork:      2,
-						OriginTokenAddress: common.HexToAddress("0x010203"),
-					},
-					DestinationNetwork: 1,
-					DestinationAddress: common.HexToAddress("0x010204"),
-					Amount:             big.NewInt(100),
-				},
-			},
-			ImportedBridgeExits: []*types.ImportedBridgeExit{
-				{
-					BridgeExit: &types.BridgeExit{
-						LeafType: types.LeafTypeAsset,
-						TokenInfo: &types.TokenInfo{
-							OriginNetwork:      1,
-							OriginTokenAddress: common.HexToAddress("0x01111"),
-						},
-						DestinationNetwork: 2,
-						DestinationAddress: common.HexToAddress("0x011112"),
-						Amount:             big.NewInt(101),
-					},
-					GlobalIndex: &types.GlobalIndex{
-						MainnetFlag: true,
-						RollupIndex: 0,
-						LeafIndex:   1,
-					},
-					ClaimData: &types.ClaimFromMainnnet{
-						ProofLeafMER: &types.MerkleProof{
-							Root:  common.HexToHash("0x010203"),
-							Proof: tree.EmptyProof,
-						},
-						ProofGERToL1Root: &types.MerkleProof{
-							Root:  common.HexToHash("0x0102011"),
-							Proof: tree.EmptyProof,
-						},
-						L1Leaf: &types.L1InfoTreeLeaf{
-							L1InfoTreeIndex: 1,
-							RollupExitRoot:  common.HexToHash("0x0102012"),
-							MainnetExitRoot: common.HexToHash("0x0102013"),
-							Inner: &types.L1InfoTreeLeafInner{
-								GlobalExitRoot: common.HexToHash("0x0102014"),
-								BlockHash:      common.HexToHash("0x0102015"),
-								Timestamp:      1234567890,
-							},
-						},
-					},
-				},
-				{
-					BridgeExit: &types.BridgeExit{
-						LeafType: types.LeafTypeMessage,
-						TokenInfo: &types.TokenInfo{
-							OriginNetwork:      11,
-							OriginTokenAddress: common.HexToAddress("0x011"),
-						},
-						DestinationNetwork: 22,
-						DestinationAddress: common.HexToAddress("0x012"),
-					},
-					GlobalIndex: &types.GlobalIndex{
-						MainnetFlag: false,
-						RollupIndex: 11,
-						LeafIndex:   2,
-					},
-					ClaimData: &types.ClaimFromRollup{
-						ProofLeafLER: &types.MerkleProof{
-							Root:  common.HexToHash("0x0112"),
-							Proof: tree.EmptyProof,
-						},
-						ProofGERToL1Root: &types.MerkleProof{
-							Root:  common.HexToHash("0x0122"),
-							Proof: tree.EmptyProof,
-						},
-						ProofLERToRER: &types.MerkleProof{
-							Root:  common.HexToHash("0x0123"),
-							Proof: tree.EmptyProof,
-						},
-						L1Leaf: &types.L1InfoTreeLeaf{
-							L1InfoTreeIndex: 2,
-							RollupExitRoot:  common.HexToHash("0x11"),
-							MainnetExitRoot: common.HexToHash("0x12"),
-							Inner: &types.L1InfoTreeLeafInner{
-								GlobalExitRoot: common.HexToHash("0x13"),
-								BlockHash:      common.HexToHash("0x14"),
-								Timestamp:      122222,
-							},
-						},
-					},
-				},
-			},
-		}
+		certificate := exampleTestAgglayerCert
 
 		expectedResponse := &node.SubmitCertificateResponse{
 			CertificateId: &v1nodetypes.CertificateId{
@@ -453,7 +420,7 @@ func TestSendCertificate(t *testing.T) {
 
 		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
-		resp, err := client.SendCertificate(ctx, certificate)
+		resp, err := client.SendCertificate(ctx, certificate, nil)
 		require.NoError(t, err)
 		require.Equal(t, expectedResponse.CertificateId.Value.Value, resp.Bytes())
 	})

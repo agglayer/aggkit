@@ -64,6 +64,11 @@ type BridgeSync struct {
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
 }
 
+// noOpReorgDetectorWrapper wraps NoOpReorgDetector to implement bridgesync.ReorgDetector interface
+type noOpReorgDetectorWrapper struct {
+	reorgdetector.NoOpReorgDetector
+}
+
 // NewL1 creates a bridge syncer that synchronizes the mainnet exit tree
 func NewL1(
 	ctx context.Context,
@@ -71,7 +76,6 @@ func NewL1(
 	bridge common.Address,
 	syncBlockChunkSize uint64,
 	blockFinalityType aggkittypes.BlockNumberFinality,
-	rd ReorgDetector,
 	ethClient aggkittypes.EthClienter,
 	initialBlock uint64,
 	waitForNewBlocksPeriod time.Duration,
@@ -87,7 +91,7 @@ func NewL1(
 		bridge,
 		syncBlockChunkSize,
 		blockFinalityType,
-		rd,
+		&noOpReorgDetectorWrapper{*reorgdetector.NewNoOpReorgDetector()},
 		ethClient,
 		initialBlock,
 		L1BridgeSyncer,
@@ -98,6 +102,23 @@ func NewL1(
 		syncFullClaims,
 		requireStorageContentCompatibility,
 	)
+}
+
+func NewL2ReadOnly(
+	ctx context.Context,
+	dbPath string,
+	originNetwork uint32,
+) (*BridgeSync, error) {
+	syncerID := L2BridgeSyncer
+	logger := log.WithFields("module", syncerID.String())
+	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger)
+	if err != nil {
+		return nil, err
+	}
+	return &BridgeSync{
+		processor:     processor,
+		originNetwork: originNetwork,
+	}, nil
 }
 
 // NewL2 creates a bridge syncer that synchronizes the local exit tree
@@ -166,6 +187,7 @@ func newBridgeSync(
 			bridge.String(), err)
 		return nil, err
 	}
+
 	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger)
 	if err != nil {
 		return nil, err
@@ -429,7 +451,7 @@ func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2) error {
 	lastUpdatedDespositCount, err := bridgeContractV2.LastUpdatedDepositCount(nil)
 	if err != nil {
-		logger.Error("failed to get last updated deposit count", "error", err)
+		logger.Errorf("failed to get last updated deposit count: %s", err)
 		return fmt.Errorf("sanityCheckContract(bridge:%s) fails getting lastUpdatedDespositCount. Err: %w",
 			bridgeAddr.String(), err)
 	}

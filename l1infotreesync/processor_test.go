@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/db"
-	"github.com/agglayer/aggkit/sync"
+	aggkitsync "github.com/agglayer/aggkit/sync"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -48,7 +48,7 @@ func TestGetInfo(t *testing.T) {
 	}
 	expected1.GlobalExitRoot = expected1.GetGlobalExitRoot()
 	expected1.Hash = expected1.GetHash()
-	err = p.ProcessBlock(ctx, sync.Block{
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
 		Num: 1,
 		Events: []interface{}{
 			Event{UpdateL1InfoTree: info1},
@@ -88,7 +88,7 @@ func TestGetInfo(t *testing.T) {
 	}
 	expected2.GlobalExitRoot = expected2.GetGlobalExitRoot()
 	expected2.Hash = expected2.GetHash()
-	err = p.ProcessBlock(ctx, sync.Block{
+	err = p.ProcessBlock(ctx, aggkitsync.Block{
 		Num: 2,
 		Events: []interface{}{
 			Event{UpdateL1InfoTree: info2},
@@ -121,7 +121,8 @@ func TestGetLatestInfoUntilBlockIfNotFoundReturnsErrNotFound(t *testing.T) {
 	_, err = sut.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
 	require.NoError(t, err)
 
-	_, err = sut.GetLatestInfoUntilBlock(ctx, 1)
+	blockNum := uint64(1)
+	_, err = sut.GetLatestL1InfoLeafUntilBlock(ctx, &blockNum)
 	require.Equal(t, db.ErrNotFound, err)
 }
 
@@ -160,7 +161,7 @@ func Test_processor_GetL1InfoTreeMerkleProof(t *testing.T) {
 					ParentHash:      common.HexToHash("1010101"),
 					Timestamp:       420,
 				}
-				err = p.ProcessBlock(context.Background(), sync.Block{
+				err = p.ProcessBlock(context.Background(), aggkitsync.Block{
 					Num: 1,
 					Events: []interface{}{
 						Event{UpdateL1InfoTree: info},
@@ -200,76 +201,10 @@ func Test_processor_GetL1InfoTreeMerkleProof(t *testing.T) {
 	}
 }
 
-func Test_processor_Reorg(t *testing.T) {
-	t.Parallel()
-
-	testTable := []struct {
-		name         string
-		getProcessor func(t *testing.T) *processor
-		reorgBlock   uint64
-		expectedErr  error
-	}{
-		{
-			name: "empty tree",
-			getProcessor: func(t *testing.T) *processor {
-				t.Helper()
-
-				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_Reorg_1.sqlite"))
-				require.NoError(t, err)
-				return p
-			},
-			reorgBlock:  0,
-			expectedErr: nil,
-		},
-		{
-			name: "single leaf tree",
-			getProcessor: func(t *testing.T) *processor {
-				t.Helper()
-
-				p, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTest_processor_Reorg_2.sqlite"))
-				require.NoError(t, err)
-
-				info := &UpdateL1InfoTree{
-					MainnetExitRoot: common.HexToHash("beef"),
-					RollupExitRoot:  common.HexToHash("5ca1e"),
-					ParentHash:      common.HexToHash("1010101"),
-					Timestamp:       420,
-				}
-				err = p.ProcessBlock(context.Background(), sync.Block{
-					Num: 1,
-					Events: []interface{}{
-						Event{UpdateL1InfoTree: info},
-					},
-				})
-				require.NoError(t, err)
-
-				return p
-			},
-			reorgBlock: 1,
-		},
-	}
-
-	for _, tt := range testTable {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			p := tt.getProcessor(t)
-			err := p.Reorg(context.Background(), tt.reorgBlock)
-			if tt.expectedErr != nil {
-				require.Equal(t, tt.expectedErr, err)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
 func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
 	sut, err := newProcessor(path.Join(t.TempDir(), "l1infotreesyncTestProcessBlockUpdateL1InfoTreeV2DontMatchTree.sqlite"))
 	require.NoError(t, err)
-	block := sync.Block{
+	block := aggkitsync.Block{
 		Num: 10,
 		Events: []interface{}{
 			Event{UpdateL1InfoTree: &UpdateL1InfoTree{
@@ -285,7 +220,7 @@ func TestProcessBlockUpdateL1InfoTreeV2DontMatchTree(t *testing.T) {
 		},
 	}
 	err = sut.ProcessBlock(context.Background(), block)
-	require.ErrorIs(t, err, sync.ErrInconsistentState)
+	require.ErrorIs(t, err, aggkitsync.ErrInconsistentState)
 	require.True(t, sut.halted)
 }
 

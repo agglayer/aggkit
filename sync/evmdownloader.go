@@ -164,10 +164,10 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 			requestToBlock = lastBlock
 			reachTop = true
 		}
-		d.log.Debugf("getting events from blocks [%d to  %d] toBlock: %d. lastFinalizedBlock: %d lastBlock: %d",
+		d.log.Debugf("getting events from blocks [%d to %d] toBlock: %d. lastFinalizedBlock: %d lastBlock: %d",
 			fromBlock, requestToBlock, toBlock, lastFinalizedBlockNumber, lastBlock)
 		blocks := d.GetEventsByBlockRange(ctx, fromBlock, requestToBlock)
-		d.log.Debugf("result events from blocks [%d to  %d] -> len(blocks)=%d",
+		d.log.Debugf("result events from blocks [%d to %d] -> len(blocks)=%d",
 			fromBlock, requestToBlock, len(blocks))
 		if requestToBlock <= lastFinalizedBlockNumber {
 			d.log.Debugf("range is in a safe zone (requestToBlock: %d <= finalized: %d)",
@@ -283,12 +283,13 @@ func (d *EVMDownloaderImplementation) ChainID(ctx context.Context) (uint64, erro
 }
 
 func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context) (*types.Header, error) {
+	blockFinality := d.finalizedBlockType
 	// if the finalized block type is nil, it means that the reorgs are not happening on the network
-	if d.finalizedBlockType == nil {
-		return d.ethClient.HeaderByNumber(ctx, d.blockFinality)
+	if blockFinality == nil {
+		blockFinality = d.blockFinality
 	}
 
-	return d.ethClient.HeaderByNumber(ctx, d.finalizedBlockType)
+	return d.ethClient.HeaderByNumber(ctx, blockFinality)
 }
 
 func (d *EVMDownloaderImplementation) WaitForNewBlocks(
@@ -307,7 +308,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				if ctx.Err() == nil {
 					attempts++
 					d.log.Error("error getting last block num from eth client: ", err)
-					d.rh.Handle("WaitForNewBlocks", attempts)
+					d.rh.Handle(ctx, "WaitForNewBlocks", attempts)
 				} else {
 					d.log.Warn("context has been canceled while trying to get header by number")
 				}
@@ -372,13 +373,13 @@ func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 			}
 
 			appenderFn := d.appender[l.Topics[0]]
+			attempts := 0
 			for {
-				attempts := 0
 				err := appenderFn(latestBlock, l)
 				if err != nil {
 					attempts++
 					d.log.Error("error trying to append log: ", err)
-					d.rh.Handle("appendLogs", attempts)
+					d.rh.Handle(ctx, "appendLogs", attempts)
 					continue
 				}
 				break
@@ -420,7 +421,7 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 				filterQueryToString(query),
 				err,
 			)
-			d.rh.Handle("getLogs", attempts)
+			d.rh.Handle(ctx, "getLogs", attempts)
 			continue
 		}
 		break
@@ -462,7 +463,7 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 
 			attempts++
 			d.log.Errorf("error getting block header for block %d, err: %v", blockNum, err)
-			d.rh.Handle("getBlockHeader", attempts)
+			d.rh.Handle(ctx, "getBlockHeader", attempts)
 			continue
 		}
 		return EVMBlockHeader{

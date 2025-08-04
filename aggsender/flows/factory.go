@@ -11,14 +11,20 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signerTypes "github.com/agglayer/go_signer/signer/types"
 )
 
-// funcGetL2StartBlock is a intermediate func that allow to override this call in UT
-var funcGetL2StartBlock = getL2StartBlock
+var (
+	// funcGetL2StartBlock is a intermediate func that allow to override this call in UT
+	funcGetL2StartBlock = getL2StartBlock
+
+	// l2GERReaderFactory is a factory function to create L2 GER reader
+	l2GERReaderFactory = l2gersync.NewL2EVMGERReader
+)
 
 // NewFlow creates a new Aggsender flow based on the provided configuration.
 func NewFlow(
@@ -76,12 +82,7 @@ func NewFlow(
 
 		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {
-			return nil, fmt.Errorf("error creating aggkit prover client: %w", err)
-		}
-
-		gerReader, err := funcNewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error creating VMChainGERReader L2Etherman: %w", err)
+			return nil, fmt.Errorf("aggchainProverFlow - error creating aggkit prover client: %w", err)
 		}
 
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
@@ -99,7 +100,7 @@ func NewFlow(
 		lerQuerier, err := query.NewLERDataQuerier(
 			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, rollupDataQuerier)
 		if err != nil {
-			return nil, fmt.Errorf("error creating LER data querier: %w", err)
+			return nil, fmt.Errorf("aggchainProverFlow - error creating LER data querier: %w", err)
 		}
 
 		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
@@ -108,19 +109,34 @@ func NewFlow(
 			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, cfg.RequireNoFEPBlockGap),
 		)
 
+		l2GERReader, err := l2GERReaderFactory(cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSyncer)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create L2 GER reader: %w", err)
+		}
+
+		gerQuerier := query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader)
+
+		aggchainProofQuerier := query.NewAggchainProofQuery(
+			logger,
+			aggchainProofClient,
+			l1InfoTreeQuerier,
+			optimisticSigner,
+			baseFlow,
+			gerQuerier,
+		)
+
 		return NewAggchainProverFlow(
 			logger,
 			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
 			baseFlow,
-			aggchainProofClient,
 			storage,
 			l1InfoTreeQuerier,
 			l2BridgeQuerier,
-			query.NewGERDataQuerier(l1InfoTreeQuerier, gerReader),
+			gerQuerier,
 			l1Client,
 			signer,
 			optimisticModeQuerier,
-			optimisticSigner,
+			aggchainProofQuerier,
 		), nil
 
 	default:

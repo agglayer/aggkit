@@ -7,22 +7,13 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/db"
+	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/bridgesync"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
-	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
-	"google.golang.org/grpc/codes"
 )
-
-var errNoProofBuiltYet = &aggkitgrpc.GRPCError{
-	Code:    codes.Unavailable,
-	Message: "Proposer service has not built any proof yet",
-}
 
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type AggchainProverFlow struct {
@@ -33,11 +24,10 @@ type AggchainProverFlow struct {
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 	l2BridgeQuerier       types.BridgeQuerier
 
-	aggchainProofClient   types.AggchainProofClientInterface
 	gerQuerier            types.GERQuerier
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
-	optimisticSigner      types.OptimisticSigner
+	aggchainProofQuerier  types.AggchainProofQuerier
 	config                AggchainProverFlowConfig
 	featureMaxL2Block     types.MaxL2BlockNumberLimiterInterface
 }
@@ -57,8 +47,6 @@ func getL2StartBlock(sovereignRollupAddr common.Address, l1Client aggkittypes.Ba
 
 	return startL2Block.Uint64(), nil
 }
-
-var funcNewEVMChainGERReader = chaingerreader.NewEVMChainGERReader
 
 // AggchainProverFlowConfig holds the configuration for the AggchainProverFlow
 type AggchainProverFlowConfig struct {
@@ -86,7 +74,6 @@ func NewAggchainProverFlow(
 	log types.Logger,
 	aggChainProverConfig AggchainProverFlowConfig,
 	baseFlow types.AggsenderFlowBaser,
-	aggkitProverClient types.AggchainProofClientInterface,
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
@@ -94,7 +81,7 @@ func NewAggchainProverFlow(
 	l1Client aggkittypes.BaseEthereumClienter,
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
-	optimisticSigner types.OptimisticSigner,
+	aggchainProofQuerier types.AggchainProofQuerier,
 ) *AggchainProverFlow {
 	feature := NewMaxL2BlockNumberLimiter(
 		aggChainProverConfig.maxL2BlockNumber,
@@ -107,12 +94,11 @@ func NewAggchainProverFlow(
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		l2BridgeQuerier:       l2BridgeQuerier,
-		aggchainProofClient:   aggkitProverClient,
 		gerQuerier:            gerQuerier,
 		config:                aggChainProverConfig,
 		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
-		optimisticSigner:      optimisticSigner,
+		aggchainProofQuerier:  aggchainProofQuerier,
 		baseFlow:              baseFlow,
 		featureMaxL2Block:     feature,
 	}
@@ -156,6 +142,11 @@ func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateTy
 		return types.CertificateTypeOptimistic, nil
 	}
 	return types.CertificateTypeFEP, nil
+}
+
+func (a *AggchainProverFlow) GenerateBuildParams(ctx context.Context,
+	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
+	return nil, fmt.Errorf("aggchainProverFlow - GenerateBuildParams is not implemented")
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate
@@ -271,10 +262,10 @@ func (a *AggchainProverFlow) verifyBuildParamsAndGenerateProof(
 
 	lastProvenBlock := a.getLastProvenBlock(buildParams.FromBlock, buildParams.LastSentCertificate)
 
-	aggchainProof, rootFromWhichToProveClaims, err := a.GenerateAggchainProof(
+	aggchainProof, rootFromWhichToProveClaims, err := a.aggchainProofQuerier.GenerateAggchainProof(
 		ctx, lastProvenBlock, buildParams.ToBlock, buildParams)
 	if err != nil {
-		if errors.Is(err, errNoProofBuiltYet) {
+		if errors.Is(err, query.ErrNoProofBuiltYet) {
 			a.log.Infof("aggchainProverFlow - no proof built yet for lastProvenBlock: %d, maxEndBlock: %d",
 				lastProvenBlock, buildParams.ToBlock)
 			return nil, nil
@@ -323,29 +314,6 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	return signedCert, nil
 }
 
-// getImportedBridgeExitsForProver converts the claims to imported bridge exits
-// so that the aggchain prover can use them to generate the aggchain proof
-func (a *AggchainProverFlow) getImportedBridgeExitsForProver(
-	claims []bridgesync.Claim) ([]*agglayertypes.ImportedBridgeExitWithBlockNumber, error) {
-	importedBridgeExits := make([]*agglayertypes.ImportedBridgeExitWithBlockNumber, 0, len(claims))
-	for _, claim := range claims {
-		// we do not need claim data and proofs here, only imported bridge exit data like:
-		// - bridge exit
-		// - token info
-		// - global index
-		ibe, err := a.baseFlow.ConvertClaimToImportedBridgeExit(claim)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error converting claim to imported bridge exit: %w", err)
-		}
-		importedBridgeExits = append(importedBridgeExits, &agglayertypes.ImportedBridgeExitWithBlockNumber{
-			ImportedBridgeExit: ibe,
-			BlockNumber:        claim.BlockNum,
-		})
-	}
-
-	return importedBridgeExits, nil
-}
-
 // adjustBlockRange adjusts the block range of the certificate to match the range returned by the aggchain prover
 func adjustBlockRange(buildParams *types.CertificateBuildParams,
 	requestedToBlock, aggchainProverToBlock uint64) (*types.CertificateBuildParams, error) {
@@ -360,93 +328,6 @@ func adjustBlockRange(buildParams *types.CertificateBuildParams,
 	}
 
 	return buildParams, nil
-}
-
-// GenerateAggchainProof calls the aggkit prover to generate the aggchain proof for the given block range
-func (a *AggchainProverFlow) GenerateAggchainProof(
-	ctx context.Context,
-	lastProvenBlock, toBlock uint64,
-	certBuildParams *types.CertificateBuildParams,
-) (*types.AggchainProof, *treetypes.Root, error) {
-	proof, leaf, root, err := a.l1InfoTreeDataQuerier.GetFinalizedL1InfoTreeData(ctx)
-	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting finalized L1 Info tree data: %w", err)
-	}
-	claims := certBuildParams.Claims
-	if err := a.l1InfoTreeDataQuerier.CheckIfClaimsArePartOfFinalizedL1InfoTree(
-		root, claims); err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error checking if claims are part of "+
-			"finalized L1 Info tree root: %s with index: %d: %w", root.Hash, root.Index, err)
-	}
-
-	fromBlock := lastProvenBlock + 1
-	injectedGERsProofs, err := a.gerQuerier.GetInjectedGERsProofs(ctx, root, fromBlock, toBlock)
-	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting injected GERs proofs: %w", err)
-	}
-
-	importedBridgeExits, err := a.getImportedBridgeExitsForProver(claims)
-	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
-	}
-	var aggchainProof *types.AggchainProof
-	request := &types.AggchainProofRequest{
-		LastProvenBlock:    lastProvenBlock,
-		RequestedEndBlock:  toBlock,
-		L1InfoTreeRootHash: root.Hash,
-		L1InfoTreeLeaf:     *leaf,
-		L1InfoTreeMerkleProof: agglayertypes.MerkleProof{
-			Root:  root.Hash,
-			Proof: proof,
-		},
-		GERLeavesWithBlockNumber:           injectedGERsProofs,
-		ImportedBridgeExitsWithBlockNumber: importedBridgeExits,
-	}
-	// It decide if must generate optimistic proof using CertType
-	optimisticMode := certBuildParams.CertificateType == types.CertificateTypeOptimistic
-	a.log.Infof("aggchainProverFlow - requesting proof lastProvenBlock: %d, maxEndBlock: %d, optimisticMode: %t",
-		lastProvenBlock, toBlock, optimisticMode)
-	if !optimisticMode {
-		aggchainProof, err = a.aggchainProofClient.GenerateAggchainProof(ctx, request)
-	} else {
-		aggchainProof, err = a.generateOptimisticAggchainProof(ctx, certBuildParams, request)
-	}
-	if err != nil {
-		err := fmt.Errorf("aggchainProverFlow - error fetching aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, "+
-			"maxEndBlock: %d. Err: %w. Message sent: %s", optimisticMode, lastProvenBlock, toBlock, err, request.String(),
-		)
-		a.log.Error(err.Error())
-		return nil, nil, err
-	}
-	a.log.Infof("aggchainProverFlow - aggkit-prover fetched aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, "+
-		"maxEndBlock: %d. root: %s.Message sent: %s", optimisticMode, lastProvenBlock, toBlock,
-		root.String(), request.String())
-	return aggchainProof, root, nil
-}
-
-// generateOptimisticAggchainProof fetch required data and call to aggkit-prover for optimistic aggchain proof
-func (a *AggchainProverFlow) generateOptimisticAggchainProof(ctx context.Context,
-	certBuildParams *types.CertificateBuildParams,
-	request *types.AggchainProofRequest) (*types.AggchainProof, error) {
-	if certBuildParams == nil {
-		return nil, fmt.Errorf("generateOptimisticAggchainProof - certBuildParams is nil")
-	}
-	newLER, err := a.baseFlow.GetNewLocalExitRoot(ctx, certBuildParams)
-	if err != nil {
-		return nil, fmt.Errorf("generateOptimisticAggchainProof - error getting new local exit root: %w", err)
-	}
-	sign, extraData, err := a.optimisticSigner.Sign(ctx, *request, newLER, certBuildParams.Claims)
-	if err != nil {
-		return nil, fmt.Errorf("generateOptimisticAggchainProof - error signing aggchain proof request: %w", err)
-	}
-	certBuildParams.ExtraData = extraData
-	a.log.Infof("generateOptimisticAggchainProof - signed aggchain proof request with new local exit root: %s",
-		request.String())
-	aggchainProof, err := a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
-	if err != nil {
-		return nil, fmt.Errorf("generateOptimisticAggchainProof - error request aggkit-prover optimistic: %w", err)
-	}
-	return aggchainProof, nil
 }
 
 func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificate *types.CertificateHeader) uint64 {

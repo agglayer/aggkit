@@ -5,7 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/lastgersync"
+	"github.com/agglayer/aggkit/l2gersync"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -24,13 +24,13 @@ type Bridger interface {
 	GetContractDepositCount(ctx context.Context) (uint32, error)
 }
 
-type LastGERer interface {
+type L2GERSyncer interface {
 	GetFirstGERAfterL1InfoTreeIndex(
 		ctx context.Context, atOrAfterL1InfoTreeIndex uint32,
-	) (lastgersync.GlobalExitRootInfo, error)
+	) (l2gersync.GlobalExitRootInfo, error)
 }
 
-type L1InfoTreer interface {
+type L1InfoTreeSyncer interface {
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
 	GetRollupExitTreeMerkleProof(ctx context.Context, networkID uint32, root common.Hash) (tree.Proof, error)
 	GetLocalExitRoot(ctx context.Context, networkID uint32, rollupExitRoot common.Hash) (common.Hash, error)

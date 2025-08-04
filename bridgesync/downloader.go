@@ -428,7 +428,7 @@ func (c *Claim) setClaimCalldata(
 			if call.Err != nil {
 				return false, nil
 			}
-			return c.tryDecodeClaimCalldata(call.From, call.Input)
+			return c.tryDecodeClaimCalldata(call.From, call.Input, logger)
 		}, logger)
 
 	return err
@@ -438,7 +438,7 @@ func (c *Claim) setClaimCalldata(
 // It checks if the method ID corresponds to either the claim asset or claim message methods.
 // If a match is found, it decodes the calldata using the ABI of the bridge contract and updates the claim object.
 // Returns true if the calldata is successfully decoded and matches the expected format, otherwise returns false.
-func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) (bool, error) {
+func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte, logger *logger.Logger) (bool, error) {
 	if len(input) < methodIDLength {
 		return false, fmt.Errorf("input too short: %d bytes", len(input))
 	}
@@ -504,6 +504,8 @@ func (c *Claim) tryDecodeClaimCalldata(senderAddr common.Address, input []byte) 
 		return found, nil
 
 	default:
-		return false, fmt.Errorf("unrecognized method ID: %x", methodID)
+		// Log unrecognized method ID for debugging but returns false to continue searching (DFS)
+		logger.Debugf("unrecognized method ID encountered during claim calldata extraction: %x", methodID)
+		return false, nil
 	}
 }

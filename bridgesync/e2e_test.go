@@ -28,8 +28,8 @@ func TestBridgeEventE2E(t *testing.T) {
 	rpcClient := mocks.NewRPCClienter(t)
 	rpcClient.EXPECT().Call(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return(nil)
 
-	setup := helpers.NewE2EEnvWithEVML2(t, &helpers.EnvironmentConfig{L1RPCClient: rpcClient})
-	ctx := context.Background()
+	l1Setup, _ := helpers.NewSimulatedEVMEnvironment(t, &helpers.EnvironmentConfig{L1RPCClient: rpcClient})
+	ctx := t.Context()
 	// Send bridge txs
 	bridgesSent := 0
 	expectedBridges := []bridgesync.Bridge{}
@@ -47,8 +47,8 @@ func TestBridgeEventE2E(t *testing.T) {
 		}
 
 		lastDepositCount++
-		tx, err := setup.L1Environment.BridgeContract.BridgeAsset(
-			setup.L1Environment.Auth,
+		tx, err := l1Setup.BridgeContract.BridgeAsset(
+			l1Setup.Auth,
 			bridge.DestinationNetwork,
 			bridge.DestinationAddress,
 			bridge.Amount,
@@ -56,13 +56,13 @@ func TestBridgeEventE2E(t *testing.T) {
 			true, nil,
 		)
 		require.NoError(t, err)
-		helpers.CommitBlocks(t, setup.L1Environment.SimBackend, 1, blockTime)
+		helpers.CommitBlocks(t, l1Setup.SimBackend, 1, blockTime)
 
-		simulatedClient := setup.L1Environment.SimBackend.Client()
+		simulatedClient := l1Setup.SimBackend.Client()
 		bn, err := simulatedClient.BlockNumber(ctx)
 		require.NoError(t, err)
 		bridge.BlockNum = bn
-		receipt, err := setup.L1Environment.SimBackend.Client().TransactionReceipt(ctx, tx.Hash())
+		receipt, err := l1Setup.SimBackend.Client().TransactionReceipt(ctx, tx.Hash())
 		require.NoError(t, err)
 		bridge.TxHash = receipt.TxHash
 		block, err := simulatedClient.BlockByNumber(ctx, new(big.Int).SetUint64(bn))
@@ -71,9 +71,9 @@ func TestBridgeEventE2E(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 		expectedBridges = append(expectedBridges, bridge)
-		expectedRoot, err := setup.L1Environment.BridgeContract.GetRoot(nil)
+		expectedRoot, err := l1Setup.BridgeContract.GetRoot(nil)
 		require.NoError(t, err)
-		finalizedBlock := getFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
+		finalizedBlock := getFinalizedBlockNumber(t, ctx, l1Setup.SimBackend.Client())
 		log.Infof("*** iteration: %d, Bridge Root: %s latestBlock:%d finalizedBlock:%d", i, common.Hash(expectedRoot).Hex(), bn, finalizedBlock)
 		bridgesSent++
 		// Finish condition
@@ -82,30 +82,30 @@ func TestBridgeEventE2E(t *testing.T) {
 		}
 	}
 
-	helpers.CommitBlocks(t, setup.L1Environment.SimBackend, 11, blockTime)
+	helpers.CommitBlocks(t, l1Setup.SimBackend, 11, blockTime)
 
 	// Wait for syncer to catch up
 	time.Sleep(time.Second * 2) // sleeping since the processor could be up to date, but have pending reorgs
 
-	lb := getFinalizedBlockNumber(t, ctx, setup.L1Environment.SimBackend.Client())
-	helpers.RequireProcessorUpdated(t, setup.L1Environment.BridgeSync, lb)
+	lb := getFinalizedBlockNumber(t, ctx, l1Setup.SimBackend.Client())
+	helpers.RequireProcessorUpdated(t, l1Setup.BridgeSync, lb)
 
 	// Get bridges
-	lastBlock, err := setup.L1Environment.SimBackend.Client().BlockNumber(ctx)
+	lastBlock, err := l1Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
-	lastProcessedBlock, err := setup.L1Environment.BridgeSync.GetLastProcessedBlock(ctx)
+	lastProcessedBlock, err := l1Setup.BridgeSync.GetLastProcessedBlock(ctx)
 	require.NoError(t, err)
-	actualBridges, err := setup.L1Environment.BridgeSync.GetBridges(ctx, 0, lastProcessedBlock)
+	actualBridges, err := l1Setup.BridgeSync.GetBridges(ctx, 0, lastProcessedBlock)
 	require.NoError(t, err)
 	log.Infof("lastBlockOnChain:%d lastProcessedBlock: %d, len(actualBridges): %d", lb, lastProcessedBlock, len(actualBridges))
 	// Assert bridges
-	expectedRoot, err := setup.L1Environment.BridgeContract.GetRoot(nil)
+	expectedRoot, err := l1Setup.BridgeContract.GetRoot(nil)
 	require.NoError(t, err)
-	root, err := setup.L1Environment.BridgeSync.GetExitRootByIndex(ctx, expectedBridges[len(expectedBridges)-1].DepositCount)
+	root, err := l1Setup.BridgeSync.GetExitRootByIndex(ctx, expectedBridges[len(expectedBridges)-1].DepositCount)
 	require.NoError(t, err)
 	log.Infof("expectedRoot: %s lastBlock: %d lastFinalized:%d DepositCount:%d ", common.Hash(expectedRoot).Hex(), lastBlock, lb, expectedBridges[len(expectedBridges)-1].DepositCount)
 	for i := 79; i >= 0; i-- {
-		root, err := setup.L1Environment.BridgeSync.GetExitRootByIndex(ctx, uint32(i))
+		root, err := l1Setup.BridgeSync.GetExitRootByIndex(ctx, uint32(i))
 		require.NoError(t, err, fmt.Sprintf("DepositCount:%d", i))
 		log.Infof("DepositCount:%d root: %s", i, root.Hash.Hex())
 	}

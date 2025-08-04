@@ -6,12 +6,12 @@ import (
 	"time"
 
 	"github.com/0xPolygon/cdk-rpc/rpc"
-	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -67,10 +67,11 @@ func NewAggchainProofGenerationTool(
 	ctx context.Context,
 	logger *log.Logger,
 	cfg Config,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	l2Syncer types.L2BridgeSyncer,
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
-	l1Client aggkittypes.BaseEthereumClienter,
-	l2Client aggkittypes.BaseEthereumClienter) (*AggchainProofGenerationTool, error) {
+) (*AggchainProofGenerationTool, error) {
 	if err := cfg.AggkitProverClient.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
 	}
@@ -80,9 +81,9 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("failed to create AggchainProofClient: %w", err)
 	}
 
-	chainGERReader, err := chaingerreader.NewEVMChainGERReader(cfg.GlobalExitRootL2Addr, l2Client)
+	l2GERReader, err := l2gersync.NewL2EVMGERReader(cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSyncer)
 	if err != nil {
-		return nil, fmt.Errorf("error creating chain GER reader: %w", err)
+		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
@@ -96,26 +97,20 @@ func NewAggchainProofGenerationTool(
 		nil, // lerQuerier
 		flows.NewBaseFlowConfigDefault(),
 	)
-	aggchainProverFlow := flows.NewAggchainProverFlow(
+	aggchainProofQuerier := query.NewAggchainProofQuery(
 		logger,
-		flows.NewAggchainProverFlowConfigDefault(),
-		baseFlow,
 		aggchainProofClient,
-		nil, // storage
 		l1InfoTreeQuerier,
-		l2BridgeQuerier,
-		query.NewGERDataQuerier(l1InfoTreeQuerier, chainGERReader),
-		l1Client,
-		nil,                               // signer
-		&OptimisticModeQuerierAlwaysOff{}, // For tools is always no optimistic mode,
-		nil,                               // optimisticSigner
+		nil, // optimistic signer is not used in the tool, so we pass nil
+		baseFlow,
+		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
 	)
 
 	return &AggchainProofGenerationTool{
 		cfg:                 cfg,
 		logger:              logger,
 		l2Syncer:            l2Syncer,
-		flow:                aggchainProverFlow,
+		flow:                aggchainProofQuerier,
 		aggchainProofClient: aggchainProofClient,
 	}, nil
 }

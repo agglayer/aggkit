@@ -21,7 +21,7 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
-	"github.com/agglayer/aggkit/lastgersync"
+	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -39,8 +39,8 @@ const (
 
 type bridgeWithMocks struct {
 	bridge       *BridgeService
-	l1InfoTree   *mocks.L1InfoTreer
-	injectedGERs *mocks.LastGERer
+	l1InfoTree   *mocks.L1InfoTreeSyncer
+	injectedGERs *mocks.L2GERSyncer
 	bridgeL1     *mocks.Bridger
 	bridgeL2     *mocks.Bridger
 }
@@ -48,8 +48,8 @@ type bridgeWithMocks struct {
 func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	t.Helper()
 	b := bridgeWithMocks{
-		l1InfoTree:   mocks.NewL1InfoTreer(t),
-		injectedGERs: mocks.NewLastGERer(t),
+		l1InfoTree:   mocks.NewL1InfoTreeSyncer(t),
+		injectedGERs: mocks.NewL2GERSyncer(t),
 		bridgeL1:     mocks.NewBridger(t),
 		bridgeL2:     mocks.NewBridger(t),
 	}
@@ -1459,7 +1459,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 
 		bridgeMocks.injectedGERs.EXPECT().
 			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(lastgersync.GlobalExitRootInfo{
+			Return(l2gersync.GlobalExitRootInfo{
 				GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
 				L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
 			}, nil)
@@ -1519,7 +1519,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 
 		bridgeMocks.injectedGERs.EXPECT().
 			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(lastgersync.GlobalExitRootInfo{}, fmt.Errorf(barErrMsg))
+			Return(l2gersync.GlobalExitRootInfo{}, fmt.Errorf(barErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
@@ -1535,7 +1535,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 
 		bridgeMocks.injectedGERs.EXPECT().
 			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(lastgersync.GlobalExitRootInfo{
+			Return(l2gersync.GlobalExitRootInfo{
 				GlobalExitRoot:  l1InfoTreeLeaf.GlobalExitRoot,
 				L1InfoTreeIndex: l1InfoTreeLeaf.L1InfoTreeIndex,
 			}, nil)
