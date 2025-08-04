@@ -528,7 +528,6 @@ func TestValidateRequestTimeout(t *testing.T) {
 }
 
 func TestVersionHeaderInterceptor(t *testing.T) {
-	t.Parallel()
 	testMethod := "/test.Service/TestMethod"
 
 	t.Run("AddsVersionHeaderToContext", func(t *testing.T) {
