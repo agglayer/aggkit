@@ -564,7 +564,7 @@ func estimateRequestSize(t *testing.T, req proto.Message) int {
 // TestContextWithVersionHeader tests that the version header is properly added to context
 func TestContextWithVersionHeader(t *testing.T) {
 	// Create a base context
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Add version header manually to test the functionality
 	ctxWithHeader := metadata.AppendToOutgoingContext(ctx, aggkitgrpc.AggKitVersionMetadataKey, "test-version")
