@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/agglayer/aggkit/config/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
+
+	"github.com/agglayer/aggkit/config/types"
 )
 
 func TestRepackGRPCErrorWithDetails(t *testing.T) {
@@ -527,6 +528,9 @@ func TestValidateRequestTimeout(t *testing.T) {
 }
 
 func TestVersionHeaderInterceptor(t *testing.T) {
+	t.Parallel()
+	testMethod := "/test.Service/TestMethod"
+
 	t.Run("AddsVersionHeaderToContext", func(t *testing.T) {
 		// Create a mock invoker that captures the context
 		var capturedCtx context.Context
@@ -540,12 +544,11 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 
 		// Create a test context
 		ctx := context.Background()
-		method := "/test.Service/TestMethod"
 		var req, reply interface{}
 		var cc *grpc.ClientConn
 
 		// Call the interceptor
-		err := interceptor(ctx, method, req, reply, cc, mockInvoker)
+		err := interceptor(ctx, testMethod, req, reply, cc, mockInvoker)
 
 		// Verify no error was returned
 		require.NoError(t, err)
@@ -580,12 +583,11 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 			"another-key":  "another-value",
 		})
 		ctx := metadata.NewOutgoingContext(context.Background(), existingMD)
-		method := "/test.Service/TestMethod"
 		var req, reply interface{}
 		var cc *grpc.ClientConn
 
 		// Call the interceptor
-		err := interceptor(ctx, method, req, reply, cc, mockInvoker)
+		err := interceptor(ctx, testMethod, req, reply, cc, mockInvoker)
 
 		// Verify no error was returned
 		require.NoError(t, err)
@@ -624,12 +626,11 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 
 		// Create a test context
 		ctx := context.Background()
-		method := "/test.Service/TestMethod"
 		var req, reply interface{}
 		var cc *grpc.ClientConn
 
 		// Call the interceptor
-		err := interceptor(ctx, method, req, reply, cc, mockInvoker)
+		err := interceptor(ctx, testMethod, req, reply, cc, mockInvoker)
 
 		// Verify the error is propagated
 		require.Error(t, err)
@@ -649,13 +650,12 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 
 		// Create a test context
 		ctx := context.Background()
-		method := "/test.Service/TestMethod"
 		var req, reply interface{}
 		var cc *grpc.ClientConn
 
 		// Call the interceptor multiple times
 		for i := 0; i < 3; i++ {
-			err := interceptor(ctx, method, req, reply, cc, mockInvoker)
+			err := interceptor(ctx, testMethod, req, reply, cc, mockInvoker)
 			require.NoError(t, err)
 
 			// Extract metadata from the context
