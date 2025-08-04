@@ -36,9 +36,12 @@ const (
 	AggKitVersionMetadataKey = "x-aggkit-version"
 )
 
-// versionHeaderInterceptor adds the AggKit version header to all outgoing requests
-func versionHeaderInterceptor() grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+// VersionHeaderInterceptor adds the AggKit version header to all outgoing requests
+func VersionHeaderInterceptor() grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string, req, reply interface{},
+		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
 		// Add version header to context
 		ctx = metadata.AppendToOutgoingContext(ctx, AggKitVersionMetadataKey, aggkit.Version)
 		return invoker(ctx, method, req, reply, cc, opts...)
@@ -248,7 +251,7 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(connectParams),
-		grpc.WithUnaryInterceptor(versionHeaderInterceptor()),
+		grpc.WithUnaryInterceptor(VersionHeaderInterceptor()),
 	}
 
 	serviceCfgJSON, err := createServiceConfig(retryCfg)

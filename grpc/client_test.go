@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -10,7 +11,9 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -521,4 +524,148 @@ func TestValidateRequestTimeout(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestVersionHeaderInterceptor(t *testing.T) {
+	t.Run("AddsVersionHeaderToContext", func(t *testing.T) {
+		// Create a mock invoker that captures the context
+		var capturedCtx context.Context
+		mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+			capturedCtx = ctx
+			return nil
+		}
+
+		// Create the interceptor
+		interceptor := VersionHeaderInterceptor()
+
+		// Create a test context
+		ctx := context.Background()
+		method := "/test.Service/TestMethod"
+		var req, reply interface{}
+		var cc *grpc.ClientConn
+
+		// Call the interceptor
+		err := interceptor(ctx, method, req, reply, cc, mockInvoker)
+
+		// Verify no error was returned
+		require.NoError(t, err)
+
+		// Verify the context was modified to include the version header
+		require.NotNil(t, capturedCtx)
+
+		// Extract metadata from the context
+		md, ok := metadata.FromOutgoingContext(capturedCtx)
+		require.True(t, ok, "Context should contain outgoing metadata")
+
+		// Verify the version header is present
+		versionValues := md.Get(AggKitVersionMetadataKey)
+		require.Len(t, versionValues, 1, "Should have exactly one version header")
+		require.Equal(t, "v0.1.0", versionValues[0], "Version should match aggkit.Version")
+	})
+
+	t.Run("PreservesExistingMetadata", func(t *testing.T) {
+		// Create a mock invoker that captures the context
+		var capturedCtx context.Context
+		mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+			capturedCtx = ctx
+			return nil
+		}
+
+		// Create the interceptor
+		interceptor := VersionHeaderInterceptor()
+
+		// Create a test context with existing metadata
+		existingMD := metadata.New(map[string]string{
+			"existing-key": "existing-value",
+			"another-key":  "another-value",
+		})
+		ctx := metadata.NewOutgoingContext(context.Background(), existingMD)
+		method := "/test.Service/TestMethod"
+		var req, reply interface{}
+		var cc *grpc.ClientConn
+
+		// Call the interceptor
+		err := interceptor(ctx, method, req, reply, cc, mockInvoker)
+
+		// Verify no error was returned
+		require.NoError(t, err)
+
+		// Verify the context was modified to include the version header
+		require.NotNil(t, capturedCtx)
+
+		// Extract metadata from the context
+		md, ok := metadata.FromOutgoingContext(capturedCtx)
+		require.True(t, ok, "Context should contain outgoing metadata")
+
+		// Verify the version header is present
+		versionValues := md.Get(AggKitVersionMetadataKey)
+		require.Len(t, versionValues, 1, "Should have exactly one version header")
+		require.Equal(t, "v0.1.0", versionValues[0], "Version should match aggkit.Version")
+
+		// Verify existing metadata is preserved
+		existingValues := md.Get("existing-key")
+		require.Len(t, existingValues, 1, "Should preserve existing metadata")
+		require.Equal(t, "existing-value", existingValues[0])
+
+		anotherValues := md.Get("another-key")
+		require.Len(t, anotherValues, 1, "Should preserve existing metadata")
+		require.Equal(t, "another-value", anotherValues[0])
+	})
+
+	t.Run("HandlesInvokerError", func(t *testing.T) {
+		// Create a mock invoker that returns an error
+		expectedErr := errors.New("invoker error")
+		mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+			return expectedErr
+		}
+
+		// Create the interceptor
+		interceptor := VersionHeaderInterceptor()
+
+		// Create a test context
+		ctx := context.Background()
+		method := "/test.Service/TestMethod"
+		var req, reply interface{}
+		var cc *grpc.ClientConn
+
+		// Call the interceptor
+		err := interceptor(ctx, method, req, reply, cc, mockInvoker)
+
+		// Verify the error is propagated
+		require.Error(t, err)
+		require.Equal(t, expectedErr, err)
+	})
+
+	t.Run("MultipleCallsPreserveHeaders", func(t *testing.T) {
+		// Create a mock invoker that captures the context
+		var capturedCtx context.Context
+		mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+			capturedCtx = ctx
+			return nil
+		}
+
+		// Create the interceptor
+		interceptor := VersionHeaderInterceptor()
+
+		// Create a test context
+		ctx := context.Background()
+		method := "/test.Service/TestMethod"
+		var req, reply interface{}
+		var cc *grpc.ClientConn
+
+		// Call the interceptor multiple times
+		for i := 0; i < 3; i++ {
+			err := interceptor(ctx, method, req, reply, cc, mockInvoker)
+			require.NoError(t, err)
+
+			// Extract metadata from the context
+			md, ok := metadata.FromOutgoingContext(capturedCtx)
+			require.True(t, ok, "Context should contain outgoing metadata")
+
+			// Verify the version header is present and correct
+			versionValues := md.Get(AggKitVersionMetadataKey)
+			require.Len(t, versionValues, 1, "Should have exactly one version header")
+			require.Equal(t, "v0.1.0", versionValues[0], "Version should match aggkit.Version")
+		}
+	})
 }
