@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -14,9 +15,11 @@ import (
 func TestGetString(t *testing.T) {
 	cfg := L2RPCClientConfig{
 		RPCClientConfig: RPCClientConfig{
-			URL:            "http://localhost:8123",
-			MaxRetries:     3,
-			InitialBackoff: types.Duration{Duration: 1000},
+			URL: "http://localhost:8123",
+			RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+				MaxRetries:     3,
+				InitialBackoff: types.Duration{Duration: 1000},
+			},
 		},
 		ExtraParams: map[string]any{
 			"key":         "value",
@@ -49,7 +52,12 @@ func TestL1NetworkConfig_Validate(t *testing.T) {
 		{
 			name: "missing RPC URL",
 			cfg: L1NetworkConfig{
-				RPC: RPCClientConfig{MaxRetries: 1}, // empty URL
+				RPC: RPCClientConfig{
+					RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+						// empty URL
+						MaxRetries: 1,
+					},
+				},
 			},
 			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
 		},
@@ -122,7 +130,12 @@ func TestL2RPCClientConfig_Validate(t *testing.T) {
 		{
 			name: "missing RPC URL",
 			cfg: L2RPCClientConfig{
-				RPCClientConfig: RPCClientConfig{MaxRetries: 1}, // empty URL
+				RPCClientConfig: RPCClientConfig{
+					RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+						// empty URL
+						MaxRetries: 1,
+					},
+				},
 			},
 			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
 		},
@@ -174,63 +187,75 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 		{
 			name: "negative MaxRetries",
 			config: RPCClientConfig{
-				URL:        "http://localhost:8545",
-				MaxRetries: -1,
+				URL: "http://localhost:8545",
+				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					MaxRetries: -1,
+				},
 			},
 			wantErr: errors.New("max retries must be non-negative, got -1"),
 		},
 		{
 			name: "initial backoff is zero",
 			config: RPCClientConfig{
-				URL:               "http://localhost:8545",
-				MaxRetries:        3,
-				InitialBackoff:    types.Duration{Duration: 0},
-				MaxBackoff:        types.Duration{Duration: time.Second},
-				BackoffMultiplier: 2.0,
+				URL: "http://localhost:8545",
+				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					MaxRetries:        3,
+					InitialBackoff:    types.Duration{Duration: 0},
+					MaxBackoff:        types.Duration{Duration: time.Second},
+					BackoffMultiplier: 2.0,
+				},
 			},
 			wantErr: errors.New("initial backoff must be positive, got 0s"),
 		},
 		{
 			name: "max backoff is zero",
 			config: RPCClientConfig{
-				URL:               "http://localhost:8545",
-				MaxRetries:        3,
-				InitialBackoff:    types.Duration{Duration: time.Second},
-				MaxBackoff:        types.Duration{Duration: 0},
-				BackoffMultiplier: 2.0,
+				URL: "http://localhost:8545",
+				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					MaxRetries:        3,
+					InitialBackoff:    types.Duration{Duration: time.Second},
+					MaxBackoff:        types.Duration{Duration: 0},
+					BackoffMultiplier: 2.0,
+				},
 			},
 			wantErr: errors.New("max backoff must be positive, got 0s"),
 		},
 		{
 			name: "max backoff < initial backoff",
 			config: RPCClientConfig{
-				URL:               "http://localhost:8545",
-				MaxRetries:        3,
-				InitialBackoff:    types.Duration{Duration: 2 * time.Second},
-				MaxBackoff:        types.Duration{Duration: time.Second},
-				BackoffMultiplier: 2.0,
+				URL: "http://localhost:8545",
+				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					MaxRetries:        3,
+					InitialBackoff:    types.Duration{Duration: 2 * time.Second},
+					MaxBackoff:        types.Duration{Duration: time.Second},
+					BackoffMultiplier: 2.0,
+				},
 			},
 			wantErr: errors.New("max backoff 1s must be greater than or equal to initial backoff 2s"),
 		},
 		{
 			name: "backoff multiplier <= 1.0",
 			config: RPCClientConfig{
-				URL:               "http://localhost:8545",
-				MaxRetries:        3,
-				InitialBackoff:    types.Duration{Duration: time.Second},
-				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
-				BackoffMultiplier: 1.0,
+				URL: "http://localhost:8545",
+				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					MaxRetries:        3,
+					InitialBackoff:    types.Duration{Duration: time.Second},
+					MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+					BackoffMultiplier: 1.0,
+				},
 			},
 			wantErr: errors.New("backoff multiplier must be greater than 1.0, got 1.000000"),
 		},
 		{
 			name: "valid config",
 			config: RPCClientConfig{
-				URL:               "http://localhost:8545",
-				MaxRetries:        3,
-				InitialBackoff:    types.Duration{Duration: time.Second},
-				MaxBackoff:        types.Duration{Duration: 5 * time.Second},
-				BackoffMultiplier: 2.0,
+				URL: "http://localhost:8545",
+				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					MaxRetries:        3,
+					InitialBackoff:    types.Duration{Duration: time.Second},
+					MaxBackoff:        types.Duration{Duration: 5 * time.Second},
+					BackoffMultiplier: 2.0,
+				},
 			},
 			wantErr: nil,
 		},
