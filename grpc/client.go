@@ -10,7 +10,6 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/agglayer/aggkit/config/types"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/backoff"
@@ -21,6 +20,7 @@ import (
 	"google.golang.org/grpc/status"
 
 	"github.com/agglayer/aggkit"
+	"github.com/agglayer/aggkit/config/types"
 )
 
 const (
