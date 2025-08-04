@@ -60,7 +60,22 @@ func TestCertificate_String(t *testing.T) {
 
 		require.Equal(t, expected, cert.String())
 	})
+
+	t.Run("CreatedAt and UpdatedAt are 0", func(t *testing.T) {
+		cert := &Certificate{
+			Header: &CertificateHeader{
+				CreatedAt: 0,
+				UpdatedAt: 0,
+			},
+		}
+
+		certStr := cert.String()
+
+		require.Containsf(t, certStr, "CreatedAt: N/A", "Expected CreatedAt to be N/A")
+		require.Containsf(t, certStr, "UpdatedAt: N/A", "Expected UpdatedAt to be N/A")
+	})
 }
+
 func TestCertificateType_String(t *testing.T) {
 	tests := []struct {
 		input    CertificateType
@@ -203,4 +218,34 @@ func TestCertificateSource_String(t *testing.T) {
 			require.Equal(t, tt.expected, tt.input.String())
 		})
 	}
+}
+
+func TestCertificateHeader_ElapsedTimeSinceCreation(t *testing.T) {
+	t.Run("NilCertificateHeader", func(t *testing.T) {
+		var ch *CertificateHeader
+		require.Equal(t, NAStr, ch.ElapsedTimeSinceCreation())
+	})
+
+	t.Run("CreatedAtIsZero", func(t *testing.T) {
+		ch := &CertificateHeader{CreatedAt: 0}
+		require.Equal(t, NAStr, ch.ElapsedTimeSinceCreation())
+	})
+
+	t.Run("CreatedAtIsNow", func(t *testing.T) {
+		now := uint32(time.Now().Unix())
+		ch := &CertificateHeader{CreatedAt: now}
+		result := ch.ElapsedTimeSinceCreation()
+		// Should be a duration string, e.g., "0s"
+		require.Contains(t, result, "s")
+	})
+
+	t.Run("CreatedAtIsPast", func(t *testing.T) {
+		past := uint32(time.Now().Add(-10 * time.Second).Unix())
+		ch := &CertificateHeader{CreatedAt: past}
+		result := ch.ElapsedTimeSinceCreation()
+		// Should be at least 10s
+		dur, err := time.ParseDuration(result)
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, int64(dur.Seconds()), int64(10))
+	})
 }
