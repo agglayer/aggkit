@@ -1,6 +1,8 @@
 #!/bin/bash
 
 source $(dirname $0)/../test/scripts/env.sh
+export AGGKIT_SERVICE=${AGGKIT_SERVICE:=aggkit-001}
+export DEST=${TMP_AGGKIT_FOLDER}/local_config
 
 ###############################################################################
 # params:
@@ -227,7 +229,6 @@ EOF
 }
 ###############################################################################
 function create_dest_folder() {
-    export DEST=${TMP_AGGKIT_FOLDER}/local_config
     export zkevm_path_rw_data=${TMP_AGGKIT_FOLDER}/runtime
     [ ! -d ${DEST} ] && mkdir -p ${DEST}
     rm -rf "$DEST"/*
@@ -246,6 +247,36 @@ function download_kurtosis_artifacts() {
     ok_or_fatal "Error downloading kurtosis artifact aggoracle to $DEST"
     export zkevm_aggoracle_privatekey_path=$DEST/aggoracle.keystore
 }
+
+###############################################################################
+function common_export_values_of_aggkit_config() {
+    local AGGKIT_CONFIG_FILE=$1
+    export_key_from_toml_file_or_fatal zkevm_rollup_id $AGGKIT_CONFIG_FILE "." NetworkID
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_block_number $AGGKIT_CONFIG_FILE "." genesisBlockNumber
+    export_key_from_toml_file_or_fatal zkevm_bridge_address $AGGKIT_CONFIG_FILE "." polygonBridgeAddr
+    export_key_from_toml_file_or_fatal zkevm_l2_keystore_password $AGGKIT_CONFIG_FILE "." SequencerPrivateKeyPassword
+    export_key_from_toml_file_or_fatal l1_chain_id $AGGKIT_CONFIG_FILE L1Config chainId
+    export_key_from_toml_file_or_fatal pol_token_address $AGGKIT_CONFIG_FILE L1Config polTokenAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_address $AGGKIT_CONFIG_FILE L1Config polygonRollupManagerAddress
+    export_key_from_toml_file_or_fatal zkevm_global_exit_root_address $AGGKIT_CONFIG_FILE L1Config polygonZkEVMGlobalExitRootAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_chain_id $AGGKIT_CONFIG_FILE AggOracle.EVMSender.EthTxManager.Etherman L1ChainID
+}
+
+###############################################################################
+function common_export_ports_from_kurtosis() {
+    export_portnum_from_kurtosis_or_fail l1_rpc_port el-1-geth-lighthouse rpc
+    export_portnum_from_kurtosis_or_fail agglayer_grpc_port agglayer aglr-grpc
+    if [ ! -z $EXPOSE_PORTS ];then
+        export_portnum_from_kurtosis_or_fail cdk_node_rpc_port $AGGKIT_SERVICE http-rpc rpc
+        export_portnum_from_kurtosis_or_fail aggkit_node_rest_api_port $AGGKIT_SERVICE http-rpc rest
+    else
+        export cdk_node_rpc_port=5576
+        export aggkit_node_rest_api_port=5577
+    fi
+    export l1_rpc_url="http://localhost:${l1_rpc_port}"
+    export agglayer_grpc_url="http://localhost:${agglayer_grpc_port}"
+}
+
 ###############################################################################
 function check_generated_config_file() {
     grep "<no value>" $DEST_TEMPLATE_FILE >/dev/null
@@ -265,11 +296,17 @@ function parse_command_line_args() {
         -h | --help)
             echo "Usage: $0"
             echo "  -h: help"
+            echo "  -e: kurtosis enclave name (default $KURTOSIS_ENCLAVE)"
+            echo "  -p: expose same ports as service in kurtosis (RPC and REST)"
             exit 0
             ;;
         -e | --enclave)
             KURTOSIS_ENCLAVE=$2
             shift
+            shift
+            ;;
+        -p | --expose-ports)
+            export EXPOSE_PORTS=0
             shift
             ;;
         -*)
@@ -278,4 +315,59 @@ function parse_command_line_args() {
             ;;
         esac
     done
+}
+###############################################################################
+function main(){
+    [ -z $ORIG_TEMPLATE_FILE ] && echo "missing ORIG_TEMPLATE_FILE var" && exit 1
+    [ -z $DEST_TEMPLATE_FILE ] && echo "missing DEST_TEMPLATE_FILE var" && exit 1
+    [ -z $DEST ] && echo "missing DEST var" && exit 1
+
+    set -o pipefail # enable strict command pipe error detection
+    parse_command_line_args $*
+    check_requirements
+    create_dest_folder
+
+    download_kurtosis_artifacts
+
+    export_ports_from_kurtosis
+    export_values_of_aggkit_config $DEST/config.toml
+    export_forced_values
+    # Generate config file
+    go run scripts/run_template.go $ORIG_TEMPLATE_FILE >$DEST_TEMPLATE_FILE
+    ok_or_fatal "Error generating template"
+
+    check_generated_config_file
+
+    echo " "
+    echo "file generated at:" $DEST/test.kurtosis.toml
+
+    echo "- to restart kurtosis:"
+    echo "    kurtosis clean --all; kurtosis run --enclave aggkit --args-file params.yml --image-download always ."
+    echo " "
+    echo "- Stop aggkit:"
+    echo "    kurtosis service stop aggkit aggkit-001"
+    echo " "
+    echo "- Add next configuration to vscode launch.json"
+    echo " -----------------------------------------------------------"
+    cat <<EOF
+            {
+                "name": "Debug aggkit",
+                "type": "go",
+                "request": "launch",
+                "mode": "auto",
+                "program": "cmd/",
+                "cwd": "\${workspaceFolder}",
+                "args":[
+                    "run",
+                    "-cfg", "$DEST_TEMPLATE_FILE",
+                    "-components", "aggsender,bridge",
+                ]
+            },
+
+EOF
+
+    echo " -----------------------------------------------------------"
+    echo " "
+    echo " - rembember to clean previous execution data: "
+    echo "     rm -Rf ${zkevm_path_rw_data}/*"
 }
