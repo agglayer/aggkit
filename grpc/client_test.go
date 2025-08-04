@@ -8,14 +8,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/config/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
-
-	"github.com/agglayer/aggkit/config/types"
 )
 
 func TestRepackGRPCErrorWithDetails(t *testing.T) {
