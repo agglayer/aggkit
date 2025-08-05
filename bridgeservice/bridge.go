@@ -968,7 +968,11 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, 
 
 	root, err := b.bridgeL1.GetRootByLER(ctx, lastInfo.MainnetExitRoot)
 	if err != nil {
-		return 0, err
+		b.logger.Infof("failed to get root by LER for L1: %v, lastInfo MainnetExitRoot: %v, using fallback mechanism", err, lastInfo.MainnetExitRoot)
+		root, err = b.bridgeL1.GetLastRoot(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get last root for L1: %v", err)
+		}
 	}
 	if root.Index < depositCount {
 		return 0, ErrNotOnL1Info
@@ -1021,7 +1025,11 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 
 	root, err := b.bridgeL2.GetRootByLER(ctx, lastVerified.ExitRoot)
 	if err != nil {
-		return 0, err
+		b.logger.Infof("failed to get root by LER for L2: %v, lastVerified ExitRoot: %v, using fallback mechanism", err, lastVerified.ExitRoot)
+		root, err = b.bridgeL2.GetLastRoot(ctx)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get last root for L2: %v", err)
+		}
 	}
 	if root.Index < depositCount {
 		return 0, ErrNotOnL1Info

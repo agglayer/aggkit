@@ -376,6 +376,17 @@ func (s *BridgeSync) GetBlockByLER(ctx context.Context, ler common.Hash) (uint64
 	return root.BlockNum, nil
 }
 
+func (s *BridgeSync) GetLastRoot(ctx context.Context) (*tree.Root, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+	root, err := s.processor.exitTree.GetLastRoot(s.processor.db)
+	if err != nil {
+		return nil, err
+	}
+	return &root, nil
+}
+
 func (s *BridgeSync) GetRootByLER(ctx context.Context, ler common.Hash) (*tree.Root, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
