@@ -53,7 +53,7 @@ type AggSenderStorage interface {
 	// SaveLastSentCertificate saves the last certificate sent to the aggLayer
 	SaveLastSentCertificate(ctx context.Context, certificate types.Certificate) error
 	// DeleteCertificate deletes a certificate from the storage
-	DeleteCertificate(ctx context.Context, certificateID common.Hash) error
+	DeleteCertificate(ctx context.Context, certificate types.Certificate) error
 	// GetCertificateHeadersByStatus returns a list of certificate headers by their status
 	GetCertificateHeadersByStatus(status []agglayertypes.CertificateStatus) ([]*types.CertificateHeader, error)
 	// UpdateCertificateStatus updates certificate status in db
@@ -359,7 +359,7 @@ func (a *AggSenderSQLStorage) moveCertificateToHistoryOrDelete(tx dbtypes.Querie
 		}
 	}
 	a.logger.Debugf("deleting certificate - CertificateID: %s", certificate.ID())
-	if err := deleteCertificate(tx, certificate); err != nil {
+	if err := deleteCertificate(tx, certificate.CertificateID); err != nil {
 		return fmt.Errorf("deleteCertificate %s . Error: %w", certificate.ID(), err)
 	}
 
