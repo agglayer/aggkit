@@ -808,7 +808,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	}
 	shouldRollback = false
 
-	logMsg := fmt.Sprintf("block %d processed with %d events", len(block.Events), block.Num)
+	logMsg := fmt.Sprintf("block %d processed with %d events", block.Num, len(block.Events))
 	if len(block.Events) > 0 {
 		p.log.Info(logMsg)
 	} else {
