@@ -41,8 +41,11 @@ func NewRPCClientModeOp(ctx context.Context, cfg config.L2RPCClientConfig) (aggk
 	}
 
 	log.Debugf("Creating OPNode RPC client with URL %s %s:%s", cfg.URL, ExtraParamFieldName, opNodeURL)
-	ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.URL, cfg.MaxRetries,
-		cfg.InitialBackoff.Duration, cfg.MaxBackoff.Duration, cfg.BackoffMultiplier)
+	retryHandler, err := cfg.NewRetryHandler()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create retry handler: %w", err)
+	}
+	ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.URL, retryHandler)
 	if err != nil {
 		return nil, fmt.Errorf("fails to create RPC client. Err: %w", err)
 	}

@@ -67,16 +67,6 @@ type RPCClientConfig struct {
 	URL string `mapstructure:"URL"`
 }
 
-// IsUndefined checks whether the values are unset
-func (c *RPCClientConfig) IsUndefined() bool {
-	return c.URL == "" &&
-		c.MaxRetries == 0 &&
-		(len(c.Delays) == 0 ||
-			(c.InitialBackoff.Duration == 0 &&
-				c.MaxBackoff.Duration == 0 &&
-				c.BackoffMultiplier == 0))
-}
-
 // Validate checks if the RPCClientConfig is valid
 func (c *RPCClientConfig) Validate() error {
 	if c.URL == "" {

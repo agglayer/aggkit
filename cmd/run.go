@@ -510,13 +510,13 @@ func runL1ClientIfNeeded(ctx context.Context,
 		return nil
 	}
 	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
-	ethClient, err := aggkittypes.DialWithRetry(
-		ctx,
-		rpcClientCfg.URL,
-		rpcClientCfg.MaxRetries,
-		rpcClientCfg.InitialBackoff.Duration,
-		rpcClientCfg.MaxBackoff.Duration,
-		rpcClientCfg.BackoffMultiplier)
+
+	retryHandler, err := rpcClientCfg.NewRetryHandler()
+	if err != nil {
+		log.Fatalf("failed to create retry handler: %w", err)
+	}
+
+	ethClient, err := aggkittypes.DialWithRetry(ctx, rpcClientCfg.URL, retryHandler)
 	if err != nil {
 		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
 	}
@@ -758,13 +758,12 @@ func createRollupDataQuerier(ctx context.Context,
 		return &etherman.RollupDataQuerier{}, nil
 	}
 
-	ethClient, err := aggkittypes.DialWithRetry(
-		ctx,
-		cfg.RPC.URL,
-		cfg.RPC.MaxRetries,
-		cfg.RPC.InitialBackoff.Duration,
-		cfg.RPC.MaxBackoff.Duration,
-		cfg.RPC.BackoffMultiplier)
+	retryHandler, err := cfg.RPC.NewRetryHandler()
+	if err != nil {
+		log.Fatalf("failed to create retry handler: %w", err)
+	}
+
+	ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.RPC.URL, retryHandler)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.RPC.URL, err)
 	}
