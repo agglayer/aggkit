@@ -393,7 +393,7 @@ func (a *AggSenderSQLStorage) DeleteCertificate(ctx context.Context, certificate
 	a.logger.Debugf("deleted certificate - CertificateID: %s", certificate.Header.CertificateID.String())
 
 	// Delete the certificate file also in case it's a certificate file and it exists
-	if IsJSONFilePath(*certificate.SignedCertificate) {
+	if certificate.SignedCertificate != nil && IsJSONFilePath(*certificate.SignedCertificate) {
 		filename := fmt.Sprintf("%s.json", certificate.Header.CertificateID.String())
 		// Try to delete the file
 		if err := os.Remove(filename); err != nil {
