@@ -261,12 +261,68 @@ func (_c *L1InfoTreeSyncer_GetL1InfoTreeRootByIndex_Call) RunAndReturn(run func(
 	return _c
 }
 
-// GetLatestInfoUntilBlock provides a mock function with given fields: ctx, blockNum
-func (_m *L1InfoTreeSyncer) GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error) {
+// GetLastL1InfoTreeRoot provides a mock function with given fields: ctx
+func (_m *L1InfoTreeSyncer) GetLastL1InfoTreeRoot(ctx context.Context) (treetypes.Root, error) {
+	ret := _m.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetLastL1InfoTreeRoot")
+	}
+
+	var r0 treetypes.Root
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context) (treetypes.Root, error)); ok {
+		return rf(ctx)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context) treetypes.Root); ok {
+		r0 = rf(ctx)
+	} else {
+		r0 = ret.Get(0).(treetypes.Root)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = rf(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLastL1InfoTreeRoot'
+type L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call struct {
+	*mock.Call
+}
+
+// GetLastL1InfoTreeRoot is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *L1InfoTreeSyncer_Expecter) GetLastL1InfoTreeRoot(ctx interface{}) *L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call {
+	return &L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call{Call: _e.mock.On("GetLastL1InfoTreeRoot", ctx)}
+}
+
+func (_c *L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call) Run(run func(ctx context.Context)) *L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context))
+	})
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call) Return(_a0 treetypes.Root, _a1 error) *L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call) RunAndReturn(run func(context.Context) (treetypes.Root, error)) *L1InfoTreeSyncer_GetLastL1InfoTreeRoot_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetLatestL1InfoLeafUntilBlock provides a mock function with given fields: ctx, blockNum
+func (_m *L1InfoTreeSyncer) GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error) {
 	ret := _m.Called(ctx, blockNum)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetLatestInfoUntilBlock")
+		panic("no return value specified for GetLatestL1InfoLeafUntilBlock")
 	}
 
 	var r0 *l1infotreesync.L1InfoTreeLeaf
@@ -291,31 +347,31 @@ func (_m *L1InfoTreeSyncer) GetLatestInfoUntilBlock(ctx context.Context, blockNu
 	return r0, r1
 }
 
-// L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestInfoUntilBlock'
-type L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call struct {
+// L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestL1InfoLeafUntilBlock'
+type L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call struct {
 	*mock.Call
 }
 
-// GetLatestInfoUntilBlock is a helper method to define mock.On call
+// GetLatestL1InfoLeafUntilBlock is a helper method to define mock.On call
 //   - ctx context.Context
 //   - blockNum uint64
-func (_e *L1InfoTreeSyncer_Expecter) GetLatestInfoUntilBlock(ctx interface{}, blockNum interface{}) *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call {
-	return &L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call{Call: _e.mock.On("GetLatestInfoUntilBlock", ctx, blockNum)}
+func (_e *L1InfoTreeSyncer_Expecter) GetLatestL1InfoLeafUntilBlock(ctx interface{}, blockNum interface{}) *L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call {
+	return &L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call{Call: _e.mock.On("GetLatestL1InfoLeafUntilBlock", ctx, blockNum)}
 }
 
-func (_c *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call) Run(run func(ctx context.Context, blockNum uint64)) *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call {
+func (_c *L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call) Run(run func(ctx context.Context, blockNum uint64)) *L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint64))
 	})
 	return _c
 }
 
-func (_c *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call {
+func (_c *L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call) Return(_a0 *l1infotreesync.L1InfoTreeLeaf, _a1 error) *L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call) RunAndReturn(run func(context.Context, uint64) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetLatestInfoUntilBlock_Call {
+func (_c *L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call) RunAndReturn(run func(context.Context, uint64) (*l1infotreesync.L1InfoTreeLeaf, error)) *L1InfoTreeSyncer_GetLatestL1InfoLeafUntilBlock_Call {
 	_c.Call.Return(run)
 	return _c
 }

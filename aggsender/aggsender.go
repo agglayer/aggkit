@@ -8,7 +8,7 @@ import (
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
-	zkevm "github.com/agglayer/aggkit"
+	aggkit "github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/config"
@@ -20,7 +20,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
-	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -49,6 +48,8 @@ type AggSender struct {
 	flow        types.AggsenderFlow
 
 	l2OriginNetwork uint32
+
+	validator types.CertificateValidateAndSigner
 }
 
 // New returns a new AggSender instance
@@ -57,12 +58,13 @@ func New(
 	logger *log.Logger,
 	cfg config.Config,
 	aggLayerClient agglayer.AgglayerClientInterface,
-	l1InfoTreeSyncer *l1infotreesync.L1InfoTreeSync,
+	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	epochNotifier types.EpochNotifier,
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier types.RollupDataQuerier) (*AggSender, error) {
+	rollupDataQuerier types.RollupDataQuerier,
+) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		KeepCertificatesHistory: cfg.KeepCertificatesHistory,
@@ -115,10 +117,28 @@ func New(
 	}, nil
 }
 
+func (a *AggSender) AttachValidator(validator types.CertificateValidateAndSigner) {
+	if validator == nil {
+		a.log.Infof("AggSender validator attached: nil")
+		return
+	}
+
+	a.validator = validator
+	a.log.Infof("AggSender validator attached: %s", a.validator.String())
+}
+
+func (a *AggSender) GetStorage() db.AggSenderStorage {
+	return a.storage
+}
+
+func (a *AggSender) GetFlow() types.AggsenderFlow {
+	return a.flow
+}
+
 func (a *AggSender) Info() types.AggsenderInfo {
 	res := types.AggsenderInfo{
 		AggsenderStatus:          *a.status,
-		Version:                  zkevm.GetVersion(),
+		Version:                  aggkit.GetVersion(),
 		EpochNotifierDescription: a.epochNotifier.String(),
 		NetworkID:                a.l2OriginNetwork,
 	}
@@ -150,6 +170,16 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
+	}
+	if a.validator != nil {
+		status, err := a.validator.HealthCheck(ctx)
+		if err != nil {
+			a.log.Warnf("error checking validator health: %v", err)
+		}
+		if !status.IsHealthy() {
+			a.log.Warnf("validator status is not healthy: %s", status.String())
+		}
+		a.log.Infof("validator health check: %s", status.String())
 	}
 	a.sendCertificates(ctx, 0)
 }
@@ -218,14 +248,13 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			a.log.Infof("Epoch received: %s", epoch.String())
 			checkResult := a.certStatusChecker.CheckPendingCertificatesStatus(ctx)
 			if !checkResult.ExistPendingCerts {
-				_, err := a.sendCertificate(ctx)
-				a.status.SetLastError(err)
+				_, err := a.sendCertificateWithRetries(ctx)
 				if err != nil {
-					a.log.Error(err)
+					a.log.Errorf("error sending certificate: %v", err)
+					a.status.SetLastError(err)
 				}
-				a.checkSendCertificateStopCondition(err)
 			} else {
-				log.Infof("Skipping epoch %s because there are pending certificates",
+				a.log.Infof("Skipping epoch %s because there are pending certificates",
 					epoch.String())
 			}
 
@@ -238,6 +267,32 @@ func (a *AggSender) sendCertificates(ctx context.Context, returnAfterNIterations
 			return
 		}
 	}
+}
+
+func (a *AggSender) sendCertificateWithRetries(ctx context.Context) (*agglayertypes.Certificate, error) {
+	retryHandler, err := a.cfg.RetriesToBuildAndSendCertificate.NewRetryHandler()
+	if err != nil {
+		return nil, fmt.Errorf("error creating retry config: %w", err)
+	}
+	cert, err := aggkitcommon.Execute(retryHandler,
+		ctx,
+		a.log.Infof,
+		"sendCertificateWithRetries",
+		func() (*agglayertypes.Certificate, error) {
+			cert, err := a.sendCertificate(ctx)
+			a.status.SetLastError(err)
+			if err != nil {
+				a.log.Error(err)
+			}
+			// If ErrComplete, don't need to retry
+			if errors.Is(err, flows.ErrComplete) {
+				err = fmt.Errorf("%w. %w", err, aggkitcommon.ErrAbort)
+			}
+			return cert, err
+		})
+	// Check error to stop aggsender if needed
+	a.checkSendCertificateStopCondition(err)
+	return cert, err
 }
 
 // sendCertificate sends certificate for a network
@@ -261,13 +316,12 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
-	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
-		a.log.Warnf("rate limit reached , next cert %s can be submitted after %s so sleeping. Rate:%s",
-			certificate.ID(),
-			rateLimitSleepTime.String(), a.rateLimiter.String())
-		time.Sleep(*rateLimitSleepTime)
+	validatorSignature, err := a.callValidator(ctx, certificate)
+	if err != nil {
+		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
+		return nil, fmt.Errorf("certificate validation failed: %w", err)
 	}
-	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s , end: %s",
+	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s, end: %s",
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
 
@@ -275,7 +329,14 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return certificate, nil
 	}
-	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
+	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
+		a.log.Warnf("rate limit reached , next cert %s can be submitted after %s so sleeping. Rate:%s",
+			certificate.ID(),
+			rateLimitSleepTime.String(), a.rateLimiter.String())
+		time.Sleep(*rateLimitSleepTime)
+	}
+
+	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate, validatorSignature)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 
@@ -324,6 +385,25 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		certInfo.Header.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
 	return certificate, nil
+}
+
+// callValidator calls the validator to validate the certificate
+func (a *AggSender) callValidator(
+	ctx context.Context,
+	certificate *agglayertypes.Certificate) ([]byte, error) {
+	if a.validator == nil {
+		return nil, nil
+	}
+	a.log.Infof("delegating certificate validation: %s", certificate.Brief())
+	validatorSignature, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
+	if err != nil {
+		a.log.Errorf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
+		return nil, fmt.Errorf("certificate validation failed: %w", err)
+	}
+
+	a.log.Infof("certificate validation passed: %s", certificate.Brief())
+
+	return validatorSignature, nil
 }
 
 // saveCertificateToStorage saves the certificate to the storage

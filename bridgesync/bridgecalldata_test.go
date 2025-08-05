@@ -7,10 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridgev2"
-	cfgtypes "github.com/agglayer/aggkit/config/types"
-	"github.com/agglayer/aggkit/reorgdetector"
-	"github.com/agglayer/aggkit/test/contracts/transparentupgradableproxy"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
+	"github.com/agglayer/aggkit/test/contracts/proxy"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	ethereum "github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
@@ -21,47 +19,10 @@ import (
 func TestBridgeCallData(t *testing.T) {
 	ctx, cancelFn := context.WithCancel(context.Background())
 	client, deployerAuth := startGeth(t, ctx, cancelFn)
-
-	bridgeABI, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
-	require.NoError(t, err)
-
 	var (
 		originNetwork = uint32(1)
 		zeroAddr      = common.HexToAddress("0x0")
 	)
-
-	initBridgeCalldata, err := bridgeABI.Pack("initialize",
-		originNetwork,
-		zeroAddr,  // gasTokenAddressMainnet
-		uint32(0), // gasTokenNetworkMainnet
-		zeroAddr,  // global exit root manager
-		zeroAddr,  // rollup manager
-		[]byte{},  // gasTokenMetadata
-	)
-	require.NoError(t, err)
-
-	bridgeAddr, deployBridgeTx, _, err := polygonzkevmbridgev2.DeployPolygonzkevmbridgev2(deployerAuth, client)
-	require.NoError(t, err)
-	_, err = waitForReceipt(ctx, client, deployBridgeTx.Hash(), 20)
-	require.NoError(t, err)
-
-	bridgeProxyAddr, deployProxyTx, _, err := transparentupgradableproxy.DeployTransparentupgradableproxy(
-		deployerAuth,
-		client,
-		bridgeAddr,
-		deployerAuth.From,
-		initBridgeCalldata,
-	)
-	require.NoError(t, err)
-
-	_, err = waitForReceipt(ctx, client, deployProxyTx.Hash(), 20)
-	require.NoError(t, err)
-
-	bridgeContract, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeProxyAddr, client)
-	require.NoError(t, err)
-
-	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
-
 	const (
 		waitForNewBlocksPeriod = time.Millisecond * 10
 		initialBlock           = 0
@@ -69,12 +30,29 @@ func TestBridgeCallData(t *testing.T) {
 		retriesCount           = 10
 	)
 
-	networkID, err := bridgeContract.NetworkID(nil)
+	bridgeAddr, deployBridgeTx, _, err := polygonzkevmbridgev2.DeployPolygonzkevmbridgev2(deployerAuth, client)
 	require.NoError(t, err)
-	require.Equal(t, originNetwork, networkID)
+	_, err = waitForReceipt(ctx, client, deployBridgeTx.Hash(), 20)
+	require.NoError(t, err)
 
-	// Create User account and fund it
-	userAuth := createAuth(t, ctx, "42b6e34dc21598a807dc19d7784c71b2a7a01f6480dc6f58258f78e539f1a1fa", client)
+	var (
+		bridgeProxyAddr     common.Address
+		bridgeProxyContract *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	)
+
+	bridgeProxyAddr, deployProxyTx, _, err := proxy.DeployProxy(
+		deployerAuth,
+		client,
+		bridgeAddr,
+		deployerAuth.From,
+		[]byte{},
+	)
+	require.NoError(t, err)
+	_, err = waitForReceipt(ctx, client, deployProxyTx.Hash(), 20)
+	require.NoError(t, err)
+
+	bridgeProxyContract, err = polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeProxyAddr, client)
+	require.NoError(t, err)
 
 	nonce, err := client.PendingNonceAt(ctx, deployerAuth.From)
 	require.NoError(t, err)
@@ -82,6 +60,7 @@ func TestBridgeCallData(t *testing.T) {
 	gasPrice, err := client.SuggestGasPrice(ctx)
 	require.NoError(t, err)
 
+	userAuth := createAuth(t, ctx, "42b6e34dc21598a807dc19d7784c71b2a7a01f6480dc6f58258f78e539f1a1fa", client)
 	fundAmount := big.NewInt(1e18)
 	fundTx := types.NewTx(
 		&types.LegacyTx{
@@ -105,19 +84,26 @@ func TestBridgeCallData(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, userBalance.Cmp(fundAmount) >= 0)
 
-	ethClient := aggkittypes.NewDefaultEthClient(client, client.Client())
-
-	// Init the reorg detector and bridge syncer
-	dbPathReorgDetectorL1 := path.Join(t.TempDir(), "ReorgDetectorL1.sqlite")
-	reorgDetector, err := reorgdetector.New(client, reorgdetector.Config{
-		DBPath:              dbPathReorgDetectorL1,
-		CheckReorgsInterval: cfgtypes.Duration{Duration: time.Millisecond * 100},
-		FinalizedBlock:      aggkittypes.LatestBlock,
-	}, reorgdetector.L1)
+	initializeTx, err := bridgeProxyContract.Initialize0(
+		userAuth,
+		originNetwork,
+		zeroAddr,  // gasTokenAddressMainnet
+		uint32(0), // gasTokenNetworkMainnet
+		zeroAddr,  // global exit root manager
+		zeroAddr,  // rollup manager
+		[]byte{},  // gasTokenMetadata
+	)
 	require.NoError(t, err)
-	go reorgDetector.Start(ctx) //nolint:errcheck
+	_, err = waitForReceipt(ctx, client, initializeTx.Hash(), 20)
+	require.NoError(t, err)
 
-	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, aggkittypes.LatestBlock, reorgDetector, ethClient,
+	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
+
+	networkID, err := bridgeProxyContract.NetworkID(nil)
+	require.NoError(t, err)
+	require.Equal(t, originNetwork, networkID)
+
+	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, aggkittypes.FinalizedBlock, client,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false, false)
 	require.NoError(t, err)
 	go bridgeSync.Start(ctx)
@@ -130,6 +116,9 @@ func TestBridgeCallData(t *testing.T) {
 		destinationAddr    = userAuth.From
 		amount             = big.NewInt(1000)
 	)
+
+	bridgeABI, err := polygonzkevmbridgev2.Polygonzkevmbridgev2MetaData.GetAbi()
+	require.NoError(t, err)
 
 	bridgeAssetInput, err := bridgeABI.Pack("bridgeAsset",
 		destinationNetwork, // destination network id

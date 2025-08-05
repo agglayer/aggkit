@@ -251,14 +251,19 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 	}
 
 	// trim the http:// and https:// prefixes from the URL because the go-grpc client expects it without it
-	serverAddr := strings.TrimPrefix(cfg.URL, "http://")
-	serverAddr = strings.TrimPrefix(serverAddr, "https://")
+	serverAddr := trimGRPCAddress(cfg.URL)
 	conn, err := grpc.NewClient(serverAddr, opts...)
 	if err != nil {
 		return nil, err
 	}
 
 	return &Client{conn: conn}, nil
+}
+
+func trimGRPCAddress(address string) string {
+	serverAddr := strings.TrimPrefix(address, "http://")
+	serverAddr = strings.TrimPrefix(serverAddr, "https://")
+	return serverAddr
 }
 
 func createServiceConfig(cfg *RetryConfig) (string, error) {

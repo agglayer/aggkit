@@ -7,9 +7,9 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggoracle/chaingerreader"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -25,6 +25,9 @@ type AggsenderFlow interface {
 	// BuildCertificate builds a certificate based on the buildParams
 	BuildCertificate(ctx context.Context,
 		buildParams *CertificateBuildParams) (*agglayertypes.Certificate, error)
+	// GenerateBuildParams generates the build parameters based on the preParams
+	GenerateBuildParams(ctx context.Context,
+		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
 }
 
 type AggsenderFlowBaser interface {
@@ -43,6 +46,12 @@ type AggsenderFlowBaser interface {
 		newFromBlock, newToBlock uint64) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
+
+	GeneratePreBuildParams(ctx context.Context,
+		certType CertificateType) (*CertificatePreBuildParams, error)
+	GenerateBuildParams(ctx context.Context,
+		preParams CertificatePreBuildParams) (*CertificateBuildParams, error)
+	LimitCertSize(certParams *CertificateBuildParams) (*CertificateBuildParams, error)
 }
 
 // L1InfoTreeSyncer is an interface defining functions that an L1InfoTreeSyncer should implement
@@ -52,9 +61,10 @@ type L1InfoTreeSyncer interface {
 		ctx context.Context, index uint32, root common.Hash,
 	) (treetypes.Proof, error)
 	GetL1InfoTreeRootByIndex(ctx context.Context, index uint32) (treetypes.Root, error)
+	GetLastL1InfoTreeRoot(ctx context.Context) (treetypes.Root, error)
 	GetProcessedBlockUntil(ctx context.Context, blockNumber uint64) (uint64, common.Hash, error)
 	GetInfoByIndex(ctx context.Context, index uint32) (*l1infotreesync.L1InfoTreeLeaf, error)
-	GetLatestInfoUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
+	GetLatestL1InfoLeafUntilBlock(ctx context.Context, blockNum uint64) (*l1infotreesync.L1InfoTreeLeaf, error)
 }
 
 // L2BridgeSyncer is an interface defining functions that an L2BridgeSyncer should implement
@@ -82,9 +92,8 @@ type BridgeQuerier interface {
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
 type ChainGERReader interface {
-	GetInjectedGERsForRange(
-		ctx context.Context,
-		fromBlock, toBlock uint64) (map[common.Hash]chaingerreader.InjectedGER, error)
+	GetInjectedGERsForRange(ctx context.Context,
+		fromBlock, toBlock uint64) (map[common.Hash]l2gersync.GlobalExitRootInfo, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
@@ -109,6 +118,9 @@ type L1InfoTreeDataQuerier interface {
 	// CheckIfClaimsArePartOfFinalizedL1InfoTree checks if the claims are part of the finalized L1 Info tree
 	CheckIfClaimsArePartOfFinalizedL1InfoTree(
 		finalizedL1InfoTreeRoot *treetypes.Root, claims []bridgesync.Claim) error
+
+	// GetL1InfoRootByLeafIndex returns the L1 Info tree root for the given leaf index
+	GetL1InfoRootByLeafIndex(ctx context.Context, leafCount uint32) (*treetypes.Root, error)
 }
 
 // GERQuerier is an interface defining functions that an GERQuerier should implement
@@ -158,4 +170,80 @@ type MaxL2BlockNumberLimiterInterface interface {
 	//  and return it through a new buildParams
 	AdaptCertificate(
 		buildParams *CertificateBuildParams) (*CertificateBuildParams, error)
+}
+
+type VerifyIncomingRequest struct {
+	Certificate         *agglayertypes.Certificate
+	PreviousCertificate *agglayertypes.CertificateHeader
+}
+
+// HealthCheckStatus defines the status of a health check
+type HealthCheckStatus = string
+
+const (
+	HealthCheckStatusOK HealthCheckStatus = "OK"
+)
+
+// HealthCheckResponse response for health check
+type HealthCheckResponse struct {
+	Status       HealthCheckStatus
+	StatusReason string
+	Version      string
+}
+
+// IsHealthy checks if the health check response is healthy
+func (h *HealthCheckResponse) IsHealthy() bool {
+	return h != nil && h.Status == HealthCheckStatusOK
+}
+
+// String returns a string representation of the HealthCheckResponse
+func (h *HealthCheckResponse) String() string {
+	if h == nil {
+		return "HealthCheckResponse is nil"
+	}
+	return "HealthCheckResponse{Status: " + h.Status +
+		", StatusReason: " + h.StatusReason +
+		", Version: " + h.Version + "}"
+}
+
+type CertificateValidator interface {
+	ValidateCertificate(ctx context.Context, params VerifyIncomingRequest) error
+}
+
+// CertificateValidateAndSigner is an interface to attach a certificate validator and signer
+// to aggsender regular flow
+type CertificateValidateAndSigner interface {
+	// HealthCheck checks the health of the validator service
+	HealthCheck(ctx context.Context) (*HealthCheckResponse, error)
+	// ValidateAndSignCertificate validates the certificate and signs it if valid.
+	ValidateAndSignCertificate(
+		ctx context.Context,
+		certificate *agglayertypes.Certificate,
+	) ([]byte, error)
+	String() string
+}
+
+// ValidatorClient is an interface defining functions that a ValidatorClient should implement
+type ValidatorClient interface {
+	HealthCheck(ctx context.Context) (*HealthCheckResponse, error)
+	ValidateCertificate(
+		ctx context.Context,
+		previousCertificateID *common.Hash, // can be nil if there is no previous certificate
+		certificate *agglayertypes.Certificate,
+	) ([]byte, error)
+}
+
+// LocalExitRootQuery is an interface defining functions that a LocalExitRootQuery should implement
+type LocalExitRootQuery interface {
+	GetNewLocalExitRoot(ctx context.Context,
+		certParams *CertificateBuildParams) (common.Hash, error)
+}
+
+// AggchainProofQuerier is an interface defining functions that an AggchainProofQuerier should implement
+type AggchainProofQuerier interface {
+	GenerateAggchainProof(
+		ctx context.Context,
+		lastProvenBlock, toBlock uint64,
+		certBuildParams *CertificateBuildParams,
+	) (*AggchainProof, *treetypes.Root, error)
 }

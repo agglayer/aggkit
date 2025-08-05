@@ -24,7 +24,7 @@ import (
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	mocksdb "github.com/agglayer/aggkit/db/compatibility/mocks"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/agglayer/go_signer/signer"
@@ -42,7 +42,7 @@ const (
 func TestConfigString(t *testing.T) {
 	config := config.Config{
 		StoragePath:                 "/path/to/storage",
-		AgglayerClient:              &aggkitgrpc.ClientConfig{URL: "http://agglayer.url"},
+		AgglayerClient:              agglayer.ClientConfig{GRPC: &grpc.ClientConfig{URL: "http://agglayer.url"}},
 		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                    "http://l2.rpc.url",
 		BlockFinality:               "latestBlock",
@@ -64,7 +64,8 @@ func TestConfigString(t *testing.T) {
 		"RetryCertAfterInError: false\n"+
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
-		"RequireNoFEPBlockGap: false\n",
+		"RequireNoFEPBlockGap: false\n"+
+		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n",
 		config.AgglayerClient.String())
 
 	require.Equal(t, expected, config.String())
@@ -96,9 +97,13 @@ func TestAggSenderStart(t *testing.T) {
 			},
 		},
 		aggLayerMock,
-		nil,
+		nil, // l1 info tree syncer
 		bridgeL2SyncerMock,
-		epochNotifierMock, nil, nil, rollupQuerierMock)
+		epochNotifierMock,
+		nil, // l1 client
+		nil, // l2 client
+		rollupQuerierMock,
+	)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
 
@@ -244,7 +249,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL1Querier.EXPECT().GetLatestFinalizedL1InfoRoot(ctx).Return(&treetypes.Root{}, nil, nil).Once()
 	mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(1)).Return(common.Hash{}, nil).Once()
 	mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1)).Once()
-	mockAggLayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.Hash{}, nil).Once()
+	mockAggLayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, mock.Anything).Return(common.Hash{}, nil).Once()
 	mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{})
 	signedCertificate, err := aggSender.sendCertificate(ctx)
 	require.NoError(t, err)
@@ -307,9 +312,10 @@ func TestSendCertificate(t *testing.T) {
 	t.Parallel()
 
 	testCases := []struct {
-		name          string
-		mockFn        func(*mocks.AggSenderStorage, *mocks.AggsenderFlow, *agglayer.AgglayerClientMock)
-		expectedError string
+		name            string
+		mockFn          func(*mocks.AggSenderStorage, *mocks.AggsenderFlow, *agglayer.AgglayerClientMock)
+		mockValidatorFn func() *mocks.CertificateValidateAndSigner
+		expectedError   string
 	}{
 		{
 			name: "error getting certificate build params",
@@ -354,7 +360,7 @@ func TestSendCertificate(t *testing.T) {
 					NewLocalExitRoot: common.HexToHash("0x1"),
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
-				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.Hash{}, errors.New("some error")).Once()
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, mock.Anything).Return(common.Hash{}, errors.New("some error")).Once()
 				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
 			expectedError: "error sending certificate",
@@ -373,10 +379,56 @@ func TestSendCertificate(t *testing.T) {
 					NewLocalExitRoot: common.HexToHash("0x11"),
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
-				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(errors.New("some error")).Once()
 			},
 			expectedError: "error saving last sent certificate",
+		},
+		{
+			name: "error getting validator signature",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+					Bridges: []bridgesync.Bridge{{}},
+				}, nil).Once()
+				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(&agglayertypes.Certificate{
+					NetworkID:        1,
+					Height:           0,
+					NewLocalExitRoot: common.HexToHash("0x1"),
+					BridgeExits:      []*agglayertypes.BridgeExit{{}},
+				}, nil).Once()
+				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+			},
+			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
+				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
+				return mockValidator
+			},
+			expectedError: "certificate validation failed: some error",
+		},
+		{
+			name: "successful validation and sending of a certificate",
+			mockFn: func(mockStorage *mocks.AggSenderStorage,
+				mockFlow *mocks.AggsenderFlow,
+				mockAgglayerClient *agglayer.AgglayerClientMock) {
+				mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).Return(&aggsendertypes.CertificateBuildParams{
+					Bridges: []bridgesync.Bridge{{}},
+				}, nil).Once()
+				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(&agglayertypes.Certificate{
+					NetworkID:        11,
+					Height:           0,
+					NewLocalExitRoot: common.HexToHash("0x11"),
+					BridgeExits:      []*agglayertypes.BridgeExit{{}},
+				}, nil).Once()
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, []byte{1, 2, 3}).Return(common.HexToHash("0x22"), nil).Once()
+				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+			},
+			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
+				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Once()
+				return mockValidator
+			},
 		},
 		{
 			name: "successful sending and saving of a certificate",
@@ -392,15 +444,13 @@ func TestSendCertificate(t *testing.T) {
 					NewLocalExitRoot: common.HexToHash("0x11"),
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
-				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
 		},
 	}
 
 	for _, tt := range testCases {
-		tt := tt
-
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -423,6 +473,11 @@ func TestSendCertificate(t *testing.T) {
 					MaxRetriesStoreCertificate: 1,
 				},
 			}
+
+			if tt.mockValidatorFn != nil {
+				aggsender.validator = tt.mockValidatorFn()
+			}
+
 			mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{})
 			_, err := aggsender.sendCertificate(context.Background())
 
@@ -478,7 +533,57 @@ func TestAggSenderStartFailsCompatibilityChecker(t *testing.T) {
 		testData.sut.Start(testData.ctx)
 	}, "Expected panic when starting AggSender")
 }
+func TestSendCertificatesRetry(t *testing.T) {
+	mockCertStatusChecker := mocks.NewCertificateStatusChecker(t)
+	mockEpochNotifier := mocks.NewEpochNotifier(t)
+	mockStorage := mocks.NewAggSenderStorage(t)
+	mockFlow := mocks.NewAggsenderFlow(t)
 
+	logger := log.WithFields("aggsender-test", "TestSendCertificatesRetry")
+	aggSender := &AggSender{
+		log:               logger,
+		certStatusChecker: mockCertStatusChecker,
+		epochNotifier:     mockEpochNotifier,
+		storage:           mockStorage,
+		flow:              mockFlow,
+		cfg: config.Config{
+			RetryCertAfterInError:          true,
+			CheckStatusCertificateInterval: types.NewDuration(0),
+			RetriesToBuildAndSendCertificate: aggkitcommon.RetryPolicyGenericConfig{
+				Mode:       aggkitcommon.RetryConfigModeDelays,
+				MaxRetries: 1,
+				Delays: []types.Duration{{Duration: time.Millisecond},
+					{Duration: time.Millisecond},
+				},
+			},
+		},
+		status: &aggsendertypes.AggsenderStatus{},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	chEpoch := make(chan aggsendertypes.EpochEvent)
+	mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
+	expectedNumAttempts := 4
+	mockCertStatusChecker.EXPECT().CheckPendingCertificatesStatus(mock.Anything).Return(aggsendertypes.CertStatus{
+		ExistPendingCerts:   false,
+		ExistNewInErrorCert: false,
+	}).Times(2)
+	mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{
+		Epoch:        123,
+		PercentEpoch: 0.2,
+	}).Times(expectedNumAttempts)
+	mockFlow.EXPECT().GetCertificateBuildParams(mock.Anything).
+		Return(nil, errors.New("err")).Times(expectedNumAttempts)
+	go func() {
+		fmt.Println("send epoch 1")
+		chEpoch <- aggsendertypes.EpochEvent{Epoch: 1}
+		fmt.Println("send epoch 2")
+		chEpoch <- aggsendertypes.EpochEvent{Epoch: 2}
+	}()
+	aggSender.sendCertificates(ctx, 2)
+}
 func TestSendCertificates(t *testing.T) {
 	t.Parallel()
 

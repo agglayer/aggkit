@@ -25,21 +25,23 @@ func TestSync(t *testing.T) {
 		MaxRetryAttemptsAfterError: 5,
 		RetryAfterErrorPeriod:      time.Millisecond * 100,
 	}
+	ctx := t.Context()
 	rdm := NewReorgDetectorMock(t)
 	pm := NewProcessorMock(t)
 	dm := NewDownloaderMock(t)
 	compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
+	compatibilityCheckerMock.EXPECT().Check(ctx, mock.Anything).Return(nil)
 
 	firstReorgedBlock := make(chan uint64)
 	reorgProcessed := make(chan bool)
-	rdm.On("Subscribe", reorgDetectorID).Return(&reorgdetector.Subscription{
-		ReorgedBlock:   firstReorgedBlock,
-		ReorgProcessed: reorgProcessed,
-	}, nil)
+	rdm.EXPECT().Subscribe(reorgDetectorID).
+		Return(
+			&reorgdetector.Subscription{
+				ReorgedBlock:   firstReorgedBlock,
+				ReorgProcessed: reorgProcessed,
+			}, nil)
 	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatibilityCheckerMock)
 	require.NoError(t, err)
-	driver.compatibilityChecker = compatibilityCheckerMock
-	ctx := context.Background()
 	expectedBlock1 := EVMBlock{
 		EVMBlockHeader: EVMBlockHeader{
 			Num:  3,
@@ -57,57 +59,45 @@ func TestSync(t *testing.T) {
 		green bool
 	}
 	reorg1Completed := reorgSemaphore{}
-	compatibilityCheckerMock.EXPECT().Check(ctx, mock.Anything).Return(nil)
-	dm.On("Download", mock.Anything, mock.Anything, mock.Anything).Run(func(args mock.Arguments) {
-		ctx, ok := args.Get(0).(context.Context)
-		if !ok {
-			log.Error("failed to assert type for context")
-			return
-		}
-
-		downloadedCh, ok := args.Get(2).(chan EVMBlock)
-		if !ok {
-			log.Error("failed to assert type for downloadedCh")
-			return
-		}
-
-		log.Info("entering mock loop")
-		for {
-			select {
-			case <-ctx.Done():
-				log.Info("closing channel")
-				close(downloadedCh)
-				return
-			default:
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ uint64, downloadedCh chan EVMBlock) {
+			log.Info("entering mock loop")
+			for {
+				select {
+				case <-ctx.Done():
+					log.Info("closing channel")
+					close(downloadedCh)
+					return
+				default:
+				}
+				reorg1Completed.mu.Lock()
+				green := reorg1Completed.green
+				reorg1Completed.mu.Unlock()
+				if green {
+					downloadedCh <- expectedBlock2
+				} else {
+					downloadedCh <- expectedBlock1
+				}
+				time.Sleep(100 * time.Millisecond)
 			}
-			reorg1Completed.mu.Lock()
-			green := reorg1Completed.green
-			reorg1Completed.mu.Unlock()
-			if green {
-				downloadedCh <- expectedBlock2
-			} else {
-				downloadedCh <- expectedBlock1
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-	})
+		})
+
 	// Mocking this actions, the driver should "store" all the blocks from the downloader
-	pm.On("GetLastProcessedBlock", ctx).
-		Return(uint64(3), nil)
-	rdm.On("AddBlockToTrack", ctx, reorgDetectorID, expectedBlock1.Num, expectedBlock1.Hash).
+	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), nil)
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock1.Num, expectedBlock1.Hash).Return(nil)
+	pm.EXPECT().ProcessBlock(mock.Anything, Block{Num: expectedBlock1.Num, Events: expectedBlock1.Events, Hash: expectedBlock1.Hash}).
 		Return(nil)
-	pm.On("ProcessBlock", ctx, Block{Num: expectedBlock1.Num, Events: expectedBlock1.Events, Hash: expectedBlock1.Hash}).
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock2.Num, expectedBlock2.Hash).
 		Return(nil)
-	rdm.On("AddBlockToTrack", ctx, reorgDetectorID, expectedBlock2.Num, expectedBlock2.Hash).
-		Return(nil)
-	pm.On("ProcessBlock", ctx, Block{Num: expectedBlock2.Num, Events: expectedBlock2.Events, Hash: expectedBlock2.Hash}).
+	pm.EXPECT().
+		ProcessBlock(mock.Anything, Block{Num: expectedBlock2.Num, Events: expectedBlock2.Events, Hash: expectedBlock2.Hash}).
 		Return(nil)
 	go driver.Sync(ctx)
 	time.Sleep(time.Millisecond * 200) // time to download expectedBlock1
 
 	// Trigger reorg 1
 	reorgedBlock1 := uint64(5)
-	pm.On("Reorg", ctx, reorgedBlock1).Return(nil)
+	pm.EXPECT().Reorg(ctx, reorgedBlock1).Return(nil)
 	firstReorgedBlock <- reorgedBlock1
 	ok := <-reorgProcessed
 	require.True(t, ok)
@@ -116,129 +106,272 @@ func TestSync(t *testing.T) {
 	reorg1Completed.mu.Unlock()
 	time.Sleep(time.Millisecond * 200) // time to download expectedBlock2
 
-	// Trigger reorg 2: syncer restarts the porcess
+	// Trigger reorg 2: syncer restarts the process
 	reorgedBlock2 := uint64(7)
-	pm.On("Reorg", ctx, reorgedBlock2).Return(nil)
+	pm.EXPECT().Reorg(ctx, reorgedBlock2).Return(nil)
 	firstReorgedBlock <- reorgedBlock2
 	ok = <-reorgProcessed
 	require.True(t, ok)
 }
 
-func TestHandleNewBlock(t *testing.T) {
+func TestSync_ReorgCancelsRetryHandlerInHandleNewBlock(t *testing.T) {
 	rh := &RetryHandler{
-		MaxRetryAttemptsAfterError: 5,
-		RetryAfterErrorPeriod:      time.Millisecond * 100,
+		MaxRetryAttemptsAfterError: -1, // infinite retries
+		RetryAfterErrorPeriod:      100 * time.Millisecond,
 	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+
 	rdm := NewReorgDetectorMock(t)
 	pm := NewProcessorMock(t)
 	dm := NewDownloaderMock(t)
 	compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
-	rdm.On("Subscribe", reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
+	compatibilityCheckerMock.EXPECT().Check(ctx, mock.Anything).Return(nil)
+
+	var (
+		reorgedBlockCh   = make(chan uint64)
+		reorgProcessedCh = make(chan bool)
+	)
+
+	rdm.EXPECT().Subscribe(reorgDetectorID).
+		Return(&reorgdetector.Subscription{
+			ReorgedBlock:   reorgedBlockCh,
+			ReorgProcessed: reorgProcessedCh,
+		}, nil)
+
 	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatibilityCheckerMock)
 	require.NoError(t, err)
-	ctx := context.Background()
 
-	// happy path
-	b1 := EVMBlock{
+	reorgedBlock := uint64(5)
+
+	expectedBlock := EVMBlock{
 		EVMBlockHeader: EVMBlockHeader{
-			Num:  1,
-			Hash: common.HexToHash("f00"),
+			Num:  10,
+			Hash: common.HexToHash("a"),
 		},
 	}
-	rdm.
-		On("AddBlockToTrack", ctx, reorgDetectorID, b1.Num, b1.Hash).
-		Return(nil)
-	pm.On("ProcessBlock", ctx, Block{Num: b1.Num, Events: b1.Events, Hash: b1.Hash}).
-		Return(nil)
-	driver.handleNewBlock(ctx, nil, b1)
 
-	// reorg deteector fails once
-	b2 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  2,
-			Hash: common.HexToHash("f00"),
+	cancelObserved := make(chan struct{})
+
+	// infinite loop that keeps feeding the same block
+	dm.EXPECT().Download(mock.Anything, mock.Anything, mock.Anything).
+		Run(func(ctx context.Context, _ uint64, ch chan EVMBlock) {
+			for {
+				ch <- expectedBlock
+				select {
+				case <-ctx.Done():
+					close(ch)
+					return
+				case <-time.After(50 * time.Millisecond):
+					continue
+				}
+			}
+		})
+
+	pm.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(3), nil)
+
+	// AddBlockToTrack always returns nil
+	rdm.EXPECT().AddBlockToTrack(mock.Anything, reorgDetectorID, expectedBlock.Num, expectedBlock.Hash).
+		Return(nil)
+
+	// ProcessBlock always errors, until cancelled
+	pm.EXPECT().
+		ProcessBlock(mock.Anything, Block{Num: expectedBlock.Num, Hash: expectedBlock.Hash}).
+		RunAndReturn(func(ctx context.Context, _ Block) error {
+			select {
+			case <-ctx.Done():
+				close(cancelObserved)
+				return ctx.Err()
+			case <-time.After(50 * time.Millisecond):
+				return errors.New("processing failed")
+			}
+		})
+
+	go driver.Sync(ctx)
+
+	time.Sleep(300 * time.Millisecond) // Let it retry a few times
+
+	// trigger reorg while it's retrying
+	pm.EXPECT().Reorg(ctx, reorgedBlock).Return(nil)
+	reorgedBlockCh <- reorgedBlock
+
+	ok := <-reorgProcessedCh
+	require.True(t, ok)
+}
+
+func TestHandleNewBlock(t *testing.T) {
+	type call struct {
+		addBlockErrs []error
+		processErrs  []error
+		expectedErr  error
+	}
+
+	tests := []struct {
+		name  string
+		block EVMBlock
+		calls call
+	}{
+		{
+			name: "happy path",
+			block: EVMBlock{
+				EVMBlockHeader: EVMBlockHeader{
+					Num:  1,
+					Hash: common.HexToHash("f00"),
+				},
+			},
+			calls: call{
+				addBlockErrs: []error{nil},
+				processErrs:  []error{nil},
+			},
+		},
+		{
+			name: "reorg detector fails once",
+			block: EVMBlock{
+				EVMBlockHeader: EVMBlockHeader{
+					Num:  2,
+					Hash: common.HexToHash("f00"),
+				},
+			},
+			calls: call{
+				addBlockErrs: []error{errors.New("foo"), nil},
+				processErrs:  []error{nil},
+			},
+		},
+		{
+			name: "processor fails once",
+			block: EVMBlock{
+				EVMBlockHeader: EVMBlockHeader{
+					Num:  3,
+					Hash: common.HexToHash("f00"),
+				},
+			},
+			calls: call{
+				addBlockErrs: []error{nil},
+				processErrs:  []error{errors.New("foo"), nil},
+			},
+		},
+		{
+			name: "processor returns ErrInconsistentState",
+			block: EVMBlock{
+				EVMBlockHeader: EVMBlockHeader{
+					Num:  4,
+					Hash: common.HexToHash("f00"),
+				},
+			},
+			calls: call{
+				addBlockErrs: []error{nil},
+				processErrs:  []error{ErrInconsistentState},
+				expectedErr:  ErrInconsistentState,
+			},
 		},
 	}
-	rdm.
-		On("AddBlockToTrack", ctx, reorgDetectorID, b2.Num, b2.Hash).
-		Return(errors.New("foo")).Once()
-	rdm.
-		On("AddBlockToTrack", ctx, reorgDetectorID, b2.Num, b2.Hash).
-		Return(nil).Once()
-	pm.On("ProcessBlock", ctx, Block{Num: b2.Num, Events: b2.Events, Hash: b2.Hash}).
-		Return(nil)
-	driver.handleNewBlock(ctx, nil, b2)
 
-	// processor fails once
-	b3 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  3,
-			Hash: common.HexToHash("f00"),
-		},
-	}
-	rdm.
-		On("AddBlockToTrack", ctx, reorgDetectorID, b3.Num, b3.Hash).
-		Return(nil)
-	pm.On("ProcessBlock", ctx, Block{Num: b3.Num, Events: b3.Events, Hash: b3.Hash}).
-		Return(errors.New("foo")).Once()
-	pm.On("ProcessBlock", ctx, Block{Num: b3.Num, Events: b3.Events, Hash: b3.Hash}).
-		Return(nil).Once()
-	driver.handleNewBlock(ctx, nil, b3)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rh := &RetryHandler{
+				MaxRetryAttemptsAfterError: 5,
+				RetryAfterErrorPeriod:      100 * time.Millisecond,
+			}
 
-	// inconsistent state error
-	b4 := EVMBlock{
-		EVMBlockHeader: EVMBlockHeader{
-			Num:  4,
-			Hash: common.HexToHash("f00"),
-		},
+			ctx := t.Context()
+			rdm := NewReorgDetectorMock(t)
+			pm := NewProcessorMock(t)
+			dm := NewDownloaderMock(t)
+			compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
+
+			rdm.EXPECT().Subscribe(reorgDetectorID).Return(&reorgdetector.Subscription{}, nil)
+			driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatibilityCheckerMock)
+			require.NoError(t, err)
+
+			// Expectations for AddBlockToTrack
+			for _, err := range tt.calls.addBlockErrs {
+				rdm.EXPECT().
+					AddBlockToTrack(ctx, reorgDetectorID, tt.block.Num, tt.block.Hash).
+					Return(err).Once()
+			}
+
+			// Expectations for ProcessBlock
+			for _, err := range tt.calls.processErrs {
+				pm.EXPECT().
+					ProcessBlock(ctx, Block{Num: tt.block.Num, Events: tt.block.Events, Hash: tt.block.Hash}).
+					Return(err).Once()
+			}
+
+			err = driver.handleNewBlock(ctx, tt.block)
+
+			if tt.calls.expectedErr != nil {
+				require.ErrorIs(t, err, tt.calls.expectedErr)
+			} else {
+				require.NoError(t, err)
+			}
+		})
 	}
-	rdm.
-		On("AddBlockToTrack", ctx, reorgDetectorID, b4.Num, b4.Hash).
-		Return(nil)
-	pm.On("ProcessBlock", ctx, Block{Num: b4.Num, Events: b4.Events, Hash: b4.Hash}).
-		Return(ErrInconsistentState)
-	cancelIsCalled := false
-	cancel := func() {
-		cancelIsCalled = true
-	}
-	driver.handleNewBlock(ctx, cancel, b4)
-	require.True(t, cancelIsCalled)
 }
 
 func TestHandleReorg(t *testing.T) {
-	rh := &RetryHandler{
-		MaxRetryAttemptsAfterError: 5,
-		RetryAfterErrorPeriod:      time.Millisecond * 100,
+	tests := []struct {
+		name              string
+		firstReorgedBlock uint64
+		reorgReturns      []error
+	}{
+		{
+			name:              "happy path",
+			firstReorgedBlock: 5,
+			reorgReturns:      []error{nil},
+		},
+		{
+			name:              "processor fails twice then succeeds",
+			firstReorgedBlock: 7,
+			reorgReturns: []error{
+				errors.New("first failure"),
+				errors.New("second failure"),
+				nil,
+			},
+		},
 	}
-	rdm := NewReorgDetectorMock(t)
-	pm := NewProcessorMock(t)
-	dm := NewDownloaderMock(t)
-	compatibilityCheckerMock := compmocks.NewCompatibilityChecker(t)
-	reorgProcessed := make(chan bool)
-	rdm.On("Subscribe", reorgDetectorID).Return(&reorgdetector.Subscription{
-		ReorgProcessed: reorgProcessed,
-	}, nil)
-	driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatibilityCheckerMock)
-	require.NoError(t, err)
-	ctx := context.Background()
 
-	// happy path
-	_, cancel := context.WithCancel(ctx)
-	firstReorgedBlock := uint64(5)
-	pm.On("Reorg", ctx, firstReorgedBlock).Return(nil)
-	go driver.handleReorg(ctx, cancel, firstReorgedBlock)
-	done := <-reorgProcessed
-	require.True(t, done)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rh := &RetryHandler{
+				MaxRetryAttemptsAfterError: 5,
+				RetryAfterErrorPeriod:      10 * time.Millisecond,
+			}
 
-	// processor fails 2 times
-	_, cancel = context.WithCancel(ctx)
-	firstReorgedBlock = uint64(7)
-	pm.On("Reorg", ctx, firstReorgedBlock).Return(errors.New("foo")).Once()
-	pm.On("Reorg", ctx, firstReorgedBlock).Return(errors.New("foo")).Once()
-	pm.On("Reorg", ctx, firstReorgedBlock).Return(nil).Once()
-	go driver.handleReorg(ctx, cancel, firstReorgedBlock)
-	done = <-reorgProcessed
-	require.True(t, done)
+			rdm := NewReorgDetectorMock(t)
+			pm := NewProcessorMock(t)
+			dm := NewDownloaderMock(t)
+			compatChecker := compmocks.NewCompatibilityChecker(t)
+
+			reorgProcessed := make(chan bool, 1) // buffer to avoid blocking
+
+			rdm.EXPECT().Subscribe(reorgDetectorID).
+				Return(&reorgdetector.Subscription{ReorgProcessed: reorgProcessed}, nil)
+
+			ctx := t.Context()
+			driver, err := NewEVMDriver(rdm, pm, dm, reorgDetectorID, 10, rh, compatChecker)
+			require.NoError(t, err)
+
+			// Set expectations for Reorg calls
+			for _, ret := range tt.reorgReturns {
+				pm.EXPECT().
+					Reorg(mock.Anything, tt.firstReorgedBlock).
+					Return(ret).
+					Once()
+			}
+
+			// Call the method
+			err = driver.handleReorg(ctx, tt.firstReorgedBlock)
+			require.NoError(t, err)
+
+			// Wait for signal with timeout
+			select {
+			case ok := <-reorgProcessed:
+				require.True(t, ok, "expected true on reorgProcessed channel")
+			case <-time.After(100 * time.Millisecond):
+				t.Fatal("timeout waiting for ReorgProcessed signal")
+			}
+		})
+	}
 }
 
 func TestCheckCompatibility(t *testing.T) {

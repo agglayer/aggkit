@@ -6,11 +6,12 @@
   },
   "args": {
     "verbosity": "debug",
-    "cdk_node_image": "aggkit:local",
+    "aggkit_image": "aggkit:local",
     "additional_services": [],
     "erigon_strict_mode": false,
     "enable_normalcy": true,
     "binary_name": "aggkit",
-    "aggkit_components": "aggsender,bridge"
+    "aggkit_components": "aggsender,bridge",
+    "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.63.0-rc4"
   }
 }

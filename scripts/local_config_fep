@@ -1,0 +1,29 @@
+#!/bin/bash
+
+source $(dirname $0)/local_config_helper
+export KURTOSIS_ENCLAVE=op
+
+###############################################################################
+function export_values_of_aggkit_config() {
+    local AGGKIT_CONFIG_FILE="$1"
+    common_export_values_of_aggkit_config "$AGGKIT_CONFIG_FILE"
+    export_key_from_toml_file_or_fatal sovereign_bridge_proxy_addr $AGGKIT_CONFIG_FILE BridgeL2Sync BridgeAddr
+    export_key_from_toml_file_or_fatal sovereign_rollup_addr $AGGKIT_CONFIG_FILE L1Config polygonZkEVMAddress
+    export_key_from_toml_file_or_fatal sovereign_ger_proxy_addr $AGGKIT_CONFIG_FILE L2Config GlobalExitRootAddr
+}
+###############################################################################
+function export_ports_from_kurtosis() {
+    common_export_ports_from_kurtosis
+    export_portnum_from_kurtosis_or_fail op_el_rpc_port op-el-1-op-geth-op-node-001 rpc
+    export_portnum_from_kurtosis_or_fail aggkit_prover_grpc_port aggkit-prover-001 grpc
+    export_portnum_from_kurtosis_or_fail op_cl_rpc_url_port op-cl-1-op-node-op-geth-001 http
+    export op_el_rpc_url="http://localhost:${op_el_rpc_port}"
+    export aggchain_proof_url="http://localhost:${aggkit_prover_grpc_port}"
+    export op_cl_rpc_url="http://localhost:${op_cl_rpc_url_port}"
+}
+###############################################################################
+# MAIN
+###############################################################################
+ORIG_TEMPLATE_FILE=test/config/fep-config.toml.template
+DEST_TEMPLATE_FILE=$DEST/test.kurtosis.toml
+main $*

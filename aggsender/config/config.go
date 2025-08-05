@@ -3,20 +3,24 @@ package config
 import (
 	"fmt"
 
+	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
-	aggkitgrpc "github.com/agglayer/aggkit/grpc"
+	"github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
+
+var errValidatorClientURLNotSet = fmt.Errorf("ValidatorClient URL must be set when RequireValidatorCall is true")
 
 // Config is the configuration for the AggSender
 type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
 	StoragePath string `mapstructure:"StoragePath"`
 	// AgglayerClient is the Agglayer gRPC client configuration
-	AgglayerClient *aggkitgrpc.ClientConfig `mapstructure:"AgglayerClient"`
+	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
 	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
@@ -45,7 +49,7 @@ type Config struct {
 	// EnableRPC is a flag to enable the RPC for aggsender
 	EnableRPC bool `mapstructure:"EnableRPC"`
 	// AggkitProverClient is the config for the AggkitProver client
-	AggkitProverClient *aggkitgrpc.ClientConfig `mapstructure:"AggkitProverClient"`
+	AggkitProverClient *grpc.ClientConfig `mapstructure:"AggkitProverClient"`
 	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)
 	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
 	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
@@ -81,6 +85,12 @@ type Config struct {
 	// StopOnFinishedSendingAllCertificates is a flag to stop the AggSender when it finishes sending all certificates
 	// up to MaxL2BlockNumber
 	StopOnFinishedSendingAllCertificates bool `mapstructure:"StopOnFinishedSendingAllCertificates"`
+	// RequireValidatorCall indicates whether the validator call is mandatory.
+	RequireValidatorCall bool `mapstructure:"RequireValidatorCall"`
+	// ValidatorClient is the configuration for the ValidatorClient
+	ValidatorClient *grpc.ClientConfig `mapstructure:"ValidatorClient"`
+	// RetriesToBuildAndSendCertificate is the configuration for the retries to build and send a certificate
+	RetriesToBuildAndSendCertificate common.RetryPolicyGenericConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
@@ -102,5 +112,33 @@ func (c Config) String() string {
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
-		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n"
+		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
+		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n"
+}
+
+// Validate checks if the configuration is valid
+func (c Config) Validate() error {
+	if c.RequireValidatorCall {
+		if c.Mode != aggsendertypes.PessimisticProofMode.String() {
+			return fmt.Errorf("RequireValidatorCall can only be true in PessimisticProof mode, got %s", c.Mode)
+		}
+
+		if c.ValidatorClient == nil || c.ValidatorClient.URL == "" {
+			return errValidatorClientURLNotSet
+		}
+	}
+
+	if err := c.AgglayerClient.Validate(); err != nil {
+		return fmt.Errorf("invalid agglayer client config: %w", err)
+	}
+
+	if c.Mode == aggsendertypes.AggchainProofMode.String() {
+		if err := c.AggkitProverClient.Validate(); err != nil {
+			return fmt.Errorf("invalid aggkit prover client config: %w", err)
+		}
+	}
+	if err := c.RetriesToBuildAndSendCertificate.Validate(); err != nil {
+		return fmt.Errorf("invalid RetriesToBuildAndSendCertificate config: %w", err)
+	}
+	return nil
 }

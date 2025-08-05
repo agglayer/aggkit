@@ -20,7 +20,7 @@ func TestNewClient(t *testing.T) {
 	tests := []struct {
 		name           string
 		cfg            config.L1NetworkConfig
-		mockDial       DialFunc
+		ethClient      aggkittypes.BaseEthereumClienter
 		mockFactory    RollupManagerFactoryFunc
 		expectedErr    string
 		expectedRollup uint32
@@ -28,13 +28,13 @@ func TestNewClient(t *testing.T) {
 		{
 			name: "success",
 			cfg: config.L1NetworkConfig{
-				URL:               "http://localhost:8545",
+				RPC: config.RPCClientConfig{
+					URL: "http://localhost:8545",
+				},
 				RollupAddr:        mockAddr,
 				RollupManagerAddr: common.HexToAddress("0xabc"),
 			},
-			mockDial: func(rawurl string) (aggkittypes.BaseEthereumClienter, error) {
-				return aggkittypesmocks.NewBaseEthereumClienter(t), nil
-			},
+			ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),
 			mockFactory: func(addr common.Address, client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error) {
 				rm := mocks.NewRollupManagerContract(t)
 				rm.EXPECT().RollupAddressToID(mock.Anything, mock.Anything).Return(uint32(42), nil)
@@ -43,23 +43,14 @@ func TestNewClient(t *testing.T) {
 			expectedRollup: 42,
 		},
 		{
-			name: "dial fails",
-			cfg:  config.L1NetworkConfig{URL: "fail"},
-			mockDial: func(rawurl string) (aggkittypes.BaseEthereumClienter, error) {
-				return nil, errors.New("dial error")
-			},
-			mockFactory: nil,
-			expectedErr: "dial error",
-		},
-		{
 			name: "rollup manager creation fails",
 			cfg: config.L1NetworkConfig{
-				URL:               "ok",
+				RPC: config.RPCClientConfig{
+					URL: "ok",
+				},
 				RollupManagerAddr: mockAddr,
 			},
-			mockDial: func(_ string) (aggkittypes.BaseEthereumClienter, error) {
-				return aggkittypesmocks.NewBaseEthereumClienter(t), nil
-			},
+			ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),
 			mockFactory: func(addr common.Address, client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error) {
 				return nil, errors.New("factory error")
 			},
@@ -68,12 +59,12 @@ func TestNewClient(t *testing.T) {
 		{
 			name: "invalid rollup ID",
 			cfg: config.L1NetworkConfig{
-				URL:        "ok",
+				RPC: config.RPCClientConfig{
+					URL: "ok",
+				},
 				RollupAddr: mockAddr,
 			},
-			mockDial: func(_ string) (aggkittypes.BaseEthereumClienter, error) {
-				return aggkittypesmocks.NewBaseEthereumClienter(t), nil
-			},
+			ethClient: aggkittypesmocks.NewBaseEthereumClienter(t),
 			mockFactory: func(addr common.Address, client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error) {
 				rm := mocks.NewRollupManagerContract(t)
 				rm.EXPECT().RollupAddressToID(mock.Anything, mock.Anything).Return(uint32(0), nil)
@@ -85,8 +76,7 @@ func TestNewClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewRollupDataQuerier(tt.cfg, tt.mockDial, tt.mockFactory)
-
+			client, err := NewRollupDataQuerier(tt.cfg, tt.ethClient, tt.mockFactory)
 			if tt.expectedErr != "" {
 				require.Error(t, err)
 				require.Contains(t, err.Error(), tt.expectedErr)

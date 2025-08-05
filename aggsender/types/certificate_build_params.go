@@ -11,6 +11,40 @@ import (
 
 const claimSizeFactor = 200 // Size factor for claims in bytes
 
+// CertificatePreBuildParams is a struct that holds the parameters to pre-build a certificate
+// basically it's used for generate CertificateBuildParams that add bridges
+type CertificatePreBuildParams struct {
+	BlockRange          BlockRange
+	RetryCount          int
+	CertificateType     CertificateType
+	LastSentCertificate *CertificateHeader
+	L1InfoTreeToProve   *CertificateL1InfoTreeData
+	CreatedAt           uint32
+}
+
+func (c *CertificatePreBuildParams) String() string {
+	if c == nil {
+		return "CertificatePreBuildParams is nil"
+	}
+	return fmt.Sprintf("Type: %s BlockRange: %s,  RetryCount: %d, L1InfoTreeToProve:%s, CreatedAt:%d",
+		c.CertificateType, c.BlockRange.String(), c.RetryCount, c.L1InfoTreeToProve.String(), c.CreatedAt)
+}
+
+// CertificateL1InfoTreeData is a struct that holds the L1 info tree root and leaf count
+// that is used to prove the L1 info tree in the certificate
+type CertificateL1InfoTreeData struct {
+	L1InfoTreeRootToProve common.Hash
+	L1InfoTreeLeafCount   uint32
+}
+
+func (c *CertificateL1InfoTreeData) String() string {
+	if c == nil {
+		return "CertificateL1InfoTreeData is nil"
+	}
+	return fmt.Sprintf("CertificateL1InfoTreeData{L1InfoTreeRootFromWhichToProve: %s, L1InfoTreeLeafCount: %d}",
+		c.L1InfoTreeRootToProve.Hex(), c.L1InfoTreeLeafCount)
+}
+
 // CertificateBuildParams is a struct that holds the parameters to build a certificate
 type CertificateBuildParams struct {
 	FromBlock                      uint64

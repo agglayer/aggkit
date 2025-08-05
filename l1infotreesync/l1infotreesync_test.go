@@ -38,7 +38,7 @@ func TestGetLatestInfoUntilBlock(t *testing.T) {
 			halted: true,
 		},
 	}
-	_, err := s.GetLatestInfoUntilBlock(context.Background(), 0)
+	_, err := s.GetLatestL1InfoLeafUntilBlock(context.Background(), 0)
 	require.Error(t, err)
 	require.True(t, errors.Is(err, sync.ErrInconsistentState))
 }
