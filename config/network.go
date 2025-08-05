@@ -9,7 +9,6 @@ import (
 )
 
 var (
-	ErrMissingRPCConfig                    = errors.New("missing RPC configuration")
 	ErrMissingRPCURL                       = errors.New("missing RPC URL")
 	ErrMissingRollupAddress                = errors.New("missing rollup address")
 	ErrMissingRollupManagerAddress         = errors.New("missing rollup manager address")
@@ -43,9 +42,6 @@ type L1NetworkConfig struct {
 
 // Validate checks if the L1NetworkConfig is valid
 func (c *L1NetworkConfig) Validate() error {
-	if c.RPC.IsUndefined() {
-		return ErrMissingRPCConfig
-	}
 	if err := c.RPC.Validate(); err != nil {
 		return fmt.Errorf("invalid RPC configuration: %w", err)
 	}
@@ -87,10 +83,6 @@ func (c *RPCClientConfig) Validate() error {
 		return ErrMissingRPCURL
 	}
 
-	if c.MaxRetries < 0 {
-		return fmt.Errorf("max retries must be non-negative, got %d", c.MaxRetries)
-	}
-
 	return c.RetryPolicyGenericConfig.Validate()
 }
 
@@ -115,9 +107,6 @@ type L2RPCClientConfig struct {
 
 // Validate checks if the L2RPCClientConfig is valid
 func (c *L2RPCClientConfig) Validate() error {
-	if c.RPCClientConfig.IsUndefined() {
-		return ErrMissingRPCConfig
-	}
 	if err := c.RPCClientConfig.Validate(); err != nil {
 		return fmt.Errorf("invalid RPC configuration: %w", err)
 	}

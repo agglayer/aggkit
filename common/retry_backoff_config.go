@@ -39,6 +39,10 @@ func (r *RetryBackoffConfig) NewRetryHandler() (commontypes.RetryHandler, error)
 			float64(attempt))
 		delay := time.Duration(math.Min(backoff, float64(r.MaxBackoff.Duration)))
 		delays = append(delays, types.Duration{Duration: delay})
+
+		if backoff > float64(r.MaxBackoff.Duration) {
+			break
+		}
 	}
 
 	return NewRetryHandler(delays, r.MaxRetries), r.Validate()

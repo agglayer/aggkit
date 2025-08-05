@@ -47,7 +47,7 @@ func TestL1NetworkConfig_Validate(t *testing.T) {
 		{
 			name:    "missing RPC config",
 			cfg:     L1NetworkConfig{},
-			wantErr: ErrMissingRPCConfig,
+			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
 		},
 		{
 			name: "missing RPC URL",
@@ -125,7 +125,7 @@ func TestL2RPCClientConfig_Validate(t *testing.T) {
 		{
 			name:    "missing RPC config",
 			cfg:     L2RPCClientConfig{},
-			wantErr: ErrMissingRPCConfig,
+			wantErr: fmt.Errorf("invalid RPC configuration: %w", ErrMissingRPCURL),
 		},
 		{
 			name: "missing RPC URL",
@@ -189,16 +189,18 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 			config: RPCClientConfig{
 				URL: "http://localhost:8545",
 				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
-					MaxRetries: -1,
+					Mode:       aggkitcommon.RetryConfigModeBackoff,
+					MaxRetries: -2,
 				},
 			},
-			wantErr: errors.New("max retries must be non-negative, got -1"),
+			wantErr: errors.New("max retries -2 cannot be less than -1"),
 		},
 		{
 			name: "initial backoff is zero",
 			config: RPCClientConfig{
 				URL: "http://localhost:8545",
 				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					Mode:              aggkitcommon.RetryConfigModeBackoff,
 					MaxRetries:        3,
 					InitialBackoff:    types.Duration{Duration: 0},
 					MaxBackoff:        types.Duration{Duration: time.Second},
@@ -212,6 +214,7 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 			config: RPCClientConfig{
 				URL: "http://localhost:8545",
 				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					Mode:              aggkitcommon.RetryConfigModeBackoff,
 					MaxRetries:        3,
 					InitialBackoff:    types.Duration{Duration: time.Second},
 					MaxBackoff:        types.Duration{Duration: 0},
@@ -225,6 +228,7 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 			config: RPCClientConfig{
 				URL: "http://localhost:8545",
 				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					Mode:              aggkitcommon.RetryConfigModeBackoff,
 					MaxRetries:        3,
 					InitialBackoff:    types.Duration{Duration: 2 * time.Second},
 					MaxBackoff:        types.Duration{Duration: time.Second},
@@ -238,6 +242,7 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 			config: RPCClientConfig{
 				URL: "http://localhost:8545",
 				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					Mode:              aggkitcommon.RetryConfigModeBackoff,
 					MaxRetries:        3,
 					InitialBackoff:    types.Duration{Duration: time.Second},
 					MaxBackoff:        types.Duration{Duration: 5 * time.Second},
@@ -251,6 +256,7 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 			config: RPCClientConfig{
 				URL: "http://localhost:8545",
 				RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+					Mode:              aggkitcommon.RetryConfigModeBackoff,
 					MaxRetries:        3,
 					InitialBackoff:    types.Duration{Duration: time.Second},
 					MaxBackoff:        types.Duration{Duration: 5 * time.Second},
@@ -268,7 +274,7 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 			if tt.wantErr == nil {
 				require.NoError(t, err, "expected no error, got: %v", err)
 			} else {
-				require.Error(t, err, tt.wantErr, "expected error %q, got %q", tt.wantErr.Error(), err.Error())
+				require.ErrorContains(t, err, tt.wantErr.Error())
 			}
 		})
 	}
