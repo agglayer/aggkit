@@ -47,7 +47,6 @@ func (c *certificateInfo) toCertificate() (*types.Certificate, error) {
 			contentStr := string(content)
 			signedCert = &contentStr
 		} else {
-			// Log error but continue with the file path - don't break the flow
 			log.Errorf("Failed to read signed certificate file %s: %v", *signedCert, err)
 			return nil, err
 		}

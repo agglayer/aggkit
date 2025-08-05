@@ -28,17 +28,17 @@ func (_m *AggSenderStorage) EXPECT() *AggSenderStorage_Expecter {
 	return &AggSenderStorage_Expecter{mock: &_m.Mock}
 }
 
-// DeleteCertificate provides a mock function with given fields: ctx, certificate
-func (_m *AggSenderStorage) DeleteCertificate(ctx context.Context, certificate types.Certificate) error {
-	ret := _m.Called(ctx, certificate)
+// DeleteCertificate provides a mock function with given fields: ctx, certificateID
+func (_m *AggSenderStorage) DeleteCertificate(ctx context.Context, certificateID common.Hash) error {
+	ret := _m.Called(ctx, certificateID)
 
 	if len(ret) == 0 {
 		panic("no return value specified for DeleteCertificate")
 	}
 
 	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, types.Certificate) error); ok {
-		r0 = rf(ctx, certificate)
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) error); ok {
+		r0 = rf(ctx, certificateID)
 	} else {
 		r0 = ret.Error(0)
 	}
@@ -53,14 +53,14 @@ type AggSenderStorage_DeleteCertificate_Call struct {
 
 // DeleteCertificate is a helper method to define mock.On call
 //   - ctx context.Context
-//   - certificate types.Certificate
-func (_e *AggSenderStorage_Expecter) DeleteCertificate(ctx interface{}, certificate interface{}) *AggSenderStorage_DeleteCertificate_Call {
-	return &AggSenderStorage_DeleteCertificate_Call{Call: _e.mock.On("DeleteCertificate", ctx, certificate)}
+//   - certificateID common.Hash
+func (_e *AggSenderStorage_Expecter) DeleteCertificate(ctx interface{}, certificateID interface{}) *AggSenderStorage_DeleteCertificate_Call {
+	return &AggSenderStorage_DeleteCertificate_Call{Call: _e.mock.On("DeleteCertificate", ctx, certificateID)}
 }
 
-func (_c *AggSenderStorage_DeleteCertificate_Call) Run(run func(ctx context.Context, certificate types.Certificate)) *AggSenderStorage_DeleteCertificate_Call {
+func (_c *AggSenderStorage_DeleteCertificate_Call) Run(run func(ctx context.Context, certificateID common.Hash)) *AggSenderStorage_DeleteCertificate_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(types.Certificate))
+		run(args[0].(context.Context), args[1].(common.Hash))
 	})
 	return _c
 }
@@ -70,7 +70,7 @@ func (_c *AggSenderStorage_DeleteCertificate_Call) Return(_a0 error) *AggSenderS
 	return _c
 }
 
-func (_c *AggSenderStorage_DeleteCertificate_Call) RunAndReturn(run func(context.Context, types.Certificate) error) *AggSenderStorage_DeleteCertificate_Call {
+func (_c *AggSenderStorage_DeleteCertificate_Call) RunAndReturn(run func(context.Context, common.Hash) error) *AggSenderStorage_DeleteCertificate_Call {
 	_c.Call.Return(run)
 	return _c
 }
