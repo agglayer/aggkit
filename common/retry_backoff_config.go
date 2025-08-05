@@ -58,26 +58,24 @@ func (r *RetryBackoffConfig) Validate() error {
 			ErrInvalidConfig, r.MaxRetries, MaxAttemptsInfinite)
 	}
 
-	if r.BackoffMultiplier <= 0.0 {
-		return fmt.Errorf("%w: RetryBackoffConfig backoff multiplier must be greater than zero, got %f",
-			ErrInvalidConfig, r.BackoffMultiplier)
-	}
-
 	if r.InitialBackoff.Duration <= 0 {
-		return fmt.Errorf("initial backoff must be positive, got %s", r.InitialBackoff.Duration)
+		return fmt.Errorf("%w: RetryBackoffConfig initial backoff must be greater than 0, got %s",
+			ErrInvalidConfig, r.InitialBackoff.Duration)
 	}
 
 	if r.MaxBackoff.Duration <= 0 {
-		return fmt.Errorf("max backoff must be positive, got %s", r.MaxBackoff.Duration)
+		return fmt.Errorf("%w: RetryBackoffConfig max backoff must be greater than 0, got %s",
+			ErrInvalidConfig, r.MaxBackoff.Duration)
 	}
 
 	if r.MaxBackoff.Duration < r.InitialBackoff.Duration {
-		return fmt.Errorf("max backoff %s must be greater than or equal to initial backoff %s",
-			r.MaxBackoff.Duration, r.InitialBackoff.Duration)
+		return fmt.Errorf("%w: RetryBackoffConfig max backoff %s must be greater than or equal to initial backoff %s",
+			ErrInvalidConfig, r.MaxBackoff.Duration, r.InitialBackoff.Duration)
 	}
 
 	if r.BackoffMultiplier <= 1.0 {
-		return fmt.Errorf("backoff multiplier must be greater than 1.0, got %f", r.BackoffMultiplier)
+		return fmt.Errorf("%w: RetryBackoffConfig backoff multiplier must be greater than 1.0, got %f",
+			ErrInvalidConfig, r.BackoffMultiplier)
 	}
 
 	return nil
