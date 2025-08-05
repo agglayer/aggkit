@@ -119,7 +119,7 @@ func Test_Storage(t *testing.T) {
 		}
 		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
 
-		require.NoError(t, storage.DeleteCertificate(ctx, certificate))
+		require.NoError(t, storage.DeleteCertificate(ctx, certificate.Header.CertificateID))
 
 		certificateFromDB, err := storage.GetCertificateByHeight(certificate.Header.Height)
 		require.ErrorIs(t, err, db.ErrNotFound)
