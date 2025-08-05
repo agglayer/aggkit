@@ -37,8 +37,6 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.AgglayerClient.Cached, false)
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.RequestTimeout.Duration, 300*time.Second)
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.Retry.MaxAttempts, 20)
-	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
-	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.SovereignRollupAddr, cfg.AggSender.SovereignRollupAddr)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")

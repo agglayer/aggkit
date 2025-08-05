@@ -48,5 +48,11 @@ func NewAgglayerClient(cfg ClientConfig) (AgglayerClientInterface, error) {
 		client = NewCertificateCache(
 			client, cfg.ConfigurationCache.TTL.Duration, cfg.ConfigurationCache.Capacity)
 	}
+
+	// Apply rate limiting wrapper if any rate limits are configured
+	if len(cfg.APIRateLimits) > 0 {
+		client = NewRateLimitWrapper(client, cfg, nil)
+	}
+
 	return client, nil
 }
