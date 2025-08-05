@@ -207,7 +207,7 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 					BackoffMultiplier: 2.0,
 				},
 			},
-			wantErr: errors.New("initial backoff must be positive, got 0s"),
+			wantErr: errors.New("initial backoff must be greater than 0, got 0s"),
 		},
 		{
 			name: "max backoff is zero",
@@ -221,7 +221,7 @@ func TestRPCClientConfig_Validate(t *testing.T) {
 					BackoffMultiplier: 2.0,
 				},
 			},
-			wantErr: errors.New("max backoff must be positive, got 0s"),
+			wantErr: errors.New("max backoff must be greater than 0, got 0s"),
 		},
 		{
 			name: "max backoff < initial backoff",
