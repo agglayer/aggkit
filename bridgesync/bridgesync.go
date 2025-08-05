@@ -326,11 +326,19 @@ func (s *BridgeSync) GetLastProcessedBlock(ctx context.Context) (uint64, error) 
 	return s.processor.GetLastProcessedBlock(ctx)
 }
 
-func (s *BridgeSync) GetBridgeRootByHash(ctx context.Context, root common.Hash) (*tree.Root, error) {
+func (s *BridgeSync) GetExitRootByHash(ctx context.Context, root common.Hash) (*tree.Root, error) {
 	if s.processor.isHalted() {
 		return nil, sync.ErrInconsistentState
 	}
 	return s.processor.exitTree.GetRootByHash(ctx, root)
+}
+
+func (s *BridgeSync) GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.Int) (Claim, error) {
+	if s.processor.isHalted() {
+		s.processor.log.Error("processor is halted, cannot get claim by global index")
+		return Claim{}, sync.ErrInconsistentState
+	}
+	return s.processor.GetClaimByGlobalIndex(ctx, globalIndex)
 }
 
 func (s *BridgeSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {

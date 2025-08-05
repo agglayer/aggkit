@@ -156,6 +156,11 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
 }
 
+func (a *AgglayerGRPCClient) GetLatestSettledImportedBridgeExit(ctx context.Context) (*types.GlobalIndex, error) {
+	// TODO - implement this method once agglayer supports it
+	return &types.GlobalIndex{}, nil
+}
+
 // ConvertCertToProtoCertificate converts a types.Certificate to a grpc v1nodetypes.Certificate
 func ConvertCertToProtoCertificate(
 	certificate *types.Certificate,

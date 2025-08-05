@@ -19,8 +19,6 @@ import (
 var (
 	errNoBridgesAndClaims = errors.New("no bridges and claims to build certificate")
 	errNoNewBlocks        = errors.New("no new blocks to send a certificate")
-
-	emptyLER = common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757")
 )
 
 // TimeNowUTC returns the current time in UTC as a uint32 timestamp.
@@ -349,7 +347,7 @@ func (f *baseFlow) getStartLER() (common.Hash, error) {
 	}
 
 	if ler == aggkitcommon.ZeroHash {
-		return emptyLER, nil
+		return types.EmptyLER, nil
 	}
 
 	return ler, nil

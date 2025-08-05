@@ -471,6 +471,13 @@ type GlobalIndex struct {
 	LeafIndex   uint32 `json:"leaf_index"`
 }
 
+func (g *GlobalIndex) ToBigInt() *big.Int {
+	if g == nil {
+		return nil
+	}
+	return bridgesync.GenerateGlobalIndex(g.MainnetFlag, g.RollupIndex, g.LeafIndex)
+}
+
 func (g *GlobalIndex) Validate() error {
 	if g == nil {
 		return errors.New("globalIndex is nil")

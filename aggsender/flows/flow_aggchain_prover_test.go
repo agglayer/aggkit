@@ -507,7 +507,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		{
 			name: "error building certificate",
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier, mockSigner *mocks.Signer) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(emptyLER, nil)
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(common.Hash{}, errors.New("some error"))
 			},
 			buildParams: &types.CertificateBuildParams{
@@ -525,7 +525,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
 				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0x123"))
 				mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil)
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(emptyLER, nil)
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 			},
 			buildParams: &types.CertificateBuildParams{
 				FromBlock:                      1,
@@ -554,12 +554,12 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			expectedResult: &agglayertypes.Certificate{
 				NetworkID:           1,
 				Height:              0,
-				NewLocalExitRoot:    emptyLER,
+				NewLocalExitRoot:    types.EmptyLER,
 				CustomChainData:     []byte("some-data"),
 				Metadata:            types.NewCertificateMetadata(1, 9, uint32(createdAt.Unix()), types.CertificateTypeFEP.ToInt()).ToHash(),
 				BridgeExits:         []*agglayertypes.BridgeExit{},
 				ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{},
-				PrevLocalExitRoot:   emptyLER,
+				PrevLocalExitRoot:   types.EmptyLER,
 				L1InfoTreeLeafCount: 0,
 				AggchainData: &agglayertypes.AggchainDataProof{
 					Proof:          []byte("some-proof"),
