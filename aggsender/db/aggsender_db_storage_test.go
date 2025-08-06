@@ -43,6 +43,7 @@ func Test_StorageExploratory(t *testing.T) {
 	_, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 	require.Error(t, err)
 }
+
 func Test_Storage(t *testing.T) {
 	ctx := context.Background()
 

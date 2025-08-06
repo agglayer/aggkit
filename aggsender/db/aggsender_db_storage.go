@@ -3,7 +3,6 @@ package db
 import (
 	"context"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -284,7 +283,7 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	dbDir := filepath.Dir(a.cfg.DBPath)
 
 	// Create a filename using the certificate ID
-	fileName := fmt.Sprintf("signed_cert_%s.json", hex.EncodeToString(certificateID[:]))
+	fileName := fmt.Sprintf("signed_cert_%s.json", certificateID)
 	filePath := filepath.Join(dbDir, fileName)
 
 	// Write the signed certificate content to the file
