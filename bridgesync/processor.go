@@ -377,13 +377,7 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-	defer p.rollbackTransaction(tx)
-
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTableName)
+	rows, err := p.queryBlockRange(p.db, fromBlock, toBlock, bridgeTableName)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
@@ -404,13 +398,7 @@ func (p *processor) GetBridges(
 }
 
 func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-	defer p.rollbackTransaction(tx)
-
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTableName)
+	rows, err := p.queryBlockRange(p.db, fromBlock, toBlock, claimTableName)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
@@ -433,12 +421,6 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*Bridge, int, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer p.rollbackTransaction(tx)
-
 	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
 	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName, whereClause)
@@ -455,7 +437,7 @@ func (p *processor) GetBridgesPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(p.db, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
@@ -504,12 +486,6 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 func (p *processor) GetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32, fromAddress string,
 ) ([]*Claim, int, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer p.rollbackTransaction(tx)
-
 	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress)
 	claimsCount, err := p.GetTotalNumberOfRecords(claimTableName, whereClause)
 	if err != nil {
@@ -527,7 +503,7 @@ func (p *processor) GetClaimsPaged(
 
 	orderByClause := "block_num DESC, block_pos DESC"
 
-	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
@@ -858,14 +834,8 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 
 // fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
 func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-	defer p.rollbackTransaction(tx)
-
 	orderByClause := "block_num DESC"
-	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByClause, "")
+	rows, err := p.queryPaged(p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			pageNumber := (offset / pageSize) + 1
