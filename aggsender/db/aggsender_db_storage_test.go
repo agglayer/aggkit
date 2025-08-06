@@ -18,6 +18,7 @@ import (
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/russross/meddler"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -1218,4 +1219,242 @@ func Test_RuntimeData_IsCompatible(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_deleteCertificate(t *testing.T) {
+	ctx := context.Background()
+	logger := log.WithFields("test")
+
+	t.Run("successful deletion without file", func(t *testing.T) {
+		// Setup database
+		dbPath := path.Join(t.TempDir(), "test_delete_no_file.sqlite")
+		cfg := AggSenderSQLStorageConfig{
+			DBPath: dbPath,
+		}
+		storage, err := NewAggSenderSQLStorage(logger, cfg)
+		require.NoError(t, err)
+
+		// Create and save a certificate without a file
+		testCertID := common.HexToHash("0x1234")
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    testCertID,
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          2,
+				Status:           agglayertypes.Pending,
+				CreatedAt:        uint32(time.Now().Unix()),
+				UpdatedAt:        uint32(time.Now().Unix()),
+			},
+		}
+		require.NoError(t, storage.SaveLastSentCertificate(ctx, certificate))
+
+		// Create transaction and test deleteCertificate
+		tx, err := db.NewTx(ctx, storage.db)
+		require.NoError(t, err)
+		defer tx.Rollback()
+
+		err = deleteCertificate(logger, tx, testCertID)
+		require.NoError(t, err)
+
+		require.NoError(t, tx.Commit())
+
+		// Verify certificate is deleted
+		_, err = storage.GetCertificateByHeight(certificate.Header.Height)
+		require.ErrorIs(t, err, db.ErrNotFound)
+	})
+
+	t.Run("successful deletion with JSON file", func(t *testing.T) {
+		// Setup database
+		dbPath := path.Join(t.TempDir(), "test_delete_with_file.sqlite")
+		cfg := AggSenderSQLStorageConfig{
+			DBPath: dbPath,
+		}
+		storage, err := NewAggSenderSQLStorage(logger, cfg)
+		require.NoError(t, err)
+
+		// Create and save a certificate with signed certificate content
+		testCertID := common.HexToHash("0x1234")
+		signedCertData := `{"test": "signed certificate data"}`
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    testCertID,
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          2,
+				Status:           agglayertypes.Pending,
+				CreatedAt:        uint32(time.Now().Unix()),
+				UpdatedAt:        uint32(time.Now().Unix()),
+			},
+			SignedCertificate: &signedCertData,
+		}
+		require.NoError(t, storage.SaveOrUpdateCertificate(ctx, certificate))
+
+		// Get the certificate info directly from database to access the file path
+		var certInfo certificateInfo
+		err = meddler.QueryRow(storage.db, &certInfo,
+			"SELECT * FROM certificate_info WHERE certificate_id = $1", testCertID.String())
+		require.NoError(t, err)
+		require.NotNil(t, certInfo.SignedCertificate)
+
+		// Verify the generated file exists
+		generatedFilePath := *certInfo.SignedCertificate
+		_, err = os.Stat(generatedFilePath)
+		require.NoError(t, err)
+
+		// Create transaction and test deleteCertificate
+		tx, err := db.NewTx(ctx, storage.db)
+		require.NoError(t, err)
+		defer tx.Rollback()
+
+		err = deleteCertificate(logger, tx, testCertID)
+		require.NoError(t, err)
+
+		require.NoError(t, tx.Commit())
+
+		// Verify certificate is deleted from database
+		_, err = storage.GetCertificateByHeight(certificate.Header.Height)
+		require.ErrorIs(t, err, db.ErrNotFound)
+
+		// Verify the generated file is deleted
+		_, err = os.Stat(generatedFilePath)
+		require.True(t, os.IsNotExist(err))
+	})
+
+	t.Run("deletion with JSON file path containing non-path data", func(t *testing.T) {
+		// Setup database
+		dbPath := path.Join(t.TempDir(), "test_delete_non_json.sqlite")
+		cfg := AggSenderSQLStorageConfig{
+			DBPath: dbPath,
+		}
+		storage, err := NewAggSenderSQLStorage(logger, cfg)
+		require.NoError(t, err)
+
+		// Create and save a certificate with raw certificate data (not a file path)
+		testCertID := common.HexToHash("0x1234")
+		rawCertData := "raw certificate data, not a file path"
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    testCertID,
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          2,
+				Status:           agglayertypes.Pending,
+				CreatedAt:        uint32(time.Now().Unix()),
+				UpdatedAt:        uint32(time.Now().Unix()),
+			},
+			SignedCertificate: &rawCertData,
+		}
+		require.NoError(t, storage.SaveOrUpdateCertificate(ctx, certificate))
+
+		// Get the certificate info directly from database to access the file path
+		var certInfo certificateInfo
+		err = meddler.QueryRow(storage.db, &certInfo,
+			"SELECT * FROM certificate_info WHERE certificate_id = $1", testCertID.String())
+		require.NoError(t, err)
+		require.NotNil(t, certInfo.SignedCertificate)
+
+		// The system will have saved the content to a JSON file
+		generatedFilePath := *certInfo.SignedCertificate
+		_, err = os.Stat(generatedFilePath)
+		require.NoError(t, err)
+
+		// Create transaction and test deleteCertificate
+		tx, err := db.NewTx(ctx, storage.db)
+		require.NoError(t, err)
+		defer tx.Rollback()
+
+		err = deleteCertificate(logger, tx, testCertID)
+		require.NoError(t, err)
+
+		require.NoError(t, tx.Commit())
+
+		// Verify certificate is deleted from database
+		_, err = storage.GetCertificateByHeight(certificate.Header.Height)
+		require.ErrorIs(t, err, db.ErrNotFound)
+
+		// Verify the generated file is deleted
+		_, err = os.Stat(generatedFilePath)
+		require.True(t, os.IsNotExist(err))
+	})
+
+	t.Run("non-existent certificate", func(t *testing.T) {
+		// Setup database
+		dbPath := path.Join(t.TempDir(), "test_delete_nonexistent.sqlite")
+		cfg := AggSenderSQLStorageConfig{
+			DBPath: dbPath,
+		}
+		storage, err := NewAggSenderSQLStorage(logger, cfg)
+		require.NoError(t, err)
+
+		// Try to delete a certificate that doesn't exist
+		testCertID := common.HexToHash("0x9999")
+
+		// Create transaction and test deleteCertificate
+		tx, err := db.NewTx(ctx, storage.db)
+		require.NoError(t, err)
+		defer tx.Rollback()
+
+		err = deleteCertificate(logger, tx, testCertID)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "error loading certificate info")
+	})
+
+	t.Run("file deletion error should not fail the function", func(t *testing.T) {
+		// Setup database
+		dbPath := path.Join(t.TempDir(), "test_delete_file_error.sqlite")
+		cfg := AggSenderSQLStorageConfig{
+			DBPath: dbPath,
+		}
+		storage, err := NewAggSenderSQLStorage(logger, cfg)
+		require.NoError(t, err)
+
+		// Create and save a certificate with signed certificate data
+		testCertID := common.HexToHash("0x1234")
+		signedCertData := `{"test": "certificate data"}`
+		certificate := types.Certificate{
+			Header: &types.CertificateHeader{
+				Height:           1,
+				CertificateID:    testCertID,
+				NewLocalExitRoot: common.HexToHash("0x2"),
+				FromBlock:        1,
+				ToBlock:          2,
+				Status:           agglayertypes.Pending,
+				CreatedAt:        uint32(time.Now().Unix()),
+				UpdatedAt:        uint32(time.Now().Unix()),
+			},
+			SignedCertificate: &signedCertData,
+		}
+		require.NoError(t, storage.SaveOrUpdateCertificate(ctx, certificate))
+
+		// Get the certificate info directly from database to access the file path
+		var certInfo certificateInfo
+		err = meddler.QueryRow(storage.db, &certInfo,
+			"SELECT * FROM certificate_info WHERE certificate_id = $1", testCertID.String())
+		require.NoError(t, err)
+		require.NotNil(t, certInfo.SignedCertificate)
+
+		// Delete the file manually to simulate a file deletion error scenario
+		generatedFilePath := *certInfo.SignedCertificate
+		err = os.Remove(generatedFilePath)
+		require.NoError(t, err)
+
+		// Create transaction and test deleteCertificate
+		tx, err := db.NewTx(ctx, storage.db)
+		require.NoError(t, err)
+		defer tx.Rollback()
+
+		// This should succeed despite the file being already deleted
+		err = deleteCertificate(logger, tx, testCertID)
+		require.NoError(t, err)
+
+		require.NoError(t, tx.Commit())
+
+		// Verify certificate is deleted from database
+		_, err = storage.GetCertificateByHeight(certificate.Header.Height)
+		require.ErrorIs(t, err, db.ErrNotFound)
+	})
 }
