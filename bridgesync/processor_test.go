@@ -1408,7 +1408,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, totalTokenMappings, err := p.GetTokenMappings(context.Background(), tt.pageNumber, tt.pageSize)
+			result, totalTokenMappings, err := p.GetTokenMappings(tt.pageNumber, tt.pageSize)
 			if tt.expectedErr != "" {
 				require.ErrorContains(t, err, tt.expectedErr)
 			} else {

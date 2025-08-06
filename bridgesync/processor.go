@@ -809,7 +809,7 @@ func (p *processor) GetTotalNumberOfRecords(tableName, whereClause string) (int,
 }
 
 // GetTokenMappings returns the paged token mappings from the database
-func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
+func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
 	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
@@ -824,7 +824,7 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 		return nil, 0, err
 	}
 
-	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
+	tokenMappings, err := p.fetchTokenMappings(pageSize, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -833,7 +833,7 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 }
 
 // fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
-func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
+func (p *processor) fetchTokenMappings(pageSize uint32, offset uint32) ([]*TokenMapping, error) {
 	orderByClause := "block_num DESC"
 	rows, err := p.queryPaged(p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
@@ -923,15 +923,6 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 	localExitRootIndex = aggkitcommon.BytesToUint32(globalIndexBytes[localExitRootFromIdx:])
 
 	return
-}
-
-//nolint:unparam
-func (p *processor) startTransaction(ctx context.Context, isReadOnly bool) (*sql.Tx, error) {
-	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: isReadOnly})
-	if err != nil {
-		return nil, err
-	}
-	return tx, nil
 }
 
 // rollbackTransaction rolls back the transaction and logs an error if it fails
