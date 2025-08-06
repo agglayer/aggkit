@@ -385,6 +385,19 @@ func (p *processor) GetBridges(
 		}
 		return nil, err
 	}
+
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Warnf("error closing rows: %v", cerr)
+		}
+	}()
+
+	// Check if rows have an error before scanning
+	if rows.Err() != nil {
+		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
+		return nil, rows.Err()
+	}
+
 	bridgePtrs := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
 		return nil, err
@@ -406,6 +419,19 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 		}
 		return nil, err
 	}
+
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Warnf("error closing rows: %v", cerr)
+		}
+	}()
+
+	// Check if rows have an error before scanning
+	if rows.Err() != nil {
+		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
+		return nil, rows.Err()
+	}
+
 	claimPtrs := []*Claim{}
 	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
 		return nil, err
@@ -451,6 +477,12 @@ func (p *processor) GetBridgesPaged(
 			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
+
+	// Check if rows have an error before scanning
+	if rows.Err() != nil {
+		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
+		return nil, 0, rows.Err()
+	}
 
 	bridges := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridges); err != nil {
@@ -518,6 +550,12 @@ func (p *processor) GetClaimsPaged(
 		}
 	}()
 
+	// Check if rows have an error before scanning
+	if rows.Err() != nil {
+		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
+		return nil, 0, rows.Err()
+	}
+
 	claims := []*Claim{}
 	if err = meddler.ScanAll(rows, &claims); err != nil {
 		return nil, 0, err
@@ -578,6 +616,13 @@ func (p *processor) GetLegacyTokenMigrations(
 			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
+
+	// Check if rows have an error before scanning
+	if rows.Err() != nil {
+		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
+		return nil, 0, rows.Err()
+	}
+
 	tokenMigrations := []*LegacyTokenMigration{}
 	if err = meddler.ScanAll(rows, &tokenMigrations); err != nil {
 		return nil, 0, err
@@ -835,6 +880,7 @@ func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMappi
 // fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
 func (p *processor) fetchTokenMappings(pageSize uint32, offset uint32) ([]*TokenMapping, error) {
 	orderByClause := "block_num DESC"
+
 	rows, err := p.queryPaged(p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
@@ -848,11 +894,17 @@ func (p *processor) fetchTokenMappings(pageSize uint32, offset uint32) ([]*Token
 		return nil, err
 	}
 
+	// Ensure rows are closed after we're done with them
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
 			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
+
+	if rows.Err() != nil {
+		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
+		return nil, rows.Err()
+	}
 
 	tokenMappings := []*TokenMapping{}
 	if err = meddler.ScanAll(rows, &tokenMappings); err != nil {
