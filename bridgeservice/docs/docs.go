@@ -36,7 +36,7 @@ const docTemplate = `{
                     "200": {
                         "description": "Health status and version information",
                         "schema": {
-                            "$ref": "#/definitions/types.HealthCheckResponse"
+                            "$ref": "#/definitions/github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse"
                         }
                     },
                     "500": {
@@ -61,7 +61,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Target network ID",
+                        "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
                         "required": true
@@ -96,7 +96,7 @@ const docTemplate = `{
                             "type": "integer"
                         },
                         "collectionFormat": "csv",
-                        "description": "Filter by one or more network IDs",
+                        "description": "Filter by one or more destination network IDs",
                         "name": "network_ids",
                         "in": "query"
                     }
@@ -136,7 +136,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Target network ID",
+                        "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
                         "required": true
@@ -191,7 +191,7 @@ const docTemplate = `{
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Target network ID",
+                        "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
                         "required": true
@@ -214,7 +214,7 @@ const docTemplate = `{
                             "type": "integer"
                         },
                         "collectionFormat": "csv",
-                        "description": "Filter by one or more network IDs",
+                        "description": "Filter by one or more destination network IDs",
                         "name": "network_ids",
                         "in": "query"
                     },
@@ -538,6 +538,21 @@ const docTemplate = `{
                 }
             }
         },
+        "github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse": {
+            "description": "Contains basic health‐check information for the bridge service",
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
         "types.BridgeResponse": {
             "description": "Detailed information about a bridge event",
             "type": "object",
@@ -805,21 +820,6 @@ const docTemplate = `{
                 "error": {
                     "type": "string",
                     "example": "Error message"
-                }
-            }
-        },
-        "types.HealthCheckResponse": {
-            "description": "Contains basic health‐check information for the bridge service",
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string"
-                },
-                "time": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "string"
                 }
             }
         },
