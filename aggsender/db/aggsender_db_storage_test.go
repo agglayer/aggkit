@@ -37,6 +37,10 @@ func Test_StorageExploratory(t *testing.T) {
 	cert, err := storage.GetLastSentCertificate()
 	require.NoError(t, err)
 	require.NotNil(t, cert)
+
+	cfg.DBPath = "/nonexistent"
+	_, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.Error(t, err)
 }
 func Test_Storage(t *testing.T) {
 	ctx := context.Background()
@@ -1150,4 +1154,68 @@ func Test_GetLastSettledCertificate(t *testing.T) {
 		require.Error(t, err)
 		require.Nil(t, header)
 	})
+}
+
+func Test_RuntimeData_IsCompatible(t *testing.T) {
+	tests := []struct {
+		name        string
+		runtime     RuntimeData
+		storage     RuntimeData
+		expectError bool
+		errorMsg    string
+	}{
+		{
+			name:        "Compatible - same network ID",
+			runtime:     RuntimeData{NetworkID: 1},
+			storage:     RuntimeData{NetworkID: 1},
+			expectError: false,
+		},
+		{
+			name:        "Compatible - same network ID zero",
+			runtime:     RuntimeData{NetworkID: 0},
+			storage:     RuntimeData{NetworkID: 0},
+			expectError: false,
+		},
+		{
+			name:        "Incompatible - different network IDs",
+			runtime:     RuntimeData{NetworkID: 1},
+			storage:     RuntimeData{NetworkID: 2},
+			expectError: true,
+			errorMsg:    "network ID mismatch: 1 != 2",
+		},
+		{
+			name:        "Incompatible - runtime zero, storage non-zero",
+			runtime:     RuntimeData{NetworkID: 0},
+			storage:     RuntimeData{NetworkID: 1},
+			expectError: true,
+			errorMsg:    "network ID mismatch: 0 != 1",
+		},
+		{
+			name:        "Incompatible - runtime non-zero, storage zero",
+			runtime:     RuntimeData{NetworkID: 5},
+			storage:     RuntimeData{NetworkID: 0},
+			expectError: true,
+			errorMsg:    "network ID mismatch: 5 != 0",
+		},
+		{
+			name:        "Incompatible - large network IDs",
+			runtime:     RuntimeData{NetworkID: 4294967295}, // max uint32
+			storage:     RuntimeData{NetworkID: 4294967294},
+			expectError: true,
+			errorMsg:    "network ID mismatch: 4294967295 != 4294967294",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.runtime.IsCompatible(tt.storage)
+
+			if tt.expectError {
+				require.Error(t, err)
+				require.Equal(t, tt.errorMsg, err.Error())
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
 }
