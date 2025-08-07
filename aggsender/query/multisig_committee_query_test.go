@@ -1,0 +1,80 @@
+package query
+
+import (
+	"errors"
+	"math/big"
+	"testing"
+
+	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+)
+
+func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
+	type testCase struct {
+		name               string
+		threshold          uint32
+		signers            []common.Address
+		thresholdErr       error
+		signersErr         error
+		expectedErr        string
+		expectedNumSigners int
+	}
+
+	testCases := []testCase{
+		{
+			name:               "successfully returns committee",
+			threshold:          2,
+			signers:            []common.Address{common.HexToAddress("0x1"), common.HexToAddress("0x2")},
+			expectedErr:        "",
+			expectedNumSigners: 2,
+		},
+		{
+			name:         "threshold query fails",
+			thresholdErr: errors.New("threshold error"),
+			expectedErr:  "failed to query the signatures threshold",
+		},
+		{
+			name:        "signers query fails",
+			threshold:   1,
+			signersErr:  errors.New("signers error"),
+			expectedErr: "failed to query the committee signers",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSC := new(mocks.MultisigContract)
+
+			mockSC.EXPECT().Threshold(mock.Anything).
+				Return(tc.threshold, tc.thresholdErr)
+
+			if tc.thresholdErr == nil {
+				mockSC.EXPECT().GetSigners(mock.Anything).
+					Return(tc.signers, tc.signersErr)
+			}
+
+			q := &ECDSAMultisigCommitteeQuery{
+				multisigCommitteeSC:   mockSC,
+				multisigCommitteeAddr: common.Address{},
+			}
+
+			blockNum := big.NewInt(100)
+			committee, err := q.GetMultisigCommittee(t.Context(), blockNum)
+
+			if tc.expectedErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedErr)
+				require.Nil(t, committee)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, committee)
+				require.Equal(t, tc.threshold, committee.Threshold())
+				require.Len(t, committee.Signers(), tc.expectedNumSigners)
+			}
+
+			mockSC.AssertExpectations(t)
+		})
+	}
+}

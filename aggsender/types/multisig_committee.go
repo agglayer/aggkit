@@ -1,4 +1,4 @@
-package query
+package types
 
 import (
 	"errors"
@@ -21,20 +21,21 @@ type SignerInfo struct {
 	Address common.Address
 }
 
+// NewSignerInfo creates a new instance of a signer
 func NewSignerInfo(url string, address common.Address) *SignerInfo {
 	return &SignerInfo{URL: url, Address: address}
 }
 
 // MultisigCommittee represents a set of authorized signers with a signing threshold.
 type MultisigCommittee struct {
-	members    []*SignerInfo
-	membersSet map[common.Address]struct{}
+	signers    []*SignerInfo
+	signersSet map[common.Address]struct{}
 	threshold  uint32
 }
 
 // NewMultisigCommittee creates a new committee and builds the address set for quick lookup.
-func NewMultisigCommittee(members []*SignerInfo, threshold uint32) (*MultisigCommittee, error) {
-	if len(members) == 0 {
+func NewMultisigCommittee(signers []*SignerInfo, threshold uint32) (*MultisigCommittee, error) {
+	if len(signers) == 0 {
 		return nil, errEmptyCommittee
 	}
 
@@ -42,20 +43,20 @@ func NewMultisigCommittee(members []*SignerInfo, threshold uint32) (*MultisigCom
 		return nil, errZeroThreshold
 	}
 
-	if uint32(len(members)) < threshold {
+	if uint32(len(signers)) < threshold {
 		return nil, fmt.Errorf("committee size (%d) must be greater than or equal to the signatures threshold (%d)",
-			len(members), threshold)
+			len(signers), threshold)
 	}
 
 	committee := &MultisigCommittee{
 		threshold:  threshold,
-		members:    make([]*SignerInfo, 0, len(members)),
-		membersSet: make(map[common.Address]struct{}, len(members)),
+		signers:    make([]*SignerInfo, 0, len(signers)),
+		signersSet: make(map[common.Address]struct{}, len(signers)),
 	}
 
-	// populate members
-	for _, m := range members {
-		if err := committee.AddSigner(m); err != nil {
+	// populate signers
+	for _, s := range signers {
+		if err := committee.AddSigner(s); err != nil {
 			return nil, err
 		}
 	}
@@ -66,37 +67,37 @@ func NewMultisigCommittee(members []*SignerInfo, threshold uint32) (*MultisigCom
 // AddSigner adds a new signer to the committee.
 // Returns an error if the address already exists.
 func (m *MultisigCommittee) AddSigner(info *SignerInfo) error {
-	if _, exists := m.membersSet[info.Address]; exists {
+	if _, exists := m.signersSet[info.Address]; exists {
 		return fmt.Errorf("signer %s already in committee", info.Address)
 	}
 
-	m.members = append(m.members, info)
-	m.membersSet[info.Address] = struct{}{}
+	m.signers = append(m.signers, info)
+	m.signersSet[info.Address] = struct{}{}
 	return nil
 }
 
 // RemoveSigner removes a signer by address.
 // Returns an error if not found.
 func (m *MultisigCommittee) RemoveSigner(addr common.Address) error {
-	if _, exists := m.membersSet[addr]; !exists {
+	if _, exists := m.signersSet[addr]; !exists {
 		return fmt.Errorf("signer %s not found in committee", addr)
 	}
 
-	if uint32(len(m.membersSet)-1) < m.threshold {
+	if uint32(len(m.signersSet)-1) < m.threshold {
 		return fmt.Errorf("cannot remove signer: resulting committee size (%d) would be below threshold (%d)",
-			len(m.membersSet)-1, m.threshold)
+			len(m.signersSet)-1, m.threshold)
 	}
 
 	// Rebuild member slice without the removed signer
-	filtered := make([]*SignerInfo, 0, len(m.members)-1)
-	for _, s := range m.members {
+	filtered := make([]*SignerInfo, 0, len(m.signers)-1)
+	for _, s := range m.signers {
 		if s.Address != addr {
 			filtered = append(filtered, s)
 		}
 	}
 
-	m.members = filtered
-	delete(m.membersSet, addr)
+	m.signers = filtered
+	delete(m.signersSet, addr)
 	return nil
 }
 
@@ -108,7 +109,7 @@ func (m *MultisigCommittee) HasQuorum(signerAddrs []common.Address) (bool, error
 	count := uint32(0)
 
 	for _, signerAddr := range signerAddrs {
-		if _, exists := m.membersSet[signerAddr]; !exists {
+		if _, exists := m.signersSet[signerAddr]; !exists {
 			return false, fmt.Errorf("signer %s is not in the committee", signerAddr)
 		}
 
@@ -120,4 +121,17 @@ func (m *MultisigCommittee) HasQuorum(signerAddrs []common.Address) (bool, error
 	}
 
 	return count >= m.threshold, nil
+}
+
+// Threshold returns the signature threshold required for quorum.
+func (m *MultisigCommittee) Threshold() uint32 {
+	return m.threshold
+}
+
+// Signers returns a shallow copy of the committee's signers slice
+// to prevent external modification of the internal slice.
+func (m *MultisigCommittee) Signers() []*SignerInfo {
+	cpy := make([]*SignerInfo, len(m.signers))
+	copy(cpy, m.signers)
+	return cpy
 }
