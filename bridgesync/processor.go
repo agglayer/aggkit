@@ -392,12 +392,6 @@ func (p *processor) GetBridges(
 		}
 	}()
 
-	// Check if rows have an error before scanning
-	if rows.Err() != nil {
-		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
-		return nil, rows.Err()
-	}
-
 	bridgePtrs := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
 		return nil, err
@@ -425,12 +419,6 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
-
-	// Check if rows have an error before scanning
-	if rows.Err() != nil {
-		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
-		return nil, rows.Err()
-	}
 
 	claimPtrs := []*Claim{}
 	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
@@ -477,12 +465,6 @@ func (p *processor) GetBridgesPaged(
 			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
-
-	// Check if rows have an error before scanning
-	if rows.Err() != nil {
-		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
-		return nil, 0, rows.Err()
-	}
 
 	bridges := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridges); err != nil {
@@ -550,12 +532,6 @@ func (p *processor) GetClaimsPaged(
 		}
 	}()
 
-	// Check if rows have an error before scanning
-	if rows.Err() != nil {
-		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
-		return nil, 0, rows.Err()
-	}
-
 	claims := []*Claim{}
 	if err = meddler.ScanAll(rows, &claims); err != nil {
 		return nil, 0, err
@@ -616,12 +592,6 @@ func (p *processor) GetLegacyTokenMigrations(
 			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
-
-	// Check if rows have an error before scanning
-	if rows.Err() != nil {
-		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
-		return nil, 0, rows.Err()
-	}
 
 	tokenMigrations := []*LegacyTokenMigration{}
 	if err = meddler.ScanAll(rows, &tokenMigrations); err != nil {
@@ -900,11 +870,6 @@ func (p *processor) fetchTokenMappings(pageSize uint32, offset uint32) ([]*Token
 			p.log.Warnf("error closing rows: %v", cerr)
 		}
 	}()
-
-	if rows.Err() != nil {
-		p.log.Errorf("rows have an error before scanning: %v", rows.Err())
-		return nil, rows.Err()
-	}
 
 	tokenMappings := []*TokenMapping{}
 	if err = meddler.ScanAll(rows, &tokenMappings); err != nil {
