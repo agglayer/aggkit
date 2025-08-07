@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
@@ -529,7 +530,7 @@ func TestValidateRequestTimeout(t *testing.T) {
 func TestVersionHeaderInterceptor(t *testing.T) {
 	testMethod := "/test.Service/TestMethod"
 
-	t.Run("AddsVersionHeaderToContext", func(t *testing.T) {
+	t.Run("AddsVersionAndClientTypeHeadersToContext", func(t *testing.T) {
 		// Create a mock invoker that captures the context
 		var capturedCtx context.Context
 		mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
@@ -551,7 +552,7 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		// Verify no error was returned
 		require.NoError(t, err)
 
-		// Verify the context was modified to include the version header
+		// Verify the context was modified to include the headers
 		require.NotNil(t, capturedCtx)
 
 		// Extract metadata from the context
@@ -559,9 +560,14 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		require.True(t, ok, "Context should contain outgoing metadata")
 
 		// Verify the version header is present
-		versionValues := md.Get(AggKitVersionMetadataKey)
+		versionValues := md.Get(ClientVersionMetadataKey)
 		require.Len(t, versionValues, 1, "Should have exactly one version header")
-		require.Equal(t, "v0.1.0", versionValues[0], "Version should match aggkit.Version")
+		require.Equal(t, aggkit.Version, versionValues[0], "Version should match aggkit.Version")
+
+		// Verify the client type header is present
+		clientTypeValues := md.Get(ClientTypeMetadataKey)
+		require.Len(t, clientTypeValues, 1, "Should have exactly one client type header")
+		require.Equal(t, ClientTypeMetadataValue, clientTypeValues[0], "Client type should match ClientTypeMetadataValue")
 	})
 
 	t.Run("PreservesExistingMetadata", func(t *testing.T) {
@@ -590,7 +596,7 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		// Verify no error was returned
 		require.NoError(t, err)
 
-		// Verify the context was modified to include the version header
+		// Verify the context was modified to include the headers
 		require.NotNil(t, capturedCtx)
 
 		// Extract metadata from the context
@@ -598,9 +604,14 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 		require.True(t, ok, "Context should contain outgoing metadata")
 
 		// Verify the version header is present
-		versionValues := md.Get(AggKitVersionMetadataKey)
+		versionValues := md.Get(ClientVersionMetadataKey)
 		require.Len(t, versionValues, 1, "Should have exactly one version header")
-		require.Equal(t, "v0.1.0", versionValues[0], "Version should match aggkit.Version")
+		require.Equal(t, aggkit.Version, versionValues[0], "Version should match aggkit.Version")
+
+		// Verify the client type header is present
+		clientTypeValues := md.Get(ClientTypeMetadataKey)
+		require.Len(t, clientTypeValues, 1, "Should have exactly one client type header")
+		require.Equal(t, ClientTypeMetadataValue, clientTypeValues[0], "Client type should match ClientTypeMetadataValue")
 
 		// Verify existing metadata is preserved
 		existingValues := md.Get("existing-key")
@@ -661,9 +672,92 @@ func TestVersionHeaderInterceptor(t *testing.T) {
 			require.True(t, ok, "Context should contain outgoing metadata")
 
 			// Verify the version header is present and correct
-			versionValues := md.Get(AggKitVersionMetadataKey)
+			versionValues := md.Get(ClientVersionMetadataKey)
 			require.Len(t, versionValues, 1, "Should have exactly one version header")
-			require.Equal(t, "v0.1.0", versionValues[0], "Version should match aggkit.Version")
+			require.Equal(t, aggkit.Version, versionValues[0], "Version should match aggkit.Version")
+
+			// Verify the client type header is present and correct
+			clientTypeValues := md.Get(ClientTypeMetadataKey)
+			require.Len(t, clientTypeValues, 1, "Should have exactly one client type header")
+			require.Equal(t, ClientTypeMetadataValue, clientTypeValues[0], "Client type should match ClientTypeMetadataValue")
 		}
+	})
+
+	t.Run("HandlesNilContext", func(t *testing.T) {
+		// Create a mock invoker that captures the context
+		var capturedCtx context.Context
+		mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+			capturedCtx = ctx
+			return nil
+		}
+
+		// Create the interceptor
+		interceptor := VersionHeaderInterceptor()
+
+		// Create a test context with background context (not nil)
+		ctx := context.Background()
+		var req, reply interface{}
+		var cc *grpc.ClientConn
+
+		// Call the interceptor
+		err := interceptor(ctx, testMethod, req, reply, cc, mockInvoker)
+
+		// Verify no error was returned
+		require.NoError(t, err)
+
+		// Verify the context was modified to include the headers
+		require.NotNil(t, capturedCtx)
+
+		// Extract metadata from the context
+		md, ok := metadata.FromOutgoingContext(capturedCtx)
+		require.True(t, ok, "Context should contain outgoing metadata")
+
+		// Verify the headers are present
+		versionValues := md.Get(ClientVersionMetadataKey)
+		require.Len(t, versionValues, 1, "Should have exactly one version header")
+		require.Equal(t, aggkit.Version, versionValues[0], "Version should match aggkit.Version")
+
+		clientTypeValues := md.Get(ClientTypeMetadataKey)
+		require.Len(t, clientTypeValues, 1, "Should have exactly one client type header")
+		require.Equal(t, ClientTypeMetadataValue, clientTypeValues[0], "Client type should match ClientTypeMetadataValue")
+	})
+
+	t.Run("HandlesEmptyMethod", func(t *testing.T) {
+		// Create a mock invoker that captures the context
+		var capturedCtx context.Context
+		mockInvoker := func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, opts ...grpc.CallOption) error {
+			capturedCtx = ctx
+			return nil
+		}
+
+		// Create the interceptor
+		interceptor := VersionHeaderInterceptor()
+
+		// Create a test context
+		ctx := context.Background()
+		var req, reply interface{}
+		var cc *grpc.ClientConn
+
+		// Call the interceptor with empty method
+		err := interceptor(ctx, "", req, reply, cc, mockInvoker)
+
+		// Verify no error was returned
+		require.NoError(t, err)
+
+		// Verify the context was modified to include the headers
+		require.NotNil(t, capturedCtx)
+
+		// Extract metadata from the context
+		md, ok := metadata.FromOutgoingContext(capturedCtx)
+		require.True(t, ok, "Context should contain outgoing metadata")
+
+		// Verify the headers are present
+		versionValues := md.Get(ClientVersionMetadataKey)
+		require.Len(t, versionValues, 1, "Should have exactly one version header")
+		require.Equal(t, aggkit.Version, versionValues[0], "Version should match aggkit.Version")
+
+		clientTypeValues := md.Get(ClientTypeMetadataKey)
+		require.Len(t, clientTypeValues, 1, "Should have exactly one client type header")
+		require.Equal(t, ClientTypeMetadataValue, clientTypeValues[0], "Client type should match ClientTypeMetadataValue")
 	})
 }

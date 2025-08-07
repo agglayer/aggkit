@@ -31,18 +31,25 @@ const (
 
 	noneStr = "none"
 
-	// AggKitVersionMetadataKey is the metadata key for the AggKit version header
-	AggKitVersionMetadataKey = "x-aggkit-version"
+	// ClientVersionMetadataKey is the metadata key for the client version
+	ClientVersionMetadataKey = "x-client-version"
+
+	// ClientTypeMetadataKey is the metadata key for the client type
+	ClientTypeMetadataKey = "x-client-type"
+
+	// ClientTypeMetadataValue is the value for the client type
+	ClientTypeMetadataValue = "aggkit"
 )
 
-// VersionHeaderInterceptor adds the AggKit version header to all outgoing requests
+// VersionHeaderInterceptor adds the client version and type headers to all outgoing requests
 func VersionHeaderInterceptor() grpc.UnaryClientInterceptor {
 	return func(
 		ctx context.Context,
 		method string, req, reply interface{},
 		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		// Add version header to context
-		ctx = metadata.AppendToOutgoingContext(ctx, AggKitVersionMetadataKey, aggkit.Version)
+		// Add version and type headers to context
+		ctx = metadata.AppendToOutgoingContext(ctx, ClientVersionMetadataKey, aggkit.Version)
+		ctx = metadata.AppendToOutgoingContext(ctx, ClientTypeMetadataKey, ClientTypeMetadataValue)
 		return invoker(ctx, method, req, reply, cc, opts...)
 	}
 }
