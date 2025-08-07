@@ -25,6 +25,7 @@ type certStatusChecker struct {
 	log            *log.Logger
 	storage        db.AggSenderStorage
 	agglayerClient agglayer.AgglayerClientInterface
+	certQuerier    types.CertificateQuerier
 
 	l2OriginNetwork uint32
 }
@@ -214,7 +215,25 @@ func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 			return fmt.Errorf("recovery: error updating local storage with agglayer certificate: %w", err)
 		}
 	case InitialStatusActionInsertNewCert:
-		if _, err := c.updateLocalStorageWithAggLayerCert(ctx, action.cert); err != nil {
+		if action.cert.Status.IsInError() {
+			// we will not save the last certificate if it is in error on startup
+			// it will be rebuilt by the aggsender and sent again
+			// we only care about the settled certificates on startup, since we
+			// can not deduce the block range easily from a non settled certificate
+			// gotten from the agglayer
+			return nil
+		}
+
+		if action.cert.Status.IsOpen() {
+			// if the certificate is still pending, we need to wait for it to be settled
+			// before we can save it to the local storage, so we return an error here, and it will be retried in the main loop
+			// of the status checker in CheckInitialStatus function
+			// we do this because, it is not easy to deduce the block range from a non settled certificate
+			return fmt.Errorf("recovery: we have a non settled certificate %s on startup. Waiting for it to be settled",
+				action.cert.ID())
+		}
+
+		if _, err := c.updateLocalStorageWithSettledAggLayerCert(ctx, action.cert); err != nil {
 			return fmt.Errorf("recovery: error new local storage with agglayer certificate: %w", err)
 		}
 	default:
@@ -223,73 +242,49 @@ func (c *certStatusChecker) executeInitialStatusAction(ctx context.Context,
 	return nil
 }
 
-// updateLocalStorageWithAggLayerCert updates the local storage with the certificate from the AggLayer
-func (c *certStatusChecker) updateLocalStorageWithAggLayerCert(ctx context.Context,
+// updateLocalStorageWithSettledAggLayerCert updates the local storage with the
+// settled certificate from the AggLayer
+func (c *certStatusChecker) updateLocalStorageWithSettledAggLayerCert(ctx context.Context,
 	aggLayerCert *agglayertypes.CertificateHeader) (*types.Certificate, error) {
-	cert, err := newCertificateInfoFromAgglayerCertHeader(aggLayerCert)
+	cert, err := c.newSettledCertificateInfoFromAgglayerCertHeader(ctx, aggLayerCert)
 	if err != nil {
 		return nil, fmt.Errorf("error creating certificate from AggLayer header: %w", err)
-	}
-	if cert == nil {
-		return nil, nil
 	}
 
 	c.log.Infof("setting initial certificate from AggLayer: %s", cert.String())
 	return cert, c.storage.SaveOrUpdateCertificate(ctx, *cert)
 }
 
-func newCertificateInfoFromAgglayerCertHeader(c *agglayertypes.CertificateHeader) (*types.Certificate, error) {
-	if c == nil {
+func (c *certStatusChecker) newSettledCertificateInfoFromAgglayerCertHeader(
+	ctx context.Context,
+	cert *agglayertypes.CertificateHeader) (*types.Certificate, error) {
+	if cert == nil {
 		return nil, nil
 	}
-	now := uint32(time.Now().UTC().Unix())
-	meta, err := types.NewCertificateMetadataFromHash(c.Metadata)
-	if err != nil {
-		return nil, fmt.Errorf("newCertificateInfoFromAgglayerCertHeader."+
-			" error creating certificate metadata from hash: %w", err)
-	}
-	var (
-		toBlock   uint64
-		createdAt uint32
-		certType  types.CertificateType
-	)
 
-	switch meta.Version {
-	case types.CertificateMetadataV0:
-		toBlock = meta.ToBlock
-		createdAt = now
-		certType = types.CertificateTypeUnknown
-	case types.CertificateMetadataV1:
-		toBlock = meta.FromBlock + uint64(meta.Offset)
-		createdAt = meta.CreatedAt
-		certType = types.CertificateTypeUnknown
-	case types.CertificateMetadataV2:
-		toBlock = meta.FromBlock + uint64(meta.Offset)
-		createdAt = meta.CreatedAt
-		certType = types.NewCertificateTypeFromInt(meta.CertType)
-	default:
-		return nil, fmt.Errorf("newCertificateInfoFromAgglayerCertHeader."+
-			" Unsupported certificate metadata version: %d", meta.Version)
+	toBlock, err := c.certQuerier.GetLastSettledCertificateToBlock(ctx, cert)
+	if err != nil {
+		return nil, fmt.Errorf("error getting last settled certificate to block: %w", err)
 	}
 
 	res := &types.Certificate{
 		Header: &types.CertificateHeader{
-			Height:           c.Height,
-			CertificateID:    c.CertificateID,
-			NewLocalExitRoot: c.NewLocalExitRoot,
-			FromBlock:        meta.FromBlock,
-			ToBlock:          toBlock,
-			Status:           c.Status,
-			CreatedAt:        createdAt,
-			UpdatedAt:        now,
-			CertType:         certType,
+			Height:           cert.Height,
+			CertificateID:    cert.CertificateID,
+			NewLocalExitRoot: cert.NewLocalExitRoot,
+			Status:           cert.Status,
 			CertSource:       types.CertificateSourceAggLayer,
+			CertType:         c.certQuerier.CalculateCertificateType(toBlock),
+			ToBlock:          toBlock,
+			FromBlock:        0, // We don't have block range in the header and we don't use the metadata anymore
+			CreatedAt:        0, // We don't have creation time in the header and we don't use the metadata anymore
+			UpdatedAt:        0, // We don't have creation time in the header and we don't use the metadata anymore
 		},
 		SignedCertificate: &naAgglayerHeader,
 	}
 
-	if c.PreviousLocalExitRoot != nil {
-		res.Header.PreviousLocalExitRoot = c.PreviousLocalExitRoot
+	if cert.PreviousLocalExitRoot != nil {
+		res.Header.PreviousLocalExitRoot = cert.PreviousLocalExitRoot
 	}
 
 	return res, nil
