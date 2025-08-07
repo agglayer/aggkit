@@ -431,6 +431,10 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 }
 
 func (p *processor) GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.Int) (Claim, error) {
+	if globalIndex == nil {
+		return Claim{}, fmt.Errorf("global index cannot be nil")
+	}
+
 	tx, err := p.startTransaction(ctx, true)
 	if err != nil {
 		return Claim{}, err

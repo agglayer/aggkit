@@ -472,9 +472,6 @@ type GlobalIndex struct {
 }
 
 func (g *GlobalIndex) ToBigInt() *big.Int {
-	if g == nil {
-		return nil
-	}
 	return bridgesync.GenerateGlobalIndex(g.MainnetFlag, g.RollupIndex, g.LeafIndex)
 }
 

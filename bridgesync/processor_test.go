@@ -2320,7 +2320,7 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 		t.Parallel()
 
 		claim, err := p.GetClaimByGlobalIndex(ctx, nil)
-		require.Error(t, err)
+		require.ErrorContains(t, err, "global index cannot be nil")
 		require.Equal(t, Claim{}, claim)
 	})
 }
