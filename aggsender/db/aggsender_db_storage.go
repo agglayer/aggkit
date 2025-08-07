@@ -200,13 +200,14 @@ func (a *AggSenderSQLStorage) GetLastSentCertificateHeader() (*types.Certificate
 // saveSignedCertificateToFile saves the signed certificate content to a file in the same directory as the database
 // and returns the file path
 func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
+	certificateHeight uint64,
 	certificateID common.Hash,
 	signedCertContent string) (string, error) {
 	// Get the directory where the database is stored
 	dbDir := filepath.Dir(a.cfg.DBPath)
 
 	// Create a filename using the certificate ID
-	fileName := fmt.Sprintf("signed_cert_%s.json", certificateID)
+	fileName := fmt.Sprintf("signed_cert_%d_%s.json", certificateHeight, certificateID)
 	filePath := filepath.Join(dbDir, fileName)
 
 	// Write the signed certificate content to the file
@@ -476,7 +477,11 @@ func (a *AggSenderSQLStorage) GetNonAcceptedCertificate() (*NonAcceptedCertifica
 // handleCertificateFile Handle signed certificate file storage before database operations
 func (a *AggSenderSQLStorage) handleCertificateFile(certificate *types.Certificate) error {
 	if certificate.SignedCertificate != nil && *certificate.SignedCertificate != "" {
-		filePath, err := a.saveSignedCertificateToFile(certificate.Header.CertificateID, *certificate.SignedCertificate)
+		filePath, err := a.saveSignedCertificateToFile(
+			certificate.Header.Height,
+			certificate.Header.CertificateID,
+			*certificate.SignedCertificate,
+		)
 		if err != nil {
 			return fmt.Errorf("error saving signed certificate to file: %w", err)
 		}
