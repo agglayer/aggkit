@@ -338,7 +338,7 @@ func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize 
 		return nil, 0, ErrInvalidPageSize
 	}
 
-	return s.processor.GetTokenMappings(ctx, pageNumber, pageSize)
+	return s.processor.GetTokenMappings(pageNumber, pageSize)
 }
 
 func (s *BridgeSync) GetLegacyTokenMigrations(
