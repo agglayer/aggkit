@@ -18,6 +18,7 @@ import (
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/russross/meddler"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -37,7 +38,12 @@ func Test_StorageExploratory(t *testing.T) {
 	cert, err := storage.GetLastSentCertificate()
 	require.NoError(t, err)
 	require.NotNil(t, cert)
+
+	cfg.DBPath = "/nonexistent"
+	_, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.Error(t, err)
 }
+
 func Test_Storage(t *testing.T) {
 	ctx := context.Background()
 
