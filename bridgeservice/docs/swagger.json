@@ -29,7 +29,7 @@
                     "200": {
                         "description": "Health status and version information",
                         "schema": {
-                            "$ref": "#/definitions/types.HealthCheckResponse"
+                            "$ref": "#/definitions/github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse"
                         }
                     },
                     "500": {
@@ -54,7 +54,7 @@
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Target network ID",
+                        "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
                         "required": true
@@ -89,7 +89,7 @@
                             "type": "integer"
                         },
                         "collectionFormat": "csv",
-                        "description": "Filter by one or more network IDs",
+                        "description": "Filter by one or more destination network IDs",
                         "name": "network_ids",
                         "in": "query"
                     }
@@ -129,7 +129,7 @@
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Target network ID",
+                        "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
                         "required": true
@@ -184,7 +184,7 @@
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Target network ID",
+                        "description": "Origin network ID",
                         "name": "network_id",
                         "in": "query",
                         "required": true
@@ -207,7 +207,7 @@
                             "type": "integer"
                         },
                         "collectionFormat": "csv",
-                        "description": "Filter by one or more network IDs",
+                        "description": "Filter by one or more destination network IDs",
                         "name": "network_ids",
                         "in": "query"
                     },
@@ -531,6 +531,21 @@
                 }
             }
         },
+        "github_com_agglayer_aggkit_bridgeservice_types.HealthCheckResponse": {
+            "description": "Contains basic health‐check information for the bridge service",
+            "type": "object",
+            "properties": {
+                "status": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "version": {
+                    "type": "string"
+                }
+            }
+        },
         "types.BridgeResponse": {
             "description": "Detailed information about a bridge event",
             "type": "object",
@@ -798,21 +813,6 @@
                 "error": {
                     "type": "string",
                     "example": "Error message"
-                }
-            }
-        },
-        "types.HealthCheckResponse": {
-            "description": "Contains basic health‐check information for the bridge service",
-            "type": "object",
-            "properties": {
-                "status": {
-                    "type": "string"
-                },
-                "time": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "string"
                 }
             }
         },
