@@ -144,7 +144,7 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 			},
 			depositCount:  11,
 			expectedIndex: 0,
-			expectedErr:   fooErr,
+			expectedErr:   fmt.Errorf("failed to get last root for L1: %w", fooErr),
 		},
 		{
 			description: "not included yet",
@@ -354,7 +354,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 			},
 			depositCount:  11,
 			expectedIndex: 0,
-			expectedErr:   fooErr,
+			expectedErr:   fmt.Errorf("failed to get last root for L2: %w", fooErr),
 		},
 		{
 			description: "not included yet",
