@@ -3,9 +3,13 @@ package db
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -34,7 +38,20 @@ type certificateInfo struct {
 }
 
 // toCertificate converts the certificateInfo struct to a Certificate struct
-func (c *certificateInfo) toCertificate() *types.Certificate {
+func (c *certificateInfo) toCertificate() (*types.Certificate, error) {
+	signedCert := c.SignedCertificate
+
+	// If SignedCertificate contains a file path, read the content from the file
+	if signedCert != nil && *signedCert != "" && IsJSONFilePath(*signedCert) {
+		if content, err := os.ReadFile(*signedCert); err == nil {
+			contentStr := string(content)
+			signedCert = &contentStr
+		} else {
+			log.Errorf("Failed to read signed certificate file %s: %v", *signedCert, err)
+			return nil, err
+		}
+	}
+
 	return &types.Certificate{
 		Header: &types.CertificateHeader{
 			Height:                  c.Height,
@@ -52,10 +69,10 @@ func (c *certificateInfo) toCertificate() *types.Certificate {
 			CertType:                c.CertType,
 			CertSource:              c.CertSource,
 		},
-		SignedCertificate: c.SignedCertificate,
+		SignedCertificate: signedCert,
 		AggchainProof:     c.AggchainProof,
 		ExtraData:         c.ExtraData,
-	}
+	}, nil
 }
 
 // ID returns a string with the unique identifier of the cerificate (height+certificateID)
@@ -89,4 +106,12 @@ func NewNonAcceptedCertificate(
 		CreatedAt:         createdAt,
 		Error:             certError,
 	}, nil
+}
+
+// IsJSONFilePath determines if the given string is likely a JSON file path
+// by checking if it contains path separators and has a file extension
+func IsJSONFilePath(s string) bool {
+	// Check if it contains path separators and has a file extension
+	return (strings.Contains(s, "/") || strings.Contains(s, "\\")) &&
+		filepath.Ext(s) == ".json"
 }
