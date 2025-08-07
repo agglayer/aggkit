@@ -3,7 +3,7 @@ package l1infotreesync
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonrollupmanager"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/legacy/etrog/polygonrollupmanager"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/sync"
