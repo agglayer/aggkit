@@ -383,6 +383,7 @@ func (p *processor) GetBridges(
 			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
 			return []Bridge{}, nil
 		}
+		p.log.Errorf("GetBridges: queryBlockRange failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 
@@ -394,11 +395,13 @@ func (p *processor) GetBridges(
 
 	bridgePtrs := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
+		p.log.Errorf("GetBridges: meddler.ScanAll failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 	bridgesIface := db.SlicePtrsToSlice(bridgePtrs)
 	bridges, ok := bridgesIface.([]Bridge)
 	if !ok {
+		p.log.Errorf("GetBridges: failed to convert from []*Bridge to []Bridge for block range [%d..%d]", fromBlock, toBlock)
 		return nil, errors.New("failed to convert from []*Bridge to []Bridge")
 	}
 	return bridges, nil
@@ -411,6 +414,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
 			return []Claim{}, nil
 		}
+		p.log.Errorf("GetClaims: queryBlockRange failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 
@@ -422,11 +426,13 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 
 	claimPtrs := []*Claim{}
 	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
+		p.log.Errorf("GetClaims: meddler.ScanAll failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 	claimsIface := db.SlicePtrsToSlice(claimPtrs)
 	claims, ok := claimsIface.([]Claim)
 	if !ok {
+		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for block range [%d..%d]", fromBlock, toBlock)
 		return nil, errors.New("failed to convert from []*Claim to []Claim")
 	}
 	return claims, nil
@@ -458,8 +464,10 @@ func (p *processor) GetBridgesPaged(
 				pageNumber, pageSize, whereClause)
 			return nil, bridgesCount, nil
 		}
+		p.log.Errorf("GetBridgesPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
+
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
 			p.log.Warnf("error closing rows: %v", cerr)
@@ -468,6 +476,7 @@ func (p *processor) GetBridgesPaged(
 
 	bridges := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridges); err != nil {
+		p.log.Errorf("GetBridgesPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -524,6 +533,7 @@ func (p *processor) GetClaimsPaged(
 				pageNumber, pageSize)
 			return nil, claimsCount, nil
 		}
+		p.log.Errorf("GetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 	defer func() {
@@ -534,6 +544,7 @@ func (p *processor) GetClaimsPaged(
 
 	claims := []*Claim{}
 	if err = meddler.ScanAll(rows, &claims); err != nil {
+		p.log.Errorf("GetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -585,6 +596,7 @@ func (p *processor) GetLegacyTokenMigrations(
 				pageNumber, pageSize)
 			return nil, legacyTokenMigrationsCount, nil
 		}
+		p.log.Errorf("GetLegacyTokenMigrations: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 	defer func() {
@@ -595,6 +607,7 @@ func (p *processor) GetLegacyTokenMigrations(
 
 	tokenMigrations := []*LegacyTokenMigration{}
 	if err = meddler.ScanAll(rows, &tokenMigrations); err != nil {
+		p.log.Errorf("GetLegacyTokenMigrations: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -836,7 +849,7 @@ func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMappi
 
 	offset, err := p.calculateOffset(pageNumber, pageSize, totalTokenMappings, "token mappings")
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("failed to calculate offset for pageNumber=%d, pageSize=%d: %w", pageNumber, pageSize, err)
 	}
 
 	tokenMappings, err := p.fetchTokenMappings(pageSize, offset)
