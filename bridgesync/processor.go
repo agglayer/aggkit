@@ -389,7 +389,7 @@ func (p *processor) GetBridges(
 
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
 
@@ -420,7 +420,7 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
 
@@ -470,7 +470,7 @@ func (p *processor) GetBridgesPaged(
 
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
 
@@ -538,7 +538,7 @@ func (p *processor) GetClaimsPaged(
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
 
@@ -602,7 +602,7 @@ func (p *processor) GetLegacyTokenMigrations(
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
 
@@ -882,7 +882,7 @@ func (p *processor) fetchTokenMappings(pageSize uint32, offset uint32) ([]*Token
 	// Ensure rows are closed after we're done with them
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
 
@@ -960,7 +960,7 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 // rollbackTransaction rolls back the transaction and logs an error if it fails
 func (p *processor) rollbackTransaction(tx dbtypes.SQLTxer) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-		log.Warnf("error rolling back tx: %v", err)
+		log.Errorf("error rolling back tx: %v", err)
 	}
 }
 
