@@ -486,3 +486,169 @@ func TestBridgeSync_GetLastReorgEvent(t *testing.T) {
 		require.Nil(t, reorgEvent)
 	})
 }
+
+func TestBridgeSync_GetLastRoot(t *testing.T) {
+	const (
+		syncBlockChunkSize         = uint64(100)
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+	)
+
+	var (
+		blockFinalityType = aggkittypes.SafeBlock
+		ctx               = context.Background()
+		dbPath            = path.Join(t.TempDir(), "TestGetLastRoot.sqlite")
+		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	)
+
+	mockEthClient := mocksethclient.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+
+	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	s, err := NewL2(
+		ctx,
+		dbPath,
+		bridge,
+		syncBlockChunkSize,
+		blockFinalityType,
+		mockReorgDetector,
+		mockEthClient,
+		initialBlock,
+		waitForNewBlocksPeriod,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
+		originNetwork,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+
+	t.Run("get last root when no roots exist", func(t *testing.T) {
+		root, err := s.GetLastRoot(ctx)
+		require.Error(t, err)
+		require.Nil(t, root)
+		// The error should be db.ErrNotFound from the tree package
+		require.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("get last root after processing bridge events", func(t *testing.T) {
+		// Create some bridge events to process
+		bridgeEvents := []interface{}{
+			Event{Bridge: &Bridge{
+				BlockNum:           1,
+				BlockPos:           0,
+				FromAddress:        common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				TxHash:             common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				Calldata:           []byte{0x01, 0x02, 0x03},
+				BlockTimestamp:     1234567890,
+				LeafType:           1,
+				OriginNetwork:      1,
+				OriginAddress:      common.HexToAddress("0x3333333333333333333333333333333333333333"),
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0x4444444444444444444444444444444444444444"),
+				Amount:             big.NewInt(1000000),
+				Metadata:           []byte{0x04, 0x05, 0x06},
+				DepositCount:       0,
+				IsNativeToken:      true,
+			}},
+			Event{Bridge: &Bridge{
+				BlockNum:           1,
+				BlockPos:           1,
+				FromAddress:        common.HexToAddress("0x5555555555555555555555555555555555555555"),
+				TxHash:             common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
+				Calldata:           []byte{0x07, 0x08, 0x09},
+				BlockTimestamp:     1234567890,
+				LeafType:           1,
+				OriginNetwork:      1,
+				OriginAddress:      common.HexToAddress("0x7777777777777777777777777777777777777777"),
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0x8888888888888888888888888888888888888888"),
+				Amount:             big.NewInt(2000000),
+				Metadata:           []byte{0x0a, 0x0b, 0x0c},
+				DepositCount:       1,
+				IsNativeToken:      false,
+			}},
+		}
+
+		block := sync.Block{
+			Num:    1,
+			Events: bridgeEvents,
+		}
+
+		err = s.processor.ProcessBlock(ctx, block)
+		require.NoError(t, err)
+
+		root, err := s.GetLastRoot(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, root)
+		require.Equal(t, uint64(1), root.BlockNum)
+		require.Equal(t, uint64(1), root.BlockPosition)
+		require.Equal(t, uint32(1), root.Index)
+		require.NotEqual(t, common.Hash{}, root.Hash)
+	})
+
+	t.Run("get last root when processor is halted", func(t *testing.T) {
+		s.processor.halted = true
+		root, err := s.GetLastRoot(ctx)
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+		require.Nil(t, root)
+	})
+
+	t.Run("get last root after multiple blocks", func(t *testing.T) {
+		// Reset halted state
+		s.processor.halted = false
+
+		// Process another block with more bridge events
+		bridgeEvents := []interface{}{
+			Event{Bridge: &Bridge{
+				BlockNum:           2,
+				BlockPos:           0,
+				FromAddress:        common.HexToAddress("0x9999999999999999999999999999999999999999"),
+				TxHash:             common.HexToHash("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+				Calldata:           []byte{0x0d, 0x0e, 0x0f},
+				BlockTimestamp:     1234567891,
+				LeafType:           1,
+				OriginNetwork:      1,
+				OriginAddress:      common.HexToAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+				DestinationNetwork: 2,
+				DestinationAddress: common.HexToAddress("0xcccccccccccccccccccccccccccccccccccccccc"),
+				Amount:             big.NewInt(3000000),
+				Metadata:           []byte{0x10, 0x11, 0x12},
+				DepositCount:       2,
+				IsNativeToken:      true,
+			}},
+		}
+
+		block := sync.Block{
+			Num:    2,
+			Events: bridgeEvents,
+		}
+
+		err = s.processor.ProcessBlock(ctx, block)
+		require.NoError(t, err)
+
+		root, err := s.GetLastRoot(ctx)
+		require.NoError(t, err)
+		require.NotNil(t, root)
+		require.Equal(t, uint64(2), root.BlockNum)
+		require.Equal(t, uint64(0), root.BlockPosition)
+		require.Equal(t, uint32(2), root.Index)
+		require.NotEqual(t, common.Hash{}, root.Hash)
+	})
+}
