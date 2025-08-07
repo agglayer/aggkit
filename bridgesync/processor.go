@@ -596,7 +596,8 @@ func (p *processor) GetLegacyTokenMigrations(
 				pageNumber, pageSize)
 			return nil, legacyTokenMigrationsCount, nil
 		}
-		p.log.Errorf("GetLegacyTokenMigrations: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		p.log.Errorf("GetLegacyTokenMigrations: queryPaged failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 	defer func() {
@@ -607,7 +608,8 @@ func (p *processor) GetLegacyTokenMigrations(
 
 	tokenMigrations := []*LegacyTokenMigration{}
 	if err = meddler.ScanAll(rows, &tokenMigrations); err != nil {
-		p.log.Errorf("GetLegacyTokenMigrations: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
+		p.log.Errorf("GetLegacyTokenMigrations: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
