@@ -222,6 +222,7 @@ type CertificateValidateAndSigner interface {
 	ValidateAndSignCertificate(
 		ctx context.Context,
 		certificate *agglayertypes.Certificate,
+		lastL2BlockInCert uint64,
 	) ([]byte, error)
 	String() string
 }
@@ -233,6 +234,7 @@ type ValidatorClient interface {
 		ctx context.Context,
 		previousCertificateID *common.Hash, // can be nil if there is no previous certificate
 		certificate *agglayertypes.Certificate,
+		lastL2BlockInCert uint64,
 	) ([]byte, error)
 }
 

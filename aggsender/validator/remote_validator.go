@@ -48,6 +48,7 @@ func (v *RemoteValidator) HealthCheck(ctx context.Context) (*types.HealthCheckRe
 func (v *RemoteValidator) ValidateAndSignCertificate(
 	ctx context.Context,
 	certificate *agglayertypes.Certificate,
+	lastL2BlockInCert uint64,
 ) ([]byte, error) {
 	previousCertificate, err := getPreviousCertificate(v.storage, certificate.Height, certificate.NetworkID)
 	if err != nil {
@@ -63,6 +64,7 @@ func (v *RemoteValidator) ValidateAndSignCertificate(
 		ctx,
 		previousCertificateID,
 		certificate,
+		lastL2BlockInCert,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error validating certificate on aggsender validator service: %w", err)

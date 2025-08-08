@@ -53,6 +53,7 @@ func (a *LocalValidator) HealthCheck(ctx context.Context) (*types.HealthCheckRes
 func (a *LocalValidator) ValidateAndSignCertificate(
 	ctx context.Context,
 	certificate *agglayertypes.Certificate,
+	lastL2BlockInCert uint64,
 ) ([]byte, error) {
 	a.log.Infof("certificate validation: %s ....", certificate.Brief())
 	verifyParams := types.VerifyIncomingRequest{
