@@ -103,7 +103,8 @@ func New(
 		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
 	)
 
-	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, types.AggsenderMode(cfg.Mode), cfg.SovereignRollupAddr, l1Client)
+	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, types.AggsenderMode(cfg.Mode),
+		cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
 	}
