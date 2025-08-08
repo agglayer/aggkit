@@ -129,7 +129,7 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 			expectedErr:   fooErr,
 		},
 		{
-			description: "error on first GetRootByLER",
+			description: "error on first GetRootByLER and GetLastRoot",
 			setupMocks: func() {
 				b.l1InfoTree.EXPECT().GetLastInfo().
 					Return(lastL1Info, nil).
@@ -137,10 +137,14 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 				b.bridgeL1.EXPECT().GetRootByLER(ctx, lastL1Info.MainnetExitRoot).
 					Return(&tree.Root{}, fooErr).
 					Once()
+				// With the fallback logic, it will try GetLastRoot when GetRootByLER fails
+				b.bridgeL1.EXPECT().GetLastRoot(ctx).
+					Return(nil, fooErr).
+					Once()
 			},
 			depositCount:  11,
 			expectedIndex: 0,
-			expectedErr:   fooErr,
+			expectedErr:   fmt.Errorf("failed to get last root for L1: %w", fooErr),
 		},
 		{
 			description: "not included yet",
@@ -194,7 +198,7 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge(t *testing.T) {
 			expectedErr:   fooErr,
 		},
 		{
-			description: "error on GetRootByLER (inside binnary search)",
+			description: "error on GetRootByLER (inside binary search)",
 			setupMocks: func() {
 				b.l1InfoTree.EXPECT().GetLastInfo().
 					Return(lastL1Info, nil).
@@ -344,10 +348,33 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 				b.bridgeL2.EXPECT().GetRootByLER(ctx, lastVerified.ExitRoot).
 					Return(&tree.Root{}, fooErr).
 					Once()
+				b.bridgeL2.EXPECT().GetLastRoot(ctx).
+					Return(&tree.Root{}, fooErr).
+					Once()
 			},
 			depositCount:  11,
 			expectedIndex: 0,
-			expectedErr:   fooErr,
+			expectedErr:   fmt.Errorf("failed to get last root for L2: %w", fooErr),
+		},
+		{
+			description: "error on first GetLastRoot",
+			setupMocks: func() {
+				b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
+					Return(lastVerified, nil).
+					Once()
+				b.bridgeL2.EXPECT().GetRootByLER(ctx, lastVerified.ExitRoot).
+					Return(&tree.Root{}, fooErr).
+					Once()
+				b.bridgeL2.EXPECT().GetLastRoot(ctx).
+					Return(&tree.Root{}, nil).
+					Once()
+				b.l1InfoTree.EXPECT().GetFirstVerifiedBatchesAfterBlock(networkID, mock.Anything).
+					Return(nil, fooErr).
+					Once()
+			},
+			depositCount:  11,
+			expectedIndex: 0,
+			expectedErr:   fmt.Errorf("failed to get first verified batch after block for L2: %w, block num: %d", fooErr, 0),
 		},
 		{
 			description: "not included yet",
@@ -401,7 +428,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 			expectedErr:   fooErr,
 		},
 		{
-			description: "error on GetRootByLER (inside binnary search)",
+			description: "error on GetRootByLER (inside binary search)",
 			setupMocks: func() {
 				b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
 					Return(lastVerified, nil).
@@ -1369,7 +1396,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 		require.Contains(t, w.Body.String(), fooErrMsg)
 	})
 
-	t.Run("Error from GetRootByLER", func(t *testing.T) {
+	t.Run("Error from GetRootByLER and GetLastRoot", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
 		bridgeMocks.l1InfoTree.EXPECT().
@@ -1386,13 +1413,18 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 			GetRootByLER(mock.Anything, mock.Anything).
 			Return(nil, fmt.Errorf(barErrMsg))
 
+		// With the fallback logic, it will try GetLastRoot when GetRootByLER fails
+		bridgeMocks.bridgeL1.EXPECT().
+			GetLastRoot(mock.Anything).
+			Return(nil, fmt.Errorf("last root error"))
+
 		queryParams := url.Values{}
 		queryParams.Set("network_id", "0")
 		queryParams.Set("deposit_count", fmt.Sprintf("%d", depositCount))
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/l1-info-tree-index?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
-		require.Contains(t, w.Body.String(), barErrMsg)
+		require.Contains(t, w.Body.String(), "last root error")
 	})
 
 	t.Run("Invalid network ID parameter", func(t *testing.T) {
@@ -2137,4 +2169,259 @@ func TestHealthCheckHandler(t *testing.T) {
 	require.Equal(t, "ok", response.Status)
 	require.NotEmpty(t, response.Time)
 	require.NotEmpty(t, response.Version)
+}
+
+func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
+	ctx := context.Background()
+	networkID := uint32(1)
+	b := newBridgeWithMocks(t, networkID)
+
+	lastInfo := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:     1000,
+		MainnetExitRoot: common.HexToHash("0xabc"),
+		L1InfoTreeIndex: 1000,
+	}
+
+	firstInfo := &l1infotreesync.L1InfoTreeLeaf{
+		BlockNumber:     10,
+		MainnetExitRoot: common.HexToHash("0xdef"),
+		L1InfoTreeIndex: 10,
+	}
+
+	depositCount := uint32(500)
+	expectedIndex := uint32(500)
+
+	t.Run("GetRootByLER fails but GetLastRoot succeeds", func(t *testing.T) {
+		// Setup mocks for the fallback scenario
+		b.l1InfoTree.EXPECT().GetLastInfo().
+			Return(lastInfo, nil).
+			Once()
+
+		// First call to GetRootByLER fails
+		b.bridgeL1.EXPECT().GetRootByLER(ctx, lastInfo.MainnetExitRoot).
+			Return(nil, errors.New("LER not found")).
+			Once()
+
+		// Fallback to GetLastRoot succeeds
+		fallbackRoot := &tree.Root{
+			Index:    depositCount,
+			BlockNum: uint64(depositCount),
+		}
+		b.bridgeL1.EXPECT().GetLastRoot(ctx).
+			Return(fallbackRoot, nil).
+			Once()
+
+		// After GetLastRoot succeeds, GetInfoByIndex is called with the root's index
+		updatedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     uint64(depositCount),
+			MainnetExitRoot: common.HexToHash("0x123"),
+			L1InfoTreeIndex: depositCount,
+		}
+		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount).
+			Return(updatedLastInfo, nil).
+			Once()
+
+		// Continue with normal flow
+		b.l1InfoTree.EXPECT().GetFirstInfo().
+			Return(firstInfo, nil).
+			Once()
+
+		// Mock the binary search calls
+		targetInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     uint64(expectedIndex),
+			MainnetExitRoot: common.HexToHash("0x123"),
+			L1InfoTreeIndex: expectedIndex,
+		}
+		b.l1InfoTree.EXPECT().GetFirstInfoAfterBlock(mock.Anything).
+			Return(targetInfo, nil).
+			Once()
+
+		// Mock successful GetRootByLER in binary search
+		b.bridgeL1.EXPECT().GetRootByLER(ctx, targetInfo.MainnetExitRoot).
+			Return(&tree.Root{Index: depositCount}, nil).
+			Once()
+
+		// Execute the function
+		actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
+
+		// Verify results
+		require.NoError(t, err)
+		require.Equal(t, expectedIndex, actualIndex)
+
+		// Verify all mocks were called as expected
+		b.l1InfoTree.AssertExpectations(t)
+		b.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetRootByLER fails and GetLastRoot also fails", func(t *testing.T) {
+		// Setup mocks for the double failure scenario
+		b.l1InfoTree.EXPECT().GetLastInfo().
+			Return(lastInfo, nil).
+			Once()
+
+		// First call to GetRootByLER fails
+		b.bridgeL1.EXPECT().GetRootByLER(ctx, lastInfo.MainnetExitRoot).
+			Return(nil, errors.New("LER not found")).
+			Once()
+
+		// Fallback to GetLastRoot also fails
+		b.bridgeL1.EXPECT().GetLastRoot(ctx).
+			Return(nil, errors.New("last root not available")).
+			Once()
+
+		// Execute the function
+		actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
+
+		// Verify results - should return error from GetLastRoot
+		require.Error(t, err)
+		require.Equal(t, uint32(0), actualIndex)
+		require.Contains(t, err.Error(), "last root not available")
+
+		// Verify all mocks were called as expected
+		b.l1InfoTree.AssertExpectations(t)
+		b.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetRootByLER fails, GetLastRoot succeeds but root index is too low", func(t *testing.T) {
+		// Setup mocks for the fallback scenario with insufficient index
+		b.l1InfoTree.EXPECT().GetLastInfo().
+			Return(lastInfo, nil).
+			Once()
+
+		// First call to GetRootByLER fails
+		b.bridgeL1.EXPECT().GetRootByLER(ctx, lastInfo.MainnetExitRoot).
+			Return(nil, errors.New("LER not found")).
+			Once()
+
+		// Fallback to GetLastRoot succeeds but returns low index
+		fallbackRoot := &tree.Root{
+			Index:    depositCount - 100, // Lower than depositCount
+			BlockNum: uint64(depositCount - 100),
+		}
+		b.bridgeL1.EXPECT().GetLastRoot(ctx).
+			Return(fallbackRoot, nil).
+			Once()
+
+		// After GetLastRoot succeeds, GetInfoByIndex is called with the root's index
+		updatedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     uint64(depositCount - 100),
+			MainnetExitRoot: common.HexToHash("0x123"),
+			L1InfoTreeIndex: depositCount - 100,
+		}
+		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount-100).
+			Return(updatedLastInfo, nil).
+			Once()
+
+		// Execute the function
+		actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
+
+		// Verify results - should return ErrNotOnL1Info
+		require.Error(t, err)
+		require.Equal(t, uint32(0), actualIndex)
+		require.Equal(t, ErrNotOnL1Info, err)
+
+		// Verify all mocks were called as expected
+		b.l1InfoTree.AssertExpectations(t)
+		b.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetRootByLER fails, GetLastRoot succeeds with higher index", func(t *testing.T) {
+		// Setup mocks for the fallback scenario with higher index
+		b.l1InfoTree.EXPECT().GetLastInfo().
+			Return(lastInfo, nil).
+			Once()
+
+		// First call to GetRootByLER fails
+		b.bridgeL1.EXPECT().GetRootByLER(ctx, lastInfo.MainnetExitRoot).
+			Return(nil, errors.New("LER not found")).
+			Once()
+
+		// Fallback to GetLastRoot succeeds with higher index
+		fallbackRoot := &tree.Root{
+			Index:    depositCount + 50, // Higher than depositCount
+			BlockNum: uint64(depositCount + 50),
+		}
+		b.bridgeL1.EXPECT().GetLastRoot(ctx).
+			Return(fallbackRoot, nil).
+			Once()
+
+		// After GetLastRoot succeeds, GetInfoByIndex is called with the root's index
+		updatedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     uint64(depositCount + 50),
+			MainnetExitRoot: common.HexToHash("0x123"),
+			L1InfoTreeIndex: depositCount + 50,
+		}
+		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount+50).
+			Return(updatedLastInfo, nil).
+			Once()
+
+		// Continue with normal flow
+		b.l1InfoTree.EXPECT().GetFirstInfo().
+			Return(firstInfo, nil).
+			Once()
+
+		// Mock the binary search calls
+		targetInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     uint64(expectedIndex),
+			MainnetExitRoot: common.HexToHash("0x123"),
+			L1InfoTreeIndex: expectedIndex,
+		}
+		b.l1InfoTree.EXPECT().GetFirstInfoAfterBlock(mock.Anything).
+			Return(targetInfo, nil).
+			Once()
+
+		// Mock successful GetRootByLER in binary search
+		b.bridgeL1.EXPECT().GetRootByLER(ctx, targetInfo.MainnetExitRoot).
+			Return(&tree.Root{Index: depositCount}, nil).
+			Once()
+
+		// Execute the function
+		actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
+
+		// Verify results
+		require.NoError(t, err)
+		require.Equal(t, expectedIndex, actualIndex)
+
+		// Verify all mocks were called as expected
+		b.l1InfoTree.AssertExpectations(t)
+		b.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetRootByLER fails, GetLastRoot succeeds but GetInfoByIndex fails", func(t *testing.T) {
+		// Setup mocks for the fallback scenario where GetInfoByIndex fails
+		b.l1InfoTree.EXPECT().GetLastInfo().
+			Return(lastInfo, nil).
+			Once()
+
+		// First call to GetRootByLER fails
+		b.bridgeL1.EXPECT().GetRootByLER(ctx, lastInfo.MainnetExitRoot).
+			Return(nil, errors.New("LER not found")).
+			Once()
+
+		// Fallback to GetLastRoot succeeds
+		fallbackRoot := &tree.Root{
+			Index:    depositCount,
+			BlockNum: uint64(depositCount),
+		}
+		b.bridgeL1.EXPECT().GetLastRoot(ctx).
+			Return(fallbackRoot, nil).
+			Once()
+
+		// GetInfoByIndex fails after GetLastRoot succeeds
+		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount).
+			Return(nil, errors.New("failed to get info by index")).
+			Once()
+
+		// Execute the function
+		actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
+
+		// Verify results - should return error from GetInfoByIndex
+		require.Error(t, err)
+		require.Equal(t, uint32(0), actualIndex)
+		require.Contains(t, err.Error(), "failed to get last info for L1")
+
+		// Verify all mocks were called as expected
+		b.l1InfoTree.AssertExpectations(t)
+		b.bridgeL1.AssertExpectations(t)
+	})
 }
