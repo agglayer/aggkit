@@ -374,57 +374,67 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 	}, nil
 }
 
+//nolint:dupl
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-	defer p.rollbackTransaction(tx)
-
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, bridgeTableName)
+	rows, err := p.queryBlockRange(p.db, fromBlock, toBlock, bridgeTableName)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
 			return []Bridge{}, nil
 		}
+		p.log.Errorf("GetBridges: queryBlockRange failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
+
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
 	bridgePtrs := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridgePtrs); err != nil {
+		p.log.Errorf("GetBridges: meddler.ScanAll failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 	bridgesIface := db.SlicePtrsToSlice(bridgePtrs)
 	bridges, ok := bridgesIface.([]Bridge)
 	if !ok {
+		p.log.Errorf("GetBridges: failed to convert from []*Bridge to []Bridge for block range [%d..%d]", fromBlock, toBlock)
 		return nil, errors.New("failed to convert from []*Bridge to []Bridge")
 	}
 	return bridges, nil
 }
 
+//nolint:dupl
 func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-	defer p.rollbackTransaction(tx)
-
-	rows, err := p.queryBlockRange(tx, fromBlock, toBlock, claimTableName)
+	rows, err := p.queryBlockRange(p.db, fromBlock, toBlock, claimTableName)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
 			return []Claim{}, nil
 		}
+		p.log.Errorf("GetClaims: queryBlockRange failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
+
+	defer func() {
+		if cerr := rows.Close(); cerr != nil {
+			p.log.Errorf("error closing rows: %v", cerr)
+		}
+	}()
+
 	claimPtrs := []*Claim{}
 	if err = meddler.ScanAll(rows, &claimPtrs); err != nil {
+		p.log.Errorf("GetClaims: meddler.ScanAll failed for block range [%d..%d]: %v", fromBlock, toBlock, err)
 		return nil, err
 	}
 	claimsIface := db.SlicePtrsToSlice(claimPtrs)
 	claims, ok := claimsIface.([]Claim)
 	if !ok {
+		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for block range [%d..%d]", fromBlock, toBlock)
 		return nil, errors.New("failed to convert from []*Claim to []Claim")
 	}
 	return claims, nil
@@ -433,12 +443,6 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*Bridge, int, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer p.rollbackTransaction(tx)
-
 	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
 	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName, whereClause)
@@ -455,23 +459,26 @@ func (p *processor) GetBridgesPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPaged(tx, offset, pageSize, bridgeTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(p.db, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
 				pageNumber, pageSize, whereClause)
 			return nil, bridgesCount, nil
 		}
+		p.log.Errorf("GetBridgesPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
+
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
 
 	bridges := []*Bridge{}
 	if err = meddler.ScanAll(rows, &bridges); err != nil {
+		p.log.Errorf("GetBridgesPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -504,12 +511,6 @@ func (p *processor) buildBridgesFilterClause(depositCount *uint64, networkIDs []
 func (p *processor) GetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32, fromAddress string,
 ) ([]*Claim, int, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, 0, err
-	}
-	defer p.rollbackTransaction(tx)
-
 	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress)
 	claimsCount, err := p.GetTotalNumberOfRecords(claimTableName, whereClause)
 	if err != nil {
@@ -527,23 +528,25 @@ func (p *processor) GetClaimsPaged(
 
 	orderByClause := "block_num DESC, block_pos DESC"
 
-	rows, err := p.queryPaged(tx, offset, pageSize, claimTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
 				pageNumber, pageSize)
 			return nil, claimsCount, nil
 		}
+		p.log.Errorf("GetClaimsPaged: queryPaged failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
 
 	claims := []*Claim{}
 	if err = meddler.ScanAll(rows, &claims); err != nil {
+		p.log.Errorf("GetClaimsPaged: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v", pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -595,15 +598,20 @@ func (p *processor) GetLegacyTokenMigrations(
 				pageNumber, pageSize)
 			return nil, legacyTokenMigrationsCount, nil
 		}
+		p.log.Errorf("GetLegacyTokenMigrations: queryPaged failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
+
 	tokenMigrations := []*LegacyTokenMigration{}
 	if err = meddler.ScanAll(rows, &tokenMigrations); err != nil {
+		p.log.Errorf("GetLegacyTokenMigrations: meddler.ScanAll failed for pageNumber=%d, pageSize=%d: %v",
+			pageNumber, pageSize, err)
 		return nil, 0, err
 	}
 
@@ -833,7 +841,7 @@ func (p *processor) GetTotalNumberOfRecords(tableName, whereClause string) (int,
 }
 
 // GetTokenMappings returns the paged token mappings from the database
-func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
+func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
 	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
@@ -845,10 +853,10 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 
 	offset, err := p.calculateOffset(pageNumber, pageSize, totalTokenMappings, "token mappings")
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, fmt.Errorf("failed to calculate offset for pageNumber=%d, pageSize=%d: %w", pageNumber, pageSize, err)
 	}
 
-	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
+	tokenMappings, err := p.fetchTokenMappings(pageSize, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -857,15 +865,10 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 }
 
 // fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
-func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return nil, err
-	}
-	defer p.rollbackTransaction(tx)
-
+func (p *processor) fetchTokenMappings(pageSize uint32, offset uint32) ([]*TokenMapping, error) {
 	orderByClause := "block_num DESC"
-	rows, err := p.queryPaged(tx, offset, pageSize, tokenMappingTableName, orderByClause, "")
+
+	rows, err := p.queryPaged(p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			pageNumber := (offset / pageSize) + 1
@@ -878,9 +881,10 @@ func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, off
 		return nil, err
 	}
 
+	// Ensure rows are closed after we're done with them
 	defer func() {
 		if cerr := rows.Close(); cerr != nil {
-			p.log.Warnf("error closing rows: %v", cerr)
+			p.log.Errorf("error closing rows: %v", cerr)
 		}
 	}()
 
@@ -955,19 +959,10 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 	return
 }
 
-//nolint:unparam
-func (p *processor) startTransaction(ctx context.Context, isReadOnly bool) (*sql.Tx, error) {
-	tx, err := p.db.BeginTx(ctx, &sql.TxOptions{ReadOnly: isReadOnly})
-	if err != nil {
-		return nil, err
-	}
-	return tx, nil
-}
-
 // rollbackTransaction rolls back the transaction and logs an error if it fails
 func (p *processor) rollbackTransaction(tx dbtypes.SQLTxer) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-		log.Warnf("error rolling back tx: %v", err)
+		log.Errorf("error rolling back tx: %v", err)
 	}
 }
 
