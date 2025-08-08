@@ -5,6 +5,7 @@ import (
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 )
 
 // ConvertAgglayerCertHeaderToAggsender converts an agglayer CertificateHeader to an aggsender CertificateHeader
@@ -12,13 +13,19 @@ func ConvertAgglayerCertHeaderToAggsender(cert *agglayertypes.CertificateHeader)
 	if cert == nil {
 		return nil, nil
 	}
-	metadataUnmarshal, err := types.NewCertificateMetadataFromHash(cert.Metadata)
-	if err != nil {
-		return nil, fmt.Errorf("error parsing cert metadata. Err: %w", err)
-	}
-	blockRange, err := metadataUnmarshal.BlockRange()
-	if err != nil {
-		return nil, fmt.Errorf("cant get blockRange from certificate metadata. Err: %w", err)
+
+	blockRange := types.BlockRangeZero
+	if cert.Metadata != aggkitcommon.ZeroHash {
+		// TODO - remove this once we completely decouple metadata from the certificate
+		metadataUnmarshal, err := types.NewCertificateMetadataFromHash(cert.Metadata)
+		if err != nil {
+			return nil, fmt.Errorf("error parsing cert metadata. Err: %w", err)
+		}
+		br, err := metadataUnmarshal.BlockRange()
+		if err != nil {
+			return nil, fmt.Errorf("cant get blockRange from certificate metadata. Err: %w", err)
+		}
+		blockRange = br
 	}
 
 	return &types.CertificateHeader{
@@ -33,7 +40,6 @@ func ConvertAgglayerCertHeaderToAggsender(cert *agglayertypes.CertificateHeader)
 		CreatedAt:               0,
 		UpdatedAt:               0,
 		FinalizedL1InfoTreeRoot: nil,
-		CertType:                metadataUnmarshal.CertificateType(),
 		CertSource:              types.CertificateSourceAggLayer,
 	}, nil
 }

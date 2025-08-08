@@ -41,6 +41,8 @@ type AggSender struct {
 	aggLayerClient               agglayer.AgglayerClientInterface
 	compatibilityStoragedChecker compatibility.CompatibilityChecker
 	certStatusChecker            types.CertificateStatusChecker
+	certQuerier                  types.CertificateQuerier
+	rollupDataQuerier            types.RollupDataQuerier
 
 	cfg config.Config
 
@@ -126,6 +128,7 @@ func New(
 		rateLimiter:                  rateLimit,
 		compatibilityStoragedChecker: compatibilityStoragedChecker,
 		l2OriginNetwork:              l2OriginNetwork,
+		certQuerier:                  certQuerier,
 		certStatusChecker: statuschecker.NewCertStatusChecker(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
 	}, nil
@@ -147,6 +150,14 @@ func (a *AggSender) GetStorage() db.AggSenderStorage {
 
 func (a *AggSender) GetFlow() types.AggsenderFlow {
 	return a.flow
+}
+
+func (a *AggSender) GetCertQuerier() types.CertificateQuerier {
+	return a.certQuerier
+}
+
+func (a *AggSender) GetLERQuerier() types.LERQuerier {
+	return query.NewLERDataQuerier(a.cfg.RollupCreationBlockL1, a.rollupDataQuerier)
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {

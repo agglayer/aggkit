@@ -27,17 +27,6 @@ func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 		require.ErrorContains(t, err, "unsupported certificate metadata")
 	})
 
-	t.Run("Can't get blockRange'", func(t *testing.T) {
-		badMetadata := make([]byte, common.HashLength)
-		badMetadata[0] = 0x0 // Version = 0x0 doesn't have blockrange
-		cert := &agglayertypes.CertificateHeader{
-			Metadata: common.Hash(badMetadata),
-		}
-		result, err := ConvertAgglayerCertHeaderToAggsender(cert)
-		require.Nil(t, result)
-		require.Error(t, err)
-	})
-
 	t.Run("ok", func(t *testing.T) {
 		badMetadata := make([]byte, common.HashLength)
 		badMetadata[0] = 0x1 // Version = 0xff

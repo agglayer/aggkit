@@ -226,11 +226,7 @@ func createAggSenderValidator(ctx context.Context,
 
 	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
-	lerQuerier, err := query.NewLERDataQuerier(
-		cfg.LerQuerier.RollupManagerAddr, cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)
-	if err != nil {
-		return nil, fmt.Errorf("error creating LER data querier: %w", err)
-	}
+	lerQuerier := query.NewLERDataQuerier(cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)
 	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
@@ -256,7 +252,25 @@ func createAggSenderValidator(ctx context.Context,
 		cfg.RequireOneBridgeInPPCertificate,
 		cfg.MaxL2BlockNumber,
 	)
-	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP, l1InfoTreeQuerier, agglayerClient, signer)
+
+	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
+		logger,
+		aggsendertypes.PessimisticProofMode,
+		aggkitcommon.ZeroAddress,
+		l1Client,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create AggchainFEPQuerier: %w", err)
+	}
+
+	certQuerier := query.NewCertificateQuerier(
+		l2Syncer,
+		aggchainFEPQuerier,
+		agglayerClient,
+	)
+
+	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP,
+		l1InfoTreeQuerier, agglayerClient, certQuerier, lerQuerier, signer)
 }
 
 func createAggSender(
@@ -326,6 +340,8 @@ func createAggSender(
 					logger,
 					aggsender.GetFlow(),
 					query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
+					aggsender.GetCertQuerier(),
+					aggsender.GetLERQuerier(),
 				),
 			)
 		}

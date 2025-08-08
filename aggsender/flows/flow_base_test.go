@@ -334,7 +334,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    types.EmptyLER,
 			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(aggkitcommon.ZeroHash, nil)
+				mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
 			},
 		},
 		{
@@ -343,7 +343,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    common.HexToHash("0x1"),
 			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(common.HexToHash("0x1"), nil)
+				mockLERQuerier.EXPECT().GetStartLER().Return(common.HexToHash("0x1"), nil)
 			},
 		},
 		{
@@ -351,9 +351,9 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			lastSentCert:   nil,
 			expectedHeight: 0,
 			expectedLER:    aggkitcommon.ZeroHash,
-			expectedError:  "error getting last local exit root: some error",
+			expectedError:  "some error",
 			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(common.Hash{}, errors.New("some error"))
+				mockLERQuerier.EXPECT().GetStartLER().Return(common.Hash{}, errors.New("some error"))
 			},
 		},
 		{
@@ -397,7 +397,7 @@ func Test_baseFlow_getNextHeightAndPreviousLER(t *testing.T) {
 			expectedHeight: 0,
 			expectedLER:    types.EmptyLER,
 			mockFn: func(mockLERQuerier *mocks.LERQuerier, mockStorage *mocks.AggSenderStorage) {
-				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
+				mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
 			},
 		},
 		{

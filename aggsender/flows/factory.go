@@ -43,12 +43,7 @@ func NewFlow(
 		}
 		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
 			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1)
-		lerQuerier, err := query.NewLERDataQuerier(
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, rollupDataQuerier)
-		if err != nil {
-			return nil, fmt.Errorf("error creating LER data querier: %w", err)
-		}
-
+		lerQuerier := query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier)
 		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
@@ -90,12 +85,7 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
 
-		lerQuerier, err := query.NewLERDataQuerier(
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1, rollupDataQuerier)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error creating LER data querier: %w", err)
-		}
-
+		lerQuerier := query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier)
 		aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(logger, types.AggchainProofMode,
 			cfg.SovereignRollupAddr, l1Client)
 		if err != nil {

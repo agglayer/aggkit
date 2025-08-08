@@ -339,25 +339,11 @@ func (f *baseFlow) getImportedBridgeExits(
 		ctx, claims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
 }
 
-// getStartLER returns the last local exit root (LER) based on the configuration
-func (f *baseFlow) getStartLER() (common.Hash, error) {
-	ler, err := f.lerQuerier.GetLastLocalExitRoot()
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("error getting last local exit root: %w", err)
-	}
-
-	if ler == aggkitcommon.ZeroHash {
-		return types.EmptyLER, nil
-	}
-
-	return ler, nil
-}
-
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		ler, err := f.getStartLER()
+		ler, err := f.lerQuerier.GetStartLER()
 		return uint64(0), ler, err
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
@@ -375,7 +361,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			ler, err := f.getStartLER()
+			ler, err := f.lerQuerier.GetStartLER()
 			return uint64(0), ler, err
 		}
 		// We get previous certificate that must be settled
