@@ -44,6 +44,7 @@ GenerateAggchainProofTimeout = "1h"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
+	RetryMode = "backoff"
 	MaxRetries = 5
 	InitialBackoff = "2s"
 	MaxBackoff = "10s"
@@ -71,6 +72,7 @@ RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 	[L1NetworkConfig.RPC]
 		URL = "{{L1Config.URL}}"
+		RetryMode = "backoff"
 		MaxRetries = 5
 		InitialBackoff = "2s"
 		MaxBackoff = "10s"
@@ -198,7 +200,7 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
 	[AggSender.RetriesToBuildAndSendCertificate]
-		Mode = "delays"
+		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
 		MaxRetries = 6 # 1+6 attempts, around 22m 
 	[AggSender.AgglayerClient]
