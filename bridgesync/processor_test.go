@@ -2134,3 +2134,312 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 func intPtr(i int) *int {
 	return &i
 }
+
+func TestProcessor_ErrorPathLogging(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GetBridges error paths", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "GetBridgesErrorPaths")
+
+		// Test queryBlockRange failure - block not processed
+		_, err := p.GetBridges(context.Background(), 1, 5)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "block 5 not processed")
+
+		// Test successful case with no bridges
+		tx, err := p.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
+		require.NoError(t, err)
+		require.NoError(t, tx.Commit())
+
+		bridges, err := p.GetBridges(context.Background(), 1, 1)
+		require.NoError(t, err)
+		require.Empty(t, bridges)
+	})
+
+	t.Run("GetClaims error paths", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "GetClaimsErrorPaths")
+
+		// Test queryBlockRange failure - block not processed
+		_, err := p.GetClaims(context.Background(), 1, 5)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "block 5 not processed")
+
+		// Test successful case with no claims
+		tx, err := p.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+		_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, 1, "0x1")
+		require.NoError(t, err)
+		require.NoError(t, tx.Commit())
+
+		claims, err := p.GetClaims(context.Background(), 1, 1)
+		require.NoError(t, err)
+		require.Empty(t, claims)
+	})
+
+	t.Run("GetBridgesPaged error paths", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "GetBridgesPagedErrorPaths")
+
+		testBlock := sync.Block{
+			Num:  1,
+			Hash: common.HexToHash("0x1"),
+			Events: []interface{}{
+				Event{Bridge: createTestBridge(1, 0)},
+			},
+		}
+		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
+
+		// Test invalid page number (page 10 with only 1 record and page size 5)
+		_, _, err := p.GetBridgesPaged(context.Background(), 10, 5, nil, nil, "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid page number")
+
+		// Test successful case with valid page
+		bridges, count, err := p.GetBridgesPaged(context.Background(), 1, 5, nil, nil, "")
+		require.NoError(t, err)
+		require.Len(t, bridges, 1)
+		require.Equal(t, 1, count)
+	})
+
+	t.Run("GetClaimsPaged error paths", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "GetClaimsPagedErrorPaths")
+
+		testBlock := sync.Block{
+			Num:  1,
+			Hash: common.HexToHash("0x1"),
+			Events: []interface{}{
+				Event{Claim: createTestClaim(1, 0)},
+			},
+		}
+		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
+
+		// Test invalid page number (page 10 with only 1 record and page size 5)
+		_, _, err := p.GetClaimsPaged(context.Background(), 10, 5, nil, "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid page number")
+
+		// Test successful case with valid page
+		claims, count, err := p.GetClaimsPaged(context.Background(), 1, 5, nil, "")
+		require.NoError(t, err)
+		require.Len(t, claims, 1)
+		require.Equal(t, 1, count)
+	})
+
+	t.Run("GetLegacyTokenMigrations error paths", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "GetLegacyTokenMigrationsErrorPaths")
+
+		testBlock := sync.Block{
+			Num:  1,
+			Hash: common.HexToHash("0x1"),
+			Events: []interface{}{
+				Event{LegacyTokenMigration: createTestLegacyTokenMigration(1, 0)},
+			},
+		}
+		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
+
+		// Test invalid page number (page 10 with only 1 record and page size 5)
+		_, _, err := p.GetLegacyTokenMigrations(context.Background(), 10, 5)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid page number")
+
+		// Test successful case with valid page
+		migrations, count, err := p.GetLegacyTokenMigrations(context.Background(), 1, 5)
+		require.NoError(t, err)
+		require.Len(t, migrations, 1)
+		require.Equal(t, 1, count)
+	})
+
+	t.Run("GetTokenMappings error paths", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "GetTokenMappingsErrorPaths")
+
+		testBlock := sync.Block{
+			Num:  1,
+			Hash: common.HexToHash("0x1"),
+			Events: []interface{}{
+				Event{TokenMapping: createTestTokenMapping(1, 0)},
+			},
+		}
+		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
+
+		// Test invalid page number (page 10 with only 1 record and page size 5)
+		_, _, err := p.GetTokenMappings(10, 5)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid page number")
+
+		// Test successful case with valid page
+		mappings, count, err := p.GetTokenMappings(1, 5)
+		require.NoError(t, err)
+		require.Len(t, mappings, 1)
+		require.Equal(t, 1, count)
+	})
+}
+
+func TestProcessor_DatabaseConnectionErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GetTotalNumberOfRecords with invalid table name", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "DatabaseConnectionErrors")
+
+		// Test with invalid table name
+		_, err := p.GetTotalNumberOfRecords("invalid_table_name", "")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "no such table")
+	})
+
+	t.Run("fetchTokenMappings with database errors", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "DatabaseConnectionErrors2")
+
+		testBlock := sync.Block{
+			Num:  1,
+			Hash: common.HexToHash("0x1"),
+			Events: []interface{}{
+				Event{TokenMapping: createTestTokenMapping(1, 0)},
+			},
+		}
+		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
+
+		// Now test with an offset that would cause a database error
+		p.db.Close()
+		_, err := p.fetchTokenMappings(5, 0)
+		require.Error(t, err)
+	})
+}
+
+func TestProcessor_CalculateOffsetErrors(t *testing.T) {
+	t.Parallel()
+
+	t.Run("GetTokenMappings with invalid offset calculation", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "CalculateOffsetErrors")
+
+		testBlock := sync.Block{
+			Num:  1,
+			Hash: common.HexToHash("0x1"),
+			Events: []interface{}{
+				Event{TokenMapping: createTestTokenMapping(1, 0)},
+			},
+		}
+		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
+
+		// Test with page number that would result in offset >= total records
+		_, _, err := p.GetTokenMappings(10, 5) // page 10 with only 1 record and page size 5
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid page number")
+	})
+
+	t.Run("GetBridgesPaged with invalid offset calculation", func(t *testing.T) {
+		t.Parallel()
+		p := createTestProcessor(t, "CalculateOffsetErrors2")
+
+		testBlock := sync.Block{
+			Num:  1,
+			Hash: common.HexToHash("0x1"),
+			Events: []interface{}{
+				Event{Bridge: createTestBridge(1, 0)},
+			},
+		}
+		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
+
+		// Test with page number that would result in offset >= total records
+		_, _, err := p.GetBridgesPaged(context.Background(), 10, 5, nil, nil, "") // page 10 with only 1 record and page size 5
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "invalid page number")
+	})
+}
+
+// Helper functions to reduce test redundancy
+
+// createTestProcessor creates a new processor for testing
+func createTestProcessor(t *testing.T, dbName string) *processor {
+	path := path.Join(t.TempDir(), dbName+".db")
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger)
+	require.NoError(t, err)
+	return p
+}
+
+// createTestBridge creates a test Bridge event
+func createTestBridge(blockNum uint64, blockPos int) *Bridge {
+	return &Bridge{
+		BlockNum:           blockNum,
+		BlockPos:           uint64(blockPos),
+		BlockTimestamp:     1234567890,
+		TxHash:             common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+		FromAddress:        common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		Calldata:           []byte{},
+		LeafType:           1,
+		OriginNetwork:      1,
+		OriginAddress:      common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		DestinationNetwork: 1,
+		DestinationAddress: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		Amount:             big.NewInt(1000000000000000000),
+		Metadata:           []byte{},
+		DepositCount:       0,
+		IsNativeToken:      false,
+	}
+}
+
+// createTestClaim creates a test Claim event
+func createTestClaim(blockNum uint64, blockPos int) *Claim {
+	return &Claim{
+		BlockNum:            blockNum,
+		BlockPos:            uint64(blockPos),
+		BlockTimestamp:      1234567890,
+		TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+		FromAddress:         common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		GlobalIndex:         big.NewInt(1000000000000000000),
+		OriginNetwork:       1,
+		OriginAddress:       common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		DestinationAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		Amount:              big.NewInt(1000000000000000000),
+		ProofLocalExitRoot:  [32]common.Hash{},
+		ProofRollupExitRoot: [32]common.Hash{},
+		MainnetExitRoot:     common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+		RollupExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+		GlobalExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+		DestinationNetwork:  1,
+		Metadata:            []byte{},
+		IsMessage:           false,
+	}
+}
+
+// createTestTokenMapping creates a test TokenMapping event
+func createTestTokenMapping(blockNum uint64, blockPos int) *TokenMapping {
+	return &TokenMapping{
+		BlockNum:            blockNum,
+		BlockPos:            uint64(blockPos),
+		BlockTimestamp:      1234567890,
+		TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+		OriginNetwork:       1,
+		OriginTokenAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		WrappedTokenAddress: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		Metadata:            []byte{},
+		IsNotMintable:       false,
+		Calldata:            []byte{},
+		Type:                0,
+	}
+}
+
+// createTestLegacyTokenMigration creates a test LegacyTokenMigration event
+func createTestLegacyTokenMigration(blockNum uint64, blockPos int) *LegacyTokenMigration {
+	return &LegacyTokenMigration{
+		BlockNum:            blockNum,
+		BlockPos:            uint64(blockPos),
+		BlockTimestamp:      1234567890,
+		TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+		Sender:              common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		LegacyTokenAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		UpdatedTokenAddress: common.HexToAddress("0x1234567890123456789012345678901234567890"),
+		Amount:              big.NewInt(1000000000000000000),
+		Calldata:            []byte{},
+	}
+}
