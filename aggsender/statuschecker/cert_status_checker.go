@@ -47,11 +47,13 @@ func NewCertStatusChecker(
 	log *log.Logger,
 	storage db.AggSenderStorage,
 	agglayerClient agglayer.AgglayerClientInterface,
+	certQuerier types.CertificateQuerier,
 	l2OriginNetwork uint32,
 ) types.CertificateStatusChecker {
 	return &certStatusChecker{
 		log:             log,
 		storage:         storage,
+		certQuerier:     certQuerier,
 		agglayerClient:  agglayerClient,
 		l2OriginNetwork: l2OriginNetwork,
 	}

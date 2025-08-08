@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/metrics"
+	"github.com/agglayer/aggkit/aggsender/query"
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/statuschecker"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -102,6 +103,17 @@ func New(
 		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
 	)
 
+	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, cfg.SovereignRollupAddr, l1Client)
+	if err != nil {
+		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
+	}
+
+	certQuerier := query.NewCertificateQuerier(
+		l2Syncer,
+		aggchainFEPCaller,
+		aggLayerClient,
+	)
+
 	return &AggSender{
 		cfg:                          cfg,
 		log:                          logger,
@@ -113,7 +125,8 @@ func New(
 		rateLimiter:                  rateLimit,
 		compatibilityStoragedChecker: compatibilityStoragedChecker,
 		l2OriginNetwork:              l2OriginNetwork,
-		certStatusChecker:            statuschecker.NewCertStatusChecker(logger, storage, aggLayerClient, l2OriginNetwork),
+		certStatusChecker: statuschecker.NewCertStatusChecker(
+			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
 	}, nil
 }
 
