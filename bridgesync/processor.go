@@ -430,6 +430,28 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	return claims, nil
 }
 
+func (p *processor) GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.Int) (Claim, error) {
+	if globalIndex == nil {
+		return Claim{}, fmt.Errorf("global index cannot be nil")
+	}
+
+	var claim Claim
+	if err := meddler.QueryRow(p.db, &claim, fmt.Sprintf(`
+		SELECT *
+		FROM %s
+		WHERE global_index = $1
+		LIMIT 1;
+	`, claimTableName), globalIndex.String()); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return Claim{}, db.ErrNotFound
+		}
+
+		return Claim{}, err
+	}
+
+	return claim, nil
+}
+
 func (p *processor) GetBridgesPaged(
 	ctx context.Context, pageNumber, pageSize uint32, depositCount *uint64, networkIDs []uint32, fromAddress string,
 ) ([]*Bridge, int, error) {

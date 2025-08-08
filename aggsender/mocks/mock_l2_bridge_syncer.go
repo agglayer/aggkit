@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	big "math/big"
+
 	bridgesync "github.com/agglayer/aggkit/bridgesync"
 	common "github.com/ethereum/go-ethereum/common"
 
@@ -190,6 +192,63 @@ func (_c *L2BridgeSyncer_GetBridges_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
+// GetClaimByGlobalIndex provides a mock function with given fields: ctx, globalIndex
+func (_m *L2BridgeSyncer) GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.Int) (bridgesync.Claim, error) {
+	ret := _m.Called(ctx, globalIndex)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetClaimByGlobalIndex")
+	}
+
+	var r0 bridgesync.Claim
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) (bridgesync.Claim, error)); ok {
+		return rf(ctx, globalIndex)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) bridgesync.Claim); ok {
+		r0 = rf(ctx, globalIndex)
+	} else {
+		r0 = ret.Get(0).(bridgesync.Claim)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *big.Int) error); ok {
+		r1 = rf(ctx, globalIndex)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L2BridgeSyncer_GetClaimByGlobalIndex_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetClaimByGlobalIndex'
+type L2BridgeSyncer_GetClaimByGlobalIndex_Call struct {
+	*mock.Call
+}
+
+// GetClaimByGlobalIndex is a helper method to define mock.On call
+//   - ctx context.Context
+//   - globalIndex *big.Int
+func (_e *L2BridgeSyncer_Expecter) GetClaimByGlobalIndex(ctx interface{}, globalIndex interface{}) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
+	return &L2BridgeSyncer_GetClaimByGlobalIndex_Call{Call: _e.mock.On("GetClaimByGlobalIndex", ctx, globalIndex)}
+}
+
+func (_c *L2BridgeSyncer_GetClaimByGlobalIndex_Call) Run(run func(ctx context.Context, globalIndex *big.Int)) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*big.Int))
+	})
+	return _c
+}
+
+func (_c *L2BridgeSyncer_GetClaimByGlobalIndex_Call) Return(_a0 bridgesync.Claim, _a1 error) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L2BridgeSyncer_GetClaimByGlobalIndex_Call) RunAndReturn(run func(context.Context, *big.Int) (bridgesync.Claim, error)) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetClaims provides a mock function with given fields: ctx, fromBlock, toBlock
 func (_m *L2BridgeSyncer) GetClaims(ctx context.Context, fromBlock uint64, toBlock uint64) ([]bridgesync.Claim, error) {
 	ret := _m.Called(ctx, fromBlock, toBlock)
@@ -246,6 +305,65 @@ func (_c *L2BridgeSyncer_GetClaims_Call) Return(_a0 []bridgesync.Claim, _a1 erro
 }
 
 func (_c *L2BridgeSyncer_GetClaims_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]bridgesync.Claim, error)) *L2BridgeSyncer_GetClaims_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetExitRootByHash provides a mock function with given fields: ctx, root
+func (_m *L2BridgeSyncer) GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error) {
+	ret := _m.Called(ctx, root)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetExitRootByHash")
+	}
+
+	var r0 *treetypes.Root
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) (*treetypes.Root, error)); ok {
+		return rf(ctx, root)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, common.Hash) *treetypes.Root); ok {
+		r0 = rf(ctx, root)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*treetypes.Root)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, common.Hash) error); ok {
+		r1 = rf(ctx, root)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// L2BridgeSyncer_GetExitRootByHash_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetExitRootByHash'
+type L2BridgeSyncer_GetExitRootByHash_Call struct {
+	*mock.Call
+}
+
+// GetExitRootByHash is a helper method to define mock.On call
+//   - ctx context.Context
+//   - root common.Hash
+func (_e *L2BridgeSyncer_Expecter) GetExitRootByHash(ctx interface{}, root interface{}) *L2BridgeSyncer_GetExitRootByHash_Call {
+	return &L2BridgeSyncer_GetExitRootByHash_Call{Call: _e.mock.On("GetExitRootByHash", ctx, root)}
+}
+
+func (_c *L2BridgeSyncer_GetExitRootByHash_Call) Run(run func(ctx context.Context, root common.Hash)) *L2BridgeSyncer_GetExitRootByHash_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(common.Hash))
+	})
+	return _c
+}
+
+func (_c *L2BridgeSyncer_GetExitRootByHash_Call) Return(_a0 *treetypes.Root, _a1 error) *L2BridgeSyncer_GetExitRootByHash_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *L2BridgeSyncer_GetExitRootByHash_Call) RunAndReturn(run func(context.Context, common.Hash) (*treetypes.Root, error)) *L2BridgeSyncer_GetExitRootByHash_Call {
 	_c.Call.Return(run)
 	return _c
 }

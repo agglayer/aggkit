@@ -130,9 +130,9 @@ func TestGetLastProcessedBlock(t *testing.T) {
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
-func TestGetBridgeRootByHash(t *testing.T) {
+func TestGetExitRootByHash(t *testing.T) {
 	s := BridgeSync{processor: &processor{halted: true}}
-	_, err := s.GetBridgeRootByHash(context.Background(), common.Hash{})
+	_, err := s.GetExitRootByHash(context.Background(), common.Hash{})
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 

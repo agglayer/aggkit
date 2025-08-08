@@ -77,6 +77,8 @@ type L2BridgeSyncer interface {
 	OriginNetwork() uint32
 	BlockFinality() aggkittypes.BlockNumberFinality
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetExitRootByHash(ctx context.Context, root common.Hash) (*treetypes.Root, error)
+	GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.Int) (bridgesync.Claim, error)
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement
@@ -258,4 +260,23 @@ type MultisigContract interface {
 // MultisigQuerier is an abstraction for querying the multisig committee
 type MultisigQuerier interface {
 	GetMultisigCommittee(ctx context.Context, blockNum *big.Int) (*MultisigCommittee, error)
+}
+
+// AggchainFEPCaller is an interface defining functions that an AggchainFEPCaller should implement
+type AggchainFEPCaller interface {
+	StartingBlockNumber(opts *bind.CallOpts) (*big.Int, error)
+	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
+}
+
+// AggchainFEPRollupQuerier is an interface defining functions that an AggchainFEPRollupQuerier should implement
+type AggchainFEPRollupQuerier interface {
+	StartL2Block() uint64
+	GetLastSettledL2Block() (uint64, error)
+}
+
+// CertificateQuerier is an interface defining functions that a CertificateQuerier should implement
+type CertificateQuerier interface {
+	GetLastSettledCertificateToBlock(
+		ctx context.Context,
+		cert *agglayertypes.CertificateHeader) (uint64, error)
 }

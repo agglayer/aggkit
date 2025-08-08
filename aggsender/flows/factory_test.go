@@ -12,10 +12,8 @@ import (
 	cfgtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	signertypes "github.com/agglayer/go_signer/signer/types"
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -92,10 +90,6 @@ func TestNewFlow(t *testing.T) {
 			},
 			expectedError: "error aggchainFEPContract",
 		},
-	}
-
-	funcGetL2StartBlock = func(_ common.Address, _ aggkittypes.BaseEthereumClienter) (uint64, error) {
-		return 100, nil
 	}
 
 	for _, tc := range testCases {

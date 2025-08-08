@@ -2131,6 +2131,200 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 	}
 }
 
+func TestGetClaimByGlobalIndex(t *testing.T) {
+	t.Parallel()
+
+	path := path.Join(t.TempDir(), "bridgesyncTestGetClaimByGlobalIndex.sqlite")
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Test case 1: Claim not found
+	t.Run("claim not found", func(t *testing.T) {
+		t.Parallel()
+
+		nonExistentGlobalIndex := big.NewInt(999999)
+		claim, err := p.GetClaimByGlobalIndex(ctx, nonExistentGlobalIndex)
+		require.Error(t, err)
+		require.True(t, errors.Is(err, db.ErrNotFound))
+		require.Equal(t, Claim{}, claim)
+	})
+
+	// Test case 2: Insert claims and retrieve them
+	testClaims := []*Claim{
+		{
+			BlockNum:            1,
+			BlockPos:            0,
+			GlobalIndex:         big.NewInt(1000),
+			OriginNetwork:       1,
+			OriginAddress:       common.HexToAddress("0x11"),
+			DestinationAddress:  common.HexToAddress("0x22"),
+			Amount:              big.NewInt(100),
+			ProofLocalExitRoot:  types.Proof{},
+			ProofRollupExitRoot: types.Proof{},
+			MainnetExitRoot:     common.HexToHash("0xmainnet"),
+			RollupExitRoot:      common.HexToHash("0xrollup"),
+			GlobalExitRoot:      common.HexToHash("0xglobal"),
+			DestinationNetwork:  2,
+			Metadata:            []byte("test metadata 1"),
+			IsMessage:           false,
+		},
+		{
+			BlockNum:            2,
+			BlockPos:            1,
+			GlobalIndex:         GenerateGlobalIndex(true, 0, 2000),
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0x33"),
+			DestinationAddress:  common.HexToAddress("0x44"),
+			Amount:              big.NewInt(200),
+			ProofLocalExitRoot:  types.Proof{},
+			ProofRollupExitRoot: types.Proof{},
+			MainnetExitRoot:     common.HexToHash("0xmainnet2"),
+			RollupExitRoot:      common.HexToHash("0xrollup2"),
+			GlobalExitRoot:      common.HexToHash("0xglobal2"),
+			DestinationNetwork:  4,
+			Metadata:            []byte("test metadata 2"),
+			IsMessage:           true,
+		},
+		{
+			BlockNum:            3,
+			BlockPos:            2,
+			GlobalIndex:         GenerateGlobalIndex(false, 1, 3000),
+			OriginNetwork:       5,
+			OriginAddress:       common.HexToAddress("0x55"),
+			DestinationAddress:  common.HexToAddress("0x66"),
+			Amount:              big.NewInt(300),
+			ProofLocalExitRoot:  types.Proof{},
+			ProofRollupExitRoot: types.Proof{},
+			MainnetExitRoot:     common.HexToHash("0xmainnet3"),
+			RollupExitRoot:      common.HexToHash("0xrollup3"),
+			GlobalExitRoot:      common.HexToHash("0xglobal3"),
+			DestinationNetwork:  6,
+			Metadata:            nil,
+			IsMessage:           false,
+		},
+	}
+
+	// Insert test claims
+	tx, err := p.db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+
+	// Insert blocks first
+	for _, claim := range testClaims {
+		_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`,
+			claim.BlockNum, fmt.Sprintf("0x%x", claim.BlockNum))
+		require.NoError(t, err)
+	}
+
+	// Insert claims
+	for _, claim := range testClaims {
+		require.NoError(t, meddler.Insert(tx, "claim", claim))
+	}
+
+	require.NoError(t, tx.Commit())
+
+	// Test case 3: Retrieve existing claims by global index
+	t.Run("retrieve existing claims", func(t *testing.T) {
+		t.Parallel()
+		for _, expectedClaim := range testClaims {
+			actualClaim, err := p.GetClaimByGlobalIndex(ctx, expectedClaim.GlobalIndex)
+			require.NoError(t, err)
+			require.Equal(t, *expectedClaim, actualClaim)
+		}
+	})
+
+	// Test case 4: Test with very large global index
+	t.Run("large global index", func(t *testing.T) {
+		// Create a very large global index
+		largeGlobalIndex := new(big.Int)
+		largeGlobalIndex.SetString("340282366920938463463374607431768211455", 10) // 2^128 - 1
+
+		largeClaim := &Claim{
+			BlockNum:            4,
+			BlockPos:            0,
+			GlobalIndex:         largeGlobalIndex,
+			OriginNetwork:       7,
+			OriginAddress:       common.HexToAddress("0x77"),
+			DestinationAddress:  common.HexToAddress("0x88"),
+			Amount:              big.NewInt(400),
+			ProofLocalExitRoot:  types.Proof{},
+			ProofRollupExitRoot: types.Proof{},
+			MainnetExitRoot:     common.HexToHash("0xmainnet4"),
+			RollupExitRoot:      common.HexToHash("0xrollup4"),
+			GlobalExitRoot:      common.HexToHash("0xglobal4"),
+			DestinationNetwork:  8,
+			Metadata:            []byte("large index test"),
+			IsMessage:           false,
+		}
+
+		// Insert block and claim
+		tx, err := p.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+
+		_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`,
+			largeClaim.BlockNum, fmt.Sprintf("0x%x", largeClaim.BlockNum))
+		require.NoError(t, err)
+
+		require.NoError(t, meddler.Insert(tx, "claim", largeClaim))
+		require.NoError(t, tx.Commit())
+
+		// Retrieve the claim
+		retrievedClaim, err := p.GetClaimByGlobalIndex(ctx, largeGlobalIndex)
+		require.NoError(t, err)
+		require.Equal(t, *largeClaim, retrievedClaim)
+	})
+
+	// Test case 5: Test with zero global index
+	t.Run("zero global index", func(t *testing.T) {
+		zeroGlobalIndex := big.NewInt(0)
+
+		zeroClaim := &Claim{
+			BlockNum:            5,
+			BlockPos:            0,
+			GlobalIndex:         zeroGlobalIndex,
+			OriginNetwork:       9,
+			OriginAddress:       common.HexToAddress("0x99"),
+			DestinationAddress:  common.HexToAddress("0xaa"),
+			Amount:              big.NewInt(0),
+			ProofLocalExitRoot:  types.Proof{},
+			ProofRollupExitRoot: types.Proof{},
+			MainnetExitRoot:     common.Hash{},
+			RollupExitRoot:      common.Hash{},
+			GlobalExitRoot:      common.Hash{},
+			DestinationNetwork:  10,
+			Metadata:            []byte{},
+			IsMessage:           true,
+		}
+
+		// Insert block and claim
+		tx, err := p.db.BeginTx(ctx, nil)
+		require.NoError(t, err)
+
+		_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`,
+			zeroClaim.BlockNum, fmt.Sprintf("0x%x", zeroClaim.BlockNum))
+		require.NoError(t, err)
+
+		require.NoError(t, meddler.Insert(tx, "claim", zeroClaim))
+		require.NoError(t, tx.Commit())
+
+		// Retrieve the claim
+		retrievedClaim, err := p.GetClaimByGlobalIndex(ctx, zeroGlobalIndex)
+		require.NoError(t, err)
+		require.Equal(t, *zeroClaim, retrievedClaim)
+	})
+
+	// Test case 6: Test with nil global index (should handle gracefully)
+	t.Run("nil global index", func(t *testing.T) {
+		t.Parallel()
+
+		claim, err := p.GetClaimByGlobalIndex(ctx, nil)
+		require.ErrorContains(t, err, "global index cannot be nil")
+		require.Equal(t, Claim{}, claim)
+	})
+}
+
 func intPtr(i int) *int {
 	return &i
 }

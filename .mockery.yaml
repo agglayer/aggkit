@@ -9,8 +9,7 @@ packages:
   github.com/agglayer/aggkit/agglayer:
     config:
       inpackage: true
-      dir: "{{ .InterfaceDir }}"
-      outpkg: "{{ .PackageName }}"
+      dir: "{{ .InterfaceDir }}/mocks"
     interfaces:
       AgglayerClientInterface:
         config:

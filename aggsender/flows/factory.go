@@ -19,9 +19,6 @@ import (
 )
 
 var (
-	// funcGetL2StartBlock is a intermediate func that allow to override this call in UT
-	funcGetL2StartBlock = getL2StartBlock
-
 	// l2GERReaderFactory is a factory function to create L2 GER reader
 	l2GERReaderFactory = l2gersync.NewL2EVMGERReader
 )
@@ -87,10 +84,6 @@ func NewFlow(
 
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 
-		startL2Block, err := funcGetL2StartBlock(cfg.SovereignRollupAddr, l1Client)
-		if err != nil {
-			return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
-		}
 		optimisticSigner, optimisticModeQuerier, err := optimistic.NewOptimistic(
 			ctx, logger, l1Client, cfg.OptimisticModeConfig)
 		if err != nil {
@@ -103,10 +96,15 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating LER data querier: %w", err)
 		}
 
+		aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(logger, cfg.SovereignRollupAddr, l1Client)
+		if err != nil {
+			return nil, fmt.Errorf("aggchainProverFlow - error creating aggchain FEP querier: %w", err)
+		}
+
 		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, cfg.RequireNoFEPBlockGap),
+			NewBaseFlowConfig(cfg.MaxCertSize, aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap),
 		)
 
 		l2GERReader, err := l2GERReaderFactory(cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSyncer)
