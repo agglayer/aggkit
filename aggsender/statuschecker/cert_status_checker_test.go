@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/agglayer"
+	agglayermocks "github.com/agglayer/aggkit/agglayer/mocks"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/mocks"
@@ -103,7 +104,7 @@ func TestCheckIfCertificatesAreSettled(t *testing.T) {
 
 		t.Run(tt.name, func(t *testing.T) {
 			mockStorage := mocks.NewAggSenderStorage(t)
-			mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
+			mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
 			mockLogger := log.WithFields("test", "unittest")
 
 			mockStorage.EXPECT().GetCertificateHeadersByStatus(agglayertypes.NonSettledStatuses).Return(
@@ -449,7 +450,7 @@ func TestCheckLastCertificateFromAgglayer(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			mockLogger := log.WithFields("test", "unittest")
 			mockStorage := mocks.NewAggSenderStorage(t)
-			mockAggLayerClient := agglayer.NewAgglayerClientMock(t)
+			mockAggLayerClient := agglayermocks.NewAgglayerClientMock(t)
 
 			if tt.mockFn != nil {
 				tt.mockFn(mockStorage)

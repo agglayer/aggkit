@@ -435,14 +435,8 @@ func (p *processor) GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.
 		return Claim{}, fmt.Errorf("global index cannot be nil")
 	}
 
-	tx, err := p.startTransaction(ctx, true)
-	if err != nil {
-		return Claim{}, err
-	}
-	defer p.rollbackTransaction(tx)
-
 	var claim Claim
-	if err = meddler.QueryRow(tx, &claim, fmt.Sprintf(`
+	if err := meddler.QueryRow(p.db, &claim, fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		WHERE global_index = $1

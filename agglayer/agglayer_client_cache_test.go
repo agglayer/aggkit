@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/agglayer/mocks"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/jellydator/ttlcache/v3"
@@ -40,7 +41,7 @@ func TestGetCertificateHeader(t *testing.T) {
 		Status:        agglayertypes.Settled,
 	}
 
-	mockAgglayerClient := NewAgglayerClientMock(t)
+	mockAgglayerClient := mocks.NewAgglayerClientMock(t)
 	certCache := NewCertificateCache(mockAgglayerClient, ttl, capacity)
 
 	// Test cache doesn't have the certificate header initially
@@ -88,7 +89,7 @@ func TestExpiration(t *testing.T) {
 		Status:        agglayertypes.Settled,
 	}
 
-	mockAgglayerClient := NewAgglayerClientMock(t)
+	mockAgglayerClient := mocks.NewAgglayerClientMock(t)
 	certCache := NewCertificateCache(mockAgglayerClient, ttl, capacity)
 
 	mockAgglayerClient.EXPECT().GetCertificateHeader(t.Context(), certificateID).Return(certificateHeader, nil).Times(2)

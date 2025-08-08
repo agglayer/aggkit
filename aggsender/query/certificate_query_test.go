@@ -4,7 +4,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/agglayer/aggkit/agglayer"
+	agglayermocks "github.com/agglayer/aggkit/agglayer/mocks"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -22,7 +22,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 	testCases := []struct {
 		name          string
 		certificate   *agglayertypes.CertificateHeader
-		mockFn        func(*mocks.AggchainFEPRollupQuerier, *agglayer.AgglayerClientMock, *mocks.L2BridgeSyncer)
+		mockFn        func(*mocks.AggchainFEPRollupQuerier, *agglayermocks.AgglayerClientMock, *mocks.L2BridgeSyncer)
 		expectedErr   string
 		expectedBlock uint64
 	}{
@@ -39,7 +39,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				NewLocalExitRoot: common.HexToHash("0x123"),
 			},
-			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayer.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				// Mock exit root by hash
 				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, common.HexToHash("0x123")).Return(&treetypes.Root{
 					BlockNum: uint64(100),
@@ -65,7 +65,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				NewLocalExitRoot: types.EmptyLER,
 			},
-			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayer.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				// Mock latest settled imported bridge exit
 				importedBridgeExit := &agglayertypes.GlobalIndex{}
 				agglayerClient.EXPECT().GetLatestSettledImportedBridgeExit(ctx).Return(importedBridgeExit, nil)
@@ -86,7 +86,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				NewLocalExitRoot: common.HexToHash("0x456"),
 			},
-			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayer.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				// Mock exit root by hash
 				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, common.HexToHash("0x456")).Return(&treetypes.Root{
 					BlockNum: uint64(300),
@@ -106,7 +106,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				NewLocalExitRoot: common.HexToHash("0x789"),
 			},
-			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayer.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, common.HexToHash("0x789")).Return(nil, errors.New("exit root not found"))
 			},
 			expectedErr: "failed to get exit root by hash",
@@ -117,7 +117,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				NewLocalExitRoot: types.EmptyLER,
 			},
-			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayer.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				agglayerClient.EXPECT().GetLatestSettledImportedBridgeExit(ctx).Return(nil, errors.New("agglayer error"))
 			},
 			expectedErr: "failed to get latest settled imported bridge exit from agglayer",
@@ -128,7 +128,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				NewLocalExitRoot: types.EmptyLER,
 			},
-			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayer.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				importedBridgeExit := &agglayertypes.GlobalIndex{}
 				agglayerClient.EXPECT().GetLatestSettledImportedBridgeExit(ctx).Return(importedBridgeExit, nil)
 				bridgeSyncer.EXPECT().GetClaimByGlobalIndex(ctx, importedBridgeExit.ToBigInt()).Return(bridgesync.Claim{}, errors.New("claim not found"))
@@ -141,7 +141,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				NewLocalExitRoot: types.EmptyLER,
 			},
-			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayer.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				agglayerClient.EXPECT().GetLatestSettledImportedBridgeExit(ctx).Return(nil, nil)
 				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), errors.New("L2 block query failed"))
 			},
@@ -153,7 +153,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				Status:           agglayertypes.Settled,
 				NewLocalExitRoot: types.EmptyLER,
 			},
-			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayer.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
+			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				agglayerClient.EXPECT().GetLatestSettledImportedBridgeExit(ctx).Return(nil, nil)
 				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(0), nil)
 			},
@@ -166,7 +166,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			t.Parallel()
 
 			mockAggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
-			mockAgglayerClient := agglayer.NewAgglayerClientMock(t)
+			mockAgglayerClient := agglayermocks.NewAgglayerClientMock(t)
 			mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
 
 			if tc.mockFn != nil {

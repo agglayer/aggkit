@@ -14,7 +14,7 @@ var _ types.CertificateQuerier = (*certificateQuerier)(nil)
 // certificateQuerier handles querying for certificate ranges
 // settled and pending certificates
 type certificateQuerier struct {
-	bridgeSyncer       types.L2BridgeSyncer
+	l2BridgeSyncer     types.L2BridgeSyncer
 	aggchainFEPQuerier types.AggchainFEPRollupQuerier
 	agglayerClient     agglayer.AgglayerClientInterface
 }
@@ -25,7 +25,7 @@ func NewCertificateQuerier(
 	agglayerClient agglayer.AgglayerClientInterface,
 ) types.CertificateQuerier {
 	return &certificateQuerier{
-		bridgeSyncer:       bridgeSyncer,
+		l2BridgeSyncer:     bridgeSyncer,
 		aggchainFEPQuerier: aggchainFEPQuerier,
 		agglayerClient:     agglayerClient,
 	}
@@ -69,7 +69,7 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 		// if NewLER is not the first empty LER, it means that the certificate
 		// or certificate before it had bridge exits, so we can use it to
 		// to determine the last bridge exit block
-		newLER, err := c.bridgeSyncer.GetExitRootByHash(ctx, cert.NewLocalExitRoot)
+		newLER, err := c.l2BridgeSyncer.GetExitRootByHash(ctx, cert.NewLocalExitRoot)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get exit root by hash using NewLocalExitRoot %s: %w",
 				cert.NewLocalExitRoot.String(), err)
@@ -87,7 +87,7 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 
 	if latestSettledIbe != nil {
 		bigGlobalIndex := latestSettledIbe.ToBigInt()
-		claim, err := c.bridgeSyncer.GetClaimByGlobalIndex(ctx, bigGlobalIndex)
+		claim, err := c.l2BridgeSyncer.GetClaimByGlobalIndex(ctx, bigGlobalIndex)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get claim by global index %s: %w", bigGlobalIndex.String(), err)
 		}

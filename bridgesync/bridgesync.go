@@ -335,7 +335,6 @@ func (s *BridgeSync) GetExitRootByHash(ctx context.Context, root common.Hash) (*
 
 func (s *BridgeSync) GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.Int) (Claim, error) {
 	if s.processor.isHalted() {
-		s.processor.log.Error("processor is halted, cannot get claim by global index")
 		return Claim{}, sync.ErrInconsistentState
 	}
 	return s.processor.GetClaimByGlobalIndex(ctx, globalIndex)
