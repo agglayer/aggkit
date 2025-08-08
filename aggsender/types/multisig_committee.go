@@ -1,0 +1,113 @@
+package types
+
+import (
+	"errors"
+	"fmt"
+
+	"github.com/ethereum/go-ethereum/common"
+)
+
+var (
+	// errEmptyCommittee denotes the empty committee error
+	errEmptyCommittee = errors.New("the committee cannot be empty")
+
+	// errZeroThreshold denotes the 0 signatures threshold error
+	errZeroThreshold = errors.New("the signatures threshold must be greater than 0")
+)
+
+// SignerInfo holds metadata for each signer.
+type SignerInfo struct {
+	URL     string
+	Address common.Address
+}
+
+// NewSignerInfo creates a new instance of a signer
+func NewSignerInfo(url string, address common.Address) *SignerInfo {
+	return &SignerInfo{URL: url, Address: address}
+}
+
+// MultisigCommittee represents a set of authorized signers with a signing threshold.
+type MultisigCommittee struct {
+	signers    []*SignerInfo
+	signersSet map[common.Address]struct{}
+	threshold  uint32
+}
+
+// NewMultisigCommittee creates a new committee and builds the address set for quick lookup.
+func NewMultisigCommittee(signers []*SignerInfo, threshold uint32) (*MultisigCommittee, error) {
+	if len(signers) == 0 {
+		return nil, errEmptyCommittee
+	}
+
+	if threshold == 0 {
+		return nil, errZeroThreshold
+	}
+
+	if uint32(len(signers)) < threshold {
+		return nil, fmt.Errorf("committee size (%d) must be greater than or equal to the signatures threshold (%d)",
+			len(signers), threshold)
+	}
+
+	committee := &MultisigCommittee{
+		threshold:  threshold,
+		signers:    make([]*SignerInfo, 0, len(signers)),
+		signersSet: make(map[common.Address]struct{}, len(signers)),
+	}
+
+	// populate signers
+	for _, s := range signers {
+		if err := committee.AddSigner(s); err != nil {
+			return nil, err
+		}
+	}
+
+	return committee, nil
+}
+
+// AddSigner adds a new signer to the committee.
+// Returns an error if the address already exists.
+func (m *MultisigCommittee) AddSigner(info *SignerInfo) error {
+	if _, exists := m.signersSet[info.Address]; exists {
+		return fmt.Errorf("signer %s already in committee", info.Address)
+	}
+
+	m.signers = append(m.signers, info)
+	m.signersSet[info.Address] = struct{}{}
+	return nil
+}
+
+// IsThresholdReached checks if the provided signer addresses constitute a valid quorum
+// (namely signers length should be at least as big as the threshold value).
+// - Returns an error if any signer is not part of the committee.
+// - Duplicate addresses are ignored in counting.
+func (m *MultisigCommittee) IsThresholdReached(signerAddrs []common.Address) (bool, error) {
+	seen := make(map[common.Address]struct{}, len(signerAddrs))
+	count := uint32(0)
+
+	for _, signerAddr := range signerAddrs {
+		if _, exists := m.signersSet[signerAddr]; !exists {
+			return false, fmt.Errorf("signer %s is not in the committee", signerAddr)
+		}
+
+		// Count each signer only once
+		if _, alreadySeen := seen[signerAddr]; !alreadySeen {
+			seen[signerAddr] = struct{}{}
+			count++
+		}
+	}
+
+	return count >= m.threshold, nil
+}
+
+// Threshold returns the signature threshold required for quorum.
+func (m *MultisigCommittee) Threshold() uint32 {
+	return m.threshold
+}
+
+// Signers returns a shallow copy of the committee's signers slice
+// to prevent external modification of the internal slice.
+func (m *MultisigCommittee) Signers() []*SignerInfo {
+	cpy := make([]*SignerInfo, len(m.signers))
+	copy(cpy, m.signers)
+	return cpy
+}

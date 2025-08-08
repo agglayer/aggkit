@@ -12,7 +12,7 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/etrog/polygonzkevmbridge"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/legacy/etrog/polygonzkevmbridge"
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
 	"github.com/agglayer/aggkit/db"
