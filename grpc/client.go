@@ -1,6 +1,7 @@
 package grpc
 
 import (
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/agglayer/aggkit"
 	"github.com/agglayer/aggkit/config/types"
 	"google.golang.org/genproto/googleapis/rpc/errdetails"
 	"google.golang.org/grpc"
@@ -16,6 +18,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 )
 
@@ -27,7 +30,29 @@ const (
 	defaultBackoffMultiplier = 2.0
 
 	noneStr = "none"
+
+	// ClientVersionMetadataKey is the metadata key for the client version
+	ClientVersionMetadataKey = "x-client-version"
+
+	// ClientTypeMetadataKey is the metadata key for the client type
+	ClientTypeMetadataKey = "x-client-type"
+
+	// ClientTypeMetadataValue is the value for the client type
+	ClientTypeMetadataValue = "aggkit"
 )
+
+// VersionHeaderInterceptor adds the client version and type headers to all outgoing requests
+func VersionHeaderInterceptor() grpc.UnaryClientInterceptor {
+	return func(
+		ctx context.Context,
+		method string, req, reply interface{},
+		cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		// Add version and type headers to context
+		ctx = metadata.AppendToOutgoingContext(ctx, ClientVersionMetadataKey, aggkit.Version)
+		ctx = metadata.AppendToOutgoingContext(ctx, ClientTypeMetadataKey, ClientTypeMetadataValue)
+		return invoker(ctx, method, req, reply, cc, opts...)
+	}
+}
 
 // ClientConfig is the configuration for the gRPC client
 type ClientConfig struct {
@@ -232,6 +257,7 @@ func NewClient(cfg *ClientConfig) (*Client, error) {
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithConnectParams(connectParams),
+		grpc.WithUnaryInterceptor(VersionHeaderInterceptor()),
 	}
 
 	serviceCfgJSON, err := createServiceConfig(retryCfg)
