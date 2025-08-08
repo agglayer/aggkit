@@ -96,7 +96,8 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating LER data querier: %w", err)
 		}
 
-		aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(logger, cfg.SovereignRollupAddr, l1Client)
+		aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(logger, types.AggchainProofMode,
+			cfg.SovereignRollupAddr, l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating aggchain FEP querier: %w", err)
 		}

@@ -57,9 +57,10 @@ type aggchainFEPRollupQuerier struct {
 //   - The starting block number cannot be retrieved from the contract
 func NewAggchainFEPQuerier(
 	logger *log.Logger,
+	aggsenderMode types.AggsenderMode,
 	aggchainFEPAddr common.Address,
 	l1Client aggkittypes.BaseEthereumClienter) (types.AggchainFEPRollupQuerier, error) {
-	if aggchainFEPAddr == aggkitcommon.ZeroAddress {
+	if aggchainFEPAddr == aggkitcommon.ZeroAddress || aggsenderMode == types.PessimisticProofMode {
 		// its a PP network without AggchainFEP contract
 		logger.Info("aggchainProverFlow - AggchainFEP contract address is zero, using no-op querier")
 		return &noOpAggchainFEPRollupQuerier{}, nil
