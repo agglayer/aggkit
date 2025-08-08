@@ -2360,6 +2360,8 @@ func TestProcessor_CalculateOffsetErrors(t *testing.T) {
 
 // createTestProcessor creates a new processor for testing
 func createTestProcessor(t *testing.T, dbName string) *processor {
+	t.Helper()
+
 	path := path.Join(t.TempDir(), dbName+".db")
 	logger := log.WithFields("module", "bridge-syncer")
 	p, err := newProcessor(path, "bridge-syncer", logger)
