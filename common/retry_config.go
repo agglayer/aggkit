@@ -24,12 +24,20 @@ var (
 // it's a merge of struct RetryBackoffConfig and RetryDelaysConfig in order of
 // simplify reading from config file (check types)
 type RetryPolicyGenericConfig struct {
-	Mode              RetryConfigMode // "delays", "backoff", or "" for no retries
-	MaxRetries        int
-	Delays            []types.Duration
-	InitialBackoff    types.Duration
-	MaxBackoff        types.Duration
-	BackoffMultiplier float64
+	// Mode denotes the retry configuration mode, is it defined using the
+	// predefined delays, backoff formula or no retries
+	Mode RetryConfigMode `mapstructure:"RetryMode"`
+	// MaxRetries is the maximum number of retries
+	MaxRetries int `mapstructure:"MaxRetries"`
+	// Delays is the predefined set of delays for each retry
+	Delays []types.Duration `mapstructure:"Delays"`
+	// InitialBackoff is the initial backoff duration for retries
+	InitialBackoff types.Duration `mapstructure:"InitialBackoff"`
+	// MaxBackoff is the maximum backoff duration for retries
+	MaxBackoff types.Duration `mapstructure:"MaxBackoff"`
+	// BackoffMultiplier is the multiplier for exponential backoff
+	BackoffMultiplier float64 `mapstructure:"BackoffMultiplier"`
+
 	// internal field to cache the underlying config
 	cache commontypes.RetryPolicyConfigurer `mapstructure:"-"`
 }

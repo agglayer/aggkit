@@ -2,9 +2,10 @@ package types
 
 import (
 	"context"
-	"math"
-	"time"
+	"fmt"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	commontypes "github.com/agglayer/aggkit/common/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -60,35 +61,13 @@ func (c *NoopRPCClient) Call(result any, method string, args ...any) error {
 
 // DialWithRetry attempts to connect to an Ethereum client with retries and exponential backoff.
 // It returns an EthClienter on success or an error if all attempts fail.
-func DialWithRetry(ctx context.Context, url string, maxRetries int,
-	initialBackoff, maxBackoff time.Duration, backoffMultiplier float64) (EthClienter, error) {
-	var (
-		client *ethclient.Client
-		err    error
-	)
-
-	// If maxRetries is 0, we try to connect once without retries.
-	if maxRetries == 0 {
-		maxRetries = 1
-	}
-
-	for attempt := range maxRetries {
-		client, err = ethclient.Dial(url)
-		if err == nil {
+func DialWithRetry(ctx context.Context, url string, retryHandler commontypes.RetryHandler) (EthClienter, error) {
+	return aggkitcommon.Execute(retryHandler, ctx, log.Infof, fmt.Sprintf("dial %s rpc", url),
+		func() (EthClienter, error) {
+			client, err := ethclient.Dial(url)
+			if err != nil {
+				return nil, err
+			}
 			return NewDefaultEthClient(client, client.Client()), nil
-		}
-
-		backoff := float64(initialBackoff) * math.Pow(backoffMultiplier, float64(attempt))
-		wait := time.Duration(math.Min(backoff, float64(maxBackoff)))
-		log.Warnf("Dialing %s failed (attempt %d/%d): %v. Retrying in %s...", url, attempt+1, maxRetries, err, wait)
-
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(wait):
-			continue
-		}
-	}
-
-	return nil, err
+		})
 }
