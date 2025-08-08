@@ -2,7 +2,6 @@ package grpc
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -15,10 +14,7 @@ import (
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
-	"google.golang.org/grpc/metadata"
 )
-
-const validatorSignatureMetadataKey = "x-agglayer-extra-certificate-signature"
 
 var (
 	errUndefinedAggchainData = errors.New("undefined aggchain data parameter")
@@ -76,12 +72,6 @@ func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
 
 	ctx, cancel := context.WithTimeout(ctx, a.cfg.RequestTimeout.Duration)
 	defer cancel()
-
-	if len(validatorSignature) > 0 {
-		// Add validator signature to metadata
-		sigHex := hex.EncodeToString(validatorSignature)
-		ctx = metadata.AppendToOutgoingContext(ctx, validatorSignatureMetadataKey, sigHex)
-	}
 
 	response, err := a.submissionService.SubmitCertificate(ctx,
 		&v1.SubmitCertificateRequest{
