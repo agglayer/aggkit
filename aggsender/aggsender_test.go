@@ -497,7 +497,7 @@ func TestSendCertificate(t *testing.T) {
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
 	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
-	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
+	sut, err := New(t.Context(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
 		},

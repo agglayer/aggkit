@@ -105,3 +105,16 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 	// 4. Determine the maximum of the three values which will be the last settled certificate to block
 	return max(lastBridgeExitBlock, lastImportedBridgeExitBlock, lastSettledL2BlockNum), nil
 }
+
+// CalculateCertificateType determines the type of certificate based on the last block number in certificate
+func (c *certificateQuerier) CalculateCertificateType(certToBlock uint64) types.CertificateType {
+	if certToBlock == 0 {
+		return types.CertificateTypeUnknown
+	}
+
+	if certToBlock < c.aggchainFEPQuerier.StartL2Block() {
+		return types.CertificateTypePP
+	}
+
+	return types.CertificateTypeFEP
+}

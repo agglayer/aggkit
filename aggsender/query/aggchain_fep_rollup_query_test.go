@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
@@ -20,6 +21,7 @@ func TestNoOpAggchainFEPRollupQuerier(t *testing.T) {
 
 	querier, err := NewAggchainFEPQuerier(
 		log.WithFields("test", "noOpAggchainFEPRollupQuerier"),
+		types.PessimisticProofMode,
 		aggkitcommon.ZeroAddress,
 		nil, // No Ethereum client needed for no-op querier
 	)
@@ -43,6 +45,7 @@ func TestAggchainFEPRollupQuerier(t *testing.T) {
 
 		_, err := NewAggchainFEPQuerier(
 			log.WithFields("test", "aggchainFEPRollupQuerier"),
+			types.AggchainProofMode,
 			common.HexToAddress("0x1"),
 			mockL1Client,
 		)
