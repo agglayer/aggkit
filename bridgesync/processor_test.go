@@ -2134,3 +2134,46 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 func intPtr(i int) *int {
 	return &i
 }
+
+func TestGetClaims_QueryBlockRangeError(t *testing.T) {
+	t.Parallel()
+
+	path := path.Join(t.TempDir(), "bridgesyncTestGetClaimsQueryBlockRangeError.sqlite")
+	logger := log.WithFields("module", "bridge-syncer")
+	p, err := newProcessor(path, "bridge-syncer", logger)
+	require.NoError(t, err)
+
+	// Process a block to set up the database state
+	block := sync.Block{
+		Num: 1,
+		Events: []interface{}{
+			Event{Claim: &Claim{
+				BlockNum:           1,
+				BlockPos:           0,
+				GlobalIndex:        big.NewInt(1),
+				OriginNetwork:      1,
+				OriginAddress:      common.HexToAddress("0x01"),
+				DestinationAddress: common.HexToAddress("0x01"),
+				Amount:             big.NewInt(1),
+				MainnetExitRoot:    common.Hash{},
+			}},
+		},
+	}
+
+	err = p.ProcessBlock(context.Background(), block)
+	require.NoError(t, err)
+
+	// Close the database connection to simulate a database error
+	err = p.db.Close()
+	require.NoError(t, err)
+
+	// Try to get claims - this should fail with a database error
+	// and trigger the error logging at line 420
+	claims, err := p.GetClaims(context.Background(), 1, 1)
+
+	// Should return an error (not db.ErrNotFound)
+	require.Error(t, err)
+	require.Nil(t, claims)
+	// The error should not be db.ErrNotFound
+	require.False(t, errors.Is(err, db.ErrNotFound))
+}
