@@ -25,7 +25,7 @@ type ECDSAMultisigCommitteeQuery struct {
 // NewECDSAMultisigCommitteeQuery creates a new instance of ECDSAMultisigCommitteeQuery
 func NewECDSAMultisigCommitteeQuery(multisigCommitteeAddr common.Address,
 	l1Client aggkittypes.BaseEthereumClienter) (*ECDSAMultisigCommitteeQuery, error) {
-	multisigCommitteeSC, err := aggchainecdsamultisig.NewAggchainecdsamultisig(
+	multisigCommitteeSC, err := aggchainecdsamultisig.NewAggchainecdsamultisigCaller(
 		multisigCommitteeAddr, l1Client)
 	if err != nil {
 		return nil, err
