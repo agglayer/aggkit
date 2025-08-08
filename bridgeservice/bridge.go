@@ -977,6 +977,10 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, 
 		if err != nil {
 			return 0, fmt.Errorf("failed to get last root for L1: %w", err)
 		}
+		lastInfo, err = b.l1InfoTree.GetInfoByIndex(ctx, root.Index)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get last info for L1: %w", err)
+		}
 	}
 	if root.Index < depositCount {
 		return 0, ErrNotOnL1Info
@@ -1037,6 +1041,10 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 		root, err = b.bridgeL2.GetLastRoot(ctx)
 		if err != nil {
 			return 0, fmt.Errorf("failed to get last root for L2: %w", err)
+		}
+		lastVerified, err = b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, root.BlockNum)
+		if err != nil {
+			return 0, fmt.Errorf("failed to get first verified batch after block for L2: %w, block num: %d", err, root.BlockNum)
 		}
 	}
 	if root.Index < depositCount {

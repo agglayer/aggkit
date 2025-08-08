@@ -357,6 +357,26 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 			expectedErr:   fmt.Errorf("failed to get last root for L2: %w", fooErr),
 		},
 		{
+			description: "error on first GetLastRoot",
+			setupMocks: func() {
+				b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
+					Return(lastVerified, nil).
+					Once()
+				b.bridgeL2.EXPECT().GetRootByLER(ctx, lastVerified.ExitRoot).
+					Return(&tree.Root{}, fooErr).
+					Once()
+				b.bridgeL2.EXPECT().GetLastRoot(ctx).
+					Return(&tree.Root{}, nil).
+					Once()
+				b.l1InfoTree.EXPECT().GetFirstVerifiedBatchesAfterBlock(networkID, mock.Anything).
+					Return(nil, fooErr).
+					Once()
+			},
+			depositCount:  11,
+			expectedIndex: 0,
+			expectedErr:   fmt.Errorf("failed to get first verified batch after block for L2: %w, block num: %d", fooErr, 0),
+		},
+		{
 			description: "not included yet",
 			setupMocks: func() {
 				b.l1InfoTree.EXPECT().GetLastVerifiedBatches(networkID).
@@ -2191,6 +2211,16 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 			Return(fallbackRoot, nil).
 			Once()
 
+		// After GetLastRoot succeeds, GetInfoByIndex is called with the root's index
+		updatedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     uint64(depositCount),
+			MainnetExitRoot: common.HexToHash("0x123"),
+			L1InfoTreeIndex: depositCount,
+		}
+		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount).
+			Return(updatedLastInfo, nil).
+			Once()
+
 		// Continue with normal flow
 		b.l1InfoTree.EXPECT().GetFirstInfo().
 			Return(firstInfo, nil).
@@ -2272,6 +2302,16 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 			Return(fallbackRoot, nil).
 			Once()
 
+		// After GetLastRoot succeeds, GetInfoByIndex is called with the root's index
+		updatedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     uint64(depositCount - 100),
+			MainnetExitRoot: common.HexToHash("0x123"),
+			L1InfoTreeIndex: depositCount - 100,
+		}
+		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount-100).
+			Return(updatedLastInfo, nil).
+			Once()
+
 		// Execute the function
 		actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
 
@@ -2305,6 +2345,16 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 			Return(fallbackRoot, nil).
 			Once()
 
+		// After GetLastRoot succeeds, GetInfoByIndex is called with the root's index
+		updatedLastInfo := &l1infotreesync.L1InfoTreeLeaf{
+			BlockNumber:     uint64(depositCount + 50),
+			MainnetExitRoot: common.HexToHash("0x123"),
+			L1InfoTreeIndex: depositCount + 50,
+		}
+		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount+50).
+			Return(updatedLastInfo, nil).
+			Once()
+
 		// Continue with normal flow
 		b.l1InfoTree.EXPECT().GetFirstInfo().
 			Return(firstInfo, nil).
@@ -2331,6 +2381,44 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 		// Verify results
 		require.NoError(t, err)
 		require.Equal(t, expectedIndex, actualIndex)
+
+		// Verify all mocks were called as expected
+		b.l1InfoTree.AssertExpectations(t)
+		b.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetRootByLER fails, GetLastRoot succeeds but GetInfoByIndex fails", func(t *testing.T) {
+		// Setup mocks for the fallback scenario where GetInfoByIndex fails
+		b.l1InfoTree.EXPECT().GetLastInfo().
+			Return(lastInfo, nil).
+			Once()
+
+		// First call to GetRootByLER fails
+		b.bridgeL1.EXPECT().GetRootByLER(ctx, lastInfo.MainnetExitRoot).
+			Return(nil, errors.New("LER not found")).
+			Once()
+
+		// Fallback to GetLastRoot succeeds
+		fallbackRoot := &tree.Root{
+			Index:    depositCount,
+			BlockNum: uint64(depositCount),
+		}
+		b.bridgeL1.EXPECT().GetLastRoot(ctx).
+			Return(fallbackRoot, nil).
+			Once()
+
+		// GetInfoByIndex fails after GetLastRoot succeeds
+		b.l1InfoTree.EXPECT().GetInfoByIndex(ctx, depositCount).
+			Return(nil, errors.New("failed to get info by index")).
+			Once()
+
+		// Execute the function
+		actualIndex, err := b.bridge.getFirstL1InfoTreeIndexForL1Bridge(ctx, depositCount)
+
+		// Verify results - should return error from GetInfoByIndex
+		require.Error(t, err)
+		require.Equal(t, uint32(0), actualIndex)
+		require.Contains(t, err.Error(), "failed to get last info for L1")
 
 		// Verify all mocks were called as expected
 		b.l1InfoTree.AssertExpectations(t)
