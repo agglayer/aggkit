@@ -4,12 +4,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/agglayer/aggkit/config/types"
-	"github.com/ethereum/go-ethereum/common"
+	"github.com/agglayer/aggkit/common"
+	gethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 var (
-	ErrMissingRPCConfig                    = errors.New("missing RPC configuration")
 	ErrMissingRPCURL                       = errors.New("missing RPC URL")
 	ErrMissingRollupAddress                = errors.New("missing rollup address")
 	ErrMissingRollupManagerAddress         = errors.New("missing rollup manager address")
@@ -32,33 +31,30 @@ type L1NetworkConfig struct {
 	// Chain ID of the L1 network
 	ChainID uint64 `json:"chainId"`
 	// RollupAddr Address of the L1 rollup contract
-	RollupAddr common.Address `json:"polygonZkEVMAddress"`
+	RollupAddr gethcommon.Address `json:"polygonZkEVMAddress"`
 	// RollupManagerAddr Address of the L1 contract
-	RollupManagerAddr common.Address `json:"polygonRollupManagerAddress"`
+	RollupManagerAddr gethcommon.Address `json:"polygonRollupManagerAddress"`
 	// POLTokenAddr Address of the L1 POL token Contract
-	POLTokenAddr common.Address `json:"polTokenAddress"`
+	POLTokenAddr gethcommon.Address `json:"polTokenAddress"`
 	// GlobalExitRootManagerAddr Address of the L1 GlobalExitRootManager contract
-	GlobalExitRootManagerAddr common.Address `json:"polygonZkEVMGlobalExitRootAddress"`
+	GlobalExitRootManagerAddr gethcommon.Address `json:"polygonZkEVMGlobalExitRootAddress"`
 }
 
 // Validate checks if the L1NetworkConfig is valid
 func (c *L1NetworkConfig) Validate() error {
-	if c.RPC == (RPCClientConfig{}) {
-		return ErrMissingRPCConfig
-	}
 	if err := c.RPC.Validate(); err != nil {
 		return fmt.Errorf("invalid RPC configuration: %w", err)
 	}
-	if c.RollupAddr == (common.Address{}) {
+	if c.RollupAddr == (gethcommon.Address{}) {
 		return ErrMissingRollupAddress
 	}
-	if c.RollupManagerAddr == (common.Address{}) {
+	if c.RollupManagerAddr == (gethcommon.Address{}) {
 		return ErrMissingRollupManagerAddress
 	}
-	if c.POLTokenAddr == (common.Address{}) {
+	if c.POLTokenAddr == (gethcommon.Address{}) {
 		return ErrMissingPOLTokenAddress
 	}
-	if c.GlobalExitRootManagerAddr == (common.Address{}) {
+	if c.GlobalExitRootManagerAddr == (gethcommon.Address{}) {
 		return ErrMissingGlobalExitRootManagerAddress
 	}
 	return nil
@@ -66,16 +62,9 @@ func (c *L1NetworkConfig) Validate() error {
 
 // RPCClientConfig represents the configuration of the RPC client
 type RPCClientConfig struct {
+	common.RetryPolicyGenericConfig `mapstructure:",squash"`
 	// URL is the URL of the RPC client
 	URL string `mapstructure:"URL"`
-	// MaxRetries is the maximum number of retries for RPC requests
-	MaxRetries int `mapstructure:"MaxRetries"`
-	// InitialBackoff is the initial backoff duration for retries
-	InitialBackoff types.Duration `mapstructure:"InitialBackoff"`
-	// MaxBackoff is the maximum backoff duration for retries
-	MaxBackoff types.Duration `mapstructure:"MaxBackoff"`
-	// BackoffMultiplier is the multiplier for exponential backoff
-	BackoffMultiplier float64 `mapstructure:"BackoffMultiplier"`
 }
 
 // Validate checks if the RPCClientConfig is valid
@@ -84,30 +73,7 @@ func (c *RPCClientConfig) Validate() error {
 		return ErrMissingRPCURL
 	}
 
-	if c.MaxRetries < 0 {
-		return fmt.Errorf("max retries must be non-negative, got %d", c.MaxRetries)
-	}
-
-	if c.MaxRetries > 0 {
-		if c.InitialBackoff.Duration <= 0 {
-			return fmt.Errorf("initial backoff must be positive, got %s", c.InitialBackoff.Duration)
-		}
-
-		if c.MaxBackoff.Duration <= 0 {
-			return fmt.Errorf("max backoff must be positive, got %s", c.MaxBackoff.Duration)
-		}
-
-		if c.MaxBackoff.Duration < c.InitialBackoff.Duration {
-			return fmt.Errorf("max backoff %s must be greater than or equal to initial backoff %s",
-				c.MaxBackoff.Duration, c.InitialBackoff.Duration)
-		}
-
-		if c.BackoffMultiplier <= 1.0 {
-			return fmt.Errorf("backoff multiplier must be greater than 1.0, got %f", c.BackoffMultiplier)
-		}
-	}
-
-	return nil
+	return c.RetryPolicyGenericConfig.Validate()
 }
 
 type RPCMode string
@@ -131,9 +97,6 @@ type L2RPCClientConfig struct {
 
 // Validate checks if the L2RPCClientConfig is valid
 func (c *L2RPCClientConfig) Validate() error {
-	if c.RPCClientConfig == (RPCClientConfig{}) {
-		return ErrMissingRPCConfig
-	}
 	if err := c.RPCClientConfig.Validate(); err != nil {
 		return fmt.Errorf("invalid RPC configuration: %w", err)
 	}

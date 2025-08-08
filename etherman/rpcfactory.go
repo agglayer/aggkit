@@ -17,8 +17,11 @@ func NewRPCClient(ctx context.Context, cfg config.L2RPCClientConfig) (aggkittype
 	switch cfg.Mode {
 	case config.RPCModeBasic:
 		log.Debugf("Creating basic RPC client with URL %s", cfg.URL)
-		ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.URL, cfg.MaxRetries,
-			cfg.InitialBackoff.Duration, cfg.MaxBackoff.Duration, cfg.BackoffMultiplier)
+		retryHandler, err := cfg.NewRetryHandler()
+		if err != nil {
+			return nil, fmt.Errorf("failed to create retry handler: %w", err)
+		}
+		ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.URL, retryHandler)
 		if err != nil {
 			return nil, fmt.Errorf("fails to create basic RPC client. Err: %w", err)
 		}
