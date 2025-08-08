@@ -106,55 +106,7 @@ func TestMultisigCommittee_AddSigner(t *testing.T) {
 	}
 }
 
-func TestMultisigCommittee_RemoveSigner(t *testing.T) {
-	s1 := NewSignerInfo("http://localhost:8001", common.HexToAddress("0x1"))
-	s2 := NewSignerInfo("http://localhost:8002", common.HexToAddress("0x2"))
-
-	tests := []struct {
-		name        string
-		initial     []*SignerInfo
-		threshold   uint32
-		remove      common.Address
-		errContains string
-	}{
-		{
-			name:        "remove non-existent signer",
-			initial:     []*SignerInfo{s1},
-			threshold:   1,
-			remove:      common.HexToAddress("0x3"),
-			errContains: "not found",
-		},
-		{
-			name:        "removal breaks threshold",
-			initial:     []*SignerInfo{s1},
-			threshold:   1,
-			remove:      s1.Address,
-			errContains: "resulting committee size (0) would be below threshold (1)",
-		},
-		{
-			name:      "valid removal",
-			initial:   []*SignerInfo{s1, s2},
-			threshold: 1,
-			remove:    s2.Address,
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			mc, err := NewMultisigCommittee(tc.initial, tc.threshold)
-			require.NoError(t, err)
-
-			err = mc.RemoveSigner(tc.remove)
-			if tc.errContains != "" {
-				require.ErrorContains(t, err, tc.errContains)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
-}
-
-func TestMultisigCommittee_HasQuorum(t *testing.T) {
+func TestMultisigCommittee_IsThresholdReached(t *testing.T) {
 	s1 := NewSignerInfo("http://localhost:8001", common.HexToAddress("0x1"))
 	s2 := NewSignerInfo("http://localhost:8002", common.HexToAddress("0x2"))
 	s3 := NewSignerInfo("http://localhost:8003", common.HexToAddress("0x3"))
@@ -202,7 +154,7 @@ func TestMultisigCommittee_HasQuorum(t *testing.T) {
 			mc, err := NewMultisigCommittee(tc.initial, tc.threshold)
 			require.NoError(t, err)
 
-			ok, err := mc.HasQuorum(tc.signers)
+			ok, err := mc.IsThresholdReached(tc.signers)
 			if tc.errContains != "" {
 				require.ErrorContains(t, err, tc.errContains)
 			} else {

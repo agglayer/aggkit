@@ -76,35 +76,11 @@ func (m *MultisigCommittee) AddSigner(info *SignerInfo) error {
 	return nil
 }
 
-// RemoveSigner removes a signer by address.
-// Returns an error if not found.
-func (m *MultisigCommittee) RemoveSigner(addr common.Address) error {
-	if _, exists := m.signersSet[addr]; !exists {
-		return fmt.Errorf("signer %s not found in committee", addr)
-	}
-
-	if uint32(len(m.signersSet)-1) < m.threshold {
-		return fmt.Errorf("cannot remove signer: resulting committee size (%d) would be below threshold (%d)",
-			len(m.signersSet)-1, m.threshold)
-	}
-
-	// Rebuild member slice without the removed signer
-	filtered := make([]*SignerInfo, 0, len(m.signers)-1)
-	for _, s := range m.signers {
-		if s.Address != addr {
-			filtered = append(filtered, s)
-		}
-	}
-
-	m.signers = filtered
-	delete(m.signersSet, addr)
-	return nil
-}
-
-// HasQuorum checks if the provided signer addresses constitute a valid quorum.
+// IsThresholdReached checks if the provided signer addresses constitute a valid quorum
+// (namely signers length should be at least as big as the threshold value).
 // - Returns an error if any signer is not part of the committee.
 // - Duplicate addresses are ignored in counting.
-func (m *MultisigCommittee) HasQuorum(signerAddrs []common.Address) (bool, error) {
+func (m *MultisigCommittee) IsThresholdReached(signerAddrs []common.Address) (bool, error) {
 	seen := make(map[common.Address]struct{}, len(signerAddrs))
 	count := uint32(0)
 
