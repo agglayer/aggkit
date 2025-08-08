@@ -18,7 +18,6 @@ import (
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/russross/meddler"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
