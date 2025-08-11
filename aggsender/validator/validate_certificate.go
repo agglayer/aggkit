@@ -53,10 +53,8 @@ func NewAggsenderValidator(logger aggkitcommon.Logger,
 	}
 }
 
-type VerifyIncommingRequests = types.VerifyIncomingRequest
-
 // ValidateCertificate validates the incoming certificate against the previous one.
-func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params VerifyIncommingRequests) error {
+func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params types.VerifyIncomingRequest) error {
 	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
@@ -118,7 +116,7 @@ func (a *CertificateValidator) checkPreviousCertificate(previousCertificate *agg
 }
 
 // checkContigousCertificates checks if the incoming certificate is contiguous with the previous one.
-func (a *CertificateValidator) checkContigousCertificates(params VerifyIncommingRequests) error {
+func (a *CertificateValidator) checkContigousCertificates(params types.VerifyIncomingRequest) error {
 	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
@@ -139,7 +137,7 @@ func (a *CertificateValidator) checkContigousCertificates(params VerifyIncomming
 }
 
 // checkMetadataCompatibility checks if the certificate metadata is compatible with the current version
-func (a *CertificateValidator) checkMetadataCompatibility(params VerifyIncommingRequests) error {
+func (a *CertificateValidator) checkMetadataCompatibility(params types.VerifyIncomingRequest) error {
 	if params.Certificate == nil {
 		return nil
 	}
@@ -175,7 +173,7 @@ func (a *CertificateValidator) compareCertificates(
 }
 
 // checkFirstCertificateBlocks checks that the first certificate blocks are correct
-func (a *CertificateValidator) checkFirstCertificateBlocks(params VerifyIncommingRequests) error {
+func (a *CertificateValidator) checkFirstCertificateBlocks(params types.VerifyIncomingRequest) error {
 	if params.Certificate.Height != 0 {
 		// The first certificate must have height 0
 		return fmt.Errorf("first certificate must have height 0, but got: %d",
@@ -197,7 +195,7 @@ func (a *CertificateValidator) checkFirstCertificateBlocks(params VerifyIncommin
 // on incomming certificate
 func (a *CertificateValidator) getCertificatePreBuildParams(
 	ctx context.Context,
-	params VerifyIncommingRequests,
+	params types.VerifyIncomingRequest,
 	previousCertToBlock uint64) (*types.CertificatePreBuildParams, error) {
 	if params.Certificate == nil {
 		return nil, fmt.Errorf("preBuildParams. Err: %w", ErrNilCertificate)

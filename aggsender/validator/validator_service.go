@@ -65,7 +65,7 @@ func (s *ValidatorService) ValidateCertificate(
 
 	s.log.Infof("Received certificate network:%d,  height: %d", req.Certificate.NetworkId, req.Certificate.Height)
 
-	params := VerifyIncommingRequests{}
+	params := types.VerifyIncomingRequest{}
 	if req.PreviousCertificateId != nil && req.PreviousCertificateId.Value != nil {
 		previousCertificateID := common.BytesToHash(req.PreviousCertificateId.Value.Value)
 		s.log.Debugf("Previous certificate ID: %s", previousCertificateID.Hex())
