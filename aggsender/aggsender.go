@@ -129,6 +129,7 @@ func New(
 		compatibilityStoragedChecker: compatibilityStoragedChecker,
 		l2OriginNetwork:              l2OriginNetwork,
 		certQuerier:                  certQuerier,
+		rollupDataQuerier:            rollupDataQuerier,
 		certStatusChecker: statuschecker.NewCertStatusChecker(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
 	}, nil
