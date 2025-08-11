@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/types"
 )
 
 // DiffsCertificate compares two certificates and returns a slice of strings
@@ -41,22 +40,8 @@ func DiffsCertificate(
 	}
 
 	if validatingCertificate.Metadata != expectedCertificate.Metadata {
-		msg1 := fmt.Sprintf("Expected: %s", expectedCertificate.Metadata.Hex())
-		metadataUnmarshal, err := types.NewCertificateMetadataFromHash(expectedCertificate.Metadata)
-		if err != nil {
-			msg1 += fmt.Sprintf(" Error: %v", err)
-		} else {
-			msg1 += fmt.Sprintf(" (%s)", metadataUnmarshal.String())
-		}
-		msg2 := fmt.Sprintf("Certificate: %s", validatingCertificate.Metadata.Hex())
-		metadataUnmarshal, err = types.NewCertificateMetadataFromHash(validatingCertificate.Metadata)
-		if err != nil {
-			msg2 += fmt.Sprintf(" Error: %v", err)
-		} else {
-			msg2 += fmt.Sprintf(" (%s)", metadataUnmarshal.String())
-		}
-		diffs = append(diffs, fmt.Sprintf("Metadata mismatch. %s, %s",
-			msg1, msg2))
+		diffs = append(diffs, fmt.Sprintf("Metadata mismatch. Expected: %s, Certificate: %s",
+			expectedCertificate.Metadata.Hex(), validatingCertificate.Metadata.Hex()))
 	}
 
 	if !bytes.Equal(validatingCertificate.CustomChainData, expectedCertificate.CustomChainData) {

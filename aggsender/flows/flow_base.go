@@ -280,13 +280,6 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("error getting new local exit root: %w", err)
 	}
 
-	meta := types.NewCertificateMetadata(
-		certParams.FromBlock,
-		uint32(certParams.ToBlock-certParams.FromBlock),
-		certParams.CreatedAt,
-		certParams.CertificateType.ToInt(),
-	)
-
 	return &agglayertypes.Certificate{
 		NetworkID:           f.l2BridgeQuerier.OriginNetwork(),
 		PrevLocalExitRoot:   previousLER,
@@ -294,7 +287,7 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 		BridgeExits:         bridgeExits,
 		ImportedBridgeExits: importedBridgeExits,
 		Height:              height,
-		Metadata:            meta.ToHash(),
+		Metadata:            aggkitcommon.ZeroHash, // Metadata is deprecated, but will be kept as ZeroHash
 		L1InfoTreeLeafCount: certParams.L1InfoTreeLeafCount,
 	}, nil
 }
@@ -339,25 +332,11 @@ func (f *baseFlow) getImportedBridgeExits(
 		ctx, claims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
 }
 
-// getStartLER returns the last local exit root (LER) based on the configuration
-func (f *baseFlow) getStartLER() (common.Hash, error) {
-	ler, err := f.lerQuerier.GetLastLocalExitRoot()
-	if err != nil {
-		return common.Hash{}, fmt.Errorf("error getting last local exit root: %w", err)
-	}
-
-	if ler == aggkitcommon.ZeroHash {
-		return types.EmptyLER, nil
-	}
-
-	return ler, nil
-}
-
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		ler, err := f.getStartLER()
+		ler, err := f.lerQuerier.GetLastLocalExitRoot()
 		return uint64(0), ler, err
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
@@ -375,7 +354,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			ler, err := f.getStartLER()
+			ler, err := f.lerQuerier.GetLastLocalExitRoot()
 			return uint64(0), ler, err
 		}
 		// We get previous certificate that must be settled

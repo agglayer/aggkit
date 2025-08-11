@@ -24,7 +24,7 @@ import (
 
 const (
 	defaultTimeout           = 5 * time.Second
-	defaultInitialBackoff    = 100 * time.Millisecond
+	defaultInitialBackoff    = 1 * time.Second
 	defaultMaxAttempts       = 3
 	defaultMaxBackoff        = 10 * time.Second
 	defaultBackoffMultiplier = 2.0

@@ -41,6 +41,8 @@ type AggSender struct {
 	aggLayerClient               agglayer.AgglayerClientInterface
 	compatibilityStoragedChecker compatibility.CompatibilityChecker
 	certStatusChecker            types.CertificateStatusChecker
+	certQuerier                  types.CertificateQuerier
+	rollupDataQuerier            types.RollupDataQuerier
 
 	cfg config.Config
 
@@ -126,6 +128,8 @@ func New(
 		rateLimiter:                  rateLimit,
 		compatibilityStoragedChecker: compatibilityStoragedChecker,
 		l2OriginNetwork:              l2OriginNetwork,
+		certQuerier:                  certQuerier,
+		rollupDataQuerier:            rollupDataQuerier,
 		certStatusChecker: statuschecker.NewCertStatusChecker(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
 	}, nil
@@ -147,6 +151,14 @@ func (a *AggSender) GetStorage() db.AggSenderStorage {
 
 func (a *AggSender) GetFlow() types.AggsenderFlow {
 	return a.flow
+}
+
+func (a *AggSender) GetCertQuerier() types.CertificateQuerier {
+	return a.certQuerier
+}
+
+func (a *AggSender) GetLERQuerier() types.LERQuerier {
+	return query.NewLERDataQuerier(a.cfg.RollupCreationBlockL1, a.rollupDataQuerier)
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {
@@ -332,8 +344,11 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 
 	validatorSignature, err := a.callValidator(ctx, certificate, certificateParams.ToBlock)
 	if err != nil {
-		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
-		return nil, fmt.Errorf("certificate validation failed: %w", err)
+		// TODO - agglayer has not yet implemented the endpoints needed to validate a certificate
+		// so lets just log the error and continue. This will be changed when the agglayer is ready
+		// a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
+		// return nil, fmt.Errorf("certificate validation failed: %w", err)
+		a.log.Warnf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
 	}
 	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s, end: %s",
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())

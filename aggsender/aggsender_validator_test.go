@@ -23,7 +23,7 @@ func TestNewAggsenderValidator(t *testing.T) {
 	}
 	// Call the function
 	validator, err := NewAggsenderValidator(ctx, mockLogger, cfg, mockFlowPP, mockL1InfoTreeDataQuerier,
-		mockAggLayerClient, nil)
+		mockAggLayerClient, nil, nil, nil)
 
 	// Assertions
 	require.NoError(t, err, "Expected no error when creating AggsenderValidator")

@@ -59,6 +59,7 @@ func (a *LocalValidator) ValidateAndSignCertificate(
 	verifyParams := types.VerifyIncomingRequest{
 		Certificate:         certificate,
 		PreviousCertificate: nil,
+		LastL2BlockInCert:   lastL2BlockInCert,
 	}
 	if certificate.Height != 0 {
 		previousSettledCertificate, err := getPreviousCertificate(a.storage, certificate.Height, certificate.NetworkID)

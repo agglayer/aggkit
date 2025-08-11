@@ -178,6 +178,7 @@ type MaxL2BlockNumberLimiterInterface interface {
 type VerifyIncomingRequest struct {
 	Certificate         *agglayertypes.Certificate
 	PreviousCertificate *agglayertypes.CertificateHeader
+	LastL2BlockInCert   uint64
 }
 
 // HealthCheckStatus defines the status of a health check

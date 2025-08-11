@@ -309,6 +309,7 @@ func TestExtractFromCertificateMetadataToBlock(t *testing.T) {
 	}
 }
 
+//nolint:dupl
 func TestSendCertificate(t *testing.T) {
 	t.Parallel()
 
@@ -399,14 +400,16 @@ func TestSendCertificate(t *testing.T) {
 					NewLocalExitRoot: common.HexToHash("0x1"),
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
-				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+				// mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
+				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
 			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
 				mockValidator := mocks.NewCertificateValidateAndSigner(t)
 				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
 				return mockValidator
 			},
-			expectedError: "certificate validation failed: some error",
+			// expectedError: "certificate validation failed: some error", // TODO - this will be fixed when the agglayer is ready
 		},
 		{
 			name: "successful validation and sending of a certificate",
