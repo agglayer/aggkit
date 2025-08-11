@@ -165,7 +165,6 @@ type RollupDataQuerier interface {
 // LERQuerier is an interface defining functions that a Local Exit Root querier should implement
 type LERQuerier interface {
 	GetLastLocalExitRoot() (common.Hash, error)
-	GetStartLER() (common.Hash, error)
 }
 
 // MaxL2BlockNumberLimiterInterface is an interface defining functions that a MaxL2BlockNumberLimiter should implement

@@ -64,7 +64,7 @@ func TestValidateCertificate(t *testing.T) {
 
 	t.Run("first cert bad previous LER", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
+		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:            0,
@@ -99,7 +99,7 @@ func TestValidateCertificate(t *testing.T) {
 
 	t.Run("GetCertificatePreBuildParams error l1infotree", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
+		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().CalculateCertificateType(uint64(10)).Return(types.CertificateTypePP)
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(nil, errGenericForTesting)
@@ -118,7 +118,7 @@ func TestValidateCertificate(t *testing.T) {
 
 	t.Run("fails flowPP.GenerateBuildParams", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
+		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().CalculateCertificateType(uint64(10)).Return(types.CertificateTypePP)
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
@@ -139,7 +139,7 @@ func TestValidateCertificate(t *testing.T) {
 
 	t.Run("fails flowPP.BuildCertificate", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
+		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().CalculateCertificateType(uint64(10)).Return(types.CertificateTypePP)
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
@@ -162,7 +162,7 @@ func TestValidateCertificate(t *testing.T) {
 
 	t.Run("fails CompareCertificates", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
+		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 		testData.mockCertQuerier.EXPECT().CalculateCertificateType(uint64(10)).Return(types.CertificateTypePP)
 		testData.mockL1InfoTreeQuerier.EXPECT().
 			GetL1InfoRootByLeafIndex(testData.ctx, uint32(9)).Return(&testTreeRootIndex9, nil).Maybe()
@@ -195,7 +195,7 @@ func TestCheckContigousCertificates(t *testing.T) {
 
 	t.Run("Nil PreviousCertificate, err getting start LER", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, errors.New("some error"))
+		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, errors.New("some error"))
 		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height: 0,
@@ -218,7 +218,7 @@ func TestCheckContigousCertificates(t *testing.T) {
 
 	t.Run("Nil PreviousCertificate, cert height == 0, non expected LER", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
-		testData.mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
+		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:            0,

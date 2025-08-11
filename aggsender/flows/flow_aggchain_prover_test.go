@@ -508,7 +508,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		{
 			name: "error building certificate",
 			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier, mockSigner *mocks.Signer) {
-				mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(common.Hash{}, errors.New("some error"))
 			},
 			buildParams: &types.CertificateBuildParams{
@@ -526,7 +526,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 				mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
 				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0x123"))
 				mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil)
-				mockLERQuerier.EXPECT().GetStartLER().Return(types.EmptyLER, nil)
+				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 			},
 			buildParams: &types.CertificateBuildParams{
 				FromBlock:                      1,

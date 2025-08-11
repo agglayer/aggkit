@@ -336,7 +336,7 @@ func (f *baseFlow) getImportedBridgeExits(
 func (f *baseFlow) getNextHeightAndPreviousLER(
 	lastSentCertificateInfo *types.CertificateHeader) (uint64, common.Hash, error) {
 	if lastSentCertificateInfo == nil {
-		ler, err := f.lerQuerier.GetStartLER()
+		ler, err := f.lerQuerier.GetLastLocalExitRoot()
 		return uint64(0), ler, err
 	}
 	if !lastSentCertificateInfo.Status.IsClosed() {
@@ -354,7 +354,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 		}
 		// Is the first one, so we can set the zeroLER
 		if lastSentCertificateInfo.Height == 0 {
-			ler, err := f.lerQuerier.GetStartLER()
+			ler, err := f.lerQuerier.GetLastLocalExitRoot()
 			return uint64(0), ler, err
 		}
 		// We get previous certificate that must be settled
