@@ -403,7 +403,7 @@ func TestSendCertificate(t *testing.T) {
 			},
 			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
 				mockValidator := mocks.NewCertificateValidateAndSigner(t)
-				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
+				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
 				return mockValidator
 			},
 			expectedError: "certificate validation failed: some error",
@@ -427,7 +427,7 @@ func TestSendCertificate(t *testing.T) {
 			},
 			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
 				mockValidator := mocks.NewCertificateValidateAndSigner(t)
-				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Once()
+				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Once()
 				return mockValidator
 			},
 		},
@@ -691,7 +691,7 @@ func TestSendCertificates(t *testing.T) {
 type testDataFlags = int
 
 const (
-	testDataFlagNone                     testDataFlags = 0
+	_                                    testDataFlags = 0
 	testDataFlagMockStorage              testDataFlags = 1
 	testDataFlagMockFlow                 testDataFlags = 2
 	testDataFlagMockCompatibilityChecker testDataFlags = 4

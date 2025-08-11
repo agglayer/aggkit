@@ -330,7 +330,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
-	validatorSignature, err := a.callValidator(ctx, certificate)
+	validatorSignature, err := a.callValidator(ctx, certificate, certificateParams.ToBlock)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 		return nil, fmt.Errorf("certificate validation failed: %w", err)
@@ -404,12 +404,13 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 // callValidator calls the validator to validate the certificate
 func (a *AggSender) callValidator(
 	ctx context.Context,
-	certificate *agglayertypes.Certificate) ([]byte, error) {
+	certificate *agglayertypes.Certificate,
+	lastL2BlockInCert uint64) ([]byte, error) {
 	if a.validator == nil {
 		return nil, nil
 	}
 	a.log.Infof("delegating certificate validation: %s", certificate.Brief())
-	validatorSignature, err := a.validator.ValidateAndSignCertificate(ctx, certificate)
+	validatorSignature, err := a.validator.ValidateAndSignCertificate(ctx, certificate, lastL2BlockInCert)
 	if err != nil {
 		a.log.Errorf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
 		return nil, fmt.Errorf("certificate validation failed: %w", err)

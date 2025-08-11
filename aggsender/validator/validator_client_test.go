@@ -164,7 +164,7 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				client: mockClient,
 			}
 
-			signature, err := validatorClient.ValidateCertificate(ctx, tc.previousCertificateID, tc.certificate)
+			signature, err := validatorClient.ValidateCertificate(ctx, tc.previousCertificateID, tc.certificate, 0)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {
