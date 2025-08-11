@@ -37,27 +37,20 @@ func NewFlow(
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
-		if err != nil {
-			return nil, err
-		}
-		logger.Infof("Initializing RollupManager contract at address: %s. Genesis block: %d",
-			cfg.RollupManagerAddr, cfg.RollupCreationBlockL1)
-		lerQuerier := query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier)
-		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
-		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
-		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
-		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, 0, false),
+		commonFlowComponents, err := createCommonComponents(
+			ctx, cfg, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, 0, false,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create common flow components: %w", err)
+		}
+
 		return NewPPFlow(
 			logger,
-			baseFlow,
+			commonFlowComponents.baseFlow,
 			storage,
-			l1InfoTreeQuerier,
-			l2BridgeQuerier,
-			signer,
+			commonFlowComponents.l1InfoTreeDataQuerier,
+			commonFlowComponents.l2BridgeQuerier,
+			commonFlowComponents.signer,
 			cfg.RequireOneBridgeInPPCertificate,
 			cfg.MaxL2BlockNumber,
 		), nil
@@ -66,18 +59,10 @@ func NewFlow(
 			return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
 		}
 
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
-		if err != nil {
-			return nil, err
-		}
-		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
-
 		aggchainProofClient, err := aggchainproofclient.NewAggchainProofClient(cfg.AggkitProverClient)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating aggkit prover client: %w", err)
 		}
-
-		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 
 		optimisticSigner, optimisticModeQuerier, err := optimistic.NewOptimistic(
 			ctx, logger, l1Client, cfg.OptimisticModeConfig)
@@ -85,45 +70,46 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
 
-		lerQuerier := query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier)
 		aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(logger, types.AggchainProofMode,
 			cfg.SovereignRollupAddr, l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating aggchain FEP querier: %w", err)
 		}
 
-		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
-		baseFlow := NewBaseFlow(
-			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-			NewBaseFlowConfig(cfg.MaxCertSize, aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap),
+		commonFlowComponents, err := createCommonComponents(
+			ctx, cfg, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier,
+			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
 		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create common flow components: %w", err)
+		}
 
 		l2GERReader, err := l2GERReaderFactory(cfg.GlobalExitRootL2Addr, l2Client, l1InfoTreeSyncer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create L2 GER reader: %w", err)
 		}
 
-		gerQuerier := query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader)
+		gerQuerier := query.NewGERDataQuerier(commonFlowComponents.l1InfoTreeDataQuerier, l2GERReader)
 
 		aggchainProofQuerier := query.NewAggchainProofQuery(
 			logger,
 			aggchainProofClient,
-			l1InfoTreeQuerier,
+			commonFlowComponents.l1InfoTreeDataQuerier,
 			optimisticSigner,
-			baseFlow,
+			commonFlowComponents.baseFlow,
 			gerQuerier,
 		)
 
 		return NewAggchainProverFlow(
 			logger,
 			NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
-			baseFlow,
+			commonFlowComponents.baseFlow,
 			storage,
-			l1InfoTreeQuerier,
-			l2BridgeQuerier,
+			commonFlowComponents.l1InfoTreeDataQuerier,
+			commonFlowComponents.l2BridgeQuerier,
 			gerQuerier,
 			l1Client,
-			signer,
+			commonFlowComponents.signer,
 			optimisticModeQuerier,
 			aggchainProofQuerier,
 		), nil
@@ -131,6 +117,49 @@ func NewFlow(
 	default:
 		return nil, fmt.Errorf("unsupported Aggsender mode: %s", cfg.Mode)
 	}
+}
+
+type commonFlowComponents struct {
+	l2BridgeQuerier       types.BridgeQuerier
+	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
+	lerQuerier            types.LERQuerier
+	baseFlow              types.AggsenderFlowBaser
+	signer                signerTypes.Signer
+}
+
+func createCommonComponents(
+	ctx context.Context,
+	cfg config.Config,
+	logger *log.Logger,
+	storage db.AggSenderStorage,
+	l1Client aggkittypes.BaseEthereumClienter,
+	l1InfoTreeSyncer types.L1InfoTreeSyncer,
+	l2Syncer types.L2BridgeSyncer,
+	rollupDataQuerier types.RollupDataQuerier,
+	startL2Block uint64,
+	requireNoFEPBlockGap bool,
+) (commonFlowComponents, error) {
+	signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+	if err != nil {
+		return commonFlowComponents{}, err
+	}
+
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
+	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
+	lerQuerier := query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier)
+
+	baseFlow := NewBaseFlow(
+		logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
+		NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, requireNoFEPBlockGap),
+	)
+
+	return commonFlowComponents{
+		l2BridgeQuerier:       l2BridgeQuerier,
+		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
+		lerQuerier:            lerQuerier,
+		baseFlow:              baseFlow,
+		signer:                signer,
+	}, nil
 }
 
 func initializeSigner(
