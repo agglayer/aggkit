@@ -331,6 +331,7 @@ func (c *Certificate) Brief() string {
 
 // CertificateID returns a certificateID that identifies the certificate
 // next fields are not included: CustomChainData, AggchainData, L1InfoTreeLeafCount
+// TODO: probably about to be changed for phase III
 func (c *Certificate) CertificateID() common.Hash {
 	bridgeExitsHashes := make([][]byte, len(c.BridgeExits))
 	for i, bridgeExit := range c.BridgeExits {
