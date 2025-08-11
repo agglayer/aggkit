@@ -344,8 +344,11 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 
 	validatorSignature, err := a.callValidator(ctx, certificate, certificateParams.ToBlock)
 	if err != nil {
-		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
-		return nil, fmt.Errorf("certificate validation failed: %w", err)
+		// TODO - agglayer has not yet implemented the endpoints needed to validate a certificate
+		// so lets just log the error and continue. This will be changed when the agglayer is ready
+		// a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
+		// return nil, fmt.Errorf("certificate validation failed: %w", err)
+		a.log.Warnf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
 	}
 	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s, end: %s",
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
