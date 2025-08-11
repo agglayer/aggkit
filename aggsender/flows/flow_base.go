@@ -280,13 +280,6 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("error getting new local exit root: %w", err)
 	}
 
-	meta := types.NewCertificateMetadata(
-		certParams.FromBlock,
-		uint32(certParams.ToBlock-certParams.FromBlock),
-		certParams.CreatedAt,
-		certParams.CertificateType.ToInt(),
-	)
-
 	return &agglayertypes.Certificate{
 		NetworkID:           f.l2BridgeQuerier.OriginNetwork(),
 		PrevLocalExitRoot:   previousLER,
@@ -294,7 +287,7 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 		BridgeExits:         bridgeExits,
 		ImportedBridgeExits: importedBridgeExits,
 		Height:              height,
-		Metadata:            meta.ToHash(),
+		Metadata:            aggkitcommon.ZeroHash, // Metadata is deprecated, but will be kept as ZeroHash
 		L1InfoTreeLeafCount: certParams.L1InfoTreeLeafCount,
 	}, nil
 }
