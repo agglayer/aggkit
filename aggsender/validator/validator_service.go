@@ -97,6 +97,7 @@ func (s *ValidatorService) ValidateCertificate(
 		}
 	}
 	params.Certificate = cert
+	params.LastL2BlockInCert = req.LastL2BlockInCert
 	err = s.validator.ValidateCertificate(ctx, params)
 	if err != nil {
 		s.log.Errorf("Certificate validation failed: %v", err)
