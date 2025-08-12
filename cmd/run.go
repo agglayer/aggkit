@@ -754,6 +754,7 @@ func createRollupDataQuerier(ctx context.Context,
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE,
+		aggkitcommon.L1INFOTREESYNC,
 	}, components) {
 		return &etherman.RollupDataQuerier{}, nil
 	}
