@@ -18,8 +18,6 @@ func TestAgglayerCertificateHeaderToAggsender(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
-		badMetadata := make([]byte, common.HashLength)
-		badMetadata[0] = 0x1 // Version = 0xff
 		cert := &agglayertypes.CertificateHeader{}
 		result, err := ConvertAgglayerCertHeaderToAggsender(cert)
 		require.NotNil(t, result)

@@ -139,7 +139,7 @@ func TestExploratoryGenerateCert(t *testing.T) {
 				DestinationNetwork: 2,
 				DestinationAddress: common.HexToAddress("0x22"),
 				Amount:             big.NewInt(100),
-				Metadata:           []byte("metadata"),
+				Metadata:           aggkitcommon.ZeroHash[:],
 			},
 		},
 		ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{
