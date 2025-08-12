@@ -128,6 +128,63 @@ func (_c *CertificateQuerier_GetLastSettledCertificateToBlock_Call) RunAndReturn
 	return _c
 }
 
+// GetNewCertificateToBlock provides a mock function with given fields: ctx, cert
+func (_m *CertificateQuerier) GetNewCertificateToBlock(ctx context.Context, cert *agglayertypes.Certificate) (uint64, error) {
+	ret := _m.Called(ctx, cert)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetNewCertificateToBlock")
+	}
+
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate) (uint64, error)); ok {
+		return rf(ctx, cert)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate) uint64); ok {
+		r0 = rf(ctx, cert)
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *agglayertypes.Certificate) error); ok {
+		r1 = rf(ctx, cert)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// CertificateQuerier_GetNewCertificateToBlock_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNewCertificateToBlock'
+type CertificateQuerier_GetNewCertificateToBlock_Call struct {
+	*mock.Call
+}
+
+// GetNewCertificateToBlock is a helper method to define mock.On call
+//   - ctx context.Context
+//   - cert *agglayertypes.Certificate
+func (_e *CertificateQuerier_Expecter) GetNewCertificateToBlock(ctx interface{}, cert interface{}) *CertificateQuerier_GetNewCertificateToBlock_Call {
+	return &CertificateQuerier_GetNewCertificateToBlock_Call{Call: _e.mock.On("GetNewCertificateToBlock", ctx, cert)}
+}
+
+func (_c *CertificateQuerier_GetNewCertificateToBlock_Call) Run(run func(ctx context.Context, cert *agglayertypes.Certificate)) *CertificateQuerier_GetNewCertificateToBlock_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(*agglayertypes.Certificate))
+	})
+	return _c
+}
+
+func (_c *CertificateQuerier_GetNewCertificateToBlock_Call) Return(_a0 uint64, _a1 error) *CertificateQuerier_GetNewCertificateToBlock_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *CertificateQuerier_GetNewCertificateToBlock_Call) RunAndReturn(run func(context.Context, *agglayertypes.Certificate) (uint64, error)) *CertificateQuerier_GetNewCertificateToBlock_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewCertificateQuerier creates a new instance of CertificateQuerier. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewCertificateQuerier(t interface {

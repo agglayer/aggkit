@@ -282,5 +282,8 @@ type CertificateQuerier interface {
 	GetLastSettledCertificateToBlock(
 		ctx context.Context,
 		cert *agglayertypes.CertificateHeader) (uint64, error)
+	GetNewCertificateToBlock(
+		ctx context.Context,
+		cert *agglayertypes.Certificate) (uint64, error)
 	CalculateCertificateType(certToBlock uint64) CertificateType
 }

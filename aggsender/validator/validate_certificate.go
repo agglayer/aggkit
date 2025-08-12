@@ -68,6 +68,18 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 		err                        error
 	)
 
+	if params.PreviousCertificate != nil {
+		previousCertificateToBlock, err = a.certQuerier.GetLastSettledCertificateToBlock(ctx, params.PreviousCertificate)
+		if err != nil {
+			return fmt.Errorf("failed to get last settled certificate block: %w", err)
+		}
+	}
+
+	// Validate last L2 block in certificate
+	if err := a.validateLastL2BlockInCert(ctx, params, previousCertificateToBlock); err != nil {
+		return fmt.Errorf("failed to validate last L2 block in new certificate: %w", err)
+	}
+
 	// Between cert must be no gap because if there are could be a attack vector
 	if err := a.checkContigousCertificates(params); err != nil {
 		return fmt.Errorf("failed CheckContigousCertificates: %w", err)
@@ -77,31 +89,29 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 		return fmt.Errorf("failed CheckCertificatesContents: %w", err)
 	}
 
-	if params.PreviousCertificate != nil {
-		previousCertificateToBlock, err = a.certQuerier.GetLastSettledCertificateToBlock(ctx, params.PreviousCertificate)
-		if err != nil {
-			return fmt.Errorf("failed to get last settled certificate block: %w", err)
-		}
-	}
-
 	// Build corresponding certificate
 	preBuildParams, err := a.getCertificatePreBuildParams(ctx, params, previousCertificateToBlock)
 	if err != nil {
 		return fmt.Errorf("failed to get certificate pre-build params: %w", err)
 	}
+
 	a.log.Debugf("aggsender-validator: preBuild: %s", preBuildParams.String())
+
 	buildParams, err := a.flowPP.GenerateBuildParams(ctx, preBuildParams)
 	if err != nil {
 		return fmt.Errorf("failed flow.GenerateBuildParams: %w", err)
 	}
+
 	certificate, err := a.flowPP.BuildCertificate(ctx, buildParams)
 	if err != nil {
 		return fmt.Errorf("failed flow.BuildCertificate: %w", err)
 	}
+
 	err = a.compareCertificates(params.Certificate, certificate)
 	if err != nil {
 		return fmt.Errorf("certificate not equal to expected: %w", err)
 	}
+
 	return nil
 }
 
@@ -224,4 +234,28 @@ func (a *CertificateValidator) getCertificatePreBuildParams(
 			L1InfoTreeLeafCount:   params.Certificate.L1InfoTreeLeafCount,
 		},
 	}, nil
+}
+
+// validateLastL2BlockInCert checks that the provided last L2 block in the certificate by the proposer
+// is greater or equal to the blocks we see in the new certificate
+func (a *CertificateValidator) validateLastL2BlockInCert(
+	ctx context.Context,
+	req types.VerifyIncomingRequest,
+	lastSettledBlock uint64) error {
+	if req.LastL2BlockInCert <= lastSettledBlock {
+		return fmt.Errorf("last L2 block in certificate %d must be greater than last settled block %d",
+			req.LastL2BlockInCert, lastSettledBlock)
+	}
+
+	newCertToBlock, err := a.certQuerier.GetNewCertificateToBlock(ctx, req.Certificate)
+	if err != nil {
+		return fmt.Errorf("failed to get new certificate to block: %w", err)
+	}
+
+	if newCertToBlock > req.LastL2BlockInCert {
+		return fmt.Errorf("new certificate to block %d must be less than or equal to last L2 block "+
+			"provided by the proposer %d", newCertToBlock, req.LastL2BlockInCert)
+	}
+
+	return nil
 }
