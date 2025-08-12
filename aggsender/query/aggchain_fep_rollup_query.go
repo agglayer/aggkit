@@ -27,6 +27,10 @@ func (n *noOpAggchainFEPRollupQuerier) GetLastSettledL2Block() (uint64, error) {
 	return 0, nil
 }
 
+func (n *noOpAggchainFEPRollupQuerier) IsFEP() bool {
+	return false
+}
+
 var _ types.AggchainFEPRollupQuerier = (*aggchainFEPRollupQuerier)(nil)
 
 // aggchainFEPRollupQuerier encapsulates the necessary information and interfaces required to query
@@ -92,6 +96,11 @@ func newAggchainFEPQuerier(
 		aggchainFEPCaller: aggchainFEPCaller,
 		aggchainFEPAddr:   aggchainFEPAddr,
 	}, nil
+}
+
+// IsFEP returns true if the AggchainFEP querier is for FEP networks, false otherwise.
+func (a *aggchainFEPRollupQuerier) IsFEP() bool {
+	return true
 }
 
 // StartL2Block returns the starting L2 block number for the FEP network.

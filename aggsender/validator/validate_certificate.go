@@ -216,7 +216,7 @@ func (a *CertificateValidator) getCertificatePreBuildParams(
 	}
 
 	blockRange := types.NewBlockRange(previousCertToBlock+1, params.LastL2BlockInCert)
-	certType := a.certQuerier.CalculateCertificateType(params.LastL2BlockInCert)
+	certType := a.certQuerier.CalculateCertificateType(params.Certificate, params.LastL2BlockInCert)
 
 	l1InfoRoot, err := a.l1InfoTreeDataQuerier.GetL1InfoRootByLeafIndex(ctx, params.Certificate.L1InfoTreeLeafCount-1)
 	if err != nil {

@@ -176,7 +176,7 @@ func TestNewSettledCertificateInfoFromAgglayerCertHeader(t *testing.T) {
 					NewLocalExitRoot:      common.HexToHash("0xabc"),
 					Status:                agglayertypes.Settled,
 				}).Return(uint64(200), nil)
-				m.EXPECT().CalculateCertificateType(uint64(200)).Return(types.CertificateTypePP)
+				m.EXPECT().CalculateCertificateTypeFromToBlock(uint64(200)).Return(types.CertificateTypePP)
 			},
 			expectedResult: &types.Certificate{
 				Header: &types.CertificateHeader{
@@ -273,7 +273,7 @@ func TestUpdateLocalStorageWithAggLayerCert(t *testing.T) {
 
 			if tt.inputCert != nil {
 				mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(mock.Anything, tt.inputCert).Return(uint64(100), nil)
-				mockCertQuerier.EXPECT().CalculateCertificateType(uint64(100)).Return(types.CertificateTypePP)
+				mockCertQuerier.EXPECT().CalculateCertificateTypeFromToBlock(uint64(100)).Return(types.CertificateTypePP)
 				mockStorage.EXPECT().SaveOrUpdateCertificate(mock.Anything, mock.MatchedBy(func(cert types.Certificate) bool {
 					return cert.Header.CertificateID == tt.expectedResult.Header.CertificateID
 				})).Return(tt.saveError)
@@ -356,7 +356,7 @@ func TestExecuteInitialStatusAction(t *testing.T) {
 			},
 			mockFn: func(mockStorage *mocks.AggSenderStorage, mockCertQuerier *mocks.CertificateQuerier) {
 				mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(ctx, mock.Anything).Return(uint64(10), nil)
-				mockCertQuerier.EXPECT().CalculateCertificateType(uint64(10)).Return(types.CertificateTypePP)
+				mockCertQuerier.EXPECT().CalculateCertificateTypeFromToBlock(uint64(10)).Return(types.CertificateTypePP)
 				mockStorage.EXPECT().SaveOrUpdateCertificate(ctx, mock.Anything).Return(nil)
 			},
 		},
@@ -368,7 +368,7 @@ func TestExecuteInitialStatusAction(t *testing.T) {
 			},
 			mockFn: func(mockStorage *mocks.AggSenderStorage, mockCertQuerier *mocks.CertificateQuerier) {
 				mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(ctx, mock.Anything).Return(uint64(10), nil)
-				mockCertQuerier.EXPECT().CalculateCertificateType(uint64(10)).Return(types.CertificateTypePP)
+				mockCertQuerier.EXPECT().CalculateCertificateTypeFromToBlock(uint64(10)).Return(types.CertificateTypePP)
 				mockStorage.EXPECT().SaveOrUpdateCertificate(ctx, mock.Anything).Return(fmt.Errorf("insert error"))
 			},
 			expectedError: "recovery: error new local storage with agglayer certificate",

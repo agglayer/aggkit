@@ -194,71 +194,6 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 	}
 }
 
-func TestCalculateCertificateType(t *testing.T) {
-	t.Parallel()
-
-	testCases := []struct {
-		name         string
-		certToBlock  uint64
-		startL2Block uint64
-		expectedType types.CertificateType
-	}{
-		{
-			name:         "zero block returns unknown",
-			certToBlock:  0,
-			startL2Block: 100,
-			expectedType: types.CertificateTypeUnknown,
-		},
-		{
-			name:         "block before start L2 block returns PP",
-			certToBlock:  50,
-			startL2Block: 100,
-			expectedType: types.CertificateTypePP,
-		},
-		{
-			name:         "block equal to start L2 block returns FEP",
-			certToBlock:  100,
-			startL2Block: 100,
-			expectedType: types.CertificateTypeFEP,
-		},
-		{
-			name:         "block after start L2 block returns FEP",
-			certToBlock:  150,
-			startL2Block: 100,
-			expectedType: types.CertificateTypeFEP,
-		},
-		{
-			name:         "start L2 block is zero with non-zero cert block returns FEP",
-			certToBlock:  50,
-			startL2Block: 0,
-			expectedType: types.CertificateTypeFEP,
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			mockAggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
-			mockAgglayerClient := agglayermocks.NewAgglayerClientMock(t)
-			mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
-
-			mockAggchainFEPQuerier.EXPECT().StartL2Block().Return(tc.startL2Block).Maybe()
-
-			certQuerier := NewCertificateQuerier(
-				mockL2BridgeSyncer,
-				mockAggchainFEPQuerier,
-				mockAgglayerClient,
-			)
-
-			result := certQuerier.CalculateCertificateType(tc.certToBlock)
-			require.Equal(t, tc.expectedType, result)
-
-			mockAggchainFEPQuerier.AssertExpectations(t)
-		})
-	}
-}
-
 func TestGetNewCertificateToBlock(t *testing.T) {
 	t.Parallel()
 
@@ -434,6 +369,219 @@ func TestGetNewCertificateToBlock(t *testing.T) {
 			}
 
 			mockL2BridgeSyncer.AssertExpectations(t)
+		})
+	}
+}
+
+func TestCalculateCertificateTypeFromToBlock(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		certToBlock      uint64
+		isFEP            bool
+		startL2Block     uint64
+		expectedCertType types.CertificateType
+	}{
+		{
+			name:             "FEP network - certToBlock before startL2Block returns PP",
+			certToBlock:      50,
+			isFEP:            true,
+			startL2Block:     100,
+			expectedCertType: types.CertificateTypePP,
+		},
+		{
+			name:             "FEP network - certToBlock equal to startL2Block returns FEP",
+			certToBlock:      100,
+			isFEP:            true,
+			startL2Block:     100,
+			expectedCertType: types.CertificateTypeFEP,
+		},
+		{
+			name:             "FEP network - certToBlock after startL2Block returns FEP",
+			certToBlock:      150,
+			isFEP:            true,
+			startL2Block:     100,
+			expectedCertType: types.CertificateTypeFEP,
+		},
+		{
+			name:             "FEP network - zero certToBlock and non-zero startL2Block returns PP",
+			certToBlock:      0,
+			isFEP:            true,
+			startL2Block:     50,
+			expectedCertType: types.CertificateTypePP,
+		},
+		{
+			name:             "FEP network - non-zero certToBlock and zero startL2Block returns FEP",
+			certToBlock:      50,
+			isFEP:            true,
+			startL2Block:     0,
+			expectedCertType: types.CertificateTypeFEP,
+		},
+		{
+			name:             "FEP network - both zero values returns FEP",
+			certToBlock:      0,
+			isFEP:            true,
+			startL2Block:     0,
+			expectedCertType: types.CertificateTypeFEP,
+		},
+		{
+			name:             "non-FEP network - any certToBlock returns PP",
+			certToBlock:      100,
+			isFEP:            false,
+			startL2Block:     50, // Should not be called
+			expectedCertType: types.CertificateTypePP,
+		},
+		{
+			name:             "non-FEP network - zero certToBlock returns PP",
+			certToBlock:      0,
+			isFEP:            false,
+			startL2Block:     0, // Should not be called
+			expectedCertType: types.CertificateTypePP,
+		},
+		{
+			name:             "non-FEP network - large certToBlock returns PP",
+			certToBlock:      999999,
+			isFEP:            false,
+			startL2Block:     100, // Should not be called
+			expectedCertType: types.CertificateTypePP,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockAggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
+			mockAgglayerClient := agglayermocks.NewAgglayerClientMock(t)
+			mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
+
+			// Always expect IsFEP call
+			mockAggchainFEPQuerier.EXPECT().IsFEP().Return(tc.isFEP).Once()
+
+			// Only expect StartL2Block call if IsFEP returns true
+			if tc.isFEP {
+				mockAggchainFEPQuerier.EXPECT().StartL2Block().Return(tc.startL2Block).Once()
+			}
+
+			certQuerier := NewCertificateQuerier(
+				mockL2BridgeSyncer,
+				mockAggchainFEPQuerier,
+				mockAgglayerClient,
+			)
+
+			certType := certQuerier.CalculateCertificateTypeFromToBlock(tc.certToBlock)
+			require.Equal(t, tc.expectedCertType, certType)
+
+			mockAggchainFEPQuerier.AssertExpectations(t)
+		})
+	}
+}
+
+func TestCalculateCertificateType(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		certificate      *agglayertypes.Certificate
+		certToBlock      uint64
+		isFEP            bool
+		startL2Block     uint64
+		expectedCertType types.CertificateType
+	}{
+		{
+			name: "AggchainData is AggchainDataProof - returns PP",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataProof{},
+			},
+			certToBlock:      100,
+			expectedCertType: types.CertificateTypePP,
+		},
+		{
+			name: "AggchainData is not AggchainDataProof - returns FEP",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataSignature{},
+			},
+			certToBlock:      100,
+			expectedCertType: types.CertificateTypeFEP,
+		},
+		{
+			name: "AggchainData is nil - falls back to CalculateCertificateTypeFromToBlock with FEP network and block before start",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: nil,
+			},
+			certToBlock:      50,
+			isFEP:            true,
+			startL2Block:     100,
+			expectedCertType: types.CertificateTypePP,
+		},
+		{
+			name: "AggchainData is nil - falls back to CalculateCertificateTypeFromToBlock with FEP network and block after start",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: nil,
+			},
+			certToBlock:      150,
+			isFEP:            true,
+			startL2Block:     100,
+			expectedCertType: types.CertificateTypeFEP,
+		},
+		{
+			name: "AggchainData is nil - falls back to CalculateCertificateTypeFromToBlock with non-FEP network",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: nil,
+			},
+			certToBlock:      100,
+			isFEP:            false,
+			expectedCertType: types.CertificateTypePP,
+		},
+		{
+			name: "AggchainData is nil - falls back with FEP network and equal blocks",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: nil,
+			},
+			certToBlock:      100,
+			isFEP:            true,
+			startL2Block:     100,
+			expectedCertType: types.CertificateTypeFEP,
+		},
+		{
+			name: "AggchainData is nil - falls back with zero certToBlock in FEP network",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: nil,
+			},
+			certToBlock:      0,
+			isFEP:            true,
+			startL2Block:     50,
+			expectedCertType: types.CertificateTypePP,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockAggchainFEPQuerier := mocks.NewAggchainFEPRollupQuerier(t)
+			mockAgglayerClient := agglayermocks.NewAgglayerClientMock(t)
+			mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
+
+			// Only expect calls to querier if AggchainData is nil (fallback case)
+			if tc.certificate.AggchainData == nil {
+				mockAggchainFEPQuerier.EXPECT().IsFEP().Return(tc.isFEP).Once()
+				if tc.isFEP {
+					mockAggchainFEPQuerier.EXPECT().StartL2Block().Return(tc.startL2Block).Once()
+				}
+			}
+
+			certQuerier := NewCertificateQuerier(
+				mockL2BridgeSyncer,
+				mockAggchainFEPQuerier,
+				mockAgglayerClient,
+			)
+
+			certType := certQuerier.CalculateCertificateType(tc.certificate, tc.certToBlock)
+			require.Equal(t, tc.expectedCertType, certType)
+
+			mockAggchainFEPQuerier.AssertExpectations(t)
 		})
 	}
 }

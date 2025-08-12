@@ -139,16 +139,35 @@ func (c *certificateQuerier) GetNewCertificateToBlock(
 }
 
 // CalculateCertificateType determines the type of certificate based on the last block number in certificate
-func (c *certificateQuerier) CalculateCertificateType(certToBlock uint64) types.CertificateType {
-	if certToBlock == 0 {
-		return types.CertificateTypeUnknown
-	}
+func (c *certificateQuerier) CalculateCertificateType(
+	cert *agglayertypes.Certificate, certToBlock uint64) types.CertificateType {
+	if cert.AggchainData != nil {
+		// if AggchainData is present, we can use it to determine the certificate type
+		_, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
+		if !ok {
+			return types.CertificateTypeFEP
+		}
 
-	if certToBlock < c.aggchainFEPQuerier.StartL2Block() {
 		return types.CertificateTypePP
 	}
 
-	return types.CertificateTypeFEP
+	// if AggchainData is not present, must try to determine the type based on the block number
+	return c.CalculateCertificateTypeFromToBlock(certToBlock)
+}
+
+// CalculateCertificateTypeFromToBlock determines the type of certificate based on the provided ToBlock number
+func (c *certificateQuerier) CalculateCertificateTypeFromToBlock(certToBlock uint64) types.CertificateType {
+	if c.aggchainFEPQuerier.IsFEP() {
+		// if we are in a FEP network, we can determine the type based on the start of the FEP
+		if certToBlock < c.aggchainFEPQuerier.StartL2Block() {
+			// if the certificate is for a block before the start of the FEP, it is a PP certificate
+			return types.CertificateTypePP
+		}
+		// otherwise, it is a FEP certificate
+		return types.CertificateTypeFEP
+	}
+
+	return types.CertificateTypePP // Default to PP if not in FEP mode
 }
 
 func (c *certificateQuerier) getBlockNumFromLER(ctx context.Context, localExitRoot common.Hash) (uint64, error) {

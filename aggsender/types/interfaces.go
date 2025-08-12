@@ -275,6 +275,7 @@ type AggchainFEPCaller interface {
 type AggchainFEPRollupQuerier interface {
 	StartL2Block() uint64
 	GetLastSettledL2Block() (uint64, error)
+	IsFEP() bool
 }
 
 // CertificateQuerier is an interface defining functions that a CertificateQuerier should implement
@@ -285,5 +286,6 @@ type CertificateQuerier interface {
 	GetNewCertificateToBlock(
 		ctx context.Context,
 		cert *agglayertypes.Certificate) (uint64, error)
-	CalculateCertificateType(certToBlock uint64) CertificateType
+	CalculateCertificateType(cert *agglayertypes.Certificate, certToBlock uint64) CertificateType
+	CalculateCertificateTypeFromToBlock(certToBlock uint64) CertificateType
 }
