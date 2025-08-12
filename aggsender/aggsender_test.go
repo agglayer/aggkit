@@ -560,8 +560,7 @@ func TestSendCertificatesRetry(t *testing.T) {
 		status: &aggsendertypes.AggsenderStatus{},
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 
 	chEpoch := make(chan aggsendertypes.EpochEvent)
 	mockEpochNotifier.EXPECT().Subscribe("aggsender").Return(chEpoch).Once()
