@@ -15,9 +15,11 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 	type testCase struct {
 		name               string
 		threshold          uint32
-		signers            []common.Address
+		signerAddrs        []common.Address
+		signerURLs         []string
 		thresholdErr       error
-		signersErr         error
+		getSignersErr      error
+		getSignerURLErr    error
 		expectedErr        string
 		expectedNumSigners int
 	}
@@ -26,7 +28,8 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 		{
 			name:               "successfully returns committee",
 			threshold:          2,
-			signers:            []common.Address{common.HexToAddress("0x1"), common.HexToAddress("0x2")},
+			signerAddrs:        []common.Address{common.HexToAddress("0x1"), common.HexToAddress("0x2")},
+			signerURLs:         []string{"http://localhost:8001", "http://localhost:8002"},
 			expectedErr:        "",
 			expectedNumSigners: 2,
 		},
@@ -36,10 +39,16 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 			expectedErr:  "failed to query the signatures threshold",
 		},
 		{
-			name:        "signers query fails",
-			threshold:   1,
-			signersErr:  errors.New("signers error"),
-			expectedErr: "failed to query the committee signers",
+			name:          "signers query fails",
+			threshold:     1,
+			getSignersErr: errors.New("signers error"),
+			expectedErr:   "failed to query the committee signers",
+		},
+		{
+			name:            "signer URL query fails",
+			signerAddrs:     []common.Address{common.HexToAddress("0x1"), common.HexToAddress("0x2")},
+			getSignerURLErr: errors.New("get signer url fails"),
+			expectedErr:     "failed to query the committee signer",
 		},
 	}
 
@@ -52,7 +61,17 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 
 			if tc.thresholdErr == nil {
 				mockSC.EXPECT().GetAggchainSigners(mock.Anything).
-					Return(tc.signers, tc.signersErr)
+					Return(tc.signerAddrs, tc.getSignersErr)
+
+				if tc.getSignerURLErr != nil {
+					mockSC.EXPECT().SignerToURLs(mock.Anything, mock.Anything).
+						Return("", tc.getSignerURLErr)
+				} else {
+					for i, addr := range tc.signerAddrs {
+						mockSC.EXPECT().SignerToURLs(mock.Anything, addr).
+							Return(tc.signerURLs[i], nil)
+					}
+				}
 			}
 
 			q := &ECDSAMultisigCommitteeQuery{
