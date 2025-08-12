@@ -13,7 +13,27 @@ func HashCertificateToSign(cert *agglayertypes.Certificate) (common.Hash, error)
 	if err := cert.Validate(); err != nil {
 		return common.Hash{}, err
 	}
+
+	claimsRawMetadata := make([]byte, 0,
+		len(cert.ImportedBridgeExits)*(agglayertypes.GlobalIndexBytesSize+common.HashLength))
+	for _, ibe := range cert.ImportedBridgeExits {
+		claimsRawMetadata = append(claimsRawMetadata, aggkitcommon.BigIntToLittleEndianBytes(ibe.GlobalIndex.ToBigInt())...)
+		claimsRawMetadata = append(claimsRawMetadata, ibe.BridgeExit.Hash().Bytes()...)
+	}
+
+	claimsHash := crypto.Keccak256(claimsRawMetadata)
+
+	var aggchainParams []byte
+	aggchainData, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
+	if ok {
+		aggchainParams = aggchainData.AggchainParams.Bytes()
+	}
+
 	return crypto.Keccak256Hash(
+		cert.NewLocalExitRoot.Bytes(),
+		claimsHash,
+		aggkitcommon.Uint64ToLittleEndianBytes(cert.Height),
+		aggchainParams,
 		cert.CertificateID().Bytes(),
-		aggkitcommon.Uint32ToBytes(cert.L1InfoTreeLeafCount)), nil
+	), nil
 }
