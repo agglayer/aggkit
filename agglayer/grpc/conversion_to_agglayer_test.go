@@ -6,6 +6,7 @@ import (
 
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -20,7 +21,7 @@ var exampleTestAgglayerCert = &agglayertypes.Certificate{
 	Height:              100,
 	PrevLocalExitRoot:   common.HexToHash("0x010201"),
 	NewLocalExitRoot:    common.HexToHash("0x010202"),
-	Metadata:            common.HexToHash("0x011201"),
+	Metadata:            aggkitcommon.ZeroHash,
 	CustomChainData:     []byte{0x1, 0x2, 0x3},
 	L1InfoTreeLeafCount: 11,
 	BridgeExits: []*agglayertypes.BridgeExit{

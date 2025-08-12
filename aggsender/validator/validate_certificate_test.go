@@ -17,14 +17,6 @@ import (
 )
 
 var (
-	metadataV1Block1 = &types.CertificateMetadata{
-		FromBlock: 1,
-		Offset:    44,
-		CreatedAt: 0,
-		CertType:  0,
-		Version:   types.CertificateMetadataV1,
-	}
-
 	errGenericForTesting = errors.New("generic error for testing purposes")
 
 	testTreeRootIndex9 = treetypes.Root{
@@ -41,7 +33,7 @@ func TestValidateCertificate(t *testing.T) {
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:   0,
-				Metadata: metadataV1Block1.ToHash(),
+				Metadata: common.HexToHash("0x1"),
 			},
 			PreviousCertificate: nil,
 		})
