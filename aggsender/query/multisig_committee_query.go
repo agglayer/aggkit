@@ -53,6 +53,7 @@ func (m *ECDSAMultisigCommitteeQuery) GetMultisigCommittee(
 
 	signerInfos := make([]*types.SignerInfo, 0, len(signers))
 	for _, signer := range signers {
+		// TODO: Once contracts expose the function to retrieve the entire signers url array, update this.
 		url, err := m.multisigCommitteeSC.SignerToURLs(callOpts, signer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to query the committee signer (%s) url: %w", signer, err)
