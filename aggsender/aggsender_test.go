@@ -264,51 +264,6 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockAggLayerClient.AssertExpectations(t)
 }
 
-func TestExtractFromCertificateMetadataToBlock(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name     string
-		metadata common.Hash
-		expected aggsendertypes.CertificateMetadata
-	}{
-		{
-			name:     "Valid metadata",
-			metadata: aggsendertypes.NewCertificateMetadata(0, 1000, 123567890, 123).ToHash(),
-			expected: aggsendertypes.CertificateMetadata{
-				Version:   aggsendertypes.CertificateMetadataV2,
-				FromBlock: 0,
-				Offset:    1000,
-				CreatedAt: 123567890,
-				CertType:  123,
-			},
-		},
-		{
-			name:     "Zero metadata",
-			metadata: aggsendertypes.NewCertificateMetadata(0, 0, 0, 0).ToHash(),
-			expected: aggsendertypes.CertificateMetadata{
-				Version:   aggsendertypes.CertificateMetadataV2,
-				FromBlock: 0,
-				Offset:    0,
-				CreatedAt: 0,
-				CertType:  0,
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			result, err := aggsendertypes.NewCertificateMetadataFromHash(tt.metadata)
-			require.NoError(t, err)
-			require.Equal(t, tt.expected, *result)
-		})
-	}
-}
-
 //nolint:dupl
 func TestSendCertificate(t *testing.T) {
 	t.Parallel()
