@@ -51,7 +51,7 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 				Return(tc.threshold, tc.thresholdErr)
 
 			if tc.thresholdErr == nil {
-				mockSC.EXPECT().GetSigners(mock.Anything).
+				mockSC.EXPECT().GetAggchainSigners(mock.Anything).
 					Return(tc.signers, tc.signersErr)
 			}
 
