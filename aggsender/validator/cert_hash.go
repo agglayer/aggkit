@@ -14,7 +14,8 @@ func HashCertificateToSign(cert *agglayertypes.Certificate) (common.Hash, error)
 		return common.Hash{}, err
 	}
 
-	claimsRawMetadata := make([]byte, 0, len(cert.ImportedBridgeExits)*2)
+	claimsRawMetadata := make([]byte, 0,
+		len(cert.ImportedBridgeExits)*(agglayertypes.GlobalIndexBytesSize+common.HashLength))
 	for _, ibe := range cert.ImportedBridgeExits {
 		claimsRawMetadata = append(claimsRawMetadata, aggkitcommon.BigIntToLittleEndianBytes(ibe.GlobalIndex.ToBigInt())...)
 		claimsRawMetadata = append(claimsRawMetadata, ibe.BridgeExit.Hash().Bytes()...)

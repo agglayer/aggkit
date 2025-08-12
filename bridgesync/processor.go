@@ -944,9 +944,7 @@ func GenerateGlobalIndex(mainnetFlag bool, rollupIndex uint32, localExitRootInde
 	leri := new(big.Int).SetUint64(uint64(localExitRootIndex)).FillBytes(buf[:])
 	globalIndexBytes = append(globalIndexBytes, leri...)
 
-	result := new(big.Int).SetBytes(globalIndexBytes)
-
-	return result
+	return new(big.Int).SetBytes(globalIndexBytes)
 }
 
 // Decodes global index to its three parts:

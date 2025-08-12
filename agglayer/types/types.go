@@ -33,6 +33,9 @@ const (
 	EstimatedAggchainSignatureSize  = 0.07 * aggkitcommon.KB
 	EstimatedBridgeExitSize         = 0.09 * aggkitcommon.KB
 	EstimatedImportedBridgeExitSize = 2.8 * aggkitcommon.KB
+
+	// GlobalIndexBytesSize denotes the size in bytes when global index gets encoded
+	GlobalIndexBytesSize = 9
 )
 
 var (
