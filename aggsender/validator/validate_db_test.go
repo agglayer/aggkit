@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	"github.com/agglayer/aggkit/aggsender/flows"
@@ -33,6 +34,7 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 		ctx,
 		testDataPath+"/bridgel2sync.sqlite",
 		1, // OrigNetwork
+		time.Second*30,
 	)
 	require.NoError(t, err)
 	lastProcessBlock, err := bridgeSyncL2.GetLastProcessedBlock(ctx)
