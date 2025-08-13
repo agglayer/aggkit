@@ -80,7 +80,7 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 		return fmt.Errorf("failed to validate last L2 block in new certificate: %w", err)
 	}
 
-	// Between cert must be no gap because if there are could be a attack vector
+	// Between cert must be no gap because if there are could be an attack vector
 	if err := a.checkContigousCertificates(params); err != nil {
 		return fmt.Errorf("failed CheckContigousCertificates: %w", err)
 	}
