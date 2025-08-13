@@ -10,6 +10,7 @@ import (
 	"regexp"
 	"strings"
 	mutex "sync"
+	"time"
 
 	bridgetypes "github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync/migrations"
@@ -343,16 +344,17 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 }
 
 type processor struct {
-	db           *sql.DB
-	exitTree     *tree.AppendOnlyTree
-	log          *log.Logger
-	mu           mutex.RWMutex
-	halted       bool
-	haltedReason string
+	db                   *sql.DB
+	exitTree             *tree.AppendOnlyTree
+	log                  *log.Logger
+	mu                   mutex.RWMutex
+	halted               bool
+	haltedReason         string
+	databaseQueryTimeout time.Duration
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
-func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, error) {
+func newProcessor(dbPath string, name string, logger *log.Logger, databaseQueryTimeout time.Duration) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
 		return nil, err
@@ -363,10 +365,17 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 	}
 
 	exitTree := tree.NewAppendOnlyTree(database, "")
+
+	// Set default database query timeout if not configured
+	if databaseQueryTimeout <= 0 {
+		databaseQueryTimeout = 30 * time.Second
+	}
+
 	return &processor{
-		db:       database,
-		exitTree: exitTree,
-		log:      logger,
+		db:                   database,
+		exitTree:             exitTree,
+		log:                  logger,
+		databaseQueryTimeout: databaseQueryTimeout,
 		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
 			name,
@@ -842,6 +851,10 @@ func (p *processor) GetTotalNumberOfRecords(tableName, whereClause string) (int,
 
 // GetTokenMappings returns the paged token mappings from the database
 func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
+	// Create a context with database timeout for the entire operation
+	ctx, cancel := context.WithTimeout(context.Background(), p.databaseQueryTimeout)
+	defer cancel()
+
 	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
@@ -856,7 +869,7 @@ func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMappi
 		return nil, 0, fmt.Errorf("failed to calculate offset for pageNumber=%d, pageSize=%d: %w", pageNumber, pageSize, err)
 	}
 
-	tokenMappings, err := p.fetchTokenMappings(pageSize, offset)
+	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -865,7 +878,7 @@ func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMappi
 }
 
 // fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
-func (p *processor) fetchTokenMappings(pageSize uint32, offset uint32) ([]*TokenMapping, error) {
+func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
 	orderByClause := "block_num DESC"
 
 	rows, err := p.queryPaged(p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")

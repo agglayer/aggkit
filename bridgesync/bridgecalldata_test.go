@@ -103,8 +103,10 @@ func TestBridgeCallData(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, originNetwork, networkID)
 
+	databaseQueryTimeout := 30 * time.Second
+
 	bridgeSync, err := NewL1(ctx, dbPathBridgeSyncL1, bridgeProxyAddr, 1, aggkittypes.FinalizedBlock, client,
-		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false, false)
+		initialBlock, waitForNewBlocksPeriod, retryPeriod, retriesCount, originNetwork, false, false, databaseQueryTimeout)
 	require.NoError(t, err)
 	go bridgeSync.Start(ctx)
 

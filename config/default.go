@@ -137,7 +137,7 @@ MaxRequestsPerIPAndSecond = 10
 [REST]
 Host = "0.0.0.0"
 Port = 5577
-ReadTimeout = "2s"
+ReadTimeout = "30s"
 WriteTimeout = "2s"
 MaxRequestsPerIPAndSecond = 10
 
@@ -150,6 +150,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DatabaseQueryTimeout = "30s"
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -161,6 +162,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DatabaseQueryTimeout = "30s"
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"
@@ -202,7 +204,7 @@ RequireValidatorCall = false
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
-		MaxRetries = 6 # 1+6 attempts, around 22m 
+		MaxRetries = 6 # 1+6 attempts, around 22m
 	[AggSender.AgglayerClient]
 		Cached = false
 		[AggSender.AgglayerClient.ConfigurationCache]

@@ -614,6 +614,12 @@ func runBridgeSyncL1IfNeeded(
 		return nil
 	}
 
+	// Set default timeout if not configured
+	databaseQueryTimeout := cfg.DatabaseQueryTimeout.Duration
+	if databaseQueryTimeout <= 0 {
+		databaseQueryTimeout = 30 * time.Second
+	}
+
 	bridgeSyncL1, err := bridgesync.NewL1(
 		ctx,
 		cfg.DBPath,
@@ -628,6 +634,7 @@ func runBridgeSyncL1IfNeeded(
 		rollupID,
 		true,
 		cfg.RequireStorageContentCompatibility,
+		databaseQueryTimeout,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -653,6 +660,12 @@ func runBridgeSyncL2IfNeeded(
 		return nil
 	}
 
+	// Set default timeout if not configured
+	databaseQueryTimeout := cfg.DatabaseQueryTimeout.Duration
+	if databaseQueryTimeout <= 0 {
+		databaseQueryTimeout = 30 * time.Second
+	}
+
 	bridgeSyncL2, err := bridgesync.NewL2(
 		ctx,
 		cfg.DBPath,
@@ -668,6 +681,7 @@ func runBridgeSyncL2IfNeeded(
 		rollupID,
 		true,
 		cfg.RequireStorageContentCompatibility,
+		databaseQueryTimeout,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)

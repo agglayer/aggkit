@@ -150,11 +150,14 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	// Bridge sync
 	testClient := NewTestClient(l1Client.Client(), WithRPCClienter(cfg.L1RPCClient))
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
+
+	databaseQueryTimeout := 30 * time.Second
+
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
 		syncBlockChunkSize, aggkittypes.LatestBlock, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
-		retriesCount, originNetwork, false, true)
+		retriesCount, originNetwork, false, true, databaseQueryTimeout)
 	require.NoError(t, err)
 
 	go bridgeL1Sync.Start(ctx)
@@ -262,11 +265,13 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		retriesCount           = 100
 	)
 
+	databaseQueryTimeout := 30 * time.Second
+
 	bridgeL2Sync, err := bridgesync.NewL2(
 		ctx, dbPathL2BridgeSync, bridgeL2Addr, syncBlockChunkSize,
 		aggkittypes.LatestBlock, rdL2, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
-		retriesCount, originNetwork, false, true)
+		retriesCount, originNetwork, false, true, databaseQueryTimeout)
 	require.NoError(t, err)
 
 	go bridgeL2Sync.Start(ctx)
