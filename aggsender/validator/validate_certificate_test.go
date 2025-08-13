@@ -73,7 +73,7 @@ func TestValidateCertificate(t *testing.T) {
 			LastL2BlockInCert: 10,
 		})
 		require.Error(t, err)
-		require.ErrorContains(t, err, "last L2 block in certificate 10 must be greater than last settled block 20")
+		require.ErrorContains(t, err, "the last L2 block in the certificate (10) must be greater than the last settled block (20)")
 	})
 
 	t.Run("first cert bad height", func(t *testing.T) {
