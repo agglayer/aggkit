@@ -23,6 +23,7 @@ type FlowInterface interface {
 		preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)
 	BuildCertificate(ctx context.Context,
 		buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error)
+	ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error
 }
 
 type L1InfoTreeRootByLeafQuerier interface {
@@ -33,7 +34,7 @@ type L1InfoTreeRootByLeafQuerier interface {
 // CertificateValidator is a object to validate a certificate
 type CertificateValidator struct {
 	log                   aggkitcommon.Logger
-	flowPP                FlowInterface
+	flow                  FlowInterface
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier
 	certQuerier           types.CertificateQuerier
 	lerQuerier            types.LERQuerier
@@ -46,7 +47,7 @@ func NewAggsenderValidator(logger aggkitcommon.Logger,
 	lerQuerier types.LERQuerier) *CertificateValidator {
 	return &CertificateValidator{
 		log:                   logger,
-		flowPP:                flowPP,
+		flow:                  flowPP,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
 		certQuerier:           certQuerier,
 		lerQuerier:            lerQuerier,
@@ -85,6 +86,7 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 		return fmt.Errorf("failed CheckContigousCertificates: %w", err)
 	}
 
+	// Check if the previous certificate is settled
 	if err := a.checkPreviousCertificate(params.PreviousCertificate); err != nil {
 		return fmt.Errorf("failed CheckCertificatesContents: %w", err)
 	}
@@ -97,16 +99,24 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 
 	a.log.Debugf("aggsender-validator: preBuild: %s", preBuildParams.String())
 
-	buildParams, err := a.flowPP.GenerateBuildParams(ctx, preBuildParams)
+	// Generate build params
+	buildParams, err := a.flow.GenerateBuildParams(ctx, preBuildParams)
 	if err != nil {
 		return fmt.Errorf("failed flow.GenerateBuildParams: %w", err)
 	}
 
-	certificate, err := a.flowPP.BuildCertificate(ctx, buildParams)
+	// Build the certificate
+	certificate, err := a.flow.BuildCertificate(ctx, buildParams)
 	if err != nil {
 		return fmt.Errorf("failed flow.BuildCertificate: %w", err)
 	}
 
+	// Validate flow specific things
+	if err := a.flow.ValidateCertificate(ctx, certificate); err != nil {
+		return fmt.Errorf("failed flow.ValidateCertificate: %w", err)
+	}
+
+	// Compare the incoming certificate with the one generated
 	err = a.compareCertificates(params.Certificate, certificate)
 	if err != nil {
 		return fmt.Errorf("certificate not equal to expected: %w", err)
@@ -115,6 +125,7 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	return nil
 }
 
+// checkPreviousCertificate checks if the previous certificate is settled
 func (a *CertificateValidator) checkPreviousCertificate(previousCertificate *agglayertypes.CertificateHeader) error {
 	if previousCertificate != nil {
 		if !previousCertificate.Status.IsSettled() {
@@ -226,7 +237,6 @@ func (a *CertificateValidator) getCertificatePreBuildParams(
 
 	return &types.CertificatePreBuildParams{
 		BlockRange:          blockRange,
-		RetryCount:          0, // TODO: ???
 		CertificateType:     certType,
 		LastSentCertificate: lastSentCertificate,
 		L1InfoTreeToProve: &types.CertificateL1InfoTreeData{

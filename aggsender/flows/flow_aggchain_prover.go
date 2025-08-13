@@ -15,6 +15,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+var _ types.AggsenderFlow = (*AggchainProverFlow)(nil)
+
 // AggchainProverFlow is a struct that holds the logic for the AggchainProver prover type flow
 type AggchainProverFlow struct {
 	baseFlow types.AggsenderFlowBaser
@@ -24,7 +26,6 @@ type AggchainProverFlow struct {
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 	l2BridgeQuerier       types.BridgeQuerier
 
-	gerQuerier            types.GERQuerier
 	certificateSigner     signertypes.Signer
 	optimisticModeQuerier types.OptimisticModeQuerier
 	aggchainProofQuerier  types.AggchainProofQuerier
@@ -77,7 +78,6 @@ func NewAggchainProverFlow(
 	storage db.AggSenderStorage,
 	l1InfoTreeQuerier types.L1InfoTreeDataQuerier,
 	l2BridgeQuerier types.BridgeQuerier,
-	gerQuerier types.GERQuerier,
 	l1Client aggkittypes.BaseEthereumClienter,
 	signer signertypes.Signer,
 	optimisticModeQuerier types.OptimisticModeQuerier,
@@ -94,7 +94,6 @@ func NewAggchainProverFlow(
 		storage:               storage,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		l2BridgeQuerier:       l2BridgeQuerier,
-		gerQuerier:            gerQuerier,
 		config:                aggChainProverConfig,
 		certificateSigner:     signer,
 		optimisticModeQuerier: optimisticModeQuerier,
@@ -144,9 +143,25 @@ func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateTy
 	return types.CertificateTypeFEP, nil
 }
 
+// GeneratePreBuildParams generates the pre-build parameters for the AggchainProverFlow
+// Only used in aggsender validator
 func (a *AggchainProverFlow) GenerateBuildParams(ctx context.Context,
 	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
-	return nil, fmt.Errorf("aggchainProverFlow - GenerateBuildParams is not implemented")
+	if preParams == nil {
+		return nil, fmt.Errorf("ppFlow - preParams is nil")
+	}
+
+	params, err := a.baseFlow.GenerateBuildParams(ctx, *preParams)
+	if err != nil {
+		return nil, fmt.Errorf("ppFlow - error generating build params: %w", err)
+	}
+
+	// we do not limit the size of the certificate in FEP flow,
+	// it was already resized and limited by the prover when proposer called it
+	// when building the certificate, so the block range is already limited
+	// when it gets to the validator
+
+	return params, nil
 }
 
 // GetCertificateBuildParams returns the parameters to build a certificate
@@ -296,15 +311,19 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("aggchainProverFlow - error building certificate: %w", err)
 	}
 
-	cert.AggchainData = &agglayertypes.AggchainDataProof{
-		Proof:          buildParams.AggchainProof.SP1StarkProof.Proof,
-		Version:        buildParams.AggchainProof.SP1StarkProof.Version,
-		Vkey:           buildParams.AggchainProof.SP1StarkProof.Vkey,
-		AggchainParams: buildParams.AggchainProof.AggchainParams,
-		Context:        buildParams.AggchainProof.Context,
-	}
+	if buildParams.AggchainProof != nil {
+		// this case can happen only when aggsender validator calls this function
+		// since the validator does not call the aggchain prover to get the proof
+		cert.AggchainData = &agglayertypes.AggchainDataProof{
+			Proof:          buildParams.AggchainProof.SP1StarkProof.Proof,
+			Version:        buildParams.AggchainProof.SP1StarkProof.Version,
+			Vkey:           buildParams.AggchainProof.SP1StarkProof.Vkey,
+			AggchainParams: buildParams.AggchainProof.AggchainParams,
+			Context:        buildParams.AggchainProof.Context,
+		}
 
-	cert.CustomChainData = buildParams.AggchainProof.CustomChainData
+		cert.CustomChainData = buildParams.AggchainProof.CustomChainData
+	}
 
 	signedCert, err := a.signCertificate(ctx, cert)
 	if err != nil {
@@ -380,4 +399,18 @@ func (a *AggchainProverFlow) signCertificate(
 	)
 
 	return cert, nil
+}
+
+// ValidateCertificate validates the certificate for the FEP specific things
+func (a *AggchainProverFlow) ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error {
+	if cert == nil {
+		return fmt.Errorf("aggchainProverFlow - ValidateCertificate - certificate is nil")
+	}
+
+	_, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
+	if !ok {
+		return fmt.Errorf("aggchainProverFlow - ValidateCertificate - AggchainData is not of type AggchainDataProof")
+	}
+
+	return nil
 }

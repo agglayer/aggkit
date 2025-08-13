@@ -209,6 +209,7 @@ func TestValidateCertificate(t *testing.T) {
 			BuildCertificate(testData.ctx, mock.Anything).Return(&agglayertypes.Certificate{
 			Metadata: aggkitcommon.ZeroHash,
 		}, nil)
+		testData.mockFlow.EXPECT().ValidateCertificate(testData.ctx, mock.Anything).Return(nil)
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:              0,

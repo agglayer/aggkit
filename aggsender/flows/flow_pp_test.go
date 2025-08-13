@@ -636,3 +636,78 @@ func Test_PPFlow_SignCertificate(t *testing.T) {
 		})
 	}
 }
+
+func Test_PPFlow_ValidateCertificate(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+
+	tests := []struct {
+		name          string
+		certificate   *agglayertypes.Certificate
+		expectedError string
+	}{
+		{
+			name:          "nil certificate",
+			certificate:   nil,
+			expectedError: "ppFlow - certificate is nil",
+		},
+		{
+			name: "certificate with nil AggchainData",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: nil,
+			},
+			expectedError: "ppFlow - certificate AggchainData is not of type AggchainDataSignature",
+		},
+		{
+			name: "certificate with wrong AggchainData type",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataProof{},
+			},
+			expectedError: "ppFlow - certificate AggchainData is not of type AggchainDataSignature",
+		},
+		{
+			name: "valid certificate with AggchainDataSignature",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataSignature{
+					Signature: []byte("mock_signature"),
+				},
+			},
+			expectedError: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			logger := log.WithFields("test", "Test_PPFlow_ValidateCertificate")
+			flowBase := NewBaseFlow(
+				logger,
+				nil, // mockL2BridgeQuerier,
+				nil, // mockStorage,
+				nil, // mockL1InfoTreeDataQuerier,
+				nil, // mockLERQuerier,
+				NewBaseFlowConfigDefault())
+
+			ppFlow := NewPPFlow(
+				logger,
+				flowBase,
+				nil,   // storage
+				nil,   // l1InfoTreeDataQuerier
+				nil,   // l2BridgeQuerier
+				nil,   // signer
+				false, // forceOneBridgeExit
+				0,     // maxL2BlockNumber
+			)
+
+			err := ppFlow.ValidateCertificate(ctx, tt.certificate)
+
+			if tt.expectedError != "" {
+				require.ErrorContains(t, err, tt.expectedError)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}
