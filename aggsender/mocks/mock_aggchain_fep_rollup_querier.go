@@ -72,6 +72,51 @@ func (_c *AggchainFEPRollupQuerier_GetLastSettledL2Block_Call) RunAndReturn(run 
 	return _c
 }
 
+// IsFEP provides a mock function with no fields
+func (_m *AggchainFEPRollupQuerier) IsFEP() bool {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for IsFEP")
+	}
+
+	var r0 bool
+	if rf, ok := ret.Get(0).(func() bool); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(bool)
+	}
+
+	return r0
+}
+
+// AggchainFEPRollupQuerier_IsFEP_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'IsFEP'
+type AggchainFEPRollupQuerier_IsFEP_Call struct {
+	*mock.Call
+}
+
+// IsFEP is a helper method to define mock.On call
+func (_e *AggchainFEPRollupQuerier_Expecter) IsFEP() *AggchainFEPRollupQuerier_IsFEP_Call {
+	return &AggchainFEPRollupQuerier_IsFEP_Call{Call: _e.mock.On("IsFEP")}
+}
+
+func (_c *AggchainFEPRollupQuerier_IsFEP_Call) Run(run func()) *AggchainFEPRollupQuerier_IsFEP_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *AggchainFEPRollupQuerier_IsFEP_Call) Return(_a0 bool) *AggchainFEPRollupQuerier_IsFEP_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *AggchainFEPRollupQuerier_IsFEP_Call) RunAndReturn(run func() bool) *AggchainFEPRollupQuerier_IsFEP_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // StartL2Block provides a mock function with no fields
 func (_m *AggchainFEPRollupQuerier) StartL2Block() uint64 {
 	ret := _m.Called()

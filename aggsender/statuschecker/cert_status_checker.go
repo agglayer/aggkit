@@ -276,7 +276,7 @@ func (c *certStatusChecker) newSettledCertificateInfoFromAgglayerCertHeader(
 			NewLocalExitRoot: cert.NewLocalExitRoot,
 			Status:           cert.Status,
 			CertSource:       types.CertificateSourceAggLayer,
-			CertType:         c.certQuerier.CalculateCertificateType(toBlock),
+			CertType:         c.certQuerier.CalculateCertificateTypeFromToBlock(toBlock),
 			ToBlock:          toBlock,
 			FromBlock:        0, // We don't have block range in the header and we don't use the metadata anymore
 			CreatedAt:        0, // We don't have creation time in the header and we don't use the metadata anymore
