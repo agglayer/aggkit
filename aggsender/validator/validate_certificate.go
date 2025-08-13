@@ -243,7 +243,7 @@ func (a *CertificateValidator) validateLastL2BlockInCert(
 	req types.VerifyIncomingRequest,
 	lastSettledBlock uint64) error {
 	if req.LastL2BlockInCert <= lastSettledBlock {
-		return fmt.Errorf("last L2 block in certificate %d must be greater than last settled block %d",
+		return fmt.Errorf("the last L2 block in the certificate (%d) must be greater than the last settled block (%d)",
 			req.LastL2BlockInCert, lastSettledBlock)
 	}
 

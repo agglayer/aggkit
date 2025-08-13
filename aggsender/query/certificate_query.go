@@ -71,25 +71,23 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 	// to determine the last bridge exit block
 	lastBridgeExitBlock, err = c.getBlockNumFromLER(ctx, cert.NewLocalExitRoot)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get exit root by hash using NewLocalExitRoot %s: %w",
+		return 0, fmt.Errorf("failed to resolve the bridge exit block number for NewLocalExitRoot %s: %w",
 			cert.NewLocalExitRoot.String(), err)
 	}
 
 	// TODO - this might need to be changed once agglayer gives support for this
 	// 2. Get the latest settled imported bridge exit block number
-	latestSettledIbe, err := c.agglayerClient.GetLatestSettledImportedBridgeExit(ctx)
+	latestSettledIbeGlobalIndex, err := c.agglayerClient.GetLatestSettledImportedBridgeExit(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get latest settled imported bridge exit from agglayer: %w", err)
 	}
 
-	if latestSettledIbe != nil {
-		bigGlobalIndex := latestSettledIbe.ToBigInt()
-		claim, err := c.l2BridgeSyncer.GetClaimByGlobalIndex(ctx, bigGlobalIndex)
+	if latestSettledIbeGlobalIndex != nil {
+		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(ctx, latestSettledIbeGlobalIndex)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get claim by global index %s: %w", bigGlobalIndex.String(), err)
+			return 0, fmt.Errorf("failed to resolve the block number for last imported bridge exit %s: %w",
+				latestSettledIbeGlobalIndex.String(), err)
 		}
-
-		lastImportedBridgeExitBlock = claim.BlockNum
 	}
 
 	// 3. Get the last settled L2 block number from aggchain FEP contract
@@ -119,20 +117,18 @@ func (c *certificateQuerier) GetNewCertificateToBlock(
 	// to determine the last bridge exit block
 	lastBridgeExitBlock, err = c.getBlockNumFromLER(ctx, cert.NewLocalExitRoot)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get exit root by hash using NewLocalExitRoot %s: %w",
+		return 0, fmt.Errorf("failed to resolve the bridge exit block number for NewLocalExitRoot %s: %w",
 			cert.NewLocalExitRoot.String(), err)
 	}
 
 	if len(cert.ImportedBridgeExits) > 0 {
 		// if there are imported bridge exits, we can use the last one to determine the new certificate to block
 		lastImportedBridgeExit := cert.ImportedBridgeExits[len(cert.ImportedBridgeExits)-1]
-		bigGlobalIndex := lastImportedBridgeExit.GlobalIndex.ToBigInt()
-		claim, err := c.l2BridgeSyncer.GetClaimByGlobalIndex(ctx, bigGlobalIndex)
+		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(ctx, lastImportedBridgeExit.GlobalIndex)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get claim by global index %s: %w", bigGlobalIndex.String(), err)
+			return 0, fmt.Errorf("failed to resolve the block number for last imported bridge exit %s: %w",
+				lastImportedBridgeExit.GlobalIndex.String(), err)
 		}
-
-		lastImportedBridgeExitBlock = claim.BlockNum
 	}
 
 	return max(lastBridgeExitBlock, lastImportedBridgeExitBlock), nil
@@ -182,4 +178,15 @@ func (c *certificateQuerier) getBlockNumFromLER(ctx context.Context, localExitRo
 	}
 
 	return exitRoot.BlockNum, nil
+}
+
+func (c *certificateQuerier) getBlockNumFromGlobalIndex(
+	ctx context.Context, globalIndex *agglayertypes.GlobalIndex) (uint64, error) {
+	bigGlobalIndex := globalIndex.ToBigInt()
+	claim, err := c.l2BridgeSyncer.GetClaimByGlobalIndex(ctx, bigGlobalIndex)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get claim by global index %s: %w", bigGlobalIndex.String(), err)
+	}
+
+	return claim.BlockNum, nil
 }

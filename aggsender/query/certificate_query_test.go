@@ -40,21 +40,17 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				NewLocalExitRoot: common.HexToHash("0x123"),
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
-				// Mock exit root by hash
 				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, common.HexToHash("0x123")).Return(&treetypes.Root{
 					BlockNum: uint64(100),
 				}, nil)
 
-				// Mock latest settled imported bridge exit
 				importedBridgeExit := &agglayertypes.GlobalIndex{}
 				agglayerClient.EXPECT().GetLatestSettledImportedBridgeExit(ctx).Return(importedBridgeExit, nil)
 
-				// Mock claim by global index
 				bridgeSyncer.EXPECT().GetClaimByGlobalIndex(ctx, importedBridgeExit.ToBigInt()).Return(bridgesync.Claim{
 					BlockNum: 150,
 				}, nil)
 
-				// Mock last settled L2 block
 				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(200), nil)
 			},
 			expectedBlock: 200, // max of 100, 150, 200
@@ -66,16 +62,11 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				NewLocalExitRoot: types.EmptyLER,
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
-				// Mock latest settled imported bridge exit
 				importedBridgeExit := &agglayertypes.GlobalIndex{}
 				agglayerClient.EXPECT().GetLatestSettledImportedBridgeExit(ctx).Return(importedBridgeExit, nil)
-
-				// Mock claim by global index
 				bridgeSyncer.EXPECT().GetClaimByGlobalIndex(ctx, importedBridgeExit.ToBigInt()).Return(bridgesync.Claim{
 					BlockNum: 50,
 				}, nil)
-
-				// Mock last settled L2 block
 				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(75), nil)
 			},
 			expectedBlock: 75, // max of 0, 50, 75
@@ -87,15 +78,10 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				NewLocalExitRoot: common.HexToHash("0x456"),
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
-				// Mock exit root by hash
 				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, common.HexToHash("0x456")).Return(&treetypes.Root{
 					BlockNum: uint64(300),
 				}, nil)
-
-				// Mock no imported bridge exit
 				agglayerClient.EXPECT().GetLatestSettledImportedBridgeExit(ctx).Return(nil, nil)
-
-				// Mock last settled L2 block
 				aggchainQuerier.EXPECT().GetLastSettledL2Block().Return(uint64(250), nil)
 			},
 			expectedBlock: 300, // max of 300, 0, 250
@@ -109,7 +95,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, common.HexToHash("0x789")).Return(nil, errors.New("exit root not found"))
 			},
-			expectedErr: "failed to get exit root by hash",
+			expectedErr: "failed to resolve the bridge exit block number for NewLocalExitRoot",
 		},
 		{
 			name: "error getting latest settled imported bridge exit",
@@ -285,7 +271,7 @@ func TestGetNewCertificateToBlock(t *testing.T) {
 			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
 				bridgeSyncer.EXPECT().GetExitRootByHash(ctx, common.HexToHash("0xabc")).Return(nil, errors.New("exit root not found"))
 			},
-			expectedErr: "failed to get exit root by hash using NewLocalExitRoot",
+			expectedErr: "failed to resolve the bridge exit block number for NewLocalExitRoot",
 		},
 		{
 			name: "error getting claim by global index",
