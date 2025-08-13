@@ -73,6 +73,14 @@ type ClientConfig struct {
 	Retry *RetryConfig `mapstructure:"Retry"`
 }
 
+// WithURL returns a copy of the current ClientConfig with the URL field set to the given value.
+// This method does not modify the original ClientConfig.
+func (c ClientConfig) WithURL(url string) ClientConfig {
+	newCfg := c
+	newCfg.URL = url
+	return newCfg
+}
+
 // DefaultConfig returns a default configuration for the gRPC client
 func DefaultConfig() *ClientConfig {
 	return &ClientConfig{

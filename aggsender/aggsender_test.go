@@ -104,6 +104,7 @@ func TestAggSenderStart(t *testing.T) {
 		nil, // l1 client
 		nil, // l2 client
 		rollupQuerierMock,
+		nil, // committee querier
 	)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
@@ -434,7 +435,7 @@ func TestSendCertificate(t *testing.T) {
 			}
 
 			if tt.mockValidatorFn != nil {
-				aggsender.validator = tt.mockValidatorFn()
+				aggsender.localValidator = tt.mockValidatorFn()
 			}
 
 			mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{})
@@ -460,7 +461,13 @@ func TestNewAggSender(t *testing.T) {
 			Method: signertypes.MethodNone,
 		},
 		Mode: "PessimisticProof",
-	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil)
+	}, nil, nil, mockBridgeSyncer,
+		nil, // epoch notifier
+		nil, // l1 client
+		nil, // l2 client
+		nil, // rollup data querier
+		nil, // committee querier
+	)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
@@ -492,6 +499,7 @@ func TestAggSenderStartFailsCompatibilityChecker(t *testing.T) {
 		testData.sut.Start(testData.ctx)
 	}, "Expected panic when starting AggSender")
 }
+
 func TestSendCertificatesRetry(t *testing.T) {
 	mockCertStatusChecker := mocks.NewCertificateStatusChecker(t)
 	mockEpochNotifier := mocks.NewEpochNotifier(t)

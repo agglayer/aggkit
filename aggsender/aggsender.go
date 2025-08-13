@@ -19,11 +19,13 @@ import (
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/statuschecker"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
+	"golang.org/x/sync/errgroup"
 )
 
 type RateLimiter interface {
@@ -43,6 +45,11 @@ type AggSender struct {
 	certStatusChecker            types.CertificateStatusChecker
 	certQuerier                  types.CertificateQuerier
 	rollupDataQuerier            types.RollupDataQuerier
+	committeeQuerier             types.MultisigQuerier
+
+	l1Client         aggkittypes.BaseEthereumClienter
+	l1InfoTreeSyncer types.L1InfoTreeSyncer
+	localValidator   types.CertificateValidateAndSigner
 
 	cfg config.Config
 
@@ -51,8 +58,6 @@ type AggSender struct {
 	flow        types.AggsenderFlow
 
 	l2OriginNetwork uint32
-
-	validator types.CertificateValidateAndSigner
 }
 
 // New returns a new AggSender instance
@@ -67,6 +72,7 @@ func New(
 	l1Client aggkittypes.BaseEthereumClienter,
 	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier types.RollupDataQuerier,
+	committeeQuerier types.MultisigQuerier,
 ) (*AggSender, error) {
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
@@ -130,31 +136,12 @@ func New(
 		l2OriginNetwork:              l2OriginNetwork,
 		certQuerier:                  certQuerier,
 		rollupDataQuerier:            rollupDataQuerier,
+		committeeQuerier:             committeeQuerier,
 		certStatusChecker: statuschecker.NewCertStatusChecker(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
+		l1Client:         l1Client,
+		l1InfoTreeSyncer: l1InfoTreeSyncer,
 	}, nil
-}
-
-func (a *AggSender) AttachValidator(validator types.CertificateValidateAndSigner) {
-	if validator == nil {
-		a.log.Infof("AggSender validator attached: nil")
-		return
-	}
-
-	a.validator = validator
-	a.log.Infof("AggSender validator attached: %s", a.validator.String())
-}
-
-func (a *AggSender) GetStorage() db.AggSenderStorage {
-	return a.storage
-}
-
-func (a *AggSender) GetFlow() types.AggsenderFlow {
-	return a.flow
-}
-
-func (a *AggSender) GetCertQuerier() types.CertificateQuerier {
-	return a.certQuerier
 }
 
 func (a *AggSender) GetLERQuerier() types.LERQuerier {
@@ -177,7 +164,7 @@ func (a *AggSender) GetRPCServices() []jRPC.Service {
 		return []jRPC.Service{}
 	}
 
-	logger := log.WithFields("aggsender-rpc", aggkitcommon.BRIDGE)
+	logger := log.WithFields("module", "aggsender-rpc")
 	return []jRPC.Service{
 		{
 			Name:    "aggsender",
@@ -197,16 +184,21 @@ func (a *AggSender) Start(ctx context.Context) {
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
-	if a.validator != nil {
-		status, err := a.validator.HealthCheck(ctx)
-		if err != nil {
-			a.log.Warnf("error checking validator health: %v", err)
-		}
-		if !status.IsHealthy() {
-			a.log.Warnf("validator status is not healthy: %s", status.String())
-		}
-		a.log.Infof("validator health check: %s", status.String())
+
+	if a.cfg.Mode == types.PessimisticProofMode.String() && !a.cfg.RequireValidatorCall {
+		a.localValidator = validator.NewLocalValidator(
+			a.log,
+			a.storage,
+			validator.NewAggsenderValidator(
+				a.log,
+				a.flow,
+				query.NewL1InfoTreeDataQuerier(a.l1Client, a.l1InfoTreeSyncer),
+				a.certQuerier,
+				a.GetLERQuerier(),
+			),
+		)
 	}
+
 	a.sendCertificates(ctx, 0)
 }
 
@@ -342,7 +334,26 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
-	validatorSignature, err := a.callValidator(ctx, certificate, certificateParams.ToBlock)
+	var (
+		validators          []types.CertificateValidateAndSigner
+		signaturesThreshold uint32
+	)
+
+	if a.cfg.Mode == types.PessimisticProofMode.String() {
+		if a.localValidator != nil {
+			validators = append(validators, a.localValidator)
+			signaturesThreshold = 1
+		} else {
+			validators, signaturesThreshold, err = a.getValidators(ctx)
+			if err != nil {
+				return nil, fmt.Errorf("failed to get validators: %w", err)
+			}
+		}
+	}
+
+	multisig, err := a.pollValidators(ctx,
+		validators, signaturesThreshold,
+		certificate, certificateParams.ToBlock)
 	if err != nil {
 		// TODO - agglayer has not yet implemented the endpoints needed to validate a certificate
 		// so lets just log the error and continue. This will be changed when the agglayer is ready
@@ -365,7 +376,8 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		time.Sleep(*rateLimitSleepTime)
 	}
 
-	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate, validatorSignature)
+	// TODO: Update once agglayer endpoint changes to accept the multisig
+	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate, multisig[0])
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 
@@ -416,24 +428,120 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	return certificate, nil
 }
 
-// callValidator calls the validator to validate the certificate
-func (a *AggSender) callValidator(
+// pollValidators committee signers to validate the certificate and gather signatures
+func (a *AggSender) pollValidators(
 	ctx context.Context,
+	validators []types.CertificateValidateAndSigner,
+	signaturesThreshold uint32,
 	certificate *agglayertypes.Certificate,
-	lastL2BlockInCert uint64) ([]byte, error) {
-	if a.validator == nil {
+	lastL2BlockInCert uint64,
+) ([][]byte, error) {
+	if len(validators) == 0 {
+		a.log.Warnf("skipping certificate validation, because there are no validators configured")
+
 		return nil, nil
 	}
+
 	a.log.Infof("delegating certificate validation: %s", certificate.Brief())
-	validatorSignature, err := a.validator.ValidateAndSignCertificate(ctx, certificate, lastL2BlockInCert)
-	if err != nil {
-		a.log.Errorf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
-		return nil, fmt.Errorf("certificate validation failed: %w", err)
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	sigCh := make(chan []byte, len(validators))
+	errCh := make(chan error, len(validators))
+
+	g, gctx := errgroup.WithContext(ctx)
+
+	for _, v := range validators {
+		g.Go(func() error {
+			status, err := v.HealthCheck(ctx)
+			if err != nil {
+				a.log.Warnf("error checking validator health (URL=%s): %v", v.URL(), err)
+			}
+
+			if !status.IsHealthy() {
+				a.log.Warnf("validator status (URL=%s) is not healthy: %s", v.URL(), status.String())
+				return nil // skip the unhealthy validator
+			}
+
+			a.log.Infof("validator health check (URL=%s): %s", v.URL(), status.String())
+
+			sig, err := v.ValidateAndSignCertificate(gctx, certificate, lastL2BlockInCert)
+			if err != nil {
+				a.log.Errorf("validator %v failed to validate the certificate: %v", v, err)
+				errCh <- err
+				return nil // don't fail the group
+			}
+
+			select {
+			case sigCh <- sig:
+				if uint32(len(sigCh)) >= signaturesThreshold {
+					cancel() // early stop, because threshold is reached
+				}
+			case <-gctx.Done():
+				return nil
+			}
+			return nil
+		})
 	}
 
-	a.log.Infof("certificate validation passed: %s", certificate.Brief())
+	// Wait for all goroutines to finish in background
+	go func() {
+		_ = g.Wait()
+		close(sigCh)
+		close(errCh)
+	}()
 
-	return validatorSignature, nil
+	signatures := make([][]byte, 0, len(validators))
+	for sig := range sigCh {
+		signatures = append(signatures, sig)
+		if uint32(len(signatures)) >= signaturesThreshold {
+			cancel()
+			break
+		}
+	}
+
+	// Collect all errors from errCh
+	errs := make([]error, 0)
+	for err := range errCh {
+		errs = append(errs, err)
+	}
+
+	// If we didn’t reach threshold, return combined error
+	if uint32(len(signatures)) < signaturesThreshold {
+		if len(errs) > 0 {
+			return signatures, errors.Join(errs...)
+		}
+		return signatures, fmt.Errorf("threshold not reached: %d/%d", len(signatures), signaturesThreshold)
+	}
+
+	a.log.Infof("certificate validation passed with %d/%d signatures: %s",
+		len(signatures), signaturesThreshold, certificate.Brief())
+
+	return signatures, nil
+}
+
+// getValidators retrieves the actual multisig committee and creates a set of the validators
+// that are going to validate the provided certificate
+func (a *AggSender) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, uint32, error) {
+	committee, err := a.committeeQuerier.GetMultisigCommittee(ctx, aggkittypes.LatestBlockNum)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
+	}
+
+	validators := make([]types.CertificateValidateAndSigner, 0, committee.Size())
+	for _, signer := range committee.Signers() {
+		clientCfg := a.cfg.ValidatorClient.WithURL(signer.URL)
+		validator, err := validator.NewRemoteValidator(&clientCfg, a.storage)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
+				signer.Address, signer.URL, err)
+		}
+
+		validators = append(validators, validator)
+	}
+
+	return validators, committee.Threshold(), nil
 }
 
 // saveCertificateToStorage saves the certificate to the storage

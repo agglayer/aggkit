@@ -84,7 +84,7 @@ func start(cliCtx *cli.Context) error {
 
 	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig, components)
 	if err != nil {
-		return fmt.Errorf("failed to create etherman client: %w", err)
+		return fmt.Errorf("failed to create rollup data querier: %w", err)
 	}
 
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client)
@@ -94,6 +94,13 @@ func start(cliCtx *cli.Context) error {
 	l2GERSync := runL2GERSyncIfNeeded(
 		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
+
+	committeeQuerier, err := query.NewECDSAMultisigCommitteeQuery(cfg.L1NetworkConfig.RollupAddr, l1Client)
+	if err != nil {
+		return fmt.Errorf("failed to create ECDSA multisig committee querier (SC address: %s): %w",
+			cfg.L1NetworkConfig.RollupAddr, err)
+	}
+
 	var rpcServices []jRPC.Service
 	for _, component := range components {
 		switch component {
@@ -121,6 +128,7 @@ func start(cliCtx *cli.Context) error {
 				l2BridgeSync,
 				l2Client,
 				rollupDataQuerier,
+				committeeQuerier,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -321,10 +329,11 @@ func createAggSender(
 	ctx context.Context,
 	cfg aggsendercfg.Config,
 	l1EthClient aggkittypes.BaseEthereumClienter,
-	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
-	l2Syncer *bridgesync.BridgeSync,
+	l1InfoTreeSync aggsendertypes.L1InfoTreeSyncer,
+	l2Syncer aggsendertypes.L2BridgeSyncer,
 	l2Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggSender, error) {
+	rollupDataQuerier aggsendertypes.RollupDataQuerier,
+	committeeQuerier aggsendertypes.MultisigQuerier) (*aggsender.AggSender, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDER)
 
 	if err := cfg.Validate(); err != nil {
@@ -362,34 +371,10 @@ func createAggSender(
 	go epochNotifier.Start(ctx)
 
 	aggsender, err := aggsender.New(ctx, logger, cfg, agglayerClient,
-		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier)
+		l1InfoTreeSync, l2Syncer, epochNotifier, l1EthClient, l2Client, rollupDataQuerier, committeeQuerier)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
-
-	// validatorObj is only supported in PessimisticProof mode
-	var validatorObj aggsendertypes.CertificateValidateAndSigner
-	if cfg.RequireValidatorCall {
-		validatorObj, err = validator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
-		if err != nil {
-			return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
-		}
-	} else {
-		// this is only temporary, until we test it in local, then we will only use the remote validator
-		validatorObj = validator.NewLocalValidator(
-			logger,
-			aggsender.GetStorage(),
-			validator.NewAggsenderValidator(
-				logger,
-				aggsender.GetFlow(),
-				query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
-				aggsender.GetCertQuerier(),
-				aggsender.GetLERQuerier(),
-			),
-		)
-	}
-
-	aggsender.AttachValidator(validatorObj)
 
 	return aggsender, nil
 }

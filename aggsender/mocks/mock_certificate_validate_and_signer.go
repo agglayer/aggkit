@@ -128,6 +128,51 @@ func (_c *CertificateValidateAndSigner_String_Call) RunAndReturn(run func() stri
 	return _c
 }
 
+// URL provides a mock function with no fields
+func (_m *CertificateValidateAndSigner) URL() string {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for URL")
+	}
+
+	var r0 string
+	if rf, ok := ret.Get(0).(func() string); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+
+	return r0
+}
+
+// CertificateValidateAndSigner_URL_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'URL'
+type CertificateValidateAndSigner_URL_Call struct {
+	*mock.Call
+}
+
+// URL is a helper method to define mock.On call
+func (_e *CertificateValidateAndSigner_Expecter) URL() *CertificateValidateAndSigner_URL_Call {
+	return &CertificateValidateAndSigner_URL_Call{Call: _e.mock.On("URL")}
+}
+
+func (_c *CertificateValidateAndSigner_URL_Call) Run(run func()) *CertificateValidateAndSigner_URL_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_URL_Call) Return(_a0 string) *CertificateValidateAndSigner_URL_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_URL_Call) RunAndReturn(run func() string) *CertificateValidateAndSigner_URL_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // ValidateAndSignCertificate provides a mock function with given fields: ctx, certificate, lastL2BlockInCert
 func (_m *CertificateValidateAndSigner) ValidateAndSignCertificate(ctx context.Context, certificate *agglayertypes.Certificate, lastL2BlockInCert uint64) ([]byte, error) {
 	ret := _m.Called(ctx, certificate, lastL2BlockInCert)

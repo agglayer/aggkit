@@ -16,6 +16,7 @@ var _ types.CertificateValidateAndSigner = (*RemoteValidator)(nil)
 // RemoteValidator encapsulates the gRPC client and configuration
 // required to interact with the AggsenderValidator service.
 type RemoteValidator struct {
+	url     string
 	client  types.ValidatorClient
 	storage db.AggSenderStorage
 }
@@ -29,6 +30,7 @@ func NewRemoteValidator(cfg *grpc.ClientConfig, storage db.AggSenderStorage) (*R
 	}
 
 	return &RemoteValidator{
+		url:     cfg.URL,
 		client:  client,
 		storage: storage,
 	}, nil
@@ -36,7 +38,12 @@ func NewRemoteValidator(cfg *grpc.ClientConfig, storage db.AggSenderStorage) (*R
 
 // String returns a string representation of the RemoteValidator.
 func (v *RemoteValidator) String() string {
-	return "RemoteValidator"
+	return fmt.Sprintf("RemoteValidator (URL=%s)", v.url)
+}
+
+// URL returns an URL for the remote validator
+func (v *RemoteValidator) URL() string {
+	return v.url
 }
 
 // HealthCheck performs a health check on the AggsenderValidator service.
