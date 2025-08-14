@@ -3,8 +3,8 @@
 package mocks
 
 import (
+	aggchainecdsamultisig "github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainecdsamultisig"
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
-	common "github.com/ethereum/go-ethereum/common"
 
 	mock "github.com/stretchr/testify/mock"
 )
@@ -22,24 +22,24 @@ func (_m *MultisigContract) EXPECT() *MultisigContract_Expecter {
 	return &MultisigContract_Expecter{mock: &_m.Mock}
 }
 
-// GetAggchainSigners provides a mock function with given fields: opts
-func (_m *MultisigContract) GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error) {
+// GetAggchainSignerInfos provides a mock function with given fields: opts
+func (_m *MultisigContract) GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainecdsamultisig.AggchainBaseSignerInfo, error) {
 	ret := _m.Called(opts)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetAggchainSigners")
+		panic("no return value specified for GetAggchainSignerInfos")
 	}
 
-	var r0 []common.Address
+	var r0 []aggchainecdsamultisig.AggchainBaseSignerInfo
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]common.Address, error)); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]aggchainecdsamultisig.AggchainBaseSignerInfo, error)); ok {
 		return rf(opts)
 	}
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []common.Address); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []aggchainecdsamultisig.AggchainBaseSignerInfo); ok {
 		r0 = rf(opts)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]common.Address)
+			r0 = ret.Get(0).([]aggchainecdsamultisig.AggchainBaseSignerInfo)
 		}
 	}
 
@@ -52,87 +52,30 @@ func (_m *MultisigContract) GetAggchainSigners(opts *bind.CallOpts) ([]common.Ad
 	return r0, r1
 }
 
-// MultisigContract_GetAggchainSigners_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAggchainSigners'
-type MultisigContract_GetAggchainSigners_Call struct {
+// MultisigContract_GetAggchainSignerInfos_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetAggchainSignerInfos'
+type MultisigContract_GetAggchainSignerInfos_Call struct {
 	*mock.Call
 }
 
-// GetAggchainSigners is a helper method to define mock.On call
+// GetAggchainSignerInfos is a helper method to define mock.On call
 //   - opts *bind.CallOpts
-func (_e *MultisigContract_Expecter) GetAggchainSigners(opts interface{}) *MultisigContract_GetAggchainSigners_Call {
-	return &MultisigContract_GetAggchainSigners_Call{Call: _e.mock.On("GetAggchainSigners", opts)}
+func (_e *MultisigContract_Expecter) GetAggchainSignerInfos(opts interface{}) *MultisigContract_GetAggchainSignerInfos_Call {
+	return &MultisigContract_GetAggchainSignerInfos_Call{Call: _e.mock.On("GetAggchainSignerInfos", opts)}
 }
 
-func (_c *MultisigContract_GetAggchainSigners_Call) Run(run func(opts *bind.CallOpts)) *MultisigContract_GetAggchainSigners_Call {
+func (_c *MultisigContract_GetAggchainSignerInfos_Call) Run(run func(opts *bind.CallOpts)) *MultisigContract_GetAggchainSignerInfos_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(*bind.CallOpts))
 	})
 	return _c
 }
 
-func (_c *MultisigContract_GetAggchainSigners_Call) Return(_a0 []common.Address, _a1 error) *MultisigContract_GetAggchainSigners_Call {
+func (_c *MultisigContract_GetAggchainSignerInfos_Call) Return(_a0 []aggchainecdsamultisig.AggchainBaseSignerInfo, _a1 error) *MultisigContract_GetAggchainSignerInfos_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MultisigContract_GetAggchainSigners_Call) RunAndReturn(run func(*bind.CallOpts) ([]common.Address, error)) *MultisigContract_GetAggchainSigners_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// SignerToURLs provides a mock function with given fields: opts, arg0
-func (_m *MultisigContract) SignerToURLs(opts *bind.CallOpts, arg0 common.Address) (string, error) {
-	ret := _m.Called(opts, arg0)
-
-	if len(ret) == 0 {
-		panic("no return value specified for SignerToURLs")
-	}
-
-	var r0 string
-	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts, common.Address) (string, error)); ok {
-		return rf(opts, arg0)
-	}
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts, common.Address) string); ok {
-		r0 = rf(opts, arg0)
-	} else {
-		r0 = ret.Get(0).(string)
-	}
-
-	if rf, ok := ret.Get(1).(func(*bind.CallOpts, common.Address) error); ok {
-		r1 = rf(opts, arg0)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
-}
-
-// MultisigContract_SignerToURLs_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SignerToURLs'
-type MultisigContract_SignerToURLs_Call struct {
-	*mock.Call
-}
-
-// SignerToURLs is a helper method to define mock.On call
-//   - opts *bind.CallOpts
-//   - arg0 common.Address
-func (_e *MultisigContract_Expecter) SignerToURLs(opts interface{}, arg0 interface{}) *MultisigContract_SignerToURLs_Call {
-	return &MultisigContract_SignerToURLs_Call{Call: _e.mock.On("SignerToURLs", opts, arg0)}
-}
-
-func (_c *MultisigContract_SignerToURLs_Call) Run(run func(opts *bind.CallOpts, arg0 common.Address)) *MultisigContract_SignerToURLs_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(*bind.CallOpts), args[1].(common.Address))
-	})
-	return _c
-}
-
-func (_c *MultisigContract_SignerToURLs_Call) Return(_a0 string, _a1 error) *MultisigContract_SignerToURLs_Call {
-	_c.Call.Return(_a0, _a1)
-	return _c
-}
-
-func (_c *MultisigContract_SignerToURLs_Call) RunAndReturn(run func(*bind.CallOpts, common.Address) (string, error)) *MultisigContract_SignerToURLs_Call {
+func (_c *MultisigContract_GetAggchainSignerInfos_Call) RunAndReturn(run func(*bind.CallOpts) ([]aggchainecdsamultisig.AggchainBaseSignerInfo, error)) *MultisigContract_GetAggchainSignerInfos_Call {
 	_c.Call.Return(run)
 	return _c
 }

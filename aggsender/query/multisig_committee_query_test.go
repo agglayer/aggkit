@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainecdsamultisig"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -15,21 +16,27 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 	type testCase struct {
 		name               string
 		threshold          uint32
-		signerAddrs        []common.Address
-		signerURLs         []string
+		signerInfos        []aggchainecdsamultisig.AggchainBaseSignerInfo
 		thresholdErr       error
 		getSignersErr      error
-		getSignerURLErr    error
 		expectedErr        string
 		expectedNumSigners int
 	}
 
 	testCases := []testCase{
 		{
-			name:               "successfully returns committee",
-			threshold:          2,
-			signerAddrs:        []common.Address{common.HexToAddress("0x1"), common.HexToAddress("0x2")},
-			signerURLs:         []string{"http://localhost:8001", "http://localhost:8002"},
+			name:      "successfully returns committee",
+			threshold: 2,
+			signerInfos: []aggchainecdsamultisig.AggchainBaseSignerInfo{
+				{
+					Addr: common.HexToAddress("0x1"),
+					Url:  "http://localhost:8001",
+				},
+				{
+					Addr: common.HexToAddress("0x2"),
+					Url:  "http://localhost:8002",
+				},
+			},
 			expectedErr:        "",
 			expectedNumSigners: 2,
 		},
@@ -44,12 +51,6 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 			getSignersErr: errors.New("signers error"),
 			expectedErr:   "failed to query the committee signers",
 		},
-		{
-			name:            "signer URL query fails",
-			signerAddrs:     []common.Address{common.HexToAddress("0x1"), common.HexToAddress("0x2")},
-			getSignerURLErr: errors.New("get signer url fails"),
-			expectedErr:     "failed to query the committee signer",
-		},
 	}
 
 	for _, tc := range testCases {
@@ -60,18 +61,8 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 				Return(tc.threshold, tc.thresholdErr)
 
 			if tc.thresholdErr == nil {
-				mockSC.EXPECT().GetAggchainSigners(mock.Anything).
-					Return(tc.signerAddrs, tc.getSignersErr)
-
-				if tc.getSignerURLErr != nil {
-					mockSC.EXPECT().SignerToURLs(mock.Anything, mock.Anything).
-						Return("", tc.getSignerURLErr)
-				} else {
-					for i, addr := range tc.signerAddrs {
-						mockSC.EXPECT().SignerToURLs(mock.Anything, addr).
-							Return(tc.signerURLs[i], nil)
-					}
-				}
+				mockSC.EXPECT().GetAggchainSignerInfos(mock.Anything).
+					Return(tc.signerInfos, tc.getSignersErr)
 			}
 
 			q := &ECDSAMultisigCommitteeQuery{
