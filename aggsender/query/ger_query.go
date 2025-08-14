@@ -89,3 +89,13 @@ func (g *gerDataQuerier) GetInjectedGERsProofs(
 
 	return proofs, nil
 }
+
+func (g *gerDataQuerier) GetRemovedGERsBlockDetails(ctx context.Context,
+	fromBlock, toBlock uint64) ([]agglayertypes.RemovedGER, error) {
+	removedGERs, err := g.chainGERReader.GetRemovedGERsForRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, fmt.Errorf("aggchainProverFlow - error getting removed GERs for range %d : %d: %w",
+			fromBlock, toBlock, err)
+	}
+	return removedGERs, nil
+}

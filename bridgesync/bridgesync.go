@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmbridgev2"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
@@ -57,11 +58,12 @@ type BridgeSync struct {
 	driver     *sync.EVMDriver
 	downloader *sync.EVMDownloader
 
-	originNetwork    uint32
-	reorgDetector    ReorgDetector
-	blockFinality    aggkittypes.BlockNumberFinality
-	ethClient        aggkittypes.EthClienter
-	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	originNetwork        uint32
+	reorgDetector        ReorgDetector
+	blockFinality        aggkittypes.BlockNumberFinality
+	ethClient            aggkittypes.EthClienter
+	bridgeContractV2     *polygonzkevmbridgev2.Polygonzkevmbridgev2
+	bridgeSovereignChain *bridgel2sovereignchain.Bridgel2sovereignchain
 }
 
 // noOpReorgDetectorWrapper wraps NoOpReorgDetector to implement bridgesync.ReorgDetector interface
@@ -181,6 +183,12 @@ func newBridgeSync(
 		return nil, err
 	}
 
+	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridge, ethClient)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain SC binding (bridge addr: %s): %w",
+			bridge, err)
+	}
+
 	err = sanityCheckContract(logger, bridge, bridgeContractV2)
 	if err != nil {
 		logger.Errorf("sanityCheckContract(bridge:%s) fails sanity check. Err: %w",
@@ -217,7 +225,7 @@ func newBridgeSync(
 		RetryAfterErrorPeriod:      retryAfterErrorPeriod,
 	}
 
-	appender, err := buildAppender(ethClient, bridge, syncFullClaims, bridgeContractV2, logger)
+	appender, err := buildAppender(ethClient, bridge, syncFullClaims, bridgeContractV2, bridgeSovereignChain, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -281,14 +289,15 @@ func newBridgeSync(
 	)
 
 	return &BridgeSync{
-		processor:        processor,
-		driver:           driver,
-		downloader:       downloader,
-		originNetwork:    originNetwork,
-		reorgDetector:    rd,
-		blockFinality:    blockFinalityType,
-		ethClient:        ethClient,
-		bridgeContractV2: bridgeContractV2,
+		processor:            processor,
+		driver:               driver,
+		downloader:           downloader,
+		originNetwork:        originNetwork,
+		reorgDetector:        rd,
+		blockFinality:        blockFinalityType,
+		ethClient:            ethClient,
+		bridgeContractV2:     bridgeContractV2,
+		bridgeSovereignChain: bridgeSovereignChain,
 	}, nil
 }
 
@@ -473,6 +482,20 @@ func sanityCheckContract(logger *log.Logger, bridgeAddr common.Address,
 
 // GetContractDepositCount returns the last deposit count from the bridge contract
 func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error) {
+	if s.processor.isHalted() {
+		return 0, sync.ErrInconsistentState
+	}
+
+	depositCount, err := s.bridgeContractV2.DepositCount(nil)
+	if err != nil {
+		return 0, fmt.Errorf("failed to get deposit count: %w", err)
+	}
+
+	return uint32(depositCount.Int64()), nil
+}
+
+// GetUnclaimBlockRange returns the block range of unset claimed
+func (s *BridgeSync) GetUnclaimBlockRange(ctx context.Context) (uint32, error) {
 	if s.processor.isHalted() {
 		return 0, sync.ErrInconsistentState
 	}

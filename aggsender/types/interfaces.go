@@ -94,6 +94,8 @@ type BridgeQuerier interface {
 type ChainGERReader interface {
 	GetInjectedGERsForRange(ctx context.Context,
 		fromBlock, toBlock uint64) (map[common.Hash]l2gersync.GlobalExitRootInfo, error)
+	GetRemovedGERsForRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]agglayertypes.RemovedGER, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
@@ -129,6 +131,8 @@ type GERQuerier interface {
 		ctx context.Context,
 		finalizedL1InfoTreeRoot *treetypes.Root,
 		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
+	GetRemovedGERsBlockDetails(ctx context.Context,
+		fromBlock, toBlock uint64) ([]agglayertypes.RemovedGER, error)
 }
 
 // Logger is an interface that defines the methods to log messages
@@ -246,4 +250,9 @@ type AggchainProofQuerier interface {
 		lastProvenBlock, toBlock uint64,
 		certBuildParams *CertificateBuildParams,
 	) (*AggchainProof, *treetypes.Root, error)
+}
+
+type BridgeL2Querier interface {
+	GetUnclaimBlockRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]agglayertypes.Unclaim, error)
 }

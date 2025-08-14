@@ -63,17 +63,12 @@ func buildAppender(
 	bridgeAddr common.Address,
 	syncFullClaims bool,
 	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2,
+	bridgeSovereignChainContract *bridgel2sovereignchain.Bridgel2sovereignchain,
 	logger *logger.Logger,
 ) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
-	}
-
-	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, client)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain SC binding (bridge addr: %s): %w",
-			bridgeAddr, err)
 	}
 
 	gasTokenAddress, err := bridgeContractV2.GasTokenAddress(nil)
@@ -94,11 +89,11 @@ func buildAppender(
 	appender[tokenMappingEventSignature] = buildTokenMappingHandler(
 		bridgeContractV2, client, bridgeAddr, logger)
 	appender[setSovereignTokenEventSignature] = buildSetSovereignTokenHandler(
-		bridgeSovereignChain, client, bridgeAddr, logger)
+		bridgeSovereignChainContract, client, bridgeAddr, logger)
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(
-		bridgeSovereignChain, client, bridgeAddr, logger)
+		bridgeSovereignChainContract, client, bridgeAddr, logger)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(
-		bridgeSovereignChain)
+		bridgeSovereignChainContract)
 
 	return appender, nil
 }

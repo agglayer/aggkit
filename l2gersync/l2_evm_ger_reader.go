@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggoracle/types"
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
@@ -95,8 +96,11 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 		return nil, insertIterator.Error()
 	}
 
-	// then get all removed GERs in the block range
-	// and remove them from the injectedGERs map
+	return injectedGERs, nil
+}
+
+func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
+	fromBlock, toBlock uint64) ([]agglayertypes.RemovedGER, error) {
 	removalIterator, err := e.l2GERManager.FilterUpdateRemovalHashChainValue(
 		&bind.FilterOpts{
 			Context: ctx,
@@ -114,14 +118,20 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 		}
 	}()
 
+	removedGERs := make([]agglayertypes.RemovedGER, 0)
+
 	for removalIterator.Next() {
 		ger := removalIterator.Event.RemovedGlobalExitRoot
-		delete(injectedGERs, ger)
+		removedGERs = append(removedGERs, agglayertypes.RemovedGER{
+			GlobalExitRoot: common.Hash(ger),
+			BlockNumber:    removalIterator.Event.Raw.BlockNumber,
+			BlockIndex:     uint(removalIterator.Event.Raw.Index),
+		})
 	}
 
 	if removalIterator.Error() != nil {
 		return nil, removalIterator.Error()
 	}
 
-	return injectedGERs, nil
+	return removedGERs, nil
 }

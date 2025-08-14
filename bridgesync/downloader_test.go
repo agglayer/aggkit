@@ -262,8 +262,11 @@ func TestBuildAppender(t *testing.T) {
 			bridgeContractV2, err := polygonzkevmbridgev2.NewPolygonzkevmbridgev2(bridgeAddr, ethClient)
 			require.NoError(t, err)
 
+			bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, ethClient)
+			require.NoError(t, err)
+
 			logger := logger.WithFields("module", "test")
-			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeContractV2, logger)
+			appenderMap, err := buildAppender(ethClient, bridgeAddr, false, bridgeContractV2, bridgeSovereignChain, logger)
 			require.NoError(t, err)
 			require.NotNil(t, appenderMap)
 

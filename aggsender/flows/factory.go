@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
@@ -24,6 +25,9 @@ var (
 
 	// l2GERReaderFactory is a factory function to create L2 GER reader
 	l2GERReaderFactory = l2gersync.NewL2EVMGERReader
+
+	// l2ClaimReaderFactory is a factory function to create L2 claim reader
+	l2ClaimReaderFactory = bridgesync.NewL2ClaimReader
 )
 
 // NewFlow creates a new Aggsender flow based on the provided configuration.
@@ -113,6 +117,12 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("failed to create L2 GER reader: %w", err)
 		}
+
+		// TODO - @temaniarpit27 Enable this when proto is updated
+		// l2ClaimReader, err := l2ClaimReaderFactory(bridgeAddr, l2Client)
+		// if err != nil {
+		// 	return nil, fmt.Errorf("failed to create L2 claim reader: %w", err)
+		// }
 
 		gerQuerier := query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader)
 

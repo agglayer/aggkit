@@ -94,6 +94,13 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 	if err != nil {
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
+
+	// TODO - @temaniarpit27 Enable this when proto is updated
+	// removedGERs, err := a.gerQuerier.GetRemovedGERsBlockDetails(ctx, fromBlock, toBlock)
+	// if err != nil {
+	// 	return nil, nil, fmt.Errorf("aggchainProverFlow - error getting removed GERs block numbers: %w", err)
+	// }
+
 	var aggchainProof *types.AggchainProof
 	request := &types.AggchainProofRequest{
 		LastProvenBlock:    lastProvenBlock,
