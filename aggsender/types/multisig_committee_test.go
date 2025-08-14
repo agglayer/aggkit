@@ -64,6 +64,7 @@ func TestMultisigCommittee_NewMultisigCommittee(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, mc)
+				require.Equal(t, len(tc.members), mc.Size())
 			}
 		})
 	}
@@ -101,9 +102,33 @@ func TestMultisigCommittee_AddSigner(t *testing.T) {
 				require.ErrorContains(t, err, tc.errContains)
 			} else {
 				require.NoError(t, err)
+				require.Equal(t, mc.signers, mc.Signers())
 			}
 		})
 	}
+}
+
+func TestMultisigCommittee_Signers(t *testing.T) {
+	signers := []SignerInfo{
+		{Address: common.HexToAddress("0x1"), URL: "http://localhost:8001"},
+		{Address: common.HexToAddress("0x2"), URL: "http://localhost:8002"},
+		{Address: common.HexToAddress("0x3"), URL: "http://localhost:8003"},
+	}
+
+	ptrs := make([]*SignerInfo, len(signers))
+	for i := range signers {
+		ptrs[i] = &signers[i]
+	}
+
+	mc, err := NewMultisigCommittee(ptrs, uint32(len(signers)-1))
+	require.NoError(t, err)
+
+	cpySigners := mc.Signers()
+	require.Equal(t, signers, cpySigners)
+
+	// Update single signer's address
+	cpySigners[0].Address = common.HexToAddress("0x4")
+	require.NotEqual(t, signers, cpySigners)
 }
 
 func TestMultisigCommittee_IsThresholdReached(t *testing.T) {

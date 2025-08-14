@@ -106,8 +106,17 @@ func (m *MultisigCommittee) Threshold() uint32 {
 
 // Signers returns a shallow copy of the committee's signers slice
 // to prevent external modification of the internal slice.
-func (m *MultisigCommittee) Signers() []*SignerInfo {
-	cpy := make([]*SignerInfo, len(m.signers))
-	copy(cpy, m.signers)
+func (m *MultisigCommittee) Signers() []SignerInfo {
+	cpy := make([]SignerInfo, len(m.signers))
+	for i, s := range m.signers {
+		if s != nil {
+			cpy[i] = *s
+		}
+	}
 	return cpy
+}
+
+// Size returns the committee size
+func (m *MultisigCommittee) Size() int {
+	return len(m.signers)
 }
