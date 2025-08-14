@@ -46,19 +46,14 @@ func (m *ECDSAMultisigCommitteeQuery) GetMultisigCommittee(
 		return nil, fmt.Errorf("failed to query the signatures threshold for block %d: %w", blockNum, err)
 	}
 
-	signers, err := m.multisigCommitteeSC.GetAggchainSigners(callOpts)
+	aggChainSigners, err := m.multisigCommitteeSC.GetAggchainSignerInfos(callOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query the committee signers for block %d: %w", blockNum, err)
 	}
 
-	signerInfos := make([]*types.SignerInfo, 0, len(signers))
-	for _, signer := range signers {
-		// TODO: Once contracts expose the function to retrieve the entire signers url array, update this.
-		url, err := m.multisigCommitteeSC.SignerToURLs(callOpts, signer)
-		if err != nil {
-			return nil, fmt.Errorf("failed to query the committee signer (%s) url: %w", signer, err)
-		}
-		signerInfos = append(signerInfos, types.NewSignerInfo(url, signer))
+	signerInfos := make([]*types.SignerInfo, 0, len(aggChainSigners))
+	for _, aggChainSigner := range aggChainSigners {
+		signerInfos = append(signerInfos, types.NewSignerInfo(aggChainSigner.Url, aggChainSigner.Addr))
 	}
 
 	return types.NewMultisigCommittee(signerInfos, threshold)

@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainecdsamultisig"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -257,8 +258,7 @@ type AggchainProofQuerier interface {
 // MultisigContract is an abstraction for Multisig smart contract
 type MultisigContract interface {
 	Threshold(opts *bind.CallOpts) (uint32, error)
-	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
-	SignerToURLs(opts *bind.CallOpts, arg0 common.Address) (string, error)
+	GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainecdsamultisig.AggchainBaseSignerInfo, error)
 }
 
 // MultisigQuerier is an abstraction for querying the multisig committee
