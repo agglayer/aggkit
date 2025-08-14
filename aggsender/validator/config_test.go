@@ -8,6 +8,7 @@ import (
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/grpc"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,11 +34,28 @@ func TestValidatorConfigValidate(t *testing.T) {
 			name: "Valid AggchainProof mode",
 			config: Config{
 				Mode: aggsendertypes.AggchainProofMode.String(),
+				FEPConfig: FEPConfig{
+					SovereignRollupAddr: common.HexToAddress("0x1"),
+				},
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
 				}},
 			},
+		},
+		{
+			name: "Invalid AggchainProof mode",
+			config: Config{
+				Mode: aggsendertypes.AggchainProofMode.String(),
+				FEPConfig: FEPConfig{
+					SovereignRollupAddr: common.HexToAddress("0x0"), // Zero address
+				},
+				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
+					URL:               "http://localhost:9090",
+					MinConnectTimeout: types.NewDuration(5 * time.Second),
+				}},
+			},
+			expectedErr: errInvalidSovereignRollupAddr.Error(),
 		},
 		{
 			name: "Invalid mode",

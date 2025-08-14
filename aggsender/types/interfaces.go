@@ -30,6 +30,7 @@ type AggsenderFlow interface {
 	// GenerateBuildParams generates the build parameters based on the preParams
 	GenerateBuildParams(ctx context.Context,
 		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
+	// ValidateCertificate validates the built certificate
 	ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error
 }
 

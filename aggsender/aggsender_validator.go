@@ -31,14 +31,14 @@ type AggsenderValidator struct {
 func NewAggsenderValidator(ctx context.Context,
 	logger aggkitcommon.Logger,
 	cfg validator.Config,
-	flowPP validator.FlowInterface,
+	flow validator.FlowInterface,
 	l1InfoTreeDataQuerier validator.L1InfoTreeRootByLeafQuerier,
 	aggLayerClient agglayer.AggLayerClientCertificateIDQuerier,
 	certQuerier types.CertificateQuerier,
 	lerQuerier types.LERQuerier,
 	signer signertypes.Signer) (*AggsenderValidator, error) {
 	validatorCert := validator.NewAggsenderValidator(
-		logger, flowPP, l1InfoTreeDataQuerier, certQuerier, lerQuerier)
+		logger, flow, l1InfoTreeDataQuerier, certQuerier, lerQuerier)
 	grpcServer, err := grpc.NewServer(cfg.ServerConfig)
 	if err != nil {
 		return nil, err

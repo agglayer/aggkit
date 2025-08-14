@@ -262,7 +262,7 @@ func createAggSenderValidator(ctx context.Context,
 		commonFlowComponents, err = flows.CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
-			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, cfg.FEPConfig.RequireNoFEPBlockGap,
+			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, cfg.FEPConfig.RequireNoBlockGap,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
 		)
 		if err != nil {

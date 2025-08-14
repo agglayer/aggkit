@@ -41,13 +41,13 @@ type CertificateValidator struct {
 }
 
 func NewAggsenderValidator(logger aggkitcommon.Logger,
-	flowPP FlowInterface,
+	flow FlowInterface,
 	l1InfoTreeDataQuerier L1InfoTreeRootByLeafQuerier,
 	certQuerier types.CertificateQuerier,
 	lerQuerier types.LERQuerier) *CertificateValidator {
 	return &CertificateValidator{
 		log:                   logger,
-		flow:                  flowPP,
+		flow:                  flow,
 		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
 		certQuerier:           certQuerier,
 		lerQuerier:            lerQuerier,
@@ -87,7 +87,7 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	}
 
 	// Check if the previous certificate is settled
-	if err := a.checkPreviousCertificate(params.PreviousCertificate); err != nil {
+	if err := a.checkisPreviousCertificateSettled(params.PreviousCertificate); err != nil {
 		return fmt.Errorf("failed CheckCertificatesContents: %w", err)
 	}
 
@@ -125,8 +125,9 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	return nil
 }
 
-// checkPreviousCertificate checks if the previous certificate is settled
-func (a *CertificateValidator) checkPreviousCertificate(previousCertificate *agglayertypes.CertificateHeader) error {
+// checkisPreviousCertificateSettled checks if the previous certificate is settled
+func (a *CertificateValidator) checkisPreviousCertificateSettled(
+	previousCertificate *agglayertypes.CertificateHeader) error {
 	if previousCertificate != nil {
 		if !previousCertificate.Status.IsSettled() {
 			return fmt.Errorf("previous certificate %s is not settled (status:%s)",

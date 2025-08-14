@@ -5,11 +5,14 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
+
+var errInvalidSovereignRollupAddr = fmt.Errorf("SovereignRollupAddr must be set for AggchainProof mode")
 
 // Config defines the configuration for the validator validator service.
 type Config struct {
@@ -50,9 +53,9 @@ type PPConfig struct {
 type FEPConfig struct {
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
-	// RequireNoFEPBlockGap is true if the AggSender should not accept a gap between
+	// RequireNoBlockGap is true if the AggSender should not accept a gap between
 	// lastBlock from lastCertificate and first block of FEP
-	RequireNoFEPBlockGap bool `mapstructure:"RequireNoFEPBlockGap"`
+	RequireNoBlockGap bool `mapstructure:"RequireNoBlockGap"`
 }
 
 type LerQuerierConfig struct {
@@ -70,6 +73,12 @@ func (c *Config) Validate() error {
 			c.Mode,
 			aggsendertypes.PessimisticProofMode.String(),
 			aggsendertypes.AggchainProofMode.String())
+	}
+
+	if c.Mode == aggsendertypes.AggchainProofMode.String() {
+		if c.FEPConfig.SovereignRollupAddr == aggkitcommon.ZeroAddress {
+			return errInvalidSovereignRollupAddr
+		}
 	}
 
 	if err := c.AgglayerClient.Validate(); err != nil {
