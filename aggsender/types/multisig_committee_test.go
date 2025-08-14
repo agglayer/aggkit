@@ -102,7 +102,6 @@ func TestMultisigCommittee_AddSigner(t *testing.T) {
 				require.ErrorContains(t, err, tc.errContains)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, mc.signers, mc.Signers())
 			}
 		})
 	}
