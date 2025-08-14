@@ -279,6 +279,7 @@ Mode = "PessimisticProof"
 	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
 [Validator.FEPConfig]
 	SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
+	RequireNoFEPBlockGap = "{{AggSender.RequireNoFEPBlockGap}}"
 [Validator.AgglayerClient]
 	Cached = true
 	[Validator.AgglayerClient.ConfigurationCache]

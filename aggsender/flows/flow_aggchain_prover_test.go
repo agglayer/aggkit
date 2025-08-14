@@ -786,7 +786,7 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 func Test_AggchainProverFlow_ValidateCertificate(t *testing.T) {
 	t.Parallel()
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	testCases := []struct {
 		name          string
@@ -846,6 +846,96 @@ func Test_AggchainProverFlow_ValidateCertificate(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 			}
+		})
+	}
+}
+
+func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	testCases := []struct {
+		name           string
+		preParams      *types.CertificatePreBuildParams
+		mockFn         func(*mocks.AggsenderFlowBaser)
+		expectedParams *types.CertificateBuildParams
+		expectedError  string
+	}{
+		{
+			name:          "preParams is nil",
+			preParams:     nil,
+			expectedError: "ppFlow - preParams is nil",
+		},
+		{
+			name: "error generating build params from baseFlow",
+			preParams: &types.CertificatePreBuildParams{
+				BlockRange: types.NewBlockRange(1, 10),
+			},
+			mockFn: func(mockBaseFlow *mocks.AggsenderFlowBaser) {
+				mockBaseFlow.EXPECT().GenerateBuildParams(ctx, types.CertificatePreBuildParams{
+					BlockRange: types.NewBlockRange(1, 10),
+				}).Return(nil, errors.New("base flow error")).Once()
+			},
+			expectedError: "ppFlow - error generating build params: base flow error",
+		},
+		{
+			name: "success generating build params",
+			preParams: &types.CertificatePreBuildParams{
+				BlockRange: types.NewBlockRange(1, 10),
+			},
+			mockFn: func(mockBaseFlow *mocks.AggsenderFlowBaser) {
+				expectedParams := &types.CertificateBuildParams{
+					FromBlock:       1,
+					ToBlock:         10,
+					RetryCount:      0,
+					Bridges:         []bridgesync.Bridge{{}},
+					Claims:          []bridgesync.Claim{},
+					CreatedAt:       timeNowUTCForTest(),
+					CertificateType: types.CertificateTypeFEP,
+				}
+				mockBaseFlow.EXPECT().GenerateBuildParams(ctx, types.CertificatePreBuildParams{
+					BlockRange: types.NewBlockRange(1, 10),
+				}).Return(expectedParams, nil).Once()
+			},
+			expectedParams: &types.CertificateBuildParams{
+				FromBlock:       1,
+				ToBlock:         10,
+				RetryCount:      0,
+				Bridges:         []bridgesync.Bridge{{}},
+				Claims:          []bridgesync.Claim{},
+				CreatedAt:       timeNowUTCForTest(),
+				CertificateType: types.CertificateTypeFEP,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockBaseFlow := mocks.NewAggsenderFlowBaser(t)
+			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_GenerateBuildParams")
+
+			if tc.mockFn != nil {
+				tc.mockFn(mockBaseFlow)
+			}
+
+			flow := &AggchainProverFlow{
+				log:      logger,
+				baseFlow: mockBaseFlow,
+			}
+
+			params, err := flow.GenerateBuildParams(ctx, tc.preParams)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+				require.Nil(t, params)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedParams, params)
+			}
+
+			mockBaseFlow.AssertExpectations(t)
 		})
 	}
 }
