@@ -115,9 +115,7 @@ func TestBridgeEventE2E(t *testing.T) {
 
 func getFinalizedBlockNumber(t *testing.T, ctx context.Context, client simulated.Client) uint64 {
 	t.Helper()
-	lastBlockFinalityType, err := aggkittypes.FinalizedBlock.ToBlockNum()
-	require.NoError(t, err)
-	lastBlockHeader, err := client.HeaderByNumber(ctx, lastBlockFinalityType)
+	lastBlockHeader, err := client.HeaderByNumber(ctx, aggkittypes.FinalizedBlockNum)
 	require.NoError(t, err)
 	return lastBlockHeader.Number.Uint64()
 }
