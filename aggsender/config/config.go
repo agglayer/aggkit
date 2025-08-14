@@ -13,8 +13,6 @@ import (
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
-var errValidatorClientURLNotSet = fmt.Errorf("ValidatorClient URL must be set when RequireValidatorCall is true")
-
 // Config is the configuration for the AggSender
 type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
@@ -124,10 +122,6 @@ func (c Config) Validate() error {
 			return fmt.Errorf(
 				"RequireValidatorCall can only be true in PessimisticProof or AggchainProof mode, got %s",
 				c.Mode)
-		}
-
-		if c.ValidatorClient == nil || c.ValidatorClient.URL == "" {
-			return errValidatorClientURLNotSet
 		}
 	}
 
