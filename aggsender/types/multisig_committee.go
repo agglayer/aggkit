@@ -76,29 +76,6 @@ func (m *MultisigCommittee) AddSigner(info *SignerInfo) error {
 	return nil
 }
 
-// IsThresholdReached checks if the provided signer addresses constitute a valid quorum
-// (namely signers length should be at least as big as the threshold value).
-// - Returns an error if any signer is not part of the committee.
-// - Duplicate addresses are ignored in counting.
-func (m *MultisigCommittee) IsThresholdReached(signerAddrs []common.Address) (bool, error) {
-	seen := make(map[common.Address]struct{}, len(signerAddrs))
-	count := uint32(0)
-
-	for _, signerAddr := range signerAddrs {
-		if _, exists := m.signersSet[signerAddr]; !exists {
-			return false, fmt.Errorf("signer %s is not in the committee", signerAddr)
-		}
-
-		// Count each signer only once
-		if _, alreadySeen := seen[signerAddr]; !alreadySeen {
-			seen[signerAddr] = struct{}{}
-			count++
-		}
-	}
-
-	return count >= m.threshold, nil
-}
-
 // Threshold returns the signature threshold required for quorum.
 func (m *MultisigCommittee) Threshold() uint32 {
 	return m.threshold
