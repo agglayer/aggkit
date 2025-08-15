@@ -354,7 +354,12 @@ type processor struct {
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
-func newProcessor(dbPath string, name string, logger *log.Logger, databaseQueryTimeout time.Duration) (*processor, error) {
+func newProcessor(
+	dbPath string,
+	name string,
+	logger *log.Logger,
+	databaseQueryTimeout time.Duration,
+) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
 		return nil, err
@@ -468,7 +473,7 @@ func (p *processor) GetBridgesPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPaged(p.db, offset, pageSize, bridgeTableName, orderByClause, whereClause)
+	rows, err := p.queryPagedWithContext(ctx, p.db, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
@@ -537,7 +542,7 @@ func (p *processor) GetClaimsPaged(
 
 	orderByClause := "block_num DESC, block_pos DESC"
 
-	rows, err := p.queryPaged(p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
+	rows, err := p.queryPagedWithContext(ctx, p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
@@ -600,7 +605,7 @@ func (p *processor) GetLegacyTokenMigrations(
 	}
 
 	orderByClause := "block_num DESC, block_pos DESC"
-	rows, err := p.queryPaged(p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause)
+	rows, err := p.queryPagedWithContext(ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no legacy token migrations were found for provided parameters (pageNumber=%d, pageSize=%d)",
@@ -651,6 +656,33 @@ func (p *processor) queryPaged(tx dbtypes.Querier,
 	table, orderByClause, whereClause string,
 ) (*sql.Rows, error) {
 	rows, err := tx.Query(fmt.Sprintf(`
+		SELECT *
+		FROM %s
+		%s
+		ORDER BY %s
+		LIMIT $1 OFFSET $2;
+	`, table, whereClause, orderByClause), pageSize, offset)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, db.ErrNotFound
+		}
+		return nil, err
+	}
+	return rows, nil
+}
+
+// queryPagedWithContext returns a paged result from the given table with context support
+func (p *processor) queryPagedWithContext(ctx context.Context, tx dbtypes.Querier,
+	offset, pageSize uint32,
+	table, orderByClause, whereClause string,
+) (*sql.Rows, error) {
+	// Use the underlying sql.DB for context-aware queries
+	sqlDB, ok := tx.(*sql.DB)
+	if !ok {
+		return nil, fmt.Errorf("expected *sql.DB, got %T", tx)
+	}
+
+	rows, err := sqlDB.QueryContext(ctx, fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		%s
@@ -850,9 +882,9 @@ func (p *processor) GetTotalNumberOfRecords(tableName, whereClause string) (int,
 }
 
 // GetTokenMappings returns the paged token mappings from the database
-func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
+func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
 	// Create a context with database timeout for the entire operation
-	ctx, cancel := context.WithTimeout(context.Background(), p.databaseQueryTimeout)
+	dbCtx, cancel := context.WithTimeout(ctx, p.databaseQueryTimeout)
 	defer cancel()
 
 	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName, "")
@@ -869,7 +901,7 @@ func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMappi
 		return nil, 0, fmt.Errorf("failed to calculate offset for pageNumber=%d, pageSize=%d: %w", pageNumber, pageSize, err)
 	}
 
-	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
+	tokenMappings, err := p.fetchTokenMappings(dbCtx, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -881,7 +913,7 @@ func (p *processor) GetTokenMappings(pageNumber, pageSize uint32) ([]*TokenMappi
 func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
 	orderByClause := "block_num DESC"
 
-	rows, err := p.queryPaged(p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")
+	rows, err := p.queryPagedWithContext(ctx, p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			pageNumber := (offset / pageSize) + 1

@@ -1409,7 +1409,7 @@ func TestProcessor_GetTokenMappings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			result, totalTokenMappings, err := p.GetTokenMappings(tt.pageNumber, tt.pageSize)
+			result, totalTokenMappings, err := p.GetTokenMappings(context.Background(), tt.pageNumber, tt.pageSize)
 			if tt.expectedErr != "" {
 				require.ErrorContains(t, err, tt.expectedErr)
 			} else {
@@ -2270,12 +2270,12 @@ func TestProcessor_ErrorPathLogging(t *testing.T) {
 		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
 
 		// Test invalid page number (page 10 with only 1 record and page size 5)
-		_, _, err := p.GetTokenMappings(10, 5)
+		_, _, err := p.GetTokenMappings(context.Background(), 10, 5)
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid page number")
 
 		// Test successful case with valid page
-		mappings, count, err := p.GetTokenMappings(1, 5)
+		mappings, count, err := p.GetTokenMappings(context.Background(), 1, 5)
 		require.NoError(t, err)
 		require.Len(t, mappings, 1)
 		require.Equal(t, 1, count)
@@ -2332,7 +2332,7 @@ func TestProcessor_CalculateOffsetErrors(t *testing.T) {
 		require.NoError(t, p.ProcessBlock(context.Background(), testBlock))
 
 		// Test with page number that would result in offset >= total records
-		_, _, err := p.GetTokenMappings(10, 5) // page 10 with only 1 record and page size 5
+		_, _, err := p.GetTokenMappings(context.Background(), 10, 5) // page 10 with only 1 record and page size 5
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "invalid page number")
 	})

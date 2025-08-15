@@ -30,9 +30,10 @@ import (
 )
 
 const (
-	rollupID                = uint32(1)
-	aggOracleCommitteeNonce = 4
-	syncBlockChunkSize      = 10
+	rollupID                    = uint32(1)
+	aggOracleCommitteeNonce     = 4
+	syncBlockChunkSize          = 10
+	defaultDatabaseQueryTimeout = 30 * time.Second
 )
 
 type L2GERManagerContractType int
@@ -151,7 +152,7 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	testClient := NewTestClient(l1Client.Client(), WithRPCClienter(cfg.L1RPCClient))
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 
-	databaseQueryTimeout := 30 * time.Second
+	databaseQueryTimeout := defaultDatabaseQueryTimeout
 
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
@@ -265,7 +266,7 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		retriesCount           = 100
 	)
 
-	databaseQueryTimeout := 30 * time.Second
+	databaseQueryTimeout := defaultDatabaseQueryTimeout
 
 	bridgeL2Sync, err := bridgesync.NewL2(
 		ctx, dbPathL2BridgeSync, bridgeL2Addr, syncBlockChunkSize,
