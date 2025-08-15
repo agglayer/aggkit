@@ -6,6 +6,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -77,13 +78,13 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 
 	// TODO - this might need to be changed once agglayer gives support for this
 	// 2. Get the latest settled imported bridge exit block number
-	latestSettledIbeGlobalIndex, err := c.agglayerClient.GetLatestSettledImportedBridgeExit(ctx)
+	latestSettledIbeGlobalIndex, bridgeExitHash, err := c.agglayerClient.GetLatestSettledImportedBridgeExit(ctx)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get latest settled imported bridge exit from agglayer: %w", err)
 	}
 
 	if latestSettledIbeGlobalIndex != nil {
-		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(ctx, latestSettledIbeGlobalIndex)
+		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(ctx, latestSettledIbeGlobalIndex, bridgeExitHash)
 		if err != nil {
 			return 0, fmt.Errorf("failed to resolve the block number for last imported bridge exit %s: %w",
 				latestSettledIbeGlobalIndex.String(), err)
@@ -124,7 +125,8 @@ func (c *certificateQuerier) GetNewCertificateToBlock(
 	if len(cert.ImportedBridgeExits) > 0 {
 		// if there are imported bridge exits, we can use the last one to determine the new certificate to block
 		lastImportedBridgeExit := cert.ImportedBridgeExits[len(cert.ImportedBridgeExits)-1]
-		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(ctx, lastImportedBridgeExit.GlobalIndex)
+		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(
+			ctx, lastImportedBridgeExit.GlobalIndex, lastImportedBridgeExit.BridgeExit.Hash())
 		if err != nil {
 			return 0, fmt.Errorf("failed to resolve the block number for last imported bridge exit %s: %w",
 				lastImportedBridgeExit.GlobalIndex.String(), err)
@@ -181,12 +183,25 @@ func (c *certificateQuerier) getBlockNumFromLER(ctx context.Context, localExitRo
 }
 
 func (c *certificateQuerier) getBlockNumFromGlobalIndex(
-	ctx context.Context, globalIndex *agglayertypes.GlobalIndex) (uint64, error) {
+	ctx context.Context, globalIndex *agglayertypes.GlobalIndex, bridgeExitHash common.Hash) (uint64, error) {
 	bigGlobalIndex := globalIndex.ToBigInt()
-	claim, err := c.l2BridgeSyncer.GetClaimByGlobalIndex(ctx, bigGlobalIndex)
+	claims, err := c.l2BridgeSyncer.GetClaimsByGlobalIndex(ctx, bigGlobalIndex)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get claim by global index %s: %w", bigGlobalIndex.String(), err)
 	}
 
-	return claim.BlockNum, nil
+	for _, claim := range claims {
+		ibe, err := converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
+		if err != nil {
+			return 0, fmt.Errorf("failed to convert claim to imported bridge exit: %w", err)
+		}
+
+		if ibe.BridgeExit.Hash() == bridgeExitHash {
+			// Found the claim with the matching bridge exit hash
+			return claim.BlockNum, nil
+		}
+	}
+
+	// If no claim matches the bridge exit hash, return an error
+	return 0, fmt.Errorf("no claim found for bridge exit hash %s", bridgeExitHash.String())
 }

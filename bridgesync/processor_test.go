@@ -2146,13 +2146,13 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 		t.Parallel()
 
 		nonExistentGlobalIndex := big.NewInt(999999)
-		claim, err := p.GetClaimByGlobalIndex(ctx, nonExistentGlobalIndex)
-		require.Error(t, err)
-		require.True(t, errors.Is(err, db.ErrNotFound))
-		require.Equal(t, Claim{}, claim)
+		claims, err := p.GetClaimsByGlobalIndex(ctx, nonExistentGlobalIndex)
+		require.NoError(t, err)
+		require.Empty(t, claims)
 	})
 
 	// Test case 2: Insert claims and retrieve them
+	globalIndexToTest := GenerateGlobalIndex(true, 0, 2000)
 	testClaims := []*Claim{
 		{
 			BlockNum:            1,
@@ -2174,7 +2174,7 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 		{
 			BlockNum:            2,
 			BlockPos:            1,
-			GlobalIndex:         GenerateGlobalIndex(true, 0, 2000),
+			GlobalIndex:         globalIndexToTest,
 			OriginNetwork:       3,
 			OriginAddress:       common.HexToAddress("0x33"),
 			DestinationAddress:  common.HexToAddress("0x44"),
@@ -2190,20 +2190,20 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 		},
 		{
 			BlockNum:            3,
-			BlockPos:            2,
-			GlobalIndex:         GenerateGlobalIndex(false, 1, 3000),
-			OriginNetwork:       5,
-			OriginAddress:       common.HexToAddress("0x55"),
-			DestinationAddress:  common.HexToAddress("0x66"),
-			Amount:              big.NewInt(300),
+			BlockPos:            1,
+			GlobalIndex:         globalIndexToTest, // same global index as previous claim
+			OriginNetwork:       3,
+			OriginAddress:       common.HexToAddress("0x33"),
+			DestinationAddress:  common.HexToAddress("0x55"),
+			Amount:              big.NewInt(200),
 			ProofLocalExitRoot:  types.Proof{},
 			ProofRollupExitRoot: types.Proof{},
-			MainnetExitRoot:     common.HexToHash("0xmainnet3"),
-			RollupExitRoot:      common.HexToHash("0xrollup3"),
-			GlobalExitRoot:      common.HexToHash("0xglobal3"),
-			DestinationNetwork:  6,
-			Metadata:            nil,
-			IsMessage:           false,
+			MainnetExitRoot:     common.HexToHash("0xmainnet2"),
+			RollupExitRoot:      common.HexToHash("0xrollup2"),
+			GlobalExitRoot:      common.HexToHash("0xglobal2"),
+			DestinationNetwork:  4,
+			Metadata:            []byte("test metadata 2"),
+			IsMessage:           true,
 		},
 	}
 
@@ -2228,11 +2228,12 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 	// Test case 3: Retrieve existing claims by global index
 	t.Run("retrieve existing claims", func(t *testing.T) {
 		t.Parallel()
-		for _, expectedClaim := range testClaims {
-			actualClaim, err := p.GetClaimByGlobalIndex(ctx, expectedClaim.GlobalIndex)
-			require.NoError(t, err)
-			require.Equal(t, *expectedClaim, actualClaim)
-		}
+
+		claims, err := p.GetClaimsByGlobalIndex(ctx, globalIndexToTest)
+		require.NoError(t, err)
+		require.Len(t, claims, 2)                   // Two claims with the same global index
+		require.Equal(t, *testClaims[1], claims[0]) // Check first claim
+		require.Equal(t, *testClaims[2], claims[1]) // Check second claim
 	})
 
 	// Test case 4: Test with very large global index
@@ -2271,9 +2272,10 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 		require.NoError(t, tx.Commit())
 
 		// Retrieve the claim
-		retrievedClaim, err := p.GetClaimByGlobalIndex(ctx, largeGlobalIndex)
+		retrievedClaims, err := p.GetClaimsByGlobalIndex(ctx, largeGlobalIndex)
 		require.NoError(t, err)
-		require.Equal(t, *largeClaim, retrievedClaim)
+		require.Len(t, retrievedClaims, 1) // Should return one claim
+		require.Equal(t, *largeClaim, retrievedClaims[0])
 	})
 
 	// Test case 5: Test with zero global index
@@ -2310,18 +2312,19 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 		require.NoError(t, tx.Commit())
 
 		// Retrieve the claim
-		retrievedClaim, err := p.GetClaimByGlobalIndex(ctx, zeroGlobalIndex)
+		retrievedClaims, err := p.GetClaimsByGlobalIndex(ctx, zeroGlobalIndex)
 		require.NoError(t, err)
-		require.Equal(t, *zeroClaim, retrievedClaim)
+		require.Len(t, retrievedClaims, 1) // Should return one claim
+		require.Equal(t, *zeroClaim, retrievedClaims[0])
 	})
 
 	// Test case 6: Test with nil global index (should handle gracefully)
 	t.Run("nil global index", func(t *testing.T) {
 		t.Parallel()
 
-		claim, err := p.GetClaimByGlobalIndex(ctx, nil)
+		claims, err := p.GetClaimsByGlobalIndex(ctx, nil)
 		require.ErrorContains(t, err, "global index cannot be nil")
-		require.Equal(t, Claim{}, claim)
+		require.Empty(t, claims)
 	})
 }
 

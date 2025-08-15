@@ -30,7 +30,7 @@ type AggLayerClientCertificateIDQuerier interface {
 type AgglayerClientInterface interface {
 	SendCertificate(ctx context.Context, certificate *types.Certificate, validatorSignature []byte) (common.Hash, error)
 	GetCertificateHeader(ctx context.Context, certificateHash common.Hash) (*types.CertificateHeader, error)
-	GetLatestSettledImportedBridgeExit(ctx context.Context) (*types.GlobalIndex, error)
+	GetLatestSettledImportedBridgeExit(ctx context.Context) (*types.GlobalIndex, common.Hash, error)
 	AggLayerClientGetEpochConfiguration
 	AggLayerClientRecoveryQuerier
 	AggLayerClientCertificateIDQuerier

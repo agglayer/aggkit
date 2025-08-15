@@ -17,6 +17,25 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestBre(t *testing.T) {
+	ibe := &agglayertypes.ImportedBridgeExit{
+		GlobalIndex: &agglayertypes.GlobalIndex{MainnetFlag: true, RollupIndex: 0, LeafIndex: 1},
+		BridgeExit: &agglayertypes.BridgeExit{
+			LeafType: agglayertypes.LeafTypeAsset,
+			TokenInfo: &agglayertypes.TokenInfo{
+				OriginNetwork:      1,
+				OriginTokenAddress: common.HexToAddress("0x123"),
+			},
+			DestinationNetwork: 2,
+			DestinationAddress: common.HexToAddress("0x456"),
+			Amount:             big.NewInt(100),
+			Metadata:           crypto.Keccak256([]byte("metadata")),
+		},
+	}
+
+	fmt.Println(ibe.BridgeExit.Hash().String())
+}
+
 func TestConvertClaimToImportedBridgeExit(t *testing.T) {
 	t.Parallel()
 
