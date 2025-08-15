@@ -185,7 +185,7 @@ func (a *AggSender) Start(ctx context.Context) {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
 
-	if a.cfg.Mode == types.PessimisticProofMode.String() && !a.cfg.RequireValidatorCall {
+	if !a.cfg.RequireValidatorCall {
 		a.localValidator = validator.NewLocalValidator(
 			a.log,
 			a.storage,
@@ -339,15 +339,13 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		signaturesThreshold uint32
 	)
 
-	if a.cfg.Mode == types.PessimisticProofMode.String() {
-		if a.localValidator != nil {
-			validators = append(validators, a.localValidator)
-			signaturesThreshold = 1
-		} else {
-			validators, signaturesThreshold, err = a.getValidators(ctx)
-			if err != nil {
-				return nil, fmt.Errorf("failed to get validators: %w", err)
-			}
+	if a.localValidator != nil {
+		validators = append(validators, a.localValidator)
+		signaturesThreshold = 1
+	} else {
+		validators, signaturesThreshold, err = a.getValidators(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get validators: %w", err)
 		}
 	}
 
@@ -377,7 +375,11 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	// TODO: Update once agglayer endpoint changes to accept the multisig
-	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate, multisig[0])
+	var signature []byte
+	if len(multisig) > 0 {
+		signature = multisig[0]
+	}
+	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate, signature)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 

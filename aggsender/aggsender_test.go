@@ -122,7 +122,7 @@ func TestExploratoryGenerateCert(t *testing.T) {
 	key, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
-	signature, err := crypto.Sign(common.HexToHash("0x1").Bytes(), key)
+	signature, err := crypto.Sign(common.Hex2Bytes("0x1"), key)
 	require.NoError(t, err)
 
 	certificate := &agglayertypes.Certificate{
@@ -211,6 +211,12 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockLERQuerier := mocks.NewLERQuerier(t)
 	logger := log.WithFields("aggsender-test", "no claims test")
 	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey, 0)
+	mockValidator := mocks.NewCertificateValidateAndSigner(t)
+	mockValidator.EXPECT().HealthCheck(mock.Anything).Return(&aggsendertypes.HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil)
+	mockValidator.EXPECT().URL().Return("http://localhost")
+	mockValidator.EXPECT().
+		ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+		Return(common.Hex2Bytes("0x5ca1e"), nil).Once()
 	aggSender := &AggSender{
 		log:             logger,
 		storage:         mockStorage,
@@ -218,6 +224,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		aggLayerClient:  mockAggLayerClient,
 		epochNotifier:   mockEpochNotifier,
 		cfg:             config.Config{},
+		localValidator:  mockValidator,
 		flow: flows.NewPPFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
 				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
@@ -321,6 +328,16 @@ func TestSendCertificate(t *testing.T) {
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, mock.Anything).Return(common.Hash{}, errors.New("some error")).Once()
 				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
+			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
+				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().HealthCheck(mock.Anything).Return(&aggsendertypes.
+					HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil)
+				mockValidator.EXPECT().URL().Return("http://localhost")
+				mockValidator.EXPECT().
+					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+					Return(common.Hex2Bytes("0x5ca1e"), nil).Once()
+				return mockValidator
+			},
 			expectedError: "error sending certificate",
 		},
 		{
@@ -339,6 +356,16 @@ func TestSendCertificate(t *testing.T) {
 				}, nil).Once()
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(errors.New("some error")).Once()
+			},
+			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
+				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().HealthCheck(mock.Anything).Return(&aggsendertypes.
+					HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil)
+				mockValidator.EXPECT().URL().Return("http://localhost")
+				mockValidator.EXPECT().
+					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+					Return(common.Hex2Bytes("0x5ca1e"), nil).Once()
+				return mockValidator
 			},
 			expectedError: "error saving last sent certificate",
 		},
@@ -362,7 +389,12 @@ func TestSendCertificate(t *testing.T) {
 			},
 			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
 				mockValidator := mocks.NewCertificateValidateAndSigner(t)
-				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil, errors.New("some error")).Once()
+				mockValidator.EXPECT().HealthCheck(mock.Anything).Return(&aggsendertypes.HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil)
+				mockValidator.EXPECT().URL().Return("http://localhost")
+				mockValidator.EXPECT().String().Return("local validator")
+				mockValidator.EXPECT().
+					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+					Return(nil, errors.New("some error")).Once()
 				return mockValidator
 			},
 			// expectedError: "certificate validation failed: some error", // TODO - this will be fixed when the agglayer is ready
@@ -381,12 +413,17 @@ func TestSendCertificate(t *testing.T) {
 					NewLocalExitRoot: common.HexToHash("0x11"),
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
-				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, []byte{1, 2, 3}).Return(common.HexToHash("0x22"), nil).Once()
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, common.Hex2Bytes("0x123456")).
+					Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
 			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
 				mockValidator := mocks.NewCertificateValidateAndSigner(t)
-				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return([]byte{1, 2, 3}, nil).Once()
+				mockValidator.EXPECT().HealthCheck(mock.Anything).Return(&aggsendertypes.
+					HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil)
+				mockValidator.EXPECT().URL().Return("http://localhost")
+				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+					Return(common.Hex2Bytes("0x123456"), nil).Once()
 				return mockValidator
 			},
 		},
@@ -406,6 +443,16 @@ func TestSendCertificate(t *testing.T) {
 				}, nil).Once()
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
+			},
+			mockValidatorFn: func() *mocks.CertificateValidateAndSigner {
+				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().HealthCheck(mock.Anything).Return(&aggsendertypes.
+					HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil)
+				mockValidator.EXPECT().URL().Return("http://localhost")
+				mockValidator.EXPECT().
+					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+					Return(common.Hex2Bytes("0x12345"), nil).Once()
+				return mockValidator
 			},
 		},
 	}
@@ -550,6 +597,7 @@ func TestSendCertificatesRetry(t *testing.T) {
 	}()
 	aggSender.sendCertificates(ctx, 2)
 }
+
 func TestSendCertificates(t *testing.T) {
 	t.Parallel()
 
