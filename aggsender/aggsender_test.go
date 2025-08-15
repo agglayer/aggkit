@@ -21,6 +21,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
@@ -496,6 +497,82 @@ func TestSendCertificate(t *testing.T) {
 
 			mockStorage.AssertExpectations(t)
 			mockAggsenderFlow.AssertExpectations(t)
+		})
+	}
+}
+
+func TestGetValidators(t *testing.T) {
+	allSigners := []*aggsendertypes.SignerInfo{
+		aggsendertypes.NewSignerInfo("http://localhost:8001", common.HexToAddress("0x1")),
+		aggsendertypes.NewSignerInfo("http://localhost:8002", common.HexToAddress("0x2")),
+		aggsendertypes.NewSignerInfo("http://localhost:8003", common.HexToAddress("0x3")),
+		aggsendertypes.NewSignerInfo("http://localhost:8004", common.HexToAddress("0x4")),
+		aggsendertypes.NewSignerInfo("http://localhost:8005", common.HexToAddress("0x5")),
+		aggsendertypes.NewSignerInfo("http://localhost:8006", common.HexToAddress("0x6")),
+	}
+
+	testCases := []struct {
+		name                 string
+		signers              []*aggsendertypes.SignerInfo
+		expectedValidatorsFn func(*testing.T, []*aggsendertypes.SignerInfo) []aggsendertypes.CertificateValidateAndSigner
+		expectedThreshold    uint32
+		expectedError        string
+	}{
+		{
+			name:              "successful return of committee validators",
+			signers:           allSigners[:len(allSigners)/2],
+			expectedThreshold: uint32(len(allSigners) / 2),
+			expectedValidatorsFn: func(t *testing.T,
+				signers []*aggsendertypes.SignerInfo) []aggsendertypes.CertificateValidateAndSigner {
+				t.Helper()
+
+				validators := make([]aggsendertypes.CertificateValidateAndSigner, 0, len(signers))
+				for _, signer := range signers {
+					validator, err := validator.NewRemoteValidator(&grpc.ClientConfig{URL: signer.URL}, nil)
+					require.NoError(t, err)
+					validators = append(validators, validator)
+				}
+				return validators
+			},
+		},
+		{
+			name:          "failed to query the committee",
+			expectedError: "invalid parameters",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			committeeQuerierMock := mocks.NewMultisigQuerier(t)
+
+			if tc.expectedError == "" {
+				committee, err := aggsendertypes.NewMultisigCommittee(tc.signers, uint32(len(tc.signers)))
+				require.NoError(t, err)
+				committeeQuerierMock.EXPECT().
+					GetMultisigCommittee(mock.Anything, mock.Anything).
+					Return(committee, nil)
+			} else {
+				committeeQuerierMock.EXPECT().
+					GetMultisigCommittee(mock.Anything, mock.Anything).
+					Return(nil, errors.New(tc.expectedError))
+			}
+
+			aggsender := &AggSender{
+				cfg:              config.Config{ValidatorClient: &grpc.ClientConfig{}},
+				committeeQuerier: committeeQuerierMock,
+			}
+
+			validators, threshold, err := aggsender.getValidators(t.Context())
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				expectedValidators := tc.expectedValidatorsFn(t, tc.signers)
+				require.Len(t, validators, len(tc.signers))
+				for i, v := range expectedValidators {
+					require.Equal(t, v.URL(), validators[i].URL())
+				}
+				require.Equal(t, tc.expectedThreshold, threshold)
+			}
 		})
 	}
 }
