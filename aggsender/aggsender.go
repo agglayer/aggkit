@@ -458,8 +458,14 @@ func (a *AggSender) pollValidators(
 
 	for _, v := range validators {
 		wg.Add(1)
-		go func() {
+		go func(v types.CertificateValidateAndSigner) {
 			defer wg.Done()
+
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 
 			status, err := v.HealthCheck(ctx)
 			if err != nil {
@@ -469,7 +475,7 @@ func (a *AggSender) pollValidators(
 			}
 
 			if !status.IsHealthy() {
-				a.log.Warnf("validator (URL=%s) is not healthy: %s", v.URL(), status.String())
+				a.log.Warnf("validator (URL=%s) is not healthy: %s, skipping it...", v.URL(), status.String())
 				return // skip unhealthy validator
 			}
 
@@ -483,7 +489,7 @@ func (a *AggSender) pollValidators(
 			}
 
 			results <- signResult{signature: sig}
-		}()
+		}(v)
 	}
 
 	go func() {
@@ -503,7 +509,6 @@ func (a *AggSender) pollValidators(
 		signatures = append(signatures, res.signature)
 		if uint32(len(signatures)) >= signaturesThreshold {
 			cancel() // signal other goroutines to stop early
-			break
 		}
 	}
 
