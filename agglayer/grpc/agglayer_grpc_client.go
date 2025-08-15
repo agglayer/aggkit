@@ -146,7 +146,8 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
 }
 
-func (a *AgglayerGRPCClient) GetLatestSettledImportedBridgeExit(ctx context.Context) (*types.GlobalIndex, common.Hash, error) {
+func (a *AgglayerGRPCClient) GetLatestSettledImportedBridgeExit(
+	ctx context.Context) (*types.GlobalIndex, common.Hash, error) {
 	// TODO - implement this method once agglayer supports it
 	return &types.GlobalIndex{}, common.Hash{}, nil
 }

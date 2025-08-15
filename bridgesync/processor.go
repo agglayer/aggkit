@@ -377,7 +377,6 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 	}, nil
 }
 
-//nolint:dupl
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
@@ -411,7 +410,6 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-//nolint:dupl
 func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
 	rows, err := p.queryBlockRange(p.db, fromBlock, toBlock, claimTableName)
 	if err != nil {
