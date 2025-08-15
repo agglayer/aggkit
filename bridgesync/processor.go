@@ -600,7 +600,9 @@ func (p *processor) GetLegacyTokenMigrations(
 	}
 
 	orderByClause := "block_num DESC, block_pos DESC"
-	rows, err := p.queryPagedWithContext(ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause)
+	rows, err := p.queryPagedWithContext(
+		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause,
+	)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no legacy token migrations were found for provided parameters (pageNumber=%d, pageSize=%d)",
