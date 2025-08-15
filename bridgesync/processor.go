@@ -48,6 +48,9 @@ var (
 	// errBlockNotProcessedFormat indicates that the given block(s) have not been processed yet.
 	errBlockNotProcessedFormat = fmt.Sprintf("block %%d not processed, last processed: %%d")
 
+	// errFailToConvertClaims indicates that the conversion from []*Claim to []Claim failed.
+	errFailToConvertClaims = errors.New("failed to convert from []*Claim to []Claim")
+
 	// tableNameRegex is the regex pattern to validate table names
 	tableNameRegex = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
@@ -374,7 +377,6 @@ func newProcessor(dbPath string, name string, logger *log.Logger) (*processor, e
 	}, nil
 }
 
-//nolint:dupl
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
@@ -408,7 +410,6 @@ func (p *processor) GetBridges(
 	return bridges, nil
 }
 
-//nolint:dupl
 func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
 	rows, err := p.queryBlockRange(p.db, fromBlock, toBlock, claimTableName)
 	if err != nil {
@@ -435,31 +436,34 @@ func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([
 	claims, ok := claimsIface.([]Claim)
 	if !ok {
 		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for block range [%d..%d]", fromBlock, toBlock)
-		return nil, errors.New("failed to convert from []*Claim to []Claim")
+		return nil, errFailToConvertClaims
 	}
 	return claims, nil
 }
 
-func (p *processor) GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.Int) (Claim, error) {
+func (p *processor) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]Claim, error) {
 	if globalIndex == nil {
-		return Claim{}, fmt.Errorf("global index cannot be nil")
+		return nil, fmt.Errorf("global index cannot be nil")
 	}
 
-	var claim Claim
-	if err := meddler.QueryRow(p.db, &claim, fmt.Sprintf(`
+	var results []*Claim
+	if err := meddler.QueryAll(p.db, &results, fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		WHERE global_index = $1
-		LIMIT 1;
+		ORDER BY block_num ASC, block_pos ASC;
 	`, claimTableName), globalIndex.String()); err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return Claim{}, db.ErrNotFound
-		}
-
-		return Claim{}, err
+		return nil, fmt.Errorf("failed to query claims by global index: %s: %w", globalIndex.String(), err)
 	}
 
-	return claim, nil
+	claimsSlice := db.SlicePtrsToSlice(results)
+	claims, ok := claimsSlice.([]Claim)
+	if !ok {
+		p.log.Errorf("GetClaims: failed to convert from []*Claim to []Claim for global index: %s", globalIndex.String())
+		return nil, errFailToConvertClaims
+	}
+
+	return claims, nil
 }
 
 func (p *processor) GetBridgesPaged(

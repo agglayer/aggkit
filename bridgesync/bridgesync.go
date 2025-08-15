@@ -333,11 +333,11 @@ func (s *BridgeSync) GetExitRootByHash(ctx context.Context, root common.Hash) (*
 	return s.processor.exitTree.GetRootByHash(ctx, root)
 }
 
-func (s *BridgeSync) GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.Int) (Claim, error) {
+func (s *BridgeSync) GetClaimsByGlobalIndex(ctx context.Context, globalIndex *big.Int) ([]Claim, error) {
 	if s.processor.isHalted() {
-		return Claim{}, sync.ErrInconsistentState
+		return nil, sync.ErrInconsistentState
 	}
-	return s.processor.GetClaimByGlobalIndex(ctx, globalIndex)
+	return s.processor.GetClaimsByGlobalIndex(ctx, globalIndex)
 }
 
 func (s *BridgeSync) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {

@@ -129,6 +129,6 @@ func (c *AgglayerClientCache) GetLatestPendingCertificateHeader(ctx context.Cont
 // GetLatestSettledImportedBridgeExit retrieves the latest settled
 // imported bridge exit from the Agglayer client. (no cache)
 func (c *AgglayerClientCache) GetLatestSettledImportedBridgeExit(
-	ctx context.Context) (*agglayertypes.GlobalIndex, error) {
+	ctx context.Context) (*agglayertypes.GlobalIndex, common.Hash, error) {
 	return c.agglayerClient.GetLatestSettledImportedBridgeExit(ctx)
 }

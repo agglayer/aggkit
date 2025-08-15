@@ -261,7 +261,7 @@ func (_c *AgglayerClientMock_GetLatestSettledCertificateHeader_Call) RunAndRetur
 }
 
 // GetLatestSettledImportedBridgeExit provides a mock function with given fields: ctx
-func (_m *AgglayerClientMock) GetLatestSettledImportedBridgeExit(ctx context.Context) (*types.GlobalIndex, error) {
+func (_m *AgglayerClientMock) GetLatestSettledImportedBridgeExit(ctx context.Context) (*types.GlobalIndex, common.Hash, error) {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
@@ -269,8 +269,9 @@ func (_m *AgglayerClientMock) GetLatestSettledImportedBridgeExit(ctx context.Con
 	}
 
 	var r0 *types.GlobalIndex
-	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) (*types.GlobalIndex, error)); ok {
+	var r1 common.Hash
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context) (*types.GlobalIndex, common.Hash, error)); ok {
 		return rf(ctx)
 	}
 	if rf, ok := ret.Get(0).(func(context.Context) *types.GlobalIndex); ok {
@@ -281,13 +282,21 @@ func (_m *AgglayerClientMock) GetLatestSettledImportedBridgeExit(ctx context.Con
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
+	if rf, ok := ret.Get(1).(func(context.Context) common.Hash); ok {
 		r1 = rf(ctx)
 	} else {
-		r1 = ret.Error(1)
+		if ret.Get(1) != nil {
+			r1 = ret.Get(1).(common.Hash)
+		}
 	}
 
-	return r0, r1
+	if rf, ok := ret.Get(2).(func(context.Context) error); ok {
+		r2 = rf(ctx)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
 }
 
 // AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestSettledImportedBridgeExit'
@@ -308,12 +317,12 @@ func (_c *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call) Run(run fu
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call) Return(_a0 *types.GlobalIndex, _a1 error) *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call {
-	_c.Call.Return(_a0, _a1)
+func (_c *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call) Return(_a0 *types.GlobalIndex, _a1 common.Hash, _a2 error) *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call {
+	_c.Call.Return(_a0, _a1, _a2)
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call) RunAndReturn(run func(context.Context) (*types.GlobalIndex, error)) *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call {
+func (_c *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call) RunAndReturn(run func(context.Context) (*types.GlobalIndex, common.Hash, error)) *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call {
 	_c.Call.Return(run)
 	return _c
 }
