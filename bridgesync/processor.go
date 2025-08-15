@@ -371,11 +371,6 @@ func newProcessor(
 
 	exitTree := tree.NewAppendOnlyTree(database, "")
 
-	// Set default database query timeout if not configured
-	if databaseQueryTimeout <= 0 {
-		databaseQueryTimeout = 30 * time.Second
-	}
-
 	return &processor{
 		db:                   database,
 		exitTree:             exitTree,
@@ -650,33 +645,11 @@ func (p *processor) queryBlockRange(tx dbtypes.Querier, fromBlock, toBlock uint6
 	return rows, nil
 }
 
-// queryPaged returns a paged result from the given table
-func (p *processor) queryPaged(tx dbtypes.Querier,
-	offset, pageSize uint32,
-	table, orderByClause, whereClause string,
-) (*sql.Rows, error) {
-	rows, err := tx.Query(fmt.Sprintf(`
-		SELECT *
-		FROM %s
-		%s
-		ORDER BY %s
-		LIMIT $1 OFFSET $2;
-	`, table, whereClause, orderByClause), pageSize, offset)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, db.ErrNotFound
-		}
-		return nil, err
-	}
-	return rows, nil
-}
-
 // queryPagedWithContext returns a paged result from the given table with context support
 func (p *processor) queryPagedWithContext(ctx context.Context, tx dbtypes.Querier,
 	offset, pageSize uint32,
 	table, orderByClause, whereClause string,
 ) (*sql.Rows, error) {
-	// Use the underlying sql.DB for context-aware queries
 	sqlDB, ok := tx.(*sql.DB)
 	if !ok {
 		return nil, fmt.Errorf("expected *sql.DB, got %T", tx)
