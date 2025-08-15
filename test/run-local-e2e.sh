@@ -158,20 +158,21 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-fork12-op-succinct)
-        bats \
-            ./tests/aggkit/bridge-e2e.bats \
-            ./tests/aggkit/e2e-pp.bats \
-            ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
-            ./tests/aggkit/internal-claims.bats \
-            ./tests/aggkit/claim-reetrancy.bats
+        bats ./tests/aggkit/bridge-e2e.bats \
+             ./tests/aggkit/e2e-pp.bats \
+             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
+             ./tests/op/optimistic-mode.bats \
+             ./tests/aggkit/bridge-e2e-nightly.bats \
+             ./tests/aggkit/internal-claims.bats \
+             ./tests/aggkit/claim-reetrancy.bats
         ;;
     single-l2-network-fork12-pessimistic)
-        bats \
-            ./tests/aggkit/bridge-e2e-custom-gas.bats \
-            ./tests/aggkit/bridge-e2e.bats \
-            ./tests/aggkit/e2e-pp.bats \
-            ./tests/aggkit/internal-claims.bats \
-            ./tests/aggkit/claim-reetrancy.bats
+        bats ./tests/aggkit/bridge-e2e.bats \
+             ./tests/aggkit/e2e-pp.bats \
+             ./tests/aggkit/bridge-e2e-custom-gas.bats \
+             ./tests/aggkit/bridge-e2e-nightly.bats \
+             ./tests/aggkit/internal-claims.bats \
+             ./tests/aggkit/claim-reetrancy.bats
         ;;
     single-l2-network-fork12-global-index-pp-old-contracts)
         bats \
