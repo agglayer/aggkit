@@ -47,22 +47,6 @@ func TestValidate(t *testing.T) {
 			},
 		},
 		{
-			name: "RequireValidatorCall is true with ValidatorClient URL not set",
-			config: Config{
-				Mode:                 aggsendertypes.PessimisticProofMode.String(),
-				RequireValidatorCall: true,
-				ValidatorClient: &grpc.ClientConfig{
-					URL: "",
-				},
-				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
-					URL:               "http://localhost:9090",
-					MinConnectTimeout: types.NewDuration(5 * time.Second),
-				},
-				},
-			},
-			expectedErr: "ValidatorClient URL must be set when RequireValidatorCall is true",
-		},
-		{
 			name: "Invalid AgglayerClient configuration",
 			config: Config{
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{

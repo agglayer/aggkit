@@ -41,6 +41,11 @@ func (a *LocalValidator) String() string {
 	return "LocalValidator"
 }
 
+// URL returns an URL for the LocalValidator
+func (a *LocalValidator) URL() string {
+	return "N/A"
+}
+
 func (a *LocalValidator) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
 	return &types.HealthCheckResponse{
 		Status:  "OK",

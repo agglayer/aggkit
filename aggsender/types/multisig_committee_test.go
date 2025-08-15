@@ -64,6 +64,7 @@ func TestMultisigCommittee_NewMultisigCommittee(t *testing.T) {
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, mc)
+				require.Equal(t, len(tc.members), mc.Size())
 			}
 		})
 	}
@@ -106,61 +107,25 @@ func TestMultisigCommittee_AddSigner(t *testing.T) {
 	}
 }
 
-func TestMultisigCommittee_IsThresholdReached(t *testing.T) {
-	s1 := NewSignerInfo("http://localhost:8001", common.HexToAddress("0x1"))
-	s2 := NewSignerInfo("http://localhost:8002", common.HexToAddress("0x2"))
-	s3 := NewSignerInfo("http://localhost:8003", common.HexToAddress("0x3"))
-
-	tests := []struct {
-		name        string
-		initial     []*SignerInfo
-		threshold   uint32
-		signers     []common.Address
-		wantQuorum  bool
-		errContains string
-	}{
-		{
-			name:       "has quorum",
-			initial:    []*SignerInfo{s1, s2, s3},
-			threshold:  2,
-			signers:    []common.Address{s1.Address, s2.Address},
-			wantQuorum: true,
-		},
-		{
-			name:       "insufficient quorum",
-			initial:    []*SignerInfo{s1, s2, s3},
-			threshold:  3,
-			signers:    []common.Address{s1.Address, s2.Address},
-			wantQuorum: false,
-		},
-		{
-			name:        "unknown signer",
-			initial:     []*SignerInfo{s1, s2},
-			threshold:   1,
-			signers:     []common.Address{common.HexToAddress("0x99")},
-			errContains: "not in the committee",
-		},
-		{
-			name:       "duplicate signers ignored",
-			initial:    []*SignerInfo{s1, s2},
-			threshold:  2,
-			signers:    []common.Address{s1.Address, s1.Address, s2.Address},
-			wantQuorum: true,
-		},
+func TestMultisigCommittee_Signers(t *testing.T) {
+	signers := []SignerInfo{
+		{Address: common.HexToAddress("0x1"), URL: "http://localhost:8001"},
+		{Address: common.HexToAddress("0x2"), URL: "http://localhost:8002"},
+		{Address: common.HexToAddress("0x3"), URL: "http://localhost:8003"},
 	}
 
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			mc, err := NewMultisigCommittee(tc.initial, tc.threshold)
-			require.NoError(t, err)
-
-			ok, err := mc.IsThresholdReached(tc.signers)
-			if tc.errContains != "" {
-				require.ErrorContains(t, err, tc.errContains)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tc.wantQuorum, ok)
-			}
-		})
+	ptrs := make([]*SignerInfo, len(signers))
+	for i := range signers {
+		ptrs[i] = &signers[i]
 	}
+
+	mc, err := NewMultisigCommittee(ptrs, uint32(len(signers)-1))
+	require.NoError(t, err)
+
+	cpySigners := mc.Signers()
+	require.Equal(t, signers, cpySigners)
+
+	// Update single signer's address
+	cpySigners[0].Address = common.HexToAddress("0x4")
+	require.NotEqual(t, signers, cpySigners)
 }

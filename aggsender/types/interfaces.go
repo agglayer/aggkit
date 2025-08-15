@@ -228,6 +228,7 @@ type CertificateValidateAndSigner interface {
 		certificate *agglayertypes.Certificate,
 		lastL2BlockInCert uint64,
 	) ([]byte, error)
+	URL() string
 	String() string
 }
 

@@ -24,6 +24,14 @@ var (
 	EarliestBlock  = BlockNumberFinality{"EarliestBlock"}
 )
 
+var (
+	SafeBlockNum      = big.NewInt(int64(Safe))
+	FinalizedBlockNum = big.NewInt(int64(Finalized))
+	LatestBlockNum    = big.NewInt(int64(Latest))
+	PendingBlockNum   = big.NewInt(int64(Pending))
+	EarliestBlockNum  = big.NewInt(int64(Earliest))
+)
+
 func (b *BlockNumberFinality) ToBlockNum() (*big.Int, error) {
 	switch strings.ToUpper(b.String()) {
 	case strings.ToUpper(FinalizedBlock.String()):

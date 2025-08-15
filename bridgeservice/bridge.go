@@ -49,7 +49,6 @@ const (
 	depositCountParam = "deposit_count"
 	fromAddressParam  = "from_address"
 	leafIndexParam    = "leaf_index"
-	globalIndexParam  = "global_index"
 	includeAllFields  = "include_all_fields"
 
 	binarySearchDivider = 2
