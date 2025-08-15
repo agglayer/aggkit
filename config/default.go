@@ -191,6 +191,7 @@ CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
+BridgeL2SovereignAddr = "{{L2Config.BridgeAddr}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = false
 RequireOneBridgeInPPCertificate = false
@@ -202,7 +203,7 @@ RequireValidatorCall = false
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
-		MaxRetries = 6 # 1+6 attempts, around 22m 
+		MaxRetries = 6 # 1+6 attempts, around 22m
 	[AggSender.AgglayerClient]
 		Cached = false
 		[AggSender.AgglayerClient.ConfigurationCache]
@@ -273,6 +274,8 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 [Validator.LerQuerierConfig]
 	RollupManagerAddr = "{{AggSender.RollupManagerAddr}}"
 	RollupCreationBlockL1 = "{{AggSender.RollupCreationBlockL1}}"
+[Validator.BridgeQuerierConfig]
+	BridgeL2SovereignAddr = "{{L2Config.BridgeAddr}}"
 [Validator.PPConfig]
 	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
 [Validator.AgglayerClient]

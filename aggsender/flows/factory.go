@@ -26,8 +26,8 @@ var (
 	// l2GERReaderFactory is a factory function to create L2 GER reader
 	l2GERReaderFactory = l2gersync.NewL2EVMGERReader
 
-	// l2ClaimReaderFactory is a factory function to create L2 claim reader
-	l2ClaimReaderFactory = bridgesync.NewL2ClaimReader
+	// bridgeL2SovereignReaderFactory is a factory function to read unset bridge exits from L2
+	bridgeL2SovereignReaderFactory = bridgesync.NewBridgeL2SovereignReader
 )
 
 // NewFlow creates a new Aggsender flow based on the provided configuration.
@@ -56,7 +56,11 @@ func NewFlow(
 			return nil, fmt.Errorf("error creating LER data querier: %w", err)
 		}
 
-		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
+		bridgeL2SovereignReader, err := bridgeL2SovereignReaderFactory(cfg.BridgeL2SovereignAddr, l2Client)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
+		}
+		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration, bridgeL2SovereignReader)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 		baseFlow := NewBaseFlow(
@@ -107,7 +111,11 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating LER data querier: %w", err)
 		}
 
-		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
+		bridgeL2SovereignReader, err := bridgeL2SovereignReaderFactory(cfg.BridgeL2SovereignAddr, l2Client)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
+		}
+		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration, bridgeL2SovereignReader)
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
 			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, cfg.RequireNoFEPBlockGap),
@@ -117,13 +125,6 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("failed to create L2 GER reader: %w", err)
 		}
-
-		// TODO - @temaniarpit27 Enable this when proto is updated
-		// l2ClaimReader, err := l2ClaimReaderFactory(bridgeAddr, l2Client)
-		// if err != nil {
-		// 	return nil, fmt.Errorf("failed to create L2 claim reader: %w", err)
-		// }
-
 		gerQuerier := query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader)
 
 		aggchainProofQuerier := query.NewAggchainProofQuery(
@@ -133,6 +134,7 @@ func NewFlow(
 			optimisticSigner,
 			baseFlow,
 			gerQuerier,
+			l2BridgeQuerier,
 		)
 
 		return NewAggchainProverFlow(

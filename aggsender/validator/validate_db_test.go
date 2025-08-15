@@ -39,7 +39,8 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 	require.NoError(t, err)
 	require.Greater(t, lastProcessBlock, uint64(522), "Last processed block should be greater than 0")
 
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, bridgeSyncL2, 1)
+	bridgeL2SovereignReader := new(mocks.BridgeL2SovereignReader)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, bridgeSyncL2, 1, bridgeL2SovereignReader)
 
 	mockL1EthClient := mocksethclient.NewEthClienter(t)
 	l1InfoTreeSync, err := l1infotreesync.NewReadOnly(

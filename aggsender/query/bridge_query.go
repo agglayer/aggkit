@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"time"
 
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/ethereum/go-ethereum/common"
@@ -14,9 +16,10 @@ var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
 
 // bridgeDataQuerier is a struct that holds the logic to query the bridge data
 type bridgeDataQuerier struct {
-	log                 types.Logger
-	bridgeSyncer        types.L2BridgeSyncer
-	delayBetweenRetries time.Duration
+	log                     types.Logger
+	bridgeSyncer            types.L2BridgeSyncer
+	delayBetweenRetries     time.Duration
+	bridgeL2SovereignReader types.BridgeL2SovereignReader
 
 	originNetwork uint32
 }
@@ -26,12 +29,14 @@ func NewBridgeDataQuerier(
 	log types.Logger,
 	bridgeSyncer types.L2BridgeSyncer,
 	delayBetweenRetries time.Duration,
+	bridgeL2SovereignReader types.BridgeL2SovereignReader,
 ) *bridgeDataQuerier {
 	return &bridgeDataQuerier{
-		log:                 log,
-		bridgeSyncer:        bridgeSyncer,
-		delayBetweenRetries: delayBetweenRetries,
-		originNetwork:       bridgeSyncer.OriginNetwork(),
+		log:                     log,
+		bridgeSyncer:            bridgeSyncer,
+		delayBetweenRetries:     delayBetweenRetries,
+		originNetwork:           bridgeSyncer.OriginNetwork(),
+		bridgeL2SovereignReader: bridgeL2SovereignReader,
 	}
 }
 
@@ -132,4 +137,30 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 			continue // Keep checking until the condition is met
 		}
 	}
+}
+
+func (b *bridgeDataQuerier) GetUnsetClaimsBlockRange(ctx context.Context,
+	fromBlock, toBlock uint64) ([]agglayertypes.Unclaim, error) {
+	unclaims, err := b.bridgeL2SovereignReader.GetUnsetClaimsBlockRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get unclaim block range: %w", err)
+	}
+
+	unclaimsConverted := make([]agglayertypes.Unclaim, len(unclaims))
+
+	// Add the unclaim hash to the unclaim
+	for i, unclaim := range unclaims {
+		claim, err := b.bridgeSyncer.GetClaimByGlobalIndex(ctx, unclaim.BlockNumber, uint32(unclaim.BlockIndex), string(unclaim.GlobalIndex[:]))
+		if err != nil {
+			return nil, fmt.Errorf("failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %d", err, unclaim.BlockNumber, unclaim.BlockIndex, unclaim.GlobalIndex)
+		}
+		ibe, err := converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
+		unclaimsConverted[i] = agglayertypes.Unclaim{
+			UnclaimHash: ibe.Hash(),
+			BlockNumber: unclaim.BlockNumber,
+			BlockIndex:  unclaim.BlockIndex,
+		}
+	}
+
+	return unclaimsConverted, nil
 }

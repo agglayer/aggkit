@@ -225,6 +225,7 @@ func TestGenerateOptimisticAggchainProof(t *testing.T) {
 				optimisticSigner,
 				lerQuery,
 				nil, // gerQuerier
+				nil, // bridgeQuerier
 			)
 
 			proof, err := query.generateOptimisticAggchainProof(ctx, tc.buildParams, tc.request)
@@ -385,6 +386,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 				nil, // optimisticSigner
 				nil, // lerQuerier
 				gerQuerier,
+				nil, // bridgeQuerier
 			)
 
 			proof, root, err := query.GenerateAggchainProof(ctx, tc.lastProvenBlock, tc.buildParams.ToBlock, tc.buildParams)

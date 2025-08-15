@@ -32,6 +32,8 @@ type Config struct {
 	PPConfig `mapstructure:"PPConfig"`
 	// AgglayerClient is the Agglayer gRPC client configuration
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
+	// BridgeQuerier contains the configuration for the bridge querier
+	BridgeQuerier BridgeQuerierConfig `mapstructure:"BridgeQuerier"`
 }
 
 type PPConfig struct {
@@ -45,4 +47,9 @@ type LerQuerierConfig struct {
 	RollupManagerAddr ethCommon.Address `mapstructure:"RollupManagerAddr"`
 	// RollupCreationBlockL1 is the block number when the rollup was created on L1
 	RollupCreationBlockL1 uint64 `mapstructure:"RollupCreationBlockL1"`
+}
+
+type BridgeQuerierConfig struct {
+	// BridgeL2SovereignAddr is the address of the bridge L2 sovereign contract on L2 sovereign chain
+	BridgeL2SovereignAddr ethCommon.Address `mapstructure:"BridgeL2SovereignAddr"`
 }

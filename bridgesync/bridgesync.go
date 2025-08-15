@@ -494,16 +494,15 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 	return uint32(depositCount.Int64()), nil
 }
 
-// GetUnclaimBlockRange returns the block range of unset claimed
-func (s *BridgeSync) GetUnclaimBlockRange(ctx context.Context) (uint32, error) {
+func (s *BridgeSync) GetClaimByGlobalIndex(ctx context.Context, blockNumber uint64, blockIndex uint32, globalIndex string) (Claim, error) {
 	if s.processor.isHalted() {
-		return 0, sync.ErrInconsistentState
+		return Claim{}, sync.ErrInconsistentState
 	}
 
-	depositCount, err := s.bridgeContractV2.DepositCount(nil)
+	claim, err := s.processor.GetClaimByGlobalIndex(ctx, blockNumber, blockIndex, globalIndex)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get deposit count: %w", err)
+		return Claim{}, fmt.Errorf("failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %d", err, blockNumber, blockIndex, globalIndex)
 	}
 
-	return uint32(depositCount.Int64()), nil
+	return claim, nil
 }

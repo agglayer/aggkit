@@ -31,6 +31,7 @@ type aggchainProofQuery struct {
 	lerQuerier            types.LocalExitRootQuery
 	optimisticSigner      types.OptimisticSigner
 	gerQuerier            types.GERQuerier
+	bridgeQuerier         types.BridgeQuerier
 }
 
 // NewAggchainProofQuery creates a new instance of aggchainProofQuery with the provided dependencies.
@@ -41,6 +42,7 @@ func NewAggchainProofQuery(
 	optimisticSigner types.OptimisticSigner,
 	lerQuerier types.LocalExitRootQuery,
 	gerQuerier types.GERQuerier,
+	bridgeQuerier types.BridgeQuerier,
 ) *aggchainProofQuery {
 	return &aggchainProofQuery{
 		aggchainProofClient:   aggchainproofclient,
@@ -49,6 +51,7 @@ func NewAggchainProofQuery(
 		gerQuerier:            gerQuerier,
 		lerQuerier:            lerQuerier,
 		log:                   log,
+		bridgeQuerier:         bridgeQuerier,
 	}
 }
 
@@ -95,11 +98,15 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
 
-	// TODO - @temaniarpit27 Enable this when proto is updated
-	// removedGERs, err := a.gerQuerier.GetRemovedGERsBlockDetails(ctx, fromBlock, toBlock)
-	// if err != nil {
-	// 	return nil, nil, fmt.Errorf("aggchainProverFlow - error getting removed GERs block numbers: %w", err)
-	// }
+	removedGERs, err := a.gerQuerier.GetRemovedGERsBlockDetails(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting removed GERs block numbers: %w", err)
+	}
+
+	unsetClaims, err := a.bridgeQuerier.GetUnsetClaimsBlockRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting unset claims: %w", err)
+	}
 
 	var aggchainProof *types.AggchainProof
 	request := &types.AggchainProofRequest{
@@ -113,6 +120,8 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		},
 		GERLeavesWithBlockNumber:           injectedGERsProofs,
 		ImportedBridgeExitsWithBlockNumber: importedBridgeExits,
+		RemovedGers:                        removedGERs,
+		Unclaims:                           unsetClaims,
 	}
 	// It decide if must generate optimistic proof using CertType
 	optimisticMode := certBuildParams.CertificateType == types.CertificateTypeOptimistic
@@ -137,6 +146,8 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 	a.log.Infof("aggchainProverFlow - aggkit-prover fetched aggchain proof (optimisticMode: %t) for lastProvenBlock: %d, "+
 		"maxEndBlock: %d. root: %s.Message sent: %s", optimisticMode, lastProvenBlock, toBlock,
 		root.String(), request.String())
+
+	// TODO - filter unset claims from certBuildParams
 
 	return aggchainProof, root, nil
 }
@@ -180,6 +191,7 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error converting claim to imported bridge exit: %w", err)
 		}
+
 		importedBridgeExits = append(importedBridgeExits, &agglayertypes.ImportedBridgeExitWithBlockNumber{
 			ImportedBridgeExit: ibe,
 			BlockNumber:        claim.BlockNum,

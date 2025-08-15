@@ -8,6 +8,7 @@ import (
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -76,6 +77,7 @@ type L2BridgeSyncer interface {
 	OriginNetwork() uint32
 	BlockFinality() aggkittypes.BlockNumberFinality
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
+	GetClaimByGlobalIndex(ctx context.Context, blockNumber uint64, blockIndex uint32, globalIndex string) (bridgesync.Claim, error)
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement
@@ -88,6 +90,8 @@ type BridgeQuerier interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	OriginNetwork() uint32
 	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
+	GetUnsetClaimsBlockRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]agglayertypes.Unclaim, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
@@ -96,6 +100,12 @@ type ChainGERReader interface {
 		fromBlock, toBlock uint64) (map[common.Hash]l2gersync.GlobalExitRootInfo, error)
 	GetRemovedGERsForRange(ctx context.Context,
 		fromBlock, toBlock uint64) ([]agglayertypes.RemovedGER, error)
+}
+
+// BridgeL2SovereignReader is an interface defining functions that an BridgeL2SovereignReader should implement
+type BridgeL2SovereignReader interface {
+	GetUnsetClaimsBlockRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
@@ -252,7 +262,7 @@ type AggchainProofQuerier interface {
 	) (*AggchainProof, *treetypes.Root, error)
 }
 
-type BridgeL2Querier interface {
-	GetUnclaimBlockRange(ctx context.Context,
+type BridgeL2SovereignQuerier interface {
+	GetUnsetClaimsBlockRange(ctx context.Context,
 		fromBlock, toBlock uint64) ([]agglayertypes.Unclaim, error)
 }

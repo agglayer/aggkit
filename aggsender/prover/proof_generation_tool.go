@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/bridgesync"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/l2gersync"
 	"github.com/agglayer/aggkit/log"
@@ -43,6 +44,9 @@ type Config struct {
 
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
 	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`
+
+	// BridgeL2SovereignAddr is the address of the bridge L2 sovereign contract on L2 sovereign chain
+	BridgeL2SovereignAddr common.Address `mapstructure:"BridgeL2SovereignAddr"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs
@@ -86,8 +90,13 @@ func NewAggchainProofGenerationTool(
 		return nil, fmt.Errorf("error creating L2 GER reader: %w", err)
 	}
 
+	bridgeL2SovereignReader, err := bridgesync.NewBridgeL2SovereignReader(cfg.BridgeL2SovereignAddr, l2Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
+	}
+
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, bridgeL2SovereignReader)
 
 	baseFlow := flows.NewBaseFlow(
 		logger,
@@ -104,6 +113,7 @@ func NewAggchainProofGenerationTool(
 		nil, // optimistic signer is not used in the tool, so we pass nil
 		baseFlow,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
+		query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, bridgeL2SovereignReader),
 	)
 
 	return &AggchainProofGenerationTool{

@@ -19,13 +19,14 @@ func TestGetBridgesAndClaims(t *testing.T) {
 
 	ctx := context.Background()
 	testCases := []struct {
-		name            string
-		fromBlock       uint64
-		toBlock         uint64
-		mockFn          func(*mocks.L2BridgeSyncer)
-		expectedBridges []bridgesync.Bridge
-		expectedClaims  []bridgesync.Claim
-		expectedError   string
+		name                          string
+		fromBlock                     uint64
+		toBlock                       uint64
+		mockFn                        func(*mocks.L2BridgeSyncer)
+		mockBridgeL2SovereignReaderFn func(*mocks.BridgeL2SovereignReader)
+		expectedBridges               []bridgesync.Bridge
+		expectedClaims                []bridgesync.Claim
+		expectedError                 string
 	}{
 		{
 			name:      "success - valid bridges and claims",
@@ -92,7 +93,10 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0)
+			bridgeL2SovereignReader := new(mocks.BridgeL2SovereignReader)
+			tc.mockBridgeL2SovereignReaderFn(bridgeL2SovereignReader)
+
+			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, bridgeL2SovereignReader)
 
 			bridges, claims, err := bridgeQuerier.GetBridgesAndClaims(ctx, tc.fromBlock, tc.toBlock)
 			if tc.expectedError != "" {
@@ -114,11 +118,12 @@ func TestGetExitRootByIndex(t *testing.T) {
 
 	ctx := context.Background()
 	testCases := []struct {
-		name          string
-		index         uint32
-		mockFn        func(*mocks.L2BridgeSyncer)
-		expectedHash  common.Hash
-		expectedError string
+		name                          string
+		index                         uint32
+		mockFn                        func(*mocks.L2BridgeSyncer)
+		mockBridgeL2SovereignReaderFn func(*mocks.BridgeL2SovereignReader)
+		expectedHash                  common.Hash
+		expectedError                 string
 	}{
 		{
 			name:  "success - valid exit root",
@@ -150,7 +155,10 @@ func TestGetExitRootByIndex(t *testing.T) {
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0)
+			bridgeL2SovereignReader := new(mocks.BridgeL2SovereignReader)
+			tc.mockBridgeL2SovereignReaderFn(bridgeL2SovereignReader)
+
+			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, bridgeL2SovereignReader)
 
 			hash, err := bridgeQuerier.GetExitRootByIndex(ctx, tc.index)
 			if tc.expectedError != "" {
@@ -170,10 +178,11 @@ func TestGetLastProcessedBlock(t *testing.T) {
 
 	ctx := context.Background()
 	testCases := []struct {
-		name          string
-		mockFn        func(*mocks.L2BridgeSyncer)
-		expectedBlock uint64
-		expectedError string
+		name                          string
+		mockFn                        func(*mocks.L2BridgeSyncer)
+		mockBridgeL2SovereignReaderFn func(*mocks.BridgeL2SovereignReader)
+		expectedBlock                 uint64
+		expectedError                 string
 	}{
 		{
 			name: "success - valid last processed block",
@@ -201,7 +210,10 @@ func TestGetLastProcessedBlock(t *testing.T) {
 			mockSyncer.EXPECT().OriginNetwork().Return(1).Once()
 			tc.mockFn(mockSyncer)
 
-			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0)
+			bridgeL2SovereignReader := new(mocks.BridgeL2SovereignReader)
+			tc.mockBridgeL2SovereignReaderFn(bridgeL2SovereignReader)
+
+			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, bridgeL2SovereignReader)
 
 			block, err := bridgeQuerier.GetLastProcessedBlock(ctx)
 			if tc.expectedError != "" {
@@ -222,7 +234,9 @@ func TestOriginNetwork(t *testing.T) {
 	mockSyncer := new(mocks.L2BridgeSyncer)
 	mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
 
-	bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0)
+	bridgeL2SovereignReader := new(mocks.BridgeL2SovereignReader)
+
+	bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, bridgeL2SovereignReader)
 
 	originNetwork := bridgeQuerier.OriginNetwork()
 	require.Equal(t, uint32(1), originNetwork)
@@ -236,11 +250,12 @@ func TestWaitForSyncerToCatchUp(t *testing.T) {
 	ctx := context.Background()
 
 	testCases := []struct {
-		name                string
-		delayBetweenRetries time.Duration
-		block               uint64
-		mockFn              func(*mocks.L2BridgeSyncer)
-		expectedError       string
+		name                          string
+		delayBetweenRetries           time.Duration
+		block                         uint64
+		mockFn                        func(*mocks.L2BridgeSyncer)
+		mockBridgeL2SovereignReaderFn func(*mocks.BridgeL2SovereignReader)
+		expectedError                 string
 	}{
 		{
 			name:  "fail to get last processed block",

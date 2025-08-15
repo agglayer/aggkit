@@ -149,6 +149,7 @@ func start(cliCtx *cli.Context) error {
 				l1InfoTreeSync,
 				l2BridgeSync,
 				l1Client,
+				l2Client,
 				rollupDataQuerier,
 			)
 			if err != nil {
@@ -213,6 +214,7 @@ func createAggSenderValidator(ctx context.Context,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
+	l2Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
 
@@ -224,7 +226,11 @@ func createAggSenderValidator(ctx context.Context,
 		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
 	}
 
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
+	bridgeL2SovereignReader, err := bridgesync.NewBridgeL2SovereignReader(cfg.BridgeQuerier.BridgeL2SovereignAddr, l2Client)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
+	}
+	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration, bridgeL2SovereignReader)
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
 	lerQuerier, err := query.NewLERDataQuerier(
 		cfg.LerQuerier.RollupManagerAddr, cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)

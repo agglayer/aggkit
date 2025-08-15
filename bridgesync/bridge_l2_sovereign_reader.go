@@ -11,19 +11,19 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-type L2ClaimReader struct {
+type BridgeL2SovereignReader struct {
 	bridgeSovereignChain *bridgel2sovereignchain.Bridgel2sovereignchain
 }
 
-func NewL2ClaimReader(bridgeAddr common.Address, l2Client aggkittypes.BaseEthereumClienter) (*L2ClaimReader, error) {
+func NewBridgeL2SovereignReader(bridgeAddr common.Address, l2Client aggkittypes.BaseEthereumClienter) (*BridgeL2SovereignReader, error) {
 	bridgeSovereignChainContract, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, l2Client)
 	if err != nil {
 		return nil, err
 	}
-	return &L2ClaimReader{bridgeSovereignChain: bridgeSovereignChainContract}, nil
+	return &BridgeL2SovereignReader{bridgeSovereignChain: bridgeSovereignChainContract}, nil
 }
 
-func (r *L2ClaimReader) GetUnclaimBlockRange(ctx context.Context,
+func (r *BridgeL2SovereignReader) GetUnsetClaimsBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]types.Unclaim, error) {
 	unclaimIterator, err := r.bridgeSovereignChain.FilterUpdatedUnsetGlobalIndexHashChain(
 		&bind.FilterOpts{Start: fromBlock, End: &toBlock})
