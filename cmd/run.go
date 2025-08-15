@@ -95,12 +95,6 @@ func start(cliCtx *cli.Context) error {
 		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
 
-	committeeQuerier, err := query.NewECDSAMultisigCommitteeQuery(cfg.L1NetworkConfig.RollupAddr, l1Client)
-	if err != nil {
-		return fmt.Errorf("failed to create ECDSA multisig committee querier (SC address: %s): %w",
-			cfg.L1NetworkConfig.RollupAddr, err)
-	}
-
 	var rpcServices []jRPC.Service
 	for _, component := range components {
 		switch component {
@@ -120,6 +114,12 @@ func start(cliCtx *cli.Context) error {
 
 			go b.Start(cliCtx.Context)
 		case aggkitcommon.AGGSENDER:
+			committeeQuerier, err := query.NewECDSAMultisigCommitteeQuery(cfg.L1NetworkConfig.RollupAddr, l1Client)
+			if err != nil {
+				return fmt.Errorf("failed to create ECDSA multisig committee querier (SC address: %s): %w",
+					cfg.L1NetworkConfig.RollupAddr, err)
+			}
+
 			aggsender, err := createAggSender(
 				cliCtx.Context,
 				cfg.AggSender,

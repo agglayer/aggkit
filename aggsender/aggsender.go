@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
@@ -25,7 +26,6 @@ import (
 	"github.com/agglayer/aggkit/log"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
-	"golang.org/x/sync/errgroup"
 )
 
 type RateLimiter interface {
@@ -440,7 +440,6 @@ func (a *AggSender) pollValidators(
 ) ([][]byte, error) {
 	if len(validators) == 0 {
 		a.log.Warnf("skipping certificate validation, because there are no validators configured")
-
 		return nil, nil
 	}
 
@@ -449,67 +448,65 @@ func (a *AggSender) pollValidators(
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	sigCh := make(chan []byte, len(validators))
-	errCh := make(chan error, len(validators))
+	type signResult struct {
+		signature []byte
+		err       error
+	}
 
-	g, gctx := errgroup.WithContext(ctx)
+	results := make(chan signResult, len(validators))
+	var wg sync.WaitGroup
 
 	for _, v := range validators {
-		g.Go(func() error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+
 			status, err := v.HealthCheck(ctx)
 			if err != nil {
 				a.log.Warnf("error checking validator health (URL=%s): %v", v.URL(), err)
+				results <- signResult{err: err}
+				return
 			}
 
 			if !status.IsHealthy() {
-				a.log.Warnf("validator status (URL=%s) is not healthy: %s", v.URL(), status.String())
-				return nil // skip the unhealthy validator
+				a.log.Warnf("validator (URL=%s) is not healthy: %s", v.URL(), status.String())
+				return // skip unhealthy validator
 			}
 
 			a.log.Infof("validator health check (URL=%s): %s", v.URL(), status.String())
 
-			sig, err := v.ValidateAndSignCertificate(gctx, certificate, lastL2BlockInCert)
+			sig, err := v.ValidateAndSignCertificate(ctx, certificate, lastL2BlockInCert)
 			if err != nil {
 				a.log.Errorf("validator %v failed to validate the certificate: %v", v, err)
-				errCh <- err
-				return nil // don't fail the group
+				results <- signResult{err: err}
+				return
 			}
 
-			select {
-			case sigCh <- sig:
-				if uint32(len(sigCh)) >= signaturesThreshold {
-					cancel() // early stop, because threshold is reached
-				}
-			case <-gctx.Done():
-				return nil
-			}
-			return nil
-		})
+			results <- signResult{signature: sig}
+		}()
 	}
 
-	// Wait for all goroutines to finish in background
 	go func() {
-		_ = g.Wait()
-		close(sigCh)
-		close(errCh)
+		wg.Wait()
+		close(results)
 	}()
 
 	signatures := make([][]byte, 0, len(validators))
-	for sig := range sigCh {
-		signatures = append(signatures, sig)
+	var errs []error
+
+	for res := range results {
+		if res.err != nil {
+			errs = append(errs, res.err)
+			continue
+		}
+
+		signatures = append(signatures, res.signature)
 		if uint32(len(signatures)) >= signaturesThreshold {
-			cancel()
+			cancel() // signal other goroutines to stop early
 			break
 		}
 	}
 
-	// Collect all errors from errCh
-	errs := make([]error, 0)
-	for err := range errCh {
-		errs = append(errs, err)
-	}
-
-	// If we didn’t reach threshold, return combined error
 	if uint32(len(signatures)) < signaturesThreshold {
 		if len(errs) > 0 {
 			return signatures, errors.Join(errs...)
