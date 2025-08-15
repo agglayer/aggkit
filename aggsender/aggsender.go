@@ -185,6 +185,8 @@ func (a *AggSender) Start(ctx context.Context) {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
 
+	// TODO: The local validator implementation is there solely for testing purposes
+	// and it should be removed after integration testing is done.
 	if !a.cfg.RequireValidatorCall {
 		a.localValidator = validator.NewLocalValidator(
 			a.log,
@@ -453,7 +455,7 @@ func (a *AggSender) pollValidators(
 		err       error
 	}
 
-	results := make(chan signResult, len(validators))
+	resultsCh := make(chan signResult, len(validators))
 	var wg sync.WaitGroup
 
 	for _, v := range validators {
@@ -470,7 +472,7 @@ func (a *AggSender) pollValidators(
 			status, err := v.HealthCheck(ctx)
 			if err != nil {
 				a.log.Warnf("error checking validator health (URL=%s): %v", v.URL(), err)
-				results <- signResult{err: err}
+				resultsCh <- signResult{err: err}
 				return
 			}
 
@@ -484,23 +486,23 @@ func (a *AggSender) pollValidators(
 			sig, err := v.ValidateAndSignCertificate(ctx, certificate, lastL2BlockInCert)
 			if err != nil {
 				a.log.Errorf("validator %v failed to validate the certificate: %v", v, err)
-				results <- signResult{err: err}
+				resultsCh <- signResult{err: err}
 				return
 			}
 
-			results <- signResult{signature: sig}
+			resultsCh <- signResult{signature: sig}
 		}(v)
 	}
 
 	go func() {
 		wg.Wait()
-		close(results)
+		close(resultsCh)
 	}()
 
 	signatures := make([][]byte, 0, len(validators))
 	var errs []error
 
-	for res := range results {
+	for res := range resultsCh {
 		if res.err != nil {
 			errs = append(errs, res.err)
 			continue
