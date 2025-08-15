@@ -584,3 +584,112 @@ func TestCalculateCertificateType(t *testing.T) {
 		})
 	}
 }
+
+func TestGetBlockNumFromGlobalIndex(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	testClaim := bridgesync.Claim{
+		GlobalIndex:        bridgesync.GenerateGlobalIndex(true, 0, 1),
+		IsMessage:          false,
+		Metadata:           crypto.Keccak256([]byte("test metadata")),
+		OriginNetwork:      1,
+		OriginAddress:      common.HexToAddress("0x123"),
+		DestinationNetwork: 2,
+		DestinationAddress: common.HexToAddress("0x456"),
+		Amount:             big.NewInt(100),
+		BlockNum:           150,
+	}
+
+	testIbe, err := converters.ConvertToImportedBridgeExitWithoutClaimData(testClaim)
+	require.NoError(t, err)
+
+	testCases := []struct {
+		name             string
+		globalIndex      *agglayertypes.GlobalIndex
+		bridgeExitHash   common.Hash
+		mockFn           func(*mocks.L2BridgeSyncer)
+		expectedErr      string
+		expectedBlockNum uint64
+	}{
+		{
+			name:           "successful match - single claim",
+			globalIndex:    testIbe.GlobalIndex,
+			bridgeExitHash: testIbe.BridgeExit.Hash(),
+			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
+				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, testIbe.GlobalIndex.ToBigInt()).Return([]bridgesync.Claim{testClaim}, nil)
+			},
+			expectedBlockNum: 150,
+		},
+		{
+			name:           "successful match - multiple claims with matching hash",
+			globalIndex:    testIbe.GlobalIndex,
+			bridgeExitHash: testIbe.BridgeExit.Hash(),
+			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
+				claim1 := testClaim
+				claim1.BlockNum = 100
+				claim1.Amount = big.NewInt(50) // Different amount to generate different hash
+
+				claim2 := testClaim
+				claim2.BlockNum = 200 // This should be returned
+
+				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, testIbe.GlobalIndex.ToBigInt()).Return([]bridgesync.Claim{claim1, claim2}, nil)
+			},
+			expectedBlockNum: 200,
+		},
+		{
+			name:           "no matching bridge exit hash",
+			globalIndex:    testIbe.GlobalIndex,
+			bridgeExitHash: common.HexToHash("0x999"), // Different hash that won't match
+			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
+				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, testIbe.GlobalIndex.ToBigInt()).Return([]bridgesync.Claim{testClaim}, nil)
+			},
+			expectedErr: "no claim found for bridge exit hash",
+		},
+		{
+			name:           "empty claims slice",
+			globalIndex:    testIbe.GlobalIndex,
+			bridgeExitHash: testIbe.BridgeExit.Hash(),
+			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
+				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, testIbe.GlobalIndex.ToBigInt()).Return([]bridgesync.Claim{}, nil)
+			},
+			expectedErr: "no claim found for bridge exit hash",
+		},
+		{
+			name:           "error getting claims by global index",
+			globalIndex:    testIbe.GlobalIndex,
+			bridgeExitHash: testIbe.BridgeExit.Hash(),
+			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
+				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, testIbe.GlobalIndex.ToBigInt()).Return(nil, errors.New("database error"))
+			},
+			expectedErr: "failed to get claim by global index",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockL2BridgeSyncer := mocks.NewL2BridgeSyncer(t)
+
+			if tc.mockFn != nil {
+				tc.mockFn(mockL2BridgeSyncer)
+			}
+
+			certQuerier := &certificateQuerier{
+				l2BridgeSyncer: mockL2BridgeSyncer,
+			}
+
+			blockNum, err := certQuerier.getBlockNumFromGlobalIndex(ctx, tc.globalIndex, tc.bridgeExitHash)
+			if tc.expectedErr != "" {
+				require.ErrorContains(t, err, tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedBlockNum, blockNum)
+			}
+
+			mockL2BridgeSyncer.AssertExpectations(t)
+		})
+	}
+}

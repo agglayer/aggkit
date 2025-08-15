@@ -172,6 +172,12 @@ func TestGetClaims(t *testing.T) {
 	require.ErrorIs(t, err, sync.ErrInconsistentState)
 }
 
+func TestGetClaimsByGlobalIndex(t *testing.T) {
+	s := BridgeSync{processor: &processor{halted: true}}
+	_, err := s.GetClaimsByGlobalIndex(context.Background(), new(big.Int))
+	require.ErrorIs(t, err, sync.ErrInconsistentState)
+}
+
 func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	const (
 		syncBlockChunkSize         = uint64(100)

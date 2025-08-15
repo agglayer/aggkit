@@ -550,6 +550,17 @@ func TestExploratory_EstimateCertSize(t *testing.T) {
 	fmt.Printf("aggchain data signature size: %d bytes\n", size)
 }
 
+func TestGetLatestSettledImportedBridgeExit(t *testing.T) {
+	t.Parallel()
+
+	client := &AgglayerGRPCClient{}
+	gi, h, err := client.GetLatestSettledImportedBridgeExit(t.Context())
+
+	require.NoError(t, err)
+	require.Equal(t, &types.GlobalIndex{}, gi)
+	require.Equal(t, common.Hash{}, h)
+}
+
 func estimateRequestSize(t *testing.T, req proto.Message) int {
 	t.Helper()
 

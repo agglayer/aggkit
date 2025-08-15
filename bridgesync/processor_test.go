@@ -2132,8 +2132,6 @@ func TestBridgeSyncRuntimeData_IsCompatible(t *testing.T) {
 }
 
 func TestGetClaimByGlobalIndex(t *testing.T) {
-	t.Parallel()
-
 	path := path.Join(t.TempDir(), "bridgesyncTestGetClaimByGlobalIndex.sqlite")
 	logger := log.WithFields("module", "bridge-syncer")
 	p, err := newProcessor(path, "bridge-syncer", logger)
@@ -2143,8 +2141,6 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 
 	// Test case 1: Claim not found
 	t.Run("claim not found", func(t *testing.T) {
-		t.Parallel()
-
 		nonExistentGlobalIndex := big.NewInt(999999)
 		claims, err := p.GetClaimsByGlobalIndex(ctx, nonExistentGlobalIndex)
 		require.NoError(t, err)
@@ -2227,8 +2223,6 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 
 	// Test case 3: Retrieve existing claims by global index
 	t.Run("retrieve existing claims", func(t *testing.T) {
-		t.Parallel()
-
 		claims, err := p.GetClaimsByGlobalIndex(ctx, globalIndexToTest)
 		require.NoError(t, err)
 		require.Len(t, claims, 2)                   // Two claims with the same global index
@@ -2320,10 +2314,18 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 
 	// Test case 6: Test with nil global index (should handle gracefully)
 	t.Run("nil global index", func(t *testing.T) {
-		t.Parallel()
-
 		claims, err := p.GetClaimsByGlobalIndex(ctx, nil)
 		require.ErrorContains(t, err, "global index cannot be nil")
+		require.Empty(t, claims)
+	})
+
+	// Test case 7: db returns error
+	t.Run("db error", func(t *testing.T) {
+		p.db.Close() // Close the processor's DB to simulate an error
+
+		// Attempt to retrieve claims with the invalid processor
+		claims, err := p.GetClaimsByGlobalIndex(ctx, globalIndexToTest)
+		require.Error(t, err)
 		require.Empty(t, claims)
 	})
 }
