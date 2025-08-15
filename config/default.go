@@ -185,7 +185,7 @@ KeepCertificatesHistory = true
 MaxCertSize = 8388608
 DryRun = false
 EnableRPC = true
-# PessimisticProof or AggchainProver
+# PessimisticProof or AggchainProof
 Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
@@ -265,6 +265,8 @@ Signer = {{AggsenderPrivateKey}}
 MaxCertSize = "{{AggSender.MaxCertSize}}"
 MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
 DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
+# PessimisticProof or AggchainProof
+Mode = "PessimisticProof"
 [Validator.ServerConfig]
 	Host = "0.0.0.0"
 	Port = 5578
@@ -275,6 +277,9 @@ DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 	RollupCreationBlockL1 = "{{AggSender.RollupCreationBlockL1}}"
 [Validator.PPConfig]
 	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
+[Validator.FEPConfig]
+	SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
+	RequireNoBlockGap = "{{AggSender.RequireNoFEPBlockGap}}"
 [Validator.AgglayerClient]
 	Cached = true
 	[Validator.AgglayerClient.ConfigurationCache]

@@ -12,6 +12,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+var _ types.AggsenderFlow = (*PPFlow)(nil)
+
 // PPFlow is a struct that holds the logic for the regular pessimistic proof flow
 type PPFlow struct {
 	baseFlow              types.AggsenderFlowBaser
@@ -52,10 +54,6 @@ func NewPPFlow(log types.Logger,
 // For PPFlow  there are no special checks to do, so it just returns nil
 func (p *PPFlow) CheckInitialStatus(ctx context.Context) error {
 	return nil
-}
-
-func (p *PPFlow) GeneratePreBuildParams(ctx context.Context) (*types.CertificatePreBuildParams, error) {
-	return p.baseFlow.GeneratePreBuildParams(ctx, types.CertificateTypePP)
 }
 
 func (p *PPFlow) GenerateBuildParams(ctx context.Context,
@@ -152,4 +150,18 @@ func (p *PPFlow) signCertificate(ctx context.Context,
 	}
 
 	return certificate, nil
+}
+
+// ValidateCertificate validates the certificate for the PP specific things
+func (p *PPFlow) ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error {
+	if cert == nil {
+		return fmt.Errorf("ppFlow - certificate is nil")
+	}
+
+	_, ok := cert.AggchainData.(*agglayertypes.AggchainDataSignature)
+	if !ok {
+		return fmt.Errorf("ppFlow - certificate AggchainData is not of type AggchainDataSignature")
+	}
+
+	return nil
 }

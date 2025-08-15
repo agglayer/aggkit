@@ -1,12 +1,18 @@
 package validator
 
 import (
+	"fmt"
+
 	"github.com/agglayer/aggkit/agglayer"
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
+
+var errInvalidSovereignRollupAddr = fmt.Errorf("SovereignRollupAddr must be set for AggchainProof mode")
 
 // Config defines the configuration for the validator validator service.
 type Config struct {
@@ -29,9 +35,13 @@ type Config struct {
 	// which is used to query the LER data from the RollupManager contract
 	LerQuerier LerQuerierConfig `mapstructure:"LerQuerierConfig"`
 	// PPConfig specific configuration for Pessimistic mode
-	PPConfig `mapstructure:"PPConfig"`
+	PPConfig PPConfig `mapstructure:"PPConfig"`
+	// FEPConfig specific configuration for FEP mode
+	FEPConfig FEPConfig `mapstructure:"FEPConfig"`
 	// AgglayerClient is the Agglayer gRPC client configuration
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
+	// Mode is the mode of the AggSender Validator (regular pessimistic proof mode or the aggchain proof mode)
+	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
 }
 
 type PPConfig struct {
@@ -40,9 +50,40 @@ type PPConfig struct {
 	RequireOneBridgeInPPCertificate bool `mapstructure:"RequireOneBridgeInPPCertificate"`
 }
 
+type FEPConfig struct {
+	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
+	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
+	// RequireNoBlockGap is true if the AggSender should not accept a gap between
+	// lastBlock from lastCertificate and first block of FEP
+	RequireNoBlockGap bool `mapstructure:"RequireNoBlockGap"`
+}
+
 type LerQuerierConfig struct {
 	// RollupManagerAddr is the address of the RollupManager contract on L1
 	RollupManagerAddr ethCommon.Address `mapstructure:"RollupManagerAddr"`
 	// RollupCreationBlockL1 is the block number when the rollup was created on L1
 	RollupCreationBlockL1 uint64 `mapstructure:"RollupCreationBlockL1"`
+}
+
+// Validate checks if the configuration is valid
+func (c *Config) Validate() error {
+	if c.Mode != aggsendertypes.PessimisticProofMode.String() &&
+		c.Mode != aggsendertypes.AggchainProofMode.String() {
+		return fmt.Errorf("invalid mode %s, must be one of %s or %s",
+			c.Mode,
+			aggsendertypes.PessimisticProofMode.String(),
+			aggsendertypes.AggchainProofMode.String())
+	}
+
+	if c.Mode == aggsendertypes.AggchainProofMode.String() {
+		if c.FEPConfig.SovereignRollupAddr == aggkitcommon.ZeroAddress {
+			return errInvalidSovereignRollupAddr
+		}
+	}
+
+	if err := c.AgglayerClient.Validate(); err != nil {
+		return fmt.Errorf("invalid agglayer client config: %w", err)
+	}
+
+	return nil
 }

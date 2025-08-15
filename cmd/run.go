@@ -21,6 +21,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender"
 	aggsendercfg "github.com/agglayer/aggkit/aggsender/config"
 	"github.com/agglayer/aggkit/aggsender/flows"
+	"github.com/agglayer/aggkit/aggsender/optimistic"
 	"github.com/agglayer/aggkit/aggsender/prover"
 	"github.com/agglayer/aggkit/aggsender/query"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
@@ -38,7 +39,6 @@ import (
 	"github.com/agglayer/aggkit/prometheus"
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
-	"github.com/agglayer/go_signer/signer"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/urfave/cli/v2"
@@ -214,49 +214,87 @@ func createAggSenderValidator(ctx context.Context,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid aggsender validator config: %w", err)
+	}
+
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
-
-	signer, err := signer.NewSigner(ctx, 0, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
-	if err != nil {
-		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
-	}
-	if err := signer.Initialize(ctx); err != nil {
-		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
-	}
-
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration)
-	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
-	lerQuerier := query.NewLERDataQuerier(cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)
 	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
-	flowPP := flows.NewPPFlow(
-		logger,
-		flows.NewBaseFlow(
-			logger,
-			l2BridgeQuerier,
-			nil, // storage
-			l1InfoTreeQuerier,
-			lerQuerier,
-			flows.BaseFlowConfig{
-				MaxCertSize:          cfg.MaxCertSize,
-				StartL2Block:         0,
-				RequireNoFEPBlockGap: false, //  for PP doesnt apply it
-			},
-		),
-		nil, // storage
-		l1InfoTreeQuerier,
-		l2BridgeQuerier,
-		signer, // we reuse the signer, but the PP signature is not use
-		cfg.RequireOneBridgeInPPCertificate,
-		cfg.MaxL2BlockNumber,
+
+	var (
+		flow                 validator.FlowInterface
+		commonFlowComponents *flows.CommonFlowComponents
 	)
+
+	switch cfg.Mode {
+	case aggsendertypes.PessimisticProofMode.String():
+		commonFlowComponents, err = flows.CreateCommonFlowComponents(
+			ctx, logger,
+			nil, // storage is not used in validator,
+			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, false,
+			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create common flow components: %w", err)
+		}
+
+		flow = flows.NewPPFlow(
+			logger,
+			flows.NewBaseFlow(
+				logger,
+				commonFlowComponents.L2BridgeQuerier,
+				nil, // storage is not used in validator
+				commonFlowComponents.L1InfoTreeDataQuerier,
+				commonFlowComponents.LERQuerier,
+				flows.NewBaseFlowConfig(cfg.MaxCertSize, 0, false),
+			),
+			nil, // storage is not used in validator
+			commonFlowComponents.L1InfoTreeDataQuerier,
+			commonFlowComponents.L2BridgeQuerier,
+			commonFlowComponents.Signer,
+			cfg.PPConfig.RequireOneBridgeInPPCertificate,
+			cfg.MaxL2BlockNumber,
+		)
+	case aggsendertypes.AggchainProofMode.String():
+		commonFlowComponents, err = flows.CreateCommonFlowComponents(
+			ctx, logger,
+			nil, // storage is not used in validator,
+			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, cfg.FEPConfig.RequireNoBlockGap,
+			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create common flow components: %w", err)
+		}
+
+		optimisticModeQuerier, err := optimistic.NewOptimisticModeQuerierFromContract(
+			cfg.FEPConfig.SovereignRollupAddr, l1Client)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create optimistic mode querier: %w", err)
+		}
+
+		flow = flows.NewAggchainProverFlow(
+			logger,
+			flows.NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
+			commonFlowComponents.BaseFlow,
+			nil, // storage is not used in validator
+			commonFlowComponents.L1InfoTreeDataQuerier,
+			commonFlowComponents.L2BridgeQuerier,
+			l1Client,
+			commonFlowComponents.Signer,
+			optimisticModeQuerier,
+			nil, // we don't query the prover in validator mode
+		)
+	default:
+		return nil, fmt.Errorf("unsupported mode %s", cfg.Mode)
+	}
 
 	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
 		logger,
-		aggsendertypes.PessimisticProofMode,
-		aggkitcommon.ZeroAddress,
+		aggsendertypes.AggsenderMode(cfg.Mode),
+		cfg.FEPConfig.SovereignRollupAddr,
 		l1Client,
 	)
 	if err != nil {
@@ -269,8 +307,14 @@ func createAggSenderValidator(ctx context.Context,
 		agglayerClient,
 	)
 
-	return aggsender.NewAggsenderValidator(ctx, logger, cfg, flowPP,
-		l1InfoTreeQuerier, agglayerClient, certQuerier, lerQuerier, signer)
+	return aggsender.NewAggsenderValidator(
+		ctx, logger, cfg, flow,
+		commonFlowComponents.L1InfoTreeDataQuerier,
+		agglayerClient,
+		certQuerier,
+		commonFlowComponents.LERQuerier,
+		commonFlowComponents.Signer,
+	)
 }
 
 func createAggSender(
@@ -323,31 +367,29 @@ func createAggSender(
 		return nil, fmt.Errorf("failed to create AggSender: %w", err)
 	}
 
-	if cfg.Mode == aggsendertypes.PessimisticProofMode.String() {
-		// validatorObj is only supported in PessimisticProof mode
-		var validatorObj aggsendertypes.CertificateValidateAndSigner
-		if cfg.RequireValidatorCall {
-			validatorObj, err = validator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
-			if err != nil {
-				return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
-			}
-		} else {
-			// this is only temporary, until we test it in local, then we will only use the remote validator
-			validatorObj = validator.NewLocalValidator(
-				logger,
-				aggsender.GetStorage(),
-				validator.NewAggsenderValidator(
-					logger,
-					aggsender.GetFlow(),
-					query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
-					aggsender.GetCertQuerier(),
-					aggsender.GetLERQuerier(),
-				),
-			)
+	// validatorObj is only supported in PessimisticProof mode
+	var validatorObj aggsendertypes.CertificateValidateAndSigner
+	if cfg.RequireValidatorCall {
+		validatorObj, err = validator.NewRemoteValidator(cfg.ValidatorClient, aggsender.GetStorage())
+		if err != nil {
+			return nil, fmt.Errorf("failed to create RemoteValidatorClient: %w", err)
 		}
-
-		aggsender.AttachValidator(validatorObj)
+	} else {
+		// this is only temporary, until we test it in local, then we will only use the remote validator
+		validatorObj = validator.NewLocalValidator(
+			logger,
+			aggsender.GetStorage(),
+			validator.NewAggsenderValidator(
+				logger,
+				aggsender.GetFlow(),
+				query.NewL1InfoTreeDataQuerier(l1EthClient, l1InfoTreeSync),
+				aggsender.GetCertQuerier(),
+				aggsender.GetLERQuerier(),
+			),
+		)
 	}
+
+	aggsender.AttachValidator(validatorObj)
 
 	return aggsender, nil
 }
