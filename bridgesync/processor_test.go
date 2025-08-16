@@ -2445,3 +2445,244 @@ func createTestLegacyTokenMigration(blockNum uint64, blockPos int) *LegacyTokenM
 		Calldata:            []byte{},
 	}
 }
+
+func TestProcessorGetClaimByGlobalIndex(t *testing.T) {
+	tests := []struct {
+		name          string
+		blockNumber   uint64
+		blockIndex    uint32
+		globalIndex   string
+		setupData     func(*processor) error
+		expectedClaim Claim
+		expectedErr   string
+	}{
+		{
+			name:        "successful retrieval of existing claim",
+			blockNumber: 1,
+			blockIndex:  0,
+			globalIndex: "1000000000000000000",
+			setupData: func(p *processor) error {
+				// Create a test block first
+				block := sync.Block{
+					Num:    1,
+					Hash:   common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					Events: []interface{}{},
+				}
+
+				// Insert block
+				_, err := p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String())
+				if err != nil {
+					return err
+				}
+
+				// Create and insert a test claim
+				claim := &Claim{
+					BlockNum:            1,
+					BlockPos:            0,
+					GlobalIndex:         big.NewInt(1000000000000000000),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					DestinationAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					Amount:              big.NewInt(1000000000000000000),
+					ProofLocalExitRoot:  [32]common.Hash{},
+					ProofRollupExitRoot: [32]common.Hash{},
+					MainnetExitRoot:     common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					RollupExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					GlobalExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					DestinationNetwork:  1,
+					Metadata:            []byte{},
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+					FromAddress:         common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+				}
+
+				return meddler.Insert(p.db, "claim", claim)
+			},
+			expectedClaim: Claim{
+				BlockNum:            1,
+				BlockPos:            0,
+				GlobalIndex:         big.NewInt(1000000000000000000),
+				OriginNetwork:       1,
+				OriginAddress:       common.HexToAddress("0x1234567890123456789012345678901234567890"),
+				DestinationAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
+				Amount:              big.NewInt(1000000000000000000),
+				ProofLocalExitRoot:  [32]common.Hash{},
+				ProofRollupExitRoot: [32]common.Hash{},
+				MainnetExitRoot:     common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+				RollupExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+				GlobalExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+				DestinationNetwork:  1,
+				Metadata:            []byte{},
+				IsMessage:           false,
+				BlockTimestamp:      1234567890,
+				FromAddress:         common.HexToAddress("0x1234567890123456789012345678901234567890"),
+				TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+			},
+			expectedErr: "",
+		},
+		{
+			name:        "claim not found - non-existent block number",
+			blockNumber: 999,
+			blockIndex:  0,
+			globalIndex: "1000000000000000000",
+			setupData: func(p *processor) error {
+				// Create a test block with different number
+				block := sync.Block{
+					Num:    1,
+					Hash:   common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					Events: []interface{}{},
+				}
+
+				_, err := p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String())
+				if err != nil {
+					return err
+				}
+
+				claim := &Claim{
+					BlockNum:            1,
+					BlockPos:            0,
+					GlobalIndex:         big.NewInt(1000000000000000000),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					DestinationAddress:  common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					Amount:              big.NewInt(1000000000000000000),
+					ProofLocalExitRoot:  [32]common.Hash{},
+					ProofRollupExitRoot: [32]common.Hash{},
+					MainnetExitRoot:     common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					RollupExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					GlobalExitRoot:      common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					DestinationNetwork:  1,
+					Metadata:            []byte{},
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+					FromAddress:         common.HexToAddress("0x1234567890123456789012345678901234567890"),
+					TxHash:              common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+				}
+
+				return meddler.Insert(p.db, "claim", claim)
+			},
+			expectedClaim: Claim{},
+			expectedErr:   "claim not found",
+		},
+		{
+			name:        "multiple claims with different global indices",
+			blockNumber: 1,
+			blockIndex:  1,
+			globalIndex: "2000000000000000000",
+			setupData: func(p *processor) error {
+				// Create a test block
+				block := sync.Block{
+					Num:    1,
+					Hash:   common.HexToHash("0x1234567890123456789012345678901234567890123456789012345678901234"),
+					Events: []interface{}{},
+				}
+
+				_, err := p.db.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`, block.Num, block.Hash.String())
+				if err != nil {
+					return err
+				}
+
+				// Insert first claim
+				claim1 := &Claim{
+					BlockNum:            1,
+					BlockPos:            0,
+					GlobalIndex:         big.NewInt(1000000000000000000),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					Amount:              big.NewInt(1000000000000000000),
+					ProofLocalExitRoot:  [32]common.Hash{},
+					ProofRollupExitRoot: [32]common.Hash{},
+					MainnetExitRoot:     common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+					RollupExitRoot:      common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+					GlobalExitRoot:      common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+					DestinationNetwork:  1,
+					Metadata:            []byte{},
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+					FromAddress:         common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					TxHash:              common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+				}
+
+				// Insert second claim
+				claim2 := &Claim{
+					BlockNum:            1,
+					BlockPos:            1,
+					GlobalIndex:         big.NewInt(2000000000000000000),
+					OriginNetwork:       2,
+					OriginAddress:       common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(2000000000000000000),
+					ProofLocalExitRoot:  [32]common.Hash{},
+					ProofRollupExitRoot: [32]common.Hash{},
+					MainnetExitRoot:     common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+					RollupExitRoot:      common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+					GlobalExitRoot:      common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+					DestinationNetwork:  2,
+					Metadata:            []byte{},
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+					FromAddress:         common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					TxHash:              common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				}
+
+				if err := meddler.Insert(p.db, "claim", claim1); err != nil {
+					return err
+				}
+				return meddler.Insert(p.db, "claim", claim2)
+			},
+			expectedClaim: Claim{
+				BlockNum:            1,
+				BlockPos:            1,
+				GlobalIndex:         big.NewInt(2000000000000000000),
+				OriginNetwork:       2,
+				OriginAddress:       common.HexToAddress("0x2222222222222222222222222222222222222222"),
+				DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+				Amount:              big.NewInt(2000000000000000000),
+				ProofLocalExitRoot:  [32]common.Hash{},
+				ProofRollupExitRoot: [32]common.Hash{},
+				MainnetExitRoot:     common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				RollupExitRoot:      common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				GlobalExitRoot:      common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				DestinationNetwork:  2,
+				Metadata:            []byte{},
+				IsMessage:           false,
+				BlockTimestamp:      1234567890,
+				FromAddress:         common.HexToAddress("0x2222222222222222222222222222222222222222"),
+				TxHash:              common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+			},
+			expectedErr: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Create a new processor for each test
+			p := createTestProcessor(t, "GetClaimByGlobalIndex")
+
+			// Setup test data
+			if tt.setupData != nil {
+				err := tt.setupData(p)
+				require.NoError(t, err)
+			}
+
+			// Execute the function
+			claim, err := p.GetClaimByGlobalIndex(context.Background(), tt.blockNumber, tt.blockIndex, tt.globalIndex)
+
+			// Verify results
+			if tt.expectedErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.expectedErr)
+				require.Equal(t, Claim{}, claim)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expectedClaim, claim)
+			}
+		})
+	}
+}
+
+// Helper functions to reduce test redundancy

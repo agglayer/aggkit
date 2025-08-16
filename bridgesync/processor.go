@@ -1012,21 +1012,42 @@ func (p *processor) GetClaimByGlobalIndex(
 	blockIndex uint32,
 	globalIndex string,
 ) (Claim, error) {
-	var claim Claim
-
-	err := p.db.QueryRow(
+	rows, err := p.db.Query(
 		fmt.Sprintf(
-			`SELECT * FROM %s WHERE block_num = $1 AND block_index = $2 AND global_index = $3`,
+			`SELECT * FROM %s WHERE block_num = $1 AND block_pos = $2 AND global_index = $3`,
 			claimTableName,
 		),
 		blockNumber, blockIndex, globalIndex,
-	).Scan(&claim)
+	)
 	if err != nil {
 		return Claim{}, fmt.Errorf(
 			"failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %s",
 			err, blockNumber, blockIndex, globalIndex,
 		)
 	}
+	defer rows.Close()
 
-	return claim, nil
+	claims := []*Claim{}
+	if err = meddler.ScanAll(rows, &claims); err != nil {
+		return Claim{}, fmt.Errorf(
+			"failed to scan claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %s",
+			err, blockNumber, blockIndex, globalIndex,
+		)
+	}
+
+	if len(claims) == 0 {
+		return Claim{}, fmt.Errorf(
+			"claim not found, blockNumber: %d, blockIndex: %d, globalIndex: %s",
+			blockNumber, blockIndex, globalIndex,
+		)
+	}
+
+	if len(claims) > 1 {
+		return Claim{}, fmt.Errorf(
+			"multiple claims found, expected 1, got %d, blockNumber: %d, blockIndex: %d, globalIndex: %s",
+			len(claims), blockNumber, blockIndex, globalIndex,
+		)
+	}
+
+	return *claims[0], nil
 }
