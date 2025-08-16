@@ -150,11 +150,19 @@ func (b *bridgeDataQuerier) GetUnsetClaimsBlockRange(ctx context.Context,
 
 	// Add the unclaim hash to the unclaim
 	for i, unclaim := range unclaims {
-		claim, err := b.bridgeSyncer.GetClaimByGlobalIndex(ctx, unclaim.BlockNumber, uint32(unclaim.BlockIndex), string(unclaim.GlobalIndex[:]))
+		claim, err := b.bridgeSyncer.GetClaimByGlobalIndex(
+			ctx, unclaim.BlockNumber, uint32(unclaim.BlockIndex), string(unclaim.GlobalIndex[:]),
+		)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %d", err, unclaim.BlockNumber, unclaim.BlockIndex, unclaim.GlobalIndex)
+			return nil, fmt.Errorf(
+				"failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %s",
+				err, unclaim.BlockNumber, unclaim.BlockIndex, unclaim.GlobalIndex,
+			)
 		}
 		ibe, err := converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert claim to imported bridge exit: %w", err)
+		}
 		unclaimsConverted[i] = agglayertypes.Unclaim{
 			UnclaimHash: ibe.Hash(),
 			BlockNumber: unclaim.BlockNumber,

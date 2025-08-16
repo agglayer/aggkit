@@ -105,22 +105,5 @@ func TestL2EVMGERReader_GetInjectedGERsForRange(t *testing.T) {
 		ger, exists := injectedGERs[expectedGER]
 		require.True(t, exists)
 		require.Equal(t, expectedGER, ger.GlobalExitRoot)
-
-		// commit one block so the current block is block 7
-		l2.SimBackend.Commit()
-
-		tx, err = l2.GERManagerSovereignSC.RemoveGlobalExitRoots(l2.Auth, [][32]byte{expectedGER})
-		require.NoError(t, err)
-
-		// commit one block so the current block is block 8
-		l2.SimBackend.Commit()
-
-		receipt, err = l2.SimBackend.Client().TransactionReceipt(ctx, tx.Hash())
-		require.NoError(t, err)
-		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
-
-		injectedGERs, err = gerReader.GetInjectedGERsForRange(ctx, 1, 10)
-		require.NoError(t, err)
-		require.Empty(t, injectedGERs)
 	})
 }

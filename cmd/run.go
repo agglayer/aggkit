@@ -226,11 +226,18 @@ func createAggSenderValidator(ctx context.Context,
 		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
 	}
 
-	bridgeL2SovereignReader, err := bridgesync.NewBridgeL2SovereignReader(cfg.BridgeQuerier.BridgeL2SovereignAddr, l2Client)
+	bridgeL2SovereignReader, err := bridgesync.NewBridgeL2SovereignReader(
+		cfg.BridgeQuerier.BridgeL2SovereignAddr, l2Client,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 	}
-	l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration, bridgeL2SovereignReader)
+	l2BridgeQuerier := query.NewBridgeDataQuerier(
+		logger,
+		l2Syncer,
+		cfg.DelayBetweenRetries.Duration,
+		bridgeL2SovereignReader,
+	)
 	l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSync)
 	lerQuerier, err := query.NewLERDataQuerier(
 		cfg.LerQuerier.RollupManagerAddr, cfg.LerQuerier.RollupCreationBlockL1, rollupDataQuerier)

@@ -33,6 +33,7 @@ genesisBlockNumber = 0
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
 	AggOracleCommitteeAddr = "0x0000000000000000000000000000000000000000"
+	BridgeAddr = "0x0000000000000000000000000000000000000000"
 `
 
 // This doesnt below to config, but are the vars used

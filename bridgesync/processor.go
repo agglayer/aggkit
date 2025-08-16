@@ -1006,12 +1006,26 @@ func (p *processor) unhalt() {
 	p.log.Info("processor unhalted")
 }
 
-func (p *processor) GetClaimByGlobalIndex(ctx context.Context, blockNumber uint64, blockIndex uint32, globalIndex string) (Claim, error) {
+func (p *processor) GetClaimByGlobalIndex(
+	ctx context.Context,
+	blockNumber uint64,
+	blockIndex uint32,
+	globalIndex string,
+) (Claim, error) {
 	var claim Claim
 
-	err := p.db.QueryRow(fmt.Sprintf(`SELECT * FROM %s WHERE block_num = $1 AND block_index = $2 AND global_index = $3`, claimTableName), blockNumber, blockIndex, globalIndex).Scan(&claim)
+	err := p.db.QueryRow(
+		fmt.Sprintf(
+			`SELECT * FROM %s WHERE block_num = $1 AND block_index = $2 AND global_index = $3`,
+			claimTableName,
+		),
+		blockNumber, blockIndex, globalIndex,
+	).Scan(&claim)
 	if err != nil {
-		return Claim{}, fmt.Errorf("failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %d", err, blockNumber, blockIndex, globalIndex)
+		return Claim{}, fmt.Errorf(
+			"failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %s",
+			err, blockNumber, blockIndex, globalIndex,
+		)
 	}
 
 	return claim, nil

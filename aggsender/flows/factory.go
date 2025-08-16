@@ -60,7 +60,9 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 		}
-		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration, bridgeL2SovereignReader)
+		l2BridgeQuerier := query.NewBridgeDataQuerier(
+			logger, l2Syncer, cfg.DelayBetweenRetries.Duration, bridgeL2SovereignReader,
+		)
 		l1InfoTreeQuerier := query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer)
 		logger.Infof("Aggsender signer address: %s", signer.PublicAddress().Hex())
 		baseFlow := NewBaseFlow(
@@ -115,7 +117,9 @@ func NewFlow(
 		if err != nil {
 			return nil, fmt.Errorf("failed to create bridge L2 sovereign reader: %w", err)
 		}
-		l2BridgeQuerier := query.NewBridgeDataQuerier(logger, l2Syncer, cfg.DelayBetweenRetries.Duration, bridgeL2SovereignReader)
+		l2BridgeQuerier := query.NewBridgeDataQuerier(
+			logger, l2Syncer, cfg.DelayBetweenRetries.Duration, bridgeL2SovereignReader,
+		)
 		baseFlow := NewBaseFlow(
 			logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
 			NewBaseFlowConfig(cfg.MaxCertSize, startL2Block, cfg.RequireNoFEPBlockGap),

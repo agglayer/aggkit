@@ -98,15 +98,15 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting imported bridge exits for prover: %w", err)
 	}
 
-	removedGERs, err := a.gerQuerier.GetRemovedGERsBlockDetails(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting removed GERs block numbers: %w", err)
-	}
+	// removedGERs, err := a.gerQuerier.GetRemovedGERsBlockDetails(ctx, fromBlock, toBlock)
+	// if err != nil {
+	// 	return nil, nil, fmt.Errorf("aggchainProverFlow - error getting removed GERs block numbers: %w", err)
+	// }
 
-	unsetClaims, err := a.bridgeQuerier.GetUnsetClaimsBlockRange(ctx, fromBlock, toBlock)
-	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting unset claims: %w", err)
-	}
+	// unsetClaims, err := a.bridgeQuerier.GetUnsetClaimsBlockRange(ctx, fromBlock, toBlock)
+	// if err != nil {
+	// 	return nil, nil, fmt.Errorf("aggchainProverFlow - error getting unset claims: %w", err)
+	// }
 
 	var aggchainProof *types.AggchainProof
 	request := &types.AggchainProofRequest{
@@ -120,8 +120,6 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		},
 		GERLeavesWithBlockNumber:           injectedGERsProofs,
 		ImportedBridgeExitsWithBlockNumber: importedBridgeExits,
-		RemovedGers:                        removedGERs,
-		Unclaims:                           unsetClaims,
 	}
 	// It decide if must generate optimistic proof using CertType
 	optimisticMode := certBuildParams.CertificateType == types.CertificateTypeOptimistic

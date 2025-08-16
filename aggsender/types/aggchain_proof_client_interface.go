@@ -23,8 +23,6 @@ type AggchainProofRequest struct {
 	L1InfoTreeMerkleProof              agglayer.MerkleProof
 	GERLeavesWithBlockNumber           map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber
 	ImportedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber
-	RemovedGers                        []agglayer.RemovedGER
-	Unclaims                           []agglayer.Unclaim
 }
 
 func NewAggchainProofRequest(
@@ -34,8 +32,6 @@ func NewAggchainProofRequest(
 	l1InfoTreeMerkleProof agglayer.MerkleProof,
 	gerLeavesWithBlockNumber map[common.Hash]*agglayer.ProvenInsertedGERWithBlockNumber,
 	importedBridgeExitsWithBlockNumber []*agglayer.ImportedBridgeExitWithBlockNumber,
-	removedGers []agglayer.RemovedGER,
-	unclaims []agglayer.Unclaim,
 ) *AggchainProofRequest {
 	return &AggchainProofRequest{
 		LastProvenBlock:                    lastProvenBlock,
@@ -45,8 +41,6 @@ func NewAggchainProofRequest(
 		L1InfoTreeMerkleProof:              l1InfoTreeMerkleProof,
 		GERLeavesWithBlockNumber:           gerLeavesWithBlockNumber,
 		ImportedBridgeExitsWithBlockNumber: importedBridgeExitsWithBlockNumber,
-		RemovedGers:                        removedGers,
-		Unclaims:                           unclaims,
 	}
 }
 
@@ -67,8 +61,6 @@ func (r *AggchainProofRequest) String() string {
 	},
 	injectedGERsProofs: %+v,
 	importedBridgeExits: %+v,
-	removedGers: %+v,
-	unclaims: %+v,
 	}`,
 		r.LastProvenBlock,
 		r.RequestedEndBlock,
@@ -78,7 +70,5 @@ func (r *AggchainProofRequest) String() string {
 		r.L1InfoTreeMerkleProof.Proof,
 		r.GERLeavesWithBlockNumber,
 		r.ImportedBridgeExitsWithBlockNumber,
-		r.RemovedGers,
-		r.Unclaims,
 	)
 }

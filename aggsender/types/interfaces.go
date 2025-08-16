@@ -77,7 +77,9 @@ type L2BridgeSyncer interface {
 	OriginNetwork() uint32
 	BlockFinality() aggkittypes.BlockNumberFinality
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
-	GetClaimByGlobalIndex(ctx context.Context, blockNumber uint64, blockIndex uint32, globalIndex string) (bridgesync.Claim, error)
+	GetClaimByGlobalIndex(
+		ctx context.Context, blockNumber uint64, blockIndex uint32, globalIndex string,
+	) (bridgesync.Claim, error)
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement

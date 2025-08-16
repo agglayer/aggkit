@@ -15,7 +15,10 @@ type BridgeL2SovereignReader struct {
 	bridgeSovereignChain *bridgel2sovereignchain.Bridgel2sovereignchain
 }
 
-func NewBridgeL2SovereignReader(bridgeAddr common.Address, l2Client aggkittypes.BaseEthereumClienter) (*BridgeL2SovereignReader, error) {
+func NewBridgeL2SovereignReader(
+	bridgeAddr common.Address,
+	l2Client aggkittypes.BaseEthereumClienter,
+) (*BridgeL2SovereignReader, error) {
 	bridgeSovereignChainContract, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, l2Client)
 	if err != nil {
 		return nil, err
@@ -43,7 +46,7 @@ func (r *BridgeL2SovereignReader) GetUnsetClaimsBlockRange(ctx context.Context,
 		unclaims = append(unclaims, types.Unclaim{
 			GlobalIndex: globalIndex,
 			BlockNumber: unclaimIterator.Event.Raw.BlockNumber,
-			BlockIndex:  uint(unclaimIterator.Event.Raw.Index),
+			BlockIndex:  unclaimIterator.Event.Raw.Index,
 		})
 	}
 

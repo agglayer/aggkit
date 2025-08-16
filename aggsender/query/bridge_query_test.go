@@ -40,6 +40,9 @@ func TestGetBridgesAndClaims(t *testing.T) {
 					{BlockNum: 200, BlockPos: 1},
 				}, nil)
 			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				// No expectations needed for this test case
+			},
 			expectedBridges: []bridgesync.Bridge{
 				{BlockNum: 100, BlockPos: 1},
 			},
@@ -53,6 +56,9 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			toBlock:   200,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, errors.New("some error"))
+			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				// No expectations needed for this test case
 			},
 			expectedBridges: nil,
 			expectedClaims:  nil,
@@ -68,6 +74,9 @@ func TestGetBridgesAndClaims(t *testing.T) {
 				}, nil)
 				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, errors.New("some error"))
 			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				// No expectations needed for this test case
+			},
 			expectedError: "error getting claims: some error",
 		},
 		{
@@ -77,6 +86,9 @@ func TestGetBridgesAndClaims(t *testing.T) {
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetBridges(ctx, uint64(100), uint64(200)).Return(nil, nil)
 				mockSyncer.EXPECT().GetClaims(ctx, uint64(100), uint64(200)).Return(nil, nil)
+			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				// No expectations needed for this test case
 			},
 			expectedBridges: nil,
 			expectedClaims:  nil,
@@ -133,6 +145,9 @@ func TestGetExitRootByIndex(t *testing.T) {
 					Hash: common.HexToHash("0x1234"),
 				}, nil)
 			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				// No expectations needed for this test case
+			},
 			expectedHash: common.HexToHash("0x1234"),
 		},
 		{
@@ -140,6 +155,9 @@ func TestGetExitRootByIndex(t *testing.T) {
 			index: 2,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetExitRootByIndex(ctx, uint32(2)).Return(treetypes.Root{}, errors.New("some error"))
+			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				// No expectations needed for this test case
 			},
 			expectedError: "error getting exit root by index: 2. Error: some error",
 		},
@@ -189,12 +207,18 @@ func TestGetLastProcessedBlock(t *testing.T) {
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(150), nil)
 			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				// No expectations needed for this test case
+			},
 			expectedBlock: 150,
 		},
 		{
 			name: "error - failed to fetch last processed block",
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				mockSyncer.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(0), errors.New("some error"))
+			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				// No expectations needed for this test case
 			},
 			expectedError: "error getting last processed block: some error",
 		},
