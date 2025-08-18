@@ -662,7 +662,7 @@ func (a *getTotalRecordsAction) desc() string {
 func (a *getTotalRecordsAction) execute(t *testing.T) {
 	t.Helper()
 
-	recordsNum, err := a.p.GetTotalNumberOfRecords(a.tableName, "")
+	recordsNum, err := a.p.GetTotalNumberOfRecords(context.Background(), a.tableName, "")
 	require.NoError(t, err)
 	require.Equal(t, a.expectedRecordsNum, recordsNum)
 }
@@ -2290,7 +2290,7 @@ func TestProcessor_DatabaseConnectionErrors(t *testing.T) {
 		p := createTestProcessor(t, "DatabaseConnectionErrors")
 
 		// Test with invalid table name
-		_, err := p.GetTotalNumberOfRecords("invalid_table_name", "")
+		_, err := p.GetTotalNumberOfRecords(context.Background(), "invalid_table_name", "")
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "no such table")
 	})

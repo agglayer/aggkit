@@ -387,7 +387,7 @@ func newProcessor(
 func (p *processor) GetBridges(
 	ctx context.Context, fromBlock, toBlock uint64,
 ) ([]Bridge, error) {
-	rows, err := p.queryBlockRange(p.db, fromBlock, toBlock, bridgeTableName)
+	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, bridgeTableName)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for block range [%d..%d]", fromBlock, toBlock)
@@ -419,7 +419,7 @@ func (p *processor) GetBridges(
 
 //nolint:dupl
 func (p *processor) GetClaims(ctx context.Context, fromBlock, toBlock uint64) ([]Claim, error) {
-	rows, err := p.queryBlockRange(p.db, fromBlock, toBlock, claimTableName)
+	rows, err := p.queryBlockRange(ctx, p.db, fromBlock, toBlock, claimTableName)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for block range [%d..%d]", fromBlock, toBlock)
@@ -454,7 +454,7 @@ func (p *processor) GetBridgesPaged(
 ) ([]*Bridge, int, error) {
 	whereClause := p.buildBridgesFilterClause(depositCount, networkIDs, fromAddress)
 	orderByClause := "deposit_count DESC"
-	bridgesCount, err := p.GetTotalNumberOfRecords(bridgeTableName, whereClause)
+	bridgesCount, err := p.GetTotalNumberOfRecords(ctx, bridgeTableName, whereClause)
 	if err != nil {
 		return []*Bridge{}, 0, err
 	}
@@ -521,7 +521,7 @@ func (p *processor) GetClaimsPaged(
 	ctx context.Context, pageNumber, pageSize uint32, networkIDs []uint32, fromAddress string,
 ) ([]*Claim, int, error) {
 	whereClause := p.buildClaimsFilterClause(networkIDs, fromAddress)
-	claimsCount, err := p.GetTotalNumberOfRecords(claimTableName, whereClause)
+	claimsCount, err := p.GetTotalNumberOfRecords(ctx, claimTableName, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -585,7 +585,7 @@ func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress str
 func (p *processor) GetLegacyTokenMigrations(
 	ctx context.Context, pageNumber, pageSize uint32) ([]*LegacyTokenMigration, int, error) {
 	whereClause := ""
-	legacyTokenMigrationsCount, err := p.GetTotalNumberOfRecords(legacyTokenMigrationTableName, whereClause)
+	legacyTokenMigrationsCount, err := p.GetTotalNumberOfRecords(ctx, legacyTokenMigrationTableName, whereClause)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", legacyTokenMigrationTableName, err)
 	}
@@ -629,11 +629,19 @@ func (p *processor) GetLegacyTokenMigrations(
 	return tokenMigrations, legacyTokenMigrationsCount, nil
 }
 
-func (p *processor) queryBlockRange(tx dbtypes.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
-	if err := p.isBlockProcessed(tx, toBlock); err != nil {
+func (p *processor) queryBlockRange(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
+	if err := p.isBlockProcessed(ctx, tx, toBlock); err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(fmt.Sprintf(`
+
+	sqlDB, ok := tx.(*sql.DB)
+	if !ok {
+		return nil, fmt.Errorf("expected *sql.DB, got %T", tx)
+	}
+
+	// Create a context with database timeout
+	dbCtx, _ := p.withDatabaseTimeout(ctx)
+	rows, err := sqlDB.QueryContext(dbCtx, fmt.Sprintf(`
 		SELECT * FROM %s
 		WHERE block_num >= $1 AND block_num <= $2
 		ORDER BY block_num ASC, block_pos ASC;
@@ -657,7 +665,9 @@ func (p *processor) queryPagedWithContext(ctx context.Context, tx dbtypes.Querie
 		return nil, fmt.Errorf("expected *sql.DB, got %T", tx)
 	}
 
-	rows, err := sqlDB.QueryContext(ctx, fmt.Sprintf(`
+	// Create a context with database timeout
+	dbCtx, _ := p.withDatabaseTimeout(ctx)
+	rows, err := sqlDB.QueryContext(dbCtx, fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		%s
@@ -673,8 +683,8 @@ func (p *processor) queryPagedWithContext(ctx context.Context, tx dbtypes.Querie
 	return rows, nil
 }
 
-func (p *processor) isBlockProcessed(tx dbtypes.Querier, blockNum uint64) error {
-	lpb, err := p.getLastProcessedBlockWithTx(tx)
+func (p *processor) isBlockProcessed(ctx context.Context, tx dbtypes.Querier, blockNum uint64) error {
+	lpb, err := p.getLastProcessedBlockWithTx(ctx, tx)
 	if err != nil {
 		return err
 	}
@@ -687,13 +697,22 @@ func (p *processor) isBlockProcessed(tx dbtypes.Querier, blockNum uint64) error 
 // GetLastProcessedBlock returns the last processed block by the processor, including blocks
 // that don't have events
 func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
-	return p.getLastProcessedBlockWithTx(p.db)
+	return p.getLastProcessedBlockWithTx(ctx, p.db)
 }
 
-func (p *processor) getLastProcessedBlockWithTx(tx dbtypes.Querier) (uint64, error) {
+func (p *processor) getLastProcessedBlockWithTx(ctx context.Context, tx dbtypes.Querier) (uint64, error) {
 	var lastProcessedBlockNum uint64
 
-	row := tx.QueryRow("SELECT num FROM block ORDER BY num DESC LIMIT 1;")
+	sqlDB, ok := tx.(*sql.DB)
+	if !ok {
+		return 0, fmt.Errorf("expected *sql.DB, got %T", tx)
+	}
+
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	row := sqlDB.QueryRowContext(dbCtx, "SELECT num FROM block ORDER BY num DESC LIMIT 1;")
 	err := row.Scan(&lastProcessedBlockNum)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
@@ -705,7 +724,12 @@ func (p *processor) getLastProcessedBlockWithTx(tx dbtypes.Querier) (uint64, err
 // as if the last block processed was firstReorgedBlock-1
 func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 	p.log.Infof("reorg detected at %d block", firstReorgedBlock)
-	tx, err := db.NewTx(ctx, p.db)
+
+	// Create a context with database timeout for the transaction
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	tx, err := db.NewTx(dbCtx, p.db)
 	if err != nil {
 		p.log.Errorf("failed to start transaction for reorg: %v", err)
 		return err
@@ -756,7 +780,12 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
 		return sync.ErrInconsistentState
 	}
-	tx, err := db.NewTx(ctx, p.db)
+
+	// Create a context with database timeout for the transaction
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
+	tx, err := db.NewTx(dbCtx, p.db)
 	if err != nil {
 		p.log.Errorf("failed to start transaction for block %d: %v", block.Num, err)
 		return err
@@ -842,13 +871,17 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 }
 
 // GetTotalNumberOfRecords returns the total number of records in the given table
-func (p *processor) GetTotalNumberOfRecords(tableName, whereClause string) (int, error) {
+func (p *processor) GetTotalNumberOfRecords(ctx context.Context, tableName, whereClause string) (int, error) {
 	if !tableNameRegex.MatchString(tableName) {
 		return 0, fmt.Errorf("invalid table name '%s' provided", tableName)
 	}
 
+	// Create a context with database timeout
+	dbCtx, cancel := p.withDatabaseTimeout(ctx)
+	defer cancel()
+
 	count := 0
-	err := p.db.QueryRow(fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s%s;`, tableName, whereClause)).Scan(&count)
+	err := p.db.QueryRowContext(dbCtx, fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s%s;`, tableName, whereClause)).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
@@ -858,11 +891,7 @@ func (p *processor) GetTotalNumberOfRecords(tableName, whereClause string) (int,
 
 // GetTokenMappings returns the paged token mappings from the database
 func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
-	// Create a context with database timeout for the entire operation
-	dbCtx, cancel := context.WithTimeout(ctx, p.databaseQueryTimeout)
-	defer cancel()
-
-	totalTokenMappings, err := p.GetTotalNumberOfRecords(tokenMappingTableName, "")
+	totalTokenMappings, err := p.GetTotalNumberOfRecords(ctx, tokenMappingTableName, "")
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
 	}
@@ -876,7 +905,7 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 		return nil, 0, fmt.Errorf("failed to calculate offset for pageNumber=%d, pageSize=%d: %w", pageNumber, pageSize, err)
 	}
 
-	tokenMappings, err := p.fetchTokenMappings(dbCtx, pageSize, offset)
+	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -1024,4 +1053,8 @@ func (p *processor) unhalt() {
 	p.halted = false
 	p.haltedReason = ""
 	p.log.Info("processor unhalted")
+}
+
+func (p *processor) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), p.databaseQueryTimeout)
 }
