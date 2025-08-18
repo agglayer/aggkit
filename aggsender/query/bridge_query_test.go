@@ -477,8 +477,6 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
-
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -499,7 +497,9 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 
 				// We expect this to panic due to the design issue
 				require.Panics(t, func() {
-					bridgeQuerier.GetUnsetClaimsBlockRange(ctx, tc.fromBlock, tc.toBlock)
+					_, err := bridgeQuerier.GetUnsetClaimsBlockRange(ctx, tc.fromBlock, tc.toBlock)
+					// We don't check the error here because we expect a panic to occur first
+					_ = err
 				})
 				return
 			}

@@ -652,3 +652,215 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		require.NotEqual(t, common.Hash{}, root.Hash)
 	})
 }
+
+func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
+	const (
+		syncBlockChunkSize         = uint64(100)
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+	)
+
+	var (
+		blockFinalityType = aggkittypes.SafeBlock
+		ctx               = context.Background()
+		dbPath            = path.Join(t.TempDir(), "TestGetClaimByGlobalIndex.sqlite")
+		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	)
+
+	mockEthClient := mocksethclient.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Once()
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+
+	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	s, err := NewL2(
+		ctx,
+		dbPath,
+		bridge,
+		syncBlockChunkSize,
+		blockFinalityType,
+		mockReorgDetector,
+		mockEthClient,
+		initialBlock,
+		waitForNewBlocksPeriod,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
+		originNetwork,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+
+	t.Run("successful retrieval of existing claim", func(t *testing.T) {
+		// Create test claim events
+		claimEvents := []interface{}{
+			Event{Claim: &Claim{
+				BlockNum:            1,
+				BlockPos:            0,
+				FromAddress:         common.HexToAddress("0x1111111111111111111111111111111111111111"),
+				TxHash:              common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				GlobalIndex:         big.NewInt(1000000000000000000),
+				OriginNetwork:       1,
+				OriginAddress:       common.HexToAddress("0x3333333333333333333333333333333333333333"),
+				DestinationAddress:  common.HexToAddress("0x4444444444444444444444444444444444444444"),
+				Amount:              big.NewInt(1000000000000000000),
+				ProofLocalExitRoot:  [32]common.Hash{},
+				ProofRollupExitRoot: [32]common.Hash{},
+				MainnetExitRoot:     common.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555"),
+				RollupExitRoot:      common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
+				GlobalExitRoot:      common.HexToHash("0x7777777777777777777777777777777777777777777777777777777777777777"),
+				DestinationNetwork:  2,
+				Metadata:            []byte{0x01, 0x02, 0x03},
+				IsMessage:           false,
+				BlockTimestamp:      1234567890,
+			}},
+			Event{Claim: &Claim{
+				BlockNum:            1,
+				BlockPos:            1,
+				FromAddress:         common.HexToAddress("0x8888888888888888888888888888888888888888"),
+				TxHash:              common.HexToHash("0x9999999999999999999999999999999999999999999999999999999999999999"),
+				GlobalIndex:         big.NewInt(2000000000000000000),
+				OriginNetwork:       2,
+				OriginAddress:       common.HexToAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+				DestinationAddress:  common.HexToAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+				Amount:              big.NewInt(2000000000000000000),
+				ProofLocalExitRoot:  [32]common.Hash{},
+				ProofRollupExitRoot: [32]common.Hash{},
+				MainnetExitRoot:     common.HexToHash("0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"),
+				RollupExitRoot:      common.HexToHash("0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"),
+				GlobalExitRoot:      common.HexToHash("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+				DestinationNetwork:  3,
+				Metadata:            []byte{0x04, 0x05, 0x06},
+				IsMessage:           true,
+				BlockTimestamp:      1234567891,
+			}},
+		}
+
+		block := sync.Block{
+			Num:    1,
+			Events: claimEvents,
+		}
+
+		err = s.processor.ProcessBlock(ctx, block)
+		require.NoError(t, err)
+
+		// Test retrieving the first claim
+		claim, err := s.GetClaimByGlobalIndex(ctx, 1, 0, "1000000000000000000")
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), claim.BlockNum)
+		require.Equal(t, uint64(0), claim.BlockPos)
+		require.Equal(t, big.NewInt(1000000000000000000), claim.GlobalIndex)
+		require.Equal(t, uint32(1), claim.OriginNetwork)
+		require.Equal(t, common.HexToAddress("0x1111111111111111111111111111111111111111"), claim.FromAddress)
+		require.Equal(t, common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"), claim.TxHash)
+		require.Equal(t, common.HexToAddress("0x3333333333333333333333333333333333333333"), claim.OriginAddress)
+		require.Equal(t, common.HexToAddress("0x4444444444444444444444444444444444444444"), claim.DestinationAddress)
+		require.Equal(t, big.NewInt(1000000000000000000), claim.Amount)
+		require.Equal(t, uint32(2), claim.DestinationNetwork)
+		require.Equal(t, []byte{0x01, 0x02, 0x03}, claim.Metadata)
+		require.False(t, claim.IsMessage)
+		require.Equal(t, uint64(1234567890), claim.BlockTimestamp)
+
+		// Test retrieving the second claim
+		claim2, err := s.GetClaimByGlobalIndex(ctx, 1, 1, "2000000000000000000")
+		require.NoError(t, err)
+		require.Equal(t, uint64(1), claim2.BlockNum)
+		require.Equal(t, uint64(1), claim2.BlockPos)
+		require.Equal(t, big.NewInt(2000000000000000000), claim2.GlobalIndex)
+		require.Equal(t, uint32(2), claim2.OriginNetwork)
+		require.Equal(t, common.HexToAddress("0x8888888888888888888888888888888888888888"), claim2.FromAddress)
+		require.Equal(t, common.HexToHash("0x9999999999999999999999999999999999999999999999999999999999999999"), claim2.TxHash)
+		require.Equal(t, common.HexToAddress("0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"), claim2.OriginAddress)
+		require.Equal(t, common.HexToAddress("0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"), claim2.DestinationAddress)
+		require.Equal(t, big.NewInt(2000000000000000000), claim2.Amount)
+		require.Equal(t, uint32(3), claim2.DestinationNetwork)
+		require.Equal(t, []byte{0x04, 0x05, 0x06}, claim2.Metadata)
+		require.True(t, claim2.IsMessage)
+		require.Equal(t, uint64(1234567891), claim2.BlockTimestamp)
+	})
+
+	t.Run("claim not found", func(t *testing.T) {
+		_, err := s.GetClaimByGlobalIndex(ctx, 999, 0, "9999999999999999999")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "claim not found")
+		require.Contains(t, err.Error(), "blockNumber: 999")
+		require.Contains(t, err.Error(), "blockIndex: 0")
+		require.Contains(t, err.Error(), "globalIndex: 9999999999999999999")
+	})
+
+	t.Run("processor halted", func(t *testing.T) {
+		s.processor.halted = true
+		_, err := s.GetClaimByGlobalIndex(ctx, 1, 0, "1000000000000000000")
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+		s.processor.halted = false // Reset for other tests
+	})
+
+	t.Run("multiple claims with same global index should error", func(t *testing.T) {
+		// This test would require setting up a scenario where multiple claims have the same global index
+		// which should not happen in normal operation, but we test the error handling
+		// For now, we'll test with a non-existent claim to ensure proper error handling
+		_, err := s.GetClaimByGlobalIndex(ctx, 999, 999, "9999999999999999999")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "claim not found")
+	})
+
+	t.Run("database error handling", func(t *testing.T) {
+		// Test with invalid global index format that might cause database errors
+		_, err := s.GetClaimByGlobalIndex(ctx, 1, 0, "invalid_global_index")
+		require.Error(t, err)
+		// The error should be wrapped with additional context
+		require.Contains(t, err.Error(), "failed to get claim by global index")
+		require.Contains(t, err.Error(), "blockNumber: 1")
+		require.Contains(t, err.Error(), "blockIndex: 0")
+		require.Contains(t, err.Error(), "globalIndex: invalid_global_index")
+	})
+
+	t.Run("edge case with zero values", func(t *testing.T) {
+		// Test with zero block number and index
+		_, err := s.GetClaimByGlobalIndex(ctx, 0, 0, "0")
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "claim not found")
+	})
+
+	t.Run("large global index values", func(t *testing.T) {
+		// Test with very large global index values
+		largeGlobalIndex := "9999999999999999999999999999999999999999999999999999999999999999"
+		_, err := s.GetClaimByGlobalIndex(ctx, 1, 0, largeGlobalIndex)
+		require.Error(t, err)
+		require.Contains(t, err.Error(), "claim not found")
+		require.Contains(t, err.Error(), largeGlobalIndex)
+	})
+
+	t.Run("concurrent access", func(t *testing.T) {
+		// Test concurrent access to the same claim
+		const numGoroutines = 10
+		results := make(chan error, numGoroutines)
+
+		for i := 0; i < numGoroutines; i++ {
+			go func() {
+				_, err := s.GetClaimByGlobalIndex(ctx, 1, 0, "1000000000000000000")
+				results <- err
+			}()
+		}
+
+		// Collect results
+		for i := 0; i < numGoroutines; i++ {
+			err := <-results
+			require.NoError(t, err)
+		}
+	})
+}

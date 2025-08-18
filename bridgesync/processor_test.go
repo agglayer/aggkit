@@ -2447,6 +2447,7 @@ func createTestLegacyTokenMigration(blockNum uint64, blockPos int) *LegacyTokenM
 }
 
 func TestProcessorGetClaimByGlobalIndex(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name          string
 		blockNumber   uint64
