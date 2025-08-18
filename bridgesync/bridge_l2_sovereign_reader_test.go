@@ -32,7 +32,11 @@ func (m *MockBridgel2sovereignchain) FilterUpdatedUnsetGlobalIndexHashChain(opts
 	if args.Get(0) == nil {
 		return nil, args.Error(1)
 	}
-	return args.Get(0).(*bridgel2sovereignchain.Bridgel2sovereignchainUpdatedUnsetGlobalIndexHashChainIterator), args.Error(1)
+	result, ok := args.Get(0).(*bridgel2sovereignchain.Bridgel2sovereignchainUpdatedUnsetGlobalIndexHashChainIterator)
+	if !ok {
+		return nil, args.Error(1)
+	}
+	return result, args.Error(1)
 }
 
 // MockIterator is a mock for the event iterator
@@ -104,7 +108,9 @@ func TestNewBridgeL2SovereignReader(t *testing.T) {
 				require.Contains(t, r, "nil pointer dereference")
 			}
 		}()
-		NewBridgeL2SovereignReader(bridgeAddr, nil)
+		_, err := NewBridgeL2SovereignReader(bridgeAddr, nil)
+		// We expect an error due to nil client, but we're testing the function signature
+		_ = err
 	}()
 
 	// Test that the function returns the expected types
@@ -134,7 +140,9 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsBlockRange_Logic(t *testing.T) {
 				require.Contains(t, r, "nil pointer dereference")
 			}
 		}()
-		reader.GetUnsetClaimsBlockRange(ctx, fromBlock, toBlock)
+		_, err := reader.GetUnsetClaimsBlockRange(ctx, fromBlock, toBlock)
+		// We expect an error due to nil pointer, but we're testing the method signature
+		_ = err
 	}()
 }
 
