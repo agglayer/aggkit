@@ -468,7 +468,7 @@ func (p *processor) GetBridgesPaged(
 		return nil, 0, err
 	}
 
-	rows, err := p.queryPagedWithContext(ctx, p.db, offset, pageSize, bridgeTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, bridgeTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no bridges were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
@@ -537,7 +537,7 @@ func (p *processor) GetClaimsPaged(
 
 	orderByClause := "block_num DESC, block_pos DESC"
 
-	rows, err := p.queryPagedWithContext(ctx, p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, claimTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			p.log.Debugf("no claims were found for provided parameters (pageNumber=%d, pageSize=%d)",
@@ -600,7 +600,7 @@ func (p *processor) GetLegacyTokenMigrations(
 	}
 
 	orderByClause := "block_num DESC, block_pos DESC"
-	rows, err := p.queryPagedWithContext(
+	rows, err := p.queryPaged(
 		ctx, p.db, offset, pageSize, legacyTokenMigrationTableName, orderByClause, whereClause,
 	)
 	if err != nil {
@@ -655,8 +655,8 @@ func (p *processor) queryBlockRange(ctx context.Context, tx dbtypes.Querier, fro
 	return rows, nil
 }
 
-// queryPagedWithContext returns a paged result from the given table with context support
-func (p *processor) queryPagedWithContext(ctx context.Context, tx dbtypes.Querier,
+// queryPaged returns a paged result from the given table with context support
+func (p *processor) queryPaged(ctx context.Context, tx dbtypes.Querier,
 	offset, pageSize uint32,
 	table, orderByClause, whereClause string,
 ) (*sql.Rows, error) {
@@ -917,7 +917,7 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
 	orderByClause := "block_num DESC"
 
-	rows, err := p.queryPagedWithContext(ctx, p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			pageNumber := (offset / pageSize) + 1
