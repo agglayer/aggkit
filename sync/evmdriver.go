@@ -14,6 +14,11 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
+const (
+	// DefaultSyncTimeout is the default timeout for sync operations to prevent hanging
+	DefaultSyncTimeout = 5 * time.Minute
+)
+
 var ErrInconsistentState = errors.New("state is inconsistent, try again later once the state is consolidated")
 
 type Block struct {
@@ -141,8 +146,8 @@ reset:
 	}
 
 	// setup context to cancel downloader and/or block processor
-	// Add a 5-minute timeout to prevent FilterLogs calls from hanging indefinitely
-	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Minute)
+	// Add a timeout to prevent FilterLogs calls from hanging indefinitely
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, DefaultSyncTimeout)
 	defer timeoutCancel()
 
 	cancellableCtx, cancel := context.WithCancel(timeoutCtx)
