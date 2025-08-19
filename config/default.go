@@ -166,7 +166,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-DBQueryTimeout = "{{defaultDB'QueryTimeout}}"
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"
