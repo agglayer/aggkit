@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -140,7 +141,11 @@ reset:
 	}
 
 	// setup context to cancel downloader and/or block processor
-	cancellableCtx, cancel := context.WithCancel(ctx)
+	// Add a 5-minute timeout to prevent FilterLogs calls from hanging indefinitely
+	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, 5*time.Minute)
+	defer timeoutCancel()
+
+	cancellableCtx, cancel := context.WithCancel(timeoutCtx)
 	defer cancel()
 
 	d.log.Infof("Starting sync... lastProcessedBlock %d", lastProcessedBlock)

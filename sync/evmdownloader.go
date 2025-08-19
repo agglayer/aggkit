@@ -413,6 +413,7 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
 				// context is canceled, we don't want to fatal on max attempts in this case
+				d.log.Warnf("FilterLogs call was canceled: %v", err)
 				return nil
 			}
 
