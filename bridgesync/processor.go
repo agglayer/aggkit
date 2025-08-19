@@ -629,7 +629,9 @@ func (p *processor) GetLegacyTokenMigrations(
 	return tokenMigrations, legacyTokenMigrationsCount, nil
 }
 
-func (p *processor) queryBlockRange(ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64, table string) (*sql.Rows, error) {
+func (p *processor) queryBlockRange(
+	ctx context.Context, tx dbtypes.Querier, fromBlock, toBlock uint64, table string,
+) (*sql.Rows, error) {
 	if err := p.isBlockProcessed(ctx, tx, toBlock); err != nil {
 		return nil, err
 	}
@@ -881,7 +883,9 @@ func (p *processor) GetTotalNumberOfRecords(ctx context.Context, tableName, wher
 	defer cancel()
 
 	count := 0
-	err := p.db.QueryRowContext(dbCtx, fmt.Sprintf(`SELECT COUNT(*) AS count FROM %s%s;`, tableName, whereClause)).Scan(&count)
+	err := p.db.QueryRowContext(dbCtx, fmt.Sprintf(
+		`SELECT COUNT(*) AS count FROM %s%s;`, tableName, whereClause,
+	)).Scan(&count)
 	if err != nil {
 		return 0, err
 	}
