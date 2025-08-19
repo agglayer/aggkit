@@ -30,10 +30,10 @@ import (
 )
 
 const (
-	rollupID                    = uint32(1)
-	aggOracleCommitteeNonce     = 4
-	syncBlockChunkSize          = 10
-	defaultDatabaseQueryTimeout = 30 * time.Second
+	rollupID                = uint32(1)
+	aggOracleCommitteeNonce = 4
+	syncBlockChunkSize      = 10
+	defaultDBQueryTimeout   = 30 * time.Second
 )
 
 type L2GERManagerContractType int
@@ -152,13 +152,11 @@ func L1Setup(t *testing.T, cfg *EnvironmentConfig) *L1Environment {
 	testClient := NewTestClient(l1Client.Client(), WithRPCClienter(cfg.L1RPCClient))
 	dbPathBridgeSyncL1 := path.Join(t.TempDir(), "BridgeSyncL1.sqlite")
 
-	databaseQueryTimeout := defaultDatabaseQueryTimeout
-
 	bridgeL1Sync, err := bridgesync.NewL1(
 		ctx, dbPathBridgeSyncL1, bridgeL1Addr,
 		syncBlockChunkSize, aggkittypes.LatestBlock, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
-		retriesCount, originNetwork, false, true, databaseQueryTimeout)
+		retriesCount, originNetwork, false, true, defaultDBQueryTimeout)
 	require.NoError(t, err)
 
 	go bridgeL1Sync.Start(ctx)
@@ -266,13 +264,11 @@ func L2Setup(t *testing.T, cfg *EnvironmentConfig, l1Setup *L1Environment) *L2En
 		retriesCount           = 100
 	)
 
-	databaseQueryTimeout := defaultDatabaseQueryTimeout
-
 	bridgeL2Sync, err := bridgesync.NewL2(
 		ctx, dbPathL2BridgeSync, bridgeL2Addr, syncBlockChunkSize,
 		aggkittypes.LatestBlock, rdL2, testClient,
 		initialBlock, waitForNewBlocksPeriod, retryPeriod,
-		retriesCount, originNetwork, false, true, databaseQueryTimeout)
+		retriesCount, originNetwork, false, true, defaultDBQueryTimeout)
 	require.NoError(t, err)
 
 	go bridgeL2Sync.Start(ctx)

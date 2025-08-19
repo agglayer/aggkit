@@ -84,7 +84,7 @@ func NewL1(
 	originNetwork uint32,
 	syncFullClaims bool,
 	requireStorageContentCompatibility bool,
-	databaseQueryTimeout time.Duration,
+	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -102,7 +102,7 @@ func NewL1(
 		originNetwork,
 		syncFullClaims,
 		requireStorageContentCompatibility,
-		databaseQueryTimeout,
+		dbQueryTimeout,
 	)
 }
 
@@ -110,11 +110,11 @@ func NewL2ReadOnly(
 	ctx context.Context,
 	dbPath string,
 	originNetwork uint32,
-	databaseQueryTimeout time.Duration,
+	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	syncerID := L2BridgeSyncer
 	logger := log.WithFields("module", syncerID.String())
-	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, databaseQueryTimeout)
+	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, dbQueryTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -140,7 +140,7 @@ func NewL2(
 	originNetwork uint32,
 	syncFullClaims bool,
 	requireStorageContentCompatibility bool,
-	databaseQueryTimeout time.Duration,
+	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -158,7 +158,7 @@ func NewL2(
 		originNetwork,
 		syncFullClaims,
 		requireStorageContentCompatibility,
-		databaseQueryTimeout,
+		dbQueryTimeout,
 	)
 }
 
@@ -178,7 +178,7 @@ func newBridgeSync(
 	originNetwork uint32,
 	syncFullClaims bool,
 	requireStorageContentCompatibility bool,
-	databaseQueryTimeout time.Duration,
+	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
@@ -194,7 +194,7 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, databaseQueryTimeout)
+	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, dbQueryTimeout)
 	if err != nil {
 		return nil, err
 	}

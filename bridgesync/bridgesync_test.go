@@ -54,7 +54,7 @@ func TestNewLx(t *testing.T) {
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 
-	databaseQueryTimeout := 30 * time.Second
+	dbQueryTimeout := 30 * time.Second
 
 	l1BridgeSync, err := NewL1(
 		ctx,
@@ -70,7 +70,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		true,
-		databaseQueryTimeout,
+		dbQueryTimeout,
 	)
 
 	require.NoError(t, err)
@@ -93,7 +93,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		true,
-		databaseQueryTimeout,
+		dbQueryTimeout,
 	)
 
 	require.NoError(t, err)
@@ -120,7 +120,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		true,
-		databaseQueryTimeout,
+		dbQueryTimeout,
 	)
 	t.Log(err)
 	require.Error(t, err)
@@ -214,7 +214,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 
-	databaseQueryTimeout := 30 * time.Second
+	dbQueryTimeout := 30 * time.Second
 
 	s, err := NewL2(
 		ctx,
@@ -231,7 +231,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		originNetwork,
 		false,
 		false,
-		databaseQueryTimeout,
+		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 
@@ -349,7 +349,7 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 
-	databaseQueryTimeout := 30 * time.Second
+	dbQueryTimeout := 30 * time.Second
 
 	s, err := NewL2(
 		ctx,
@@ -366,7 +366,7 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 		originNetwork,
 		false,
 		false,
-		databaseQueryTimeout,
+		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 
@@ -533,7 +533,7 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 
-	databaseQueryTimeout := 30 * time.Second
+	dbQueryTimeout := 30 * time.Second
 
 	s, err := NewL2(
 		ctx,
@@ -550,7 +550,7 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		originNetwork,
 		false,
 		false,
-		databaseQueryTimeout,
+		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 

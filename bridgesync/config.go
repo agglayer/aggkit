@@ -27,7 +27,7 @@ type Config struct {
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
-	// DatabaseQueryTimeout is the timeout for database operations (queries, transactions)
+	// DBQueryTimeout is the timeout for database operations (queries, transactions)
 	// This is separate from HTTP timeouts to allow database operations more time when needed
-	DatabaseQueryTimeout types.Duration `mapstructure:"DatabaseQueryTimeout"`
+	DBQueryTimeout types.Duration `mapstructure:"DBQueryTimeout"`
 }

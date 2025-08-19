@@ -344,13 +344,13 @@ func (b BridgeSyncRuntimeData) IsCompatible(storage BridgeSyncRuntimeData) error
 }
 
 type processor struct {
-	db                   *sql.DB
-	exitTree             *tree.AppendOnlyTree
-	log                  *log.Logger
-	mu                   mutex.RWMutex
-	halted               bool
-	haltedReason         string
-	databaseQueryTimeout time.Duration
+	db             *sql.DB
+	exitTree       *tree.AppendOnlyTree
+	log            *log.Logger
+	mu             mutex.RWMutex
+	halted         bool
+	haltedReason   string
+	dbQueryTimeout time.Duration
 	compatibility.CompatibilityDataStorager[BridgeSyncRuntimeData]
 }
 
@@ -358,7 +358,7 @@ func newProcessor(
 	dbPath string,
 	name string,
 	logger *log.Logger,
-	databaseQueryTimeout time.Duration,
+	dbQueryTimeout time.Duration,
 ) (*processor, error) {
 	err := migrations.RunMigrations(dbPath)
 	if err != nil {
@@ -372,10 +372,10 @@ func newProcessor(
 	exitTree := tree.NewAppendOnlyTree(database, "")
 
 	return &processor{
-		db:                   database,
-		exitTree:             exitTree,
-		log:                  logger,
-		databaseQueryTimeout: databaseQueryTimeout,
+		db:             database,
+		exitTree:       exitTree,
+		log:            logger,
+		dbQueryTimeout: dbQueryTimeout,
 		CompatibilityDataStorager: compatibility.NewKeyValueToCompatibilityStorage[BridgeSyncRuntimeData](
 			db.NewKeyValueStorage(database),
 			name,
@@ -1056,5 +1056,5 @@ func (p *processor) unhalt() {
 }
 
 func (p *processor) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), p.databaseQueryTimeout)
+	return context.WithTimeout(context.WithoutCancel(ctx), p.dbQueryTimeout)
 }

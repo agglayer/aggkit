@@ -23,7 +23,7 @@ rollupManagerCreationBlockNumber = 0
 genesisBlockNumber = 0
 
 # Default database query timeout
-defaultDatabaseQueryTimeout = "30s"
+defaultDBQueryTimeout = "30s"
 
 [L1Config]
 	URL = "{{L1URL}}"
@@ -141,7 +141,7 @@ MaxRequestsPerIPAndSecond = 10
 [REST]
 Host = "0.0.0.0"
 Port = 5577
-ReadTimeout = "30s"
+ReadTimeout = "2s"
 WriteTimeout = "2s"
 MaxRequestsPerIPAndSecond = 10
 
@@ -154,7 +154,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-DatabaseQueryTimeout = "{{defaultDatabaseQueryTimeout}}"
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -166,7 +166,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
-DatabaseQueryTimeout = "{{defaultDatabaseQueryTimeout}}"
+DBQueryTimeout = "{{defaultDB'QueryTimeout}}"
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"
