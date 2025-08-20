@@ -12,6 +12,7 @@
     "enable_normalcy": true,
     "binary_name": "aggkit",
     "aggkit_components": "aggsender,bridge",
-    "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.63.0-rc4"
+    "cdk_erigon_node_image": "hermeznetwork/cdk-erigon:v2.63.0-rc4",
+    "aggkit_prover_image": "atanmarko/aggkit-prover:ger-removal"
   }
 }

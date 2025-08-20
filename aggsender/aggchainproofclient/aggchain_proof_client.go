@@ -3,6 +3,7 @@ package aggchainproofclient
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	aggkitProverV1Grpc "buf.build/gen/go/agglayer/provers/grpc/go/aggkit/prover/v1/proverv1grpc"
@@ -210,6 +211,9 @@ func convertAggchainProofRequestToGrpcRequest(
 		RemovedGers:           convertedRemovedGers,
 		Unclaims:              convertedUnclaims,
 	}
+
+	// TODO: remove this
+	fmt.Println("request", request)
 
 	return request
 }

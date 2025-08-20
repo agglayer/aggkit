@@ -120,7 +120,7 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 	testCases := []struct {
 		name          string
 		mockFn        func(*mocks.ChainGERReader)
-		expectedGERs  []agglayertypes.RemovedGER
+		expectedGERs  []*agglayertypes.RemovedGER
 		expectedError string
 	}{
 		{
@@ -135,7 +135,7 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 			mockFn: func(mockChainGERReader *mocks.ChainGERReader) {
 				mockChainGERReader.EXPECT().GetRemovedGERsForRange(ctx, uint64(1), uint64(10)).Return([]*agglayertypes.RemovedGER{}, nil)
 			},
-			expectedGERs: []agglayertypes.RemovedGER{},
+			expectedGERs: []*agglayertypes.RemovedGER{},
 		},
 		{
 			name: "success with single removed GER",
@@ -148,7 +148,7 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 					},
 				}, nil)
 			},
-			expectedGERs: []agglayertypes.RemovedGER{
+			expectedGERs: []*agglayertypes.RemovedGER{
 				{
 					GlobalExitRoot: common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef12"),
 					BlockNumber:    5,
@@ -177,7 +177,7 @@ func Test_GetRemovedGERsBlockDetails(t *testing.T) {
 					},
 				}, nil)
 			},
-			expectedGERs: []agglayertypes.RemovedGER{
+			expectedGERs: []*agglayertypes.RemovedGER{
 				{
 					GlobalExitRoot: common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
 					BlockNumber:    3,

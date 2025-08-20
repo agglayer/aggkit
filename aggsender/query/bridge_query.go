@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
@@ -163,8 +164,23 @@ func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert claim to imported bridge exit: %w", err)
 		}
+
+		// Create a custom hash for ImportedBridgeExit without ClaimData
+		// This avoids the panic that would occur when calling Hash() on an ImportedBridgeExit with nil ClaimData
+		var unclaimHash common.Hash
+		if ibe.ClaimData == nil {
+			// Custom hash calculation using only BridgeExit and GlobalIndex
+			unclaimHash = crypto.Keccak256Hash(
+				ibe.BridgeExit.Hash().Bytes(),
+				ibe.GlobalIndex.Hash().Bytes(),
+			)
+		} else {
+			// Use the standard Hash method if ClaimData is available
+			unclaimHash = ibe.Hash()
+		}
+
 		unclaimsConverted[i] = &agglayertypes.Unclaim{
-			UnclaimHash: ibe.Hash(),
+			UnclaimHash: unclaimHash,
 			BlockNumber: unclaim.BlockNumber,
 			BlockIndex:  unclaim.BlockIndex,
 		}

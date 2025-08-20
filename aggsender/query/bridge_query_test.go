@@ -339,14 +339,13 @@ func TestWaitForSyncerToCatchUp(t *testing.T) {
 	}
 }
 
-func TestGetUnsetClaimsBlockRange(t *testing.T) {
+func TestGetUnsetClaimsForBlockRange(t *testing.T) {
 	t.Parallel()
 
-	// Helper function to create the exact string representation of GlobalIndex
-	createGlobalIndexString := func(index byte) string {
-		var globalIndex [32]byte
-		globalIndex[0] = index
-		return string(globalIndex[:])
+	// Helper function to create the correct string representation of GlobalIndex
+	// The actual code uses big.NewInt(1).String() which returns "1", not a formatted string
+	createGlobalIndexString := func(index int64) string {
+		return big.NewInt(index).String()
 	}
 
 	ctx := context.Background()
@@ -358,10 +357,9 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 		mockBridgeL2SovereignReaderFn func(*mocks.BridgeL2SovereignReader)
 		expectedUnclaims              []agglayertypes.Unclaim
 		expectedError                 string
-		expectPanic                   bool
 	}{
 		{
-			name:      "design issue - Hash() called on ImportedBridgeExit without ClaimData",
+			name:      "success - valid unclaims with proper hash calculation",
 			fromBlock: 100,
 			toBlock:   200,
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
@@ -396,7 +394,12 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 					},
 				}, nil).Once()
 			},
-			expectPanic: true, // This test case demonstrates the design issue
+			expectedUnclaims: []agglayertypes.Unclaim{
+				{
+					BlockNumber: 150,
+					BlockIndex:  1,
+				},
+			},
 		},
 		{
 			name:      "success - empty unclaims",
@@ -472,11 +475,13 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 					},
 				}, nil).Once()
 			},
-			expectPanic: true, // This will panic due to nil GlobalIndex
+			expectedError: "failed to convert claim to imported bridge exit: error decoding global index: global index is nil",
 		},
 	}
 
 	for _, tc := range testCases {
+		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -489,21 +494,6 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 
 			bridgeQuerier := NewBridgeDataQuerier(nil, mockSyncer, 0, bridgeL2SovereignReader)
 
-			if tc.expectPanic {
-				// This test case demonstrates the design issue in the code
-				// The ConvertToImportedBridgeExitWithoutClaimData function creates an ImportedBridgeExit
-				// without ClaimData, but the Hash() method requires it
-				t.Logf("This test demonstrates a design issue: ConvertToImportedBridgeExitWithoutClaimData creates an ImportedBridgeExit without ClaimData, but Hash() requires it")
-
-				// We expect this to panic due to the design issue
-				require.Panics(t, func() {
-					_, err := bridgeQuerier.GetUnsetClaimsForBlockRange(ctx, tc.fromBlock, tc.toBlock)
-					// We don't check the error here because we expect a panic to occur first
-					_ = err
-				})
-				return
-			}
-
 			unclaims, err := bridgeQuerier.GetUnsetClaimsForBlockRange(ctx, tc.fromBlock, tc.toBlock)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
@@ -511,12 +501,14 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 				require.NoError(t, err)
 				require.Len(t, unclaims, len(tc.expectedUnclaims))
 
-				// For successful cases, verify the structure but allow for hash differences
-				// since the hash calculation depends on the exact claim data
+				// For successful cases, verify the structure and that hashes are properly calculated
 				for i, unclaim := range unclaims {
 					require.Equal(t, tc.expectedUnclaims[i].BlockNumber, unclaim.BlockNumber)
 					require.Equal(t, tc.expectedUnclaims[i].BlockIndex, unclaim.BlockIndex)
 					require.NotEqual(t, common.Hash{}, unclaim.UnclaimHash) // Hash should not be empty
+
+					// Verify that the hash is a valid hash (not all zeros)
+					require.NotEqual(t, common.Hash{}, unclaim.UnclaimHash)
 				}
 			}
 
