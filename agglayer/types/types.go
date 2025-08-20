@@ -346,7 +346,7 @@ func (c *Certificate) CertificateID() common.Hash {
 	importedBridgeExitsPart := crypto.Keccak256(importedBridgeExitsHashes...)
 
 	return crypto.Keccak256Hash(
-		aggkitcommon.Uint32ToBytes(c.NetworkID),
+		aggkitcommon.Uint32ToBigEndianBytes(c.NetworkID),
 		aggkitcommon.Uint64ToBigEndianBytes(c.Height),
 		c.PrevLocalExitRoot.Bytes(),
 		c.NewLocalExitRoot.Bytes(),

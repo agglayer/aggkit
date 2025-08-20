@@ -15,5 +15,5 @@ func HashCertificateToSign(cert *agglayertypes.Certificate) (common.Hash, error)
 	}
 	return crypto.Keccak256Hash(
 		cert.CertificateID().Bytes(),
-		aggkitcommon.Uint32ToBytes(cert.L1InfoTreeLeafCount)), nil
+		aggkitcommon.Uint32ToLittleEndianBytes(cert.L1InfoTreeLeafCount)), nil
 }
