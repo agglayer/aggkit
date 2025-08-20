@@ -2,6 +2,7 @@ package aggchainproofclient
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 
@@ -184,17 +185,16 @@ func convertAggchainProofRequestToGrpcRequest(
 	convertedRemovedGers := make([]*aggkitProverV1Proto.RemovedGER, len(req.RemovedGers))
 	for i, removedGER := range req.RemovedGers {
 		convertedRemovedGers[i] = &aggkitProverV1Proto.RemovedGER{
-			GlobalExitRoot: removedGER.GlobalExitRoot.String(),
+			GlobalExitRoot: base64.StdEncoding.EncodeToString(removedGER.GlobalExitRoot.Bytes()),
 			BlockNumber:    removedGER.BlockNumber,
 			BlockIndex:     uint64(removedGER.BlockIndex),
 		}
 	}
 
 	convertedUnclaims := make([]*aggkitProverV1Proto.Unclaim, len(req.Unclaims))
-
 	for i, unclaim := range req.Unclaims {
 		convertedUnclaims[i] = &aggkitProverV1Proto.Unclaim{
-			UnclaimHash: unclaim.UnclaimHash.String(),
+			UnclaimHash: base64.StdEncoding.EncodeToString(unclaim.UnclaimHash.Bytes()),
 			BlockNumber: unclaim.BlockNumber,
 			BlockIndex:  uint64(unclaim.BlockIndex),
 		}
