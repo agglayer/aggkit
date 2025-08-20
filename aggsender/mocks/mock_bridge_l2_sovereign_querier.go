@@ -22,12 +22,12 @@ func (_m *BridgeL2SovereignQuerier) EXPECT() *BridgeL2SovereignQuerier_Expecter 
 	return &BridgeL2SovereignQuerier_Expecter{mock: &_m.Mock}
 }
 
-// GetUnsetClaimsBlockRange provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *BridgeL2SovereignQuerier) GetUnsetClaimsBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]types.Unclaim, error) {
+// GetUnsetClaimsForBlockRange provides a mock function with given fields: ctx, fromBlock, toBlock
+func (_m *BridgeL2SovereignQuerier) GetUnsetClaimsForBlockRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]types.Unclaim, error) {
 	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetUnsetClaimsBlockRange")
+		panic("no return value specified for GetUnsetClaimsForBlockRange")
 	}
 
 	var r0 []types.Unclaim
@@ -52,17 +52,17 @@ func (_m *BridgeL2SovereignQuerier) GetUnsetClaimsBlockRange(ctx context.Context
 	return r0, r1
 }
 
-// BridgeL2SovereignQuerier_GetUnsetClaimsBlockRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnsetClaimsBlockRange'
+// BridgeL2SovereignQuerier_GetUnsetClaimsBlockRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnsetClaimsForBlockRange'
 type BridgeL2SovereignQuerier_GetUnsetClaimsBlockRange_Call struct {
 	*mock.Call
 }
 
-// GetUnsetClaimsBlockRange is a helper method to define mock.On call
+// GetUnsetClaimsForBlockRange is a helper method to define mock.On call
 //   - ctx context.Context
 //   - fromBlock uint64
 //   - toBlock uint64
-func (_e *BridgeL2SovereignQuerier_Expecter) GetUnsetClaimsBlockRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *BridgeL2SovereignQuerier_GetUnsetClaimsBlockRange_Call {
-	return &BridgeL2SovereignQuerier_GetUnsetClaimsBlockRange_Call{Call: _e.mock.On("GetUnsetClaimsBlockRange", ctx, fromBlock, toBlock)}
+func (_e *BridgeL2SovereignQuerier_Expecter) GetUnsetClaimsForBlockRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *BridgeL2SovereignQuerier_GetUnsetClaimsBlockRange_Call {
+	return &BridgeL2SovereignQuerier_GetUnsetClaimsBlockRange_Call{Call: _e.mock.On("GetUnsetClaimsForBlockRange", ctx, fromBlock, toBlock)}
 }
 
 func (_c *BridgeL2SovereignQuerier_GetUnsetClaimsBlockRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *BridgeL2SovereignQuerier_GetUnsetClaimsBlockRange_Call {

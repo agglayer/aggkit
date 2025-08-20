@@ -1,7 +1,9 @@
 package types
 
+import "math/big"
+
 type Unclaim struct {
-	GlobalIndex [32]byte `json:"global_index"`
+	GlobalIndex *big.Int `json:"global_index"`
 	BlockNumber uint64   `json:"block_number"`
 	BlockIndex  uint     `json:"block_index"`
 }

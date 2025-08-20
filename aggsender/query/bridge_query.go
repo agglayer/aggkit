@@ -139,19 +139,19 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 	}
 }
 
-func (b *bridgeDataQuerier) GetUnsetClaimsBlockRange(ctx context.Context,
-	fromBlock, toBlock uint64) ([]agglayertypes.Unclaim, error) {
-	unclaims, err := b.bridgeL2SovereignReader.GetUnsetClaimsBlockRange(ctx, fromBlock, toBlock)
+func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
+	fromBlock, toBlock uint64) ([]*agglayertypes.Unclaim, error) {
+	unclaims, err := b.bridgeL2SovereignReader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get unclaim block range: %w", err)
 	}
 
-	unclaimsConverted := make([]agglayertypes.Unclaim, len(unclaims))
+	unclaimsConverted := make([]*agglayertypes.Unclaim, len(unclaims))
 
 	// Add the unclaim hash to the unclaim
 	for i, unclaim := range unclaims {
 		claim, err := b.bridgeSyncer.GetClaimByGlobalIndex(
-			ctx, unclaim.BlockNumber, uint32(unclaim.BlockIndex), string(unclaim.GlobalIndex[:]),
+			ctx, unclaim.BlockNumber, uint32(unclaim.BlockIndex), unclaim.GlobalIndex.String(),
 		)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -163,7 +163,7 @@ func (b *bridgeDataQuerier) GetUnsetClaimsBlockRange(ctx context.Context,
 		if err != nil {
 			return nil, fmt.Errorf("failed to convert claim to imported bridge exit: %w", err)
 		}
-		unclaimsConverted[i] = agglayertypes.Unclaim{
+		unclaimsConverted[i] = &agglayertypes.Unclaim{
 			UnclaimHash: ibe.Hash(),
 			BlockNumber: unclaim.BlockNumber,
 			BlockIndex:  unclaim.BlockIndex,

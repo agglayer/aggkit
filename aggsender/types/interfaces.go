@@ -92,8 +92,8 @@ type BridgeQuerier interface {
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	OriginNetwork() uint32
 	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
-	GetUnsetClaimsBlockRange(ctx context.Context,
-		fromBlock, toBlock uint64) ([]agglayertypes.Unclaim, error)
+	GetUnsetClaimsForBlockRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]*agglayertypes.Unclaim, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
@@ -101,13 +101,13 @@ type ChainGERReader interface {
 	GetInjectedGERsForRange(ctx context.Context,
 		fromBlock, toBlock uint64) (map[common.Hash]l2gersync.GlobalExitRootInfo, error)
 	GetRemovedGERsForRange(ctx context.Context,
-		fromBlock, toBlock uint64) ([]agglayertypes.RemovedGER, error)
+		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
 }
 
 // BridgeL2SovereignReader is an interface defining functions that an BridgeL2SovereignReader should implement
 type BridgeL2SovereignReader interface {
-	GetUnsetClaimsBlockRange(ctx context.Context,
-		fromBlock, toBlock uint64) ([]bridgesynctypes.Unclaim, error)
+	GetUnsetClaimsForBlockRange(ctx context.Context,
+		fromBlock, toBlock uint64) ([]*bridgesynctypes.Unclaim, error)
 }
 
 // L1InfoTreeDataQuerier is an interface defining functions that an L1InfoTreeDataQuerier should implement
@@ -144,7 +144,7 @@ type GERQuerier interface {
 		finalizedL1InfoTreeRoot *treetypes.Root,
 		fromBlock, toBlock uint64) (map[common.Hash]*agglayertypes.ProvenInsertedGERWithBlockNumber, error)
 	GetRemovedGERsBlockDetails(ctx context.Context,
-		fromBlock, toBlock uint64) ([]agglayertypes.RemovedGER, error)
+		fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error)
 }
 
 // Logger is an interface that defines the methods to log messages
@@ -262,9 +262,4 @@ type AggchainProofQuerier interface {
 		lastProvenBlock, toBlock uint64,
 		certBuildParams *CertificateBuildParams,
 	) (*AggchainProof, *treetypes.Root, error)
-}
-
-type BridgeL2SovereignQuerier interface {
-	GetUnsetClaimsBlockRange(ctx context.Context,
-		fromBlock, toBlock uint64) ([]agglayertypes.Unclaim, error)
 }

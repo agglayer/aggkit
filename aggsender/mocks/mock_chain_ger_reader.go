@@ -87,23 +87,23 @@ func (_c *ChainGERReader_GetInjectedGERsForRange_Call) RunAndReturn(run func(con
 }
 
 // GetRemovedGERsForRange provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *ChainGERReader) GetRemovedGERsForRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]agglayertypes.RemovedGER, error) {
+func (_m *ChainGERReader) GetRemovedGERsForRange(ctx context.Context, fromBlock uint64, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
 	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetRemovedGERsForRange")
 	}
 
-	var r0 []agglayertypes.RemovedGER
+	var r0 []*agglayertypes.RemovedGER
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]agglayertypes.RemovedGER, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)); ok {
 		return rf(ctx, fromBlock, toBlock)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []agglayertypes.RemovedGER); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []*agglayertypes.RemovedGER); ok {
 		r0 = rf(ctx, fromBlock, toBlock)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]agglayertypes.RemovedGER)
+			r0 = ret.Get(0).([]*agglayertypes.RemovedGER)
 		}
 	}
 
@@ -136,12 +136,12 @@ func (_c *ChainGERReader_GetRemovedGERsForRange_Call) Run(run func(ctx context.C
 	return _c
 }
 
-func (_c *ChainGERReader_GetRemovedGERsForRange_Call) Return(_a0 []agglayertypes.RemovedGER, _a1 error) *ChainGERReader_GetRemovedGERsForRange_Call {
+func (_c *ChainGERReader_GetRemovedGERsForRange_Call) Return(_a0 []*agglayertypes.RemovedGER, _a1 error) *ChainGERReader_GetRemovedGERsForRange_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *ChainGERReader_GetRemovedGERsForRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]agglayertypes.RemovedGER, error)) *ChainGERReader_GetRemovedGERsForRange_Call {
+func (_c *ChainGERReader_GetRemovedGERsForRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)) *ChainGERReader_GetRemovedGERsForRange_Call {
 	_c.Call.Return(run)
 	return _c
 }

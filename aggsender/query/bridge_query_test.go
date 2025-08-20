@@ -387,10 +387,10 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 				}, nil).Once()
 			},
 			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
-				// Mock GetUnsetClaimsBlockRange to return one unclaim
-				mockReader.EXPECT().GetUnsetClaimsBlockRange(ctx, uint64(100), uint64(200)).Return([]bridgesynctypes.Unclaim{
+				// Mock GetUnsetClaimsForBlockRange to return one unclaim
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return([]*bridgesynctypes.Unclaim{
 					{
-						GlobalIndex: [32]byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+						GlobalIndex: big.NewInt(1),
 						BlockNumber: 150,
 						BlockIndex:  1,
 					},
@@ -406,7 +406,7 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 				// No expectations needed for empty unclaims
 			},
 			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
-				mockReader.EXPECT().GetUnsetClaimsBlockRange(ctx, uint64(100), uint64(200)).Return([]bridgesynctypes.Unclaim{}, nil).Once()
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return([]*bridgesynctypes.Unclaim{}, nil).Once()
 			},
 			expectedUnclaims: []agglayertypes.Unclaim{},
 		},
@@ -418,7 +418,7 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 				// No expectations needed for this error case
 			},
 			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
-				mockReader.EXPECT().GetUnsetClaimsBlockRange(ctx, uint64(100), uint64(200)).Return(nil, errors.New("failed to read from contract")).Once()
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return(nil, errors.New("failed to read from contract")).Once()
 			},
 			expectedError: "failed to get unclaim block range: failed to read from contract",
 		},
@@ -433,9 +433,9 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 				).Return(bridgesync.Claim{}, errors.New("claim not found")).Once()
 			},
 			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
-				mockReader.EXPECT().GetUnsetClaimsBlockRange(ctx, uint64(100), uint64(200)).Return([]bridgesynctypes.Unclaim{
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return([]*bridgesynctypes.Unclaim{
 					{
-						GlobalIndex: [32]byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+						GlobalIndex: big.NewInt(1),
 						BlockNumber: 150,
 						BlockIndex:  1,
 					},
@@ -464,9 +464,9 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 				}, nil).Once()
 			},
 			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
-				mockReader.EXPECT().GetUnsetClaimsBlockRange(ctx, uint64(100), uint64(200)).Return([]bridgesynctypes.Unclaim{
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return([]*bridgesynctypes.Unclaim{
 					{
-						GlobalIndex: [32]byte{1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
+						GlobalIndex: big.NewInt(1),
 						BlockNumber: 150,
 						BlockIndex:  1,
 					},
@@ -497,14 +497,14 @@ func TestGetUnsetClaimsBlockRange(t *testing.T) {
 
 				// We expect this to panic due to the design issue
 				require.Panics(t, func() {
-					_, err := bridgeQuerier.GetUnsetClaimsBlockRange(ctx, tc.fromBlock, tc.toBlock)
+					_, err := bridgeQuerier.GetUnsetClaimsForBlockRange(ctx, tc.fromBlock, tc.toBlock)
 					// We don't check the error here because we expect a panic to occur first
 					_ = err
 				})
 				return
 			}
 
-			unclaims, err := bridgeQuerier.GetUnsetClaimsBlockRange(ctx, tc.fromBlock, tc.toBlock)
+			unclaims, err := bridgeQuerier.GetUnsetClaimsForBlockRange(ctx, tc.fromBlock, tc.toBlock)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
 			} else {

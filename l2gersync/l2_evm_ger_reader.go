@@ -99,8 +99,9 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 	return injectedGERs, nil
 }
 
+// GetRemovedGERsForRange returns the removed GlobalExitRoots for the given block range
 func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
-	fromBlock, toBlock uint64) ([]agglayertypes.RemovedGER, error) {
+	fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
 	removalIterator, err := e.l2GERManager.FilterUpdateRemovalHashChainValue(
 		&bind.FilterOpts{
 			Context: ctx,
@@ -118,11 +119,11 @@ func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 		}
 	}()
 
-	removedGERs := make([]agglayertypes.RemovedGER, 0)
+	removedGERs := make([]*agglayertypes.RemovedGER, 0)
 
 	for removalIterator.Next() {
 		ger := removalIterator.Event.RemovedGlobalExitRoot
-		removedGERs = append(removedGERs, agglayertypes.RemovedGER{
+		removedGERs = append(removedGERs, &agglayertypes.RemovedGER{
 			GlobalExitRoot: common.Hash(ger),
 			BlockNumber:    removalIterator.Event.Raw.BlockNumber,
 			BlockIndex:     removalIterator.Event.Raw.Index,

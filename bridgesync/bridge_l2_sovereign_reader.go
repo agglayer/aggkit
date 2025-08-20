@@ -2,6 +2,7 @@ package bridgesync
 
 import (
 	"context"
+	"math/big"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
 	"github.com/agglayer/aggkit/bridgesync/types"
@@ -26,8 +27,8 @@ func NewBridgeL2SovereignReader(
 	return &BridgeL2SovereignReader{bridgeSovereignChain: bridgeSovereignChainContract}, nil
 }
 
-func (r *BridgeL2SovereignReader) GetUnsetClaimsBlockRange(ctx context.Context,
-	fromBlock, toBlock uint64) ([]types.Unclaim, error) {
+func (r *BridgeL2SovereignReader) GetUnsetClaimsForBlockRange(ctx context.Context,
+	fromBlock, toBlock uint64) ([]*types.Unclaim, error) {
 	unclaimIterator, err := r.bridgeSovereignChain.FilterUpdatedUnsetGlobalIndexHashChain(
 		&bind.FilterOpts{Start: fromBlock, End: &toBlock})
 	if err != nil {
@@ -40,11 +41,11 @@ func (r *BridgeL2SovereignReader) GetUnsetClaimsBlockRange(ctx context.Context,
 		}
 	}()
 
-	unclaims := make([]types.Unclaim, 0)
+	unclaims := make([]*types.Unclaim, 0)
 	for unclaimIterator.Next() {
 		globalIndex := unclaimIterator.Event.UnsetGlobalIndex
-		unclaims = append(unclaims, types.Unclaim{
-			GlobalIndex: globalIndex,
+		unclaims = append(unclaims, &types.Unclaim{
+			GlobalIndex: new(big.Int).SetBytes(globalIndex[:]),
 			BlockNumber: unclaimIterator.Event.Raw.BlockNumber,
 			BlockIndex:  unclaimIterator.Event.Raw.Index,
 		})

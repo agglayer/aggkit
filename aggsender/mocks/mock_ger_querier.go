@@ -89,23 +89,23 @@ func (_c *GERQuerier_GetInjectedGERsProofs_Call) RunAndReturn(run func(context.C
 }
 
 // GetRemovedGERsBlockDetails provides a mock function with given fields: ctx, fromBlock, toBlock
-func (_m *GERQuerier) GetRemovedGERsBlockDetails(ctx context.Context, fromBlock uint64, toBlock uint64) ([]agglayertypes.RemovedGER, error) {
+func (_m *GERQuerier) GetRemovedGERsBlockDetails(ctx context.Context, fromBlock uint64, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
 	ret := _m.Called(ctx, fromBlock, toBlock)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetRemovedGERsBlockDetails")
 	}
 
-	var r0 []agglayertypes.RemovedGER
+	var r0 []*agglayertypes.RemovedGER
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]agglayertypes.RemovedGER, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)); ok {
 		return rf(ctx, fromBlock, toBlock)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []agglayertypes.RemovedGER); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) []*agglayertypes.RemovedGER); ok {
 		r0 = rf(ctx, fromBlock, toBlock)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]agglayertypes.RemovedGER)
+			r0 = ret.Get(0).([]*agglayertypes.RemovedGER)
 		}
 	}
 
@@ -138,12 +138,12 @@ func (_c *GERQuerier_GetRemovedGERsBlockDetails_Call) Run(run func(ctx context.C
 	return _c
 }
 
-func (_c *GERQuerier_GetRemovedGERsBlockDetails_Call) Return(_a0 []agglayertypes.RemovedGER, _a1 error) *GERQuerier_GetRemovedGERsBlockDetails_Call {
+func (_c *GERQuerier_GetRemovedGERsBlockDetails_Call) Return(_a0 []*agglayertypes.RemovedGER, _a1 error) *GERQuerier_GetRemovedGERsBlockDetails_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *GERQuerier_GetRemovedGERsBlockDetails_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]agglayertypes.RemovedGER, error)) *GERQuerier_GetRemovedGERsBlockDetails_Call {
+func (_c *GERQuerier_GetRemovedGERsBlockDetails_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*agglayertypes.RemovedGER, error)) *GERQuerier_GetRemovedGERsBlockDetails_Call {
 	_c.Call.Return(run)
 	return _c
 }
