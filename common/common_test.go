@@ -343,3 +343,54 @@ func TestUint64ToLittleEndianBytes(t *testing.T) {
 		})
 	}
 }
+
+func TestUint32ToLittleEndianBytes(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    uint32
+		expected []byte
+	}{
+		{
+			name:     "Zero value",
+			input:    0,
+			expected: []byte{0, 0, 0, 0},
+		},
+		{
+			name:     "Small value",
+			input:    1,
+			expected: []byte{1, 0, 0, 0},
+		},
+		{
+			name:     "Max uint32 value",
+			input:    ^uint32(0),
+			expected: []byte{255, 255, 255, 255},
+		},
+		{
+			name:     "Arbitrary value",
+			input:    1234567890,
+			expected: []byte{210, 2, 150, 73},
+		},
+		{
+			name:     "Value with MSB set",
+			input:    0x80000000,
+			expected: []byte{0, 0, 0, 128},
+		},
+		{
+			name:     "Value 256",
+			input:    256,
+			expected: []byte{0, 1, 0, 0},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result := Uint32ToLittleEndianBytes(tt.input)
+			require.Equal(t, tt.expected, result)
+			require.Len(t, result, Uint32ByteSize)
+		})
+	}
+}

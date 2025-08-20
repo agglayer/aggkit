@@ -59,6 +59,14 @@ func Uint32ToBigEndianBytes(num uint32) []byte {
 	return Uint32ToBytes(num)
 }
 
+// Uint32ToLittleEndianBytes converts a uint32 to a byte slice in little-endian order
+func Uint32ToLittleEndianBytes(num uint32) []byte {
+	bytes := make([]byte, Uint32ByteSize)
+	binary.LittleEndian.PutUint32(bytes, num)
+
+	return bytes
+}
+
 // Uint32ToBytes converts a uint32 to a byte slice in big-endian order
 func Uint32ToBytes(num uint32) []byte {
 	bytes := make([]byte, Uint32ByteSize)
