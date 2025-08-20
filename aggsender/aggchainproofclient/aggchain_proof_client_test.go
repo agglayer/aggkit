@@ -60,6 +60,30 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		},
 		GERLeavesWithBlockNumber:           nil,
 		ImportedBridgeExitsWithBlockNumber: nil,
+		RemovedGers: []*agglayer.RemovedGER{
+			{
+				GlobalExitRoot: common.HexToHash("0x1111111111111111111111111111111111111111111111111111111111111111"),
+				BlockNumber:    150,
+				BlockIndex:     1,
+			},
+			{
+				GlobalExitRoot: common.HexToHash("0x2222222222222222222222222222222222222222222222222222222222222222"),
+				BlockNumber:    175,
+				BlockIndex:     2,
+			},
+		},
+		Unclaims: []*agglayer.Unclaim{
+			{
+				UnclaimHash: common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
+				BlockNumber: 160,
+				BlockIndex:  3,
+			},
+			{
+				UnclaimHash: common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444"),
+				BlockNumber: 185,
+				BlockIndex:  4,
+			},
+		},
 	}
 
 	result, err := client.GenerateAggchainProof(context.Background(), request)
@@ -205,6 +229,30 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 						},
 					},
 				},
+			},
+		},
+		RemovedGers: []*agglayer.RemovedGER{
+			{
+				GlobalExitRoot: common.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555"),
+				BlockNumber:    350,
+				BlockIndex:     5,
+			},
+			{
+				GlobalExitRoot: common.HexToHash("0x6666666666666666666666666666666666666666666666666666666666666666"),
+				BlockNumber:    375,
+				BlockIndex:     6,
+			},
+		},
+		Unclaims: []*agglayer.Unclaim{
+			{
+				UnclaimHash: common.HexToHash("0x7777777777777777777777777777777777777777777777777777777777777777"),
+				BlockNumber: 360,
+				BlockIndex:  7,
+			},
+			{
+				UnclaimHash: common.HexToHash("0x8888888888888888888888888888888888888888888888888888888888888888"),
+				BlockNumber: 385,
+				BlockIndex:  8,
 			},
 		},
 	}
