@@ -213,7 +213,7 @@ func convertAggchainProofRequestToGrpcRequest(
 	}
 
 	// TODO: remove this
-	fmt.Println("request", request)
+	fmt.Println("-------------------- request", request)
 
 	return request
 }
