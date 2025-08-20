@@ -250,7 +250,8 @@ func TestGenerateAggchainProof(t *testing.T) {
 		mockFn func(
 			*mocks.AggchainProofClientInterface,
 			*mocks.L1InfoTreeDataQuerier,
-			*mocks.GERQuerier)
+			*mocks.GERQuerier,
+			*mocks.BridgeQuerier)
 		lastProvenBlock uint64
 		buildParams     *types.CertificateBuildParams
 		expectedProof   *types.AggchainProof
@@ -263,7 +264,8 @@ func TestGenerateAggchainProof(t *testing.T) {
 			buildParams:     &types.CertificateBuildParams{},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
+				gerQuerier *mocks.GERQuerier,
+				bridgeQuerier *mocks.BridgeQuerier) {
 				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(treetypes.Proof{}, nil, nil, errors.New("some error"))
 			},
 			expectedError: "aggchainProverFlow - error getting finalized L1 Info tree data: some error",
@@ -274,7 +276,8 @@ func TestGenerateAggchainProof(t *testing.T) {
 			buildParams:     &types.CertificateBuildParams{Claims: []bridgesync.Claim{{}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
+				gerQuerier *mocks.GERQuerier,
+				bridgeQuerier *mocks.BridgeQuerier) {
 				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
 					treetypes.Proof{},
 					&l1infotreesync.L1InfoTreeLeaf{},
@@ -293,7 +296,8 @@ func TestGenerateAggchainProof(t *testing.T) {
 			buildParams:     &types.CertificateBuildParams{ToBlock: 200, Claims: []bridgesync.Claim{{}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
+				gerQuerier *mocks.GERQuerier,
+				bridgeQuerier *mocks.BridgeQuerier) {
 				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
 					treetypes.Proof{},
 					&l1infotreesync.L1InfoTreeLeaf{},
@@ -313,7 +317,8 @@ func TestGenerateAggchainProof(t *testing.T) {
 			buildParams:     &types.CertificateBuildParams{ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
+				gerQuerier *mocks.GERQuerier,
+				bridgeQuerier *mocks.BridgeQuerier) {
 				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
 					treetypes.Proof{},
 					&l1infotreesync.L1InfoTreeLeaf{},
@@ -324,6 +329,8 @@ func TestGenerateAggchainProof(t *testing.T) {
 					[]bridgesync.Claim{{GlobalIndex: big.NewInt(1)}},
 				).Return(nil)
 				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1}, uint64(101), uint64(200)).Return(nil, nil)
+				gerQuerier.EXPECT().GetRemovedGERsBlockDetails(ctx, uint64(101), uint64(200)).Return(nil, nil)
+				bridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(101), uint64(200)).Return(nil, nil)
 				aggchainProofClient.EXPECT().GenerateAggchainProof(ctx, mock.Anything).
 					Return(nil, errors.New("aggchain proof error"))
 			},
@@ -335,7 +342,8 @@ func TestGenerateAggchainProof(t *testing.T) {
 			buildParams:     &types.CertificateBuildParams{ToBlock: 200, Claims: []bridgesync.Claim{{GlobalIndex: big.NewInt(1)}}},
 			mockFn: func(aggchainProofClient *mocks.AggchainProofClientInterface,
 				l1InfoTreeDataQuerier *mocks.L1InfoTreeDataQuerier,
-				gerQuerier *mocks.GERQuerier) {
+				gerQuerier *mocks.GERQuerier,
+				bridgeQuerier *mocks.BridgeQuerier) {
 				l1InfoTreeDataQuerier.EXPECT().GetFinalizedL1InfoTreeData(ctx).Return(
 					treetypes.Proof{},
 					&l1infotreesync.L1InfoTreeLeaf{},
@@ -346,6 +354,8 @@ func TestGenerateAggchainProof(t *testing.T) {
 					[]bridgesync.Claim{{GlobalIndex: big.NewInt(1)}},
 				).Return(nil)
 				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1}, uint64(101), uint64(200)).Return(nil, nil)
+				gerQuerier.EXPECT().GetRemovedGERsBlockDetails(ctx, uint64(101), uint64(200)).Return(nil, nil)
+				bridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(101), uint64(200)).Return(nil, nil)
 				aggchainProofClient.EXPECT().GenerateAggchainProof(ctx, mock.Anything).
 					Return(&types.AggchainProof{
 						LastProvenBlock: 100,
@@ -374,8 +384,9 @@ func TestGenerateAggchainProof(t *testing.T) {
 			aggchainProofClient := mocks.NewAggchainProofClientInterface(t)
 			l1InfoTreeDataQuerier := mocks.NewL1InfoTreeDataQuerier(t)
 			gerQuerier := mocks.NewGERQuerier(t)
+			bridgeQuerier := mocks.NewBridgeQuerier(t)
 			if tc.mockFn != nil {
-				tc.mockFn(aggchainProofClient, l1InfoTreeDataQuerier, gerQuerier)
+				tc.mockFn(aggchainProofClient, l1InfoTreeDataQuerier, gerQuerier, bridgeQuerier)
 			}
 
 			log := log.WithFields("aggchain_proof_query", "TestGenerateAggchainProof")
@@ -386,7 +397,7 @@ func TestGenerateAggchainProof(t *testing.T) {
 				nil, // optimisticSigner
 				nil, // lerQuerier
 				gerQuerier,
-				nil, // bridgeQuerier
+				bridgeQuerier,
 			)
 
 			proof, root, err := query.GenerateAggchainProof(ctx, tc.lastProvenBlock, tc.buildParams.ToBlock, tc.buildParams)
