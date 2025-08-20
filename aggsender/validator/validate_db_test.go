@@ -52,7 +52,8 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 	mockRollupDataQuerier := mocks.NewRollupDataQuerier(t)
 	lerQuerier, err := query.NewLERDataQuerier(common.Address{}, 1, mockRollupDataQuerier)
 	require.NoError(t, err)
-	signer, err := signer.NewSigner(ctx, 0, signerTypes.SignerConfig{
+	chainID := uint64(1)
+	signer, err := signer.NewSigner(ctx, chainID, signerTypes.SignerConfig{
 		Method: signerTypes.MethodMock,
 	}, "test", logger)
 	require.NoError(t, err)
