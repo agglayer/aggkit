@@ -240,8 +240,8 @@ func (_m *BridgeQuerier) GetUnsetClaimsForBlockRange(ctx context.Context, fromBl
 	return r0, r1
 }
 
-// BridgeQuerier_GetUnsetClaimsBlockRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnsetClaimsForBlockRange'
-type BridgeQuerier_GetUnsetClaimsBlockRange_Call struct {
+// BridgeQuerier_GetUnsetClaimsForBlockRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnsetClaimsForBlockRange'
+type BridgeQuerier_GetUnsetClaimsForBlockRange_Call struct {
 	*mock.Call
 }
 
@@ -249,23 +249,23 @@ type BridgeQuerier_GetUnsetClaimsBlockRange_Call struct {
 //   - ctx context.Context
 //   - fromBlock uint64
 //   - toBlock uint64
-func (_e *BridgeQuerier_Expecter) GetUnsetClaimsForBlockRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *BridgeQuerier_GetUnsetClaimsBlockRange_Call {
-	return &BridgeQuerier_GetUnsetClaimsBlockRange_Call{Call: _e.mock.On("GetUnsetClaimsForBlockRange", ctx, fromBlock, toBlock)}
+func (_e *BridgeQuerier_Expecter) GetUnsetClaimsForBlockRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
+	return &BridgeQuerier_GetUnsetClaimsForBlockRange_Call{Call: _e.mock.On("GetUnsetClaimsForBlockRange", ctx, fromBlock, toBlock)}
 }
 
-func (_c *BridgeQuerier_GetUnsetClaimsBlockRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *BridgeQuerier_GetUnsetClaimsBlockRange_Call {
+func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
 	})
 	return _c
 }
 
-func (_c *BridgeQuerier_GetUnsetClaimsBlockRange_Call) Return(_a0 []*agglayertypes.Unclaim, _a1 error) *BridgeQuerier_GetUnsetClaimsBlockRange_Call {
+func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) Return(_a0 []*agglayertypes.Unclaim, _a1 error) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *BridgeQuerier_GetUnsetClaimsBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*agglayertypes.Unclaim, error)) *BridgeQuerier_GetUnsetClaimsBlockRange_Call {
+func (_c *BridgeQuerier_GetUnsetClaimsForBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*agglayertypes.Unclaim, error)) *BridgeQuerier_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Return(run)
 	return _c
 }

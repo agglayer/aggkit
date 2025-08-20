@@ -52,8 +52,8 @@ func (_m *BridgeL2SovereignReader) GetUnsetClaimsForBlockRange(ctx context.Conte
 	return r0, r1
 }
 
-// BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnsetClaimsForBlockRange'
-type BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call struct {
+// BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnsetClaimsForBlockRange'
+type BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call struct {
 	*mock.Call
 }
 
@@ -61,23 +61,23 @@ type BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call struct {
 //   - ctx context.Context
 //   - fromBlock uint64
 //   - toBlock uint64
-func (_e *BridgeL2SovereignReader_Expecter) GetUnsetClaimsForBlockRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call {
-	return &BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call{Call: _e.mock.On("GetUnsetClaimsForBlockRange", ctx, fromBlock, toBlock)}
+func (_e *BridgeL2SovereignReader_Expecter) GetUnsetClaimsForBlockRange(ctx interface{}, fromBlock interface{}, toBlock interface{}) *BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call {
+	return &BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call{Call: _e.mock.On("GetUnsetClaimsForBlockRange", ctx, fromBlock, toBlock)}
 }
 
-func (_c *BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call {
+func (_c *BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call) Run(run func(ctx context.Context, fromBlock uint64, toBlock uint64)) *BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
 	})
 	return _c
 }
 
-func (_c *BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call) Return(_a0 []*types.Unclaim, _a1 error) *BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call {
+func (_c *BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call) Return(_a0 []*types.Unclaim, _a1 error) *BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*types.Unclaim, error)) *BridgeL2SovereignReader_GetUnsetClaimsBlockRange_Call {
+func (_c *BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call) RunAndReturn(run func(context.Context, uint64, uint64) ([]*types.Unclaim, error)) *BridgeL2SovereignReader_GetUnsetClaimsForBlockRange_Call {
 	_c.Call.Return(run)
 	return _c
 }

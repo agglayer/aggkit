@@ -180,6 +180,25 @@ func convertAggchainProofRequestToGrpcRequest(
 		}
 	}
 
+	convertedRemovedGers := make([]*aggkitProverV1Proto.RemovedGER, len(req.RemovedGers))
+	for i, removedGER := range req.RemovedGers {
+		convertedRemovedGers[i] = &aggkitProverV1Proto.RemovedGER{
+			GlobalExitRoot: removedGER.GlobalExitRoot.String(),
+			BlockNumber:    removedGER.BlockNumber,
+			BlockIndex:     uint64(removedGER.BlockIndex),
+		}
+	}
+
+	convertedUnclaims := make([]*aggkitProverV1Proto.Unclaim, len(req.Unclaims))
+
+	for i, unclaim := range req.Unclaims {
+		convertedUnclaims[i] = &aggkitProverV1Proto.Unclaim{
+			UnclaimHash: unclaim.UnclaimHash.String(),
+			BlockNumber: unclaim.BlockNumber,
+			BlockIndex:  uint64(unclaim.BlockIndex),
+		}
+	}
+
 	request := &aggkitProverV1Proto.GenerateAggchainProofRequest{
 		LastProvenBlock:       req.LastProvenBlock,
 		RequestedEndBlock:     req.RequestedEndBlock,
@@ -188,6 +207,8 @@ func convertAggchainProofRequestToGrpcRequest(
 		L1InfoTreeMerkleProof: convertedMerkleProof,
 		GerLeaves:             convertedGerLeaves,
 		ImportedBridgeExits:   convertedImportedBridgeExitsWithBlockNumber,
+		RemovedGers:           convertedRemovedGers,
+		Unclaims:              convertedUnclaims,
 	}
 
 	return request
