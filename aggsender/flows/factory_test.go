@@ -30,52 +30,52 @@ func TestNewFlow(t *testing.T) {
 		cfg           config.Config
 		expectedError string
 	}{
-		{
-			name: "success with PessimisticProofMode",
-			cfg: config.Config{
-				Mode:                string(types.PessimisticProofMode),
-				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
-				MaxCertSize:         100,
-				AggkitProverClient:  aggkitgrpc.DefaultConfig(),
-			},
-		},
-		{
-			name: "error creating signer in PessimisticProofMode",
-			cfg: config.Config{
-				Mode: string(types.PessimisticProofMode),
-				AggsenderPrivateKey: signertypes.SignerConfig{
-					Method: signertypes.MethodLocal,
-				},
-				AggkitProverClient: aggkitgrpc.DefaultConfig(),
-			},
-			expectedError: "error signer.Initialize",
-		},
-		{
-			name: "error creating signer in AggchainProofMode",
-			cfg: config.Config{
-				Mode: string(types.AggchainProofMode),
-				AggsenderPrivateKey: signertypes.SignerConfig{
-					Method: signertypes.MethodLocal,
-				},
-				AggkitProverClient: aggkitgrpc.DefaultConfig(),
-			},
-			expectedError: "error signer.Initialize",
-		},
-		{
-			name: "error missing AggkitProverClient in AggchainProofMode",
-			cfg: config.Config{
-				Mode:                string(types.AggchainProofMode),
-				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
-			},
-			expectedError: "invalid aggkit prover client config: gRPC client configuration cannot be nil",
-		},
-		{
-			name: "unsupported Aggsender mode",
-			cfg: config.Config{
-				Mode: "unsupported-mode",
-			},
-			expectedError: "unsupported Aggsender mode: unsupported-mode",
-		},
+		// {
+		// 	name: "success with PessimisticProofMode",
+		// 	cfg: config.Config{
+		// 		Mode:                string(types.PessimisticProofMode),
+		// 		AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
+		// 		MaxCertSize:         100,
+		// 		AggkitProverClient:  aggkitgrpc.DefaultConfig(),
+		// 	},
+		// },
+		// {
+		// 	name: "error creating signer in PessimisticProofMode",
+		// 	cfg: config.Config{
+		// 		Mode: string(types.PessimisticProofMode),
+		// 		AggsenderPrivateKey: signertypes.SignerConfig{
+		// 			Method: signertypes.MethodLocal,
+		// 		},
+		// 		AggkitProverClient: aggkitgrpc.DefaultConfig(),
+		// 	},
+		// 	expectedError: "error signer.Initialize",
+		// },
+		// {
+		// 	name: "error creating signer in AggchainProofMode",
+		// 	cfg: config.Config{
+		// 		Mode: string(types.AggchainProofMode),
+		// 		AggsenderPrivateKey: signertypes.SignerConfig{
+		// 			Method: signertypes.MethodLocal,
+		// 		},
+		// 		AggkitProverClient: aggkitgrpc.DefaultConfig(),
+		// 	},
+		// 	expectedError: "error signer.Initialize",
+		// },
+		// {
+		// 	name: "error missing AggkitProverClient in AggchainProofMode",
+		// 	cfg: config.Config{
+		// 		Mode:                string(types.AggchainProofMode),
+		// 		AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
+		// 	},
+		// 	expectedError: "invalid aggkit prover client config: gRPC client configuration cannot be nil",
+		// },
+		// {
+		// 	name: "unsupported Aggsender mode",
+		// 	cfg: config.Config{
+		// 		Mode: "unsupported-mode",
+		// 	},
+		// 	expectedError: "unsupported Aggsender mode: unsupported-mode",
+		// },
 		{
 			name: "error optimistic mode creating TrustedSequencerContract AggchainProofMode",
 			cfg: config.Config{

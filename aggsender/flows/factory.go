@@ -40,7 +40,7 @@ func NewFlow(
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, 1, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -74,7 +74,7 @@ func NewFlow(
 			return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
 		}
 
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, 1, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -147,9 +147,10 @@ func NewFlow(
 func initializeSigner(
 	ctx context.Context,
 	signerCfg signerTypes.SignerConfig,
+	chainID uint64,
 	logger *log.Logger,
 ) (signerTypes.Signer, error) {
-	signer, err := signer.NewSigner(ctx, 0, signerCfg, aggkitcommon.AGGSENDER, logger)
+	signer, err := signer.NewSigner(ctx, chainID, signerCfg, aggkitcommon.AGGSENDER, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
 	}
