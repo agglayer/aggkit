@@ -16,6 +16,9 @@ var mig002 string
 //go:embed l2gersync0003.sql
 var mig003 string
 
+//go:embed l2gersync0004.sql
+var mig004 string
+
 func RunMigrations(dbPath string) error {
 	migrations := []types.Migration{
 		{
@@ -29,6 +32,10 @@ func RunMigrations(dbPath string) error {
 		{
 			ID:  "l2gersync0003",
 			SQL: mig003,
+		},
+		{
+			ID:  "l2gersync0004",
+			SQL: mig004,
 		},
 	}
 	return db.RunMigrations(dbPath, migrations)
