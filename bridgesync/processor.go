@@ -636,14 +636,9 @@ func (p *processor) queryBlockRange(
 		return nil, err
 	}
 
-	sqlDB, ok := tx.(*sql.DB)
-	if !ok {
-		return nil, fmt.Errorf("expected *sql.DB, got %T", tx)
-	}
-
 	// Create a context with database timeout
 	dbCtx, _ := p.withDatabaseTimeout(ctx)
-	rows, err := sqlDB.QueryContext(dbCtx, fmt.Sprintf(`
+	rows, err := tx.QueryContext(dbCtx, fmt.Sprintf(`
 		SELECT * FROM %s
 		WHERE block_num >= $1 AND block_num <= $2
 		ORDER BY block_num ASC, block_pos ASC;
@@ -662,14 +657,9 @@ func (p *processor) queryPaged(ctx context.Context, tx dbtypes.Querier,
 	offset, pageSize uint32,
 	table, orderByClause, whereClause string,
 ) (*sql.Rows, error) {
-	sqlDB, ok := tx.(*sql.DB)
-	if !ok {
-		return nil, fmt.Errorf("expected *sql.DB, got %T", tx)
-	}
-
 	// Create a context with database timeout
 	dbCtx, _ := p.withDatabaseTimeout(ctx)
-	rows, err := sqlDB.QueryContext(dbCtx, fmt.Sprintf(`
+	rows, err := tx.QueryContext(dbCtx, fmt.Sprintf(`
 		SELECT *
 		FROM %s
 		%s
@@ -705,16 +695,11 @@ func (p *processor) GetLastProcessedBlock(ctx context.Context) (uint64, error) {
 func (p *processor) getLastProcessedBlockWithTx(ctx context.Context, tx dbtypes.Querier) (uint64, error) {
 	var lastProcessedBlockNum uint64
 
-	sqlDB, ok := tx.(*sql.DB)
-	if !ok {
-		return 0, fmt.Errorf("expected *sql.DB, got %T", tx)
-	}
-
 	// Create a context with database timeout
 	dbCtx, cancel := p.withDatabaseTimeout(ctx)
 	defer cancel()
 
-	row := sqlDB.QueryRowContext(dbCtx, "SELECT num FROM block ORDER BY num DESC LIMIT 1;")
+	row := tx.QueryRowContext(dbCtx, "SELECT num FROM block ORDER BY num DESC LIMIT 1;")
 	err := row.Scan(&lastProcessedBlockNum)
 	if errors.Is(err, sql.ErrNoRows) {
 		return 0, nil
