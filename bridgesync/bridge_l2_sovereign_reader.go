@@ -44,6 +44,8 @@ func (r *BridgeL2SovereignReader) GetUnsetClaimsForBlockRange(ctx context.Contex
 	unclaims := make([]*types.Unclaim, 0)
 	for unclaimIterator.Next() {
 		globalIndex := unclaimIterator.Event.UnsetGlobalIndex
+		log.Infof("unset claim: %s at block %d, index %d", common.Hash(globalIndex).String(),
+			unclaimIterator.Event.Raw.BlockNumber, unclaimIterator.Event.Raw.Index)
 		unclaims = append(unclaims, &types.Unclaim{
 			GlobalIndex: new(big.Int).SetBytes(globalIndex[:]),
 			BlockNumber: unclaimIterator.Event.Raw.BlockNumber,

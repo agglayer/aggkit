@@ -123,6 +123,8 @@ func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 
 	for removalIterator.Next() {
 		ger := removalIterator.Event.RemovedGlobalExitRoot
+		log.Infof("removed GER: %s at block %d, index %d", common.Hash(ger).String(),
+			removalIterator.Event.Raw.BlockNumber, removalIterator.Event.Raw.Index)
 		removedGERs = append(removedGERs, &agglayertypes.RemovedGER{
 			GlobalExitRoot: common.Hash(ger),
 			BlockNumber:    removalIterator.Event.Raw.BlockNumber,
