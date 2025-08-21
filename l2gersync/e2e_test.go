@@ -26,37 +26,38 @@ const (
 	syncDelay                  = 5 * time.Second
 )
 
-// func TestL2GERSyncE2E(t *testing.T) {
-// 	t.Parallel()
-// 	ctx := t.Context()
-// 	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
+func TestL2GERSyncE2E(t *testing.T) {
+	t.Parallel()
+	ctx, _ := context.WithTimeout(t.Context(), 30*time.Minute)
 
-// 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
+	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
 
-// 	syncer, err := l2gersync.New(
-// 		ctx,
-// 		dbPathSyncer,
-// 		l2Setup.ReorgDetector,
-// 		l2Setup.SimBackend.Client(),
-// 		l2Setup.GERAddr,
-// 		l1Setup.InfoTreeSync,
-// 		retryAfterErrorPeriod,
-// 		maxRetryAttemptsAfterError,
-// 		aggkittypes.LatestBlock,
-// 		waitForNewBlocksPeriod,
-// 		syncBlockChunkSize,
-// 		true,
-// 	)
-// 	require.NoError(t, err)
+	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
 
-// 	go syncer.Start(ctx)
+	syncer, err := l2gersync.New(
+		ctx,
+		dbPathSyncer,
+		l2Setup.ReorgDetector,
+		l2Setup.SimBackend.Client(),
+		l2Setup.GERAddr,
+		l1Setup.InfoTreeSync,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
+		aggkittypes.LatestBlock,
+		waitForNewBlocksPeriod,
+		syncBlockChunkSize,
+		true,
+	)
+	require.NoError(t, err)
 
-// 	for i := range testIterations {
-// 		updateL1GlobalExitRoot(t, l1Setup, i)
-// 		time.Sleep(2 * syncDelay)
-// 		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i)
-// 	}
-// }
+	go syncer.Start(ctx)
+
+	for i := range testIterations {
+		updateL1GlobalExitRoot(t, l1Setup, i)
+		time.Sleep(3 * syncDelay)
+		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i)
+	}
+}
 
 func TestL2GERSync_GERRemoval(t *testing.T) {
 	t.Parallel()
