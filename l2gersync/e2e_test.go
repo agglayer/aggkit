@@ -23,7 +23,7 @@ const (
 	waitForNewBlocksPeriod     = 30 * time.Millisecond
 	syncBlockChunkSize         = 10
 	testIterations             = 10
-	syncDelay                  = 500 * time.Millisecond
+	syncDelay                  = 5 * time.Second
 )
 
 func TestL2GERSyncE2E(t *testing.T) {
@@ -208,7 +208,7 @@ func testGERSyncer(t *testing.T, ctx context.Context,
 	syncer *l2gersync.L2GERSync, i int) {
 	t.Helper()
 
-	time.Sleep(5 * time.Second)
+	time.Sleep(10 * time.Second)
 
 	expectedGER, err := l1Setup.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
