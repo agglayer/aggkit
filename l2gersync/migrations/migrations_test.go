@@ -68,7 +68,7 @@ func TestMigration0001(t *testing.T) {
 func TestMigrations_UpDown(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
-	const totalMigrations = 6
+	const totalMigrations = 5
 
 	migs := []types.Migration{
 		{
@@ -82,10 +82,6 @@ func TestMigrations_UpDown(t *testing.T) {
 		{
 			ID:  "l2gersync0003",
 			SQL: readFile(t, "l2gersync0003.sql"),
-		},
-		{
-			ID:  "l2gersync0004",
-			SQL: readFile(t, "l2gersync0004.sql"),
 		},
 	}
 
