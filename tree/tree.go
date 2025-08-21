@@ -262,7 +262,7 @@ func CalculateRoot(leafHash common.Hash, proof [types.DefaultHeight]common.Hash,
 	node := leafHash
 
 	// Compute the Merkle root
-	for height := uint8(0); height < types.DefaultHeight; height++ {
+	for height := range types.DefaultHeight {
 		if (index>>height)&1 == 1 {
 			node = crypto.Keccak256Hash(proof[height].Bytes(), node.Bytes())
 		} else {
@@ -271,4 +271,18 @@ func CalculateRoot(leafHash common.Hash, proof [types.DefaultHeight]common.Hash,
 	}
 
 	return node
+}
+
+// VerifyProof validates a Merkle proof for a given leaf index against an expected root.
+// It returns nil when the proof is valid or an error describing the mismatch.
+func VerifyProof(leaf common.Hash, proof types.Proof, index uint32, expectedRoot common.Hash) error {
+	calculated := CalculateRoot(leaf, proof, index)
+	if calculated == expectedRoot {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"invalid proof: calculated root %s does not match expected root %s",
+		calculated.Hex(), expectedRoot.Hex(),
+	)
 }

@@ -39,6 +39,8 @@ type BaseFlowConfig struct {
 	// RequireNoFEPBlockGap indicates whether the flow requires no gap between the
 	// first FEP block and last settled certificate.
 	RequireNoFEPBlockGap bool
+	// FullClaimsNeeded indicates whether the flow requires full claims data
+	FullClaimsNeeded bool
 }
 
 // NewBaseFlowConfigDefault returns a BaseFlowConfig with default values
@@ -47,15 +49,22 @@ func NewBaseFlowConfigDefault() BaseFlowConfig {
 		MaxCertSize:          0,     // 0 means no limit
 		StartL2Block:         0,     // 0 means start from the first block
 		RequireNoFEPBlockGap: false, // default is false, can be set to true if needed
+		FullClaimsNeeded:     true,  // default is true, can be set to false if full claims are not needed
 	}
 }
 
 // NewBaseFlowConfig returns a BaseFlowConfig with the specified maxCertSize and startL2Block
-func NewBaseFlowConfig(maxCertSize uint, startL2Block uint64, requireNoFEPBlockGap bool) BaseFlowConfig {
+func NewBaseFlowConfig(
+	maxCertSize uint,
+	startL2Block uint64,
+	requireNoFEPBlockGap bool,
+	fullClaimsNeeded bool,
+) BaseFlowConfig {
 	return BaseFlowConfig{
 		MaxCertSize:          maxCertSize,
 		StartL2Block:         startL2Block,
 		RequireNoFEPBlockGap: requireNoFEPBlockGap,
+		FullClaimsNeeded:     fullClaimsNeeded,
 	}
 }
 
@@ -328,8 +337,12 @@ func (f *baseFlow) getImportedBridgeExits(
 	ctx context.Context, claims []bridgesync.Claim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
-	return converters.ConvertToImportedBridgeExits(
-		ctx, claims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
+	if f.cfg.FullClaimsNeeded {
+		return converters.ConvertToImportedBridgeExits(
+			ctx, claims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
+	}
+
+	return converters.ConvertToImportedBridgeExitsWithoutClaimData(claims)
 }
 
 // getNextHeightAndPreviousLER returns the height and previous LER for the new certificate

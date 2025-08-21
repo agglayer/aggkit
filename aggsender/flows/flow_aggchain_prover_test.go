@@ -460,7 +460,7 @@ func Test_AggchainProverFlow_getLastProvenBlock(t *testing.T) {
 				nil, // sotrage
 				nil, // l1InfoTreeDataQuerier,
 				nil, // lerQuerier
-				NewBaseFlowConfig(0, tc.startL2Block, false),
+				NewBaseFlowConfig(0, tc.startL2Block, false, true),
 			)
 			flow := NewAggchainProverFlow(
 				logger,

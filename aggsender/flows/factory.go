@@ -39,7 +39,9 @@ func NewFlow(
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
 			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, 0, false,
-			cfg.MaxCertSize, cfg.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
+			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
+			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
+			true,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -76,7 +78,9 @@ func NewFlow(
 		commonFlowComponents, err := CreateCommonFlowComponents(
 			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier,
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
-			cfg.MaxCertSize, cfg.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
+			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
+			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
+			true,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -136,6 +140,7 @@ func CreateCommonFlowComponents(
 	rollupCreationBlockL1 uint64,
 	delayBetweenRetries time.Duration,
 	signerCfg signertypes.SignerConfig,
+	fullClaimsRequired bool,
 ) (*CommonFlowComponents, error) {
 	signer, err := initializeSigner(ctx, signerCfg, logger)
 	if err != nil {
@@ -148,7 +153,7 @@ func CreateCommonFlowComponents(
 
 	baseFlow := NewBaseFlow(
 		logger, l2BridgeQuerier, storage, l1InfoTreeQuerier, lerQuerier,
-		NewBaseFlowConfig(maxCertSize, startL2Block, requireNoFEPBlockGap),
+		NewBaseFlowConfig(maxCertSize, startL2Block, requireNoFEPBlockGap, fullClaimsRequired),
 	)
 
 	return &CommonFlowComponents{

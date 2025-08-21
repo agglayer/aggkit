@@ -228,6 +228,7 @@ func TestBuildCertificate(t *testing.T) {
 				l2BridgeQuerier:       mockL2BridgeQuerier,
 				l1InfoTreeDataQuerier: mockL1InfoTreeQuerier,
 				log:                   log.WithFields("test", "unittest"),
+				cfg:                   NewBaseFlowConfigDefault(),
 			}
 
 			certParam := &types.CertificateBuildParams{
@@ -539,7 +540,7 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			baseFlow := &baseFlow{cfg: NewBaseFlowConfig(0, tt.startL2Block, false)}
+			baseFlow := &baseFlow{cfg: NewBaseFlowConfig(0, tt.startL2Block, false, true)}
 
 			block, retryCount := baseFlow.getLastSentBlockAndRetryCount(tt.lastSentCertificate)
 
