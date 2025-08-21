@@ -365,7 +365,7 @@ func TestGetUnsetClaimsForBlockRange(t *testing.T) {
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				// Mock GetClaimByGlobalIndex for the first unclaim
 				mockSyncer.EXPECT().GetClaimByGlobalIndex(
-					ctx, uint64(150), uint32(1), createGlobalIndexString(1),
+					ctx, createGlobalIndexString(1),
 				).Return(bridgesync.Claim{
 					BlockNum:           150,
 					BlockPos:           1,
@@ -432,7 +432,7 @@ func TestGetUnsetClaimsForBlockRange(t *testing.T) {
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				// Mock GetClaimByGlobalIndex to return an error
 				mockSyncer.EXPECT().GetClaimByGlobalIndex(
-					ctx, uint64(150), uint32(1), createGlobalIndexString(1),
+					ctx, createGlobalIndexString(1),
 				).Return(bridgesync.Claim{}, errors.New("claim not found")).Once()
 			},
 			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
@@ -453,7 +453,7 @@ func TestGetUnsetClaimsForBlockRange(t *testing.T) {
 			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
 				// Mock GetClaimByGlobalIndex to return a claim with invalid global index
 				mockSyncer.EXPECT().GetClaimByGlobalIndex(
-					ctx, uint64(150), uint32(1), createGlobalIndexString(1),
+					ctx, createGlobalIndexString(1),
 				).Return(bridgesync.Claim{
 					BlockNum:           150,
 					BlockPos:           1,

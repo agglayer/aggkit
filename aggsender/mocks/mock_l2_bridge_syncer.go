@@ -3,6 +3,8 @@
 package mocks
 
 import (
+	big "math/big"
+
 	bridgesync "github.com/agglayer/aggkit/bridgesync"
 	common "github.com/ethereum/go-ethereum/common"
 
@@ -190,9 +192,9 @@ func (_c *L2BridgeSyncer_GetBridges_Call) RunAndReturn(run func(context.Context,
 	return _c
 }
 
-// GetClaimByGlobalIndex provides a mock function with given fields: ctx, blockNumber, blockIndex, globalIndex
-func (_m *L2BridgeSyncer) GetClaimByGlobalIndex(ctx context.Context, blockNumber uint64, blockIndex uint32, globalIndex string) (bridgesync.Claim, error) {
-	ret := _m.Called(ctx, blockNumber, blockIndex, globalIndex)
+// GetClaimByGlobalIndex provides a mock function with given fields: ctx, globalIndex
+func (_m *L2BridgeSyncer) GetClaimByGlobalIndex(ctx context.Context, globalIndex *big.Int) (bridgesync.Claim, error) {
+	ret := _m.Called(ctx, globalIndex)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetClaimByGlobalIndex")
@@ -200,17 +202,17 @@ func (_m *L2BridgeSyncer) GetClaimByGlobalIndex(ctx context.Context, blockNumber
 
 	var r0 bridgesync.Claim
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint32, string) (bridgesync.Claim, error)); ok {
-		return rf(ctx, blockNumber, blockIndex, globalIndex)
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) (bridgesync.Claim, error)); ok {
+		return rf(ctx, globalIndex)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint32, string) bridgesync.Claim); ok {
-		r0 = rf(ctx, blockNumber, blockIndex, globalIndex)
+	if rf, ok := ret.Get(0).(func(context.Context, *big.Int) bridgesync.Claim); ok {
+		r0 = rf(ctx, globalIndex)
 	} else {
 		r0 = ret.Get(0).(bridgesync.Claim)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint32, string) error); ok {
-		r1 = rf(ctx, blockNumber, blockIndex, globalIndex)
+	if rf, ok := ret.Get(1).(func(context.Context, *big.Int) error); ok {
+		r1 = rf(ctx, globalIndex)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -225,16 +227,14 @@ type L2BridgeSyncer_GetClaimByGlobalIndex_Call struct {
 
 // GetClaimByGlobalIndex is a helper method to define mock.On call
 //   - ctx context.Context
-//   - blockNumber uint64
-//   - blockIndex uint32
-//   - globalIndex string
-func (_e *L2BridgeSyncer_Expecter) GetClaimByGlobalIndex(ctx interface{}, blockNumber interface{}, blockIndex interface{}, globalIndex interface{}) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
-	return &L2BridgeSyncer_GetClaimByGlobalIndex_Call{Call: _e.mock.On("GetClaimByGlobalIndex", ctx, blockNumber, blockIndex, globalIndex)}
+//   - globalIndex *big.Int
+func (_e *L2BridgeSyncer_Expecter) GetClaimByGlobalIndex(ctx interface{}, globalIndex interface{}) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
+	return &L2BridgeSyncer_GetClaimByGlobalIndex_Call{Call: _e.mock.On("GetClaimByGlobalIndex", ctx, globalIndex)}
 }
 
-func (_c *L2BridgeSyncer_GetClaimByGlobalIndex_Call) Run(run func(ctx context.Context, blockNumber uint64, blockIndex uint32, globalIndex string)) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
+func (_c *L2BridgeSyncer_GetClaimByGlobalIndex_Call) Run(run func(ctx context.Context, globalIndex *big.Int)) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint64), args[2].(uint32), args[3].(string))
+		run(args[0].(context.Context), args[1].(*big.Int))
 	})
 	return _c
 }
@@ -244,7 +244,7 @@ func (_c *L2BridgeSyncer_GetClaimByGlobalIndex_Call) Return(_a0 bridgesync.Claim
 	return _c
 }
 
-func (_c *L2BridgeSyncer_GetClaimByGlobalIndex_Call) RunAndReturn(run func(context.Context, uint64, uint32, string) (bridgesync.Claim, error)) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
+func (_c *L2BridgeSyncer_GetClaimByGlobalIndex_Call) RunAndReturn(run func(context.Context, *big.Int) (bridgesync.Claim, error)) *L2BridgeSyncer_GetClaimByGlobalIndex_Call {
 	_c.Call.Return(run)
 	return _c
 }

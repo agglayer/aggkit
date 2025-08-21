@@ -2452,7 +2452,7 @@ func TestProcessorGetClaimByGlobalIndex(t *testing.T) {
 		name          string
 		blockNumber   uint64
 		blockIndex    uint32
-		globalIndex   string
+		globalIndex   *big.Int
 		setupData     func(*processor) error
 		expectedClaim Claim
 		expectedErr   string
@@ -2461,7 +2461,7 @@ func TestProcessorGetClaimByGlobalIndex(t *testing.T) {
 			name:        "successful retrieval of existing claim",
 			blockNumber: 1,
 			blockIndex:  0,
-			globalIndex: "1000000000000000000",
+			globalIndex: big.NewInt(1000000000000000000),
 			setupData: func(p *processor) error {
 				// Create a test block first
 				block := sync.Block{
@@ -2526,7 +2526,7 @@ func TestProcessorGetClaimByGlobalIndex(t *testing.T) {
 			name:        "claim not found - non-existent block number",
 			blockNumber: 999,
 			blockIndex:  0,
-			globalIndex: "1000000000000000000",
+			globalIndex: big.NewInt(1000000000000000000),
 			setupData: func(p *processor) error {
 				// Create a test block with different number
 				block := sync.Block{
@@ -2570,7 +2570,7 @@ func TestProcessorGetClaimByGlobalIndex(t *testing.T) {
 			name:        "multiple claims with different global indices",
 			blockNumber: 1,
 			blockIndex:  1,
-			globalIndex: "2000000000000000000",
+			globalIndex: big.NewInt(2000000000000000000),
 			setupData: func(p *processor) error {
 				// Create a test block
 				block := sync.Block{
@@ -2671,7 +2671,7 @@ func TestProcessorGetClaimByGlobalIndex(t *testing.T) {
 			}
 
 			// Execute the function
-			claim, err := p.GetClaimByGlobalIndex(context.Background(), tt.blockNumber, tt.blockIndex, tt.globalIndex)
+			claim, err := p.GetClaimByGlobalIndex(context.Background(), tt.globalIndex)
 
 			// Verify results
 			if tt.expectedErr != "" {

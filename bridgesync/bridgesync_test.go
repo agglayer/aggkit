@@ -759,7 +759,7 @@ func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 		require.NoError(t, err)
 
 		// Test retrieving the first claim
-		claim, err := s.GetClaimByGlobalIndex(ctx, 1, 0, "1000000000000000000")
+		claim, err := s.GetClaimByGlobalIndex(ctx, big.NewInt(1000000000000000000))
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), claim.BlockNum)
 		require.Equal(t, uint64(0), claim.BlockPos)
@@ -776,7 +776,7 @@ func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 		require.Equal(t, uint64(1234567890), claim.BlockTimestamp)
 
 		// Test retrieving the second claim
-		claim2, err := s.GetClaimByGlobalIndex(ctx, 1, 1, "2000000000000000000")
+		claim2, err := s.GetClaimByGlobalIndex(ctx, big.NewInt(2000000000000000000))
 		require.NoError(t, err)
 		require.Equal(t, uint64(1), claim2.BlockNum)
 		require.Equal(t, uint64(1), claim2.BlockPos)
@@ -794,17 +794,17 @@ func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 	})
 
 	t.Run("claim not found", func(t *testing.T) {
-		_, err := s.GetClaimByGlobalIndex(ctx, 999, 0, "9999999999999999999")
+		_, err := s.GetClaimByGlobalIndex(ctx, big.NewInt(999999999999999999))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "claim not found")
 		require.Contains(t, err.Error(), "blockNumber: 999")
 		require.Contains(t, err.Error(), "blockIndex: 0")
-		require.Contains(t, err.Error(), "globalIndex: 9999999999999999999")
+		require.Contains(t, err.Error(), "globalIndex: 999999999999999999")
 	})
 
 	t.Run("processor halted", func(t *testing.T) {
 		s.processor.halted = true
-		_, err := s.GetClaimByGlobalIndex(ctx, 1, 0, "1000000000000000000")
+		_, err := s.GetClaimByGlobalIndex(ctx, big.NewInt(1000000000000000000))
 		require.ErrorIs(t, err, sync.ErrInconsistentState)
 		s.processor.halted = false // Reset for other tests
 	})
@@ -813,14 +813,14 @@ func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 		// This test would require setting up a scenario where multiple claims have the same global index
 		// which should not happen in normal operation, but we test the error handling
 		// For now, we'll test with a non-existent claim to ensure proper error handling
-		_, err := s.GetClaimByGlobalIndex(ctx, 999, 999, "9999999999999999999")
+		_, err := s.GetClaimByGlobalIndex(ctx, big.NewInt(999999999999999999))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "claim not found")
 	})
 
 	t.Run("database error handling", func(t *testing.T) {
 		// Test with invalid global index format that might cause database errors
-		_, err := s.GetClaimByGlobalIndex(ctx, 1, 0, "invalid_global_index")
+		_, err := s.GetClaimByGlobalIndex(ctx, big.NewInt(1))
 		require.Error(t, err)
 		// The error should be wrapped with additional context
 		require.Contains(t, err.Error(), "failed to get claim by global index")
@@ -831,18 +831,9 @@ func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 
 	t.Run("edge case with zero values", func(t *testing.T) {
 		// Test with zero block number and index
-		_, err := s.GetClaimByGlobalIndex(ctx, 0, 0, "0")
+		_, err := s.GetClaimByGlobalIndex(ctx, big.NewInt(0))
 		require.Error(t, err)
 		require.Contains(t, err.Error(), "claim not found")
-	})
-
-	t.Run("large global index values", func(t *testing.T) {
-		// Test with very large global index values
-		largeGlobalIndex := "9999999999999999999999999999999999999999999999999999999999999999"
-		_, err := s.GetClaimByGlobalIndex(ctx, 1, 0, largeGlobalIndex)
-		require.Error(t, err)
-		require.Contains(t, err.Error(), "claim not found")
-		require.Contains(t, err.Error(), largeGlobalIndex)
 	})
 
 	t.Run("concurrent access", func(t *testing.T) {
@@ -852,7 +843,7 @@ func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 
 		for i := 0; i < numGoroutines; i++ {
 			go func() {
-				_, err := s.GetClaimByGlobalIndex(ctx, 1, 0, "1000000000000000000")
+				_, err := s.GetClaimByGlobalIndex(ctx, big.NewInt(1000000000000000000))
 				results <- err
 			}()
 		}
