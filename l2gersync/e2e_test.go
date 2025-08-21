@@ -156,6 +156,7 @@ func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 
 	l1Setup.SimBackend.Commit()
 	l2Setup.SimBackend.Commit()
+	time.Sleep(15 * time.Second)
 
 	endBlockNumber, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
