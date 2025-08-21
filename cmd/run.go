@@ -673,7 +673,7 @@ func createRollupDataQuerier(cfg config.L1NetworkConfig, components []string) (*
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.BRIDGE,
-		aggkitcommon.L1INFOTREESYNC,
+		// aggkitcommon.L1INFOTREESYNC,
 	}, components) {
 		return nil, nil
 	}
