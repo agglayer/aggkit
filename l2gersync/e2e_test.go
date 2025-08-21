@@ -28,7 +28,7 @@ const (
 
 func TestL2GERSyncE2E(t *testing.T) {
 	t.Parallel()
-	ctx, _ := context.WithTimeout(t.Context(), 30*time.Minute)
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Minute)
 
 	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
 
