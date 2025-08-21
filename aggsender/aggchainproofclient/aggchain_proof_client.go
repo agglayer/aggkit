@@ -195,7 +195,7 @@ func convertAggchainProofRequestToGrpcRequest(
 	for i, unclaim := range req.Unclaims {
 		convertedUnclaims[i] = &aggkitProverV1Proto.Unclaim{
 			UnclaimHash: &agglayerInteropTypesV1Proto.FixedBytes32{
-				Value: unclaim.UnclaimHash[:].Hash().Bytes(),
+				Value: unclaim.UnclaimHash[:],
 			},
 			BlockNumber: unclaim.BlockNumber,
 			BlockIndex:  uint64(unclaim.BlockIndex),
