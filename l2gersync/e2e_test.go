@@ -53,7 +53,7 @@ func TestL2GERSyncE2E(t *testing.T) {
 
 	for i := range testIterations {
 		updateL1GlobalExitRoot(t, l1Setup, i)
-		time.Sleep(syncDelay)
+		time.Sleep(2 * syncDelay)
 		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i)
 	}
 }

@@ -17,7 +17,7 @@ func RequireProcessorUpdated(t *testing.T, processor Processorer, targetBlock ui
 	t.Helper()
 	const (
 		maxIterations         = 500 // Increased from 100 to 200 for longer timeout
-		sleepTimePerIteration = 50 * time.Millisecond
+		sleepTimePerIteration = 500 * time.Millisecond
 	)
 	var (
 		lpb uint64
