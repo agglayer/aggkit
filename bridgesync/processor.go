@@ -1008,21 +1008,19 @@ func (p *processor) unhalt() {
 
 func (p *processor) GetClaimByGlobalIndex(
 	ctx context.Context,
-	blockNumber uint64,
-	blockIndex uint32,
-	globalIndex string,
+	globalIndex *big.Int,
 ) (Claim, error) {
 	rows, err := p.db.Query(
 		fmt.Sprintf(
-			`SELECT * FROM %s WHERE block_num = $1 AND block_pos = $2 AND global_index = $3`,
+			`SELECT * FROM %s WHERE global_index = $1`,
 			claimTableName,
 		),
-		blockNumber, blockIndex, globalIndex,
+		globalIndex.String(),
 	)
 	if err != nil {
 		return Claim{}, fmt.Errorf(
-			"failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %s",
-			err, blockNumber, blockIndex, globalIndex,
+			"failed to get claim by global index: %w, globalIndex: %s",
+			err, globalIndex,
 		)
 	}
 	defer rows.Close()
@@ -1030,22 +1028,23 @@ func (p *processor) GetClaimByGlobalIndex(
 	claims := []*Claim{}
 	if err = meddler.ScanAll(rows, &claims); err != nil {
 		return Claim{}, fmt.Errorf(
-			"failed to scan claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %s",
-			err, blockNumber, blockIndex, globalIndex,
+			"failed to scan claim by global index: %w, globalIndex: %s",
+			err, globalIndex,
 		)
 	}
 
 	if len(claims) == 0 {
 		return Claim{}, fmt.Errorf(
-			"claim not found, blockNumber: %d, blockIndex: %d, globalIndex: %s",
-			blockNumber, blockIndex, globalIndex,
+			"claim not found, globalIndex: %s",
+			globalIndex,
 		)
 	}
 
+	// TODO - if there are multiple claims for the same global index then what to do?
 	if len(claims) > 1 {
 		return Claim{}, fmt.Errorf(
-			"multiple claims found, expected 1, got %d, blockNumber: %d, blockIndex: %d, globalIndex: %s",
-			len(claims), blockNumber, blockIndex, globalIndex,
+			"multiple claims found, expected 1, got %d, globalIndex: %s",
+			len(claims), globalIndex,
 		)
 	}
 

@@ -142,6 +142,7 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 
 func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*agglayertypes.Unclaim, error) {
+	b.log.Infof("getting unset claims for block range %d to %d", fromBlock, toBlock)
 	unclaims, err := b.bridgeL2SovereignReader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get unclaim block range: %w", err)
@@ -152,7 +153,7 @@ func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 	// Add the unclaim hash to the unclaim
 	for i, unclaim := range unclaims {
 		claim, err := b.bridgeSyncer.GetClaimByGlobalIndex(
-			ctx, unclaim.BlockNumber, uint32(unclaim.BlockIndex), unclaim.GlobalIndex.String(),
+			ctx, unclaim.GlobalIndex,
 		)
 		if err != nil {
 			return nil, fmt.Errorf(
@@ -167,17 +168,10 @@ func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 
 		// Create a custom hash for ImportedBridgeExit without ClaimData
 		// This avoids the panic that would occur when calling Hash() on an ImportedBridgeExit with nil ClaimData
-		var unclaimHash common.Hash
-		if ibe.ClaimData == nil {
-			// Custom hash calculation using only BridgeExit and GlobalIndex
-			unclaimHash = crypto.Keccak256Hash(
-				ibe.BridgeExit.Hash().Bytes(),
-				ibe.GlobalIndex.Hash().Bytes(),
-			)
-		} else {
-			// Use the standard Hash method if ClaimData is available
-			unclaimHash = ibe.Hash()
-		}
+		unclaimHash := crypto.Keccak256Hash(
+			ibe.GlobalIndex.Hash().Bytes(),
+			ibe.BridgeExit.Hash().Bytes(),
+		)
 
 		unclaimsConverted[i] = &agglayertypes.Unclaim{
 			UnclaimHash: unclaimHash,

@@ -496,19 +496,17 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 
 func (s *BridgeSync) GetClaimByGlobalIndex(
 	ctx context.Context,
-	blockNumber uint64,
-	blockIndex uint32,
-	globalIndex string,
+	globalIndex *big.Int,
 ) (Claim, error) {
 	if s.processor.isHalted() {
 		return Claim{}, sync.ErrInconsistentState
 	}
 
-	claim, err := s.processor.GetClaimByGlobalIndex(ctx, blockNumber, blockIndex, globalIndex)
+	claim, err := s.processor.GetClaimByGlobalIndex(ctx, globalIndex)
 	if err != nil {
 		return Claim{}, fmt.Errorf(
-			"failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %s",
-			err, blockNumber, blockIndex, globalIndex,
+			"failed to get claim by global index: %w, globalIndex: %s",
+			err, globalIndex,
 		)
 	}
 

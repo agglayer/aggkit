@@ -30,7 +30,7 @@ func NewBridgeL2SovereignReader(
 func (r *BridgeL2SovereignReader) GetUnsetClaimsForBlockRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*types.Unclaim, error) {
 	unclaimIterator, err := r.bridgeSovereignChain.FilterUpdatedUnsetGlobalIndexHashChain(
-		&bind.FilterOpts{Start: fromBlock, End: &toBlock})
+		&bind.FilterOpts{Context: ctx, Start: fromBlock, End: &toBlock})
 	if err != nil {
 		return nil, err
 	}
@@ -44,7 +44,7 @@ func (r *BridgeL2SovereignReader) GetUnsetClaimsForBlockRange(ctx context.Contex
 	unclaims := make([]*types.Unclaim, 0)
 	for unclaimIterator.Next() {
 		globalIndex := unclaimIterator.Event.UnsetGlobalIndex
-		log.Infof("unset claim: %s at block %d, index %d", common.Hash(globalIndex).String(),
+		log.Infof("unset claim: %s at block %d, index %d", new(big.Int).SetBytes(globalIndex[:]),
 			unclaimIterator.Event.Raw.BlockNumber, unclaimIterator.Event.Raw.Index)
 		unclaims = append(unclaims, &types.Unclaim{
 			GlobalIndex: new(big.Int).SetBytes(globalIndex[:]),
