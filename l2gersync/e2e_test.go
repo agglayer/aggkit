@@ -23,7 +23,7 @@ const (
 	waitForNewBlocksPeriod     = 30 * time.Millisecond
 	syncBlockChunkSize         = 10
 	testIterations             = 10
-	syncDelay                  = 100 * time.Millisecond
+	syncDelay                  = 500 * time.Millisecond
 )
 
 func TestL2GERSyncE2E(t *testing.T) {
@@ -153,6 +153,9 @@ func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 		// wait for the GER to be indexed
 		time.Sleep(syncDelay)
 	}
+
+	l1Setup.SimBackend.Commit()
+	l2Setup.SimBackend.Commit()
 
 	endBlockNumber, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
