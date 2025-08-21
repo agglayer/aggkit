@@ -68,7 +68,7 @@ func TestMigration0001(t *testing.T) {
 func TestMigrations_UpDown(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "test.db")
 
-	const totalMigrations = 5
+	const totalMigrations = 4
 
 	migs := []types.Migration{
 		{

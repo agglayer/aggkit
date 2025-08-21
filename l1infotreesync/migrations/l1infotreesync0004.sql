@@ -17,7 +17,7 @@ CREATE INDEX idx_l1info_leaf_global_exit_root ON l1info_leaf(global_exit_root);
 CREATE INDEX idx_l1info_leaf_hash ON l1info_leaf(hash);
 CREATE INDEX idx_l1info_leaf_timestamp ON l1info_leaf(timestamp);
 
--- Composite index for block queries (high priority)
+-- Composite index for block queries
 CREATE INDEX idx_l1info_leaf_block_num_pos ON l1info_leaf(block_num DESC, block_pos DESC);
 
 -- Verify batches table indexes
