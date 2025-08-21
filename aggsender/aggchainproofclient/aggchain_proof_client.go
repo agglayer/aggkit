@@ -2,9 +2,7 @@ package aggchainproofclient
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
-	"fmt"
 
 	agglayerInteropTypesV1Proto "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	aggkitProverV1Grpc "buf.build/gen/go/agglayer/provers/grpc/go/aggkit/prover/v1/proverv1grpc"
@@ -185,16 +183,20 @@ func convertAggchainProofRequestToGrpcRequest(
 	convertedRemovedGers := make([]*aggkitProverV1Proto.RemovedGER, len(req.RemovedGers))
 	for i, removedGER := range req.RemovedGers {
 		convertedRemovedGers[i] = &aggkitProverV1Proto.RemovedGER{
-			GlobalExitRoot: base64.StdEncoding.EncodeToString(removedGER.GlobalExitRoot.Bytes()),
-			BlockNumber:    removedGER.BlockNumber,
-			BlockIndex:     uint64(removedGER.BlockIndex),
+			GlobalExitRoot: &agglayerInteropTypesV1Proto.FixedBytes32{
+				Value: removedGER.GlobalExitRoot[:],
+			},
+			BlockNumber: removedGER.BlockNumber,
+			BlockIndex:  uint64(removedGER.BlockIndex),
 		}
 	}
 
 	convertedUnclaims := make([]*aggkitProverV1Proto.Unclaim, len(req.Unclaims))
 	for i, unclaim := range req.Unclaims {
 		convertedUnclaims[i] = &aggkitProverV1Proto.Unclaim{
-			UnclaimHash: base64.StdEncoding.EncodeToString(unclaim.UnclaimHash.Bytes()),
+			UnclaimHash: &agglayerInteropTypesV1Proto.FixedBytes32{
+				Value: unclaim.UnclaimHash[:].Hash().Bytes(),
+			},
 			BlockNumber: unclaim.BlockNumber,
 			BlockIndex:  uint64(unclaim.BlockIndex),
 		}
@@ -211,9 +213,6 @@ func convertAggchainProofRequestToGrpcRequest(
 		RemovedGers:           convertedRemovedGers,
 		Unclaims:              convertedUnclaims,
 	}
-
-	// TODO: remove this
-	fmt.Println("-------------------- request", request)
 
 	return request
 }
