@@ -262,7 +262,7 @@ func CalculateRoot(leafHash common.Hash, proof [types.DefaultHeight]common.Hash,
 	node := leafHash
 
 	// Compute the Merkle root
-	for height := range types.DefaultHeight {
+	for height := uint8(0); height < types.DefaultHeight; height++ {
 		if (index>>height)&1 == 1 {
 			node = crypto.Keccak256Hash(proof[height].Bytes(), node.Bytes())
 		} else {
