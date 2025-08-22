@@ -424,7 +424,7 @@ func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fro
 
 			errStr := err.Error()
 			if strings.Contains(errStr, "Query returned more than") && fromBlock < toBlock {
-				midBlock := (fromBlock + toBlock) / 2
+				midBlock := (fromBlock + toBlock) / 2 //nolint:gomnd
 				if midBlock >= fromBlock {
 					d.log.Warnf("too many results for block range [%d, %d], splitting into [%d, %d] and [%d, %d]",
 						fromBlock, toBlock, fromBlock, midBlock, midBlock+1, toBlock)
