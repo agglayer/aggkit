@@ -58,12 +58,11 @@ type BridgeSync struct {
 	driver     *sync.EVMDriver
 	downloader *sync.EVMDownloader
 
-	originNetwork        uint32
-	reorgDetector        ReorgDetector
-	blockFinality        aggkittypes.BlockNumberFinality
-	ethClient            aggkittypes.EthClienter
-	bridgeContractV2     *polygonzkevmbridgev2.Polygonzkevmbridgev2
-	bridgeSovereignChain *bridgel2sovereignchain.Bridgel2sovereignchain
+	originNetwork    uint32
+	reorgDetector    ReorgDetector
+	blockFinality    aggkittypes.BlockNumberFinality
+	ethClient        aggkittypes.EthClienter
+	bridgeContractV2 *polygonzkevmbridgev2.Polygonzkevmbridgev2
 }
 
 // noOpReorgDetectorWrapper wraps NoOpReorgDetector to implement bridgesync.ReorgDetector interface
@@ -289,15 +288,14 @@ func newBridgeSync(
 	)
 
 	return &BridgeSync{
-		processor:            processor,
-		driver:               driver,
-		downloader:           downloader,
-		originNetwork:        originNetwork,
-		reorgDetector:        rd,
-		blockFinality:        blockFinalityType,
-		ethClient:            ethClient,
-		bridgeContractV2:     bridgeContractV2,
-		bridgeSovereignChain: bridgeSovereignChain,
+		processor:        processor,
+		driver:           driver,
+		downloader:       downloader,
+		originNetwork:    originNetwork,
+		reorgDetector:    rd,
+		blockFinality:    blockFinalityType,
+		ethClient:        ethClient,
+		bridgeContractV2: bridgeContractV2,
 	}, nil
 }
 
@@ -497,12 +495,13 @@ func (s *BridgeSync) GetContractDepositCount(ctx context.Context) (uint32, error
 func (s *BridgeSync) GetClaimByGlobalIndex(
 	ctx context.Context,
 	globalIndex *big.Int,
+	blockNumber uint64,
 ) (Claim, error) {
 	if s.processor.isHalted() {
 		return Claim{}, sync.ErrInconsistentState
 	}
 
-	claim, err := s.processor.GetClaimByGlobalIndex(ctx, globalIndex)
+	claim, err := s.processor.GetClaimByGlobalIndex(ctx, globalIndex, blockNumber)
 	if err != nil {
 		return Claim{}, fmt.Errorf(
 			"failed to get claim by global index: %w, globalIndex: %s",

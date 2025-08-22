@@ -78,7 +78,7 @@ type L2BridgeSyncer interface {
 	BlockFinality() aggkittypes.BlockNumberFinality
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
 	GetClaimByGlobalIndex(
-		ctx context.Context, globalIndex *big.Int,
+		ctx context.Context, globalIndex *big.Int, blockNumber uint64,
 	) (bridgesync.Claim, error)
 }
 

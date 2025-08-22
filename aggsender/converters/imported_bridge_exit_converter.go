@@ -37,10 +37,6 @@ func ConvertToImportedBridgeExitWithoutClaimData(
 		Metadata:           metaData,
 	}
 
-	if claim.GlobalIndex == nil {
-		return nil, fmt.Errorf("error decoding global index: global index is nil")
-	}
-
 	mainnetFlag, rollupIndex, leafIndex, err := bridgesync.DecodeGlobalIndex(claim.GlobalIndex)
 	if err != nil {
 		return nil, fmt.Errorf("error decoding global index: %w", err)
