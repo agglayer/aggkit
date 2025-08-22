@@ -22,7 +22,7 @@ func TestEVM_GERInjection(t *testing.T) {
 		{
 			name:                     "DirectInjectionMode",
 			enableAggOracleCommittee: false,
-			sleepDuration:            time.Millisecond * 500,
+			sleepDuration:            time.Millisecond * 200,
 			additionalAssertions:     nil,
 		},
 		{
