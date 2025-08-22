@@ -595,3 +595,53 @@ func runSteps(t *testing.T, fromBlock uint64, steps []evmTestStep) {
 		}
 	}
 }
+
+func TestTooManyResultsErrorHandling(t *testing.T) {
+	mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+	sut := EVMDownloaderImplementation{
+		ethClient:        mockEthClient,
+		addressesToQuery: []common.Address{contractAddr},
+		log:              log.WithFields("test", "EVMDownloaderImplementation"),
+		rh: &RetryHandler{
+			RetryAfterErrorPeriod:      time.Millisecond,
+			MaxRetryAttemptsAfterError: 5,
+		},
+	}
+
+	ctx := context.Background()
+	fromBlock := uint64(100)
+	toBlock := uint64(200)
+
+	// First call returns "too many results" error
+	tooManyResultsErr := errors.New("Query returned more than 20000 results.")
+	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, tooManyResultsErr).Once()
+
+	// Second call for first half returns success
+	firstHalfLogs := []types.Log{
+		{
+			Address:     contractAddr,
+			BlockNumber: 150,
+			Topics:      []common.Hash{eventSignature},
+			BlockHash:   common.HexToHash("0x123"),
+		},
+	}
+	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(firstHalfLogs, nil).Once()
+
+	// Third call for second half returns success
+	secondHalfLogs := []types.Log{
+		{
+			Address:     contractAddr,
+			BlockNumber: 175,
+			Topics:      []common.Hash{eventSignature},
+			BlockHash:   common.HexToHash("0x456"),
+		},
+	}
+	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(secondHalfLogs, nil).Once()
+
+	result := sut.getUnfilteredLogs(ctx, fromBlock, toBlock)
+	fmt.Println("result", result)
+
+	// Should combine both halves
+	expected := append(firstHalfLogs, secondHalfLogs...)
+	assert.Equal(t, expected, result)
+}
