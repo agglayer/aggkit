@@ -245,6 +245,7 @@ func createAggSenderValidator(ctx context.Context,
 			nil, // storage is not used in validator,
 			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, false,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
+			false, // full claims are not needed in validator mode
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -252,14 +253,7 @@ func createAggSenderValidator(ctx context.Context,
 
 		flow = flows.NewPPFlow(
 			logger,
-			flows.NewBaseFlow(
-				logger,
-				commonFlowComponents.L2BridgeQuerier,
-				nil, // storage is not used in validator
-				commonFlowComponents.L1InfoTreeDataQuerier,
-				commonFlowComponents.LERQuerier,
-				flows.NewBaseFlowConfig(cfg.MaxCertSize, 0, false),
-			),
+			commonFlowComponents.BaseFlow,
 			nil, // storage is not used in validator
 			commonFlowComponents.L1InfoTreeDataQuerier,
 			commonFlowComponents.L2BridgeQuerier,
@@ -272,7 +266,9 @@ func createAggSenderValidator(ctx context.Context,
 			ctx, logger,
 			nil, // storage is not used in validator,
 			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, cfg.FEPConfig.RequireNoBlockGap,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
+			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
+			cfg.DelayBetweenRetries.Duration, cfg.Signer,
+			false, // full claims are not needed in validator mode
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -689,11 +685,17 @@ func runBridgeSyncL2IfNeeded(
 	l2Client aggkittypes.EthClienter,
 	rollupID uint32,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{
+	fullClaimsNeeded := isNeeded([]string{
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
+		aggkitcommon.AGGCHAINPROOFGEN}, components)
+
+	fullClaimsNotNeeded := isNeeded([]string{
 		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.AGGCHAINPROOFGEN}, components) {
+	}, components)
+
+	if !fullClaimsNeeded && !fullClaimsNotNeeded {
+		// no bridge sync needed
 		return nil
 	}
 
@@ -710,7 +712,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
-		true,
+		fullClaimsNeeded,
 		cfg.RequireStorageContentCompatibility,
 	)
 	if err != nil {

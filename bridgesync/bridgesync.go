@@ -181,6 +181,8 @@ func newBridgeSync(
 		return nil, err
 	}
 
+	logger.Infof("Bridge sync %s, syncing full claims: %t", syncerID.String(), syncFullClaims)
+
 	err = sanityCheckContract(logger, bridge, bridgeContractV2)
 	if err != nil {
 		logger.Errorf("sanityCheckContract(bridge:%s) fails sanity check. Err: %w",

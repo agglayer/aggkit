@@ -53,7 +53,7 @@ var exampleTestAgglayerCert = &agglayertypes.Certificate{
 				RollupIndex: 0,
 				LeafIndex:   1,
 			},
-			ClaimData: &agglayertypes.ClaimFromMainnnet{
+			ClaimData: &agglayertypes.ClaimFromMainnet{
 				ProofLeafMER: &agglayertypes.MerkleProof{
 					Root:  common.HexToHash("0x010203"),
 					Proof: tree.EmptyProof,

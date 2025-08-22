@@ -11,6 +11,7 @@ import (
 
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -579,9 +580,9 @@ func (b *BridgeExit) Hash() common.Hash {
 
 	return crypto.Keccak256Hash(
 		[]byte{b.LeafType.Uint8()},
-		aggkitcommon.Uint32ToBytes(b.TokenInfo.OriginNetwork),
+		aggkitcommon.Uint32ToBigEndianBytes(b.TokenInfo.OriginNetwork),
 		b.TokenInfo.OriginTokenAddress.Bytes(),
-		aggkitcommon.Uint32ToBytes(b.DestinationNetwork),
+		aggkitcommon.Uint32ToBigEndianBytes(b.DestinationNetwork),
 		b.DestinationAddress.Bytes(),
 		common.BigToHash(b.Amount).Bytes(),
 		metaDataHash,
@@ -786,20 +787,20 @@ type Claim interface {
 	Validate() error
 }
 
-// ClaimFromMainnnet represents a claim originating from the mainnet
-type ClaimFromMainnnet struct {
+// ClaimFromMainnet represents a claim originating from the mainnet
+type ClaimFromMainnet struct {
 	ProofLeafMER     *MerkleProof    `json:"proof_leaf_mer"`
 	ProofGERToL1Root *MerkleProof    `json:"proof_ger_l1root"`
 	L1Leaf           *L1InfoTreeLeaf `json:"l1_leaf"`
 }
 
 // Type is the implementation of Claim interface
-func (c ClaimFromMainnnet) Type() string {
+func (c ClaimFromMainnet) Type() string {
 	return "Mainnet"
 }
 
 // MarshalJSON is the implementation of Claim interface
-func (c *ClaimFromMainnnet) MarshalJSON() ([]byte, error) {
+func (c *ClaimFromMainnet) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Child map[string]interface{} `json:"Mainnet"`
 	}{
@@ -811,7 +812,7 @@ func (c *ClaimFromMainnnet) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (c *ClaimFromMainnnet) UnmarshalJSON(data []byte) error {
+func (c *ClaimFromMainnet) UnmarshalJSON(data []byte) error {
 	if string(data) == nullStr {
 		return nil
 	}
@@ -834,7 +835,7 @@ func (c *ClaimFromMainnnet) UnmarshalJSON(data []byte) error {
 }
 
 // Hash is the implementation of Claim interface
-func (c *ClaimFromMainnnet) Hash() common.Hash {
+func (c *ClaimFromMainnet) Hash() common.Hash {
 	if c.Validate() != nil {
 		return common.Hash{}
 	}
@@ -845,12 +846,12 @@ func (c *ClaimFromMainnnet) Hash() common.Hash {
 	)
 }
 
-func (c *ClaimFromMainnnet) String() string {
+func (c *ClaimFromMainnet) String() string {
 	return fmt.Sprintf("ProofLeafMER: %s, ProofGERToL1Root: %s, L1Leaf: %s",
 		c.ProofLeafMER.String(), c.ProofGERToL1Root.String(), c.L1Leaf.String())
 }
 
-func (c *ClaimFromMainnnet) Validate() error {
+func (c *ClaimFromMainnet) Validate() error {
 	if c == nil {
 		return errors.New("ClaimFromMainnnet is nil")
 	}
@@ -860,6 +861,37 @@ func (c *ClaimFromMainnnet) Validate() error {
 	if err := c.L1Leaf.Validate(); err != nil {
 		return fmt.Errorf("ClaimFromMainnnet L1Leaf error: %w", err)
 	}
+	return nil
+}
+
+// VerifyProofs verifies the inclusion proofs for the given mainnet claim
+func (c *ClaimFromMainnet) VerifyProofs(l1RootFromWhichToProof, leafHash common.Hash, leafIndex uint32) error {
+	if c.ProofGERToL1Root.Root != l1RootFromWhichToProof {
+		return fmt.Errorf("ClaimFromMainnnet - Mismatch between the provided L1 root and the inclusion proof. "+
+			"GERToL1Root: %s != L1RootFromWhichToProof: %s",
+			c.ProofGERToL1Root.Root.String(), l1RootFromWhichToProof.String())
+	}
+
+	if c.ProofLeafMER.Root != c.L1Leaf.MainnetExitRoot {
+		return fmt.Errorf("ClaimFromMainnnet - Mismatch on the MER between the L1 leaf and the inclusion proof. "+
+			"ProofLeafMER: %s != L1Leaf.MainnetExitRoot: %s",
+			c.ProofLeafMER.Root.String(), c.L1Leaf.MainnetExitRoot.String())
+	}
+
+	if err := tree.VerifyProof(leafHash, c.ProofLeafMER.Proof,
+		leafIndex, c.ProofLeafMER.Root); err != nil {
+		return fmt.Errorf("ClaimFromMainnnet - Invalid merkle path from the leaf to the LER. "+
+			"ProofLeafMER: %s, leafHash: %s, leafIndex: %d, err: %w",
+			c.ProofLeafMER.String(), leafHash.String(), leafIndex, err)
+	}
+
+	if err := tree.VerifyProof(c.L1Leaf.Hash(), c.ProofGERToL1Root.Proof,
+		c.L1Leaf.L1InfoTreeIndex, c.ProofGERToL1Root.Root); err != nil {
+		return fmt.Errorf("ClaimFromMainnnet - Invalid merkle path from the GER to the L1 Info Root. "+
+			"ProofGERToL1Root: %s, L1Leaf: %s, leafIndex: %d, err: %w",
+			c.ProofGERToL1Root.String(), c.L1Leaf.String(), c.L1Leaf.L1InfoTreeIndex, err)
+	}
+
 	return nil
 }
 
@@ -946,6 +978,43 @@ func (c *ClaimFromRollup) String() string {
 		c.ProofLeafLER.String(), c.ProofLERToRER.String(), c.ProofGERToL1Root.String(), c.L1Leaf.String())
 }
 
+func (c *ClaimFromRollup) VerifyProofs(
+	l1RootFromWhichToProof, leafHash common.Hash, rollupIndex, leafIndex uint32) error {
+	if c.ProofGERToL1Root.Root != l1RootFromWhichToProof {
+		return fmt.Errorf("ClaimFromRollup - Mismatch between the provided L1 root and the inclusion proof. "+
+			"ProofGERToL1Root: %s != L1RootFromWhichToProof: %s",
+			c.ProofGERToL1Root.Root.String(), l1RootFromWhichToProof.String())
+	}
+
+	if c.ProofLERToRER.Root != c.L1Leaf.RollupExitRoot {
+		return fmt.Errorf("ClaimFromRollup - Mismatch on the RER between the L1 leaf and the inclusion proof. "+
+			"ProofLERToRER: %s != L1Leaf.RollupExitRoot: %s",
+			c.ProofLERToRER.Root.String(), c.L1Leaf.RollupExitRoot.String())
+	}
+
+	if err := tree.VerifyProof(leafHash, c.ProofLeafLER.Proof,
+		leafIndex, c.ProofLeafLER.Root); err != nil {
+		return fmt.Errorf("ClaimFromRollup - Invalid merkle path from the leaf to the LER. "+
+			"ProofLeafLER: %s, leafHash: %s, leafIndex: %d, err: %w",
+			c.ProofLeafLER.String(), leafHash.String(), leafIndex, err)
+	}
+
+	if err := tree.VerifyProof(c.L1Leaf.Hash(), c.ProofGERToL1Root.Proof,
+		c.L1Leaf.L1InfoTreeIndex, c.ProofGERToL1Root.Root); err != nil {
+		return fmt.Errorf("ClaimFromRollup - Invalid merkle path from the GER to the L1 Info Root. "+
+			"ProofGERToL1Root: %s, L1Leaf: %s, leafIndex: %d, err: %w",
+			c.ProofGERToL1Root.String(), c.L1Leaf.String(), c.L1Leaf.L1InfoTreeIndex, err)
+	}
+
+	if err := tree.VerifyProof(c.ProofLeafLER.Root, c.ProofLERToRER.Proof, rollupIndex, c.ProofLERToRER.Root); err != nil {
+		return fmt.Errorf("ClaimFromRollup - Invalid merkle path from the LER to the RER. "+
+			"ProofLERToRER: %s, LER: %s, rollupIndex: %d, err: %w",
+			c.ProofLERToRER.String(), c.ProofLeafLER.String(), rollupIndex, err)
+	}
+
+	return nil
+}
+
 // ClaimSelector is a helper struct that allow to decice which type of claim to unmarshal
 type ClaimSelector struct {
 	obj Claim
@@ -965,7 +1034,7 @@ func (c *ClaimSelector) UnmarshalJSON(data []byte) error {
 	}
 	var ok bool
 	if _, ok = obj["Mainnet"]; ok {
-		c.obj = &ClaimFromMainnnet{}
+		c.obj = &ClaimFromMainnet{}
 	} else if _, ok = obj["Rollup"]; ok {
 		c.obj = &ClaimFromRollup{}
 	} else {
@@ -1036,13 +1105,37 @@ func (c *ImportedBridgeExit) Validate() error {
 	if err := c.BridgeExit.Validate(); err != nil {
 		return fmt.Errorf("ImportedBridgeExit.BridgeExit not valid: %w", err)
 	}
-	if err := c.ClaimData.Validate(); err != nil {
-		return fmt.Errorf("ImportedBridgeExit.ClaimData exit not valid: %w", err)
-	}
 	if err := c.GlobalIndex.Validate(); err != nil {
 		return fmt.Errorf("ImportedBridgeExit.GlobalIndex exit not valid: %w", err)
 	}
 	return nil
+}
+
+// VerifyProofs verifies the inclusion proofs for the imported bridge exit
+func (c *ImportedBridgeExit) VerifyProofs(l1RootFromWhichToProve common.Hash) error {
+	if c == nil {
+		return errors.New("ImportedBridgeExit is nil")
+	}
+
+	if c.ClaimData == nil {
+		return errors.New("ImportedBridgeExit.ClaimData is nil")
+	}
+
+	switch cl := c.ClaimData.(type) {
+	case *ClaimFromMainnet:
+		if err := cl.VerifyProofs(l1RootFromWhichToProve, c.BridgeExit.Hash(), c.GlobalIndex.LeafIndex); err != nil {
+			return fmt.Errorf("ImportedBridgeExit - ClaimFromMainnnet verification failed: %w", err)
+		}
+		return nil
+	case *ClaimFromRollup:
+		if err := cl.VerifyProofs(l1RootFromWhichToProve, c.BridgeExit.Hash(),
+			c.GlobalIndex.RollupIndex, c.GlobalIndex.LeafIndex); err != nil {
+			return fmt.Errorf("ImportedBridgeExit - ClaimFromRollup verification failed: %w", err)
+		}
+		return nil
+	default:
+		return fmt.Errorf("ImportedBridgeExit - unknown claim type: %T", c.ClaimData)
+	}
 }
 
 // GlobalIndexToLittleEndianBytes converts the global index to a byte slice in little-endian format

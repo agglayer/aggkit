@@ -11,6 +11,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum/common"
 )
 
 var (
@@ -116,10 +117,30 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 		return fmt.Errorf("failed flow.ValidateCertificate: %w", err)
 	}
 
+	// Verify claim proofs
+	if err := a.verifyClaimProofs(
+		params.Certificate.ImportedBridgeExits,
+		buildParams.L1InfoTreeRootFromWhichToProve); err != nil {
+		return fmt.Errorf("failed to verify claim proofs: %w", err)
+	}
+
 	// Compare the incoming certificate with the one generated
 	err = a.compareCertificates(params.Certificate, certificate)
 	if err != nil {
 		return fmt.Errorf("certificate not equal to expected: %w", err)
+	}
+
+	return nil
+}
+
+func (a *CertificateValidator) verifyClaimProofs(
+	importedBridgeExits []*agglayertypes.ImportedBridgeExit,
+	rootFromWhichToProve common.Hash,
+) error {
+	for _, ibe := range importedBridgeExits {
+		if err := ibe.VerifyProofs(rootFromWhichToProve); err != nil {
+			return fmt.Errorf("failed to verify imported bridge exit proof: %s. Err: %w", ibe.String(), err)
+		}
 	}
 
 	return nil

@@ -56,9 +56,6 @@ func DiffsCertificate(
 
 	// BridgeExits
 	diffs = append(diffs, DiffsBridgeExits(expectedCertificate.BridgeExits, validatingCertificate.BridgeExits)...)
-	// ImportedBridgeExit
-	diffs = append(diffs, DiffsImportedBridgeExit(expectedCertificate.ImportedBridgeExits,
-		validatingCertificate.ImportedBridgeExits)...)
 
 	return diffs
 }
@@ -79,27 +76,6 @@ func DiffsBridgeExits(
 		if bridgeValidating.Hash() != expectedExit.Hash() {
 			diffs = append(diffs, fmt.Sprintf("BridgeExit %d hash mismatch. Expected: %s, Certificate: %s",
 				i, expectedExit.Hash().Hex(), bridgeValidating.Hash().Hex()))
-		}
-	}
-	return diffs
-}
-
-// DiffsImportedBridgeExit compares two slices of ImportedBridgeExit and returns a slice of strings
-// containing the differences between them.
-func DiffsImportedBridgeExit(expected []*agglayertypes.ImportedBridgeExit,
-	validating []*agglayertypes.ImportedBridgeExit) []string {
-	diffs := make([]string, 0)
-	if len(expected) != len(validating) {
-		diffs = append(diffs, fmt.Sprintf("BridgeExits length mismatch. Expected: %d, Certificate: %d",
-			len(expected), len(validating)))
-		return diffs
-	}
-	for i, expectedImportedBridge := range expected {
-		importedBridgeValidating := validating[i]
-		if importedBridgeValidating.Hash() != expectedImportedBridge.Hash() {
-			diffs = append(diffs, fmt.Sprintf("ImportedBridgeExit %d hash mismatch.\n Expected: %s,\n"+
-				"Certificate: %s",
-				i, expectedImportedBridge.String(), importedBridgeValidating.String()))
 		}
 	}
 	return diffs

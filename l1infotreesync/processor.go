@@ -134,12 +134,16 @@ func (l *L1InfoTreeLeaf) GetHash() common.Hash {
 
 // GlobalExitRoot returns the GER
 func (l *L1InfoTreeLeaf) GetGlobalExitRoot() common.Hash {
+	return CalculateGER(l.MainnetExitRoot, l.RollupExitRoot)
+}
+
+// CalculateGER calculates the Global Exit Root (GER) based on the mainnet and rollup exit roots
+func CalculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
 	var gerBytes [treeTypes.DefaultHeight]byte
 	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write(l.MainnetExitRoot[:])
-	hasher.Write(l.RollupExitRoot[:])
+	hasher.Write(mainnetExitRoot[:])
+	hasher.Write(rollupExitRoot[:])
 	copy(gerBytes[:], hasher.Sum(nil))
-
 	return gerBytes
 }
 

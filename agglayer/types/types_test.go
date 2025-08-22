@@ -2,16 +2,22 @@ package types
 
 import (
 	"bytes"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
+	"path"
 	"reflect"
 	"testing"
 
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db"
+	"github.com/agglayer/aggkit/l1infotreesync"
+	"github.com/agglayer/aggkit/l1infotreesync/migrations"
 	"github.com/agglayer/aggkit/log"
+	"github.com/agglayer/aggkit/tree"
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
@@ -188,7 +194,7 @@ func TestMarshalJSON(t *testing.T) {
 						RollupIndex: 0,
 						LeafIndex:   1,
 					},
-					ClaimData: &ClaimFromMainnnet{
+					ClaimData: &ClaimFromMainnet{
 						ProofLeafMER: &MerkleProof{
 							Root:  common.HexToHash("0x333"),
 							Proof: createDummyProof(t),
@@ -607,7 +613,7 @@ func TestClaimFromMainnnet_MarshalJSON(t *testing.T) {
 		},
 	}
 
-	claim := &ClaimFromMainnnet{
+	claim := &ClaimFromMainnet{
 		ProofLeafMER:     merkleProof,
 		ProofGERToL1Root: merkleProof,
 		L1Leaf:           l1InfoTreeLeaf,
@@ -617,7 +623,7 @@ func TestClaimFromMainnnet_MarshalJSON(t *testing.T) {
 	expectedJSON, err := claim.MarshalJSON()
 	require.NoError(t, err)
 
-	var actualClaim ClaimFromMainnnet
+	var actualClaim ClaimFromMainnet
 	err = json.Unmarshal(expectedJSON, &actualClaim)
 	require.NoError(t, err)
 }
@@ -900,7 +906,7 @@ func TestClaimType(t *testing.T) {
 	}{
 		{
 			name:         "Mainnet claim",
-			claim:        &ClaimFromMainnnet{},
+			claim:        &ClaimFromMainnet{},
 			expectedType: "Mainnet",
 		},
 		{
@@ -977,7 +983,7 @@ func Test_UnmarshalImportedBridgeExit(t *testing.T) {
 		{
 			name: "Empty/ClaimFromMainnnet",
 			importedBridge: ImportedBridgeExit{
-				ClaimData: &ClaimFromMainnnet{
+				ClaimData: &ClaimFromMainnet{
 					ProofLeafMER: &MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: [types.DefaultHeight]common.Hash{common.HexToHash("0x2"), common.HexToHash("0x3")},
@@ -1002,7 +1008,7 @@ func Test_UnmarshalImportedBridgeExit(t *testing.T) {
 					Amount:             big.NewInt(1000),
 					Metadata:           []byte{0x01, 0x02, 0x03},
 				},
-				ClaimData: &ClaimFromMainnnet{},
+				ClaimData: &ClaimFromMainnet{},
 				GlobalIndex: &GlobalIndex{
 					MainnetFlag: true,
 					RollupIndex: 1,
@@ -1082,7 +1088,7 @@ func Test_UnmarshalBridgeExit(t *testing.T) {
 }
 
 func Test_UnmarshalClaimFromMainnnet(t *testing.T) {
-	claim := &ClaimFromMainnnet{
+	claim := &ClaimFromMainnet{
 		ProofLeafMER: &MerkleProof{
 			Root:  common.HexToHash("0x1"),
 			Proof: [types.DefaultHeight]common.Hash{common.HexToHash("0x2"), common.HexToHash("0x3")},
@@ -1092,7 +1098,7 @@ func Test_UnmarshalClaimFromMainnnet(t *testing.T) {
 	}
 	ser, err := json.Marshal(claim)
 	require.NoError(t, err)
-	unmarshalled := &ClaimFromMainnnet{}
+	unmarshalled := &ClaimFromMainnet{}
 	err = json.Unmarshal(ser, unmarshalled)
 	require.NoError(t, err)
 	require.Equal(t, claim, unmarshalled)
@@ -1318,7 +1324,7 @@ func TestCertificate_Validate(t *testing.T) {
 						DestinationNetwork: 1,
 						DestinationAddress: common.HexToAddress("0x1234"),
 					},
-					ClaimData: &ClaimFromMainnnet{
+					ClaimData: &ClaimFromMainnet{
 						ProofLeafMER:     &MerkleProof{},
 						ProofGERToL1Root: &MerkleProof{},
 						L1Leaf: &L1InfoTreeLeaf{
@@ -1342,41 +1348,6 @@ func TestCertificate_Validate(t *testing.T) {
 		require.NoError(t, sut.Validate())
 	})
 
-	t.Run("ClaimFromMainnnet validate", func(t *testing.T) {
-		var sut *ClaimFromMainnnet
-		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet is nil")
-		sut = &ClaimFromMainnnet{}
-		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet has nil proofs")
-		sut = &ClaimFromMainnnet{
-			ProofLeafMER:     &MerkleProof{},
-			ProofGERToL1Root: &MerkleProof{},
-		}
-		require.ErrorContains(t, sut.Validate(), "ClaimFromMainnnet L1Leaf error")
-		sut = &ClaimFromMainnnet{
-			ProofLeafMER:     &MerkleProof{},
-			ProofGERToL1Root: &MerkleProof{},
-			L1Leaf: &L1InfoTreeLeaf{
-				Inner: &L1InfoTreeLeafInner{},
-			},
-		}
-		require.NoError(t, sut.Validate())
-	})
-
-	t.Run("ClaimFromRollup nil", func(t *testing.T) {
-		var sut *ClaimFromRollup
-		require.ErrorContains(t, sut.Validate(), "ClaimFromRollup is nil")
-		sut = &ClaimFromRollup{}
-		require.ErrorContains(t, sut.Validate(), "ClaimFromRollup has nil proofs")
-		sut = &ClaimFromRollup{
-			ProofLeafLER:     &MerkleProof{},
-			ProofLERToRER:    &MerkleProof{},
-			ProofGERToL1Root: &MerkleProof{},
-		}
-		require.ErrorContains(t, sut.Validate(), "ClaimFromRollup has nil L1Leaf")
-		sut.L1Leaf = &L1InfoTreeLeaf{}
-		require.NoError(t, sut.Validate())
-	})
-
 	t.Run("ImportedBridgeExit nil", func(t *testing.T) {
 		var sut *ImportedBridgeExit
 		require.ErrorContains(t, sut.Validate(), "ImportedBridgeExit is nil")
@@ -1393,9 +1364,9 @@ func TestBridgeExitHash(t *testing.T) {
 }
 
 func TestClaimFromMainnnetHash(t *testing.T) {
-	var sut *ClaimFromMainnnet
+	var sut *ClaimFromMainnet
 	require.Equal(t, common.Hash{}, sut.Hash())
-	var sut2 ClaimFromMainnnet
+	var sut2 ClaimFromMainnet
 	require.Equal(t, common.Hash{}, sut2.Hash())
 }
 
@@ -1404,4 +1375,440 @@ func TestClaimFromRollupHash(t *testing.T) {
 	require.Equal(t, common.Hash{}, sut.Hash())
 	var sut2 ClaimFromRollup
 	require.Equal(t, common.Hash{}, sut2.Hash())
+}
+
+func TestImportedBridgeExit_VerifyProofs(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+	treeDB := createTreeDBForTest(t)
+	rollupExitTree := tree.NewAppendOnlyTree(treeDB, migrations.RollupExitTreePrefix)
+	l1InfoTree := tree.NewAppendOnlyTree(treeDB, migrations.L1InfoTreePrefix)
+
+	numOfLeavesToAdd := 10
+
+	tx, err := db.NewTx(ctx, treeDB)
+	require.NoError(t, err)
+
+	bridgeExits := make([]*BridgeExit, numOfLeavesToAdd)
+	l1Leaves := make([]*L1InfoTreeLeaf, numOfLeavesToAdd)
+
+	// simulate rollup exit tree
+	for i := range numOfLeavesToAdd {
+		bridgeExits[i] = &BridgeExit{
+			LeafType: LeafTypeAsset,
+			TokenInfo: &TokenInfo{
+				OriginNetwork:      uint32(i),
+				OriginTokenAddress: common.HexToAddress(fmt.Sprintf("0x%040x", i)),
+			},
+			DestinationNetwork: uint32(i + 1),
+			DestinationAddress: common.HexToAddress(fmt.Sprintf("0x%040x", i+1)),
+			Amount:             big.NewInt(int64(i+1) * 1000),
+		}
+		require.NoError(t, rollupExitTree.AddLeaf(tx, uint64(i), 0, types.Leaf{
+			Index: uint32(i),
+			Hash:  bridgeExits[i].Hash(),
+		}))
+	}
+
+	require.NoError(t, tx.Commit())
+
+	tx, err = db.NewTx(ctx, treeDB)
+	require.NoError(t, err)
+
+	// simulate L1 info tree
+	for i := range numOfLeavesToAdd {
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(i))
+		require.NoError(t, err)
+
+		l1Leaves[i] = &L1InfoTreeLeaf{
+			L1InfoTreeIndex: uint32(i),
+			RollupExitRoot:  rer.Hash,
+			MainnetExitRoot: rer.Hash,
+			Inner: &L1InfoTreeLeafInner{
+				BlockHash:      common.HexToHash(fmt.Sprintf("0x%040x", i*4+1)),
+				Timestamp:      uint64(i * 1000),
+				GlobalExitRoot: l1infotreesync.CalculateGER(rer.Hash, rer.Hash),
+			},
+		}
+
+		require.NoError(t, l1InfoTree.AddLeaf(tx, uint64(i), 0, types.Leaf{
+			Index: uint32(i),
+			Hash:  l1Leaves[i].Hash(),
+		}))
+	}
+
+	require.NoError(t, tx.Commit())
+
+	// lastRER, err := rollupExitTree.GetLastRoot(nil)
+	// require.NoError(t, err)
+
+	lastL1InfoRoot, err := l1InfoTree.GetLastRoot(nil)
+	require.NoError(t, err)
+
+	t.Run("ClaimFromMainnet - Valid Proofs", func(t *testing.T) {
+		t.Parallel()
+
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(0))
+		require.NoError(t, err)
+		proofFromRollupExitTree, err := rollupExitTree.GetProof(ctx, uint32(0), rer.Hash)
+		require.NoError(t, err)
+
+		proofFromL1InfoTree, err := l1InfoTree.GetProof(ctx, uint32(0), lastL1InfoRoot.Hash)
+		require.NoError(t, err)
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromMainnet{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  lastL1InfoRoot.Hash,
+					Proof: proofFromL1InfoTree,
+				},
+				ProofLeafMER: &MerkleProof{
+					Root:  l1Leaves[0].MainnetExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex: 0,
+			},
+		}
+
+		require.NoError(t, ibe.VerifyProofs(lastL1InfoRoot.Hash))
+	})
+
+	t.Run("ClaimFromMainnet - Invalid Proofs - Wrong L1 Root", func(t *testing.T) {
+		t.Parallel()
+
+		proofFromL1InfoTree, err := l1InfoTree.GetProof(ctx, uint32(0), lastL1InfoRoot.Hash)
+		require.NoError(t, err)
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromMainnet{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  common.HexToHash("0x12345678"), // Wrong root
+					Proof: proofFromL1InfoTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex: 0,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), " Mismatch between the provided L1 root and the inclusion proof")
+	})
+
+	t.Run("ClaimFromMainnet - Mismatch on MER", func(t *testing.T) {
+		t.Parallel()
+
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(0))
+		require.NoError(t, err)
+		proofFromRollupExitTree, err := rollupExitTree.GetProof(ctx, uint32(0), rer.Hash)
+		require.NoError(t, err)
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromMainnet{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  lastL1InfoRoot.Hash,
+					Proof: proofFromRollupExitTree,
+				},
+				ProofLeafMER: &MerkleProof{
+					Root:  common.HexToHash("0x12345678"), // Wrong root
+					Proof: proofFromRollupExitTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex: 0,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), "Mismatch on the MER between the L1 leaf and the inclusion proof")
+	})
+
+	t.Run("ClaimFromMainnet - Invalid merkle path from the leaf to LER", func(t *testing.T) {
+		t.Parallel()
+
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(0))
+		require.NoError(t, err)
+		proofFromRollupExitTree, err := rollupExitTree.GetProof(ctx, uint32(0), rer.Hash)
+		require.NoError(t, err)
+		proofFromRollupExitTree[0][0] ^= 0xFF // Corrupt the proof
+
+		proofFromL1InfoTree, err := l1InfoTree.GetProof(ctx, uint32(0), lastL1InfoRoot.Hash)
+		require.NoError(t, err)
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromMainnet{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  lastL1InfoRoot.Hash,
+					Proof: proofFromL1InfoTree,
+				},
+				ProofLeafMER: &MerkleProof{
+					Root:  l1Leaves[0].MainnetExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex: 0,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), "nvalid merkle path from the leaf to the LER")
+	})
+
+	t.Run("ClaimFromMainnet - Invalid merkle path from the GER to the L1 Info Root", func(t *testing.T) {
+		t.Parallel()
+
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(0))
+		require.NoError(t, err)
+		proofFromRollupExitTree, err := rollupExitTree.GetProof(ctx, uint32(0), rer.Hash)
+		require.NoError(t, err)
+
+		proofFromL1InfoTree, err := l1InfoTree.GetProof(ctx, uint32(0), lastL1InfoRoot.Hash)
+		require.NoError(t, err)
+
+		proofFromL1InfoTree[0][0] ^= 0xFF // Corrupt the proof
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromMainnet{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  lastL1InfoRoot.Hash,
+					Proof: proofFromL1InfoTree,
+				},
+				ProofLeafMER: &MerkleProof{
+					Root:  l1Leaves[0].MainnetExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex: 0,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), "Invalid merkle path from the GER to the L1 Info Root")
+	})
+
+	t.Run("ClaimRollup - Invalid Proofs - Wrong L1 Root", func(t *testing.T) {
+		t.Parallel()
+
+		proofFromL1InfoTree, err := l1InfoTree.GetProof(ctx, uint32(0), lastL1InfoRoot.Hash)
+		require.NoError(t, err)
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromRollup{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  common.HexToHash("0x12345678"), // Wrong root
+					Proof: proofFromL1InfoTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex: 0,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), "Mismatch between the provided L1 root and the inclusion proof")
+	})
+
+	t.Run("ClaimFromRollup - Mismatch on RER", func(t *testing.T) {
+		t.Parallel()
+
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(0))
+		require.NoError(t, err)
+		proofFromRollupExitTree, err := rollupExitTree.GetProof(ctx, uint32(0), rer.Hash)
+		require.NoError(t, err)
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromRollup{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  lastL1InfoRoot.Hash,
+					Proof: proofFromRollupExitTree,
+				},
+				ProofLERToRER: &MerkleProof{
+					Root:  common.HexToHash("0x12345678"), // Wrong root
+					Proof: proofFromRollupExitTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex: 0,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), "Mismatch on the RER between the L1 leaf and the inclusion proof")
+	})
+
+	t.Run("ClaimFromRollup - Invalid merkle path from the leaf to LER", func(t *testing.T) {
+		t.Parallel()
+
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(0))
+		require.NoError(t, err)
+		proofFromRollupExitTree, err := rollupExitTree.GetProof(ctx, uint32(0), rer.Hash)
+		require.NoError(t, err)
+		proofFromRollupExitTree[0][0] ^= 0xFF // Corrupt the proof
+
+		proofFromL1InfoTree, err := l1InfoTree.GetProof(ctx, uint32(0), lastL1InfoRoot.Hash)
+		require.NoError(t, err)
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromRollup{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  lastL1InfoRoot.Hash,
+					Proof: proofFromL1InfoTree,
+				},
+				ProofLERToRER: &MerkleProof{
+					Root:  l1Leaves[0].RollupExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				ProofLeafLER: &MerkleProof{
+					Root:  l1Leaves[0].RollupExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex:   0,
+				RollupIndex: 0,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), "Invalid merkle path from the leaf to the LER")
+	})
+
+	t.Run("ClaimFromRollup - Invalid merkle path from the LER to the RER", func(t *testing.T) {
+		t.Parallel()
+
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(0))
+		require.NoError(t, err)
+		proofFromRollupExitTree, err := rollupExitTree.GetProof(ctx, uint32(0), rer.Hash)
+		require.NoError(t, err)
+
+		proofCopy := proofFromRollupExitTree
+		proofCopy[0][0] ^= 0xFF // Corrupt the proof
+
+		proofFromL1InfoTree, err := l1InfoTree.GetProof(ctx, uint32(0), lastL1InfoRoot.Hash)
+		require.NoError(t, err)
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromRollup{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  lastL1InfoRoot.Hash,
+					Proof: proofFromL1InfoTree,
+				},
+				ProofLERToRER: &MerkleProof{
+					Root:  l1Leaves[0].RollupExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				ProofLeafLER: &MerkleProof{
+					Root:  l1Leaves[0].RollupExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex:   0,
+				RollupIndex: 1,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), "Invalid merkle path from the LER to the RER")
+	})
+
+	t.Run("ClaimFromRollup - Invalid merkle path from the GER to the L1 Info Root", func(t *testing.T) {
+		t.Parallel()
+
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(0))
+		require.NoError(t, err)
+		proofFromRollupExitTree, err := rollupExitTree.GetProof(ctx, uint32(0), rer.Hash)
+		require.NoError(t, err)
+
+		proofFromL1InfoTree, err := l1InfoTree.GetProof(ctx, uint32(0), lastL1InfoRoot.Hash)
+		require.NoError(t, err)
+		proofFromL1InfoTree[0][0] ^= 0xFF // Corrupt the proof
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromRollup{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  lastL1InfoRoot.Hash,
+					Proof: proofFromL1InfoTree,
+				},
+				ProofLERToRER: &MerkleProof{
+					Root:  l1Leaves[0].RollupExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				ProofLeafLER: &MerkleProof{
+					Root:  l1Leaves[0].RollupExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex:   0,
+				RollupIndex: 1,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), "Invalid merkle path from the GER to the L1 Info Root")
+	})
+
+	t.Run("ClaimFromRollup - Invalid merkle path from the GER to the L1 Info Root", func(t *testing.T) {
+		t.Parallel()
+
+		rer, err := rollupExitTree.GetRootByIndex(ctx, uint32(0))
+		require.NoError(t, err)
+		proofFromRollupExitTree, err := rollupExitTree.GetProof(ctx, uint32(0), rer.Hash)
+		require.NoError(t, err)
+
+		proofFromL1InfoTree, err := l1InfoTree.GetProof(ctx, uint32(0), lastL1InfoRoot.Hash)
+		require.NoError(t, err)
+
+		ibe := &ImportedBridgeExit{
+			BridgeExit: bridgeExits[0],
+			ClaimData: &ClaimFromRollup{
+				ProofGERToL1Root: &MerkleProof{
+					Root:  lastL1InfoRoot.Hash,
+					Proof: proofFromL1InfoTree,
+				},
+				ProofLERToRER: &MerkleProof{
+					Root:  l1Leaves[0].RollupExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				ProofLeafLER: &MerkleProof{
+					Root:  l1Leaves[0].RollupExitRoot,
+					Proof: proofFromRollupExitTree,
+				},
+				L1Leaf: l1Leaves[0],
+			},
+			GlobalIndex: &GlobalIndex{
+				LeafIndex:   0,
+				RollupIndex: 1,
+			},
+		}
+
+		require.ErrorContains(t, ibe.VerifyProofs(lastL1InfoRoot.Hash), "Invalid merkle path from the LER to the RER")
+	})
+}
+
+func createTreeDBForTest(t *testing.T) *sql.DB {
+	t.Helper()
+	dbPath := path.Join(t.TempDir(), "tree_createTreeDBForTest.sqlite")
+	err := migrations.RunMigrations(dbPath)
+	require.NoError(t, err)
+	treeDB, err := db.NewSQLiteDB(dbPath)
+	require.NoError(t, err)
+	return treeDB
 }
