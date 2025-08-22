@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit/log"
@@ -325,6 +326,11 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 	return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0)
 }
 
+func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
+	unfilteredLogs := d.getUnfilteredLogs(ctx, fromBlock, toBlock)
+	return d.filterLogs(unfilteredLogs)
+}
+
 func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 	ctx context.Context,
 	fromBlock, toBlock uint64, retryCount int,
@@ -395,7 +401,7 @@ func filterQueryToString(query ethereum.FilterQuery) string {
 		query.FromBlock.String(), query.ToBlock.String(), query.Addresses, query.Topics)
 }
 
-func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
+func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
 	var (
 		attempts       = 0
 		unfilteredLogs []types.Log
@@ -416,28 +422,49 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 				return nil
 			}
 
+			errStr := err.Error()
+			if strings.Contains(errStr, "Query returned more than") && fromBlock < toBlock {
+				midBlock := (fromBlock + toBlock) / 2
+				if midBlock >= fromBlock {
+					d.log.Warnf("too many results for block range [%d, %d], splitting into [%d, %d] and [%d, %d]",
+						fromBlock, toBlock, fromBlock, midBlock, midBlock+1, toBlock)
+
+					firstHalf := d.getUnfilteredLogs(ctx, fromBlock, midBlock)
+					secondHalf := d.getUnfilteredLogs(ctx, midBlock+1, toBlock)
+
+					combined := make([]types.Log, 0, len(firstHalf)+len(secondHalf))
+					combined = append(combined, firstHalf...)
+					combined = append(combined, secondHalf...)
+
+					return combined
+				}
+			}
+
 			attempts++
-			d.log.Errorf("error calling FilterLogs to eth client: filter: %s err:%w ",
+			d.log.Errorf("error calling UnfilteredFilterLogs to eth client: filter: %s err:%w ",
 				filterQueryToString(query),
 				err,
 			)
-			d.rh.Handle(ctx, "getLogs", attempts)
+			d.rh.Handle(ctx, "getUnfilteredLogs", attempts)
 			continue
 		}
 		break
 	}
+	return unfilteredLogs
+}
 
-	logs := make([]types.Log, 0, len(unfilteredLogs))
+func (d *EVMDownloaderImplementation) filterLogs(unfilteredLogs []types.Log) []types.Log {
+	filteredLogs := make([]types.Log, 0, len(unfilteredLogs))
 	for _, l := range unfilteredLogs {
 		if l.Removed {
 			d.log.Warnf("log removed: %+v", l)
 			continue
 		}
 		if slices.Contains(d.topicsToQuery, l.Topics[0]) {
-			logs = append(logs, l)
+			filteredLogs = append(filteredLogs, l)
 		}
 	}
-	return logs
+	return filteredLogs
 }
 
 func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool) {
