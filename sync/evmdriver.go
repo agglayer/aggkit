@@ -145,11 +145,10 @@ reset:
 		break
 	}
 
-	// setup context to cancel downloader and/or block processor
 	// Add a timeout to prevent FilterLogs calls from hanging indefinitely
-	timeoutCtx, timeoutCancel := context.WithTimeout(ctx, DefaultSyncTimeout)
-	defer timeoutCancel()
+	timeoutCtx, _ := context.WithTimeout(ctx, DefaultSyncTimeout)
 
+	// setup context to cancel downloader and/or block processor
 	cancellableCtx, cancel := context.WithCancel(timeoutCtx)
 	defer cancel()
 
