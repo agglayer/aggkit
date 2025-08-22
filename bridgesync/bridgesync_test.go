@@ -649,6 +649,7 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 	})
 }
 
+//nolint:tparallel
 func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 	t.Parallel()
 

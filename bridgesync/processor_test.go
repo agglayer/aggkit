@@ -2446,6 +2446,7 @@ func createTestLegacyTokenMigration(blockNum uint64, blockPos int) *LegacyTokenM
 	}
 }
 
+//nolint:dupl
 func TestGetClaimByGlobalIndex(t *testing.T) {
 	t.Parallel()
 
