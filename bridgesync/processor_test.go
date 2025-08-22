@@ -2448,3 +2448,43 @@ func createTestLegacyTokenMigration(blockNum uint64, blockPos int) *LegacyTokenM
 		Calldata:            []byte{},
 	}
 }
+
+func TestDatabaseQueryTimeout(t *testing.T) {
+	normalTimeout := 100 * time.Millisecond
+	shortTimeout := 1 * time.Nanosecond
+
+	path := path.Join(t.TempDir(), "bridgeSyncerProcessorTimeout.db")
+	logger := log.WithFields("module", "bridge-syncer-timeout")
+
+	// Create processor with normal timeout for setup
+	p, err := newProcessor(path, "bridge-syncer-timeout", logger, normalTimeout)
+	require.NoError(t, err)
+
+	// Insert some test data to ensure the database is working
+	block := sync.Block{
+		Num:    1,
+		Hash:   common.HexToHash("0x123"),
+		Events: []any{},
+	}
+
+	ctx := context.Background()
+	err = p.ProcessBlock(ctx, block)
+	require.NoError(t, err)
+
+	// Create a new processor with short timeout for testing timeout behavior
+	pShortTimeout, err := newProcessor(path, "bridge-syncer-short-timeout", logger, shortTimeout)
+	require.NoError(t, err)
+
+	// Test that operations timeout with short timeout
+	_, err = pShortTimeout.GetLastProcessedBlock(ctx)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline exceeded")
+
+	_, err = pShortTimeout.GetBridges(ctx, 1, 1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline exceeded")
+
+	_, err = pShortTimeout.GetClaims(ctx, 1, 1)
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "context deadline exceeded")
+}
