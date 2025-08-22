@@ -327,3 +327,69 @@ func TestWaitForSyncerToCatchUp(t *testing.T) {
 		})
 	}
 }
+
+func TestGetUnsetClaimsForBlockRange(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	testCases := []struct {
+		name                          string
+		fromBlock                     uint64
+		toBlock                       uint64
+		mockFn                        func(*mocks.L2BridgeSyncer)
+		mockBridgeL2SovereignReaderFn func(*mocks.BridgeL2SovereignReader)
+		expectedError                 string
+	}{
+		{
+			name:      "error - failed to get unset claims from reader",
+			fromBlock: 100,
+			toBlock:   200,
+			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
+				// No mocks needed as the error occurs before calling the syncer
+			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return(nil, errors.New("database error")).Once()
+			},
+			expectedError: "failed to get unclaim block range: database error",
+		},
+		{
+			name:      "success - empty unclaims list",
+			fromBlock: 100,
+			toBlock:   200,
+			mockFn: func(mockSyncer *mocks.L2BridgeSyncer) {
+				// No mocks needed as there are no unclaims to process
+			},
+			mockBridgeL2SovereignReaderFn: func(mockReader *mocks.BridgeL2SovereignReader) {
+				mockReader.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(100), uint64(200)).Return(nil, nil).Once()
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockSyncer := new(mocks.L2BridgeSyncer)
+			mockSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Once()
+			tc.mockFn(mockSyncer)
+
+			bridgeL2SovereignReader := new(mocks.BridgeL2SovereignReader)
+			tc.mockBridgeL2SovereignReaderFn(bridgeL2SovereignReader)
+
+			bridgeQuerier := NewBridgeDataQuerier(log.WithFields("test", "TestGetUnsetClaimsForBlockRange"), mockSyncer, 0, bridgeL2SovereignReader)
+
+			unclaims, err := bridgeQuerier.GetUnsetClaimsForBlockRange(ctx, tc.fromBlock, tc.toBlock)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, unclaims, 0) // Empty list case
+			}
+
+			mockSyncer.AssertExpectations(t)
+			bridgeL2SovereignReader.AssertExpectations(t)
+		})
+	}
+}
