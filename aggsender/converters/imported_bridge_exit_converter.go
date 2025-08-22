@@ -86,7 +86,7 @@ func ConvertToImportedBridgeExit(
 	}
 
 	if ibe.GlobalIndex.MainnetFlag {
-		ibe.ClaimData = &agglayertypes.ClaimFromMainnnet{
+		ibe.ClaimData = &agglayertypes.ClaimFromMainnet{
 			L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 				L1InfoTreeIndex: l1Info.L1InfoTreeIndex,
 				RollupExitRoot:  claim.RollupExitRoot,

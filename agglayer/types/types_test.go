@@ -194,7 +194,7 @@ func TestMarshalJSON(t *testing.T) {
 						RollupIndex: 0,
 						LeafIndex:   1,
 					},
-					ClaimData: &ClaimFromMainnnet{
+					ClaimData: &ClaimFromMainnet{
 						ProofLeafMER: &MerkleProof{
 							Root:  common.HexToHash("0x333"),
 							Proof: createDummyProof(t),
@@ -613,7 +613,7 @@ func TestClaimFromMainnnet_MarshalJSON(t *testing.T) {
 		},
 	}
 
-	claim := &ClaimFromMainnnet{
+	claim := &ClaimFromMainnet{
 		ProofLeafMER:     merkleProof,
 		ProofGERToL1Root: merkleProof,
 		L1Leaf:           l1InfoTreeLeaf,
@@ -623,7 +623,7 @@ func TestClaimFromMainnnet_MarshalJSON(t *testing.T) {
 	expectedJSON, err := claim.MarshalJSON()
 	require.NoError(t, err)
 
-	var actualClaim ClaimFromMainnnet
+	var actualClaim ClaimFromMainnet
 	err = json.Unmarshal(expectedJSON, &actualClaim)
 	require.NoError(t, err)
 }
@@ -906,7 +906,7 @@ func TestClaimType(t *testing.T) {
 	}{
 		{
 			name:         "Mainnet claim",
-			claim:        &ClaimFromMainnnet{},
+			claim:        &ClaimFromMainnet{},
 			expectedType: "Mainnet",
 		},
 		{
@@ -983,7 +983,7 @@ func Test_UnmarshalImportedBridgeExit(t *testing.T) {
 		{
 			name: "Empty/ClaimFromMainnnet",
 			importedBridge: ImportedBridgeExit{
-				ClaimData: &ClaimFromMainnnet{
+				ClaimData: &ClaimFromMainnet{
 					ProofLeafMER: &MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: [types.DefaultHeight]common.Hash{common.HexToHash("0x2"), common.HexToHash("0x3")},
@@ -1008,7 +1008,7 @@ func Test_UnmarshalImportedBridgeExit(t *testing.T) {
 					Amount:             big.NewInt(1000),
 					Metadata:           []byte{0x01, 0x02, 0x03},
 				},
-				ClaimData: &ClaimFromMainnnet{},
+				ClaimData: &ClaimFromMainnet{},
 				GlobalIndex: &GlobalIndex{
 					MainnetFlag: true,
 					RollupIndex: 1,
@@ -1088,7 +1088,7 @@ func Test_UnmarshalBridgeExit(t *testing.T) {
 }
 
 func Test_UnmarshalClaimFromMainnnet(t *testing.T) {
-	claim := &ClaimFromMainnnet{
+	claim := &ClaimFromMainnet{
 		ProofLeafMER: &MerkleProof{
 			Root:  common.HexToHash("0x1"),
 			Proof: [types.DefaultHeight]common.Hash{common.HexToHash("0x2"), common.HexToHash("0x3")},
@@ -1098,7 +1098,7 @@ func Test_UnmarshalClaimFromMainnnet(t *testing.T) {
 	}
 	ser, err := json.Marshal(claim)
 	require.NoError(t, err)
-	unmarshalled := &ClaimFromMainnnet{}
+	unmarshalled := &ClaimFromMainnet{}
 	err = json.Unmarshal(ser, unmarshalled)
 	require.NoError(t, err)
 	require.Equal(t, claim, unmarshalled)
@@ -1324,7 +1324,7 @@ func TestCertificate_Validate(t *testing.T) {
 						DestinationNetwork: 1,
 						DestinationAddress: common.HexToAddress("0x1234"),
 					},
-					ClaimData: &ClaimFromMainnnet{
+					ClaimData: &ClaimFromMainnet{
 						ProofLeafMER:     &MerkleProof{},
 						ProofGERToL1Root: &MerkleProof{},
 						L1Leaf: &L1InfoTreeLeaf{
@@ -1364,9 +1364,9 @@ func TestBridgeExitHash(t *testing.T) {
 }
 
 func TestClaimFromMainnnetHash(t *testing.T) {
-	var sut *ClaimFromMainnnet
+	var sut *ClaimFromMainnet
 	require.Equal(t, common.Hash{}, sut.Hash())
-	var sut2 ClaimFromMainnnet
+	var sut2 ClaimFromMainnet
 	require.Equal(t, common.Hash{}, sut2.Hash())
 }
 
@@ -1459,7 +1459,7 @@ func TestImportedBridgeExit_VerifyProofs(t *testing.T) {
 
 		ibe := &ImportedBridgeExit{
 			BridgeExit: bridgeExits[0],
-			ClaimData: &ClaimFromMainnnet{
+			ClaimData: &ClaimFromMainnet{
 				ProofGERToL1Root: &MerkleProof{
 					Root:  lastL1InfoRoot.Hash,
 					Proof: proofFromL1InfoTree,
@@ -1486,7 +1486,7 @@ func TestImportedBridgeExit_VerifyProofs(t *testing.T) {
 
 		ibe := &ImportedBridgeExit{
 			BridgeExit: bridgeExits[0],
-			ClaimData: &ClaimFromMainnnet{
+			ClaimData: &ClaimFromMainnet{
 				ProofGERToL1Root: &MerkleProof{
 					Root:  common.HexToHash("0x12345678"), // Wrong root
 					Proof: proofFromL1InfoTree,
@@ -1511,7 +1511,7 @@ func TestImportedBridgeExit_VerifyProofs(t *testing.T) {
 
 		ibe := &ImportedBridgeExit{
 			BridgeExit: bridgeExits[0],
-			ClaimData: &ClaimFromMainnnet{
+			ClaimData: &ClaimFromMainnet{
 				ProofGERToL1Root: &MerkleProof{
 					Root:  lastL1InfoRoot.Hash,
 					Proof: proofFromRollupExitTree,
@@ -1544,7 +1544,7 @@ func TestImportedBridgeExit_VerifyProofs(t *testing.T) {
 
 		ibe := &ImportedBridgeExit{
 			BridgeExit: bridgeExits[0],
-			ClaimData: &ClaimFromMainnnet{
+			ClaimData: &ClaimFromMainnet{
 				ProofGERToL1Root: &MerkleProof{
 					Root:  lastL1InfoRoot.Hash,
 					Proof: proofFromL1InfoTree,
@@ -1578,7 +1578,7 @@ func TestImportedBridgeExit_VerifyProofs(t *testing.T) {
 
 		ibe := &ImportedBridgeExit{
 			BridgeExit: bridgeExits[0],
-			ClaimData: &ClaimFromMainnnet{
+			ClaimData: &ClaimFromMainnet{
 				ProofGERToL1Root: &MerkleProof{
 					Root:  lastL1InfoRoot.Hash,
 					Proof: proofFromL1InfoTree,

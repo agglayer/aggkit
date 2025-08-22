@@ -300,7 +300,7 @@ func TestGetImportedBridgeExits(t *testing.T) {
 						RollupIndex: 0,
 						LeafIndex:   2,
 					},
-					ClaimData: &agglayertypes.ClaimFromMainnnet{
+					ClaimData: &agglayertypes.ClaimFromMainnet{
 						L1Leaf: &agglayertypes.L1InfoTreeLeaf{
 							L1InfoTreeIndex: 1,
 							RollupExitRoot:  common.HexToHash("0xbbb"),

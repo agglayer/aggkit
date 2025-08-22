@@ -787,20 +787,20 @@ type Claim interface {
 	Validate() error
 }
 
-// ClaimFromMainnnet represents a claim originating from the mainnet
-type ClaimFromMainnnet struct {
+// ClaimFromMainnet represents a claim originating from the mainnet
+type ClaimFromMainnet struct {
 	ProofLeafMER     *MerkleProof    `json:"proof_leaf_mer"`
 	ProofGERToL1Root *MerkleProof    `json:"proof_ger_l1root"`
 	L1Leaf           *L1InfoTreeLeaf `json:"l1_leaf"`
 }
 
 // Type is the implementation of Claim interface
-func (c ClaimFromMainnnet) Type() string {
+func (c ClaimFromMainnet) Type() string {
 	return "Mainnet"
 }
 
 // MarshalJSON is the implementation of Claim interface
-func (c *ClaimFromMainnnet) MarshalJSON() ([]byte, error) {
+func (c *ClaimFromMainnet) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Child map[string]interface{} `json:"Mainnet"`
 	}{
@@ -812,7 +812,7 @@ func (c *ClaimFromMainnnet) MarshalJSON() ([]byte, error) {
 	})
 }
 
-func (c *ClaimFromMainnnet) UnmarshalJSON(data []byte) error {
+func (c *ClaimFromMainnet) UnmarshalJSON(data []byte) error {
 	if string(data) == nullStr {
 		return nil
 	}
@@ -835,7 +835,7 @@ func (c *ClaimFromMainnnet) UnmarshalJSON(data []byte) error {
 }
 
 // Hash is the implementation of Claim interface
-func (c *ClaimFromMainnnet) Hash() common.Hash {
+func (c *ClaimFromMainnet) Hash() common.Hash {
 	if c.Validate() != nil {
 		return common.Hash{}
 	}
@@ -846,12 +846,12 @@ func (c *ClaimFromMainnnet) Hash() common.Hash {
 	)
 }
 
-func (c *ClaimFromMainnnet) String() string {
+func (c *ClaimFromMainnet) String() string {
 	return fmt.Sprintf("ProofLeafMER: %s, ProofGERToL1Root: %s, L1Leaf: %s",
 		c.ProofLeafMER.String(), c.ProofGERToL1Root.String(), c.L1Leaf.String())
 }
 
-func (c *ClaimFromMainnnet) Validate() error {
+func (c *ClaimFromMainnet) Validate() error {
 	if c == nil {
 		return errors.New("ClaimFromMainnnet is nil")
 	}
@@ -865,7 +865,7 @@ func (c *ClaimFromMainnnet) Validate() error {
 }
 
 // VerifyProofs verifies the inclusion proofs for the given mainnet claim
-func (c *ClaimFromMainnnet) VerifyProofs(l1RootFromWhichToProof, leafHash common.Hash, leafIndex uint32) error {
+func (c *ClaimFromMainnet) VerifyProofs(l1RootFromWhichToProof, leafHash common.Hash, leafIndex uint32) error {
 	if c.ProofGERToL1Root.Root != l1RootFromWhichToProof {
 		return fmt.Errorf("ClaimFromMainnnet - Mismatch between the provided L1 root and the inclusion proof. "+
 			"GERToL1Root: %s != L1RootFromWhichToProof: %s",
@@ -1034,7 +1034,7 @@ func (c *ClaimSelector) UnmarshalJSON(data []byte) error {
 	}
 	var ok bool
 	if _, ok = obj["Mainnet"]; ok {
-		c.obj = &ClaimFromMainnnet{}
+		c.obj = &ClaimFromMainnet{}
 	} else if _, ok = obj["Rollup"]; ok {
 		c.obj = &ClaimFromRollup{}
 	} else {
@@ -1122,7 +1122,7 @@ func (c *ImportedBridgeExit) VerifyProofs(l1RootFromWhichToProve common.Hash) er
 	}
 
 	switch cl := c.ClaimData.(type) {
-	case *ClaimFromMainnnet:
+	case *ClaimFromMainnet:
 		if err := cl.VerifyProofs(l1RootFromWhichToProve, c.BridgeExit.Hash(), c.GlobalIndex.LeafIndex); err != nil {
 			return fmt.Errorf("ImportedBridgeExit - ClaimFromMainnnet verification failed: %w", err)
 		}

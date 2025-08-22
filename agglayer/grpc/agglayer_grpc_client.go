@@ -318,7 +318,7 @@ func convertToProtoImportedBridgeExit(ibe *types.ImportedBridgeExit) (*v1types.I
 	}
 
 	switch claimData := ibe.ClaimData.(type) {
-	case *types.ClaimFromMainnnet:
+	case *types.ClaimFromMainnet:
 		importedBridgeExit.Claim = &v1types.ImportedBridgeExit_Mainnet{
 			Mainnet: &v1types.ClaimFromMainnet{
 				ProofLeafMer: &v1types.MerkleProof{

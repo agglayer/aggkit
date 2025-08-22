@@ -162,7 +162,7 @@ func TestExploratoryGenerateCert(t *testing.T) {
 					Amount:             big.NewInt(100),
 					Metadata:           []byte("metadata"),
 				},
-				ClaimData: &agglayertypes.ClaimFromMainnnet{
+				ClaimData: &agglayertypes.ClaimFromMainnet{
 					ProofLeafMER: &agglayertypes.MerkleProof{
 						Root:  common.HexToHash("0x1"),
 						Proof: [32]common.Hash{},

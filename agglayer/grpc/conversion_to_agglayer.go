@@ -204,7 +204,7 @@ func grpcClaimDataToAgglayer(claim interface{}) (agglayertypes.Claim, error) {
 		if err != nil {
 			return nil, fmt.Errorf("grpcClaimDataToAgglayer. error converting Mainnet L1 leaf: %w", err)
 		}
-		return &agglayertypes.ClaimFromMainnnet{
+		return &agglayertypes.ClaimFromMainnet{
 			ProofLeafMER:     proofs[0],
 			ProofGERToL1Root: proofs[1],
 			L1Leaf:           l1feaf,
