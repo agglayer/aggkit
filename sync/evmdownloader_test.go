@@ -642,6 +642,8 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 	fmt.Println("result", result)
 
 	// Should combine both halves
-	expected := append(firstHalfLogs, secondHalfLogs...)
+	expected := make([]types.Log, 0, len(firstHalfLogs)+len(secondHalfLogs))
+	expected = append(expected, firstHalfLogs...)
+	expected = append(expected, secondHalfLogs...)
 	assert.Equal(t, expected, result)
 }
