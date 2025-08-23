@@ -23,7 +23,7 @@ const (
 	waitForNewBlocksPeriod     = 30 * time.Millisecond
 	syncBlockChunkSize         = 10
 	testIterations             = 10
-	syncDelay                  = 5 * time.Second
+	syncDelay                  = 500 * time.Microsecond
 )
 
 func TestL2GERSyncE2E(t *testing.T) {
@@ -54,7 +54,7 @@ func TestL2GERSyncE2E(t *testing.T) {
 
 	for i := range testIterations {
 		updateL1GlobalExitRoot(t, l1Setup, i)
-		time.Sleep(3 * syncDelay)
+		time.Sleep(syncDelay)
 		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i)
 	}
 }
