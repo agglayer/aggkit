@@ -1045,5 +1045,5 @@ func (p *processor) unhalt() {
 }
 
 func (p *processor) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
-	return context.WithTimeout(context.WithoutCancel(ctx), p.dbQueryTimeout)
+	return context.WithTimeout(ctx, p.dbQueryTimeout)
 }
