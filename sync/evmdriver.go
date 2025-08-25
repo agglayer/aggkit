@@ -16,7 +16,7 @@ import (
 
 const (
 	// DefaultSyncTimeout is the default timeout for sync operations to prevent hanging
-	DefaultSyncTimeout = 10 * time.Second
+	DefaultSyncTimeout = 30 * time.Second
 )
 
 var ErrInconsistentState = errors.New("state is inconsistent, try again later once the state is consolidated")
