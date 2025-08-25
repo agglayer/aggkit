@@ -146,10 +146,8 @@ reset:
 	}
 
 	// Add a timeout to prevent FilterLogs calls from hanging indefinitely
-	timeoutCtx, _ := context.WithTimeout(ctx, DefaultSyncTimeout)
-
 	// setup context to cancel downloader and/or block processor
-	cancellableCtx, cancel := context.WithCancel(timeoutCtx)
+	cancellableCtx, cancel := context.WithTimeout(ctx, DefaultSyncTimeout)
 	defer cancel()
 
 	d.log.Infof("Starting sync... lastProcessedBlock %d", lastProcessedBlock)
