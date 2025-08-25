@@ -637,9 +637,7 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 		},
 	}
 	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(secondHalfLogs, nil).Once()
-
 	result := sut.getUnfilteredLogs(ctx, fromBlock, toBlock)
-	fmt.Println("result", result)
 
 	// Should combine both halves
 	expected := make([]types.Log, 0, len(firstHalfLogs)+len(secondHalfLogs))
