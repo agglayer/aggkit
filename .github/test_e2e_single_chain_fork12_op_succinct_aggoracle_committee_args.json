@@ -17,7 +17,7 @@
     "additional_services": [
     ],
     "use_agg_oracle_committee": true,
-    "agg_oracle_committee_quorum": 1,
+    "agg_oracle_committee_quorum": 2,
     "agg_oracle_committee_total_members": 3
   },
   "optimism_package": {
