@@ -188,6 +188,7 @@ func (b *BridgeService) registerRoutes() {
 		bridgeGroup.GET("/claim-proof", b.ClaimProofHandler)
 		bridgeGroup.GET("/last-reorg-event", b.GetLastReorgEventHandler)
 		bridgeGroup.GET("/sync-status", b.GetSyncStatusHandler)
+		bridgeGroup.GET("unset-global-indexes", b.GetUnsetGlobalIndexesHandler)
 
 		// Swagger docs endpoint
 		bridgeGroup.GET("/swagger/*any", ginswagger.WrapHandler(swaggerfiles.Handler))
@@ -449,6 +450,146 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 			Claims: claimResponses,
 			Count:  count,
 		})
+}
+
+// getClaimByBlockAndPosition fetches a claim by its block number and position from the appropriate bridge
+func (b *BridgeService) getClaimByBlockAndPosition(ctx context.Context, networkID uint32, claimBlockNum, claimBlockPos int64) (*bridgesync.Claim, error) {
+	var claim *bridgesync.Claim
+	var err error
+
+	if uint32(networkID) == b.networkID {
+		// Use L2 bridge for the current network
+		claim, err = b.bridgeL2.GetClaimByBlockAndPosition(ctx, uint64(claimBlockNum), uint64(claimBlockPos))
+	} else {
+		// Use L1 bridge for other networks
+		claim, err = b.bridgeL1.GetClaimByBlockAndPosition(ctx, uint64(claimBlockNum), uint64(claimBlockPos))
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return claim, nil
+}
+
+// GetUnsetGlobalIndexesHandler handles GET requests for unset global indexes
+// @Summary Get unset global indexes
+// @Description Retrieves a paginated list of unset global indexes for a specific network
+// @Tags Bridge
+// @Accept json
+// @Produce json
+// @Param network_id query int true "Network ID (must not be 0)"
+// @Param global_index query string false "Filter by specific global index"
+// @Param page_number query int false "Page number (default: 1)"
+// @Param page_size query int false "Page size (default: 10, max: 100)"
+// @Success 200 {object} types.UnsetGlobalIndexesResult
+// @Failure 400 {object} types.ErrorResponse
+// @Failure 500 {object} types.ErrorResponse
+// @Router /unset-global-indexes [get]
+func (b *BridgeService) GetUnsetGlobalIndexesHandler(c *gin.Context) {
+	// Get network ID from path parameter
+	networkIDStr := c.Query(networkIDParam)
+	networkID, err := strconv.ParseUint(networkIDStr, 10, 32)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, types.ErrorResponse{
+			Error: fmt.Sprintf("invalid network ID: %s", networkIDStr),
+		})
+		return
+	}
+
+	// Get query parameters using setupRequest
+	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_unset_global_indexes")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, types.ErrorResponse{
+			Error: fmt.Sprintf("invalid pagination parameters: %v", err),
+		})
+		return
+	}
+	defer cancel()
+
+	// Get optional global index filter
+	var globalIndex *string
+	if globalIndexParam := c.Query(globalIndexParam); globalIndexParam != "" {
+		globalIndex = &globalIndexParam
+	}
+
+	// Get unset global indexes from the appropriate bridge
+	var unsetGlobalIndexes []*bridgesync.UpdatedUnsetGlobalIndexHashChain
+	var totalCount int
+
+	if uint32(networkID) == b.networkID {
+		// Use L2 bridge for the current network
+		unsetGlobalIndexes, totalCount, err = b.bridgeL2.GetUnsetGlobalIndexesPaged(
+			ctx, pageNumber, pageSize, globalIndex)
+	} else {
+		b.logger.Warnf("network ID %d is not applicable for unset claims on L1", networkID)
+		c.JSON(http.StatusBadRequest, types.ErrorResponse{
+			Error: fmt.Sprintf("network ID %d is not applicable for unset claims on L1", networkID),
+		})
+		return
+	}
+
+	if err != nil {
+		b.logger.Errorf("failed to get unset global indexes: %v", err)
+		c.JSON(http.StatusInternalServerError, types.ErrorResponse{
+			Error: "failed to retrieve unset global indexes",
+		})
+		return
+	}
+
+	// Convert to response types
+	response := types.UnsetGlobalIndexesResult{
+		UnsetGlobalIndexes: make([]*types.UnsetGlobalIndexResponse, len(unsetGlobalIndexes)),
+		Count:              totalCount,
+	}
+
+	for i, ugi := range unsetGlobalIndexes {
+		// Convert the unset global index
+		unsetGlobalIndexResponse := &types.UnsetGlobalIndexResponse{
+			BlockNum:       ugi.BlockNum,
+			BlockPos:       ugi.BlockPos,
+			BlockTimestamp: ugi.BlockTimestamp,
+			TxHash:         types.Hash(ugi.TxHash.Hex()),
+			GlobalIndex:    types.BigIntString(ugi.GlobalIndex.String()),
+		}
+
+		// Fetch the claim data using the claim reference
+		var claim *bridgesync.Claim
+		var err error
+
+		claim, err = b.getClaimByBlockAndPosition(ctx, uint32(networkID), *ugi.ClaimBlockNum, *ugi.ClaimBlockPos)
+
+		if err != nil {
+			b.logger.Errorf("failed to get claim by block and position for unset global index: %v", err)
+			c.JSON(http.StatusInternalServerError, types.ErrorResponse{
+				Error: fmt.Sprintf("failed to get claim by block and position for unset global index: %v", err),
+			})
+			return
+		} else {
+			claimResponse := &types.ClaimResponse{
+				BlockNum:           claim.BlockNum,
+				BlockPos:           claim.BlockPos,
+				BlockTimestamp:     claim.BlockTimestamp,
+				TxHash:             types.Hash(claim.TxHash.Hex()),
+				GlobalIndex:        types.BigIntString(claim.GlobalIndex.String()),
+				OriginAddress:      types.Address(claim.OriginAddress.Hex()),
+				OriginNetwork:      claim.OriginNetwork,
+				DestinationAddress: types.Address(claim.DestinationAddress.Hex()),
+				DestinationNetwork: claim.DestinationNetwork,
+				Amount:             types.BigIntString(claim.Amount.String()),
+				FromAddress:        types.Address(claim.FromAddress.Hex()),
+				MainnetExitRoot:    types.Hash(claim.MainnetExitRoot.Hex()),
+				RollupExitRoot:     types.Hash(claim.RollupExitRoot.Hex()),
+				GlobalExitRoot:     types.Hash(claim.GlobalExitRoot.Hex()),
+				Metadata:           string(claim.Metadata),
+				IsMessage:          claim.IsMessage,
+			}
+			unsetGlobalIndexResponse.Claim = claimResponse
+		}
+		response.UnsetGlobalIndexes[i] = unsetGlobalIndexResponse
+	}
+
+	c.JSON(http.StatusOK, response)
 }
 
 // @Summary Get token mappings

@@ -27,6 +27,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/gin-gonic/gin"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -57,8 +58,8 @@ func newBridgeWithMocks(t *testing.T, networkID uint32) bridgeWithMocks {
 	cfg := &Config{
 		Logger:       logger,
 		Address:      "localhost",
-		ReadTimeout:  0,
-		WriteTimeout: 0,
+		ReadTimeout:  time.Second * 30,
+		WriteTimeout: time.Second * 30,
 		NetworkID:    networkID,
 	}
 	b.bridge = New(cfg, b.l1InfoTree, b.injectedGERs, b.bridgeL1, b.bridgeL2)
@@ -2423,5 +2424,177 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 		// Verify all mocks were called as expected
 		b.l1InfoTree.AssertExpectations(t)
 		b.bridgeL1.AssertExpectations(t)
+	})
+}
+
+func TestGetUnsetGlobalIndexesHandler(t *testing.T) {
+	networkID := uint32(10)
+	b := newBridgeWithMocks(t, networkID)
+
+	// Test data
+	unsetGlobalIndex := &bridgesync.UpdatedUnsetGlobalIndexHashChain{
+		BlockNum:       1234,
+		BlockPos:       1,
+		BlockTimestamp: 1684500000,
+		TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+		GlobalIndex:    big.NewInt(1000000000000000000),
+		ClaimBlockNum:  func() *int64 { v := int64(1000); return &v }(),
+		ClaimBlockPos:  func() *int64 { v := int64(2); return &v }(),
+	}
+
+	claim := &bridgesync.Claim{
+		BlockNum:           1000,
+		BlockPos:           2,
+		BlockTimestamp:     1684500000,
+		TxHash:             common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890"),
+		GlobalIndex:        big.NewInt(1000000000000000000),
+		OriginNetwork:      10,
+		OriginAddress:      common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+		DestinationAddress: common.HexToAddress("0xabcdef1234567890abcdef1234567890abcdef12"),
+		Amount:             big.NewInt(1000000000000000000),
+		FromAddress:        common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
+		MainnetExitRoot:    common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"),
+		RollupExitRoot:     common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"),
+		GlobalExitRoot:     common.HexToHash("0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757"),
+		DestinationNetwork: 42161,
+		Metadata:           []byte("0xdeadbeef"),
+		IsMessage:          false,
+	}
+
+	t.Run("successful request", func(t *testing.T) {
+		// Setup mocks
+		b.bridgeL2.EXPECT().GetUnsetGlobalIndexesPaged(
+			gomock.AssignableToTypeOf(context.Background()), uint32(1), uint32(10), (*string)(nil),
+		).Return([]*bridgesync.UpdatedUnsetGlobalIndexHashChain{unsetGlobalIndex}, 1, nil)
+
+		b.bridgeL2.EXPECT().GetClaimByBlockAndPosition(
+			gomock.AssignableToTypeOf(context.Background()), uint64(1000), uint64(2),
+		).Return(claim, nil)
+
+		// Create request
+		req := httptest.NewRequest(http.MethodGet, "/bridge/v1/unset-global-indexes?page_number=1&page_size=10&network_id=10", nil)
+		w := httptest.NewRecorder()
+
+		// Create gin context
+		gin.SetMode(gin.TestMode)
+		c, _ := gin.CreateTestContext(w)
+		c.Request = req
+
+		// Call handler
+		b.bridge.GetUnsetGlobalIndexesHandler(c)
+
+		// Assert response
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.UnsetGlobalIndexesResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, response.Count)
+		require.Len(t, response.UnsetGlobalIndexes, 1)
+
+		unsetGI := response.UnsetGlobalIndexes[0]
+		require.Equal(t, uint64(1234), unsetGI.BlockNum)
+		require.Equal(t, uint64(1), unsetGI.BlockPos)
+		require.Equal(t, uint64(1684500000), unsetGI.BlockTimestamp)
+		require.Equal(t, "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef", string(unsetGI.TxHash))
+		require.Equal(t, "1000000000000000000", string(unsetGI.GlobalIndex))
+
+		// Check claim data
+		require.NotNil(t, unsetGI.Claim)
+		require.Equal(t, uint64(1000), unsetGI.Claim.BlockNum)
+		require.Equal(t, uint64(2), unsetGI.Claim.BlockPos)
+		require.Equal(t, uint64(1684500000), unsetGI.Claim.BlockTimestamp)
+		require.Equal(t, "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890", string(unsetGI.Claim.TxHash))
+		require.Equal(t, "1000000000000000000", string(unsetGI.Claim.GlobalIndex))
+		require.Equal(t, uint32(10), unsetGI.Claim.OriginNetwork)
+		require.Equal(t, "0x1234567890abcdef1234567890abcdef12345678", string(unsetGI.Claim.OriginAddress))
+		require.Equal(t, "0xabcdef1234567890abcdef1234567890abcdef12", string(unsetGI.Claim.DestinationAddress))
+		require.Equal(t, uint32(42161), unsetGI.Claim.DestinationNetwork)
+		require.Equal(t, "1000000000000000000", string(unsetGI.Claim.Amount))
+		require.Equal(t, "0x1234567890abcdef1234567890abcdef12345678", string(unsetGI.Claim.FromAddress))
+		require.Equal(t, "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757", string(unsetGI.Claim.MainnetExitRoot))
+		require.Equal(t, "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757", string(unsetGI.Claim.RollupExitRoot))
+		require.Equal(t, "0x27ae5ba08d7291c96c8cbddcc148bf48a6d68c7974b94356f53754ef6171d757", string(unsetGI.Claim.GlobalExitRoot))
+		require.Equal(t, "0xdeadbeef", unsetGI.Claim.Metadata)
+	})
+
+	t.Run("network ID 0 not allowed", func(t *testing.T) {
+		// Create request with network ID 0
+		req := httptest.NewRequest(http.MethodGet, "/bridge/v1/unset-global-indexes?network_id=0", nil)
+		w := httptest.NewRecorder()
+
+		// Create gin context
+		gin.SetMode(gin.TestMode)
+		c, _ := gin.CreateTestContext(w)
+		c.Request = req
+
+		// Call handler
+		b.bridge.GetUnsetGlobalIndexesHandler(c)
+
+		// Assert response
+		require.Equal(t, http.StatusBadRequest, w.Code)
+
+		var response bridgetypes.ErrorResponse
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Equal(t, "network ID 0 is not applicable for unset claims on L1", response.Error)
+	})
+
+	t.Run("invalid network ID", func(t *testing.T) {
+		// Create request with invalid network ID
+		req := httptest.NewRequest(http.MethodGet, "/bridge/v1/unset-global-indexes?network_id=invalid", nil)
+		w := httptest.NewRecorder()
+
+		// Create gin context
+		gin.SetMode(gin.TestMode)
+		c, _ := gin.CreateTestContext(w)
+		c.Request = req
+
+		// Call handler
+		b.bridge.GetUnsetGlobalIndexesHandler(c)
+
+		// Assert response
+		require.Equal(t, http.StatusBadRequest, w.Code)
+
+		var response bridgetypes.ErrorResponse
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+		require.Contains(t, response.Error, "invalid network ID")
+	})
+
+	t.Run("with global index filter", func(t *testing.T) {
+		globalIndex := "1000000000000000000"
+
+		// Setup mocks
+		b.bridgeL2.EXPECT().GetUnsetGlobalIndexesPaged(
+			gomock.AssignableToTypeOf(context.Background()), uint32(1), uint32(10), &globalIndex,
+		).Return([]*bridgesync.UpdatedUnsetGlobalIndexHashChain{unsetGlobalIndex}, 1, nil)
+
+		b.bridgeL2.EXPECT().GetClaimByBlockAndPosition(
+			gomock.AssignableToTypeOf(context.Background()), uint64(1000), uint64(2),
+		).Return(claim, nil)
+
+		// Create request with global index filter
+		req := httptest.NewRequest(http.MethodGet, "/bridge/v1/unset-global-indexes?page_number=1&page_size=10&global_index=1000000000000000000&network_id=10", nil)
+		w := httptest.NewRecorder()
+
+		// Create gin context
+		gin.SetMode(gin.TestMode)
+		c, _ := gin.CreateTestContext(w)
+		c.Request = req
+
+		// Call handler
+		b.bridge.GetUnsetGlobalIndexesHandler(c)
+
+		// Assert response
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.UnsetGlobalIndexesResult
+		err := json.Unmarshal(w.Body.Bytes(), &response)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, response.Count)
+		require.Len(t, response.UnsetGlobalIndexes, 1)
 	})
 }

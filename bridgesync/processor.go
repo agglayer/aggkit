@@ -42,6 +42,9 @@ const (
 
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
+
+	// updatedUnsetGlobalIndexHashChainTableName is the name of the table that stores updated unset global index hash chain events
+	unsetGlobalIndexTableName = "unset_global_index"
 )
 
 var (
@@ -297,13 +300,24 @@ type RemoveLegacyToken struct {
 	LegacyTokenAddress common.Address `meddler:"legacy_token_address,address"`
 }
 
+type UpdatedUnsetGlobalIndexHashChain struct {
+	BlockNum       uint64      `meddler:"block_num"`
+	BlockPos       uint64      `meddler:"block_pos"`
+	BlockTimestamp uint64      `meddler:"block_timestamp"`
+	TxHash         common.Hash `meddler:"tx_hash,hash"`
+	GlobalIndex    *big.Int    `meddler:"global_index,bigint"`
+	ClaimBlockNum  *int64      `meddler:"claim_block_num"`
+	ClaimBlockPos  *int64      `meddler:"claim_block_pos"`
+}
+
 // Event combination of bridge, claim, token mapping and legacy token migration events
 type Event struct {
-	Bridge               *Bridge
-	Claim                *Claim
-	TokenMapping         *TokenMapping
-	LegacyTokenMigration *LegacyTokenMigration
-	RemoveLegacyToken    *RemoveLegacyToken
+	Bridge                           *Bridge
+	Claim                            *Claim
+	TokenMapping                     *TokenMapping
+	LegacyTokenMigration             *LegacyTokenMigration
+	RemoveLegacyToken                *RemoveLegacyToken
+	UpdatedUnsetGlobalIndexHashChain *UpdatedUnsetGlobalIndexHashChain
 }
 
 // BridgeSyncRuntimeData contains runtime environment data used for database compatibility checks.
@@ -808,6 +822,31 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 				return err
 			}
 		}
+
+		if event.UpdatedUnsetGlobalIndexHashChain != nil {
+			// Find the corresponding claim with the same global_index
+			var claimBlockNum, claimBlockPos sql.NullInt64
+			err := tx.QueryRow(
+				"SELECT block_num, block_pos FROM claim WHERE global_index = ? ORDER BY block_num DESC, block_pos DESC LIMIT 1",
+				event.UpdatedUnsetGlobalIndexHashChain.GlobalIndex.String(),
+			).Scan(&claimBlockNum, &claimBlockPos)
+
+			if err != nil {
+				return fmt.Errorf("failed to find claim for global_index %s at block %d: %v",
+					event.UpdatedUnsetGlobalIndexHashChain.GlobalIndex.String(), block.Num, err)
+			}
+
+			// Set the claim reference if found
+			if claimBlockNum.Valid && claimBlockPos.Valid {
+				event.UpdatedUnsetGlobalIndexHashChain.ClaimBlockNum = &claimBlockNum.Int64
+				event.UpdatedUnsetGlobalIndexHashChain.ClaimBlockPos = &claimBlockPos.Int64
+			}
+
+			if err = meddler.Insert(tx, unsetGlobalIndexTableName, event.UpdatedUnsetGlobalIndexHashChain); err != nil {
+				p.log.Errorf("failed to insert updated unset global index hash chain event at block %d: %v", block.Num, err)
+				return err
+			}
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -1049,4 +1088,136 @@ func (p *processor) GetClaimByGlobalIndex(
 	}
 
 	return *claims[0], nil
+}
+
+// GetClaimByBlockAndPosition fetches a claim by its block number and position
+func (p *processor) GetClaimByBlockAndPosition(
+	ctx context.Context,
+	blockNum, blockPos uint64,
+) (*Claim, error) {
+	query := fmt.Sprintf(`
+		SELECT * FROM %s
+		WHERE block_num = $1 AND block_pos = $2
+		LIMIT 1
+	`, claimTableName)
+
+	rows, err := p.db.QueryContext(ctx, query, blockNum, blockPos)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to get claim by block number and position: %w, blockNum: %d, blockPos: %d",
+			err, blockNum, blockPos,
+		)
+	}
+	defer rows.Close()
+
+	claims := []*Claim{}
+	if err = meddler.ScanAll(rows, &claims); err != nil {
+		return nil, fmt.Errorf(
+			"failed to scan claim by block number and position: %w, blockNum: %d, blockPos: %d",
+			err, blockNum, blockPos,
+		)
+	}
+
+	if len(claims) == 0 {
+		return nil, fmt.Errorf(
+			"claim not found with blockNum: %d, blockPos: %d",
+			blockNum, blockPos,
+		)
+	}
+
+	return claims[0], nil
+}
+
+// GetUnsetGlobalIndexesPaged returns a paged list of unset global indexes with optional global index filtering
+func (p *processor) GetUnsetGlobalIndexesPaged(ctx context.Context, page, pageSize uint32,
+	globalIndex *string) ([]*UpdatedUnsetGlobalIndexHashChain, int, error) {
+	if page < 1 {
+		return nil, 0, fmt.Errorf("invalid page number: %d", page)
+	}
+	if pageSize < 1 {
+		return nil, 0, fmt.Errorf("invalid page size: %d", pageSize)
+	}
+
+	tx, err := p.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			p.log.Errorf("error rolling back tx: %w", err)
+		}
+	}()
+
+	// Build the WHERE clause for filtering
+	var whereClause string
+	var args []interface{}
+	argIndex := 1
+
+	// Add global index filter if provided
+	if globalIndex != nil && *globalIndex != "" {
+		whereClause = fmt.Sprintf("WHERE global_index = $%d", argIndex)
+		args = append(args, *globalIndex)
+		argIndex++
+	}
+
+	// Get total count
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", unsetGlobalIndexTableName, whereClause)
+	var totalCount int
+	err = tx.QueryRowContext(ctx, countQuery, args...).Scan(&totalCount)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get total count: %w", err)
+	}
+
+	// Calculate offset
+	offset := (page - 1) * pageSize
+	if offset >= uint32(totalCount) {
+		return nil, totalCount, nil
+	}
+
+	// Build the main query to get unset global indexes
+	query := fmt.Sprintf(`
+		SELECT *
+		FROM %s
+		%s
+		ORDER BY block_num DESC, block_pos DESC
+		LIMIT $%d OFFSET $%d
+	`, unsetGlobalIndexTableName, whereClause, argIndex, argIndex+1)
+
+	args = append(args, pageSize, offset)
+
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to query unset global indexes: %w", err)
+	}
+	defer rows.Close()
+
+	var unsetGlobalIndexes []*UpdatedUnsetGlobalIndexHashChain
+	if err = meddler.ScanAll(rows, &unsetGlobalIndexes); err != nil {
+		return nil, 0, fmt.Errorf("failed to scan unset global indexes: %w", err)
+	}
+
+	// Filter by network ID by checking the associated claims
+	var filteredUnsetGlobalIndexes []*UpdatedUnsetGlobalIndexHashChain
+	for _, ugi := range unsetGlobalIndexes {
+		// If there's a claim reference, check if it matches the network ID
+		if ugi.ClaimBlockNum != nil && ugi.ClaimBlockPos != nil {
+			var claim Claim
+			err := meddler.QueryRow(
+				tx,
+				&claim,
+				fmt.Sprintf("SELECT * FROM %s WHERE block_num = ? AND block_pos = ?", claimTableName),
+				*ugi.ClaimBlockNum, *ugi.ClaimBlockPos,
+			)
+			if err != nil {
+				if errors.Is(err, sql.ErrNoRows) {
+					// Claim not found, skip this unset global index
+					continue
+				}
+				return nil, 0, fmt.Errorf("failed to query claim: %w", err)
+			}
+			filteredUnsetGlobalIndexes = append(filteredUnsetGlobalIndexes, ugi)
+		}
+	}
+
+	return filteredUnsetGlobalIndexes, totalCount, nil
 }

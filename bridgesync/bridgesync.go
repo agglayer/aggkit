@@ -511,3 +511,33 @@ func (s *BridgeSync) GetClaimByGlobalIndex(
 
 	return claim, nil
 }
+
+// GetClaimByBlockAndPosition fetches a claim by its block number and position
+func (s *BridgeSync) GetClaimByBlockAndPosition(
+	ctx context.Context,
+	blockNum, blockPos uint64,
+) (*Claim, error) {
+	if s.processor.isHalted() {
+		return nil, sync.ErrInconsistentState
+	}
+
+	claim, err := s.processor.GetClaimByBlockAndPosition(ctx, blockNum, blockPos)
+	if err != nil {
+		return nil, fmt.Errorf(
+			"failed to get claim by block number and position: %w, blockNum: %d, blockPos: %d",
+			err, blockNum, blockPos,
+		)
+	}
+
+	return claim, nil
+}
+
+// GetUnsetGlobalIndexesPaged returns a paged list of unset global indexes with optional global index filtering
+func (s *BridgeSync) GetUnsetGlobalIndexesPaged(ctx context.Context, page, pageSize uint32,
+	globalIndex *string) ([]*UpdatedUnsetGlobalIndexHashChain, int, error) {
+	if s.processor.isHalted() {
+		return nil, 0, sync.ErrInconsistentState
+	}
+
+	return s.processor.GetUnsetGlobalIndexesPaged(ctx, page, pageSize, globalIndex)
+}

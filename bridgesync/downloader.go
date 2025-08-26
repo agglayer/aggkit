@@ -39,6 +39,9 @@ var (
 	removeLegacySovereignTokenEventSignature = crypto.Keccak256Hash([]byte(
 		"RemoveLegacySovereignTokenAddress(address)",
 	))
+	updatedUnsetGlobalIndexHashChainEventSignature = crypto.Keccak256Hash([]byte(
+		"UpdatedUnsetGlobalIndexHashChain(bytes32,bytes32)",
+	))
 
 	claimAssetEtrogMethodID      = common.Hex2Bytes("ccaa2d11")
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
@@ -93,6 +96,8 @@ func buildAppender(
 	appender[migrateLegacyTokenEventSignature] = buildMigrateLegacyTokenHandler(
 		bridgeSovereignChainContract, client, bridgeAddr, logger)
 	appender[removeLegacySovereignTokenEventSignature] = buildRemoveLegacyTokenHandler(
+		bridgeSovereignChainContract)
+	appender[updatedUnsetGlobalIndexHashChainEventSignature] = buildUpdatedUnsetGlobalIndexHashChainHandler(
 		bridgeSovereignChainContract)
 
 	return appender, nil
@@ -313,6 +318,26 @@ func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 			BlockTimestamp:     b.Timestamp,
 			TxHash:             l.TxHash,
 			LegacyTokenAddress: event.SovereignTokenAddress,
+		}})
+		return nil
+	}
+}
+
+// buildUpdatedUnsetGlobalIndexHashChainHandler creates a handler for the UpdatedUnsetGlobalIndexHashChain event log.
+func buildUpdatedUnsetGlobalIndexHashChainHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain) func(*sync.EVMBlock,
+	types.Log) error {
+	return func(b *sync.EVMBlock, l types.Log) error {
+		event, err := contract.ParseUpdatedUnsetGlobalIndexHashChain(l)
+		if err != nil {
+			return fmt.Errorf("error parsing UpdatedClaimedGlobalIndexHashChain event log %+v: %w", l, err)
+		}
+
+		b.Events = append(b.Events, Event{UpdatedUnsetGlobalIndexHashChain: &UpdatedUnsetGlobalIndexHashChain{
+			BlockNum:       b.Num,
+			BlockPos:       uint64(l.Index),
+			BlockTimestamp: b.Timestamp,
+			TxHash:         l.TxHash,
+			GlobalIndex:    big.NewInt(0).SetBytes(event.UnsetGlobalIndex[:]),
 		}})
 		return nil
 	}

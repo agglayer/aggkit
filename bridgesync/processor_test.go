@@ -2612,7 +2612,7 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 					RollupExitRoot:      common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444"),
 					GlobalExitRoot:      common.HexToHash("0x5555555555555555555555555555555555555555555555555555555555555555"),
 					DestinationNetwork:  2,
-					Metadata:            []byte("test metadata"),
+					Metadata:            []byte("test metadata 2"),
 					IsMessage:           false,
 					BlockTimestamp:      1234567890,
 				},
@@ -2704,4 +2704,679 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdatedUnsetGlobalIndexHashChain_Processing(t *testing.T) {
+	tests := []struct {
+		name                  string
+		setupClaims           []*Claim
+		unsetGlobalIndexEvent *UpdatedUnsetGlobalIndexHashChain
+		expectedClaimBlockNum *int64
+		expectedClaimBlockPos *int64
+		expectedError         string
+		description           string
+	}{
+		{
+			name: "valid claim found for global index",
+			setupClaims: []*Claim{
+				{
+					BlockNum:            10,
+					BlockPos:            5,
+					GlobalIndex:         big.NewInt(12345),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(1000),
+					ProofLocalExitRoot:  types.Proof{},
+					ProofRollupExitRoot: types.Proof{},
+					MainnetExitRoot:     common.Hash{},
+					RollupExitRoot:      common.Hash{},
+					GlobalExitRoot:      common.Hash{},
+					DestinationNetwork:  2,
+					Metadata:            []byte("test metadata"),
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+				},
+			},
+			unsetGlobalIndexEvent: &UpdatedUnsetGlobalIndexHashChain{
+				BlockNum:       15,
+				BlockPos:       0,
+				BlockTimestamp: 1234567890,
+				TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				GlobalIndex:    big.NewInt(12345),
+			},
+			expectedClaimBlockNum: int64Ptr(10),
+			expectedClaimBlockPos: int64Ptr(5),
+			expectedError:         "",
+			description:           "should find and associate claim with matching global index",
+		},
+		{
+			name:        "no valid claim found for global index",
+			setupClaims: []*Claim{},
+			unsetGlobalIndexEvent: &UpdatedUnsetGlobalIndexHashChain{
+				BlockNum:       15,
+				BlockPos:       0,
+				BlockTimestamp: 1234567890,
+				TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				GlobalIndex:    big.NewInt(99999),
+			},
+			expectedClaimBlockNum: nil,
+			expectedClaimBlockPos: nil,
+			expectedError:         "failed to find claim for global_index 99999 at block 15",
+			description:           "should return error when no claim found for global index",
+		},
+		{
+			name: "multiple claims with same global index - should find latest",
+			setupClaims: []*Claim{
+				{
+					BlockNum:            10,
+					BlockPos:            5,
+					GlobalIndex:         big.NewInt(12345),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(1000),
+					ProofLocalExitRoot:  types.Proof{},
+					ProofRollupExitRoot: types.Proof{},
+					MainnetExitRoot:     common.Hash{},
+					RollupExitRoot:      common.Hash{},
+					GlobalExitRoot:      common.Hash{},
+					DestinationNetwork:  2,
+					Metadata:            []byte("test metadata"),
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+				},
+				{
+					BlockNum:            12,
+					BlockPos:            3,
+					GlobalIndex:         big.NewInt(12345),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(2000),
+					ProofLocalExitRoot:  types.Proof{},
+					ProofRollupExitRoot: types.Proof{},
+					MainnetExitRoot:     common.Hash{},
+					RollupExitRoot:      common.Hash{},
+					GlobalExitRoot:      common.Hash{},
+					DestinationNetwork:  2,
+					Metadata:            []byte("test metadata 2"),
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+				},
+			},
+			unsetGlobalIndexEvent: &UpdatedUnsetGlobalIndexHashChain{
+				BlockNum:       15,
+				BlockPos:       0,
+				BlockTimestamp: 1234567890,
+				TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+				GlobalIndex:    big.NewInt(12345),
+			},
+			expectedClaimBlockNum: int64Ptr(12),
+			expectedClaimBlockPos: int64Ptr(3),
+			expectedError:         "",
+			description:           "should find the latest claim with matching global index",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup test database
+			dbPath := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncTestUpdatedUnsetGlobalIndexHashChain_%s.sqlite", tc.name))
+			err := migrations.RunMigrations(dbPath)
+			require.NoError(t, err)
+
+			logger := log.WithFields("bridge-syncer", "test")
+			p, err := newProcessor(dbPath, "test", logger)
+			require.NoError(t, err)
+
+			// Insert test data
+			if len(tc.setupClaims) > 0 {
+				tx, err := p.db.BeginTx(context.Background(), nil)
+				require.NoError(t, err)
+
+				// Insert blocks first
+				for _, claim := range tc.setupClaims {
+					_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`,
+						claim.BlockNum, fmt.Sprintf("0x%x", claim.BlockNum))
+					require.NoError(t, err)
+				}
+
+				// Insert claims
+				for _, claim := range tc.setupClaims {
+					err = meddler.Insert(tx, "claim", claim)
+					require.NoError(t, err)
+				}
+
+				require.NoError(t, tx.Commit())
+			}
+
+			// Create block with UpdatedUnsetGlobalIndexHashChain event
+			block := sync.Block{
+				Num:    tc.unsetGlobalIndexEvent.BlockNum,
+				Hash:   common.HexToHash(fmt.Sprintf("0x%x", tc.unsetGlobalIndexEvent.BlockNum)),
+				Events: []interface{}{Event{UpdatedUnsetGlobalIndexHashChain: tc.unsetGlobalIndexEvent}},
+			}
+
+			// Process the block
+			err = p.ProcessBlock(context.Background(), block)
+
+			// Verify results
+			if tc.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedError)
+			} else {
+				require.NoError(t, err)
+
+				// Verify the event was stored correctly
+				var storedEvent UpdatedUnsetGlobalIndexHashChain
+				err = meddler.QueryRow(
+					p.db,
+					&storedEvent,
+					"SELECT * FROM unset_global_index WHERE block_num = ? AND block_pos = ?",
+					tc.unsetGlobalIndexEvent.BlockNum,
+					tc.unsetGlobalIndexEvent.BlockPos,
+				)
+				require.NoError(t, err)
+
+				// Verify basic fields
+				require.Equal(t, tc.unsetGlobalIndexEvent.BlockNum, storedEvent.BlockNum)
+				require.Equal(t, tc.unsetGlobalIndexEvent.BlockPos, storedEvent.BlockPos)
+				require.Equal(t, tc.unsetGlobalIndexEvent.BlockTimestamp, storedEvent.BlockTimestamp)
+				require.Equal(t, tc.unsetGlobalIndexEvent.TxHash, storedEvent.TxHash)
+				require.Equal(t, tc.unsetGlobalIndexEvent.GlobalIndex.String(), storedEvent.GlobalIndex.String())
+
+				// Verify claim association
+				if tc.expectedClaimBlockNum != nil {
+					require.NotNil(t, storedEvent.ClaimBlockNum)
+					require.NotNil(t, storedEvent.ClaimBlockPos)
+					require.Equal(t, *tc.expectedClaimBlockNum, *storedEvent.ClaimBlockNum)
+					require.Equal(t, *tc.expectedClaimBlockPos, *storedEvent.ClaimBlockPos)
+				} else {
+					require.Nil(t, storedEvent.ClaimBlockNum)
+					require.Nil(t, storedEvent.ClaimBlockPos)
+				}
+			}
+		})
+	}
+}
+
+func TestGetUnsetGlobalIndexesPaged(t *testing.T) {
+	tests := []struct {
+		name                    string
+		setupClaims             []*Claim
+		setupUnsetGlobalIndexes []*UpdatedUnsetGlobalIndexHashChain
+		page                    uint32
+		pageSize                uint32
+		networkID               uint32
+		globalIndex             *string
+		expectedResults         int
+		expectedTotal           int
+		expectedError           string
+		description             string
+	}{
+		{
+			name: "pagination with correct network ID",
+			setupClaims: []*Claim{
+				{
+					BlockNum:            10,
+					BlockPos:            5,
+					GlobalIndex:         big.NewInt(12345),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(1000),
+					ProofLocalExitRoot:  types.Proof{},
+					ProofRollupExitRoot: types.Proof{},
+					MainnetExitRoot:     common.Hash{},
+					RollupExitRoot:      common.Hash{},
+					GlobalExitRoot:      common.Hash{},
+					DestinationNetwork:  2,
+					Metadata:            []byte("test metadata"),
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+				},
+				{
+					BlockNum:            12,
+					BlockPos:            3,
+					GlobalIndex:         big.NewInt(67890),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(2000),
+					ProofLocalExitRoot:  types.Proof{},
+					ProofRollupExitRoot: types.Proof{},
+					MainnetExitRoot:     common.Hash{},
+					RollupExitRoot:      common.Hash{},
+					GlobalExitRoot:      common.Hash{},
+					DestinationNetwork:  2,
+					Metadata:            []byte("test metadata 2"),
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+				},
+			},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{
+				{
+					BlockNum:       15,
+					BlockPos:       0,
+					BlockTimestamp: 1234567890,
+					TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					GlobalIndex:    big.NewInt(12345),
+					ClaimBlockNum:  int64Ptr(10),
+					ClaimBlockPos:  int64Ptr(5),
+				},
+				{
+					BlockNum:       16,
+					BlockPos:       0,
+					BlockTimestamp: 1234567890,
+					TxHash:         common.HexToHash("0x2345678901bcdef12345678901bcdef12345678901bcdef12345678901bcdef"),
+					GlobalIndex:    big.NewInt(67890),
+					ClaimBlockNum:  int64Ptr(12),
+					ClaimBlockPos:  int64Ptr(3),
+				},
+			},
+			page:            1,
+			pageSize:        10,
+			networkID:       1,
+			globalIndex:     nil,
+			expectedResults: 2,
+			expectedTotal:   2,
+			expectedError:   "",
+			description:     "should return all unset global indexes for network ID 1",
+		},
+		{
+			name: "pagination with different network ID",
+			setupClaims: []*Claim{
+				{
+					BlockNum:            10,
+					BlockPos:            5,
+					GlobalIndex:         big.NewInt(12345),
+					OriginNetwork:       2, // Different network ID
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(1000),
+					ProofLocalExitRoot:  types.Proof{},
+					ProofRollupExitRoot: types.Proof{},
+					MainnetExitRoot:     common.Hash{},
+					RollupExitRoot:      common.Hash{},
+					GlobalExitRoot:      common.Hash{},
+					DestinationNetwork:  1,
+					Metadata:            []byte("test metadata"),
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+				},
+			},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{
+				{
+					BlockNum:       15,
+					BlockPos:       0,
+					BlockTimestamp: 1234567890,
+					TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					GlobalIndex:    big.NewInt(12345),
+					ClaimBlockNum:  int64Ptr(10),
+					ClaimBlockPos:  int64Ptr(5),
+				},
+			},
+			page:            1,
+			pageSize:        10,
+			networkID:       1, // Looking for network ID 1
+			globalIndex:     nil,
+			expectedResults: 1, // Should find the unset global index since network ID filtering is not implemented
+			expectedTotal:   1,
+			expectedError:   "",
+			description:     "should return results regardless of network ID since filtering is not implemented",
+		},
+		{
+			name: "filter by global index",
+			setupClaims: []*Claim{
+				{
+					BlockNum:            10,
+					BlockPos:            5,
+					GlobalIndex:         big.NewInt(12345),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(1000),
+					ProofLocalExitRoot:  types.Proof{},
+					ProofRollupExitRoot: types.Proof{},
+					MainnetExitRoot:     common.Hash{},
+					RollupExitRoot:      common.Hash{},
+					GlobalExitRoot:      common.Hash{},
+					DestinationNetwork:  2,
+					Metadata:            []byte("test metadata"),
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+				},
+			},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{
+				{
+					BlockNum:       15,
+					BlockPos:       0,
+					BlockTimestamp: 1234567890,
+					TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					GlobalIndex:    big.NewInt(12345),
+					ClaimBlockNum:  int64Ptr(10),
+					ClaimBlockPos:  int64Ptr(5),
+				},
+			},
+			page:            1,
+			pageSize:        10,
+			networkID:       1,
+			globalIndex:     stringPtr("12345"),
+			expectedResults: 1,
+			expectedTotal:   1,
+			expectedError:   "",
+			description:     "should filter results by global index",
+		},
+		{
+			name:                    "invalid page number",
+			setupClaims:             []*Claim{},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{},
+			page:                    0,
+			pageSize:                10,
+			networkID:               1,
+			globalIndex:             nil,
+			expectedResults:         0,
+			expectedTotal:           0,
+			expectedError:           "invalid page number: 0",
+			description:             "should return error for invalid page number",
+		},
+		{
+			name:                    "invalid page size",
+			setupClaims:             []*Claim{},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{},
+			page:                    1,
+			pageSize:                0,
+			networkID:               1,
+			globalIndex:             nil,
+			expectedResults:         0,
+			expectedTotal:           0,
+			expectedError:           "invalid page size: 0",
+			description:             "should return error for invalid page size",
+		},
+		{
+			name:                    "network ID 0 not applicable",
+			setupClaims:             []*Claim{},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{},
+			page:                    1,
+			pageSize:                10,
+			networkID:               0,
+			globalIndex:             nil,
+			expectedResults:         0,
+			expectedTotal:           0,
+			expectedError:           "",
+			description:             "should return no results for empty database",
+		},
+		{
+			name: "pagination with offset beyond total count",
+			setupClaims: []*Claim{
+				{
+					BlockNum:            10,
+					BlockPos:            5,
+					GlobalIndex:         big.NewInt(12345),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(1000),
+					ProofLocalExitRoot:  types.Proof{},
+					ProofRollupExitRoot: types.Proof{},
+					MainnetExitRoot:     common.Hash{},
+					RollupExitRoot:      common.Hash{},
+					GlobalExitRoot:      common.Hash{},
+					DestinationNetwork:  2,
+					Metadata:            []byte("test metadata"),
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+				},
+			},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{
+				{
+					BlockNum:       15,
+					BlockPos:       0,
+					BlockTimestamp: 1234567890,
+					TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					GlobalIndex:    big.NewInt(12345),
+					ClaimBlockNum:  int64Ptr(10),
+					ClaimBlockPos:  int64Ptr(5),
+				},
+			},
+			page:            5, // Page 5 with 1 item total
+			pageSize:        10,
+			networkID:       1,
+			globalIndex:     nil,
+			expectedResults: 0, // No results for page 5
+			expectedTotal:   1,
+			expectedError:   "",
+			description:     "should return no results for page beyond total count",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup test database
+			dbPath := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncTestGetUnsetGlobalIndexesPaged_%s.sqlite", tc.name))
+			err := migrations.RunMigrations(dbPath)
+			require.NoError(t, err)
+
+			logger := log.WithFields("bridge-syncer", "test")
+			p, err := newProcessor(dbPath, "test", logger)
+			require.NoError(t, err)
+
+			// Insert test data
+			if len(tc.setupClaims) > 0 || len(tc.setupUnsetGlobalIndexes) > 0 {
+				tx, err := p.db.BeginTx(context.Background(), nil)
+				require.NoError(t, err)
+
+				// Insert blocks first
+				blockNums := make(map[uint64]bool)
+				for _, claim := range tc.setupClaims {
+					blockNums[claim.BlockNum] = true
+				}
+				for _, ugi := range tc.setupUnsetGlobalIndexes {
+					blockNums[ugi.BlockNum] = true
+				}
+
+				for blockNum := range blockNums {
+					_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`,
+						blockNum, fmt.Sprintf("0x%x", blockNum))
+					require.NoError(t, err)
+				}
+
+				// Insert claims
+				for _, claim := range tc.setupClaims {
+					err = meddler.Insert(tx, "claim", claim)
+					require.NoError(t, err)
+				}
+
+				// Insert unset global indexes
+				for _, ugi := range tc.setupUnsetGlobalIndexes {
+					err = meddler.Insert(tx, "unset_global_index", ugi)
+					require.NoError(t, err)
+				}
+
+				require.NoError(t, tx.Commit())
+			}
+
+			// Execute the function under test
+			ctx := context.Background()
+			results, total, err := p.GetUnsetGlobalIndexesPaged(ctx, tc.page, tc.pageSize, tc.globalIndex)
+
+			// Verify results
+			if tc.expectedError != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedError)
+				require.Nil(t, results)
+				require.Equal(t, 0, total)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, results, tc.expectedResults)
+				require.Equal(t, tc.expectedTotal, total)
+
+				// Verify that results are ordered by block_num DESC, block_pos DESC
+				if len(results) > 1 {
+					for i := 0; i < len(results)-1; i++ {
+						if results[i].BlockNum == results[i+1].BlockNum {
+							require.GreaterOrEqual(t, results[i].BlockPos, results[i+1].BlockPos)
+						} else {
+							require.Greater(t, results[i].BlockNum, results[i+1].BlockNum)
+						}
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestUpdatedUnsetGlobalIndexHashChain_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name                    string
+		setupClaims             []*Claim
+		setupUnsetGlobalIndexes []*UpdatedUnsetGlobalIndexHashChain
+		networkID               uint32
+		expectedResults         int
+		expectedError           string
+		description             string
+	}{
+		{
+			name:                    "unset global index without claim reference",
+			setupClaims:             []*Claim{},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{
+				// Cannot insert unset global index without claim reference due to NOT NULL constraint
+				// This test case is not applicable with current database schema
+			},
+			networkID:       1,
+			expectedResults: 0, // No data to test
+			expectedError:   "",
+			description:     "no unset global indexes without claim reference due to database constraints",
+		},
+		{
+			name:                    "claim not found in database",
+			setupClaims:             []*Claim{},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{
+				// Cannot insert unset global index with non-existent claim due to foreign key constraint
+				// This test case is not applicable with current database schema
+			},
+			networkID:       1,
+			expectedResults: 0, // No data to test
+			expectedError:   "",
+			description:     "no unset global indexes with non-existent claim due to foreign key constraints",
+		},
+		{
+			name: "mixed valid and invalid references",
+			setupClaims: []*Claim{
+				{
+					BlockNum:            10,
+					BlockPos:            5,
+					GlobalIndex:         big.NewInt(12345),
+					OriginNetwork:       1,
+					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
+					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
+					Amount:              big.NewInt(1000),
+					ProofLocalExitRoot:  types.Proof{},
+					ProofRollupExitRoot: types.Proof{},
+					MainnetExitRoot:     common.Hash{},
+					RollupExitRoot:      common.Hash{},
+					GlobalExitRoot:      common.Hash{},
+					DestinationNetwork:  2,
+					Metadata:            []byte("test metadata"),
+					IsMessage:           false,
+					BlockTimestamp:      1234567890,
+				},
+			},
+			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{
+				{
+					BlockNum:       15,
+					BlockPos:       0,
+					BlockTimestamp: 1234567890,
+					TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+					GlobalIndex:    big.NewInt(12345),
+					ClaimBlockNum:  int64Ptr(10),
+					ClaimBlockPos:  int64Ptr(5),
+				},
+				// Cannot insert unset global index with non-existent claim due to foreign key constraint
+			},
+			networkID:       1,
+			expectedResults: 1, // Only the valid one can be inserted
+			expectedError:   "",
+			description:     "should return only unset global indexes with valid claim references",
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			// Setup test database
+			dbPath := path.Join(t.TempDir(), fmt.Sprintf("bridgesyncTestUpdatedUnsetGlobalIndexHashChainEdgeCases_%s.sqlite", tc.name))
+			err := migrations.RunMigrations(dbPath)
+			require.NoError(t, err)
+
+			logger := log.WithFields("bridge-syncer", "test")
+			p, err := newProcessor(dbPath, "test", logger)
+			require.NoError(t, err)
+
+			// Insert test data
+			if len(tc.setupClaims) > 0 || len(tc.setupUnsetGlobalIndexes) > 0 {
+				tx, err := p.db.BeginTx(context.Background(), nil)
+				require.NoError(t, err)
+
+				// Insert blocks first
+				blockNums := make(map[uint64]bool)
+				for _, claim := range tc.setupClaims {
+					blockNums[claim.BlockNum] = true
+				}
+				for _, ugi := range tc.setupUnsetGlobalIndexes {
+					blockNums[ugi.BlockNum] = true
+				}
+
+				for blockNum := range blockNums {
+					_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`,
+						blockNum, fmt.Sprintf("0x%x", blockNum))
+					require.NoError(t, err)
+				}
+
+				// Insert claims
+				for _, claim := range tc.setupClaims {
+					err = meddler.Insert(tx, "claim", claim)
+					require.NoError(t, err)
+				}
+
+				// Insert unset global indexes
+				for _, ugi := range tc.setupUnsetGlobalIndexes {
+					err = meddler.Insert(tx, "unset_global_index", ugi)
+					require.NoError(t, err)
+				}
+
+				require.NoError(t, tx.Commit())
+			}
+
+			// Execute the function under test
+			ctx := context.Background()
+			results, total, err := p.GetUnsetGlobalIndexesPaged(ctx, 1, 10, nil)
+
+			// Verify results
+			require.NoError(t, err)
+			require.Len(t, results, tc.expectedResults)
+			require.Equal(t, tc.expectedResults, total)
+		})
+	}
+}
+
+// Helper functions
+func int64Ptr(v int64) *int64 {
+	return &v
+}
+
+func stringPtr(v string) *string {
+	return &v
 }

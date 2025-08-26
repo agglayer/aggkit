@@ -158,6 +158,9 @@ type ClaimResponse struct {
 	// Block number where the claim was processed
 	BlockNum uint64 `json:"block_num" example:"1234"`
 
+	// Position of the claim within the block
+	BlockPos uint64 `json:"block_pos" example:"2"`
+
 	// Timestamp of the block containing the claim
 	BlockTimestamp uint64 `json:"block_timestamp" example:"1684500000"`
 
@@ -202,6 +205,9 @@ type ClaimResponse struct {
 
 	// Metadata associated with the claim
 	Metadata string `json:"metadata" example:"0xdeadbeef"`
+
+	// Indicates whether this is a message claim
+	IsMessage bool `json:"is_message" example:"false"`
 }
 
 // TokenMappingsResult contains the token mappings and the total count of token mappings
@@ -353,4 +359,36 @@ type HealthCheckResponse struct {
 	Status  string    `json:"status"`
 	Time    time.Time `json:"time"`
 	Version string    `json:"version"`
+}
+
+// UnsetGlobalIndexesResult contains the list of unset global index records and the total count
+// @Description Paginated response containing unset global index events and total count
+type UnsetGlobalIndexesResult struct {
+	// List of unset global indexes matching the query
+	UnsetGlobalIndexes []*UnsetGlobalIndexResponse `json:"unset_global_indexes"`
+
+	// Total number of matching unset global indexes
+	Count int `json:"count" example:"42"`
+}
+
+// UnsetGlobalIndexResponse represents an unset global index event response
+// @Description Detailed information about an unset global index event
+type UnsetGlobalIndexResponse struct {
+	// Block number where the unset global index was recorded
+	BlockNum uint64 `json:"block_num" example:"1234"`
+
+	// Position of the unset global index event within the block
+	BlockPos uint64 `json:"block_pos" example:"1"`
+
+	// Timestamp of the block containing the unset global index event
+	BlockTimestamp uint64 `json:"block_timestamp" example:"1684500000"`
+
+	// Transaction hash associated with the unset global index event
+	TxHash Hash `json:"tx_hash" example:"0xdef4567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"`
+
+	// Global index that was unset
+	GlobalIndex BigIntString `json:"global_index" example:"1000000000000000000"`
+
+	// Associated claim data if available
+	Claim *ClaimResponse `json:"claim,omitempty"`
 }

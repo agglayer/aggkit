@@ -96,6 +96,66 @@ func (_c *Bridger_GetBridgesPaged_Call) RunAndReturn(run func(context.Context, u
 	return _c
 }
 
+// GetClaimByBlockAndPosition provides a mock function with given fields: ctx, blockNum, blockPos
+func (_m *Bridger) GetClaimByBlockAndPosition(ctx context.Context, blockNum uint64, blockPos uint64) (*bridgesync.Claim, error) {
+	ret := _m.Called(ctx, blockNum, blockPos)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetClaimByBlockAndPosition")
+	}
+
+	var r0 *bridgesync.Claim
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) (*bridgesync.Claim, error)); ok {
+		return rf(ctx, blockNum, blockPos)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint64, uint64) *bridgesync.Claim); ok {
+		r0 = rf(ctx, blockNum, blockPos)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*bridgesync.Claim)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint64, uint64) error); ok {
+		r1 = rf(ctx, blockNum, blockPos)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Bridger_GetClaimByBlockAndPosition_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetClaimByBlockAndPosition'
+type Bridger_GetClaimByBlockAndPosition_Call struct {
+	*mock.Call
+}
+
+// GetClaimByBlockAndPosition is a helper method to define mock.On call
+//   - ctx context.Context
+//   - blockNum uint64
+//   - blockPos uint64
+func (_e *Bridger_Expecter) GetClaimByBlockAndPosition(ctx interface{}, blockNum interface{}, blockPos interface{}) *Bridger_GetClaimByBlockAndPosition_Call {
+	return &Bridger_GetClaimByBlockAndPosition_Call{Call: _e.mock.On("GetClaimByBlockAndPosition", ctx, blockNum, blockPos)}
+}
+
+func (_c *Bridger_GetClaimByBlockAndPosition_Call) Run(run func(ctx context.Context, blockNum uint64, blockPos uint64)) *Bridger_GetClaimByBlockAndPosition_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint64), args[2].(uint64))
+	})
+	return _c
+}
+
+func (_c *Bridger_GetClaimByBlockAndPosition_Call) Return(_a0 *bridgesync.Claim, _a1 error) *Bridger_GetClaimByBlockAndPosition_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Bridger_GetClaimByBlockAndPosition_Call) RunAndReturn(run func(context.Context, uint64, uint64) (*bridgesync.Claim, error)) *Bridger_GetClaimByBlockAndPosition_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetClaimsPaged provides a mock function with given fields: ctx, page, pageSize, networkIDs, fromAddress
 func (_m *Bridger) GetClaimsPaged(ctx context.Context, page uint32, pageSize uint32, networkIDs []uint32, fromAddress string) ([]*bridgesync.Claim, int, error) {
 	ret := _m.Called(ctx, page, pageSize, networkIDs, fromAddress)
@@ -586,6 +646,74 @@ func (_c *Bridger_GetTokenMappings_Call) Return(_a0 []*bridgesync.TokenMapping, 
 }
 
 func (_c *Bridger_GetTokenMappings_Call) RunAndReturn(run func(context.Context, uint32, uint32) ([]*bridgesync.TokenMapping, int, error)) *Bridger_GetTokenMappings_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetUnsetGlobalIndexesPaged provides a mock function with given fields: ctx, page, pageSize, globalIndex
+func (_m *Bridger) GetUnsetGlobalIndexesPaged(ctx context.Context, page uint32, pageSize uint32, globalIndex *string) ([]*bridgesync.UpdatedUnsetGlobalIndexHashChain, int, error) {
+	ret := _m.Called(ctx, page, pageSize, globalIndex)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetUnsetGlobalIndexesPaged")
+	}
+
+	var r0 []*bridgesync.UpdatedUnsetGlobalIndexHashChain
+	var r1 int
+	var r2 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *string) ([]*bridgesync.UpdatedUnsetGlobalIndexHashChain, int, error)); ok {
+		return rf(ctx, page, pageSize, globalIndex)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, *string) []*bridgesync.UpdatedUnsetGlobalIndexHashChain); ok {
+		r0 = rf(ctx, page, pageSize, globalIndex)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]*bridgesync.UpdatedUnsetGlobalIndexHashChain)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, *string) int); ok {
+		r1 = rf(ctx, page, pageSize, globalIndex)
+	} else {
+		r1 = ret.Get(1).(int)
+	}
+
+	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, *string) error); ok {
+		r2 = rf(ctx, page, pageSize, globalIndex)
+	} else {
+		r2 = ret.Error(2)
+	}
+
+	return r0, r1, r2
+}
+
+// Bridger_GetUnsetGlobalIndexesPaged_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetUnsetGlobalIndexesPaged'
+type Bridger_GetUnsetGlobalIndexesPaged_Call struct {
+	*mock.Call
+}
+
+// GetUnsetGlobalIndexesPaged is a helper method to define mock.On call
+//   - ctx context.Context
+//   - page uint32
+//   - pageSize uint32
+//   - globalIndex *string
+func (_e *Bridger_Expecter) GetUnsetGlobalIndexesPaged(ctx interface{}, page interface{}, pageSize interface{}, globalIndex interface{}) *Bridger_GetUnsetGlobalIndexesPaged_Call {
+	return &Bridger_GetUnsetGlobalIndexesPaged_Call{Call: _e.mock.On("GetUnsetGlobalIndexesPaged", ctx, page, pageSize, globalIndex)}
+}
+
+func (_c *Bridger_GetUnsetGlobalIndexesPaged_Call) Run(run func(ctx context.Context, page uint32, pageSize uint32, globalIndex *string)) *Bridger_GetUnsetGlobalIndexesPaged_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].(*string))
+	})
+	return _c
+}
+
+func (_c *Bridger_GetUnsetGlobalIndexesPaged_Call) Return(_a0 []*bridgesync.UpdatedUnsetGlobalIndexHashChain, _a1 int, _a2 error) *Bridger_GetUnsetGlobalIndexesPaged_Call {
+	_c.Call.Return(_a0, _a1, _a2)
+	return _c
+}
+
+func (_c *Bridger_GetUnsetGlobalIndexesPaged_Call) RunAndReturn(run func(context.Context, uint32, uint32, *string) ([]*bridgesync.UpdatedUnsetGlobalIndexHashChain, int, error)) *Bridger_GetUnsetGlobalIndexesPaged_Call {
 	_c.Call.Return(run)
 	return _c
 }

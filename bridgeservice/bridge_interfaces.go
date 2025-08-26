@@ -21,6 +21,9 @@ type Bridger interface {
 		pageNumber, pageSize uint32) ([]*bridgesync.LegacyTokenMigration, int, error)
 	GetClaimsPaged(ctx context.Context, page, pageSize uint32,
 		networkIDs []uint32, fromAddress string) ([]*bridgesync.Claim, int, error)
+	GetClaimByBlockAndPosition(ctx context.Context, blockNum, blockPos uint64) (*bridgesync.Claim, error)
+	GetUnsetGlobalIndexesPaged(ctx context.Context, page, pageSize uint32,
+		globalIndex *string) ([]*bridgesync.UpdatedUnsetGlobalIndexHashChain, int, error)
 	GetLastReorgEvent(ctx context.Context) (*bridgesync.LastReorg, error)
 	GetContractDepositCount(ctx context.Context) (uint32, error)
 }

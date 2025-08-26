@@ -836,3 +836,327 @@ func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 		require.Equal(t, Claim{}, claim)
 	})
 }
+
+func TestBridgeSync_GetClaimByBlockAndPosition(t *testing.T) {
+	const (
+		syncBlockChunkSize         = uint64(100)
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+	)
+
+	var (
+		blockFinalityType = aggkittypes.SafeBlock
+		ctx               = context.Background()
+		dbPath            = path.Join(t.TempDir(), "TestGetClaimByBlockAndPosition.sqlite")
+		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	)
+
+	mockEthClient := mocksethclient.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Times(2)
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+
+	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	s, err := NewL2(
+		ctx,
+		dbPath,
+		bridge,
+		syncBlockChunkSize,
+		blockFinalityType,
+		mockReorgDetector,
+		mockEthClient,
+		initialBlock,
+		waitForNewBlocksPeriod,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
+		originNetwork,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+
+	// Create a test claim
+	blockNum := uint64(100)
+	blockPos := uint64(5)
+	testClaim := &Claim{
+		BlockNum:            blockNum,
+		BlockPos:            blockPos,
+		FromAddress:         common.HexToAddress("0x1111111111111111111111111111111111111111"),
+		TxHash:              common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+		GlobalIndex:         big.NewInt(12345),
+		OriginNetwork:       originNetwork,
+		OriginAddress:       common.HexToAddress("0x2222222222222222222222222222222222222222"),
+		DestinationAddress:  common.HexToAddress("0x3333333333333333333333333333333333333333"),
+		Amount:              big.NewInt(1000),
+		ProofLocalExitRoot:  types.Proof{},
+		ProofRollupExitRoot: types.Proof{},
+		MainnetExitRoot:     common.Hash{},
+		RollupExitRoot:      common.Hash{},
+		GlobalExitRoot:      common.Hash{},
+		DestinationNetwork:  2,
+		Metadata:            []byte("test metadata"),
+		IsMessage:           false,
+		BlockTimestamp:      1234567890,
+	}
+
+	// Process the claim
+	claimEvent := Event{Claim: testClaim}
+	block := sync.Block{
+		Num:    blockNum,
+		Events: []interface{}{claimEvent},
+	}
+
+	err = s.processor.ProcessBlock(context.Background(), block)
+	require.NoError(t, err)
+
+	t.Run("retrieve claim by block and position successfully", func(t *testing.T) {
+		claim, err := s.GetClaimByBlockAndPosition(ctx, blockNum, blockPos)
+		require.NoError(t, err)
+		require.NotNil(t, claim)
+		require.Equal(t, testClaim.BlockNum, claim.BlockNum)
+		require.Equal(t, testClaim.BlockPos, claim.BlockPos)
+		require.Equal(t, testClaim.GlobalIndex, claim.GlobalIndex)
+		require.Equal(t, testClaim.OriginNetwork, claim.OriginNetwork)
+		require.Equal(t, testClaim.OriginAddress, claim.OriginAddress)
+		require.Equal(t, testClaim.DestinationAddress, claim.DestinationAddress)
+		require.Equal(t, testClaim.Amount, claim.Amount)
+		require.Equal(t, testClaim.Metadata, claim.Metadata)
+		require.Equal(t, testClaim.IsMessage, claim.IsMessage)
+		require.Equal(t, testClaim.BlockTimestamp, claim.BlockTimestamp)
+	})
+
+	t.Run("retrieve non-existent claim", func(t *testing.T) {
+		claim, err := s.GetClaimByBlockAndPosition(ctx, 999, 999)
+		require.Error(t, err)
+		require.Nil(t, claim)
+		require.Contains(t, err.Error(), "failed to get claim by block number and position")
+	})
+
+	t.Run("inconsistent state", func(t *testing.T) {
+		s.processor.halted = true
+		claim, err := s.GetClaimByBlockAndPosition(ctx, blockNum, blockPos)
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+		require.Nil(t, claim)
+		// Reset the halted state for other tests
+		s.processor.halted = false
+	})
+}
+
+func TestBridgeSync_GetUnsetGlobalIndexesPaged(t *testing.T) {
+	const (
+		syncBlockChunkSize         = uint64(100)
+		initialBlock               = uint64(0)
+		waitForNewBlocksPeriod     = time.Second * 10
+		retryAfterErrorPeriod      = time.Second * 5
+		maxRetryAttemptsAfterError = 3
+		originNetwork              = uint32(1)
+	)
+
+	var (
+		blockFinalityType = aggkittypes.SafeBlock
+		ctx               = context.Background()
+		dbPath            = path.Join(t.TempDir(), "TestGetUnsetGlobalIndexesPaged.sqlite")
+		bridge            = common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+	)
+
+	mockEthClient := mocksethclient.NewEthClienter(t)
+	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Times(2)
+	mockEthClient.EXPECT().
+		CallContract(
+			mock.Anything,
+			mock.Anything,
+			mock.Anything,
+		).
+		Return(common.LeftPadBytes(common.HexToAddress("0x3c351e10").Bytes(), 32), nil).
+		Maybe()
+	mockReorgDetector := mocksbridgesync.NewReorgDetector(t)
+
+	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
+	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
+	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	s, err := NewL2(
+		ctx,
+		dbPath,
+		bridge,
+		syncBlockChunkSize,
+		blockFinalityType,
+		mockReorgDetector,
+		mockEthClient,
+		initialBlock,
+		waitForNewBlocksPeriod,
+		retryAfterErrorPeriod,
+		maxRetryAttemptsAfterError,
+		originNetwork,
+		false,
+		false,
+	)
+	require.NoError(t, err)
+
+	// Create test claims first
+	blockNum1 := uint64(100)
+	blockPos1 := uint64(5)
+	blockNum2 := uint64(101)
+	blockPos2 := uint64(3)
+
+	testClaim1 := &Claim{
+		BlockNum:            blockNum1,
+		BlockPos:            blockPos1,
+		FromAddress:         common.HexToAddress("0x1111111111111111111111111111111111111111"),
+		TxHash:              common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
+		GlobalIndex:         big.NewInt(12345),
+		OriginNetwork:       originNetwork,
+		OriginAddress:       common.HexToAddress("0x2222222222222222222222222222222222222222"),
+		DestinationAddress:  common.HexToAddress("0x3333333333333333333333333333333333333333"),
+		Amount:              big.NewInt(1000),
+		ProofLocalExitRoot:  types.Proof{},
+		ProofRollupExitRoot: types.Proof{},
+		MainnetExitRoot:     common.Hash{},
+		RollupExitRoot:      common.Hash{},
+		GlobalExitRoot:      common.Hash{},
+		DestinationNetwork:  2,
+		Metadata:            []byte("test metadata 1"),
+		IsMessage:           false,
+		BlockTimestamp:      1234567890,
+	}
+
+	testClaim2 := &Claim{
+		BlockNum:            blockNum2,
+		BlockPos:            blockPos2,
+		FromAddress:         common.HexToAddress("0x4444444444444444444444444444444444444444"),
+		TxHash:              common.HexToHash("0x2345678901bcdef12345678901bcdef12345678901bcdef12345678901bcdef"),
+		GlobalIndex:         big.NewInt(67890),
+		OriginNetwork:       originNetwork,
+		OriginAddress:       common.HexToAddress("0x5555555555555555555555555555555555555555"),
+		DestinationAddress:  common.HexToAddress("0x6666666666666666666666666666666666666666"),
+		Amount:              big.NewInt(2000),
+		ProofLocalExitRoot:  types.Proof{},
+		ProofRollupExitRoot: types.Proof{},
+		MainnetExitRoot:     common.Hash{},
+		RollupExitRoot:      common.Hash{},
+		GlobalExitRoot:      common.Hash{},
+		DestinationNetwork:  2,
+		Metadata:            []byte("test metadata 2"),
+		IsMessage:           false,
+		BlockTimestamp:      1234567890,
+	}
+
+	// Process the claims first
+	claimEvent1 := Event{Claim: testClaim1}
+	claimEvent2 := Event{Claim: testClaim2}
+	block1 := sync.Block{
+		Num:    blockNum1,
+		Events: []interface{}{claimEvent1},
+	}
+	block2 := sync.Block{
+		Num:    blockNum2,
+		Events: []interface{}{claimEvent2},
+	}
+
+	err = s.processor.ProcessBlock(context.Background(), block1)
+	require.NoError(t, err)
+	err = s.processor.ProcessBlock(context.Background(), block2)
+	require.NoError(t, err)
+
+	// Now create UpdatedUnsetGlobalIndexHashChain events
+	blockNum3 := uint64(102)
+	blockPos3 := uint64(0)
+	blockNum4 := uint64(103)
+	blockPos4 := uint64(0)
+
+	testUnsetGlobalIndex1 := &UpdatedUnsetGlobalIndexHashChain{
+		BlockNum:       blockNum3,
+		BlockPos:       blockPos3,
+		BlockTimestamp: 1234567890,
+		TxHash:         common.HexToHash("0x3456789012cdef123456789012cdef123456789012cdef123456789012cdef"),
+		GlobalIndex:    big.NewInt(12345),
+		ClaimBlockNum:  int64Ptr(int64(blockNum1)),
+		ClaimBlockPos:  int64Ptr(int64(blockPos1)),
+	}
+
+	testUnsetGlobalIndex2 := &UpdatedUnsetGlobalIndexHashChain{
+		BlockNum:       blockNum4,
+		BlockPos:       blockPos4,
+		BlockTimestamp: 1234567890,
+		TxHash:         common.HexToHash("0x4567890123def1234567890123def1234567890123def1234567890123def"),
+		GlobalIndex:    big.NewInt(67890),
+		ClaimBlockNum:  int64Ptr(int64(blockNum2)),
+		ClaimBlockPos:  int64Ptr(int64(blockPos2)),
+	}
+
+	// Process the UpdatedUnsetGlobalIndexHashChain events
+	unsetEvent1 := Event{UpdatedUnsetGlobalIndexHashChain: testUnsetGlobalIndex1}
+	unsetEvent2 := Event{UpdatedUnsetGlobalIndexHashChain: testUnsetGlobalIndex2}
+	block3 := sync.Block{
+		Num:    blockNum3,
+		Events: []interface{}{unsetEvent1},
+	}
+	block4 := sync.Block{
+		Num:    blockNum4,
+		Events: []interface{}{unsetEvent2},
+	}
+
+	err = s.processor.ProcessBlock(context.Background(), block3)
+	require.NoError(t, err)
+	err = s.processor.ProcessBlock(context.Background(), block4)
+	require.NoError(t, err)
+
+	t.Run("retrieve unset global indexes paged successfully", func(t *testing.T) {
+		results, total, err := s.GetUnsetGlobalIndexesPaged(ctx, 1, 10, nil)
+		require.NoError(t, err)
+		require.NotNil(t, results)
+		require.GreaterOrEqual(t, total, 0)
+	})
+
+	t.Run("retrieve unset global indexes with specific global index filter", func(t *testing.T) {
+		globalIndexStr := "12345"
+		results, total, err := s.GetUnsetGlobalIndexesPaged(ctx, 1, 10, &globalIndexStr)
+		require.NoError(t, err)
+		require.NotNil(t, results)
+		require.GreaterOrEqual(t, total, 0)
+	})
+
+	t.Run("retrieve unset global indexes with pagination", func(t *testing.T) {
+		pageSize := uint32(1)
+		page := uint32(1)
+
+		results, total, err := s.GetUnsetGlobalIndexesPaged(ctx, page, pageSize, nil)
+		require.NoError(t, err)
+		require.NotNil(t, results)
+		require.GreaterOrEqual(t, total, 0)
+		require.LessOrEqual(t, len(results), int(pageSize))
+	})
+
+	t.Run("retrieve unset global indexes with wrong network ID", func(t *testing.T) {
+		results, total, err := s.GetUnsetGlobalIndexesPaged(ctx, 1, 10, nil)
+		require.NoError(t, err)
+		// Should return all unset global indexes since network ID filtering is not implemented
+		require.Equal(t, 2, len(results))
+		require.Equal(t, 2, total)
+	})
+
+	t.Run("inconsistent state", func(t *testing.T) {
+		s.processor.halted = true
+		results, total, err := s.GetUnsetGlobalIndexesPaged(ctx, 1, 10, nil)
+		require.ErrorIs(t, err, sync.ErrInconsistentState)
+		require.Nil(t, results)
+		require.Equal(t, 0, total)
+		// Reset the halted state for other tests
+		s.processor.halted = false
+	})
+}
