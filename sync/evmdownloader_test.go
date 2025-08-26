@@ -616,19 +616,19 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 	tooManyResultsErr := errors.New("Query returned more than 20000 results.")
 	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, tooManyResultsErr).Once()
 
-	// Second call for first half returns success
-	firstHalfLogs := []types.Log{
+	// Second call for first batch (100-149) succeeds
+	firstBatchLogs := []types.Log{
 		{
 			Address:     contractAddr,
-			BlockNumber: 150,
+			BlockNumber: 125,
 			Topics:      []common.Hash{eventSignature},
 			BlockHash:   common.HexToHash("0x123"),
 		},
 	}
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(firstHalfLogs, nil).Once()
+	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(firstBatchLogs, nil).Once()
 
-	// Third call for second half returns success
-	secondHalfLogs := []types.Log{
+	// Third call for second batch (150-199) succeeds
+	secondBatchLogs := []types.Log{
 		{
 			Address:     contractAddr,
 			BlockNumber: 175,
@@ -636,12 +636,25 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 			BlockHash:   common.HexToHash("0x456"),
 		},
 	}
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(secondHalfLogs, nil).Once()
+	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(secondBatchLogs, nil).Once()
+
+	// Fourth call for third batch (200-200) succeeds
+	thirdBatchLogs := []types.Log{
+		{
+			Address:     contractAddr,
+			BlockNumber: 200,
+			Topics:      []common.Hash{eventSignature},
+			BlockHash:   common.HexToHash("0x789"),
+		},
+	}
+	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(thirdBatchLogs, nil).Once()
+
 	result := sut.getUnfilteredLogs(ctx, fromBlock, toBlock)
 
-	// Should combine both halves
-	expected := make([]types.Log, 0, len(firstHalfLogs)+len(secondHalfLogs))
-	expected = append(expected, firstHalfLogs...)
-	expected = append(expected, secondHalfLogs...)
+	// Should combine all batches
+	expected := make([]types.Log, 0, len(firstBatchLogs)+len(secondBatchLogs)+len(thirdBatchLogs))
+	expected = append(expected, firstBatchLogs...)
+	expected = append(expected, secondBatchLogs...)
+	expected = append(expected, thirdBatchLogs...)
 	assert.Equal(t, expected, result)
 }
