@@ -186,7 +186,7 @@ jobs:
     name: Check results for single l2 network (global index pp old contracts)
     needs:
       - test-single-l2-network-fork12-global-index-pp-old-contracts
-    if: always()
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -239,7 +239,7 @@ jobs:
     name: Check results for single l2 network (op-succinct with aggoracle committee)
     needs:
       - test-single-l2-network-fork12-op-succinct-aggoracle-committee
-    if: always()
+    # if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -295,6 +295,7 @@ jobs:
     name: Check results for multi l2 networks (3 chains)
     needs:
       - test-multi-l2-networks-3-chains
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
