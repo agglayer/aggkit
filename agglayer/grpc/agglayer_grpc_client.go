@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 
 	node "buf.build/gen/go/agglayer/agglayer/grpc/go/agglayer/node/v1/nodev1grpc"
 	v1nodetypes "buf.build/gen/go/agglayer/agglayer/protocolbuffers/go/agglayer/node/types/v1"
@@ -146,10 +147,70 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
 }
 
-func (a *AgglayerGRPCClient) GetLatestSettledImportedBridgeExit(
-	ctx context.Context) (*types.GlobalIndex, common.Hash, error) {
-	// TODO - implement this method once agglayer supports it
-	return &types.GlobalIndex{}, common.Hash{}, nil
+func (a *AgglayerGRPCClient) GetNetworkStatus(ctx context.Context, networkID uint32) (types.NetworkStatus, error) {
+	status, err := a.networkStateService.GetNetworkStatus(ctx, &v1.GetNetworkStatusRequest{
+		NetworkId: networkID,
+	})
+	if err != nil {
+		return types.NetworkStatus{}, fmt.Errorf("failed to get network status: %w",
+			aggkitgrpc.RepackGRPCErrorWithDetails(err))
+	}
+
+	if !status.HasNetworkStatus() {
+		return types.NetworkStatus{}, errors.New("network status is not available")
+	}
+
+	return convertProtoNetworkStatus(status.NetworkStatus)
+}
+
+func convertProtoNetworkStatus(status *v1nodetypes.NetworkStatus) (types.NetworkStatus, error) {
+	var settledCertID common.Hash
+	if status.SettledCertificateId != nil {
+		settledCertID = common.BytesToHash(status.SettledCertificateId.Value.Value)
+	}
+
+	var settledPPRoot common.Hash
+	if status.SettledPpRoot != nil {
+		settledPPRoot = common.BytesToHash(status.SettledPpRoot.Value)
+	}
+
+	var settledLER common.Hash
+	if status.SettledLer != nil {
+		settledLER = common.BytesToHash(status.SettledLer.Value)
+	}
+
+	var settledClaim *types.SettledClaim
+	if status.SettledClaim != nil {
+		settledClaim = &types.SettledClaim{
+			BridgeExitHash: common.BytesToHash(status.SettledClaim.BridgeExitHash.Value),
+			GlobalIndex:    new(big.Int).SetBytes(status.SettledClaim.GlobalIndex.Value),
+		}
+	}
+
+	latestPendingStatus := types.Pending
+	if status.LatestPendingStatus != "" {
+		if err := latestPendingStatus.UnmarshalJSON([]byte(status.LatestPendingStatus)); err != nil {
+			return types.NetworkStatus{},
+				fmt.Errorf("failed to unmarshal latest pending status %q from NetworkStatus struct: %w",
+					status.LatestPendingStatus, err)
+		}
+	}
+
+	return types.NetworkStatus{
+		NetworkStatus:             status.NetworkStatus,
+		NetworkType:               status.NetworkType,
+		NetworkID:                 status.NetworkId,
+		SettledCertificateID:      settledCertID,
+		SettledHeight:             status.SettledHeight,
+		SettledPPRoot:             settledPPRoot,
+		SettledLER:                settledLER,
+		SettledLETLeafCount:       status.SettledLetLeafCount,
+		SettledClaim:              settledClaim,
+		LatestPendingHeight:       status.LatestPendingHeight,
+		LatestPendingStatus:       latestPendingStatus,
+		LatestPendingError:        status.LatestPendingError,
+		LatestEpochWithSettlement: status.LatestEpochWithSettlement,
+	}, nil
 }
 
 // ConvertCertToProtoCertificate converts a types.Certificate to a grpc v1nodetypes.Certificate

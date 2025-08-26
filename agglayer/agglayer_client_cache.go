@@ -126,9 +126,8 @@ func (c *AgglayerClientCache) GetLatestPendingCertificateHeader(ctx context.Cont
 	return c.agglayerClient.GetLatestPendingCertificateHeader(ctx, networkID)
 }
 
-// GetLatestSettledImportedBridgeExit retrieves the latest settled
-// imported bridge exit from the Agglayer client. (no cache)
-func (c *AgglayerClientCache) GetLatestSettledImportedBridgeExit(
-	ctx context.Context) (*agglayertypes.GlobalIndex, common.Hash, error) {
-	return c.agglayerClient.GetLatestSettledImportedBridgeExit(ctx)
+// GetNetworkStatus retrieves the network status for a given network ID from the Agglayer client. (no cache)
+func (c *AgglayerClientCache) GetNetworkStatus(
+	ctx context.Context, networkID uint32) (agglayertypes.NetworkStatus, error) {
+	return c.agglayerClient.GetNetworkStatus(ctx, networkID)
 }

@@ -3,6 +3,7 @@ package query
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	"github.com/agglayer/aggkit/agglayer"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -76,18 +77,18 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 			cert.NewLocalExitRoot.String(), err)
 	}
 
-	// TODO - this might need to be changed once agglayer gives support for this
 	// 2. Get the latest settled imported bridge exit block number
-	latestSettledIbeGlobalIndex, bridgeExitHash, err := c.agglayerClient.GetLatestSettledImportedBridgeExit(ctx)
+	networkStatus, err := c.agglayerClient.GetNetworkStatus(ctx, cert.NetworkID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get latest settled imported bridge exit from agglayer: %w", err)
 	}
 
-	if latestSettledIbeGlobalIndex != nil {
-		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(ctx, latestSettledIbeGlobalIndex, bridgeExitHash)
+	if networkStatus.SettledClaim != nil {
+		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(
+			ctx, networkStatus.SettledClaim.GlobalIndex, networkStatus.SettledClaim.BridgeExitHash)
 		if err != nil {
 			return 0, fmt.Errorf("failed to resolve the block number for last imported bridge exit %s: %w",
-				latestSettledIbeGlobalIndex.String(), err)
+				networkStatus.SettledClaim.GlobalIndex.String(), err)
 		}
 	}
 
@@ -126,7 +127,7 @@ func (c *certificateQuerier) GetNewCertificateToBlock(
 		// if there are imported bridge exits, we can use the last one to determine the new certificate to block
 		lastImportedBridgeExit := cert.ImportedBridgeExits[len(cert.ImportedBridgeExits)-1]
 		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(
-			ctx, lastImportedBridgeExit.GlobalIndex, lastImportedBridgeExit.BridgeExit.Hash())
+			ctx, lastImportedBridgeExit.GlobalIndex.ToBigInt(), lastImportedBridgeExit.BridgeExit.Hash())
 		if err != nil {
 			return 0, fmt.Errorf("failed to resolve the block number for last imported bridge exit %s: %w",
 				lastImportedBridgeExit.GlobalIndex.String(), err)
@@ -183,11 +184,10 @@ func (c *certificateQuerier) getBlockNumFromLER(ctx context.Context, localExitRo
 }
 
 func (c *certificateQuerier) getBlockNumFromGlobalIndex(
-	ctx context.Context, globalIndex *agglayertypes.GlobalIndex, bridgeExitHash common.Hash) (uint64, error) {
-	bigGlobalIndex := globalIndex.ToBigInt()
-	claims, err := c.l2BridgeSyncer.GetClaimsByGlobalIndex(ctx, bigGlobalIndex)
+	ctx context.Context, globalIndex *big.Int, bridgeExitHash common.Hash) (uint64, error) {
+	claims, err := c.l2BridgeSyncer.GetClaimsByGlobalIndex(ctx, globalIndex)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get claim by global index %s: %w", bigGlobalIndex.String(), err)
+		return 0, fmt.Errorf("failed to get claim by global index %s: %w", globalIndex.String(), err)
 	}
 
 	for _, claim := range claims {
