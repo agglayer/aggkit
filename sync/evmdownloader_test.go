@@ -614,7 +614,7 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 
 	// First call returns "too many results" error
 	tooManyResultsErr := errors.New("Query returned more than 20000 results.")
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, tooManyResultsErr).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, tooManyResultsErr).Once()
 
 	// Second call for first batch (100-149) succeeds
 	firstBatchLogs := []types.Log{
@@ -625,7 +625,7 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 			BlockHash:   common.HexToHash("0x123"),
 		},
 	}
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(firstBatchLogs, nil).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(firstBatchLogs, nil).Once()
 
 	// Third call for second batch (150-199) succeeds
 	secondBatchLogs := []types.Log{
@@ -636,7 +636,7 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 			BlockHash:   common.HexToHash("0x456"),
 		},
 	}
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(secondBatchLogs, nil).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(secondBatchLogs, nil).Once()
 
 	// Fourth call for third batch (200-200) succeeds
 	thirdBatchLogs := []types.Log{
@@ -647,7 +647,7 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 			BlockHash:   common.HexToHash("0x789"),
 		},
 	}
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(thirdBatchLogs, nil).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(thirdBatchLogs, nil).Once()
 
 	result := sut.getUnfilteredLogs(ctx, fromBlock, toBlock)
 
