@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit/log"
@@ -325,6 +326,11 @@ func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context,
 	return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0)
 }
 
+func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
+	unfilteredLogs := d.getUnfilteredLogs(ctx, fromBlock, toBlock)
+	return d.filterLogs(unfilteredLogs)
+}
+
 func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
 	ctx context.Context,
 	fromBlock, toBlock uint64, retryCount int,
@@ -395,26 +401,54 @@ func filterQueryToString(query ethereum.FilterQuery) string {
 		query.FromBlock.String(), query.ToBlock.String(), query.Addresses, query.Topics)
 }
 
-func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
+func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
+	initialBatchSize := toBlock - fromBlock + 1
 	var (
-		attempts       = 0
-		unfilteredLogs []types.Log
-		err            error
+		results   []types.Log
+		batchSize = initialBatchSize
 	)
 
-	query := ethereum.FilterQuery{
-		Addresses: d.addressesToQuery,
-		FromBlock: new(big.Int).SetUint64(fromBlock),
-		ToBlock:   new(big.Int).SetUint64(toBlock),
-	}
+	for start := fromBlock; start <= toBlock; {
+		end := start + batchSize - 1
+		if end > toBlock {
+			end = toBlock
+		}
 
-	for {
-		unfilteredLogs, err = d.ethClient.FilterLogs(ctx, query)
-		if err != nil {
+		query := ethereum.FilterQuery{
+			Addresses: d.addressesToQuery,
+			FromBlock: new(big.Int).SetUint64(start),
+			ToBlock:   new(big.Int).SetUint64(end),
+		}
+
+		var attempts int
+		for {
+			logs, err := d.ethClient.FilterLogs(ctx, query)
+			if err == nil {
+				results = append(results, logs...)
+				break
+			}
+
 			if errors.Is(err, context.Canceled) {
 				// context is canceled, we don't want to fatal on max attempts in this case
-				d.log.Warnf("FilterLogs call was canceled: %v", err)
+				d.log.Errorf("context is canceled getUnfilteredLogs, returning nil")
 				return nil
+			}
+
+			if strings.Contains(err.Error(), "Query returned more than") {
+				if batchSize == 1 {
+					d.log.Errorf("too many logs even in single block %d", start)
+					return nil
+				}
+
+				batchSize /= 2
+				d.log.Warnf("too many logs in range [%d,%d], reducing batch size to %d", start, end, batchSize)
+				end = start + batchSize - 1
+				if end > toBlock {
+					end = toBlock
+				}
+				// Update query with new range
+				query.ToBlock = new(big.Int).SetUint64(end)
+				continue
 			}
 
 			attempts++
@@ -422,23 +456,26 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 				filterQueryToString(query),
 				err,
 			)
-			d.rh.Handle(ctx, "getLogs", attempts)
-			continue
+			d.rh.Handle(ctx, "getUnfilteredLogs", attempts)
 		}
-		break
+		start = end + 1
 	}
 
-	logs := make([]types.Log, 0, len(unfilteredLogs))
+	return results
+}
+
+func (d *EVMDownloaderImplementation) filterLogs(unfilteredLogs []types.Log) []types.Log {
+	filteredLogs := make([]types.Log, 0, len(unfilteredLogs))
 	for _, l := range unfilteredLogs {
 		if l.Removed {
 			d.log.Warnf("log removed: %+v", l)
 			continue
 		}
 		if slices.Contains(d.topicsToQuery, l.Topics[0]) {
-			logs = append(logs, l)
+			filteredLogs = append(filteredLogs, l)
 		}
 	}
-	return logs
+	return filteredLogs
 }
 
 func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool) {
