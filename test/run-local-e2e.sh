@@ -13,7 +13,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 trap 'log_error "Script failed at line $LINENO"' ERR
 
 if [ "$#" -lt 3 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-fork12-op-succinct | single-l2-network-fork12-op-succinct-aggoracle-committee | single-l2-network-fork12-pessimistic | single-l2-network-fork12-global-index-pp-old-contracts | multi-l2-networks-2-chains | multi-l2-networks-3-chains> <kurtosis_repo_path> <e2e_repo_path>"
+    echo "Usage: $0 <test_type: single-l2-network-op-succinct | single-l2-network-op-succinct-aggoracle-committee | single-l2-network-fork12-pessimistic | single-l2-network-fork12-global-index-pp-old-contracts | multi-l2-networks-2-chains | multi-l2-networks-3-chains> <kurtosis_repo_path> <e2e_repo_path>"
     echo ""
     echo "Arguments:"
     echo "  test_type           Type of test to run"
@@ -21,9 +21,9 @@ if [ "$#" -lt 3 ]; then
     echo "  e2e_repo_path       Path to E2E repo (use '-' to skip tests)"
     echo ""
     echo "Examples:"
-    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo /path/to/e2e-repo   # Run both setup and tests"
-    echo "  $0 single-l2-network-fork12-op-succinct /path/to/kurtosis-repo -                   # Run only setup"
-    echo "  $0 single-l2-network-fork12-op-succinct - /path/to/e2e-repo                        # Run only tests"
+    echo "  $0 single-l2-network-op-succinct /path/to/kurtosis-repo /path/to/e2e-repo   # Run both setup and tests"
+    echo "  $0 single-l2-network-op-succinct /path/to/kurtosis-repo -                   # Run only setup"
+    echo "  $0 single-l2-network-op-succinct - /path/to/e2e-repo                        # Run only tests"
     exit 1
 fi
 
@@ -36,10 +36,10 @@ log_info "Starting local E2E setup..."
 
 # Set ENCLAVE_NAME based on test type
 case "$TEST_TYPE" in
-single-l2-network-fork12-op-succinct)
+single-l2-network-op-succinct)
     ENCLAVE_NAME="op"
     ;;
-single-l2-network-fork12-op-succinct-aggoracle-committee)
+single-l2-network-op-succinct-aggoracle-committee)
     ENCLAVE_NAME="op"
     ;;
 single-l2-network-fork12-pessimistic)
@@ -91,11 +91,11 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
 
     log_info "Starting Kurtosis enclave"
     case "$TEST_TYPE" in
-    single-l2-network-fork12-op-succinct)
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_op_succinct_args.json" .
+    single-l2-network-op-succinct)
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_args.json" .
         ;;
-    single-l2-network-fork12-op-succinct-aggoracle-committee)
-        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_fork12_op_succinct_aggoracle_committee_args.json" .
+    single-l2-network-op-succinct-aggoracle-committee)
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json" .
         ;;
     single-l2-network-fork12-pessimistic)
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
@@ -106,14 +106,12 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         ;;
     multi-l2-networks-2-chains)
-        # Create merged args files using jq
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
         jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_2.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_2.json .
         ;;
     multi-l2-networks-3-chains)
-        # Create merged args files using jq
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
         jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_2.json
         jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_3.json" > /tmp/merged_args_3.json
@@ -125,7 +123,6 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
     log_info "$ENCLAVE_NAME enclave started successfully."
     popd >/dev/null
 
-    # Clean up temporary merged args files if they exist
     rm -f /tmp/merged_args_*.json
 else
     log_info "Skipping Kurtosis setup (kurtosis_repo_path is '-')"
@@ -163,7 +160,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
 
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
-    single-l2-network-fork12-op-succinct)
+    single-l2-network-op-succinct)
         bats ./tests/op/optimistic-mode.bats \
              ./tests/aggkit/bridge-e2e.bats \
              ./tests/aggkit/e2e-pp.bats \
@@ -172,7 +169,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
              ./tests/aggkit/internal-claims.bats \
              ./tests/aggkit/claim-reetrancy.bats
         ;;
-    single-l2-network-fork12-op-succinct-aggoracle-committee)
+    single-l2-network-op-succinct-aggoracle-committee)
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats
         ;;
     single-l2-network-fork12-pessimistic)
