@@ -460,8 +460,8 @@ func TestGetLogs(t *testing.T) {
 		},
 	}
 	ctx := context.TODO()
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, errors.New("foo")).Once()
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, nil).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, errors.New("foo")).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, nil).Once()
 	logs := sut.GetLogs(ctx, 0, 1)
 	require.Equal(t, []types.Log{}, logs)
 }
