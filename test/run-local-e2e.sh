@@ -173,13 +173,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
              ./tests/aggkit/claim-reetrancy.bats
         ;;
     single-l2-network-fork12-op-succinct-aggoracle-committee)
-        bats ./tests/op/optimistic-mode.bats \
-             ./tests/aggkit/bridge-e2e.bats \
-             ./tests/aggkit/e2e-pp.bats \
-             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
-             ./tests/aggkit/bridge-e2e-nightly.bats \
-             ./tests/aggkit/internal-claims.bats \
-             ./tests/aggkit/claim-reetrancy.bats
+        bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats
         ;;
     single-l2-network-fork12-pessimistic)
         bats ./tests/aggkit/bridge-e2e.bats \
