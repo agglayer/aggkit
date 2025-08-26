@@ -157,7 +157,6 @@ jobs:
     name: Check results for single l2 network (pessimistic)
     needs:
       - test-single-l2-network-fork12-pessimistic
-    if: always()
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
@@ -212,7 +211,6 @@ jobs:
     name: Check results for single l2 network (op-succinct)
     needs:
       - test-single-l2-network-fork12-op-succinct
-    if: always()
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
