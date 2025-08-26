@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	"github.com/agglayer/aggkit/aggsender/flows"
@@ -27,12 +28,14 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 	testDataPath := getTestDataPath(t)
 	logger := log.WithFields("test", "TestValidateFullAggsenderDB")
 	ctx := context.TODO()
+	dbQueryTimeout := 30 * time.Second
 	mockL2EthClient := mocksethclient.NewEthClienter(t)
 	mockL2EthClient.EXPECT().BlockByNumber(ctx, mock.Anything).Return(&types.Block{}, nil).Maybe()
 	bridgeSyncL2, err := bridgesync.NewL2ReadOnly(
 		ctx,
 		testDataPath+"/bridgel2sync.sqlite",
 		1, // OrigNetwork
+		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 	lastProcessBlock, err := bridgeSyncL2.GetLastProcessedBlock(ctx)
