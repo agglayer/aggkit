@@ -484,7 +484,7 @@ func (d *EVMDownloaderImplementation) filterLogs(unfilteredLogs []types.Log) []t
 }
 
 func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool) {
-	// attempts := 0
+	attempts := 0
 	for {
 		header, err := d.ethClient.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
 		if err != nil {
@@ -504,11 +504,10 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 				continue
 			}
 
-			// attempts++
-			// d.log.Errorf("error getting block header for block %d, err: %v", blockNum, err)
-			// d.rh.Handle(ctx, "getBlockHeader", attempts)
-			// continue
-			d.log.Fatalf("error getting block header for block %d, err: %v", blockNum, err)
+			attempts++
+			d.log.Errorf("error getting block header for block %d, err: %v", blockNum, err)
+			d.rh.Handle(ctx, "getBlockHeader", attempts)
+			continue
 		}
 		return EVMBlockHeader{
 			Num:        header.Number.Uint64(),
