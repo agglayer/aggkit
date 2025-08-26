@@ -19,6 +19,8 @@ import (
 const (
 	DefaultWaitPeriodBlockNotFound = time.Millisecond * 100
 	MaxRetryCountBlockHashMismatch = 5
+	// DefaultFilterLogsTimeout is the default timeout for filter logs operations to prevent hanging
+	DefaultFilterLogsTimeout = 30 * time.Second
 )
 
 var (
@@ -315,7 +317,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				}
 				continue
 			}
-			if header.Number.Uint64() >= latestSyncedBlock {
+			if header.Number.Uint64() > latestSyncedBlock {
 				return header.Number.Uint64()
 			}
 		}
@@ -422,6 +424,9 @@ func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fro
 
 		var attempts int
 		for {
+			ctx, cancel := context.WithTimeout(ctx, DefaultFilterLogsTimeout)
+			defer cancel()
+
 			logs, err := d.ethClient.FilterLogs(ctx, query)
 			if err == nil {
 				results = append(results, logs...)
@@ -479,7 +484,7 @@ func (d *EVMDownloaderImplementation) filterLogs(unfilteredLogs []types.Log) []t
 }
 
 func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool) {
-	attempts := 0
+	// attempts := 0
 	for {
 		header, err := d.ethClient.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNum))
 		if err != nil {
@@ -499,10 +504,11 @@ func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockN
 				continue
 			}
 
-			attempts++
-			d.log.Errorf("error getting block header for block %d, err: %v", blockNum, err)
-			d.rh.Handle(ctx, "getBlockHeader", attempts)
-			continue
+			// attempts++
+			// d.log.Errorf("error getting block header for block %d, err: %v", blockNum, err)
+			// d.rh.Handle(ctx, "getBlockHeader", attempts)
+			// continue
+			d.log.Fatalf("error getting block header for block %d, err: %v", blockNum, err)
 		}
 		return EVMBlockHeader{
 			Num:        header.Number.Uint64(),

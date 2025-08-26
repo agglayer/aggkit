@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
@@ -12,11 +11,6 @@ import (
 	"github.com/agglayer/aggkit/reorgdetector"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
-)
-
-const (
-	// DefaultSyncTimeout is the default timeout for sync operations to prevent hanging
-	DefaultSyncTimeout = 30 * time.Second
 )
 
 var ErrInconsistentState = errors.New("state is inconsistent, try again later once the state is consolidated")
@@ -145,9 +139,8 @@ reset:
 		break
 	}
 
-	// Add a timeout to prevent FilterLogs calls from hanging indefinitely
 	// setup context to cancel downloader and/or block processor
-	cancellableCtx, cancel := context.WithTimeout(ctx, DefaultSyncTimeout)
+	cancellableCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	d.log.Infof("Starting sync... lastProcessedBlock %d", lastProcessedBlock)

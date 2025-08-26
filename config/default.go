@@ -170,7 +170,7 @@ DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"
-BlockFinality = "FinalizedBlock"
+BlockFinality = "LatestBlock"
 InitialBlockNum = 0
 GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"
 RetryAfterErrorPeriod = "1s"
