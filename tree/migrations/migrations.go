@@ -10,10 +10,17 @@ import (
 //go:embed tree0001.sql
 var mig001 string
 
+//go:embed tree0002.sql
+var mig002 string
+
 var Migrations = []types.Migration{
 	{
 		ID:  "tree001",
 		SQL: mig001,
+	},
+	{
+		ID:  "tree002",
+		SQL: mig002,
 	},
 }
 
