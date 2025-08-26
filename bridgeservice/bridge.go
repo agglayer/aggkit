@@ -453,11 +453,15 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 }
 
 // getClaimByBlockAndPosition fetches a claim by its block number and position from the appropriate bridge
-func (b *BridgeService) getClaimByBlockAndPosition(ctx context.Context, networkID uint32, claimBlockNum, claimBlockPos int64) (*bridgesync.Claim, error) {
+func (b *BridgeService) getClaimByBlockAndPosition(
+	ctx context.Context,
+	networkID uint32,
+	claimBlockNum, claimBlockPos int64,
+) (*bridgesync.Claim, error) {
 	var claim *bridgesync.Claim
 	var err error
 
-	if uint32(networkID) == b.networkID {
+	if networkID == b.networkID {
 		// Use L2 bridge for the current network
 		claim, err = b.bridgeL2.GetClaimByBlockAndPosition(ctx, uint64(claimBlockNum), uint64(claimBlockPos))
 	} else {

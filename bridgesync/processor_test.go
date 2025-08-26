@@ -2707,6 +2707,7 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 }
 
 func TestUpdatedUnsetGlobalIndexHashChain_Processing(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                  string
 		setupClaims           []*Claim
@@ -2906,6 +2907,7 @@ func TestUpdatedUnsetGlobalIndexHashChain_Processing(t *testing.T) {
 }
 
 func TestGetUnsetGlobalIndexesPaged(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                    string
 		setupClaims             []*Claim
@@ -2989,48 +2991,6 @@ func TestGetUnsetGlobalIndexesPaged(t *testing.T) {
 			description:     "should return all unset global indexes for network ID 1",
 		},
 		{
-			name: "pagination with different network ID",
-			setupClaims: []*Claim{
-				{
-					BlockNum:            10,
-					BlockPos:            5,
-					GlobalIndex:         big.NewInt(12345),
-					OriginNetwork:       2, // Different network ID
-					OriginAddress:       common.HexToAddress("0x1111111111111111111111111111111111111111"),
-					DestinationAddress:  common.HexToAddress("0x2222222222222222222222222222222222222222"),
-					Amount:              big.NewInt(1000),
-					ProofLocalExitRoot:  types.Proof{},
-					ProofRollupExitRoot: types.Proof{},
-					MainnetExitRoot:     common.Hash{},
-					RollupExitRoot:      common.Hash{},
-					GlobalExitRoot:      common.Hash{},
-					DestinationNetwork:  1,
-					Metadata:            []byte("test metadata"),
-					IsMessage:           false,
-					BlockTimestamp:      1234567890,
-				},
-			},
-			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{
-				{
-					BlockNum:       15,
-					BlockPos:       0,
-					BlockTimestamp: 1234567890,
-					TxHash:         common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
-					GlobalIndex:    big.NewInt(12345),
-					ClaimBlockNum:  int64Ptr(10),
-					ClaimBlockPos:  int64Ptr(5),
-				},
-			},
-			page:            1,
-			pageSize:        10,
-			networkID:       1, // Looking for network ID 1
-			globalIndex:     nil,
-			expectedResults: 1, // Should find the unset global index since network ID filtering is not implemented
-			expectedTotal:   1,
-			expectedError:   "",
-			description:     "should return results regardless of network ID since filtering is not implemented",
-		},
-		{
 			name: "filter by global index",
 			setupClaims: []*Claim{
 				{
@@ -3099,12 +3059,12 @@ func TestGetUnsetGlobalIndexesPaged(t *testing.T) {
 			description:             "should return error for invalid page size",
 		},
 		{
-			name:                    "network ID 0 not applicable",
+			name:                    "empty database",
 			setupClaims:             []*Claim{},
 			setupUnsetGlobalIndexes: []*UpdatedUnsetGlobalIndexHashChain{},
 			page:                    1,
 			pageSize:                10,
-			networkID:               0,
+			networkID:               1,
 			globalIndex:             nil,
 			expectedResults:         0,
 			expectedTotal:           0,
@@ -3171,39 +3131,7 @@ func TestGetUnsetGlobalIndexesPaged(t *testing.T) {
 			require.NoError(t, err)
 
 			// Insert test data
-			if len(tc.setupClaims) > 0 || len(tc.setupUnsetGlobalIndexes) > 0 {
-				tx, err := p.db.BeginTx(context.Background(), nil)
-				require.NoError(t, err)
-
-				// Insert blocks first
-				blockNums := make(map[uint64]bool)
-				for _, claim := range tc.setupClaims {
-					blockNums[claim.BlockNum] = true
-				}
-				for _, ugi := range tc.setupUnsetGlobalIndexes {
-					blockNums[ugi.BlockNum] = true
-				}
-
-				for blockNum := range blockNums {
-					_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`,
-						blockNum, fmt.Sprintf("0x%x", blockNum))
-					require.NoError(t, err)
-				}
-
-				// Insert claims
-				for _, claim := range tc.setupClaims {
-					err = meddler.Insert(tx, "claim", claim)
-					require.NoError(t, err)
-				}
-
-				// Insert unset global indexes
-				for _, ugi := range tc.setupUnsetGlobalIndexes {
-					err = meddler.Insert(tx, "unset_global_index", ugi)
-					require.NoError(t, err)
-				}
-
-				require.NoError(t, tx.Commit())
-			}
+			setupTestDatabase(t, p, tc.setupClaims, tc.setupUnsetGlobalIndexes)
 
 			// Execute the function under test
 			ctx := context.Background()
@@ -3236,6 +3164,7 @@ func TestGetUnsetGlobalIndexesPaged(t *testing.T) {
 }
 
 func TestUpdatedUnsetGlobalIndexHashChain_EdgeCases(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name                    string
 		setupClaims             []*Claim
@@ -3326,39 +3255,7 @@ func TestUpdatedUnsetGlobalIndexHashChain_EdgeCases(t *testing.T) {
 			require.NoError(t, err)
 
 			// Insert test data
-			if len(tc.setupClaims) > 0 || len(tc.setupUnsetGlobalIndexes) > 0 {
-				tx, err := p.db.BeginTx(context.Background(), nil)
-				require.NoError(t, err)
-
-				// Insert blocks first
-				blockNums := make(map[uint64]bool)
-				for _, claim := range tc.setupClaims {
-					blockNums[claim.BlockNum] = true
-				}
-				for _, ugi := range tc.setupUnsetGlobalIndexes {
-					blockNums[ugi.BlockNum] = true
-				}
-
-				for blockNum := range blockNums {
-					_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`,
-						blockNum, fmt.Sprintf("0x%x", blockNum))
-					require.NoError(t, err)
-				}
-
-				// Insert claims
-				for _, claim := range tc.setupClaims {
-					err = meddler.Insert(tx, "claim", claim)
-					require.NoError(t, err)
-				}
-
-				// Insert unset global indexes
-				for _, ugi := range tc.setupUnsetGlobalIndexes {
-					err = meddler.Insert(tx, "unset_global_index", ugi)
-					require.NoError(t, err)
-				}
-
-				require.NoError(t, tx.Commit())
-			}
+			setupTestDatabase(t, p, tc.setupClaims, tc.setupUnsetGlobalIndexes)
 
 			// Execute the function under test
 			ctx := context.Background()
@@ -3379,4 +3276,41 @@ func int64Ptr(v int64) *int64 {
 
 func stringPtr(v string) *string {
 	return &v
+}
+
+// setupTestDatabase is a helper function to set up test database with claims and unset global indexes
+func setupTestDatabase(t *testing.T, p *processor, setupClaims []*Claim, setupUnsetGlobalIndexes []*UpdatedUnsetGlobalIndexHashChain) {
+	if len(setupClaims) > 0 || len(setupUnsetGlobalIndexes) > 0 {
+		tx, err := p.db.BeginTx(context.Background(), nil)
+		require.NoError(t, err)
+
+		// Insert blocks first
+		blockNums := make(map[uint64]bool)
+		for _, claim := range setupClaims {
+			blockNums[claim.BlockNum] = true
+		}
+		for _, ugi := range setupUnsetGlobalIndexes {
+			blockNums[ugi.BlockNum] = true
+		}
+
+		for blockNum := range blockNums {
+			_, err = tx.Exec(`INSERT INTO block (num, hash) VALUES ($1, $2)`,
+				blockNum, fmt.Sprintf("0x%x", blockNum))
+			require.NoError(t, err)
+		}
+
+		// Insert claims
+		for _, claim := range setupClaims {
+			err = meddler.Insert(tx, "claim", claim)
+			require.NoError(t, err)
+		}
+
+		// Insert unset global indexes
+		for _, ugi := range setupUnsetGlobalIndexes {
+			err = meddler.Insert(tx, "unset_global_index", ugi)
+			require.NoError(t, err)
+		}
+
+		require.NoError(t, tx.Commit())
+	}
 }

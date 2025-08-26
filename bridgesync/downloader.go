@@ -324,8 +324,9 @@ func buildRemoveLegacyTokenHandler(contract *bridgel2sovereignchain.Bridgel2sove
 }
 
 // buildUpdatedUnsetGlobalIndexHashChainHandler creates a handler for the UpdatedUnsetGlobalIndexHashChain event log.
-func buildUpdatedUnsetGlobalIndexHashChainHandler(contract *bridgel2sovereignchain.Bridgel2sovereignchain) func(*sync.EVMBlock,
-	types.Log) error {
+func buildUpdatedUnsetGlobalIndexHashChainHandler(
+	contract *bridgel2sovereignchain.Bridgel2sovereignchain,
+) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		event, err := contract.ParseUpdatedUnsetGlobalIndexHashChain(l)
 		if err != nil {

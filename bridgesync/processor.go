@@ -43,7 +43,8 @@ const (
 	// legacyTokenMigrationTableName is the name of the table that stores legacy token migration events
 	legacyTokenMigrationTableName = "legacy_token_migration"
 
-	// updatedUnsetGlobalIndexHashChainTableName is the name of the table that stores updated unset global index hash chain events
+	// updatedUnsetGlobalIndexHashChainTableName is the name of the table that stores
+	// updated unset global index hash chain events
 	unsetGlobalIndexTableName = "unset_global_index"
 )
 
@@ -832,7 +833,7 @@ func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 			).Scan(&claimBlockNum, &claimBlockPos)
 
 			if err != nil {
-				return fmt.Errorf("failed to find claim for global_index %s at block %d: %v",
+				return fmt.Errorf("failed to find claim for global_index %s at block %d: %w",
 					event.UpdatedUnsetGlobalIndexHashChain.GlobalIndex.String(), block.Num, err)
 			}
 
@@ -1149,21 +1150,17 @@ func (p *processor) GetUnsetGlobalIndexesPaged(ctx context.Context, page, pageSi
 	}()
 
 	// Build the WHERE clause for filtering
-	var whereClause string
-	var args []interface{}
-	argIndex := 1
-
-	// Add global index filter if provided
-	if globalIndex != nil && *globalIndex != "" {
-		whereClause = fmt.Sprintf("WHERE global_index = $%d", argIndex)
-		args = append(args, *globalIndex)
-		argIndex++
-	}
+	// Note: Global index filtering is now handled directly in the queries below
 
 	// Get total count
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s %s", unsetGlobalIndexTableName, whereClause)
 	var totalCount int
-	err = tx.QueryRowContext(ctx, countQuery, args...).Scan(&totalCount)
+	if globalIndex != nil && *globalIndex != "" {
+		// Use parameterized query for filtered count
+		err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+unsetGlobalIndexTableName+" WHERE global_index = $1", *globalIndex).Scan(&totalCount)
+	} else {
+		// Use simple count for all records
+		err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM "+unsetGlobalIndexTableName).Scan(&totalCount)
+	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to get total count: %w", err)
 	}
@@ -1175,17 +1172,16 @@ func (p *processor) GetUnsetGlobalIndexesPaged(ctx context.Context, page, pageSi
 	}
 
 	// Build the main query to get unset global indexes
-	query := fmt.Sprintf(`
-		SELECT *
-		FROM %s
-		%s
-		ORDER BY block_num DESC, block_pos DESC
-		LIMIT $%d OFFSET $%d
-	`, unsetGlobalIndexTableName, whereClause, argIndex, argIndex+1)
-
-	args = append(args, pageSize, offset)
-
-	rows, err := tx.QueryContext(ctx, query, args...)
+	var rows *sql.Rows
+	if globalIndex != nil && *globalIndex != "" {
+		// Use parameterized query for filtered results
+		query := "SELECT * FROM " + unsetGlobalIndexTableName + " WHERE global_index = $1 ORDER BY block_num DESC, block_pos DESC LIMIT $2 OFFSET $3"
+		rows, err = tx.QueryContext(ctx, query, *globalIndex, pageSize, offset)
+	} else {
+		// Use simple query for all results
+		query := "SELECT * FROM " + unsetGlobalIndexTableName + " ORDER BY block_num DESC, block_pos DESC LIMIT $1 OFFSET $2"
+		rows, err = tx.QueryContext(ctx, query, pageSize, offset)
+	}
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to query unset global indexes: %w", err)
 	}
