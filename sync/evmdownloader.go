@@ -402,55 +402,66 @@ func filterQueryToString(query ethereum.FilterQuery) string {
 }
 
 func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
+	initialBatchSize := toBlock - fromBlock + 1
 	var (
-		attempts       = 0
-		unfilteredLogs []types.Log
-		err            error
+		results   []types.Log
+		batchSize = initialBatchSize
 	)
 
-	query := ethereum.FilterQuery{
-		Addresses: d.addressesToQuery,
-		FromBlock: new(big.Int).SetUint64(fromBlock),
-		ToBlock:   new(big.Int).SetUint64(toBlock),
-	}
+	for start := fromBlock; start <= toBlock; {
+		end := start + batchSize - 1
+		if end > toBlock {
+			end = toBlock
+		}
 
-	for {
-		unfilteredLogs, err = d.ethClient.FilterLogs(ctx, query)
-		if err != nil {
+		query := ethereum.FilterQuery{
+			Addresses: d.addressesToQuery,
+			FromBlock: new(big.Int).SetUint64(start),
+			ToBlock:   new(big.Int).SetUint64(end),
+		}
+
+		var attempts int
+		for {
+			logs, err := d.ethClient.FilterLogs(ctx, query)
+			if err == nil {
+				results = append(results, logs...)
+				break
+			}
+
 			if errors.Is(err, context.Canceled) {
 				// context is canceled, we don't want to fatal on max attempts in this case
+				d.log.Errorf("context is canceled getUnfilteredLogs, returning nil")
 				return nil
 			}
 
-			errStr := err.Error()
-			if strings.Contains(errStr, "Query returned more than") && fromBlock < toBlock {
-				midBlock := (fromBlock + toBlock) / 2 //nolint:mnd
-				if midBlock >= fromBlock {
-					d.log.Warnf("too many results for block range [%d, %d], splitting into [%d, %d] and [%d, %d]",
-						fromBlock, toBlock, fromBlock, midBlock, midBlock+1, toBlock)
-
-					firstHalf := d.getUnfilteredLogs(ctx, fromBlock, midBlock)
-					secondHalf := d.getUnfilteredLogs(ctx, midBlock+1, toBlock)
-
-					combined := make([]types.Log, 0, len(firstHalf)+len(secondHalf))
-					combined = append(combined, firstHalf...)
-					combined = append(combined, secondHalf...)
-
-					return combined
+			if strings.Contains(err.Error(), "Query returned more than") {
+				if batchSize == 1 {
+					d.log.Errorf("too many logs even in single block %d", start)
+					return nil
 				}
+
+				batchSize /= 2
+				d.log.Warnf("too many logs in range [%d,%d], reducing batch size to %d", start, end, batchSize)
+				end = start + batchSize - 1
+				if end > toBlock {
+					end = toBlock
+				}
+				// Update query with new range
+				query.ToBlock = new(big.Int).SetUint64(end)
+				continue
 			}
 
 			attempts++
-			d.log.Errorf("error calling UnfilteredFilterLogs to eth client: filter: %s err:%w ",
+			d.log.Errorf("error calling FilterLogs to eth client: filter: %s err:%w ",
 				filterQueryToString(query),
 				err,
 			)
 			d.rh.Handle(ctx, "getUnfilteredLogs", attempts)
-			continue
 		}
-		break
+		start = end + 1
 	}
-	return unfilteredLogs
+
+	return results
 }
 
 func (d *EVMDownloaderImplementation) filterLogs(unfilteredLogs []types.Log) []types.Log {
