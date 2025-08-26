@@ -315,7 +315,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				}
 				continue
 			}
-			if header.Number.Uint64() > latestSyncedBlock {
+			if header.Number.Uint64() >= latestSyncedBlock {
 				return header.Number.Uint64()
 			}
 		}
