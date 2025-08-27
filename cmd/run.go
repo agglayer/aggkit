@@ -216,7 +216,11 @@ func createAggSenderValidator(ctx context.Context,
 	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
 
-	signer, err := signer.NewSigner(ctx, 0, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
+	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
+	if err != nil {
+		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
+	}
+	signer, err := signer.NewSigner(ctx, l2ChainID, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
 	}
