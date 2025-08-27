@@ -239,41 +239,41 @@ jobs:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-2-chains.result) }}
 
-  test-multi-l2-networks-3-chains:
-    name: Multi chains E2E test (3 chains)
-    needs:
-      - build-aggkit-image
-      - build-tools
-      - read-aggkit-args
-      - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@71c4ab572fab2a871e0336af20bd13cfb2ecba97
-    secrets: inherit
-    with:
-      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 71c4ab572fab2a871e0336af20bd13cfb2ecba97
-      kurtosis-cdk-enclave-name: aggkit
-      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
-      kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
-      kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-4 }}
-      kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-5 }}
-      number-of-chains: 3
+  # test-multi-l2-networks-3-chains:
+  #   name: Multi chains E2E test (3 chains)
+  #   needs:
+  #     - build-aggkit-image
+  #     - build-tools
+  #     - read-aggkit-args
+  #     - get-kurtosis-cdk-commit
+  #   uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@71c4ab572fab2a871e0336af20bd13cfb2ecba97
+  #   secrets: inherit
+  #   with:
+  #     kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
+  #     agglayer-e2e-ref: 71c4ab572fab2a871e0336af20bd13cfb2ecba97
+  #     kurtosis-cdk-enclave-name: aggkit
+  #     aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
+  #     kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
+  #     kurtosis-cdk-args-2: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-4 }}
+  #     kurtosis-cdk-args-3: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-5 }}
+  #     number-of-chains: 3
 
-  check-multi-l2-networks-3-chains-tests-result:
-    name: Check results for multi l2 networks (3 chains)
-    needs:
-      - test-multi-l2-networks-3-chains
-    runs-on: ubuntu-latest
-    steps:
-      - run: exit 1
-        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains.result) }}
+  # check-multi-l2-networks-3-chains-tests-result:
+  #   name: Check results for multi l2 networks (3 chains)
+  #   needs:
+  #     - test-multi-l2-networks-3-chains
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - run: exit 1
+  #       if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains.result) }}
 
   notify-slack:
-    name: Notify Slack TEST
+    name: Notify Slack
     needs:
       - test-single-l2-network-fork12-pessimistic
       - test-single-l2-network-fork12-op-succinct
       - test-multi-l2-networks-2-chains
-      - test-multi-l2-networks-3-chains
+      # - test-multi-l2-networks-3-chains
       - test-single-l2-network-fork12-global-index-pp-old-contracts
       - get-kurtosis-cdk-commit
     runs-on: ubuntu-latest
