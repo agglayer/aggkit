@@ -27,6 +27,7 @@ import (
 	"github.com/agglayer/aggkit/grpc"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -45,7 +46,7 @@ func TestConfigString(t *testing.T) {
 		AgglayerClient:              agglayer.ClientConfig{GRPC: &grpc.ClientConfig{URL: "http://agglayer.url"}},
 		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                    "http://l2.rpc.url",
-		BlockFinality:               "latestBlock",
+		BlockFinality:               aggkittypes.LatestBlock,
 		EpochNotificationPercentage: 50,
 		Mode:                        "PP",
 		SovereignRollupAddr:         common.HexToAddress("0x1"),

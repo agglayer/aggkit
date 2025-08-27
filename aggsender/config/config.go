@@ -9,6 +9,7 @@ import (
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/grpc"
+	aggkittype "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
@@ -26,7 +27,7 @@ type Config struct {
 	// URLRPCL2 is the URL of the L2 RPC node
 	URLRPCL2 string `mapstructure:"URLRPCL2"`
 	// BlockFinality indicates which finality the AggLayer follows
-	BlockFinality string `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
+	BlockFinality aggkittype.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 	// EpochNotificationPercentage indicates the percentage of the epoch
 	// the AggSender should send the certificate
 	// 0 -> Begin
@@ -102,7 +103,7 @@ func (c Config) String() string {
 	return "StoragePath: " + c.StoragePath + "\n" +
 		"AgglayerClient: " + c.AgglayerClient.String() + "\n" +
 		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
-		"BlockFinality: " + c.BlockFinality + "\n" +
+		"BlockFinality: " + c.BlockFinality.String() + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +

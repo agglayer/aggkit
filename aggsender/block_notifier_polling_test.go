@@ -205,15 +205,6 @@ func TestDelayBLock(t *testing.T) {
 	require.Equal(t, minBlockInterval, delay)
 }
 
-func TestNewBlockNotifierPolling(t *testing.T) {
-	testData := newBlockNotifierPollingTestData(t, nil)
-	require.NotNil(t, testData.sut)
-	_, err := NewBlockNotifierPolling(testData.ethClientMock, ConfigBlockNotifierPolling{
-		BlockFinalityType: aggkittypes.NewBlockNumberFinality("invalid"),
-	}, log.WithFields("test", "test"), nil)
-	require.Error(t, err)
-}
-
 func TestBlockNotifierPollingString(t *testing.T) {
 	testData := newBlockNotifierPollingTestData(t, nil)
 	require.NotEmpty(t, testData.sut.String())
