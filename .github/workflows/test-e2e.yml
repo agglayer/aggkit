@@ -268,7 +268,7 @@ jobs:
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains.result) }}
 
   notify-slack:
-    name: Notify Slack
+    name: Notify Slack TEST
     needs:
       - test-single-l2-network-fork12-pessimistic
       - test-single-l2-network-fork12-op-succinct
