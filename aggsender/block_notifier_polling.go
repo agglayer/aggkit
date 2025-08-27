@@ -132,11 +132,8 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 	previousState *blockNotifierPollingInternalStatus) (time.Duration,
 	*blockNotifierPollingInternalStatus, *types.EventNewBlock) {
 	currentBlock, err := b.blockFinality.BlockNumber(ctx, b.ethClient)
-	if err == nil {
-		err = fmt.Errorf("failed to get block number: return a nil block")
-	}
 	if err != nil {
-		b.logger.Errorf("Failed to get block number: %v", err)
+		b.logger.Errorf("Failed to get block number %s: %v", b.blockFinality.String(), err)
 		newState := previousState.clear()
 		return b.nextBlockRequestDelay(nil, err), newState, nil
 	}

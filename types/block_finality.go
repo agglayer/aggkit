@@ -63,7 +63,10 @@ var (
 )
 
 // String returns the string representation of the BlockNumberFinality
-func (b BlockNumberFinality) String() string {
+func (b *BlockNumberFinality) String() string {
+	if b == nil {
+		return "nil"
+	}
 	if b.Offset == 0 {
 		return b.Block.ToString()
 	}
