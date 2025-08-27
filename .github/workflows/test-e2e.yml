@@ -224,7 +224,7 @@ jobs:
       - get-kurtosis-cdk-commit
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@a34e6272c6c9023d8c105214bd630fd6c22681a8
     secrets: inherit
-    # if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
       agglayer-e2e-ref: a34e6272c6c9023d8c105214bd630fd6c22681a8
@@ -237,7 +237,7 @@ jobs:
     name: Check results for single l2 network (op-succinct with aggoracle committee)
     needs:
       - test-single-l2-network-op-succinct-aggoracle-committee
-    # if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-latest
     steps:
       - run: exit 1
