@@ -63,8 +63,6 @@ func TestBlockNumberFinalityWithOffset(t *testing.T) {
 	}
 }
 
-func TestBlockNumberFinalityWithOffset(t *testing.T) {
-
 func TestBlockNumberFinalityCmp(t *testing.T) {
 	finalized, err := NewBlockNumberFinality(FinalizedBlockName)
 	require.NoError(t, err)
