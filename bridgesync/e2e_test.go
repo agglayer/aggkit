@@ -10,11 +10,11 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/helpers"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
+	rpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -115,9 +115,7 @@ func TestBridgeEventE2E(t *testing.T) {
 
 func getFinalizedBlockNumber(t *testing.T, ctx context.Context, client simulated.Client) uint64 {
 	t.Helper()
-	lastBlockFinalityType, err := aggkittypes.FinalizedBlock.ToBlockNum()
-	require.NoError(t, err)
-	lastBlockHeader, err := client.HeaderByNumber(ctx, lastBlockFinalityType)
+	lastBlockHeader, err := client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
 	require.NoError(t, err)
 	return lastBlockHeader.Number.Uint64()
 }

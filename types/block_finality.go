@@ -12,37 +12,12 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
-var (
-	FinalizedBlock = BlockNumberFinality{Block: Finalized}
-	LatestBlock    = BlockNumberFinality{Block: Latest}
-	SafeBlock      = BlockNumberFinality{Block: Safe}
-	PendingBlock   = BlockNumberFinality{Block: Pending}
-)
-
-const (
-	SafeBlockName      = "SafeBlock"
-	FinalizedBlockName = "FinalizedBlock"
-	LatestBlockName    = "LatestBlock"
-	PendingBlockName   = "PendingBlock"
-	EmptyBlockName     = ""
-
-	blockNameAndOffsetSeparator = "/"
-)
-
 // BlockNumberFinality represents a block finality with an optional offset
 type BlockNumberFinality struct {
 	Block  BlockNumber
 	Offset int64
 	// IfNotFoundReturnsZeroFlag indicates whether to return zero if the block is not found
 	IfNotFoundReturnsZeroFlag bool
-}
-
-// String returns the string representation of the BlockNumberFinality
-func (v BlockNumberFinality) String() string {
-	if v.Offset == 0 {
-		return v.Block.ToString()
-	}
-	return fmt.Sprintf("%s%s%d", v.Block.ToString(), blockNameAndOffsetSeparator, v.Offset)
 }
 
 // NewBlockNumberFinality creates a new BlockNumberFinality from a string
@@ -58,7 +33,7 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 		return result, err
 	}
 	result.Block = block
-	if len(splitted) == 2 {
+	if len(splitted) == 2 { //nolint:mnd
 		_, err := fmt.Sscanf(splitted[1], "%d", &result.Offset)
 		if err != nil {
 			return result, fmt.Errorf("invalid block offset format: %s", splitted[1])
@@ -70,14 +45,39 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 	return result, nil
 }
 
+const (
+	SafeBlockName      = "SafeBlock"
+	FinalizedBlockName = "FinalizedBlock"
+	LatestBlockName    = "LatestBlock"
+	PendingBlockName   = "PendingBlock"
+	EmptyBlockName     = ""
+
+	blockNameAndOffsetSeparator = "/"
+)
+
+var (
+	FinalizedBlock = BlockNumberFinality{Block: Finalized}
+	LatestBlock    = BlockNumberFinality{Block: Latest}
+	SafeBlock      = BlockNumberFinality{Block: Safe}
+	PendingBlock   = BlockNumberFinality{Block: Pending}
+)
+
+// String returns the string representation of the BlockNumberFinality
+func (b BlockNumberFinality) String() string {
+	if b.Offset == 0 {
+		return b.Block.ToString()
+	}
+	return fmt.Sprintf("%s%s%d", b.Block.ToString(), blockNameAndOffsetSeparator, b.Offset)
+}
+
 // UnmarshalText unmarshalls BlockNumberFinality from text.
-func (v *BlockNumberFinality) UnmarshalText(data []byte) error {
+func (b *BlockNumberFinality) UnmarshalText(data []byte) error {
 	res, err := NewBlockNumberFinality(string(data))
 	if err != nil {
 		return fmt.Errorf("failed to parse BlockNumberFinality %s: %w", string(data), err)
 	}
-	v.Block = res.Block
-	v.Offset = res.Offset
+	b.Block = res.Block
+	b.Offset = res.Offset
 	return nil
 }
 
@@ -92,37 +92,6 @@ func (BlockNumberFinality) JSONSchema() *jsonschema.Schema {
 			"LatestBlock",
 		},
 	}
-}
-
-// BlockNumber gets the safe block number from RPC
-func (v *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereum.ChainReader) (uint64, error) {
-	blockHeader, err := requester.HeaderByNumber(ctx, v.Block.toBigInt())
-	blockNumber := uint64(0)
-	if err != nil {
-		if strings.Contains(err.Error(), "block not found") && v.IfNotFoundReturnsZeroFlag {
-			log.Warnf("block %s not found, assuming 0", v.String())
-			return blockNumber, nil
-		} else {
-			log.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %s", v.String(), err.Error())
-			return blockNumber, err
-		}
-	}
-	blockNumber = blockHeader.Number.Uint64()
-	return v.Block.ApplyOffset(blockHeader.Number.Uint64(), v.Offset), nil
-}
-
-// IsGreaterThan returns true if v is greater than other
-func (v *BlockNumberFinality) GreaterThan(other *BlockNumberFinality) bool {
-	if v == nil || other == nil {
-		return false
-	}
-	if v.Block < other.Block {
-		return true
-	}
-	if v.Block == other.Block {
-		return v.Offset > other.Offset
-	}
-	return false
 }
 
 // IsEmpty returns true if v is empty
@@ -140,6 +109,35 @@ func (b BlockNumberFinality) IsSafe() bool {
 
 func (b BlockNumberFinality) IsLatest() bool {
 	return b.Block == Latest && b.Offset >= 0
+}
+
+// BlockNumber gets the safe block number from RPC
+func (b *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereum.ChainReader) (uint64, error) {
+	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
+	if err != nil {
+		if strings.Contains(err.Error(), "block not found") && b.IfNotFoundReturnsZeroFlag {
+			log.Warnf("block %s not found, assuming 0", b.String())
+			return 0, nil
+		} else {
+			log.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %s", b.String(), err.Error())
+			return 0, err
+		}
+	}
+	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
+}
+
+// IsGreaterThan returns true if v is greater than other
+func (b *BlockNumberFinality) GreaterThan(other *BlockNumberFinality) bool {
+	if b == nil || other == nil {
+		return false
+	}
+	if b.Block < other.Block {
+		return true
+	}
+	if b.Block == other.Block {
+		return b.Offset > other.Offset
+	}
+	return false
 }
 
 type BlockNumber int64
@@ -176,7 +174,7 @@ func (b BlockNumber) ApplyOffset(blockNumber uint64, offset int64) uint64 {
 			blockNumber += uint64(offset)
 		}
 	} else {
-		blockNumber = blockNumber + uint64(offset)
+		blockNumber += uint64(offset)
 	}
 	// Can't return a block number biggest than Latest, so Latest+10 is the same as Latest+0
 	if b == Latest {

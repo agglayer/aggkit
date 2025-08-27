@@ -11,16 +11,17 @@ import (
 )
 
 type configTest struct {
-	BlockFinality BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock" mapstructure:"BlockFinality"` //nolint:lll
+	BlockFinality BlockNumberFinality `mapstructure:"BlockFinality"`
 }
 
 func TestBlockNumberFinalityReadFromConfigFile(t *testing.T) {
 	cfg, err := readConfigFile[configTest](t, "BlockFinality = \"SafeBlock\"")
 	require.NoError(t, err)
 	require.Equal(t, Safe, cfg.BlockFinality.Block)
-	cfg, err = readConfigFile[configTest](t, "BlockFinality = \"badname\"")
+	_, err = readConfigFile[configTest](t, "BlockFinality = \"badname\"")
 	require.Error(t, err)
-
+	_, err = readConfigFile[configTest](t, "BlockFinality = \"\"")
+	require.Error(t, err)
 }
 
 func TestBlockNumberFinalityWithOffset(t *testing.T) {
