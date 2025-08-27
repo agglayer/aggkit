@@ -54,6 +54,10 @@ func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (
 	if err != nil {
 		return nil, err
 	}
+	if cfg.FinalizedBlock.IsEmpty() {
+		log.Warnf("Finalized block is not set. Setting to finalized block")
+		cfg.FinalizedBlock = aggkittypes.FinalizedBlock
+	}
 
 	return &ReorgDetector{
 		client:             client,
