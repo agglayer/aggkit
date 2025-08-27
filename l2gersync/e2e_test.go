@@ -209,7 +209,7 @@ func testGERSyncer(t *testing.T, ctx context.Context,
 	syncer *l2gersync.L2GERSync, i int) {
 	t.Helper()
 
-	time.Sleep(10 * time.Second)
+	time.Sleep(2 * time.Second)
 
 	expectedGER, err := l1Setup.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
