@@ -223,18 +223,18 @@ func TestCertificateSource_String(t *testing.T) {
 func TestCertificateHeader_ElapsedTimeSinceCreation(t *testing.T) {
 	t.Run("NilCertificateHeader", func(t *testing.T) {
 		var ch *CertificateHeader
-		require.Equal(t, NAStr, ch.ElapsedTimeSinceCreation())
+		require.Equal(t, NAStr, ch.ElapsedTimeSinceCreationString())
 	})
 
 	t.Run("CreatedAtIsZero", func(t *testing.T) {
 		ch := &CertificateHeader{CreatedAt: 0}
-		require.Equal(t, NAStr, ch.ElapsedTimeSinceCreation())
+		require.Equal(t, NAStr, ch.ElapsedTimeSinceCreationString())
 	})
 
 	t.Run("CreatedAtIsNow", func(t *testing.T) {
 		now := uint32(time.Now().Unix())
 		ch := &CertificateHeader{CreatedAt: now}
-		result := ch.ElapsedTimeSinceCreation()
+		result := ch.ElapsedTimeSinceCreationString()
 		// Should be a duration string, e.g., "0s"
 		require.Contains(t, result, "s")
 	})
@@ -242,7 +242,7 @@ func TestCertificateHeader_ElapsedTimeSinceCreation(t *testing.T) {
 	t.Run("CreatedAtIsPast", func(t *testing.T) {
 		past := uint32(time.Now().Add(-10 * time.Second).Unix())
 		ch := &CertificateHeader{CreatedAt: past}
-		result := ch.ElapsedTimeSinceCreation()
+		result := ch.ElapsedTimeSinceCreationString()
 		// Should be at least 10s
 		dur, err := time.ParseDuration(result)
 		require.NoError(t, err)

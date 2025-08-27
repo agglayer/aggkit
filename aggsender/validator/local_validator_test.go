@@ -7,6 +7,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/log"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -30,7 +31,7 @@ func TestValidateAndSignCertificate_Success(t *testing.T) {
 
 	signature, err := localValidator.ValidateAndSignCertificate(context.Background(), certificate, 0)
 	require.NoError(t, err)
-	require.Nil(t, signature)
+	require.Len(t, signature, aggkitcommon.SignatureSize)
 	require.NotNil(t, localValidator.String())
 
 	storage.AssertExpectations(t)

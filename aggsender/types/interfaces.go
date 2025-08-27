@@ -231,6 +231,7 @@ type CertificateValidateAndSigner interface {
 	) ([]byte, error)
 	URL() string
 	String() string
+	Address() common.Address
 }
 
 // ValidatorClient is an interface defining functions that a ValidatorClient should implement

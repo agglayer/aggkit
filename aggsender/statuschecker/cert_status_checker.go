@@ -125,7 +125,7 @@ func (c *certStatusChecker) CheckPendingCertificatesStatus(ctx context.Context) 
 		c.log.Debugf("agglayerClient.GetCertificateHeader status [%s] of certificate %s  elapsed time:%s",
 			certificateHeader.Status,
 			certificateHeader.ID(),
-			certificateLocal.ElapsedTimeSinceCreation())
+			certificateLocal.ElapsedTimeSinceCreationString())
 		appearsNewInErrorCert = appearsNewInErrorCert ||
 			(!certificateLocal.Status.IsInError() && certificateHeader.Status.IsInError())
 
@@ -136,7 +136,7 @@ func (c *certStatusChecker) CheckPendingCertificatesStatus(ctx context.Context) 
 
 		if !certificateLocal.IsClosed() {
 			c.log.Infof("certificate %s is still pending, elapsed time:%s ",
-				certificateHeader.ID(), certificateLocal.ElapsedTimeSinceCreation())
+				certificateHeader.ID(), certificateLocal.ElapsedTimeSinceCreationString())
 			thereArePendingCerts = true
 		}
 	}
@@ -154,12 +154,18 @@ func (c *certStatusChecker) updateCertificateStatus(ctx context.Context,
 		return nil
 	}
 	c.log.Infof("certificate %s changed status from [%s] to [%s] elapsed time: %s full_cert (agglayer): %s",
-		localCert.ID(), localCert.Status, agglayerCert.Status, localCert.ElapsedTimeSinceCreation(),
+		localCert.ID(), localCert.Status, agglayerCert.Status, localCert.ElapsedTimeSinceCreationString(),
 		agglayerCert.String())
 
 	switch agglayerCert.Status {
 	case agglayertypes.Settled:
 		metrics.Settled()
+		t := localCert.ElapsedTimeSinceCreation()
+		if t > 0 {
+			// log certificate settlement time only if we have a set creation time
+			// it can be 0 only if the certificate was synced from agglayer
+			metrics.CertificateSettlementTime(t.Seconds())
+		}
 	case agglayertypes.InError:
 		metrics.InError()
 	}
@@ -172,6 +178,7 @@ func (c *certStatusChecker) updateCertificateStatus(ctx context.Context,
 
 	localCert.Status = agglayerCert.Status
 	localCert.UpdatedAt = uint32(time.Now().UTC().Unix())
+
 	if err := c.storage.UpdateCertificateStatus(
 		ctx,
 		localCert.CertificateID,

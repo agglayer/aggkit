@@ -3,17 +3,25 @@ package metrics
 import (
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/prometheus"
+	"github.com/ethereum/go-ethereum/common"
 	prometheusClient "github.com/prometheus/client_golang/prometheus"
 )
 
 const (
 	prefix                      = "aggsender_"
+	aggsenderValidator          = "aggsender-validator"
 	numberOfCertificatesSent    = prefix + "number_of_certificates_sent"
 	numberOfCertificatesInError = prefix + "number_of_certificates_in_error"
 	numberOfSendingRetries      = prefix + "number_of_sending_retries"
 	numberOfCertificatesSettled = prefix + "number_of_sending_settled"
 	certificateBuildTime        = prefix + "certificate_build_time"
 	proverTime                  = prefix + "prover_time"
+	numberOfProverErrors        = prefix + "number_of_prover_errors"
+	validatorErrorNumber        = prefix + "validator_errors_total"
+	validatorInvalidSignature   = prefix + "validator_invalid_signature_total"
+	validateTime                = prefix + "validate_time"
+	multiSigThresholdNotReached = prefix + "multisig_threshold_not_reached"
+	certificateSettlementTime   = prefix + "certificate_settlement_time"
 )
 
 // Register the metrics for the aggsender package
@@ -43,8 +51,41 @@ func Register() {
 			Name: proverTime,
 			Help: "[AGGSENDER] prover time",
 		},
+		{
+			Name: numberOfProverErrors,
+			Help: "[AGGSENDER] number of prover errors",
+		},
+		{
+			Name: validateTime,
+			Help: "[AGGSENDER] time taken to validate a certificate",
+		},
+		{
+			Name: multiSigThresholdNotReached,
+			Help: "[AGGSENDER] number of times multisig threshold was not reached",
+		},
+		{
+			Name: certificateSettlementTime,
+			Help: "[AGGSENDER] certificate settlement time",
+		},
 	}
 	prometheus.RegisterGauges(gauges...)
+
+	counterVecs := []prometheus.CounterVecOpts{
+		{
+			CounterOpts: prometheusClient.CounterOpts{
+				Name: validatorErrorNumber,
+			},
+			Labels: []string{aggsenderValidator},
+		},
+		{
+			CounterOpts: prometheusClient.CounterOpts{
+				Name: validatorInvalidSignature,
+			},
+			Labels: []string{aggsenderValidator},
+		},
+	}
+	prometheus.RegisterCounterVecs(counterVecs...)
+
 	log.Info("Registered prometheus aggsender metrics")
 }
 
@@ -76,4 +117,36 @@ func CertificateBuildTime(value float64) {
 // ProverTime sets the gauge for the prover time
 func ProverTime(value float64) {
 	prometheus.GaugeSet(proverTime, value)
+}
+
+// CertificateSettlementTime sets the gauge for the certificate settlement time
+func CertificateSettlementTime(value float64) {
+	prometheus.GaugeSet(certificateSettlementTime, value)
+}
+
+// ProverError increments the gauge for the number of prover errors
+func ProverError() {
+	prometheus.GaugeInc(numberOfProverErrors)
+}
+
+// ValidatorError increments the counter for the number of validator errors, labeled by validator address
+func ValidatorError(validator common.Address) {
+	prometheus.CounterVecInc(validatorErrorNumber, validator.String())
+}
+
+// ValidatorInvalidSignature increments the counter for the number of
+// invalid signatures from a validator, labeled by validator address
+func ValidatorInvalidSignature(validator common.Address) {
+	prometheus.CounterVecInc(validatorInvalidSignature, validator.String())
+}
+
+// ValidateTime sets the gauge for the time taken to validate a certificate
+func ValidateTime(value float64) {
+	prometheus.GaugeSet(validateTime, value)
+}
+
+// MultiSigThresholdNotReached increments the gauge for the number of times
+// the multisig threshold was not reached
+func MultiSigThresholdNotReached() {
+	prometheus.GaugeInc(multiSigThresholdNotReached)
 }

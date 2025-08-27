@@ -454,10 +454,14 @@ func (a *AggSender) pollValidators(
 	type signResult struct {
 		signature []byte
 		err       error
+		validator types.CertificateValidateAndSigner
 	}
 
 	resultsCh := make(chan signResult, len(validators))
 	var wg sync.WaitGroup
+
+	start := time.Now()
+	defer func() { metrics.ValidateTime(time.Since(start).Seconds()) }()
 
 	for _, v := range validators {
 		wg.Add(1)
@@ -473,7 +477,7 @@ func (a *AggSender) pollValidators(
 			status, err := v.HealthCheck(ctx)
 			if err != nil {
 				a.log.Warnf("error checking validator health (URL=%s): %v", v.URL(), err)
-				resultsCh <- signResult{err: err}
+				resultsCh <- signResult{err: err, validator: v}
 				return
 			}
 
@@ -487,11 +491,11 @@ func (a *AggSender) pollValidators(
 			sig, err := v.ValidateAndSignCertificate(ctx, certificate, lastL2BlockInCert)
 			if err != nil {
 				a.log.Errorf("validator %v failed to validate the certificate: %v", v, err)
-				resultsCh <- signResult{err: err}
+				resultsCh <- signResult{err: err, validator: v}
 				return
 			}
 
-			resultsCh <- signResult{signature: sig}
+			resultsCh <- signResult{signature: sig, validator: v}
 		}(v)
 	}
 
@@ -506,6 +510,19 @@ func (a *AggSender) pollValidators(
 	for res := range resultsCh {
 		if res.err != nil {
 			errs = append(errs, res.err)
+			metrics.ValidatorError(res.validator.Address())
+
+			continue
+		}
+
+		if len(res.signature) != aggkitcommon.SignatureSize {
+			a.log.Errorf("validator %v returned an invalid signature with length %d",
+				res.validator.String(), len(res.signature))
+			metrics.ValidatorInvalidSignature(res.validator.Address())
+
+			errs = append(errs, fmt.Errorf("validator %s returned an invalid signature with length %d",
+				res.validator.String(), len(res.signature)))
+
 			continue
 		}
 
@@ -516,9 +533,12 @@ func (a *AggSender) pollValidators(
 	}
 
 	if uint32(len(signatures)) < signaturesThreshold {
+		metrics.MultiSigThresholdNotReached()
+
 		if len(errs) > 0 {
 			return signatures, errors.Join(errs...)
 		}
+
 		return signatures, fmt.Errorf("threshold not reached: %d/%d", len(signatures), signaturesThreshold)
 	}
 
@@ -539,7 +559,7 @@ func (a *AggSender) getValidators(ctx context.Context) ([]types.CertificateValid
 	validators := make([]types.CertificateValidateAndSigner, 0, committee.Size())
 	for _, signer := range committee.Signers() {
 		clientCfg := a.cfg.ValidatorClient.WithURL(signer.URL)
-		validator, err := validator.NewRemoteValidator(&clientCfg, a.storage)
+		validator, err := validator.NewRemoteValidator(&clientCfg, a.storage, signer.Address)
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
 				signer.Address, signer.URL, err)

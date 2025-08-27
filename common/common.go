@@ -24,6 +24,8 @@ var (
 const (
 	Uint32ByteSize = 4
 	Uint64ByteSize = 8
+
+	SignatureSize = 65
 )
 
 // Uint64ToBigEndianBytes converts a uint64 to a byte slice in big-endian order
