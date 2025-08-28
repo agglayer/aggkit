@@ -21,6 +21,10 @@ polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 rollupCreationBlockNumber = 0
 rollupManagerCreationBlockNumber = 0
 genesisBlockNumber = 0
+
+# Default database query timeout
+defaultDBQueryTimeout = "30s"
+
 [L1Config]
 	URL = "{{L1URL}}"
 	chainId = 0
@@ -151,6 +155,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -162,6 +167,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"

@@ -641,6 +641,7 @@ func runBridgeSyncL1IfNeeded(
 		rollupID,
 		true,
 		cfg.RequireStorageContentCompatibility,
+		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -681,6 +682,7 @@ func runBridgeSyncL2IfNeeded(
 		rollupID,
 		true,
 		cfg.RequireStorageContentCompatibility,
+		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)

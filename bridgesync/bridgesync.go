@@ -85,6 +85,7 @@ func NewL1(
 	originNetwork uint32,
 	syncFullClaims bool,
 	requireStorageContentCompatibility bool,
+	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -102,6 +103,7 @@ func NewL1(
 		originNetwork,
 		syncFullClaims,
 		requireStorageContentCompatibility,
+		dbQueryTimeout,
 	)
 }
 
@@ -109,10 +111,11 @@ func NewL2ReadOnly(
 	ctx context.Context,
 	dbPath string,
 	originNetwork uint32,
+	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	syncerID := L2BridgeSyncer
 	logger := log.WithFields("module", syncerID.String())
-	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger)
+	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, dbQueryTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -138,6 +141,7 @@ func NewL2(
 	originNetwork uint32,
 	syncFullClaims bool,
 	requireStorageContentCompatibility bool,
+	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	return newBridgeSync(
 		ctx,
@@ -155,6 +159,7 @@ func NewL2(
 		originNetwork,
 		syncFullClaims,
 		requireStorageContentCompatibility,
+		dbQueryTimeout,
 	)
 }
 
@@ -174,6 +179,7 @@ func newBridgeSync(
 	originNetwork uint32,
 	syncFullClaims bool,
 	requireStorageContentCompatibility bool,
+	dbQueryTimeout time.Duration,
 ) (*BridgeSync, error) {
 	logger := log.WithFields("module", syncerID.String())
 
@@ -195,7 +201,7 @@ func newBridgeSync(
 		return nil, err
 	}
 
-	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger)
+	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, dbQueryTimeout)
 	if err != nil {
 		return nil, err
 	}
@@ -367,7 +373,7 @@ func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize 
 		return nil, 0, ErrInvalidPageSize
 	}
 
-	return s.processor.GetTokenMappings(pageNumber, pageSize)
+	return s.processor.GetTokenMappings(ctx, pageNumber, pageSize)
 }
 
 func (s *BridgeSync) GetLegacyTokenMigrations(
