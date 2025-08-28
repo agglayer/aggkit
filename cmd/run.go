@@ -296,7 +296,7 @@ func createAggSender(
 	}
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
-			BlockFinalityType:     aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+			BlockFinalityType:     aggkittypes.LatestBlock,
 			CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 		}, logger, nil)
 	if err != nil {
@@ -606,7 +606,7 @@ func runL2GERSyncIfNeeded(
 		l1InfoTreeSync,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
-		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+		cfg.BlockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
@@ -676,7 +676,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+		cfg.BlockFinality,
 		reorgDetectorL2,
 		l2Client,
 		cfg.InitialBlockNum,

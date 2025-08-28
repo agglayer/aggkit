@@ -3,7 +3,6 @@ package aggsender
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
@@ -36,7 +35,7 @@ type ConfigBlockNotifierPolling struct {
 
 type BlockNotifierPolling struct {
 	ethClient     aggkittypes.BaseEthereumClienter
-	blockFinality *big.Int
+	blockFinality aggkittypes.BlockNumberFinality
 	logger        aggkitcommon.Logger
 	config        ConfigBlockNotifierPolling
 	mu            sync.Mutex
@@ -56,14 +55,10 @@ func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 	if subscriber == nil {
 		subscriber = NewGenericSubscriberImpl[types.EventNewBlock]()
 	}
-	finality, err := config.BlockFinalityType.ToBlockNum()
-	if err != nil {
-		return nil, fmt.Errorf("failed to convert block finality type to block number: %w", err)
-	}
 
 	return &BlockNotifierPolling{
 		ethClient:         ethClient,
-		blockFinality:     finality,
+		blockFinality:     config.BlockFinalityType,
 		logger:            logger,
 		config:            config,
 		GenericSubscriber: subscriber,
@@ -72,7 +67,7 @@ func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 
 func (b *BlockNotifierPolling) String() string {
 	status := b.getGlobalStatus()
-	res := fmt.Sprintf("BlockNotifierPolling: finality=%s", b.config.BlockFinalityType)
+	res := fmt.Sprintf("BlockNotifierPolling: finality=%s", b.config.BlockFinalityType.String())
 	if status != nil {
 		res += fmt.Sprintf(" lastBlockSeen=%d", status.lastBlockSeen)
 	} else {
@@ -136,49 +131,46 @@ func (b *BlockNotifierPolling) getGlobalStatus() *blockNotifierPollingInternalSt
 func (b *BlockNotifierPolling) step(ctx context.Context,
 	previousState *blockNotifierPollingInternalStatus) (time.Duration,
 	*blockNotifierPollingInternalStatus, *types.EventNewBlock) {
-	currentBlock, err := b.ethClient.HeaderByNumber(ctx, b.blockFinality)
-	if err == nil && currentBlock == nil {
-		err = fmt.Errorf("failed to get block number: return a nil block")
-	}
+	currentBlock, err := b.blockFinality.BlockNumber(ctx, b.ethClient)
 	if err != nil {
-		b.logger.Errorf("Failed to get block number: %v", err)
+		b.logger.Errorf("Failed to get block number %s: %v", b.blockFinality.String(), err)
 		newState := previousState.clear()
 		return b.nextBlockRequestDelay(nil, err), newState, nil
 	}
 	if previousState == nil {
-		newState := previousState.initialBlock(currentBlock.Number.Uint64())
+		newState := previousState.initialBlock(currentBlock)
 		return b.nextBlockRequestDelay(previousState, nil), newState, nil
 	}
-	if currentBlock.Number.Uint64() == previousState.lastBlockSeen {
+	if currentBlock == previousState.lastBlockSeen {
 		// No new block, so no changes on state
 		return b.nextBlockRequestDelay(previousState, nil), previousState, nil
 	}
 	// New blockNumber!
 	eventToEmit := &types.EventNewBlock{
-		BlockNumber:       currentBlock.Number.Uint64(),
+		BlockNumber:       currentBlock,
 		BlockFinalityType: b.config.BlockFinalityType,
 	}
-	if previousState.lastBlockSeen > currentBlock.Number.Uint64() {
+	if previousState.lastBlockSeen > currentBlock {
 		b.logger.Warnf("Block number decreased [finality:%s]: %d -> %d",
-			b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock.Number.Uint64())
+			b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock)
 		// It start from scratch because something fails in calculation of block period
-		newState := previousState.initialBlock(currentBlock.Number.Uint64())
+		newState := previousState.initialBlock(currentBlock)
 		return b.nextBlockRequestDelay(nil, nil), newState, eventToEmit
 	}
 
-	if currentBlock.Number.Uint64()-previousState.lastBlockSeen != 1 {
+	if currentBlock-previousState.lastBlockSeen != 1 {
 		if !b.config.BlockFinalityType.IsSafe() && !b.config.BlockFinalityType.IsFinalized() {
 			b.logger.Warnf("Missed block(s) [finality:%s]: %d -> %d",
-				b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock.Number.Uint64())
+				b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock)
 		}
 
 		// It start from scratch because something fails in calculation of block period
-		newState := previousState.initialBlock(currentBlock.Number.Uint64())
+		newState := previousState.initialBlock(currentBlock)
 		return b.nextBlockRequestDelay(nil, nil), newState, eventToEmit
 	}
-	newState := previousState.incommingNewBlock(currentBlock.Number.Uint64())
+	newState := previousState.incommingNewBlock(currentBlock)
 	b.logger.Debugf("New block seen [finality:%s]: %d. blockRate:%s",
-		b.config.BlockFinalityType, currentBlock.Number.Uint64(), newState.previousBlockTime)
+		b.config.BlockFinalityType, currentBlock, newState.previousBlockTime)
 	eventToEmit.BlockRate = *newState.previousBlockTime
 	return b.nextBlockRequestDelay(newState, nil), newState, eventToEmit
 }

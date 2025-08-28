@@ -162,37 +162,9 @@ Port = "{{.aggkit_node_rest_api_port}}"
 # ------------------------------------------------------------------------------
 [AggSender]
 # ------------------------------------------------------------------------------
-# StoragePath is the path of the sqlite db for the AggSender to store the data
-# ------------------------------------------------------------------------------
-# StoragePath = "/tmp"
-
-# ------------------------------------------------------------------------------
 # AggsenderPrivateKey is the private key which is used to sign certificates
 # ------------------------------------------------------------------------------
 AggSenderPrivateKey = {Path = "{{.zkevm_l2_sequencer_keystore_file_path}}", Password = "{{.zkevm_l2_keystore_password}}"}
-
-Mode = "AggchainProof"
-CheckStatusCertificateInterval = "1s"
-
-# ------------------------------------------------------------------------------
-# MaxCertSize is the maximum size of the certificate
-# i.e (the emitted certificate cannot be bigger that this size)
-# 0 is infinite
-# ------------------------------------------------------------------------------
-# MaxCertSize = 0
-
-[AggSender.AggkitProverClient]
-UseTLS = false
-
-[AggSender.OptimisticModeConfig]
-SovereignRollupAddr = "{{.sovereign_rollup_addr}}"
-TrustedSequencerKey = {Path = "{{.zkevm_l2_sequencer_keystore_file_path}}", Password = "{{.zkevm_l2_keystore_password}}"}
-OpNodeURL = "{{.op_cl_rpc_url}}"
-RequireKeyMatchTrustedSequencer = true
-
-[AggSender.MaxSubmitCertificateRate]
-NumRequests = 20
-Interval = "1m"
 
 # ------------------------------------------------------------------------------
 # BlockFinality indicates which finality follows AggLayer accepted values are:
@@ -201,51 +173,17 @@ Interval = "1m"
 # ------------------------------------------------------------------------------
 BlockFinality = "LatestBlock"
 
-# ------------------------------------------------------------------------------
-# EpochNotificationPercentage indicates the percentage of the epoch
-# the AggSender should send the certificate
-# 0 -> Begin
-# 50 -> Middle
-# ------------------------------------------------------------------------------
-# EpochNotificationPercentage = 50
+Mode = "AggchainProof"
+CheckStatusCertificateInterval = "1s"
 
-# ------------------------------------------------------------------------------
-# AggSender will save the certificates to a file in this path
-# ------------------------------------------------------------------------------
-SaveCertificatesToFilesPath = "{{.zkevm_path_rw_data}}"
+[AggSender.OptimisticModeConfig]
+SovereignRollupAddr = "{{.sovereign_rollup_addr}}"
+TrustedSequencerKey = {Path = "{{.zkevm_l2_sequencer_keystore_file_path}}", Password = "{{.zkevm_l2_keystore_password}}"}
+OpNodeURL = "{{.op_cl_rpc_url}}"
+RequireKeyMatchTrustedSequencer = true
 
-# ------------------------------------------------------------------------------
-# MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
-# 0 is infinite
-# ------------------------------------------------------------------------------
-# MaxRetriesStoreCertificate = 3
 
-# ------------------------------------------------------------------------------
-# DelayBeetweenRetries is the delay between retries
-# Duration expressed in units: [ns, us, ms, s, m, h, d]"
-# ------------------------------------------------------------------------------
-# DelayBeetweenRetries = 5s
 
-# ------------------------------------------------------------------------------
-# KeepCertificatesHistory is a flag to keep the certificates history on storage
-# ------------------------------------------------------------------------------
-# KeepCertificatesHistory = false
-
-# ------------------------------------------------------------------------------
-# BridgeMetadataAsHash is a flag to import the bridge metadata as hash
-# ------------------------------------------------------------------------------
-# BridgeMetadataAsHash = false
-
-# ------------------------------------------------------------------------------
-# DryRun is a flag to enable the dry run mode
-# in this mode the AggSender will not send the certificates to Agglayer
-# ------------------------------------------------------------------------------
-# DryRun = false
-
-# ------------------------------------------------------------------------------
-# EnableRPC is a flag to enable the RPC for aggsender
-# ------------------------------------------------------------------------------
-# EnableRPC = false
 
 # ==============================================================================
 #     _    ____  ____  ___  ____      _    ____ _     _____

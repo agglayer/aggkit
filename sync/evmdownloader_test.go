@@ -569,7 +569,7 @@ func runSteps(t *testing.T, fromBlock uint64, steps []evmTestStep) {
 		downloader.setStopDownloaderOnIterationN(i + 1)
 		expectedBlocks := EVMBlocks{}
 		for _, step := range steps[:i+1] {
-			mockEthDownloader.On("GetLastFinalizedBlock", mock.Anything).Return(&types.Header{Number: big.NewInt(int64(step.finalizedBlock))}, nil).Once()
+			mockEthDownloader.On("GetLastFinalizedBlock", mock.Anything).Return(step.finalizedBlock, nil).Once()
 			if step.waitForNewBlocks {
 				mockEthDownloader.On("WaitForNewBlocks", mock.Anything, step.waitForNewBlocksRequest).Return(step.waitForNewBlockReply).Once()
 			}
