@@ -2667,7 +2667,7 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 			require.NoError(t, err)
 
 			logger := log.WithFields("bridge-syncer", "test")
-			p, err := newProcessor(dbPath, "test", logger)
+			p, err := newProcessor(dbPath, "test", logger, 30*time.Second)
 			require.NoError(t, err)
 
 			// Insert test data

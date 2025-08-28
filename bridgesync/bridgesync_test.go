@@ -716,6 +716,7 @@ func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 		originNetwork,
 		false,
 		false,
+		30*time.Second,
 	)
 	require.NoError(t, err)
 
