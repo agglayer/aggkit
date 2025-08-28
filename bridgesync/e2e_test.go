@@ -88,7 +88,7 @@ func TestBridgeEventE2E(t *testing.T) {
 	time.Sleep(time.Second * 2) // sleeping since the processor could be up to date, but have pending reorgs
 
 	lb := getFinalizedBlockNumber(t, ctx, l1Setup.SimBackend.Client())
-	helpers.RequireProcessorUpdated(t, l1Setup.BridgeSync, lb)
+	helpers.RequireProcessorUpdated(t, l1Setup.BridgeSync, lb, l1Setup.SimBackend.Client())
 
 	// Get bridges
 	lastBlock, err := l1Setup.SimBackend.Client().BlockNumber(ctx)

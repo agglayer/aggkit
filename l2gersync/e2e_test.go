@@ -106,7 +106,7 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 	// wait for the GER removal events to be processed
 	lb, err := l2Environment.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
-	helpers.RequireProcessorUpdated(t, syncer, lb)
+	helpers.RequireProcessorUpdated(t, syncer, lb, l2Environment.SimBackend.Client())
 
 	for _, removedGER := range gersToRemove {
 		isInjected, err := l2Environment.AggoracleSender.IsGERInjected(removedGER)
@@ -208,7 +208,6 @@ func testGERSyncer(t *testing.T, ctx context.Context,
 	l1Setup *helpers.L1Environment, l2Setup *helpers.L2Environment,
 	syncer *l2gersync.L2GERSync, i int) {
 	t.Helper()
-
 	time.Sleep(2 * time.Second)
 
 	expectedGER, err := l1Setup.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
@@ -220,7 +219,7 @@ func testGERSyncer(t *testing.T, ctx context.Context,
 
 	lb, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
-	helpers.RequireProcessorUpdated(t, syncer, lb)
+	helpers.RequireProcessorUpdated(t, syncer, lb, l2Setup.SimBackend.Client())
 
 	e, err := syncer.GetFirstGERAfterL1InfoTreeIndex(ctx, uint32(i))
 	require.NoError(t, err, fmt.Sprintf("iteration: %d", i))
