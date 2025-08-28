@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
+	"strconv"
 	"strings"
 
 	"github.com/agglayer/aggkit/log"
@@ -34,10 +35,12 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 	}
 	result.Block = block
 	if len(splitted) == 2 { //nolint:mnd
-		_, err := fmt.Sscanf(splitted[1], "%d", &result.Offset)
+		//_, err := fmt.Sscanf(splitted[1], "%d", &result.Offset)
+		offset, err := strconv.ParseInt(splitted[1], 10, 64)
 		if err != nil {
 			return result, fmt.Errorf("invalid block offset format: %s", splitted[1])
 		}
+		result.Offset = offset
 	}
 	if result.Block == Latest && result.Offset > 0 {
 		return result, fmt.Errorf("invalid block finality: cannot have positive offset with LatestBlock")
@@ -130,11 +133,12 @@ func (b *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereu
 }
 
 // IsGreaterThan returns true if v is greater than other
+// earliest ≤ finalized ≤ safe ≤ latest ≤ pending
 func (b *BlockNumberFinality) GreaterThan(other *BlockNumberFinality) bool {
 	if b == nil || other == nil {
 		return false
 	}
-	if b.Block < other.Block {
+	if blockOrder[b.Block] > blockOrder[other.Block] {
 		return true
 	}
 	if b.Block == other.Block {
@@ -144,6 +148,10 @@ func (b *BlockNumberFinality) GreaterThan(other *BlockNumberFinality) bool {
 }
 
 type BlockNumber int64
+
+var (
+	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4, Empty: 0}
+)
 
 const (
 	Safe      = BlockNumber(rpc.SafeBlockNumber)

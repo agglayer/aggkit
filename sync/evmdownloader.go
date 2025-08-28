@@ -70,11 +70,11 @@ func NewEVMDownloader(
 	fbtEthermanType := finalizedBlockType
 
 	if finalizedBlockType.GreaterThan(&finality) {
-		fbtEthermanType := finality
+		fbtEthermanType = finality
 		// if someone configured the syncer to query blocks by Safe or Finalized block
 		// finalized block type should be at least the same as the block finality
 		logger.Warnf("finalized block type %s is greater than block finality %s, setting finalized block type to %s",
-			finalizedBlockType, finality, fbtEthermanType)
+			finalizedBlockType.String(), finality.String(), fbtEthermanType.String())
 	}
 
 	logger.Infof("downloader initialized with block finality: %s, finalized block type: %s. SyncChunkSize: %d",
