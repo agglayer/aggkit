@@ -156,6 +156,9 @@ func (a *aggchainProofQuery) generateOptimisticAggchainProof(ctx context.Context
 		request.String())
 
 	start := time.Now()
+	defer func() {
+		metrics.ProverTime(time.Since(start).Seconds())
+	}()
 
 	aggchainProof, err := a.aggchainProofClient.GenerateOptimisticAggchainProof(request, sign)
 	if err != nil {
@@ -163,7 +166,6 @@ func (a *aggchainProofQuery) generateOptimisticAggchainProof(ctx context.Context
 		return nil, fmt.Errorf("generateOptimisticAggchainProof - error request aggkit-prover optimistic: %w", err)
 	}
 
-	metrics.ProverTime(time.Since(start).Seconds())
 	return aggchainProof, nil
 }
 

@@ -74,12 +74,14 @@ func Register() {
 		{
 			CounterOpts: prometheusClient.CounterOpts{
 				Name: validatorErrorNumber,
+				Help: "[AGGSENDER] total number of errors returned by a validator over time",
 			},
 			Labels: []string{aggsenderValidator},
 		},
 		{
 			CounterOpts: prometheusClient.CounterOpts{
 				Name: validatorInvalidSignature,
+				Help: "[AGGSENDER] number of times a validator returned an invalid signature",
 			},
 			Labels: []string{aggsenderValidator},
 		},

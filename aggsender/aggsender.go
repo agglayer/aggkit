@@ -461,7 +461,6 @@ func (a *AggSender) pollValidators(
 	var wg sync.WaitGroup
 
 	start := time.Now()
-	defer func() { metrics.ValidateTime(time.Since(start).Seconds()) }()
 
 	for _, v := range validators {
 		wg.Add(1)
@@ -502,6 +501,7 @@ func (a *AggSender) pollValidators(
 	go func() {
 		wg.Wait()
 		close(resultsCh)
+		metrics.ValidateTime(time.Since(start).Seconds())
 	}()
 
 	signatures := make([][]byte, 0, len(validators))
