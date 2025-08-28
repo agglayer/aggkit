@@ -149,8 +149,6 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 
 	// TODO - filter unset claims from certBuildParams
 
-	// TODO - check if we need to remove removedGERs from the proof
-
 	return aggchainProof, root, nil
 }
 
