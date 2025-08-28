@@ -222,7 +222,8 @@ func createAggSenderValidator(ctx context.Context,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
-	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
+	rollupDataQuerier *etherman.RollupDataQuerier,
+) (*aggsender.AggsenderValidator, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid aggsender validator config: %w", err)
 	}
@@ -668,6 +669,7 @@ func runBridgeSyncL1IfNeeded(
 		rollupID,
 		true,
 		cfg.RequireStorageContentCompatibility,
+		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -714,6 +716,7 @@ func runBridgeSyncL2IfNeeded(
 		rollupID,
 		fullClaimsNeeded,
 		cfg.RequireStorageContentCompatibility,
+		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)

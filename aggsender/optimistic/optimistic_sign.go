@@ -28,13 +28,14 @@ func NewOptimisticSignatureCalculatorImpl(
 	ctx context.Context,
 	logger *log.Logger,
 	l1Client aggkittypes.BaseEthereumClienter,
+	chainID uint64,
 	cfg Config,
 ) (*OptimisticSignatureCalculatorImpl, error) {
 	aggchainFEPContract, err := aggchainfep.NewAggchainfep(cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("newOptimisticSignatureCalculatorImpl.NewAggchainfep Err: %w", err)
 	}
-	signer, err := signer.NewSigner(ctx, 0, cfg.TrustedSequencerKey, "optimistic", logger)
+	signer, err := signer.NewSigner(ctx, chainID, cfg.TrustedSequencerKey, "optimistic", logger)
 	if err != nil {
 		return nil, fmt.Errorf("optimistic. error NewSigner. Err: %w", err)
 	}

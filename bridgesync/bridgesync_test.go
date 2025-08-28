@@ -53,6 +53,9 @@ func TestNewLx(t *testing.T) {
 	mockReorgDetector.EXPECT().Subscribe(mock.Anything).Return(nil, nil)
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
+
+	dbQueryTimeout := 30 * time.Second
+
 	l1BridgeSync, err := NewL1(
 		ctx,
 		dbPath,
@@ -67,6 +70,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		true,
+		dbQueryTimeout,
 	)
 
 	require.NoError(t, err)
@@ -89,6 +93,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		true,
+		dbQueryTimeout,
 	)
 
 	require.NoError(t, err)
@@ -115,6 +120,7 @@ func TestNewLx(t *testing.T) {
 		originNetwork,
 		false,
 		true,
+		dbQueryTimeout,
 	)
 	t.Log(err)
 	require.Error(t, err)
@@ -214,6 +220,8 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 
+	dbQueryTimeout := 30 * time.Second
+
 	s, err := NewL2(
 		ctx,
 		dbPath,
@@ -229,6 +237,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		originNetwork,
 		false,
 		false,
+		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 
@@ -346,6 +355,8 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 
+	dbQueryTimeout := 30 * time.Second
+
 	s, err := NewL2(
 		ctx,
 		dbPath,
@@ -361,6 +372,7 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 		originNetwork,
 		false,
 		false,
+		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 
@@ -527,6 +539,8 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 	mockReorgDetector.EXPECT().GetFinalizedBlockType().Return(blockFinalityType)
 	mockReorgDetector.EXPECT().String().Return("mockReorgDetector")
 
+	dbQueryTimeout := 30 * time.Second
+
 	s, err := NewL2(
 		ctx,
 		dbPath,
@@ -542,6 +556,7 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 		originNetwork,
 		false,
 		false,
+		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 

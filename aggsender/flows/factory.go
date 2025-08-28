@@ -63,8 +63,13 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error creating aggkit prover client: %w", err)
 		}
 
+		l2ChainID, err := rollupDataQuerier.GetRollupChainID()
+		if err != nil {
+			return nil, fmt.Errorf("error getting rollup chain id: %w", err)
+		}
+
 		optimisticSigner, optimisticModeQuerier, err := optimistic.NewOptimistic(
-			ctx, logger, l1Client, cfg.OptimisticModeConfig)
+			ctx, logger, l1Client, l2ChainID, cfg.OptimisticModeConfig)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
@@ -142,7 +147,12 @@ func CreateCommonFlowComponents(
 	signerCfg signertypes.SignerConfig,
 	fullClaimsRequired bool,
 ) (*CommonFlowComponents, error) {
-	signer, err := initializeSigner(ctx, signerCfg, logger)
+	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
+	if err != nil {
+		return nil, fmt.Errorf("error getting rollup chain id: %w", err)
+	}
+
+	signer, err := initializeSigner(ctx, signerCfg, logger, l2ChainID)
 	if err != nil {
 		return nil, err
 	}
@@ -169,8 +179,9 @@ func initializeSigner(
 	ctx context.Context,
 	signerCfg signertypes.SignerConfig,
 	logger *log.Logger,
+	l2ChainID uint64,
 ) (signertypes.Signer, error) {
-	signer, err := signer.NewSigner(ctx, 0, signerCfg, aggkitcommon.AGGSENDER, logger)
+	signer, err := signer.NewSigner(ctx, l2ChainID, signerCfg, aggkitcommon.AGGSENDER, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
 	}

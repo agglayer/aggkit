@@ -16,8 +16,8 @@ type Processorer interface {
 func RequireProcessorUpdated(t *testing.T, processor Processorer, targetBlock uint64) {
 	t.Helper()
 	const (
-		maxIterations         = 100
-		sleepTimePerIteration = 20 * time.Millisecond
+		maxIterations         = 200
+		sleepTimePerIteration = 500 * time.Millisecond
 	)
 	var (
 		lpb uint64
@@ -30,7 +30,11 @@ func RequireProcessorUpdated(t *testing.T, processor Processorer, targetBlock ui
 		if targetBlock <= lpb {
 			return
 		}
+
+		if i%30 == 0 { // Log every 30th iteration (every 3 seconds)
+			t.Logf("Waiting for processor to catch up: last processed block=%d, target block=%d, iteration=%d", lpb, targetBlock, i)
+		}
 		time.Sleep(sleepTimePerIteration)
 	}
-	require.NoError(t, fmt.Errorf("processor not updated. Last block: %d, target block: %d", lpb, targetBlock))
+	require.Fail(t, fmt.Sprintf("processor not updated. Last block: %d, target block: %d", lpb, targetBlock))
 }

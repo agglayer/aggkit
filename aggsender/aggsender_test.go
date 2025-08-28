@@ -85,6 +85,7 @@ func TestAggSenderStart(t *testing.T) {
 	bridgeL2SyncerMock.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), nil)
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
+	rollupQuerierMock.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
 
 	ctx := t.Context()
 	aggSender, err := New(
@@ -579,8 +580,10 @@ func TestGetValidators(t *testing.T) {
 
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
+	mockRollupQuerier := mocks.NewRollupDataQuerier(t)
 	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
-	sut, err := New(t.Context(), log.WithFields("module", "ut"), config.Config{
+	mockRollupQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
+	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
 		},
@@ -589,7 +592,7 @@ func TestNewAggSender(t *testing.T) {
 		nil, // epoch notifier
 		nil, // l1 client
 		nil, // l2 client
-		nil, // rollup data querier
+		mockRollupQuerier,
 		nil, // committee querier
 	)
 	require.NoError(t, err)
