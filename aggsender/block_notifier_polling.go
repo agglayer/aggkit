@@ -67,7 +67,7 @@ func NewBlockNotifierPolling(ethClient aggkittypes.BaseEthereumClienter,
 
 func (b *BlockNotifierPolling) String() string {
 	status := b.getGlobalStatus()
-	res := fmt.Sprintf("BlockNotifierPolling: finality=%s", b.config.BlockFinalityType)
+	res := fmt.Sprintf("BlockNotifierPolling: finality=%s", b.config.BlockFinalityType.String())
 	if status != nil {
 		res += fmt.Sprintf(" lastBlockSeen=%d", status.lastBlockSeen)
 	} else {

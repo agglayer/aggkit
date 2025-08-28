@@ -283,7 +283,7 @@ func createAggSender(
 	}
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
-			BlockFinalityType:     cfg.BlockFinality,
+			BlockFinalityType:     aggkittypes.LatestBlock,
 			CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 		}, logger, nil)
 	if err != nil {

@@ -187,7 +187,7 @@ func (b BlockNumber) ApplyOffset(blockNumber uint64, offset int64) uint64 {
 	} else {
 		blockNumber += uint64(offset)
 	}
-	// Can't return a block number biggest than Latest, so Latest+10 is the same as Latest+0
+	// Can't return a block number bigger than Latest, so Latest+10 is the same as Latest+0
 	if b == Latest {
 		return min(blockNumber, originalBlockNumber)
 	}
