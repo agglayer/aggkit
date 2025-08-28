@@ -1,11 +1,91 @@
 package types
 
 import (
+	"bytes"
 	"fmt"
 	"testing"
 
+	"github.com/mitchellh/mapstructure"
+	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
 )
+
+type configTest struct {
+	BlockFinality BlockNumberFinality `mapstructure:"BlockFinality"`
+}
+
+func TestBlockNumberFinalityReadFromConfigFile(t *testing.T) {
+	cfg, err := readConfigFile[configTest](t, "BlockFinality = \"SafeBlock\"")
+	require.NoError(t, err)
+	require.Equal(t, Safe, cfg.BlockFinality.Block)
+	_, err = readConfigFile[configTest](t, "BlockFinality = \"badname\"")
+	require.Error(t, err)
+	_, err = readConfigFile[configTest](t, "BlockFinality = \"\"")
+	require.Error(t, err)
+}
+
+func TestBlockNumberFinalityWithOffset(t *testing.T) {
+	testCases := []struct {
+		name           string
+		input          string
+		expectedResult string
+		expectedErr    error
+	}{
+		{
+			name:           "valid finalized block",
+			input:          FinalizedBlockName,
+			expectedResult: FinalizedBlockName,
+		},
+		{
+			name:           "valid finalized block",
+			input:          FinalizedBlockName + "/+5",
+			expectedResult: FinalizedBlockName + "/5",
+		},
+		{
+			name:           "valid finalized block",
+			input:          FinalizedBlockName + "/-5",
+			expectedResult: FinalizedBlockName + "/-5",
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			var b BlockNumberFinality
+			err := b.UnmarshalText([]byte(testCase.input))
+
+			if testCase.expectedErr == nil {
+				require.Equal(t, testCase.expectedResult, b.String())
+			} else {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), testCase.expectedErr.Error())
+			}
+		})
+	}
+}
+
+func TestBlockNumberFinalityCmp(t *testing.T) {
+	require.True(t, SafeBlock.GreaterThan(&FinalizedBlock))
+	require.True(t, LatestBlock.GreaterThan(&FinalizedBlock))
+	require.True(t, LatestBlock.GreaterThan(&SafeBlock))
+	require.True(t, PendingBlock.GreaterThan(&LatestBlock))
+}
+
+func readConfigFile[T any](t *testing.T, configData string) (T, error) {
+	t.Helper()
+	viper.SetConfigType("toml")
+	err := viper.ReadConfig(bytes.NewBuffer([]byte(configData)))
+	require.NoError(t, err)
+	decodeHooks := []viper.DecoderConfigOption{
+		// this allows arrays to be decoded from env var separated by ",", example: MY_VAR="value1,value2,value3"
+		viper.DecodeHook(mapstructure.ComposeDecodeHookFunc(
+			mapstructure.TextUnmarshallerHookFunc(),
+			mapstructure.StringToSliceHookFunc(","),
+		)),
+	}
+	var cfg T
+	err = viper.Unmarshal(&cfg, decodeHooks...)
+	return cfg, err
+}
 
 func TestBlockNumberFinality(t *testing.T) {
 	testCases := []struct {
@@ -33,11 +113,6 @@ func TestBlockNumberFinality(t *testing.T) {
 			name:           "valid latest block",
 			input:          "LatestBlock",
 			expectedResult: LatestBlock,
-		},
-		{
-			name:           "valid earliest block",
-			input:          "EarliestBlock",
-			expectedResult: EarliestBlock,
 		},
 		{
 			name:        "invalid block",

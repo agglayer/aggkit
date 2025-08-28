@@ -213,6 +213,10 @@ var (
 			FieldNamePattern: "ReorgDetectorL1",
 			Reason:           reorgDetectorL1DeprecatedHint,
 		},
+		{
+			FieldNamePattern: "Aggsender.BlockFinality",
+			Reason:           "aggsender use as finality BridgeL2Sync.BlockFinality",
+		},
 	}
 )
 
