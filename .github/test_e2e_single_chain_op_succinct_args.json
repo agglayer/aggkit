@@ -15,9 +15,7 @@
     "op_succinct_max_concurrent_witness_gen": "1",
     "op_succinct_range_proof_interval": "60",
     "additional_services": [
-      "bridge_spammer"
-    ],
-    "aggkit_prover_image": "atanmarko/aggkit-prover:ger-removal"
+    ]
   },
   "optimism_package": {
     "observability": {
