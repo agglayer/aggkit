@@ -261,6 +261,7 @@ jobs:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
       agglayer-e2e-ref: 5429944159fa0e7b7224785fb734715d3f92a7bd
       kurtosis-cdk-enclave-name: op
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
       test-name: "test-single-l2-network-op-pessimistic"
       event-name: ${{ github.event_name }}
