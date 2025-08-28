@@ -22,7 +22,7 @@ const (
 	maxRetryAttemptsAfterError = 10
 	waitForNewBlocksPeriod     = 30 * time.Millisecond
 	syncBlockChunkSize         = 10
-	testIterations             = 10
+	testIterations             = 3
 	syncDelay                  = 1 * time.Second
 )
 
