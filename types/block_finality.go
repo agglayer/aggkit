@@ -35,7 +35,6 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 	}
 	result.Block = block
 	if len(splitted) == 2 { //nolint:mnd
-		//_, err := fmt.Sscanf(splitted[1], "%d", &result.Offset)
 		offset, err := strconv.ParseInt(splitted[1], 10, 64)
 		if err != nil {
 			return result, fmt.Errorf("invalid block offset format: %s", splitted[1])
@@ -150,7 +149,7 @@ func (b *BlockNumberFinality) GreaterThan(other *BlockNumberFinality) bool {
 type BlockNumber int64
 
 var (
-	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4, Empty: 0}
+	blockOrder = map[BlockNumber]int{Finalized: 1, Safe: 2, Latest: 3, Pending: 4, Empty: 0} //nolint:mnd
 )
 
 const (
