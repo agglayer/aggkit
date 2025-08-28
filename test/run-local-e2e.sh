@@ -141,17 +141,14 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
         exit 1
     fi
 
-    log_info "Using provided Agglayer E2E repo at: $E2E_REPO_PATH"
-
-    aggsender_find_imported_bridge_bin="./target/aggsender_find_imported_bridge"
+    aggsender_find_imported_bridge_bin="$PROJECT_ROOT/target/aggsender_find_imported_bridge"
     if [ ! -f "$aggsender_find_imported_bridge_bin" ]; then
         log_error "The aggsender imported bridges monitor tool is not built. Expected path: $aggsender_find_imported_bridge_bin"
         exit 1
     fi
-
     cp "$aggsender_find_imported_bridge_bin" "$E2E_REPO_PATH/aggsender_find_imported_bridge"
-    chmod +x "$E2E_REPO_PATH/aggsender_find_imported_bridge"
 
+    log_info "Using provided Agglayer E2E repo at: $E2E_REPO_PATH"
     pushd "$E2E_REPO_PATH" >/dev/null
 
     log_info "Setting up e2e environment..."
@@ -167,15 +164,13 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        # bats ./tests/op/optimistic-mode.bats \
-        #      ./tests/aggkit/bridge-e2e.bats \
-        #      ./tests/aggkit/e2e-pp.bats \
-        #      ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
-        #      ./tests/aggkit/bridge-e2e-nightly.bats \
-        #      ./tests/aggkit/internal-claims.bats \
-        #      ./tests/aggkit/claim-reetrancy.bats
-        # ;;
-        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
+        bats ./tests/op/optimistic-mode.bats \
+             ./tests/aggkit/bridge-e2e.bats \
+             ./tests/aggkit/e2e-pp.bats \
+             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
+             ./tests/aggkit/bridge-e2e-nightly.bats \
+             ./tests/aggkit/internal-claims.bats \
+             ./tests/aggkit/claim-reetrancy.bats
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats
@@ -196,7 +191,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
         bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
         ;;
     multi-l2-networks-2-chains)
-        bats ./tests/aggkit/bridge-e2e-2-l2s.bats
+        bats ./tests/aggkit/bridge-e2e-2-chains.bats
         ;;
     multi-l2-networks-3-chains)
         bats ./tests/aggkit/bridge-e2e-3-chains.bats
