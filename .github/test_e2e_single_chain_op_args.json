@@ -2,6 +2,8 @@
   "args": {
     "verbosity": "debug",
     "aggkit_image": "aggkit:local",
-    "consensus_contract_type": "pessimistic"
+    "consensus_contract_type": "pessimistic",
+    "additional_services": [
+    ]
   }
 }
