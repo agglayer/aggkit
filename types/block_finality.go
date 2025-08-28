@@ -17,8 +17,6 @@ import (
 type BlockNumberFinality struct {
 	Block  BlockNumber
 	Offset int64
-	// IfNotFoundReturnsZeroFlag indicates whether to return zero if the block is not found
-	IfNotFoundReturnsZeroFlag bool
 }
 
 // NewBlockNumberFinality creates a new BlockNumberFinality from a string
@@ -95,6 +93,8 @@ func (BlockNumberFinality) JSONSchema() *jsonschema.Schema {
 		Examples: []interface{}{
 			"SafeBlock",
 			"LatestBlock",
+			"LatestBlock/-5",
+			"FinalizedBlock/10",
 		},
 	}
 }
@@ -120,13 +120,8 @@ func (b BlockNumberFinality) IsLatest() bool {
 func (b *BlockNumberFinality) BlockNumber(ctx context.Context, requester ethereum.ChainReader) (uint64, error) {
 	blockHeader, err := requester.HeaderByNumber(ctx, b.Block.toBigInt())
 	if err != nil {
-		if strings.Contains(err.Error(), "block not found") && b.IfNotFoundReturnsZeroFlag {
-			log.Warnf("block %s not found, assuming 0", b.String())
-			return 0, nil
-		} else {
-			log.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %s", b.String(), err.Error())
-			return 0, err
-		}
+		log.Errorf("BlockNumberFinality.BlockNumber: Error getting block %s. Err: %s", b.String(), err.Error())
+		return 0, err
 	}
 	return b.Block.ApplyOffset(blockHeader.Number.Uint64(), b.Offset), nil
 }
