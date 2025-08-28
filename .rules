@@ -55,7 +55,7 @@ The main binary accepts a `--components` flag to specify which components to run
 ./target/aggkit run --cfg config.toml --components aggoracle,aggsender,bridge
 ```
 
-Available components: aggoracle, aggsender, bridge, aggchain-proof-gen, l1infotreesync
+Available components: aggoracle, aggsender, bridge, aggchain-proof-gen, l1infotreesync, l2bridgesync, l1bridgesync, l2gersync
 
 ### Configuration
 - Uses TOML configuration files
