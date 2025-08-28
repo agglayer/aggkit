@@ -157,6 +157,7 @@ jobs:
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
       test-name: "test-single-l2-network-fork12-pessimistic"
+      aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       event-name: ${{ github.event_name }}
 
   check-single-l2-network-fork12-pessimistic-tests-result:
