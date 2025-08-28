@@ -54,7 +54,7 @@ jobs:
             fi
           else
             # For push/workflow_dispatch, use the fixed commit
-            COMMIT="14e42da8ab67adc32b2be8b8ca1f4f517b6977ad"
+            COMMIT="76992889abcdf5a58d77a9d6e4600d69f343d181"
             echo "Using fixed kurtosis-cdk commit: ${COMMIT}"
           fi
           echo "commit=${COMMIT}" >> $GITHUB_OUTPUT
@@ -77,6 +77,8 @@ jobs:
       kurtosis-cdk-args-single-fork12-pessimistic: ${{ steps.read-args.outputs.fork12_pessimistic_args }}
       # single l2 network (fork 12, global index pp old contracts)
       kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts: ${{ steps.read-args.outputs.fork12_global_index_pp_old_contracts_args }}
+      # single l2 network (op, pessimistic)
+      kurtosis-cdk-args-single-op-pessimistic: ${{ steps.read-args.outputs.op_pessimistic_args }}
       # multi l2 networks
       kurtosis-cdk-args-1: ${{ steps.read-args.outputs.kurtosis-cdk-args-1 }}
       kurtosis-cdk-args-2: ${{ steps.read-args.outputs.kurtosis-cdk-args-2 }}
@@ -102,6 +104,9 @@ jobs:
           # single l2 network (fork 12, global index pp old contracts)
           CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_cdk_args_global_index_pp_old_contracts.json | jq -c .)
           echo "fork12_global_index_pp_old_contracts_args=${CONTENT}" >> $GITHUB_OUTPUT
+          # single l2 network (op, pessimistic)
+          CONTENT=$(cat ./.github/test_e2e_single_chain_op_args.json | jq -c .)
+          echo "op_pessimistic_args=${CONTENT}" >> $GITHUB_OUTPUT
           # multi l2 networks
           CONTENT=$(cat ./.github/test_e2e_cdk_args_base.json | jq -c .)
           echo "kurtosis-cdk-args-1=${CONTENT}" >> $GITHUB_OUTPUT
@@ -143,11 +148,11 @@ jobs:
       - build-aggkit-image
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@608505defd4818bfc0bbe5e27ec490d5fff4cd28
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@5429944159fa0e7b7224785fb734715d3f92a7bd
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 608505defd4818bfc0bbe5e27ec490d5fff4cd28
+      agglayer-e2e-ref: 5429944159fa0e7b7224785fb734715d3f92a7bd
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-pessimistic }}
       test-name: "test-single-l2-network-fork12-pessimistic"
@@ -169,12 +174,12 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@608505defd4818bfc0bbe5e27ec490d5fff4cd28
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@5429944159fa0e7b7224785fb734715d3f92a7bd
     secrets: inherit
     if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 608505defd4818bfc0bbe5e27ec490d5fff4cd28
+      agglayer-e2e-ref: 5429944159fa0e7b7224785fb734715d3f92a7bd
       kurtosis-cdk-enclave-name: aggkit
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-fork12-global-index-pp-old-contracts }}
       test-name: "test-single-l2-network-fork12-global-index-pp-old-contracts"
@@ -197,11 +202,11 @@ jobs:
       - build-aggkit-image
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@608505defd4818bfc0bbe5e27ec490d5fff4cd28
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@5429944159fa0e7b7224785fb734715d3f92a7bd
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 608505defd4818bfc0bbe5e27ec490d5fff4cd28
+      agglayer-e2e-ref: 5429944159fa0e7b7224785fb734715d3f92a7bd
       kurtosis-cdk-enclave-name: op
       kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-succinct }}
       test-name: "test-single-l2-network-op-succinct"
@@ -243,6 +248,33 @@ jobs:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-succinct-aggoracle-committee.result) }}
 
+  test-single-l2-network-op-pessimistic:
+    name: Single L2 chain tests (op, pessimistic)
+    needs:
+      - build-aggkit-image
+      - read-aggkit-args
+      - get-kurtosis-cdk-commit
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@5429944159fa0e7b7224785fb734715d3f92a7bd
+    secrets: inherit
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
+    with:
+      kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
+      agglayer-e2e-ref: 5429944159fa0e7b7224785fb734715d3f92a7bd
+      kurtosis-cdk-enclave-name: op
+      kurtosis-cdk-args: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-single-op-pessimistic }}
+      test-name: "test-single-l2-network-op-pessimistic"
+      event-name: ${{ github.event_name }}
+
+  check-single-l2-network-op-pessimistic-tests-result:
+    name: Check results for single l2 network (op, pessimistic)
+    needs:
+      - test-single-l2-network-op-pessimistic
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
+    runs-on: ubuntu-latest
+    steps:
+      - run: exit 1
+        if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-single-l2-network-op-pessimistic.result) }}
+
   test-multi-l2-networks-2-chains:
     name: Multi chains E2E test (2 chains)
     needs:
@@ -250,11 +282,11 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@608505defd4818bfc0bbe5e27ec490d5fff4cd28
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@5429944159fa0e7b7224785fb734715d3f92a7bd
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 608505defd4818bfc0bbe5e27ec490d5fff4cd28
+      agglayer-e2e-ref: 5429944159fa0e7b7224785fb734715d3f92a7bd
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-1 }}
@@ -276,11 +308,11 @@ jobs:
       - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
-    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@608505defd4818bfc0bbe5e27ec490d5fff4cd28
+    uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@5429944159fa0e7b7224785fb734715d3f92a7bd
     secrets: inherit
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
-      agglayer-e2e-ref: 608505defd4818bfc0bbe5e27ec490d5fff4cd28
+      agglayer-e2e-ref: 5429944159fa0e7b7224785fb734715d3f92a7bd
       kurtosis-cdk-enclave-name: aggkit
       aggsender-find-imported-bridge-artifact: aggsender_find_imported_bridge
       kurtosis-cdk-args-1: ${{ needs.read-aggkit-args.outputs.kurtosis-cdk-args-3 }}
@@ -303,6 +335,7 @@ jobs:
       - test-single-l2-network-fork12-pessimistic
       - test-single-l2-network-op-succinct
       - test-single-l2-network-op-succinct-aggoracle-committee
+      - test-single-l2-network-op-pessimistic
       - test-multi-l2-networks-2-chains
       - test-multi-l2-networks-3-chains
       - test-single-l2-network-fork12-global-index-pp-old-contracts
@@ -324,6 +357,7 @@ jobs:
             • Single L2 (pessimistic): ${{ needs.test-single-l2-network-fork12-pessimistic.result == 'success' && '🟢' || '🔴' }}
             • Single L2 (op-succinct): ${{ needs.test-single-l2-network-op-succinct.result == 'success' && '🟢' || '🔴' }}
             • Single L2 (op-succinct with aggoracle committee): ${{ needs.test-single-l2-network-op-succinct-aggoracle-committee.result == 'success' && '🟢' || '🔴' }}
+            • Single L2 (op, pessimistic): ${{ needs.test-single-l2-network-op-pessimistic.result == 'success' && '🟢' || '🔴' }}
             • Multi L2 (2 chains): ${{ needs.test-multi-l2-networks-2-chains.result == 'success' && '🟢' || '🔴' }}
             • Multi L2 (3 chains): ${{ needs.test-multi-l2-networks-3-chains.result == 'success' && '🟢' || '🔴' }}
             • Single L2 (global index pp old contracts): ${{ needs.test-single-l2-network-fork12-global-index-pp-old-contracts.result == 'success' && '🟢' || '🔴' }}

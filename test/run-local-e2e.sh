@@ -13,7 +13,7 @@ log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 trap 'log_error "Script failed at line $LINENO"' ERR
 
 if [ "$#" -lt 3 ]; then
-    echo "Usage: $0 <test_type: single-l2-network-op-succinct | single-l2-network-op-succinct-aggoracle-committee | single-l2-network-fork12-pessimistic | single-l2-network-fork12-global-index-pp-old-contracts | multi-l2-networks-2-chains | multi-l2-networks-3-chains> <kurtosis_repo_path> <e2e_repo_path>"
+    echo "Usage: $0 <test_type: single-l2-network-op-succinct | single-l2-network-op-succinct-aggoracle-committee | single-l2-network-fork12-pessimistic | single-l2-network-fork12-global-index-pp-old-contracts | single-l2-network-op-pessimistic | multi-l2-networks-2-chains | multi-l2-networks-3-chains> <kurtosis_repo_path> <e2e_repo_path>"
     echo ""
     echo "Arguments:"
     echo "  test_type           Type of test to run"
@@ -47,6 +47,9 @@ single-l2-network-fork12-pessimistic)
     ;;
 single-l2-network-fork12-global-index-pp-old-contracts)
     ENCLAVE_NAME="aggkit"
+    ;;
+single-l2-network-op-pessimistic)
+    ENCLAVE_NAME="op"
     ;;
 multi-l2-networks-2-chains)
     ENCLAVE_NAME="aggkit"
@@ -105,6 +108,9 @@ if [ "$KURTOSIS_REPO_PATH" != "-" ]; then
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_cdk_args_global_index_pp_old_contracts.json" > /tmp/merged_args_1.json
         kurtosis run --enclave "$ENCLAVE_NAME" --args-file /tmp/merged_args_1.json .
         ;;
+    single-l2-network-op-pessimistic)
+        kurtosis run --enclave "$ENCLAVE_NAME" --args-file "$PROJECT_ROOT/.github/test_e2e_single_chain_op_args.json" .
+        ;;
     multi-l2-networks-2-chains)
         jq -s '.[0] * .[1]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_1.json
         jq -s '.[0] * .[1] * .[2]' "$PROJECT_ROOT/.github/test_e2e_cdk_args_base.json" "$PROJECT_ROOT/.github/test_e2e_multi_chains_args_2.json" "$PROJECT_ROOT/.github/test_e2e_gas_token_enabled_args.json" > /tmp/merged_args_2.json
@@ -161,17 +167,31 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
     log_info "Running BATS E2E tests..."
     case "$TEST_TYPE" in
     single-l2-network-op-succinct)
-        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
+        bats ./tests/op/optimistic-mode.bats \
+             ./tests/aggkit/bridge-e2e.bats \
+             ./tests/aggkit/e2e-pp.bats \
+             ./tests/aggkit/bridge-sovereign-chain-e2e.bats \
+             ./tests/aggkit/bridge-e2e-nightly.bats \
+             ./tests/aggkit/internal-claims.bats \
+             ./tests/aggkit/claim-reetrancy.bats
         ;;
     single-l2-network-op-succinct-aggoracle-committee)
         bats ./tests/aggkit/bridge-e2e-aggoracle-committee.bats
         ;;
     single-l2-network-fork12-pessimistic)
-        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
+        bats ./tests/aggkit/bridge-e2e.bats \
+             ./tests/aggkit/e2e-pp.bats \
+             ./tests/aggkit/bridge-e2e-custom-gas.bats \
+             ./tests/aggkit/bridge-e2e-nightly.bats \
+             ./tests/aggkit/internal-claims.bats \
+             ./tests/aggkit/claim-reetrancy.bats
         ;;
     single-l2-network-fork12-global-index-pp-old-contracts)
         bats \
             ./tests/aggkit/global-index-pp-old-contracts.bats
+        ;;
+    single-l2-network-op-pessimistic)
+        bats ./tests/aggkit/bridge-sovereign-chain-e2e.bats
         ;;
     multi-l2-networks-2-chains)
         bats ./tests/aggkit/bridge-e2e-2-l2s.bats
