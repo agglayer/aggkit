@@ -147,6 +147,7 @@ func NewFlow(
 			baseFlow,
 			gerQuerier,
 			l2BridgeQuerier,
+			bridgeL2SovereignReader,
 		)
 
 		return NewAggchainProverFlow(

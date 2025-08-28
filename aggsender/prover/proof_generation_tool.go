@@ -114,6 +114,7 @@ func NewAggchainProofGenerationTool(
 		baseFlow,
 		query.NewGERDataQuerier(l1InfoTreeQuerier, l2GERReader),
 		query.NewBridgeDataQuerier(logger, l2Syncer, time.Second, bridgeL2SovereignReader),
+		bridgeL2SovereignReader,
 	)
 
 	return &AggchainProofGenerationTool{

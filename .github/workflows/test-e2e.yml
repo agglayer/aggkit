@@ -252,6 +252,7 @@ jobs:
     name: Single L2 chain tests (op, pessimistic)
     needs:
       - build-aggkit-image
+      - build-tools
       - read-aggkit-args
       - get-kurtosis-cdk-commit
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-single-chain.yml@3f9e85a176be4b722bb3e2408cecc8c14ce0eb2d

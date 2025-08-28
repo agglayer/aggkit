@@ -8,6 +8,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	"google.golang.org/grpc/codes"
@@ -25,13 +26,14 @@ var _ types.AggchainProofQuerier = (*aggchainProofQuery)(nil)
 // needed for querying proofs, converting bridge exits, accessing L1 info tree data,
 // querying local exit roots, signing optimistically, and querying GER (Global Exit Root).
 type aggchainProofQuery struct {
-	log                   types.Logger
-	aggchainProofClient   types.AggchainProofClientInterface
-	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
-	lerQuerier            types.LocalExitRootQuery
-	optimisticSigner      types.OptimisticSigner
-	gerQuerier            types.GERQuerier
-	bridgeQuerier         types.BridgeQuerier
+	log                     types.Logger
+	aggchainProofClient     types.AggchainProofClientInterface
+	l1InfoTreeDataQuerier   types.L1InfoTreeDataQuerier
+	lerQuerier              types.LocalExitRootQuery
+	optimisticSigner        types.OptimisticSigner
+	gerQuerier              types.GERQuerier
+	bridgeQuerier           types.BridgeQuerier
+	bridgeL2SovereignReader types.BridgeL2SovereignReader
 }
 
 // NewAggchainProofQuery creates a new instance of aggchainProofQuery with the provided dependencies.
@@ -43,15 +45,17 @@ func NewAggchainProofQuery(
 	lerQuerier types.LocalExitRootQuery,
 	gerQuerier types.GERQuerier,
 	bridgeQuerier types.BridgeQuerier,
+	bridgeL2SovereignReader types.BridgeL2SovereignReader,
 ) *aggchainProofQuery {
 	return &aggchainProofQuery{
-		aggchainProofClient:   aggchainproofclient,
-		l1InfoTreeDataQuerier: l1InfoTreeDataQuerier,
-		optimisticSigner:      optimisticSigner,
-		gerQuerier:            gerQuerier,
-		lerQuerier:            lerQuerier,
-		log:                   log,
-		bridgeQuerier:         bridgeQuerier,
+		aggchainProofClient:     aggchainproofclient,
+		l1InfoTreeDataQuerier:   l1InfoTreeDataQuerier,
+		optimisticSigner:        optimisticSigner,
+		gerQuerier:              gerQuerier,
+		lerQuerier:              lerQuerier,
+		log:                     log,
+		bridgeQuerier:           bridgeQuerier,
+		bridgeL2SovereignReader: bridgeL2SovereignReader,
 	}
 }
 
@@ -148,6 +152,19 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		root.String(), request.String())
 
 	// TODO - filter unset claims from certBuildParams
+	// Filter out claims from certBuildParams that have corresponding unset claims
+	// An unset claim has the same global index as a claim but with higher block number and block position
+
+	// Get the original unset claims with global index information
+	originalUnsetClaims, err := a.bridgeL2SovereignReader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
+	if err != nil {
+		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting original unset claims: %w", err)
+	}
+
+	filteredClaims := a.filterClaimsWithUnsetClaims(certBuildParams.Claims, originalUnsetClaims)
+
+	// Update certBuildParams with filtered claims
+	certBuildParams.Claims = filteredClaims
 
 	return aggchainProof, root, nil
 }
@@ -199,4 +216,51 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 	}
 
 	return importedBridgeExits, nil
+}
+
+// filterClaimsWithUnsetClaims filters out claims that have corresponding unset claims.
+// An unset claim has the same global index as a claim but with higher block number and block position.
+func (a *aggchainProofQuery) filterClaimsWithUnsetClaims(
+	claims []bridgesync.Claim,
+	unsetClaims []*bridgesynctypes.Unclaim,
+) []bridgesync.Claim {
+	// Create a map to track which claims should be filtered out based on global index
+	claimsToFilter := make(map[string]bool)
+
+	// For each unset claim, find claims with the same global index that should be filtered out
+	for _, unsetClaim := range unsetClaims {
+		for _, claim := range claims {
+			// Check if the global indices match
+			if claim.GlobalIndex != nil && unsetClaim.GlobalIndex != nil &&
+				claim.GlobalIndex.Cmp(unsetClaim.GlobalIndex) == 0 {
+				// Check if this unset claim corresponds to this claim
+				// An unset claim corresponds if it has a higher block number and block position
+				if unsetClaim.BlockNumber > claim.BlockNum ||
+					(unsetClaim.BlockNumber == claim.BlockNum && uint64(unsetClaim.BlockIndex) > claim.BlockPos) {
+					// This unset claim corresponds to this claim
+					// Create a key for the claim to mark it for filtering
+					claimKey := fmt.Sprintf("%d_%d_%s", claim.BlockNum, claim.BlockPos, claim.GlobalIndex.String())
+					claimsToFilter[claimKey] = true
+				}
+			}
+		}
+	}
+
+	filteredClaims := make([]bridgesync.Claim, 0, len(claims))
+
+	for _, claim := range claims {
+		// Create a key for the claim
+		claimKey := fmt.Sprintf("%d_%d_%s", claim.BlockNum, claim.BlockPos, claim.GlobalIndex.String())
+
+		// Check if this claim should be filtered out
+		if claimsToFilter[claimKey] {
+			// This claim corresponds to an unset claim, filter it out
+			continue
+		}
+
+		// Keep this claim as it doesn't correspond to an unset claim
+		filteredClaims = append(filteredClaims, claim)
+	}
+
+	return filteredClaims
 }
