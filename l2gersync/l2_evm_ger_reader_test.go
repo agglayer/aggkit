@@ -86,10 +86,15 @@ func TestL2EVMGERReader_GetInjectedGERsForRange(t *testing.T) {
 		gerReader, err := NewL2EVMGERReader(l2.GERAddr, l2.SimBackend.Client(), l1InfoTreeSync)
 		require.NoError(t, err)
 
+		// Ensure we have enough blocks by committing several times
+		for i := 0; i < 10; i++ {
+			l2.SimBackend.Commit()
+		}
+
 		tx, err := l2.GERManagerSovereignSC.InsertGlobalExitRoot(l2.Auth, common.HexToHash("0x1234567890abcdef1234567890abcdef12345678"))
 		require.NoError(t, err)
 
-		// commit one block so the current block is block 6
+		// commit one block so the current block is block 11
 		l2.SimBackend.Commit()
 
 		receipt, err := l2.SimBackend.Client().TransactionReceipt(ctx, tx.Hash())
@@ -98,7 +103,11 @@ func TestL2EVMGERReader_GetInjectedGERsForRange(t *testing.T) {
 
 		expectedGER := common.HexToHash("0x1234567890abcdef1234567890abcdef12345678")
 
-		injectedGERs, err := gerReader.GetInjectedGERsForRange(ctx, 1, 10)
+		// Query from block 1 to the current block to ensure we capture the event
+		currentBlock, err := l2.SimBackend.Client().BlockNumber(ctx)
+		require.NoError(t, err)
+
+		injectedGERs, err := gerReader.GetInjectedGERsForRange(ctx, 1, currentBlock)
 		require.NoError(t, err)
 		require.Len(t, injectedGERs, 1)
 

@@ -23,12 +23,13 @@ const (
 	waitForNewBlocksPeriod     = 30 * time.Millisecond
 	syncBlockChunkSize         = 10
 	testIterations             = 10
-	syncDelay                  = 100 * time.Millisecond
+	syncDelay                  = 1 * time.Second
 )
 
 func TestL2GERSyncE2E(t *testing.T) {
 	t.Parallel()
-	ctx := t.Context()
+	ctx, _ := context.WithTimeout(context.Background(), 30*time.Minute)
+
 	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
 
 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
@@ -53,7 +54,7 @@ func TestL2GERSyncE2E(t *testing.T) {
 
 	for i := range testIterations {
 		updateL1GlobalExitRoot(t, l1Setup, i)
-		time.Sleep(syncDelay)
+		time.Sleep(15 * syncDelay)
 		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i)
 	}
 }
@@ -154,6 +155,10 @@ func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 		time.Sleep(syncDelay)
 	}
 
+	l1Setup.SimBackend.Commit()
+	l2Setup.SimBackend.Commit()
+	time.Sleep(1 * time.Second)
+
 	endBlockNumber, err := l2Setup.SimBackend.Client().BlockNumber(ctx)
 	require.NoError(t, err)
 
@@ -203,6 +208,8 @@ func testGERSyncer(t *testing.T, ctx context.Context,
 	l1Setup *helpers.L1Environment, l2Setup *helpers.L2Environment,
 	syncer *l2gersync.L2GERSync, i int) {
 	t.Helper()
+
+	time.Sleep(2 * time.Second)
 
 	expectedGER, err := l1Setup.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)

@@ -44,7 +44,11 @@ func NewFlow(
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+		l2chainID, err := rollupDataQuerier.GetRollupChainID()
+		if err != nil {
+			return nil, fmt.Errorf("error getting rollup chain id: %w", err)
+		}
+		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger, l2chainID)
 		if err != nil {
 			return nil, err
 		}
@@ -84,7 +88,11 @@ func NewFlow(
 			return nil, fmt.Errorf("invalid aggkit prover client config: %w", err)
 		}
 
-		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger)
+		l2chainID, err := rollupDataQuerier.GetRollupChainID()
+		if err != nil {
+			return nil, fmt.Errorf("error getting rollup chain id: %w", err)
+		}
+		signer, err := initializeSigner(ctx, cfg.AggsenderPrivateKey, logger, l2chainID)
 		if err != nil {
 			return nil, err
 		}
@@ -102,7 +110,7 @@ func NewFlow(
 			return nil, fmt.Errorf("aggchainProverFlow - error reading sovereign rollup: %w", err)
 		}
 		optimisticSigner, optimisticModeQuerier, err := optimistic.NewOptimistic(
-			ctx, logger, l1Client, cfg.OptimisticModeConfig)
+			ctx, logger, l1Client, l2chainID, cfg.OptimisticModeConfig)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
@@ -164,8 +172,9 @@ func initializeSigner(
 	ctx context.Context,
 	signerCfg signerTypes.SignerConfig,
 	logger *log.Logger,
+	l2chainID uint64,
 ) (signerTypes.Signer, error) {
-	signer, err := signer.NewSigner(ctx, 0, signerCfg, aggkitcommon.AGGSENDER, logger)
+	signer, err := signer.NewSigner(ctx, l2chainID, signerCfg, aggkitcommon.AGGSENDER, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
 	}

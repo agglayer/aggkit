@@ -173,6 +173,7 @@ type CertificateStatusChecker interface {
 // RollupDataQuerier is an interface that abstracts interaction with the rollup manager contract
 type RollupDataQuerier interface {
 	GetRollupData(blockNumber *big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
+	GetRollupChainID() (uint64, error)
 }
 
 // LERQuerier is an interface defining functions that a Local Exit Root querier should implement
