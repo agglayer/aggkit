@@ -19,6 +19,8 @@ import (
 const (
 	DefaultWaitPeriodBlockNotFound = time.Millisecond * 100
 	MaxRetryCountBlockHashMismatch = 5
+	// DefaultFilterLogsTimeout is the default timeout for filter logs operations to prevent hanging
+	DefaultFilterLogsTimeout = 2 * time.Minute
 )
 
 var (
@@ -414,6 +416,9 @@ func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fro
 
 		var attempts int
 		for {
+			ctx, cancel := context.WithTimeout(ctx, DefaultFilterLogsTimeout)
+			defer cancel()
+
 			logs, err := d.ethClient.FilterLogs(ctx, query)
 			if err == nil {
 				results = append(results, logs...)

@@ -449,21 +449,43 @@ func TestFilterQueryToString(t *testing.T) {
 }
 
 func TestGetLogs(t *testing.T) {
-	mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
-	sut := EVMDownloaderImplementation{
-		ethClient:        mockEthClient,
-		addressesToQuery: []common.Address{contractAddr},
-		log:              log.WithFields("test", "EVMDownloaderImplementation"),
-		rh: &RetryHandler{
-			RetryAfterErrorPeriod:      time.Millisecond,
-			MaxRetryAttemptsAfterError: 5,
-		},
-	}
-	ctx := context.TODO()
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, errors.New("foo")).Once()
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, nil).Once()
-	logs := sut.GetLogs(ctx, 0, 1)
-	require.Equal(t, []types.Log{}, logs)
+	t.Run("timeout scenario", func(t *testing.T) {
+		mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		sut := EVMDownloaderImplementation{
+			ethClient:        mockEthClient,
+			addressesToQuery: []common.Address{contractAddr},
+			log:              log.WithFields("test", "EVMDownloaderImplementation"),
+			rh: &RetryHandler{
+				RetryAfterErrorPeriod:      time.Millisecond,
+				MaxRetryAttemptsAfterError: 5,
+			},
+		}
+		ctx := context.TODO()
+		// First call times out (after 40 seconds, which is longer than the 30-second timeout)
+		mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("network error %w", context.DeadlineExceeded)).After(time.Second * 40).Once()
+		// Second call succeeds after retry
+		mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, nil).Once()
+		logs := sut.GetLogs(ctx, 0, 1)
+		require.Equal(t, []types.Log{}, logs)
+	})
+
+	t.Run("success scenario", func(t *testing.T) {
+		mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		sut := EVMDownloaderImplementation{
+			ethClient:        mockEthClient,
+			addressesToQuery: []common.Address{contractAddr},
+			log:              log.WithFields("test", "EVMDownloaderImplementation"),
+			rh: &RetryHandler{
+				RetryAfterErrorPeriod:      time.Millisecond,
+				MaxRetryAttemptsAfterError: 5,
+			},
+		}
+		ctx := context.TODO()
+		// Call succeeds immediately
+		mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, nil).Once()
+		logs := sut.GetLogs(ctx, 0, 1)
+		require.Equal(t, []types.Log{}, logs)
+	})
 }
 
 func TestDownloadBeforeFinalized(t *testing.T) {
@@ -614,7 +636,7 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 
 	// First call returns "too many results" error
 	tooManyResultsErr := errors.New("Query returned more than 20000 results.")
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, tooManyResultsErr).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, tooManyResultsErr).Once()
 
 	// Second call for first batch (100-149) succeeds
 	firstBatchLogs := []types.Log{
@@ -625,7 +647,7 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 			BlockHash:   common.HexToHash("0x123"),
 		},
 	}
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(firstBatchLogs, nil).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(firstBatchLogs, nil).Once()
 
 	// Third call for second batch (150-199) succeeds
 	secondBatchLogs := []types.Log{
@@ -636,7 +658,7 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 			BlockHash:   common.HexToHash("0x456"),
 		},
 	}
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(secondBatchLogs, nil).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(secondBatchLogs, nil).Once()
 
 	// Fourth call for third batch (200-200) succeeds
 	thirdBatchLogs := []types.Log{
@@ -647,7 +669,7 @@ func TestTooManyResultsErrorHandling(t *testing.T) {
 			BlockHash:   common.HexToHash("0x789"),
 		},
 	}
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(thirdBatchLogs, nil).Once()
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(thirdBatchLogs, nil).Once()
 
 	result := sut.getUnfilteredLogs(ctx, fromBlock, toBlock)
 
