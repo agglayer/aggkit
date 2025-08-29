@@ -164,24 +164,27 @@ func (a *AgglayerGRPCClient) GetNetworkStatus(ctx context.Context, networkID uin
 }
 
 func convertProtoNetworkStatus(status *v1nodetypes.NetworkStatus) (types.NetworkStatus, error) {
-	var settledCertID common.Hash
+	var settledCertID *common.Hash
 	if status.SettledCertificateId != nil {
-		settledCertID = common.BytesToHash(status.SettledCertificateId.Value.Value)
+		certID := common.BytesToHash(status.SettledCertificateId.Value.Value)
+		settledCertID = &certID
 	}
 
-	var settledPPRoot common.Hash
+	var settledPPRoot *common.Hash
 	if status.SettledPpRoot != nil {
-		settledPPRoot = common.BytesToHash(status.SettledPpRoot.Value)
+		ppRoot := common.BytesToHash(status.SettledPpRoot.Value)
+		settledPPRoot = &ppRoot
 	}
 
-	var settledLER common.Hash
+	var settledLER *common.Hash
 	if status.SettledLer != nil {
-		settledLER = common.BytesToHash(status.SettledLer.Value)
+		lER := common.BytesToHash(status.SettledLer.Value)
+		settledLER = &lER
 	}
 
-	var settledClaim *types.SettledClaim
+	var settledClaim *types.SettledImportedBridgeExit
 	if status.SettledClaim != nil {
-		settledClaim = &types.SettledClaim{
+		settledClaim = &types.SettledImportedBridgeExit{
 			BridgeExitHash: common.BytesToHash(status.SettledClaim.BridgeExitHash.Value),
 			GlobalIndex:    new(big.Int).SetBytes(status.SettledClaim.GlobalIndex.Value),
 		}
@@ -205,7 +208,7 @@ func convertProtoNetworkStatus(status *v1nodetypes.NetworkStatus) (types.Network
 		SettledPPRoot:             settledPPRoot,
 		SettledLER:                settledLER,
 		SettledLETLeafCount:       status.SettledLetLeafCount,
-		SettledClaim:              settledClaim,
+		SettledImportedBridgeExit: settledClaim,
 		LatestPendingHeight:       status.LatestPendingHeight,
 		LatestPendingStatus:       latestPendingStatus,
 		LatestPendingError:        status.LatestPendingError,

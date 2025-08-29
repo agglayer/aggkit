@@ -641,11 +641,11 @@ func TestGetNetworkStatus(t *testing.T) {
 		require.Equal(t, expectedProto.SettledLer.Value, resp.SettledLER.Bytes())
 
 		// compare settled claim
-		expectedClaim := &types.SettledClaim{
+		expectedClaim := &types.SettledImportedBridgeExit{
 			GlobalIndex:    new(big.Int).SetBytes(expectedProto.SettledClaim.GlobalIndex.Value),
 			BridgeExitHash: common.BytesToHash(expectedProto.SettledClaim.BridgeExitHash.Value),
 		}
-		require.Equal(t, expectedClaim, resp.SettledClaim)
+		require.Equal(t, expectedClaim, resp.SettledImportedBridgeExit)
 
 		// LatestPendingStatus defaults to types.Pending when proto field is empty
 		require.Equal(t, types.Settled, resp.LatestPendingStatus)

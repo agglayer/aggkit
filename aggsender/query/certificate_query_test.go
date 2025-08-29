@@ -48,14 +48,14 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				}, nil)
 
 				networkStatus := agglayertypes.NetworkStatus{
-					SettledClaim: &agglayertypes.SettledClaim{
+					SettledImportedBridgeExit: &agglayertypes.SettledImportedBridgeExit{
 						BridgeExitHash: common.HexToHash("0xe3e297278c7df4ae4f235be10155ac62c53b08e2a14ed09b7dd6b688952ee883"),
 						GlobalIndex:    bridgesync.GenerateGlobalIndex(true, 0, 1),
 					},
 				}
 				agglayerClient.EXPECT().GetNetworkStatus(ctx, uint32(0)).Return(networkStatus, nil)
 
-				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, networkStatus.SettledClaim.GlobalIndex).Return([]bridgesync.Claim{
+				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, networkStatus.SettledImportedBridgeExit.GlobalIndex).Return([]bridgesync.Claim{
 					{
 						BlockNum:    150,
 						GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 1),
@@ -74,13 +74,13 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				networkStatus := agglayertypes.NetworkStatus{
-					SettledClaim: &agglayertypes.SettledClaim{
+					SettledImportedBridgeExit: &agglayertypes.SettledImportedBridgeExit{
 						GlobalIndex:    bridgesync.GenerateGlobalIndex(true, 0, 1),
 						BridgeExitHash: common.HexToHash("0xe3e297278c7df4ae4f235be10155ac62c53b08e2a14ed09b7dd6b688952ee883"),
 					},
 				}
 				agglayerClient.EXPECT().GetNetworkStatus(ctx, uint32(0)).Return(networkStatus, nil)
-				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, networkStatus.SettledClaim.GlobalIndex).Return([]bridgesync.Claim{
+				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, networkStatus.SettledImportedBridgeExit.GlobalIndex).Return([]bridgesync.Claim{
 					{
 						BlockNum:    50,
 						GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 1),
@@ -136,13 +136,13 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 			},
 			mockFn: func(aggchainQuerier *mocks.AggchainFEPRollupQuerier, agglayerClient *agglayermocks.AgglayerClientMock, bridgeSyncer *mocks.L2BridgeSyncer) {
 				networkStatus := agglayertypes.NetworkStatus{
-					SettledClaim: &agglayertypes.SettledClaim{
+					SettledImportedBridgeExit: &agglayertypes.SettledImportedBridgeExit{
 						GlobalIndex:    bridgesync.GenerateGlobalIndex(true, 0, 1),
 						BridgeExitHash: common.HexToHash("0xe3e297278c7df4ae4f235be10155ac62c53b08e2a14ed09b7dd6b688952ee883"),
 					},
 				}
 				agglayerClient.EXPECT().GetNetworkStatus(ctx, uint32(0)).Return(networkStatus, nil)
-				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, networkStatus.SettledClaim.GlobalIndex).Return(nil, errors.New("claim not found"))
+				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, networkStatus.SettledImportedBridgeExit.GlobalIndex).Return(nil, errors.New("claim not found"))
 			},
 			expectedErr: "failed to get claim by global index",
 		},

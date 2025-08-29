@@ -1350,15 +1350,15 @@ type NetworkStatus struct {
 	// SettledHeight is the height of the latest settled certificate
 	SettledHeight uint64 `json:"settled_height"`
 	// SettledCertificateID is the ID of the latest settled certificate
-	SettledCertificateID common.Hash `json:"settled_certificate_id"`
+	SettledCertificateID *common.Hash `json:"settled_certificate_id"`
 	// SettledPPRoot pessimistic proof root of the latest settled certificate
-	SettledPPRoot common.Hash `json:"settled_pp_root"`
+	SettledPPRoot *common.Hash `json:"settled_pp_root"`
 	// SettledLER is the local exit root of the latest settled certificate
-	SettledLER common.Hash `json:"settled_ler"`
+	SettledLER *common.Hash `json:"settled_ler"`
 	// SettledLETLeafCount is the leaf count of the latest settled local exit tree
 	SettledLETLeafCount uint64 `json:"settled_let_leaf_count"`
-	// SettledClaim is the information about the latest settled claim
-	SettledClaim *SettledClaim `json:"settled_claim,omitempty"`
+	// SettledImportedBridgeExit is the information about the latest settled claim
+	SettledImportedBridgeExit *SettledImportedBridgeExit `json:"settled_claim,omitempty"`
 	// LatestPendingHeight is the height of the latest pending certificate
 	LatestPendingHeight uint64 `json:"latest_pending_height"`
 	// LatestPendingCertificateID is the status of the latest pending certificate (e.g., "Proven", "Pending", "InError")
@@ -1369,8 +1369,8 @@ type NetworkStatus struct {
 	LatestEpochWithSettlement uint64 `json:"latest_epoch_with_settlement"`
 }
 
-// SettledClaim represents the information about a settled claim
-type SettledClaim struct {
+// SettledImportedBridgeExit represents the information about a settled claim
+type SettledImportedBridgeExit struct {
 	GlobalIndex    *big.Int    `json:"global_index"`
 	BridgeExitHash common.Hash `json:"bridge_exit_hash"`
 }
