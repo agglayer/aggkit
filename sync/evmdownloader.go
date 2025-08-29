@@ -20,7 +20,7 @@ const (
 	DefaultWaitPeriodBlockNotFound = time.Millisecond * 100
 	MaxRetryCountBlockHashMismatch = 5
 	// DefaultFilterLogsTimeout is the default timeout for filter logs operations to prevent hanging
-	DefaultFilterLogsTimeout = 30 * time.Second
+	DefaultFilterLogsTimeout = 2 * time.Minute
 )
 
 var (
