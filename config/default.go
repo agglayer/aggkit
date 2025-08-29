@@ -182,7 +182,6 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 AggsenderPrivateKey = {{AggsenderPrivateKey}}
-BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
 DelayBetweenRetries = "30s"

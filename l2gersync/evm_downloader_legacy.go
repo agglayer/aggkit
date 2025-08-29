@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonzkevmglobalexitrootv2"
@@ -55,7 +54,7 @@ func newDownloaderLegacy(
 	l1InfoTreeSync L1InfoTreeQuerier,
 	processor *processor,
 	rh *sync.RetryHandler,
-	blockFinality *big.Int,
+	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 ) (*downloaderLegacy, error) {
 	l2GERManager, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(

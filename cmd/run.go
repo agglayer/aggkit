@@ -216,7 +216,11 @@ func createAggSenderValidator(ctx context.Context,
 	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
 
-	signer, err := signer.NewSigner(ctx, 0, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
+	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
+	if err != nil {
+		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
+	}
+	signer, err := signer.NewSigner(ctx, l2ChainID, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
 	}
@@ -279,7 +283,7 @@ func createAggSender(
 	}
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
-			BlockFinalityType:     aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+			BlockFinalityType:     aggkittypes.LatestBlock,
 			CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 		}, logger, nil)
 	if err != nil {
@@ -589,7 +593,7 @@ func runL2GERSyncIfNeeded(
 		l1InfoTreeSync,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
-		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+		cfg.BlockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
@@ -659,7 +663,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+		cfg.BlockFinality,
 		reorgDetectorL2,
 		l2Client,
 		cfg.InitialBlockNum,
