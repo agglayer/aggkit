@@ -102,6 +102,10 @@ func (e *L2EVMGERReader) GetInjectedGERsForRange(ctx context.Context,
 // GetRemovedGERsForRange returns the removed GlobalExitRoots for the given block range
 func (e *L2EVMGERReader) GetRemovedGERsForRange(ctx context.Context,
 	fromBlock, toBlock uint64) ([]*agglayertypes.RemovedGER, error) {
+	if fromBlock > toBlock {
+		return nil, fmt.Errorf("invalid block range: fromBlock(%d) > toBlock(%d)", fromBlock, toBlock)
+	}
+
 	removalIterator, err := e.l2GERManager.FilterUpdateRemovalHashChainValue(
 		&bind.FilterOpts{
 			Context: ctx,

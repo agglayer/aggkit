@@ -151,7 +151,11 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		// commit one block so the current block is block 6
 		l2.SimBackend.Commit()
 
-		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 1, 10)
+		// Get the current block number
+		currentBlock, err := l2.SimBackend.Client().BlockNumber(ctx)
+		require.NoError(t, err)
+
+		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 1, currentBlock)
 		require.NoError(t, err)
 		require.Len(t, removedGERs, 0)
 	})
@@ -182,11 +186,15 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		// commit another block
 		l2.SimBackend.Commit()
 
+		// Get the current block number
+		currentBlock, err := l2.SimBackend.Client().BlockNumber(ctx)
+		require.NoError(t, err)
+
 		removalReceipt, err := l2.SimBackend.Client().TransactionReceipt(ctx, removalTx.Hash())
 		require.NoError(t, err)
 		require.Equal(t, removalReceipt.Status, types.ReceiptStatusSuccessful)
 
-		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 1, 20)
+		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 1, currentBlock)
 		require.NoError(t, err)
 		require.Len(t, removedGERs, 1)
 
@@ -234,6 +242,10 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		// commit another block
 		l2.SimBackend.Commit()
 
+		// Get the current block number
+		currentBlock, err := l2.SimBackend.Client().BlockNumber(ctx)
+		require.NoError(t, err)
+
 		// Verify all removal transactions were successful
 		removalReceipt1, err := l2.SimBackend.Client().TransactionReceipt(ctx, removalTx1.Hash())
 		require.NoError(t, err)
@@ -247,7 +259,7 @@ func TestL2EVMGERReader_GetRemovedGERsForRange(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, removalReceipt3.Status, types.ReceiptStatusSuccessful)
 
-		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 1, 30)
+		removedGERs, err := gerReader.GetRemovedGERsForRange(ctx, 1, currentBlock)
 		require.NoError(t, err)
 		require.Len(t, removedGERs, 3)
 
