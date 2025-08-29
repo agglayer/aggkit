@@ -2,9 +2,11 @@ package types
 
 import (
 	"fmt"
+	"math/big"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -51,6 +53,7 @@ type CertificateBuildParams struct {
 	ToBlock                        uint64
 	Bridges                        []bridgesync.Bridge
 	Claims                         []bridgesync.Claim
+	Unclaims                       map[*big.Int]*bridgesynctypes.Unclaim
 	CreatedAt                      uint32
 	RetryCount                     int
 	LastSentCertificate            *CertificateHeader
@@ -154,6 +157,8 @@ func (c *CertificateBuildParams) EstimatedSize() uint {
 		sizeClaims += agglayertypes.EstimatedImportedBridgeExitSize
 		sizeClaims += float64(len(claim.Metadata))
 	}
+
+	// TODO - we need to remove the unclaims from the size calculation
 
 	sizeAggchainData := float64(0)
 	switch c.CertificateType {

@@ -93,7 +93,10 @@ type BridgeQuerier interface {
 	OriginNetwork() uint32
 	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
 	GetUnsetClaimsForBlockRange(ctx context.Context,
-		fromBlock, toBlock uint64) ([]*agglayertypes.Unclaim, error)
+		fromBlock, toBlock uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error)
+	GetClaimByGlobalIndex(
+		ctx context.Context, globalIndex *big.Int, blockNumber uint64,
+	) (bridgesync.Claim, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement

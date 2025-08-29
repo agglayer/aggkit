@@ -42,9 +42,10 @@ defaultDBQueryTimeout = "30s"
 
 // This doesnt below to config, but are the vars used
 // to avoid repetition in config-files
+// TODO: Remove this once we have a way to check the storage content compatibility
 const DefaultVars = `
 PathRWData = "/tmp/aggkit"
-RequireStorageContentCompatibility = true
+RequireStorageContentCompatibility = false
 GenerateAggchainProofTimeout = "1h"
 [L2RPC]
 	Mode = "basic"

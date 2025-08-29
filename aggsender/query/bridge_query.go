@@ -3,14 +3,13 @@ package query
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
-	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/crypto"
 )
 
 var _ types.BridgeQuerier = (*bridgeDataQuerier)(nil)
@@ -141,41 +140,27 @@ func (b *bridgeDataQuerier) WaitForSyncerToCatchUp(ctx context.Context, block ui
 }
 
 func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
-	fromBlock, toBlock uint64) ([]*agglayertypes.Unclaim, error) {
+	fromBlock, toBlock uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error) {
 	b.log.Debugf("getting unset claims for block range %d to %d", fromBlock, toBlock)
 	unclaims, err := b.bridgeL2SovereignReader.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get unclaim block range: %w", err)
 	}
 
-	unclaimsConverted := make([]*agglayertypes.Unclaim, len(unclaims))
-
-	for i, unclaim := range unclaims {
-		claim, err := b.bridgeSyncer.GetClaimByGlobalIndex(
-			ctx, unclaim.GlobalIndex, unclaim.BlockNumber,
-		)
-		if err != nil {
-			return nil, fmt.Errorf(
-				"failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %s",
-				err, unclaim.BlockNumber, unclaim.BlockIndex, unclaim.GlobalIndex,
-			)
-		}
-		ibe, err := converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
-		if err != nil {
-			return nil, fmt.Errorf("failed to convert claim to imported bridge exit: %w", err)
-		}
-
-		unclaimHash := crypto.Keccak256Hash(
-			ibe.GlobalIndex.Hash().Bytes(),
-			ibe.BridgeExit.Hash().Bytes(),
-		)
-
-		unclaimsConverted[i] = &agglayertypes.Unclaim{
-			UnclaimHash: unclaimHash,
-			BlockNumber: unclaim.BlockNumber,
-			BlockIndex:  unclaim.BlockIndex,
-		}
+	// convert unclaims to map of global index to unclaim
+	unclaimsMap := make(map[*big.Int]*bridgesynctypes.Unclaim)
+	for _, unclaim := range unclaims {
+		unclaimsMap[unclaim.GlobalIndex] = unclaim
 	}
+	return unclaimsMap, nil
+}
 
-	return unclaimsConverted, nil
+func (b *bridgeDataQuerier) GetClaimByGlobalIndex(
+	ctx context.Context, globalIndex *big.Int, blockNumber uint64,
+) (bridgesync.Claim, error) {
+	claim, err := b.bridgeSyncer.GetClaimByGlobalIndex(ctx, globalIndex, blockNumber)
+	if err != nil {
+		return bridgesync.Claim{}, fmt.Errorf("failed to get claim by global index: %w", err)
+	}
+	return claim, nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -11,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"golang.org/x/crypto/sha3"
@@ -167,6 +169,12 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 		return nil, fmt.Errorf("generateBulidParams fails getting bridges and claims. Err: %w", err)
 	}
 
+	unclaimsMap, err := f.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
+		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock)
+	if err != nil {
+		return nil, fmt.Errorf("error getting unset claims for block range: %w", err)
+	}
+
 	buildParams := &types.CertificateBuildParams{
 		FromBlock:                      preParams.BlockRange.FromBlock,
 		ToBlock:                        preParams.BlockRange.ToBlock,
@@ -178,6 +186,7 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 		CertificateType:                preParams.CertificateType,
 		L1InfoTreeRootFromWhichToProve: preParams.L1InfoTreeToProve.L1InfoTreeRootToProve,
 		L1InfoTreeLeafCount:            preParams.L1InfoTreeToProve.L1InfoTreeLeafCount,
+		Unclaims:                       unclaimsMap,
 	}
 	return buildParams, nil
 }
@@ -267,7 +276,7 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 	}
 
 	bridgeExits := f.getBridgeExits(certParams.Bridges)
-	importedBridgeExits, err := f.getImportedBridgeExits(ctx, certParams.Claims, certParams.L1InfoTreeRootFromWhichToProve)
+	importedBridgeExits, err := f.getImportedBridgeExits(ctx, certParams.Claims, certParams.Unclaims, certParams.L1InfoTreeRootFromWhichToProve)
 	if err != nil {
 		return nil, fmt.Errorf("error getting imported bridge exits: %w", err)
 	}
@@ -334,11 +343,32 @@ func (f *baseFlow) getBridgeExits(bridges []bridgesync.Bridge) []*agglayertypes.
 
 // getImportedBridgeExits converts claims to agglayertypes.ImportedBridgeExit objects and calculates necessary proofs
 func (f *baseFlow) getImportedBridgeExits(
-	ctx context.Context, claims []bridgesync.Claim,
+	ctx context.Context, claims []bridgesync.Claim, unclaimsMap map[*big.Int]*bridgesynctypes.Unclaim,
 	rootFromWhichToProve common.Hash,
 ) ([]*agglayertypes.ImportedBridgeExit, error) {
+	// filter claims which are in unset claims map
+	filteredClaims := make([]bridgesync.Claim, 0, len(claims))
+
+	for _, claim := range claims {
+		shouldInclude := true
+
+		// Check if this claim's global index exists in the unclaims map
+		if unclaim, exists := unclaimsMap[claim.GlobalIndex]; exists {
+			// If the claim has a lower block number and block position than the unclaim,
+			// then remove it from the claims
+			if claim.BlockNum < unclaim.BlockNumber ||
+				(claim.BlockNum == unclaim.BlockNumber && claim.BlockPos < uint64(unclaim.BlockIndex)) {
+				shouldInclude = false
+			}
+		}
+
+		if shouldInclude {
+			filteredClaims = append(filteredClaims, claim)
+		}
+	}
+
 	return converters.ConvertToImportedBridgeExits(
-		ctx, claims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
+		ctx, filteredClaims, rootFromWhichToProve, f.l1InfoTreeDataQuerier)
 }
 
 // getStartLER returns the last local exit root (LER) based on the configuration

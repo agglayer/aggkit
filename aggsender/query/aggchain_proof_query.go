@@ -3,13 +3,16 @@ package query
 import (
 	"context"
 	"fmt"
+	"math/big"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/converters"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/grpc"
 	treetypes "github.com/agglayer/aggkit/tree/types"
+	"github.com/ethereum/go-ethereum/crypto"
 	"google.golang.org/grpc/codes"
 )
 
@@ -103,9 +106,9 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting removed GERs block numbers: %w", err)
 	}
 
-	unsetClaims, err := a.bridgeQuerier.GetUnsetClaimsForBlockRange(ctx, fromBlock, toBlock)
+	unsetClaims, err := a.convertUnclaimsMapToUnclaims(certBuildParams.Unclaims)
 	if err != nil {
-		return nil, nil, fmt.Errorf("aggchainProverFlow - error getting unset claims: %w", err)
+		return nil, nil, fmt.Errorf("aggchainProverFlow - error converting unclaims map to unclaims: %w", err)
 	}
 
 	var aggchainProof *types.AggchainProof
@@ -199,4 +202,40 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 	}
 
 	return importedBridgeExits, nil
+}
+
+// convert unclaims map to imported bridge exits
+func (a *aggchainProofQuery) convertUnclaimsMapToUnclaims(
+	unclaims map[*big.Int]*bridgesynctypes.Unclaim) ([]*agglayertypes.Unclaim, error) {
+	unclaimsConverted := make([]*agglayertypes.Unclaim, len(unclaims))
+
+	for _, unclaim := range unclaims {
+		claim, err := a.bridgeQuerier.GetClaimByGlobalIndex(
+			context.Background(),
+			unclaim.GlobalIndex, unclaim.BlockNumber,
+		)
+		if err != nil {
+			return nil, fmt.Errorf(
+				"failed to get claim by global index: %w, blockNumber: %d, blockIndex: %d, globalIndex: %s",
+				err, unclaim.BlockNumber, unclaim.BlockIndex, unclaim.GlobalIndex,
+			)
+		}
+		ibe, err := converters.ConvertToImportedBridgeExitWithoutClaimData(claim)
+		if err != nil {
+			return nil, fmt.Errorf("failed to convert claim to imported bridge exit: %w", err)
+		}
+
+		unclaimHash := crypto.Keccak256Hash(
+			ibe.GlobalIndex.Hash().Bytes(),
+			ibe.BridgeExit.Hash().Bytes(),
+		)
+
+		unclaimsConverted = append(unclaimsConverted, &agglayertypes.Unclaim{
+			UnclaimHash: unclaimHash,
+			BlockNumber: unclaim.BlockNumber,
+			BlockIndex:  unclaim.BlockIndex,
+		})
+	}
+
+	return unclaimsConverted, nil
 }
