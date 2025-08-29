@@ -276,7 +276,8 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 	}
 
 	bridgeExits := f.getBridgeExits(certParams.Bridges)
-	importedBridgeExits, err := f.getImportedBridgeExits(ctx, certParams.Claims, certParams.Unclaims, certParams.L1InfoTreeRootFromWhichToProve)
+	importedBridgeExits, err := f.getImportedBridgeExits(
+		ctx, certParams.Claims, certParams.Unclaims, certParams.L1InfoTreeRootFromWhichToProve)
 	if err != nil {
 		return nil, fmt.Errorf("error getting imported bridge exits: %w", err)
 	}

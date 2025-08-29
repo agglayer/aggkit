@@ -207,7 +207,7 @@ func (a *aggchainProofQuery) getImportedBridgeExitsForProver(
 // convert unclaims map to imported bridge exits
 func (a *aggchainProofQuery) convertUnclaimsMapToUnclaims(
 	unclaims map[*big.Int]*bridgesynctypes.Unclaim) ([]*agglayertypes.Unclaim, error) {
-	unclaimsConverted := make([]*agglayertypes.Unclaim, len(unclaims))
+	unclaimsConverted := make([]*agglayertypes.Unclaim, 0, len(unclaims))
 
 	for _, unclaim := range unclaims {
 		claim, err := a.bridgeQuerier.GetClaimByGlobalIndex(
