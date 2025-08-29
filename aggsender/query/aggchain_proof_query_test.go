@@ -330,7 +330,6 @@ func TestGenerateAggchainProof(t *testing.T) {
 				).Return(nil)
 				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1}, uint64(101), uint64(200)).Return(nil, nil)
 				gerQuerier.EXPECT().GetRemovedGERsBlockDetails(ctx, uint64(101), uint64(200)).Return(nil, nil)
-				bridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(101), uint64(200)).Return(nil, nil)
 				aggchainProofClient.EXPECT().GenerateAggchainProof(ctx, mock.Anything).
 					Return(nil, errors.New("aggchain proof error"))
 			},
@@ -355,7 +354,6 @@ func TestGenerateAggchainProof(t *testing.T) {
 				).Return(nil)
 				gerQuerier.EXPECT().GetInjectedGERsProofs(ctx, &treetypes.Root{Hash: common.HexToHash("0x123"), Index: 1}, uint64(101), uint64(200)).Return(nil, nil)
 				gerQuerier.EXPECT().GetRemovedGERsBlockDetails(ctx, uint64(101), uint64(200)).Return(nil, nil)
-				bridgeQuerier.EXPECT().GetUnsetClaimsForBlockRange(ctx, uint64(101), uint64(200)).Return(nil, nil)
 				aggchainProofClient.EXPECT().GenerateAggchainProof(ctx, mock.Anything).
 					Return(&types.AggchainProof{
 						LastProvenBlock: 100,

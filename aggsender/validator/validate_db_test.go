@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
@@ -86,6 +87,9 @@ func TestValidateFullAggsenderDB(t *testing.T) {
 
 	mockRollupDataQuerier.EXPECT().GetRollupData(mock.Anything).Return(
 		polygonrollupmanager.PolygonRollupManagerRollupDataReturn{}, nil)
+
+	// Mock the GetUnsetClaimsForBlockRange method that's called by the flow
+	bridgeL2SovereignReader.EXPECT().GetUnsetClaimsForBlockRange(mock.Anything, mock.Anything, mock.Anything).Return([]*bridgesynctypes.Unclaim{}, nil).Maybe()
 
 	_, err = dbValidator.ValidateDB("testData/aggsender.sqlite")
 	require.NoError(t, err, "DB validation should not return an error")
