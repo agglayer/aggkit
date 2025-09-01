@@ -280,12 +280,19 @@ func (c *CertificateHeader) ElapsedTimeSinceCreationString() string {
 	return t.String()
 }
 
-// ElapsedTimeSinceCreation returns the time elapsed since the certificate was created
+// ElapsedTimeSinceCreation returns the time elapsed since the certificate was created.
 func (c *CertificateHeader) ElapsedTimeSinceCreation() time.Duration {
 	if c == nil || c.CreatedAt == 0 {
 		return 0
 	}
-	return time.Now().UTC().Sub(time.Unix(int64(c.CreatedAt), 0))
+	createdAt := time.Unix(int64(c.CreatedAt), 0).UTC()
+	elapsed := time.Since(createdAt)
+
+	if elapsed < 0 {
+		return 0
+	}
+
+	return elapsed
 }
 
 type Certificate struct {

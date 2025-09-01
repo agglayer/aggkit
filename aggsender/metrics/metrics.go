@@ -44,28 +44,12 @@ func Register() {
 			Help: "[AGGSENDER] number of certificates settled",
 		},
 		{
-			Name: certificateBuildTime,
-			Help: "[AGGSENDER] certificate build time",
-		},
-		{
-			Name: proverTime,
-			Help: "[AGGSENDER] prover time",
-		},
-		{
 			Name: numberOfProverErrors,
 			Help: "[AGGSENDER] number of prover errors",
 		},
 		{
-			Name: validateTime,
-			Help: "[AGGSENDER] time taken to validate a certificate",
-		},
-		{
 			Name: multiSigThresholdNotReached,
 			Help: "[AGGSENDER] number of times multisig threshold was not reached",
-		},
-		{
-			Name: certificateSettlementTime,
-			Help: "[AGGSENDER] certificate settlement time",
 		},
 	}
 	prometheus.RegisterGauges(gauges...)
@@ -87,6 +71,31 @@ func Register() {
 		},
 	}
 	prometheus.RegisterCounterVecs(counterVecs...)
+
+	histograms := []prometheusClient.HistogramOpts{
+		{
+			Name:    validateTime,
+			Help:    "[AGGSENDER] time taken to validate a certificate",
+			Buckets: prometheusClient.DefBuckets,
+		},
+		{
+			Name:    proverTime,
+			Help:    "[AGGSENDER] time taken by the prover",
+			Buckets: prometheusClient.DefBuckets,
+		},
+		{
+			Name:    certificateSettlementTime,
+			Help:    "[AGGSENDER] time taken to settle a certificate",
+			Buckets: prometheusClient.DefBuckets,
+		},
+		{
+			Name:    certificateBuildTime,
+			Help:    "[AGGSENDER] time taken to build a certificate",
+			Buckets: prometheusClient.DefBuckets,
+		},
+	}
+
+	prometheus.RegisterHistograms(histograms...)
 
 	log.Info("Registered prometheus aggsender metrics")
 }
@@ -113,17 +122,17 @@ func Settled() {
 
 // CertificateBuildTime sets the gauge for the certificate build time
 func CertificateBuildTime(value float64) {
-	prometheus.GaugeSet(certificateBuildTime, value)
+	prometheus.HistogramObserve(certificateBuildTime, value)
 }
 
 // ProverTime sets the gauge for the prover time
 func ProverTime(value float64) {
-	prometheus.GaugeSet(proverTime, value)
+	prometheus.HistogramObserve(proverTime, value)
 }
 
 // CertificateSettlementTime sets the gauge for the certificate settlement time
 func CertificateSettlementTime(value float64) {
-	prometheus.GaugeSet(certificateSettlementTime, value)
+	prometheus.HistogramObserve(certificateSettlementTime, value)
 }
 
 // ProverError increments the gauge for the number of prover errors
@@ -144,7 +153,7 @@ func ValidatorInvalidSignature(validator common.Address) {
 
 // ValidateTime sets the gauge for the time taken to validate a certificate
 func ValidateTime(value float64) {
-	prometheus.GaugeSet(validateTime, value)
+	prometheus.HistogramObserve(validateTime, value)
 }
 
 // MultiSigThresholdNotReached increments the gauge for the number of times
