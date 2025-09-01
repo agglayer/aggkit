@@ -64,8 +64,7 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 // SendCertificate sends a certificate to the AggLayer
 // It returns the certificate ID
 func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
-	certificate *types.Certificate,
-	validatorSignature []byte) (common.Hash, error) {
+	certificate *types.Certificate) (common.Hash, error) {
 	protoCert, err := ConvertCertToProtoCertificate(certificate)
 	if err != nil {
 		return common.Hash{}, err

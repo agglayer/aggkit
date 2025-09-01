@@ -337,31 +337,22 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
-	var (
-		validators          []types.CertificateValidateAndSigner
-		signaturesThreshold uint32
-	)
-
 	if a.localValidator != nil {
-		validators = append(validators, a.localValidator)
-		signaturesThreshold = 1
+		if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
+			// TODO - just log the failure of local validation for now
+			a.log.Warnf("local validation of certificate failed: %v. Cert: %s", err, certificate.Brief())
+		}
 	} else {
-		validators, signaturesThreshold, err = a.getValidators(ctx)
+		_, err := a.pollValidatorCommittee(ctx, certificate, certificateParams.ToBlock)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get validators: %w", err)
+			// TODO - agglayer has not yet implemented the endpoints needed to validate a certificate
+			// so lets just log the error and continue. This will be changed when the agglayer is ready
+			// a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
+			// return nil, fmt.Errorf("certificate validation failed: %w", err)
+			a.log.Warnf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
 		}
 	}
 
-	multisig, err := a.pollValidators(ctx,
-		validators, signaturesThreshold,
-		certificate, certificateParams.ToBlock)
-	if err != nil {
-		// TODO - agglayer has not yet implemented the endpoints needed to validate a certificate
-		// so lets just log the error and continue. This will be changed when the agglayer is ready
-		// a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
-		// return nil, fmt.Errorf("certificate validation failed: %w", err)
-		a.log.Warnf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
-	}
 	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s, end: %s",
 		certificate.Brief(), startEpochStatus.String(), a.epochNotifier.GetEpochStatus().String())
 	metrics.CertificateBuildTime(time.Since(start).Seconds())
@@ -378,11 +369,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	}
 
 	// TODO: Update once agglayer endpoint changes to accept the multisig
-	var signature []byte
-	if len(multisig) > 0 {
-		signature = multisig[0]
-	}
-	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate, signature)
+	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
 
@@ -433,14 +420,17 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	return certificate, nil
 }
 
-// pollValidators committee signers to validate the certificate and gather signatures
-func (a *AggSender) pollValidators(
+// pollValidatorCommittee calls all validator committee members to validate and sign the certificate
+func (a *AggSender) pollValidatorCommittee(
 	ctx context.Context,
-	validators []types.CertificateValidateAndSigner,
-	signaturesThreshold uint32,
 	certificate *agglayertypes.Certificate,
 	lastL2BlockInCert uint64,
 ) ([][]byte, error) {
+	validators, signaturesThreshold, err := a.getValidators(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get validators committee: %w", err)
+	}
+
 	if len(validators) == 0 {
 		a.log.Warnf("skipping certificate validation, because there are no validators configured")
 		return nil, nil

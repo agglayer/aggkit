@@ -58,7 +58,7 @@ func TestAgglayerGRPCCLientExploratory(t *testing.T) {
 		})
 	}
 
-	id, err := client.SendCertificate(t.Context(), certificate, nil)
+	id, err := client.SendCertificate(t.Context(), certificate)
 	require.NoError(t, err)
 	t.Log("Certificate ID:", id.Hex())
 }
@@ -344,7 +344,7 @@ func TestSendCertificate(t *testing.T) {
 
 		certificate := &types.Certificate{}
 
-		_, err := client.SendCertificate(ctx, certificate, nil)
+		_, err := client.SendCertificate(ctx, certificate)
 		require.ErrorIs(t, err, errUndefinedAggchainData)
 	})
 
@@ -365,38 +365,8 @@ func TestSendCertificate(t *testing.T) {
 
 		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
-		_, err := client.SendCertificate(ctx, certificate, nil)
+		_, err := client.SendCertificate(ctx, certificate)
 		require.ErrorContains(t, err, "test error")
-	})
-
-	t.Run("has validator signature", func(t *testing.T) {
-		t.Parallel()
-
-		signature := crypto.Keccak256Hash([]byte("test signature"))
-		submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
-		client := &AgglayerGRPCClient{
-			submissionService: submissionServiceMock,
-			cfg:               aggkitgrpc.DefaultConfig(),
-		}
-
-		certificate := &types.Certificate{
-			Height:    100,
-			NetworkID: 1,
-			AggchainData: &types.AggchainDataSignature{
-				Signature: []byte{0x01}, // regular aggsender signature
-			},
-		}
-
-		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(&node.SubmitCertificateResponse{
-			CertificateId: &v1nodetypes.CertificateId{
-				Value: &v1types.FixedBytes32{
-					Value: common.HexToHash("0x010203").Bytes(),
-				},
-			},
-		}, nil)
-
-		_, err := client.SendCertificate(ctx, certificate, signature.Bytes())
-		require.NoError(t, err)
 	})
 
 	t.Run("returns certificate ID on success", func(t *testing.T) {
@@ -420,7 +390,7 @@ func TestSendCertificate(t *testing.T) {
 
 		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
 
-		resp, err := client.SendCertificate(ctx, certificate, nil)
+		resp, err := client.SendCertificate(ctx, certificate)
 		require.NoError(t, err)
 		require.Equal(t, expectedResponse.CertificateId.Value.Value, resp.Bytes())
 	})
