@@ -770,6 +770,122 @@ func TestSendCertificates(t *testing.T) {
 	}
 }
 
+func TestPollValidators(t *testing.T) {
+	t.Parallel()
+
+	certificate := &agglayertypes.Certificate{
+		NetworkID: 1,
+		Height:    1,
+	}
+
+	tests := []struct {
+		name               string
+		setupMocks         func() ([]aggsendertypes.CertificateValidateAndSigner, uint32)
+		expectedMinSigs    int
+		expectErrSubstring string
+	}{
+		{
+			name:            "no validators configured",
+			expectedMinSigs: 0,
+		},
+		{
+			name: "single healthy validator returns valid signature",
+			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
+				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().String().Return("Validator: http://polygon:1234 - 0x1")
+				mockValidator.EXPECT().Index().Return(uint32(1))
+				mockValidator.EXPECT().
+					HealthCheck(mock.Anything).
+					Return(&aggsendertypes.HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil).
+					Once()
+				mockValidator.EXPECT().
+					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+					Return(make([]byte, aggkitcommon.SignatureSize), nil).
+					Once()
+				return []aggsendertypes.CertificateValidateAndSigner{mockValidator}, 1
+			},
+			expectedMinSigs: 1,
+		},
+		{
+			name: "validator healthcheck fails",
+			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
+				mockValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockValidator.EXPECT().String().Return("Validator: http://polygon:1234 - 0x1")
+				mockValidator.EXPECT().Address().Return(common.HexToAddress("0x1"))
+				mockValidator.EXPECT().
+					HealthCheck(mock.Anything).
+					Return(nil, errors.New("health fail")).
+					Once()
+				// ValidateAndSignCertificate should not be called in this case.
+				return []aggsendertypes.CertificateValidateAndSigner{mockValidator}, 1
+			},
+			expectedMinSigs:    0,
+			expectErrSubstring: "health fail",
+		},
+		{
+			name: "multiple validators reach threshold",
+			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
+				v1 := mocks.NewCertificateValidateAndSigner(t)
+				v2 := mocks.NewCertificateValidateAndSigner(t)
+				v3 := mocks.NewCertificateValidateAndSigner(t)
+
+				for i, v := range [](*mocks.CertificateValidateAndSigner){v1, v2, v3} {
+					v.EXPECT().String().Return(fmt.Sprintf("Validator: http://polygon:1234 - 0x%d", i+1))
+					v.EXPECT().Index().Return(uint32(i))
+					v.EXPECT().
+						HealthCheck(mock.Anything).
+						Return(&aggsendertypes.HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil).
+						Times(1)
+					v.EXPECT().
+						ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+						Return(make([]byte, aggkitcommon.SignatureSize), nil).
+						Times(1)
+				}
+
+				validators := []aggsendertypes.CertificateValidateAndSigner{v1, v2, v3}
+				return validators, 2
+			},
+			expectedMinSigs: 2,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			var (
+				validators []aggsendertypes.CertificateValidateAndSigner
+				threshold  uint32
+			)
+
+			if tc.setupMocks != nil {
+				validators, threshold = tc.setupMocks()
+			}
+
+			agg := &AggSender{
+				log: log.WithFields("test", "pollValidators"),
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+
+			multiSig, err := agg.pollValidatorCommittee(ctx, validators, threshold, certificate, 0)
+
+			if tc.expectErrSubstring != "" {
+				require.ErrorContains(t, err, tc.expectErrSubstring)
+			} else if len(validators) == 0 {
+				require.Nil(t, multiSig)
+				require.NoError(t, err)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, multiSig)
+				require.GreaterOrEqual(t, len(multiSig.Signatures), tc.expectedMinSigs)
+			}
+		})
+	}
+}
+
 type testDataFlags = int
 
 const (

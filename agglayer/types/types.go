@@ -253,10 +253,13 @@ func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// AggchainDataMultisig is the data structure that will hold the multisig information
+// for PP networks
 type AggchainDataMultisig struct {
 	Multisig *Multisig `json:"multisig"`
 }
 
+// MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataMultisig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Multisig *Multisig `json:"multisig"`
@@ -265,6 +268,7 @@ func (a *AggchainDataMultisig) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataMultisig) UnmarshalJSON(data []byte) error {
 	aux := &struct {
 		Multisig *Multisig `json:"multisig"`
@@ -276,11 +280,14 @@ func (a *AggchainDataMultisig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// AggchainDataMultisigWithProof is the data structure that will hold the
+// multisig and aggchain proof information for FEP networks
 type AggchainDataMultisigWithProof struct {
 	Multisig      *Multisig          `json:"multisig"`
 	AggchainProof *AggchainDataProof `json:"aggchain_proof"`
 }
 
+// MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataMultisigWithProof) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Multisig      *Multisig          `json:"multisig"`
@@ -291,6 +298,7 @@ func (a *AggchainDataMultisigWithProof) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataMultisigWithProof) UnmarshalJSON(data []byte) error {
 	aux := &struct {
 		Multisig      *Multisig          `json:"multisig"`
@@ -304,11 +312,14 @@ func (a *AggchainDataMultisigWithProof) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ECDSAMultisigEntry is the data structure that will hold the information
+// about a single signature in the multisig
 type ECDSAMultisigEntry struct {
 	Index     uint32 `json:"index"`
 	Signature []byte `json:"signature"`
 }
 
+// MarshalJSON is the implementation of the json.Marshaler interface
 func (e *ECDSAMultisigEntry) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
 		Index     uint32 `json:"index"`
@@ -319,6 +330,7 @@ func (e *ECDSAMultisigEntry) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (e *ECDSAMultisigEntry) UnmarshalJSON(data []byte) error {
 	aux := &struct {
 		Index     uint32 `json:"index"`
@@ -334,6 +346,7 @@ func (e *ECDSAMultisigEntry) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// Multisig is the data structure that will hold the multisig information
 type Multisig struct {
 	Signatures []ECDSAMultisigEntry `json:"signatures"`
 }

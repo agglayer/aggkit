@@ -939,3 +939,83 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 		})
 	}
 }
+
+func Test_AggchainProverFlow_UpdateAggchainData(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                string
+		certificate         *agglayertypes.Certificate
+		multisig            *agglayertypes.Multisig
+		expectedError       string
+		expectedCertificate *agglayertypes.Certificate
+	}{
+		{
+			name: "multisig nil - returns original certificate unchanged",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataProof{
+					Proof: []byte("orig-proof"),
+				},
+			},
+			multisig: nil,
+			expectedCertificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataProof{
+					Proof: []byte("orig-proof"),
+				},
+			},
+		},
+		{
+			name: "aggchain data not AggchainDataProof - returns error",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataSignature{}, // wrong type
+			},
+			multisig:      &agglayertypes.Multisig{},
+			expectedError: "aggchainProverFlow - aggchain data field not AggchainDataProof",
+		},
+		{
+			name: "successful update - wraps proof with multisig",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataProof{
+					Proof:          []byte("some-proof"),
+					Version:        "0.1",
+					Vkey:           []byte("vkey"),
+					AggchainParams: common.HexToHash("0x2"),
+					Context:        map[string][]byte{"k": []byte("v")},
+				},
+			},
+			multisig: &agglayertypes.Multisig{},
+			expectedCertificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataMultisigWithProof{
+					Multisig: &agglayertypes.Multisig{},
+					AggchainProof: &agglayertypes.AggchainDataProof{
+						Proof:          []byte("some-proof"),
+						Version:        "0.1",
+						Vkey:           []byte("vkey"),
+						AggchainParams: common.HexToHash("0x2"),
+						Context:        map[string][]byte{"k": []byte("v")},
+					},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_UpdateAggchainData")
+			flow := &AggchainProverFlow{
+				log: logger,
+			}
+
+			result, err := flow.UpdateAggchainData(tc.certificate, tc.multisig)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+				require.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedCertificate, result)
+			}
+		})
+	}
+}

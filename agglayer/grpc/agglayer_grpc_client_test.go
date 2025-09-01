@@ -335,65 +335,122 @@ func TestSendCertificate(t *testing.T) {
 
 	ctx := context.Background()
 
-	t.Run("returns error when AggchainData not defined", func(t *testing.T) {
-		t.Parallel()
-
-		client := &AgglayerGRPCClient{
-			cfg: aggkitgrpc.DefaultConfig(),
-		}
-
-		certificate := &types.Certificate{}
-
-		_, err := client.SendCertificate(ctx, certificate)
-		require.ErrorIs(t, err, errUndefinedAggchainData)
-	})
-
-	t.Run("returns error from submission service", func(t *testing.T) {
-		t.Parallel()
-
-		submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
-		client := &AgglayerGRPCClient{
-			submissionService: submissionServiceMock,
-			cfg:               aggkitgrpc.DefaultConfig(),
-		}
-
-		certificate := &types.Certificate{
-			AggchainData: &types.AggchainDataSignature{
-				Signature: []byte{0x01},
-			},
-		}
-
-		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
-
-		_, err := client.SendCertificate(ctx, certificate)
-		require.ErrorContains(t, err, "test error")
-	})
-
-	t.Run("returns certificate ID on success", func(t *testing.T) {
-		t.Parallel()
-
-		submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
-		client := &AgglayerGRPCClient{
-			submissionService: submissionServiceMock,
-			cfg:               aggkitgrpc.DefaultConfig(),
-		}
-
-		certificate := exampleTestAgglayerCert
-
-		expectedResponse := &node.SubmitCertificateResponse{
-			CertificateId: &v1nodetypes.CertificateId{
-				Value: &v1types.FixedBytes32{
-					Value: common.HexToHash("0x010203").Bytes(),
+	testCases := []struct {
+		name           string
+		certificate    *types.Certificate
+		mockFn         func(*mocks.CertificateSubmissionServiceClient)
+		expectedCertID common.Hash
+		expectedError  string
+	}{
+		{
+			name:          "returns error when AggchainData not defined",
+			certificate:   &types.Certificate{},
+			expectedError: "undefined aggchain data",
+		},
+		{
+			name: "returns error from submission service",
+			certificate: &types.Certificate{
+				AggchainData: &types.AggchainDataSignature{
+					Signature: []byte{0x01},
 				},
 			},
-		}
+			mockFn: func(submissionServiceMock *mocks.CertificateSubmissionServiceClient) {
+				submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
+			},
+			expectedError: "test error",
+		},
+		{
+			name:        "returns certificate ID on success",
+			certificate: exampleTestAgglayerCert,
+			mockFn: func(submissionServiceMock *mocks.CertificateSubmissionServiceClient) {
+				expectedResponse := &node.SubmitCertificateResponse{
+					CertificateId: &v1nodetypes.CertificateId{
+						Value: &v1types.FixedBytes32{
+							Value: common.HexToHash("0x010203").Bytes(),
+						},
+					},
+				}
+				submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
+			},
+			expectedCertID: common.HexToHash("0x010203"),
+		},
+		{
+			name: "submit certificate with multisig",
+			certificate: &types.Certificate{
+				AggchainData: &types.AggchainDataMultisig{
+					Multisig: &types.Multisig{
+						Signatures: []types.ECDSAMultisigEntry{
+							{Signature: []byte{0x01}, Index: 0},
+							{Signature: []byte{0x02}, Index: 1},
+						},
+					},
+				},
+			},
+			mockFn: func(submissionServiceMock *mocks.CertificateSubmissionServiceClient) {
+				expectedResponse := &node.SubmitCertificateResponse{
+					CertificateId: &v1nodetypes.CertificateId{
+						Value: &v1types.FixedBytes32{
+							Value: common.HexToHash("0x010203").Bytes(),
+						},
+					},
+				}
+				submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
+			},
+			expectedCertID: common.HexToHash("0x010203"),
+		},
+		{
+			name: "certificate with proof and multisig",
+			certificate: &types.Certificate{
+				AggchainData: &types.AggchainDataMultisigWithProof{
+					Multisig: &types.Multisig{
+						Signatures: []types.ECDSAMultisigEntry{
+							{Signature: []byte{0x01}, Index: 0},
+							{Signature: []byte{0x02}, Index: 1},
+						},
+					},
+					AggchainProof: &types.AggchainDataProof{
+						Proof: []byte{0x01},
+					},
+				},
+			},
+			mockFn: func(submissionServiceMock *mocks.CertificateSubmissionServiceClient) {
+				expectedResponse := &node.SubmitCertificateResponse{
+					CertificateId: &v1nodetypes.CertificateId{
+						Value: &v1types.FixedBytes32{
+							Value: common.HexToHash("0x010203").Bytes(),
+						},
+					},
+				}
+				submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
+			},
+			expectedCertID: common.HexToHash("0x010203"),
+		},
+	}
 
-		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		resp, err := client.SendCertificate(ctx, certificate)
-		require.NoError(t, err)
-		require.Equal(t, expectedResponse.CertificateId.Value.Value, resp.Bytes())
-	})
+			submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
+			client := &AgglayerGRPCClient{
+				submissionService: submissionServiceMock,
+				cfg:               aggkitgrpc.DefaultConfig(),
+			}
+
+			if tc.mockFn != nil {
+				tc.mockFn(submissionServiceMock)
+			}
+
+			resp, err := client.SendCertificate(ctx, tc.certificate)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedCertID.Bytes(), resp.Bytes())
+			}
+		})
+	}
 }
 
 func TestLeafTypeToProto(t *testing.T) {

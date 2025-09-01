@@ -344,13 +344,15 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 			a.log.Warnf("local validation of certificate failed: %v. Cert: %s", err, certificate.Brief())
 		}
 	} else {
-		multisig, err = a.pollValidatorCommittee(ctx, certificate, certificateParams.ToBlock)
+		validators, signaturesThreshold, err := a.getValidators(ctx)
 		if err != nil {
-			// TODO - agglayer has not yet implemented the endpoints needed to validate a certificate
-			// so lets just log the error and continue. This will be changed when the agglayer is ready
-			// a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
-			// return nil, fmt.Errorf("certificate validation failed: %w", err)
-			a.log.Warnf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
+			return nil, fmt.Errorf("failed to get validators: %w", err)
+		}
+
+		multisig, err = a.pollValidatorCommittee(ctx, validators, signaturesThreshold,
+			certificate, certificateParams.ToBlock)
+		if err != nil {
+			return nil, fmt.Errorf("error polling validator committee: %w", err)
 		}
 	}
 
@@ -429,14 +431,11 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 // pollValidatorCommittee calls all validator committee members to validate and sign the certificate
 func (a *AggSender) pollValidatorCommittee(
 	ctx context.Context,
+	validators []types.CertificateValidateAndSigner,
+	signaturesThreshold uint32,
 	certificate *agglayertypes.Certificate,
 	lastL2BlockInCert uint64,
 ) (*agglayertypes.Multisig, error) {
-	validators, signaturesThreshold, err := a.getValidators(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get validators committee: %w", err)
-	}
-
 	if len(validators) == 0 {
 		a.log.Warnf("skipping certificate validation, because there are no validators configured")
 		return nil, nil
@@ -471,21 +470,21 @@ func (a *AggSender) pollValidatorCommittee(
 
 			status, err := v.HealthCheck(ctx)
 			if err != nil {
-				a.log.Warnf("error checking validator health (URL=%s): %v", v.URL(), err)
+				a.log.Warnf("error checking validator health %s: %v", v.String(), err)
 				resultsCh <- signResult{err: err, validator: v}
 				return
 			}
 
 			if !status.IsHealthy() {
-				a.log.Warnf("validator (URL=%s) is not healthy: %s, skipping it...", v.URL(), status.String())
+				a.log.Warnf("%s is not healthy: %s, skipping it...", v.String(), status.String())
 				return // skip unhealthy validator
 			}
 
-			a.log.Infof("validator health check (URL=%s): %s", v.URL(), status.String())
+			a.log.Infof("%s health check: %s", v.String(), status.String())
 
 			sig, err := v.ValidateAndSignCertificate(ctx, certificate, lastL2BlockInCert)
 			if err != nil {
-				a.log.Errorf("validator %v failed to validate the certificate: %v", v, err)
+				a.log.Errorf("validator %s failed to validate the certificate: %v", v.String(), err)
 				resultsCh <- signResult{err: err, validator: v}
 				return
 			}

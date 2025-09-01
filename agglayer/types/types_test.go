@@ -1139,7 +1139,7 @@ func TestCertificate_ID(t *testing.T) {
 	require.Equal(t, "cert{height:2, networkID:1}", cert.ID())
 }
 
-func TestAggchainDataSignature_MarshalJUnmarshalJSON(t *testing.T) {
+func TestAggchainDataSignature_MarshalUnmarshalJSON(t *testing.T) {
 	signature := &AggchainDataSignature{
 		Signature: common.FromHex("0x1234567890abcdef"),
 	}
@@ -1200,6 +1200,169 @@ func TestAggchainDataProof_MarshalUnmarshalJSON(t *testing.T) {
 			require.JSONEq(t, tt.expected, string(result))
 
 			var unmarshalled AggchainDataProof
+			require.NoError(t, unmarshalled.UnmarshalJSON(result))
+			require.Equal(t, *tt.input, unmarshalled)
+		})
+	}
+}
+
+func TestAggchainDataMultisig_MarshalUnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    *AggchainDataMultisig
+		expected string
+	}{
+		{
+			name: "Valid AggchainDataMultisig with signatures",
+			input: &AggchainDataMultisig{
+				Multisig: &Multisig{
+					Signatures: []ECDSAMultisigEntry{
+						{
+							Index:     0,
+							Signature: []byte{0x01, 0x02, 0x03},
+						},
+						{
+							Index:     1,
+							Signature: []byte{0x04, 0x05, 0x06},
+						},
+					},
+				},
+			},
+			expected: `{"multisig":{"signatures":[{"index":0,"signature":"010203"},{"index":1,"signature":"040506"}]}}`,
+		},
+		{
+			name: "Empty AggchainDataMultisig",
+			input: &AggchainDataMultisig{
+				Multisig: &Multisig{
+					Signatures: []ECDSAMultisigEntry{},
+				},
+			},
+			expected: `{"multisig":{"signatures":[]}}`,
+		},
+		{
+			name: "Nil Multisig",
+			input: &AggchainDataMultisig{
+				Multisig: nil,
+			},
+			expected: `{"multisig":null}`,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := tt.input.MarshalJSON()
+			require.NoError(t, err)
+			require.JSONEq(t, tt.expected, string(result))
+
+			var unmarshalled AggchainDataMultisig
+			require.NoError(t, unmarshalled.UnmarshalJSON(result))
+			require.Equal(t, *tt.input, unmarshalled)
+		})
+	}
+}
+
+func TestAggchainDataMultisigWithProof_MarshalUnmarshalJSON(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		input    *AggchainDataMultisigWithProof
+		expected string
+	}{
+		{
+			name: "Valid AggchainDataMultisigWithProof with all fields",
+			input: &AggchainDataMultisigWithProof{
+				Multisig: &Multisig{
+					Signatures: []ECDSAMultisigEntry{
+						{
+							Index:     0,
+							Signature: []byte{0x01, 0x02, 0x03},
+						},
+					},
+				},
+				AggchainProof: &AggchainDataProof{
+					Proof:          []byte{0xaa, 0xbb, 0xcc},
+					AggchainParams: common.HexToHash("0x123456"),
+					Context:        map[string][]byte{"key": {0xdd, 0xee}},
+					Version:        "1.0",
+					Vkey:           []byte{0xff},
+					Signature:      []byte{0x11, 0x22},
+				},
+			},
+			expected: `{"multisig":{"signatures":[{"index":0,"signature":"010203"}]},"aggchain_proof":{"proof":"aabbcc","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000123456","context":{"key":"3e4="},"version":"1.0","vkey":"ff","signature":"1122"}}`,
+		},
+		{
+			name: "Empty multisig with proof",
+			input: &AggchainDataMultisigWithProof{
+				Multisig: &Multisig{
+					Signatures: []ECDSAMultisigEntry{},
+				},
+				AggchainProof: &AggchainDataProof{
+					Proof:          []byte{},
+					AggchainParams: common.Hash{},
+					Context:        map[string][]byte{},
+					Version:        "",
+					Vkey:           []byte{},
+					Signature:      []byte{},
+				},
+			},
+			expected: `{"multisig":{"signatures":[]},"aggchain_proof":{"proof":"","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000000000","context":{},"version":"","vkey":"","signature":""}}`,
+		},
+		{
+			name: "Nil Multisig with valid proof",
+			input: &AggchainDataMultisigWithProof{
+				Multisig: nil,
+				AggchainProof: &AggchainDataProof{
+					Proof:     []byte{0x99},
+					Version:   "2.0",
+					Vkey:      []byte{0xff},
+					Signature: []byte{0x01, 0x02},
+				},
+			},
+			expected: `{"multisig":null,"aggchain_proof":{"proof":"99","aggchain_params":"0x0000000000000000000000000000000000000000000000000000000000000000","context":null,"version":"2.0","vkey":"ff","signature":"0102"}}`,
+		},
+		{
+			name: "Valid multisig with nil proof",
+			input: &AggchainDataMultisigWithProof{
+				Multisig: &Multisig{
+					Signatures: []ECDSAMultisigEntry{
+						{
+							Index:     2,
+							Signature: []byte{0xaa},
+						},
+					},
+				},
+				AggchainProof: nil,
+			},
+			expected: `{"multisig":{"signatures":[{"index":2,"signature":"aa"}]},"aggchain_proof":null}`,
+		},
+		{
+			name: "Both nil",
+			input: &AggchainDataMultisigWithProof{
+				Multisig:      nil,
+				AggchainProof: nil,
+			},
+			expected: `{"multisig":null,"aggchain_proof":null}`,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			result, err := tt.input.MarshalJSON()
+			require.NoError(t, err)
+			require.JSONEq(t, tt.expected, string(result))
+
+			var unmarshalled AggchainDataMultisigWithProof
 			require.NoError(t, unmarshalled.UnmarshalJSON(result))
 			require.Equal(t, *tt.input, unmarshalled)
 		})

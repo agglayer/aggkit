@@ -712,3 +712,51 @@ func Test_PPFlow_ValidateCertificate(t *testing.T) {
 		})
 	}
 }
+
+func Test_PPFlow_UpdateAggchainData(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name                string
+		certificate         *agglayertypes.Certificate
+		multisig            *agglayertypes.Multisig
+		expectedCertificate *agglayertypes.Certificate
+	}{
+		{
+			name: "multisig nil - leaves certificate unchanged",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataSignature{
+					Signature: []byte("orig_sig"),
+				},
+			},
+			multisig: nil,
+			expectedCertificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataSignature{
+					Signature: []byte("orig_sig"),
+				},
+			},
+		},
+		{
+			name:        "multisig provided - replaces AggchainData with multisig wrapper",
+			certificate: &agglayertypes.Certificate{},
+			multisig:    &agglayertypes.Multisig{},
+			expectedCertificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataMultisig{
+					Multisig: &agglayertypes.Multisig{},
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			sut := &PPFlow{}
+
+			result, err := sut.UpdateAggchainData(tc.certificate, tc.multisig)
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedCertificate, result)
+		})
+	}
+}
