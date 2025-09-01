@@ -35,6 +35,7 @@ func NewRemoteValidator(cfg *grpc.ClientConfig,
 		url:     cfg.URL,
 		client:  client,
 		storage: storage,
+		address: address,
 	}, nil
 }
 

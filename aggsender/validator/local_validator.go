@@ -12,7 +12,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-const localValidatorName = "LocalValidator"
+const localValidatorIdentifier = "LocalValidator"
 
 var _ types.CertificateValidateAndSigner = (*LocalValidator)(nil)
 
@@ -41,7 +41,7 @@ func NewLocalValidator(
 
 // String returns a string representation of the LocalValidator.
 func (a *LocalValidator) String() string {
-	return localValidatorName
+	return localValidatorIdentifier
 }
 
 // URL returns an URL for the LocalValidator
@@ -90,7 +90,7 @@ func (a *LocalValidator) ValidateAndSignCertificate(
 	a.log.Infof("certificate validation passed: %s", certificate.Brief())
 
 	// local validator does not sign the certificate, it just validates it
-	return make([]byte, aggkitcommon.SignatureSize), nil
+	return aggkitcommon.EmptySignature, nil
 }
 
 // getPreviousCertificate retrieves the previous certificate based on the new certificate's height.

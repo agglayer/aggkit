@@ -31,7 +31,7 @@ func TestValidateAndSignCertificate_Success(t *testing.T) {
 
 	signature, err := localValidator.ValidateAndSignCertificate(context.Background(), certificate, 0)
 	require.NoError(t, err)
-	require.Len(t, signature, aggkitcommon.SignatureSize)
+	require.Equal(t, signature, aggkitcommon.EmptySignature)
 	require.NotNil(t, localValidator.String())
 
 	storage.AssertExpectations(t)
