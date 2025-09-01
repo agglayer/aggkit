@@ -47,7 +47,6 @@ func TestConfigString(t *testing.T) {
 		AgglayerClient:              agglayer.ClientConfig{GRPC: &grpc.ClientConfig{URL: "http://agglayer.url"}},
 		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                    "http://l2.rpc.url",
-		BlockFinality:               "latestBlock",
 		EpochNotificationPercentage: 50,
 		Mode:                        "PP",
 		SovereignRollupAddr:         common.HexToAddress("0x1"),
@@ -56,7 +55,6 @@ func TestConfigString(t *testing.T) {
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
 		"AgglayerClient: %s\n"+
 		"AggsenderPrivateKey: local\n"+
-		"BlockFinality: latestBlock\n"+
 		"EpochNotificationPercentage: 50\n"+
 		"DryRun: false\n"+
 		"EnableRPC: false\n"+

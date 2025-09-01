@@ -10,11 +10,11 @@ import (
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/test/helpers"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
+	rpc "github.com/ethereum/go-ethereum/rpc"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
@@ -88,7 +88,7 @@ func TestBridgeEventE2E(t *testing.T) {
 	time.Sleep(time.Second * 2) // sleeping since the processor could be up to date, but have pending reorgs
 
 	lb := getFinalizedBlockNumber(t, ctx, l1Setup.SimBackend.Client())
-	helpers.RequireProcessorUpdated(t, l1Setup.BridgeSync, lb)
+	helpers.RequireProcessorUpdated(t, l1Setup.BridgeSync, lb, l1Setup.SimBackend.Client())
 
 	// Get bridges
 	lastBlock, err := l1Setup.SimBackend.Client().BlockNumber(ctx)
@@ -115,7 +115,7 @@ func TestBridgeEventE2E(t *testing.T) {
 
 func getFinalizedBlockNumber(t *testing.T, ctx context.Context, client simulated.Client) uint64 {
 	t.Helper()
-	lastBlockHeader, err := client.HeaderByNumber(ctx, aggkittypes.FinalizedBlockNum)
+	lastBlockHeader, err := client.HeaderByNumber(ctx, big.NewInt(int64(rpc.FinalizedBlockNumber)))
 	require.NoError(t, err)
 	return lastBlockHeader.Number.Uint64()
 }

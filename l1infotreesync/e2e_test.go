@@ -82,7 +82,7 @@ func TestE2E(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, receipt.Status, types.ReceiptStatusSuccessful)
 		// Let the processor catch up
-		helpers.RequireProcessorUpdated(t, syncer, receipt.BlockNumber.Uint64())
+		helpers.RequireProcessorUpdated(t, syncer, receipt.BlockNumber.Uint64(), nil)
 
 		expectedGER, err := gerSc.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 		require.NoError(t, err)
@@ -165,7 +165,7 @@ func waitForSyncerToCatchUp(ctx context.Context, t *testing.T, syncer *l1infotre
 	for {
 		lastBlockNum, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)
-		helpers.RequireProcessorUpdated(t, syncer, lastBlockNum)
+		helpers.RequireProcessorUpdated(t, syncer, lastBlockNum, nil)
 		time.Sleep(time.Second / 2)
 		lastBlockNum2, err := client.Client().BlockNumber(ctx)
 		require.NoError(t, err)

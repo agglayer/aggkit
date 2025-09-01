@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -530,7 +531,7 @@ func (a *AggSender) pollValidators(
 // getValidators retrieves the actual multisig committee and creates a set of the validators
 // that are going to validate the provided certificate
 func (a *AggSender) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, uint32, error) {
-	committee, err := a.committeeQuerier.GetMultisigCommittee(ctx, aggkittypes.LatestBlockNum)
+	committee, err := a.committeeQuerier.GetMultisigCommittee(ctx, big.NewInt(int64(aggkittypes.Latest)))
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
 	}
