@@ -86,7 +86,6 @@ func New(
 			l2Client, l2GERManagerAddr,
 			l1InfoTreeSync, processor,
 			rh, blockFinality, waitForNewBlocksPeriod,
-			syncBlockChunkSize,
 		)
 
 	case SovereignChain:

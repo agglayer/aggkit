@@ -56,7 +56,6 @@ func newDownloaderLegacy(
 	rh *sync.RetryHandler,
 	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
-	syncBlockChunkSize uint64, // Note: unused - legacy downloader processes one block at a time
 ) (*downloaderLegacy, error) {
 	l2GERManager, err := polygonzkevmglobalexitrootv2.NewPolygonzkevmglobalexitrootv2(
 		l2GERAddr, l2Client)
