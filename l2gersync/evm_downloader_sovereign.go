@@ -24,10 +24,11 @@ var (
 
 type downloaderSovereign struct {
 	*sync.EVMDownloaderImplementation
-	l2GERManager   *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
-	l2GERAddr      common.Address
-	l1InfoTreeSync L1InfoTreeQuerier
-	rh             *sync.RetryHandler
+	l2GERManager       *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
+	l2GERAddr          common.Address
+	l1InfoTreeSync     L1InfoTreeQuerier
+	rh                 *sync.RetryHandler
+	syncBlockChunkSize uint64
 }
 
 func newDownloaderSovereign(
@@ -36,7 +37,8 @@ func newDownloaderSovereign(
 	l1InfoTreeSync L1InfoTreeQuerier,
 	rh *sync.RetryHandler,
 	blockFinality aggkittypes.BlockNumberFinality,
-	waitForNewBlocksPeriod time.Duration) (*downloaderSovereign, error) {
+	waitForNewBlocksPeriod time.Duration,
+	syncBlockChunkSize uint64) (*downloaderSovereign, error) {
 	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERAddr, l2Client)
 	if err != nil {
@@ -44,10 +46,11 @@ func newDownloaderSovereign(
 	}
 
 	d := &downloaderSovereign{
-		l2GERManager:   l2GERManager,
-		l2GERAddr:      l2GERAddr,
-		l1InfoTreeSync: l1InfoTreeSync,
-		rh:             rh,
+		l2GERManager:       l2GERManager,
+		l2GERAddr:          l2GERAddr,
+		l1InfoTreeSync:     l1InfoTreeSync,
+		rh:                 rh,
+		syncBlockChunkSize: syncBlockChunkSize,
 	}
 
 	appender := d.buildAppender(l2GERManager)
@@ -80,16 +83,31 @@ func (d *downloaderSovereign) Download(ctx context.Context, fromBlock uint64, do
 		case <-ctx.Done():
 			log.Debug("aborting the l2GERSync downloader...")
 			close(downloadedCh)
-
 			return
 		default:
 		}
 
-		// Wait for new blocks before processing
-		fromBlock = d.WaitForNewBlocks(ctx, fromBlock)
-		for _, block := range d.GetEventsByBlockRange(ctx, fromBlock, fromBlock) {
+		// Wait for new blocks and get current head
+		latestBlock := d.WaitForNewBlocks(ctx, fromBlock)
+
+		// Calculate chunk end (don't exceed latest block)
+		toBlock := fromBlock + d.syncBlockChunkSize - 1
+		if toBlock > latestBlock {
+			toBlock = latestBlock
+		}
+
+		log.Debugf("processing chunk [%d to %d] (chunk size: %d)", fromBlock, toBlock, d.syncBlockChunkSize)
+
+		// Get all blocks with events in this chunk
+		blocks := d.GetEventsByBlockRange(ctx, fromBlock, toBlock)
+
+		// Send all blocks that have events
+		for _, block := range blocks {
 			downloadedCh <- *block
 		}
+
+		// Move to next chunk
+		fromBlock = toBlock + 1
 	}
 }
 

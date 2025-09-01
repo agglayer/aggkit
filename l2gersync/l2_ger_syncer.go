@@ -51,6 +51,7 @@ func New(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l2GERManagerAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
+	syncBlockChunkSize uint64,
 	retryAfterErrorPeriod time.Duration,
 	maxRetryAttemptsAfterError int,
 	blockFinality aggkittypes.BlockNumberFinality,
@@ -58,6 +59,10 @@ func New(
 	downloadBufferSize int,
 	requireStorageContentCompatibility bool,
 ) (*L2GERSync, error) {
+	if syncBlockChunkSize == 0 {
+		return nil, fmt.Errorf("syncBlockChunkSize must be greater than 0")
+	}
+
 	processor, err := newProcessor(dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create processor: %w", err)
@@ -81,6 +86,7 @@ func New(
 			l2Client, l2GERManagerAddr,
 			l1InfoTreeSync, processor,
 			rh, blockFinality, waitForNewBlocksPeriod,
+			syncBlockChunkSize,
 		)
 
 	case SovereignChain:
@@ -88,6 +94,7 @@ func New(
 			l2Client, l2GERManagerAddr,
 			l1InfoTreeSync,
 			rh, blockFinality, waitForNewBlocksPeriod,
+			syncBlockChunkSize,
 		)
 
 	default:
