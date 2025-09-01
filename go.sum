@@ -1,9 +1,9 @@
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-00000000000000-f90c5d0c4997.2 h1:QJxR0y+PDtJDdS/wLDI9zPLbqYGw/hpBO8gL9IvEd2Q=
-buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-00000000000000-f90c5d0c4997.2/go.mod h1:xAHXtiEcd245Zgu5vmdR3parOZbpsStrQZgGSKVKW7M=
-buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.8-00000000000000-f90c5d0c4997.1 h1:iksFpz9bMgOCZtPV5Jw72K9W++zdiRkgO2E/u+Esj6E=
-buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.8-00000000000000-f90c5d0c4997.1/go.mod h1:OT5cDxRQ5ixa5nUeaOCY5ApXI52SXPts12ZLqkUmMHU=
-buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.8-20250519093743-85e8a3d9f59c.1 h1:9/nz+/m8tkTsgjUtIIpFKO9lWbl/iz1wqfOqNNxRnxo=
-buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.8-20250519093743-85e8a3d9f59c.1/go.mod h1:xwTWh+PhAFSJfEUfDHHMjwoBXlmT1OAtiJzKfZ0pWDY=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-00000000000000-5656c88025c1.2 h1:bVlWMMHjJh1jpYKBixDtMJqJqmBS53mpn4UV2rb3sW4=
+buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-00000000000000-5656c88025c1.2/go.mod h1:AoFQoNLirGa7/FAkOpyqt6XQcNehyYmQ/RyGWrBRFzo=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.8-00000000000000-5656c88025c1.1 h1:9WCz98ty0/Z1Bm6Pi/9FxNVnb2PGJtt5wgNqeJtT3nI=
+buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.8-00000000000000-5656c88025c1.1/go.mod h1:NIF+RZUPROC4aUuPjGAA3p1so3i1Bb1k5Ivhj9yKKAY=
+buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.8-00000000000000-29048f73ad53.1 h1:q0qzn8nxZ2e/ZRZL4+FwH/A60rB5nnTXigNGXSSEqmY=
+buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.8-00000000000000-29048f73ad53.1/go.mod h1:xwTWh+PhAFSJfEUfDHHMjwoBXlmT1OAtiJzKfZ0pWDY=
 buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2 h1:gV+6xXfMHDXA4XI5jCpJmMITl6A51SUaoECeRO4/GAY=
 buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2/go.mod h1:NJnqmcfr760oCyvQ8MC6H8HsXRTHtzqAkzhEj+ms0uU=
 buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.7-20250520163122-7efa0a2f81a8.1 h1:5tWNGmDGpAEMrQ0yS+C9fAH48rAmXi3lEW2tRXRK9qQ=

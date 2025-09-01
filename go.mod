@@ -3,9 +3,9 @@ module github.com/agglayer/aggkit
 go 1.24.6
 
 require (
-	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-00000000000000-f90c5d0c4997.2
-	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.8-00000000000000-f90c5d0c4997.1
-	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.8-20250519093743-85e8a3d9f59c.1
+	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-00000000000000-5656c88025c1.2
+	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.8-00000000000000-5656c88025c1.1
+	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.8-00000000000000-29048f73ad53.1
 	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.7-20250520163122-7efa0a2f81a8.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.8

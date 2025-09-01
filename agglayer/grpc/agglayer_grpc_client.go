@@ -274,22 +274,7 @@ func convertAggchainData(aggchainData types.AggchainData) (*v1types.AggchainData
 	case *types.AggchainDataProof:
 		return &v1types.AggchainData{
 			Data: &v1types.AggchainData_Generic{
-				Generic: &v1types.AggchainProof{
-					Proof: &v1types.AggchainProof_Sp1Stark{
-						Sp1Stark: &v1types.SP1StarkProof{
-							Version: ad.Version,
-							Proof:   ad.Proof,
-							Vkey:    ad.Vkey,
-						},
-					},
-					AggchainParams: &v1types.FixedBytes32{
-						Value: ad.AggchainParams.Bytes(),
-					},
-					Context: ad.Context,
-					Signature: &v1types.FixedBytes65{
-						Value: ad.Signature,
-					},
-				},
+				Generic: convertAggchainDataProofToProto(ad),
 			},
 		}, nil
 	case *types.AggchainDataSignature:
@@ -300,8 +285,73 @@ func convertAggchainData(aggchainData types.AggchainData) (*v1types.AggchainData
 				},
 			},
 		}, nil
+	case *types.AggchainDataMultisigWithProof:
+		return &v1types.AggchainData{
+			Data: &v1types.AggchainData_MultisigAndAggchainProof{
+				MultisigAndAggchainProof: &v1types.AggchainProofWithMultisig{
+					Multisig:      convertMultisigToProtoMultisig(ad.Multisig),
+					AggchainProof: convertAggchainDataProofToProto(ad.AggchainProof),
+				},
+			},
+		}, nil
+	case *types.AggchainDataMultisig:
+		return &v1types.AggchainData{
+			Data: &v1types.AggchainData_Multisig{
+				Multisig: convertMultisigToProtoMultisig(ad.Multisig),
+			},
+		}, nil
 	default:
 		return nil, errUnknownAggchainData
+	}
+}
+
+// convertAggchainDataProofToProto converts an aggchain data proof to proto aggchain proof
+func convertAggchainDataProofToProto(proof *types.AggchainDataProof) *v1types.AggchainProof {
+	if proof == nil {
+		return nil
+	}
+
+	return &v1types.AggchainProof{
+		Proof: &v1types.AggchainProof_Sp1Stark{
+			Sp1Stark: &v1types.SP1StarkProof{
+				Version: proof.Version,
+				Proof:   proof.Proof,
+				Vkey:    proof.Vkey,
+			},
+		},
+		AggchainParams: &v1types.FixedBytes32{
+			Value: proof.AggchainParams.Bytes(),
+		},
+		Context: proof.Context,
+		Signature: &v1types.FixedBytes65{
+			Value: proof.Signature,
+		},
+	}
+}
+
+// convertMultisigToProtoMultisig converts a multisig to a proto multisig
+func convertMultisigToProtoMultisig(multisig *types.Multisig) *v1types.Multisig {
+	if multisig == nil {
+		return nil
+	}
+
+	protoEntries := make([]*v1types.ECDSAMultisig_ECDSAMultisigEntry, 0, len(multisig.Signatures))
+
+	for _, entry := range multisig.Signatures {
+		protoEntries = append(protoEntries, &v1types.ECDSAMultisig_ECDSAMultisigEntry{
+			Signature: &v1types.FixedBytes65{
+				Value: entry.Signature,
+			},
+			Index: entry.Index,
+		})
+	}
+
+	return &v1types.Multisig{
+		Data: &v1types.Multisig_Ecdsa{
+			Ecdsa: &v1types.ECDSAMultisig{
+				Signatures: protoEntries,
+			},
+		},
 	}
 }
 

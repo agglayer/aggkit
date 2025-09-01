@@ -160,6 +160,10 @@ func (a *AggchainDataSelector) UnmarshalJSON(data []byte) error {
 		a.obj = &AggchainDataProof{}
 	} else if _, ok = obj["signature"]; ok {
 		a.obj = &AggchainDataSignature{}
+	} else if _, ok = obj["aggchain_proof"]; ok {
+		a.obj = &AggchainDataMultisigWithProof{}
+	} else if _, ok = obj["multisig"]; ok {
+		a.obj = &AggchainDataMultisig{}
 	} else {
 		return errors.New("invalid aggchain_data type")
 	}
@@ -247,6 +251,91 @@ func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 	a.Signature = common.Hex2Bytes(aux.Signature)
 
 	return nil
+}
+
+type AggchainDataMultisig struct {
+	Multisig *Multisig `json:"multisig"`
+}
+
+func (a *AggchainDataMultisig) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Multisig *Multisig `json:"multisig"`
+	}{
+		Multisig: a.Multisig,
+	})
+}
+
+func (a *AggchainDataMultisig) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Multisig *Multisig `json:"multisig"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	a.Multisig = aux.Multisig
+	return nil
+}
+
+type AggchainDataMultisigWithProof struct {
+	Multisig      *Multisig          `json:"multisig"`
+	AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+}
+
+func (a *AggchainDataMultisigWithProof) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Multisig      *Multisig          `json:"multisig"`
+		AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+	}{
+		Multisig:      a.Multisig,
+		AggchainProof: a.AggchainProof,
+	})
+}
+
+func (a *AggchainDataMultisigWithProof) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Multisig      *Multisig          `json:"multisig"`
+		AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	a.Multisig = aux.Multisig
+	a.AggchainProof = aux.AggchainProof
+	return nil
+}
+
+type ECDSAMultisigEntry struct {
+	Index     uint32 `json:"index"`
+	Signature []byte `json:"signature"`
+}
+
+func (e *ECDSAMultisigEntry) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Index     uint32 `json:"index"`
+		Signature string `json:"signature"`
+	}{
+		Index:     e.Index,
+		Signature: common.Bytes2Hex(e.Signature),
+	})
+}
+
+func (e *ECDSAMultisigEntry) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Index     uint32 `json:"index"`
+		Signature string `json:"signature"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	e.Index = aux.Index
+	e.Signature = common.Hex2Bytes(aux.Signature)
+
+	return nil
+}
+
+type Multisig struct {
+	Signatures []ECDSAMultisigEntry `json:"signatures"`
 }
 
 // Certificate is the data structure that will be sent to the agglayer
