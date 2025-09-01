@@ -270,12 +270,29 @@ func (c *CertificateHeader) IsClosed() bool {
 	return c.Status.IsClosed()
 }
 
-// ElapsedTimeSinceCreation returns the time elapsed since the certificate was created
-func (c *CertificateHeader) ElapsedTimeSinceCreation() string {
-	if c == nil || c.CreatedAt == 0 {
+// ElapsedTimeSinceCreationString returns the time elapsed since the certificate was created as a string
+func (c *CertificateHeader) ElapsedTimeSinceCreationString() string {
+	t := c.ElapsedTimeSinceCreation()
+	if t == 0 {
 		return NAStr
 	}
-	return time.Now().UTC().Sub(time.Unix(int64(c.CreatedAt), 0)).String()
+
+	return t.String()
+}
+
+// ElapsedTimeSinceCreation returns the time elapsed since the certificate was created.
+func (c *CertificateHeader) ElapsedTimeSinceCreation() time.Duration {
+	if c == nil || c.CreatedAt == 0 {
+		return 0
+	}
+	createdAt := time.Unix(int64(c.CreatedAt), 0).UTC()
+	elapsed := time.Since(createdAt)
+
+	if elapsed < 0 {
+		return 0
+	}
+
+	return elapsed
 }
 
 type Certificate struct {

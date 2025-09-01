@@ -17,13 +17,15 @@ var _ types.CertificateValidateAndSigner = (*RemoteValidator)(nil)
 // required to interact with the AggsenderValidator service.
 type RemoteValidator struct {
 	url     string
+	address common.Address
 	client  types.ValidatorClient
 	storage db.AggSenderStorage
 }
 
 // NewRemoteValidator initializes a new RemoteValidator with the provided gRPC client configuration.
 // It returns an error if the gRPC client cannot be created.
-func NewRemoteValidator(cfg *grpc.ClientConfig, storage db.AggSenderStorage) (*RemoteValidator, error) {
+func NewRemoteValidator(cfg *grpc.ClientConfig,
+	storage db.AggSenderStorage, address common.Address) (*RemoteValidator, error) {
 	client, err := NewValidatorClient(cfg)
 	if err != nil {
 		return nil, err
@@ -33,17 +35,23 @@ func NewRemoteValidator(cfg *grpc.ClientConfig, storage db.AggSenderStorage) (*R
 		url:     cfg.URL,
 		client:  client,
 		storage: storage,
+		address: address,
 	}, nil
 }
 
 // String returns a string representation of the RemoteValidator.
 func (v *RemoteValidator) String() string {
-	return fmt.Sprintf("RemoteValidator (URL=%s)", v.url)
+	return fmt.Sprintf("RemoteValidator (URL=%s, Address=%s)", v.url, v.address.String())
 }
 
 // URL returns an URL for the remote validator
 func (v *RemoteValidator) URL() string {
 	return v.url
+}
+
+// Address returns the Ethereum address of the remote validator
+func (v *RemoteValidator) Address() common.Address {
+	return v.address
 }
 
 // HealthCheck performs a health check on the AggsenderValidator service.

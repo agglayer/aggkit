@@ -3,9 +3,10 @@
 package mocks
 
 import (
-	context "context"
-
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
+	common "github.com/ethereum/go-ethereum/common"
+
+	context "context"
 
 	mock "github.com/stretchr/testify/mock"
 
@@ -23,6 +24,53 @@ type CertificateValidateAndSigner_Expecter struct {
 
 func (_m *CertificateValidateAndSigner) EXPECT() *CertificateValidateAndSigner_Expecter {
 	return &CertificateValidateAndSigner_Expecter{mock: &_m.Mock}
+}
+
+// Address provides a mock function with no fields
+func (_m *CertificateValidateAndSigner) Address() common.Address {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Address")
+	}
+
+	var r0 common.Address
+	if rf, ok := ret.Get(0).(func() common.Address); ok {
+		r0 = rf()
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(common.Address)
+		}
+	}
+
+	return r0
+}
+
+// CertificateValidateAndSigner_Address_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Address'
+type CertificateValidateAndSigner_Address_Call struct {
+	*mock.Call
+}
+
+// Address is a helper method to define mock.On call
+func (_e *CertificateValidateAndSigner_Expecter) Address() *CertificateValidateAndSigner_Address_Call {
+	return &CertificateValidateAndSigner_Address_Call{Call: _e.mock.On("Address")}
+}
+
+func (_c *CertificateValidateAndSigner_Address_Call) Run(run func()) *CertificateValidateAndSigner_Address_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_Address_Call) Return(_a0 common.Address) *CertificateValidateAndSigner_Address_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_Address_Call) RunAndReturn(run func() common.Address) *CertificateValidateAndSigner_Address_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // HealthCheck provides a mock function with given fields: ctx

@@ -216,7 +216,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockValidator.EXPECT().URL().Return("http://localhost")
 	mockValidator.EXPECT().
 		ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
-		Return(common.Hex2Bytes("0x5ca1e"), nil).Once()
+		Return(make([]byte, aggkitcommon.SignatureSize), nil).Once()
 	aggSender := &AggSender{
 		log:             logger,
 		storage:         mockStorage,
@@ -335,7 +335,7 @@ func TestSendCertificate(t *testing.T) {
 				mockValidator.EXPECT().URL().Return("http://localhost")
 				mockValidator.EXPECT().
 					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
-					Return(common.Hex2Bytes("0x5ca1e"), nil).Once()
+					Return(make([]byte, aggkitcommon.SignatureSize), nil).Once()
 				return mockValidator
 			},
 			expectedError: "error sending certificate",
@@ -364,7 +364,7 @@ func TestSendCertificate(t *testing.T) {
 				mockValidator.EXPECT().URL().Return("http://localhost")
 				mockValidator.EXPECT().
 					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
-					Return(common.Hex2Bytes("0x5ca1e"), nil).Once()
+					Return(make([]byte, aggkitcommon.SignatureSize), nil).Once()
 				return mockValidator
 			},
 			expectedError: "error saving last sent certificate",
@@ -392,6 +392,7 @@ func TestSendCertificate(t *testing.T) {
 				mockValidator.EXPECT().HealthCheck(mock.Anything).Return(&aggsendertypes.HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil)
 				mockValidator.EXPECT().URL().Return("http://localhost")
 				mockValidator.EXPECT().String().Return("local validator")
+				mockValidator.EXPECT().Address().Return(common.HexToAddress("0x1"))
 				mockValidator.EXPECT().
 					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
 					Return(nil, errors.New("some error")).Once()
@@ -413,7 +414,7 @@ func TestSendCertificate(t *testing.T) {
 					NewLocalExitRoot: common.HexToHash("0x11"),
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
-				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, common.Hex2Bytes("0x123456")).
+				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything, mock.Anything).
 					Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
@@ -423,7 +424,7 @@ func TestSendCertificate(t *testing.T) {
 					HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil)
 				mockValidator.EXPECT().URL().Return("http://localhost")
 				mockValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
-					Return(common.Hex2Bytes("0x123456"), nil).Once()
+					Return(make([]byte, aggkitcommon.SignatureSize), nil).Once()
 				return mockValidator
 			},
 		},
@@ -451,7 +452,7 @@ func TestSendCertificate(t *testing.T) {
 				mockValidator.EXPECT().URL().Return("http://localhost")
 				mockValidator.EXPECT().
 					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
-					Return(common.Hex2Bytes("0x12345"), nil).Once()
+					Return(make([]byte, aggkitcommon.SignatureSize), nil).Once()
 				return mockValidator
 			},
 		},
@@ -527,7 +528,7 @@ func TestGetValidators(t *testing.T) {
 
 				validators := make([]aggsendertypes.CertificateValidateAndSigner, 0, len(signers))
 				for _, signer := range signers {
-					validator, err := validator.NewRemoteValidator(&grpc.ClientConfig{URL: signer.URL}, nil)
+					validator, err := validator.NewRemoteValidator(&grpc.ClientConfig{URL: signer.URL}, nil, signer.Address)
 					require.NoError(t, err)
 					validators = append(validators, validator)
 				}
