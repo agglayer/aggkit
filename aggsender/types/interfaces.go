@@ -32,6 +32,9 @@ type AggsenderFlow interface {
 		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
 	// ValidateCertificate validates the built certificate
 	ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error
+	// UpdateAggchainData updates the aggchain data field for the given certificate
+	UpdateAggchainData(cert *agglayertypes.Certificate,
+		multisig *agglayertypes.Multisig) (*agglayertypes.Certificate, error)
 }
 
 type AggsenderFlowBaser interface {
@@ -50,7 +53,6 @@ type AggsenderFlowBaser interface {
 		newFromBlock, newToBlock uint64) error
 	ConvertClaimToImportedBridgeExit(claim bridgesync.Claim) (*agglayertypes.ImportedBridgeExit, error)
 	StartL2Block() uint64
-
 	GeneratePreBuildParams(ctx context.Context,
 		certType CertificateType) (*CertificatePreBuildParams, error)
 	GenerateBuildParams(ctx context.Context,
@@ -232,6 +234,7 @@ type CertificateValidateAndSigner interface {
 	URL() string
 	String() string
 	Address() common.Address
+	Index() uint32
 }
 
 // ValidatorClient is an interface defining functions that a ValidatorClient should implement

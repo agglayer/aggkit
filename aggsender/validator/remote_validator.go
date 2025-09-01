@@ -20,12 +20,17 @@ type RemoteValidator struct {
 	address common.Address
 	client  types.ValidatorClient
 	storage db.AggSenderStorage
+	index   uint32
 }
 
 // NewRemoteValidator initializes a new RemoteValidator with the provided gRPC client configuration.
 // It returns an error if the gRPC client cannot be created.
-func NewRemoteValidator(cfg *grpc.ClientConfig,
-	storage db.AggSenderStorage, address common.Address) (*RemoteValidator, error) {
+func NewRemoteValidator(
+	cfg *grpc.ClientConfig,
+	storage db.AggSenderStorage,
+	address common.Address,
+	index uint32,
+) (*RemoteValidator, error) {
 	client, err := NewValidatorClient(cfg)
 	if err != nil {
 		return nil, err
@@ -36,6 +41,7 @@ func NewRemoteValidator(cfg *grpc.ClientConfig,
 		client:  client,
 		storage: storage,
 		address: address,
+		index:   index,
 	}, nil
 }
 
@@ -52,6 +58,11 @@ func (v *RemoteValidator) URL() string {
 // Address returns the Ethereum address of the remote validator
 func (v *RemoteValidator) Address() common.Address {
 	return v.address
+}
+
+// Index is the index of the signer in the signers list on the Multisig contract
+func (v *RemoteValidator) Index() uint32 {
+	return v.index
 }
 
 // HealthCheck performs a health check on the AggsenderValidator service.

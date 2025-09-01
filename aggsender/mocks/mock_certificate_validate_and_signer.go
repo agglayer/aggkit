@@ -131,6 +131,51 @@ func (_c *CertificateValidateAndSigner_HealthCheck_Call) RunAndReturn(run func(c
 	return _c
 }
 
+// Index provides a mock function with no fields
+func (_m *CertificateValidateAndSigner) Index() uint32 {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for Index")
+	}
+
+	var r0 uint32
+	if rf, ok := ret.Get(0).(func() uint32); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(uint32)
+	}
+
+	return r0
+}
+
+// CertificateValidateAndSigner_Index_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Index'
+type CertificateValidateAndSigner_Index_Call struct {
+	*mock.Call
+}
+
+// Index is a helper method to define mock.On call
+func (_e *CertificateValidateAndSigner_Expecter) Index() *CertificateValidateAndSigner_Index_Call {
+	return &CertificateValidateAndSigner_Index_Call{Call: _e.mock.On("Index")}
+}
+
+func (_c *CertificateValidateAndSigner_Index_Call) Run(run func()) *CertificateValidateAndSigner_Index_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_Index_Call) Return(_a0 uint32) *CertificateValidateAndSigner_Index_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *CertificateValidateAndSigner_Index_Call) RunAndReturn(run func() uint32) *CertificateValidateAndSigner_Index_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // String provides a mock function with no fields
 func (_m *CertificateValidateAndSigner) String() string {
 	ret := _m.Called()

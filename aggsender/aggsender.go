@@ -337,13 +337,14 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
+	var multisig *agglayertypes.Multisig
 	if a.localValidator != nil {
 		if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
 			// TODO - just log the failure of local validation for now
 			a.log.Warnf("local validation of certificate failed: %v. Cert: %s", err, certificate.Brief())
 		}
 	} else {
-		_, err := a.pollValidatorCommittee(ctx, certificate, certificateParams.ToBlock)
+		multisig, err = a.pollValidatorCommittee(ctx, certificate, certificateParams.ToBlock)
 		if err != nil {
 			// TODO - agglayer has not yet implemented the endpoints needed to validate a certificate
 			// so lets just log the error and continue. This will be changed when the agglayer is ready
@@ -351,6 +352,11 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 			// return nil, fmt.Errorf("certificate validation failed: %w", err)
 			a.log.Warnf("certificate validation failed: %w. Cert: %s", err, certificate.Brief())
 		}
+	}
+
+	certificate, err = a.flow.UpdateAggchainData(certificate, multisig)
+	if err != nil {
+		return nil, fmt.Errorf("error updating agchain data with multisig: %w", err)
 	}
 
 	a.log.Infof("certificate ready to be sent to AggLayer: %s start: %s, end: %s",
@@ -425,7 +431,7 @@ func (a *AggSender) pollValidatorCommittee(
 	ctx context.Context,
 	certificate *agglayertypes.Certificate,
 	lastL2BlockInCert uint64,
-) ([][]byte, error) {
+) (*agglayertypes.Multisig, error) {
 	validators, signaturesThreshold, err := a.getValidators(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validators committee: %w", err)
@@ -494,8 +500,10 @@ func (a *AggSender) pollValidatorCommittee(
 		metrics.ValidateTime(time.Since(start).Seconds())
 	}()
 
-	signatures := make([][]byte, 0, len(validators))
-	var errs []error
+	multisig := &agglayertypes.Multisig{
+		Signatures: make([]agglayertypes.ECDSAMultisigEntry, 0, len(validators)),
+	}
+	errs := make([]error, 0)
 
 	for res := range resultsCh {
 		if res.err != nil {
@@ -516,26 +524,30 @@ func (a *AggSender) pollValidatorCommittee(
 			continue
 		}
 
-		signatures = append(signatures, res.signature)
-		if uint32(len(signatures)) >= signaturesThreshold {
+		multisig.Signatures = append(multisig.Signatures, agglayertypes.ECDSAMultisigEntry{
+			Index:     res.validator.Index(),
+			Signature: res.signature,
+		})
+
+		if uint32(len(multisig.Signatures)) >= signaturesThreshold {
 			cancel() // signal other goroutines to stop early
 		}
 	}
 
-	if uint32(len(signatures)) < signaturesThreshold {
+	if uint32(len(multisig.Signatures)) < signaturesThreshold {
 		metrics.MultiSigThresholdNotReached()
 
 		if len(errs) > 0 {
-			return signatures, errors.Join(errs...)
+			return multisig, errors.Join(errs...)
 		}
 
-		return signatures, fmt.Errorf("threshold not reached: %d/%d", len(signatures), signaturesThreshold)
+		return nil, fmt.Errorf("threshold not reached: %d/%d", len(multisig.Signatures), signaturesThreshold)
 	}
 
 	a.log.Infof("certificate validation passed with %d/%d signatures: %s",
-		len(signatures), signaturesThreshold, certificate.Brief())
+		len(multisig.Signatures), signaturesThreshold, certificate.Brief())
 
-	return signatures, nil
+	return multisig, nil
 }
 
 // getValidators retrieves the actual multisig committee and creates a set of the validators
@@ -547,9 +559,9 @@ func (a *AggSender) getValidators(ctx context.Context) ([]types.CertificateValid
 	}
 
 	validators := make([]types.CertificateValidateAndSigner, 0, committee.Size())
-	for _, signer := range committee.Signers() {
+	for i, signer := range committee.Signers() {
 		clientCfg := a.cfg.ValidatorClient.WithURL(signer.URL)
-		validator, err := validator.NewRemoteValidator(&clientCfg, a.storage, signer.Address)
+		validator, err := validator.NewRemoteValidator(&clientCfg, a.storage, signer.Address, uint32(i))
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
 				signer.Address, signer.URL, err)

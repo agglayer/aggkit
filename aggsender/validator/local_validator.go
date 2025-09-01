@@ -54,6 +54,12 @@ func (a *LocalValidator) Address() common.Address {
 	return common.Address{}
 }
 
+// Index returns the index of the validator in the signers list
+// For local validator it is always 0
+func (a *LocalValidator) Index() uint32 {
+	return 0
+}
+
 func (a *LocalValidator) HealthCheck(ctx context.Context) (*types.HealthCheckResponse, error) {
 	return &types.HealthCheckResponse{
 		Status:  "OK",

@@ -333,6 +333,30 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	return signedCert, nil
 }
 
+// UpdateAggchainData updates the AggchainData field in certificate with the multisig if needed
+func (a *AggchainProverFlow) UpdateAggchainData(
+	cert *agglayertypes.Certificate,
+	multisig *agglayertypes.Multisig,
+) (*agglayertypes.Certificate, error) {
+	if multisig == nil {
+		// multisig not turned on, we don't need to update the certificate
+		return cert, nil
+	}
+
+	proof, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
+	if !ok {
+		return nil, fmt.Errorf("aggchainProverFlow - aggchain data field not AggchainDataProof")
+	}
+
+	// update the agchain data with multisig
+	cert.AggchainData = &agglayertypes.AggchainDataMultisigWithProof{
+		Multisig:      multisig,
+		AggchainProof: proof,
+	}
+
+	return cert, nil
+}
+
 // adjustBlockRange adjusts the block range of the certificate to match the range returned by the aggchain prover
 func adjustBlockRange(buildParams *types.CertificateBuildParams,
 	requestedToBlock, aggchainProverToBlock uint64) (*types.CertificateBuildParams, error) {
