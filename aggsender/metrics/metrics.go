@@ -9,7 +9,7 @@ import (
 
 const (
 	prefix                      = "aggsender_"
-	aggsenderValidator          = "aggsender-validator"
+	aggsenderValidator          = "aggsender_validator"
 	numberOfCertificatesSent    = prefix + "number_of_certificates_sent"
 	numberOfCertificatesInError = prefix + "number_of_certificates_in_error"
 	numberOfSendingRetries      = prefix + "number_of_sending_retries"
