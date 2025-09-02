@@ -550,15 +550,106 @@ func TestExploratory_EstimateCertSize(t *testing.T) {
 	fmt.Printf("aggchain data signature size: %d bytes\n", size)
 }
 
-func TestGetLatestSettledImportedBridgeExit(t *testing.T) {
+func TestGetNetworkStatus(t *testing.T) {
 	t.Parallel()
 
-	client := &AgglayerGRPCClient{}
-	gi, h, err := client.GetLatestSettledImportedBridgeExit(t.Context())
+	ctx := t.Context()
+	networkID := uint32(1)
 
-	require.NoError(t, err)
-	require.Equal(t, &types.GlobalIndex{}, gi)
-	require.Equal(t, common.Hash{}, h)
+	t.Run("returns error from network state service", func(t *testing.T) {
+		t.Parallel()
+
+		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
+		client := &AgglayerGRPCClient{
+			networkStateService: networkStateServiceMock,
+			cfg:                 aggkitgrpc.DefaultConfig(),
+		}
+
+		networkStateServiceMock.EXPECT().GetNetworkStatus(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
+
+		_, err := client.GetNetworkStatus(ctx, networkID)
+		require.ErrorContains(t, err, "test error")
+	})
+
+	t.Run("returns error when network status not available", func(t *testing.T) {
+		t.Parallel()
+
+		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
+		client := &AgglayerGRPCClient{
+			networkStateService: networkStateServiceMock,
+			cfg:                 aggkitgrpc.DefaultConfig(),
+		}
+
+		// empty response -> HasNetworkStatus() == false
+		networkStateServiceMock.EXPECT().GetNetworkStatus(mock.Anything, mock.Anything).Return(&node.GetNetworkStatusResponse{}, nil)
+
+		_, err := client.GetNetworkStatus(ctx, networkID)
+		require.ErrorContains(t, err, "network status is not available")
+	})
+
+	t.Run("returns response on success", func(t *testing.T) {
+		t.Parallel()
+
+		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
+		client := &AgglayerGRPCClient{
+			networkStateService: networkStateServiceMock,
+			cfg:                 aggkitgrpc.DefaultConfig(),
+		}
+
+		settledClaimIdx := big.NewInt(84)
+
+		expectedProto := &v1nodetypes.NetworkStatus{
+			NetworkStatus: "ok",
+			NetworkType:   "test",
+			NetworkId:     networkID,
+			SettledCertificateId: &v1nodetypes.CertificateId{Value: &v1types.FixedBytes32{
+				Value: common.HexToHash("0x010203").Bytes(),
+			}},
+			SettledHeight:       55,
+			SettledPpRoot:       &v1types.FixedBytes32{Value: common.HexToHash("0x010204").Bytes()},
+			SettledLer:          &v1types.FixedBytes32{Value: common.HexToHash("0x010205").Bytes()},
+			SettledLetLeafCount: 100,
+			SettledClaim: &v1nodetypes.SettledClaim{
+				GlobalIndex:    &v1types.FixedBytes32{Value: common.BigToHash(settledClaimIdx).Bytes()},
+				BridgeExitHash: &v1types.FixedBytes32{Value: common.HexToHash("0x010206").Bytes()},
+			},
+			LatestPendingHeight:       99,
+			LatestPendingStatus:       "Settled",
+			LatestPendingError:        "some error",
+			LatestEpochWithSettlement: 3,
+		}
+
+		networkStateServiceMock.EXPECT().GetNetworkStatus(mock.Anything, mock.Anything).Return(&node.GetNetworkStatusResponse{
+			NetworkStatus: expectedProto,
+		}, nil)
+
+		resp, err := client.GetNetworkStatus(ctx, networkID)
+		require.NoError(t, err)
+
+		require.Equal(t, expectedProto.NetworkStatus, resp.Status)
+		require.Equal(t, expectedProto.NetworkType, resp.NetworkType)
+		require.Equal(t, expectedProto.NetworkId, resp.NetworkID)
+		require.Equal(t, expectedProto.SettledHeight, resp.SettledHeight)
+		require.Equal(t, expectedProto.LatestPendingHeight, resp.LatestPendingHeight)
+		require.Equal(t, expectedProto.LatestPendingError, resp.LatestPendingError)
+		require.Equal(t, expectedProto.LatestEpochWithSettlement, resp.LatestEpochWithSettlement)
+		require.Equal(t, expectedProto.SettledLetLeafCount, resp.SettledLETLeafCount)
+
+		// compare hashes
+		require.Equal(t, expectedProto.SettledCertificateId.Value.Value, resp.SettledCertificateID.Bytes())
+		require.Equal(t, expectedProto.SettledPpRoot.Value, resp.SettledPPRoot.Bytes())
+		require.Equal(t, expectedProto.SettledLer.Value, resp.SettledLER.Bytes())
+
+		// compare settled claim
+		expectedClaim := &types.SettledImportedBridgeExit{
+			GlobalIndex:    new(big.Int).SetBytes(expectedProto.SettledClaim.GlobalIndex.Value),
+			BridgeExitHash: common.BytesToHash(expectedProto.SettledClaim.BridgeExitHash.Value),
+		}
+		require.Equal(t, expectedClaim, resp.SettledImportedBridgeExit)
+
+		// LatestPendingStatus defaults to types.Pending when proto field is empty
+		require.Equal(t, types.Settled, resp.LatestPendingStatus)
+	})
 }
 
 func estimateRequestSize(t *testing.T, req proto.Message) int {

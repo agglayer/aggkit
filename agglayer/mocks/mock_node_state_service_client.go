@@ -173,6 +173,80 @@ func (_c *NodeStateServiceClient_GetLatestCertificateHeader_Call) RunAndReturn(r
 	return _c
 }
 
+// GetNetworkStatus provides a mock function with given fields: ctx, in, opts
+func (_m *NodeStateServiceClient) GetNetworkStatus(ctx context.Context, in *nodev1.GetNetworkStatusRequest, opts ...grpc.CallOption) (*nodev1.GetNetworkStatusResponse, error) {
+	_va := make([]interface{}, len(opts))
+	for _i := range opts {
+		_va[_i] = opts[_i]
+	}
+	var _ca []interface{}
+	_ca = append(_ca, ctx, in)
+	_ca = append(_ca, _va...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetNetworkStatus")
+	}
+
+	var r0 *nodev1.GetNetworkStatusResponse
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, *nodev1.GetNetworkStatusRequest, ...grpc.CallOption) (*nodev1.GetNetworkStatusResponse, error)); ok {
+		return rf(ctx, in, opts...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, *nodev1.GetNetworkStatusRequest, ...grpc.CallOption) *nodev1.GetNetworkStatusResponse); ok {
+		r0 = rf(ctx, in, opts...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*nodev1.GetNetworkStatusResponse)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, *nodev1.GetNetworkStatusRequest, ...grpc.CallOption) error); ok {
+		r1 = rf(ctx, in, opts...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// NodeStateServiceClient_GetNetworkStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNetworkStatus'
+type NodeStateServiceClient_GetNetworkStatus_Call struct {
+	*mock.Call
+}
+
+// GetNetworkStatus is a helper method to define mock.On call
+//   - ctx context.Context
+//   - in *nodev1.GetNetworkStatusRequest
+//   - opts ...grpc.CallOption
+func (_e *NodeStateServiceClient_Expecter) GetNetworkStatus(ctx interface{}, in interface{}, opts ...interface{}) *NodeStateServiceClient_GetNetworkStatus_Call {
+	return &NodeStateServiceClient_GetNetworkStatus_Call{Call: _e.mock.On("GetNetworkStatus",
+		append([]interface{}{ctx, in}, opts...)...)}
+}
+
+func (_c *NodeStateServiceClient_GetNetworkStatus_Call) Run(run func(ctx context.Context, in *nodev1.GetNetworkStatusRequest, opts ...grpc.CallOption)) *NodeStateServiceClient_GetNetworkStatus_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]grpc.CallOption, len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(grpc.CallOption)
+			}
+		}
+		run(args[0].(context.Context), args[1].(*nodev1.GetNetworkStatusRequest), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *NodeStateServiceClient_GetNetworkStatus_Call) Return(_a0 *nodev1.GetNetworkStatusResponse, _a1 error) *NodeStateServiceClient_GetNetworkStatus_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *NodeStateServiceClient_GetNetworkStatus_Call) RunAndReturn(run func(context.Context, *nodev1.GetNetworkStatusRequest, ...grpc.CallOption) (*nodev1.GetNetworkStatusResponse, error)) *NodeStateServiceClient_GetNetworkStatus_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewNodeStateServiceClient creates a new instance of NodeStateServiceClient. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewNodeStateServiceClient(t interface {

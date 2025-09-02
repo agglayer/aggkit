@@ -260,69 +260,59 @@ func (_c *AgglayerClientMock_GetLatestSettledCertificateHeader_Call) RunAndRetur
 	return _c
 }
 
-// GetLatestSettledImportedBridgeExit provides a mock function with given fields: ctx
-func (_m *AgglayerClientMock) GetLatestSettledImportedBridgeExit(ctx context.Context) (*types.GlobalIndex, common.Hash, error) {
-	ret := _m.Called(ctx)
+// GetNetworkStatus provides a mock function with given fields: ctx, networkID
+func (_m *AgglayerClientMock) GetNetworkStatus(ctx context.Context, networkID uint32) (types.NetworkStatus, error) {
+	ret := _m.Called(ctx, networkID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetLatestSettledImportedBridgeExit")
+		panic("no return value specified for GetNetworkStatus")
 	}
 
-	var r0 *types.GlobalIndex
-	var r1 common.Hash
-	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context) (*types.GlobalIndex, common.Hash, error)); ok {
-		return rf(ctx)
+	var r0 types.NetworkStatus
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) (types.NetworkStatus, error)); ok {
+		return rf(ctx, networkID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) *types.GlobalIndex); ok {
-		r0 = rf(ctx)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) types.NetworkStatus); ok {
+		r0 = rf(ctx, networkID)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.GlobalIndex)
-		}
+		r0 = ret.Get(0).(types.NetworkStatus)
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context) common.Hash); ok {
-		r1 = rf(ctx)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32) error); ok {
+		r1 = rf(ctx, networkID)
 	} else {
-		if ret.Get(1) != nil {
-			r1 = ret.Get(1).(common.Hash)
-		}
+		r1 = ret.Error(1)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context) error); ok {
-		r2 = rf(ctx)
-	} else {
-		r2 = ret.Error(2)
-	}
-
-	return r0, r1, r2
+	return r0, r1
 }
 
-// AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetLatestSettledImportedBridgeExit'
-type AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call struct {
+// AgglayerClientMock_GetNetworkStatus_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNetworkStatus'
+type AgglayerClientMock_GetNetworkStatus_Call struct {
 	*mock.Call
 }
 
-// GetLatestSettledImportedBridgeExit is a helper method to define mock.On call
+// GetNetworkStatus is a helper method to define mock.On call
 //   - ctx context.Context
-func (_e *AgglayerClientMock_Expecter) GetLatestSettledImportedBridgeExit(ctx interface{}) *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call {
-	return &AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call{Call: _e.mock.On("GetLatestSettledImportedBridgeExit", ctx)}
+//   - networkID uint32
+func (_e *AgglayerClientMock_Expecter) GetNetworkStatus(ctx interface{}, networkID interface{}) *AgglayerClientMock_GetNetworkStatus_Call {
+	return &AgglayerClientMock_GetNetworkStatus_Call{Call: _e.mock.On("GetNetworkStatus", ctx, networkID)}
 }
 
-func (_c *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call) Run(run func(ctx context.Context)) *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call {
+func (_c *AgglayerClientMock_GetNetworkStatus_Call) Run(run func(ctx context.Context, networkID uint32)) *AgglayerClientMock_GetNetworkStatus_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context))
+		run(args[0].(context.Context), args[1].(uint32))
 	})
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call) Return(_a0 *types.GlobalIndex, _a1 common.Hash, _a2 error) *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call {
-	_c.Call.Return(_a0, _a1, _a2)
+func (_c *AgglayerClientMock_GetNetworkStatus_Call) Return(_a0 types.NetworkStatus, _a1 error) *AgglayerClientMock_GetNetworkStatus_Call {
+	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call) RunAndReturn(run func(context.Context) (*types.GlobalIndex, common.Hash, error)) *AgglayerClientMock_GetLatestSettledImportedBridgeExit_Call {
+func (_c *AgglayerClientMock_GetNetworkStatus_Call) RunAndReturn(run func(context.Context, uint32) (types.NetworkStatus, error)) *AgglayerClientMock_GetNetworkStatus_Call {
 	_c.Call.Return(run)
 	return _c
 }
