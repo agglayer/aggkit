@@ -1341,8 +1341,8 @@ func (c ClockConfiguration) String() string {
 
 // NetworkStatus represents the status of the network returned by the interop_getNetworkStatus RPC call
 type NetworkStatus struct {
-	// NetworkStatus is the current status of the network (e.g., "active", "syncing", "error")
-	NetworkStatus string `json:"network_status"`
+	// Status is the current status of the network (e.g., "active", "syncing", "error")
+	Status string `json:"network_status"`
 	// NetworkType is the aggchain type of network
 	NetworkType string `json:"network_type"`
 	// NetworkID is the unique identifier of the network

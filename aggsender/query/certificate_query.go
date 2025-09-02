@@ -83,12 +83,13 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 		return 0, fmt.Errorf("failed to get latest settled imported bridge exit from agglayer: %w", err)
 	}
 
-	if networkStatus.SettledImportedBridgeExit != nil {
-		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(
-			ctx, networkStatus.SettledImportedBridgeExit.GlobalIndex, networkStatus.SettledImportedBridgeExit.BridgeExitHash)
+	settledIBE := networkStatus.SettledImportedBridgeExit
+	if settledIBE != nil {
+		lastImportedBridgeExitBlock, err = c.getBlockNumFromGlobalIndex(ctx,
+			settledIBE.GlobalIndex, settledIBE.BridgeExitHash)
 		if err != nil {
 			return 0, fmt.Errorf("failed to resolve the block number for last imported bridge exit %s: %w",
-				networkStatus.SettledImportedBridgeExit.GlobalIndex.String(), err)
+				settledIBE.GlobalIndex.String(), err)
 		}
 	}
 

@@ -200,7 +200,7 @@ func convertProtoNetworkStatus(status *v1nodetypes.NetworkStatus) (types.Network
 	}
 
 	return types.NetworkStatus{
-		NetworkStatus:             status.NetworkStatus,
+		Status:                    status.NetworkStatus,
 		NetworkType:               status.NetworkType,
 		NetworkID:                 status.NetworkId,
 		SettledCertificateID:      settledCertID,

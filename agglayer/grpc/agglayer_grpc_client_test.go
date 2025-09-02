@@ -626,7 +626,7 @@ func TestGetNetworkStatus(t *testing.T) {
 		resp, err := client.GetNetworkStatus(ctx, networkID)
 		require.NoError(t, err)
 
-		require.Equal(t, expectedProto.NetworkStatus, resp.NetworkStatus)
+		require.Equal(t, expectedProto.NetworkStatus, resp.Status)
 		require.Equal(t, expectedProto.NetworkType, resp.NetworkType)
 		require.Equal(t, expectedProto.NetworkId, resp.NetworkID)
 		require.Equal(t, expectedProto.SettledHeight, resp.SettledHeight)
