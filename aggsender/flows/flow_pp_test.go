@@ -754,9 +754,9 @@ func Test_PPFlow_UpdateAggchainData(t *testing.T) {
 			t.Parallel()
 			sut := &PPFlow{}
 
-			result, err := sut.UpdateAggchainData(tc.certificate, tc.multisig)
+			err := sut.UpdateAggchainData(tc.certificate, tc.multisig)
 			require.NoError(t, err)
-			require.Equal(t, tc.expectedCertificate, result)
+			require.Equal(t, tc.expectedCertificate, tc.certificate)
 		})
 	}
 }

@@ -324,7 +324,7 @@ func TestSendCertificate(t *testing.T) {
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}
 				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(cert, nil).Once()
-				mockFlow.EXPECT().UpdateAggchainData(cert, mock.Anything).Return(cert, nil).Once()
+				mockFlow.EXPECT().UpdateAggchainData(cert, mock.Anything).Return(nil).Once()
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.Hash{}, errors.New("some error")).Once()
 				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
@@ -352,7 +352,7 @@ func TestSendCertificate(t *testing.T) {
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}
 				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(cert, nil).Once()
-				mockFlow.EXPECT().UpdateAggchainData(cert, mock.Anything).Return(cert, nil).Once()
+				mockFlow.EXPECT().UpdateAggchainData(cert, mock.Anything).Return(nil).Once()
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(errors.New("some error")).Once()
 			},
@@ -407,7 +407,7 @@ func TestSendCertificate(t *testing.T) {
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}
 				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(cert, nil).Once()
-				mockFlow.EXPECT().UpdateAggchainData(cert, mock.Anything).Return(cert, nil).Once()
+				mockFlow.EXPECT().UpdateAggchainData(cert, mock.Anything).Return(nil).Once()
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).
 					Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
@@ -434,7 +434,7 @@ func TestSendCertificate(t *testing.T) {
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}
 				mockFlow.EXPECT().BuildCertificate(mock.Anything, mock.Anything).Return(cert, nil).Once()
-				mockFlow.EXPECT().UpdateAggchainData(cert, mock.Anything).Return(cert, nil).Once()
+				mockFlow.EXPECT().UpdateAggchainData(cert, mock.Anything).Return(nil).Once()
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},

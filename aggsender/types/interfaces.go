@@ -33,8 +33,7 @@ type AggsenderFlow interface {
 	// ValidateCertificate validates the built certificate
 	ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error
 	// UpdateAggchainData updates the aggchain data field for the given certificate
-	UpdateAggchainData(cert *agglayertypes.Certificate,
-		multisig *agglayertypes.Multisig) (*agglayertypes.Certificate, error)
+	UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error
 }
 
 type AggsenderFlowBaser interface {

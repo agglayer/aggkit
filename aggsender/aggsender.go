@@ -356,8 +356,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		}
 	}
 
-	certificate, err = a.flow.UpdateAggchainData(certificate, multisig)
-	if err != nil {
+	if err := a.flow.UpdateAggchainData(certificate, multisig); err != nil {
 		return nil, fmt.Errorf("error updating agchain data with multisig: %w", err)
 	}
 

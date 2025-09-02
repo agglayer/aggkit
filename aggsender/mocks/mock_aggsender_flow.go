@@ -248,33 +248,21 @@ func (_c *AggsenderFlow_GetCertificateBuildParams_Call) RunAndReturn(run func(co
 }
 
 // UpdateAggchainData provides a mock function with given fields: cert, multisig
-func (_m *AggsenderFlow) UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) (*agglayertypes.Certificate, error) {
+func (_m *AggsenderFlow) UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error {
 	ret := _m.Called(cert, multisig)
 
 	if len(ret) == 0 {
 		panic("no return value specified for UpdateAggchainData")
 	}
 
-	var r0 *agglayertypes.Certificate
-	var r1 error
-	if rf, ok := ret.Get(0).(func(*agglayertypes.Certificate, *agglayertypes.Multisig) (*agglayertypes.Certificate, error)); ok {
-		return rf(cert, multisig)
-	}
-	if rf, ok := ret.Get(0).(func(*agglayertypes.Certificate, *agglayertypes.Multisig) *agglayertypes.Certificate); ok {
+	var r0 error
+	if rf, ok := ret.Get(0).(func(*agglayertypes.Certificate, *agglayertypes.Multisig) error); ok {
 		r0 = rf(cert, multisig)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*agglayertypes.Certificate)
-		}
+		r0 = ret.Error(0)
 	}
 
-	if rf, ok := ret.Get(1).(func(*agglayertypes.Certificate, *agglayertypes.Multisig) error); ok {
-		r1 = rf(cert, multisig)
-	} else {
-		r1 = ret.Error(1)
-	}
-
-	return r0, r1
+	return r0
 }
 
 // AggsenderFlow_UpdateAggchainData_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'UpdateAggchainData'
@@ -296,12 +284,12 @@ func (_c *AggsenderFlow_UpdateAggchainData_Call) Run(run func(cert *agglayertype
 	return _c
 }
 
-func (_c *AggsenderFlow_UpdateAggchainData_Call) Return(_a0 *agglayertypes.Certificate, _a1 error) *AggsenderFlow_UpdateAggchainData_Call {
-	_c.Call.Return(_a0, _a1)
+func (_c *AggsenderFlow_UpdateAggchainData_Call) Return(_a0 error) *AggsenderFlow_UpdateAggchainData_Call {
+	_c.Call.Return(_a0)
 	return _c
 }
 
-func (_c *AggsenderFlow_UpdateAggchainData_Call) RunAndReturn(run func(*agglayertypes.Certificate, *agglayertypes.Multisig) (*agglayertypes.Certificate, error)) *AggsenderFlow_UpdateAggchainData_Call {
+func (_c *AggsenderFlow_UpdateAggchainData_Call) RunAndReturn(run func(*agglayertypes.Certificate, *agglayertypes.Multisig) error) *AggsenderFlow_UpdateAggchainData_Call {
 	_c.Call.Return(run)
 	return _c
 }

@@ -1008,13 +1008,12 @@ func Test_AggchainProverFlow_UpdateAggchainData(t *testing.T) {
 				log: logger,
 			}
 
-			result, err := flow.UpdateAggchainData(tc.certificate, tc.multisig)
+			err := flow.UpdateAggchainData(tc.certificate, tc.multisig)
 			if tc.expectedError != "" {
 				require.ErrorContains(t, err, tc.expectedError)
-				require.Nil(t, result)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tc.expectedCertificate, result)
+				require.Equal(t, tc.expectedCertificate, tc.certificate)
 			}
 		})
 	}
