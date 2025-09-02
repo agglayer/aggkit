@@ -375,7 +375,6 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		time.Sleep(*rateLimitSleepTime)
 	}
 
-	// TODO: Update once agglayer endpoint changes to accept the multisig
 	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)
 	if err != nil {
 		a.saveNonAcceptedCert(ctx, certificate, certificateParams.CreatedAt, err)
@@ -427,7 +426,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	return certificate, nil
 }
 
-// pollValidatorCommittee calls all validator committee members to validate and sign the certificate
+// pollValidatorCommittee invokes validator committee members to validate and sign the certificate
 func (a *AggSender) pollValidatorCommittee(
 	ctx context.Context,
 	validators []types.CertificateValidateAndSigner,
@@ -535,11 +534,8 @@ func (a *AggSender) pollValidatorCommittee(
 	if uint32(len(multisig.Signatures)) < signaturesThreshold {
 		metrics.MultiSigThresholdNotReached()
 
-		if len(errs) > 0 {
-			return multisig, errors.Join(errs...)
-		}
-
-		return nil, fmt.Errorf("threshold not reached: %d/%d", len(multisig.Signatures), signaturesThreshold)
+		return nil, fmt.Errorf("threshold not reached: %d/%d. Errors: %w",
+			len(multisig.Signatures), signaturesThreshold, errors.Join(errs...))
 	}
 
 	a.log.Infof("certificate validation passed with %d/%d signatures: %s",
