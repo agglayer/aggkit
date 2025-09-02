@@ -112,7 +112,7 @@ func TestRetryPolicyGenericConfig_Factory(t *testing.T) {
 		require.NotNil(t, cfg)
 		require.Equal(t, "RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}", cfg.String())
 	})
-	t.Run("factory mode=delays with errrors", func(t *testing.T) {
+	t.Run("factory mode=delays with errors", func(t *testing.T) {
 		sut := &RetryPolicyGenericConfig{
 			Mode:       RetryConfigModeDelays,
 			MaxRetries: -2,

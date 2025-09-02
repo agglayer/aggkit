@@ -449,21 +449,43 @@ func TestFilterQueryToString(t *testing.T) {
 }
 
 func TestGetLogs(t *testing.T) {
-	mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
-	sut := EVMDownloaderImplementation{
-		ethClient:        mockEthClient,
-		addressesToQuery: []common.Address{contractAddr},
-		log:              log.WithFields("test", "EVMDownloaderImplementation"),
-		rh: &RetryHandler{
-			RetryAfterErrorPeriod:      time.Millisecond,
-			MaxRetryAttemptsAfterError: 5,
-		},
-	}
-	ctx := context.TODO()
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, errors.New("foo")).Once()
-	mockEthClient.EXPECT().FilterLogs(ctx, mock.Anything).Return(nil, nil).Once()
-	logs := sut.GetLogs(ctx, 0, 1)
-	require.Equal(t, []types.Log{}, logs)
+	t.Run("timeout scenario", func(t *testing.T) {
+		mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		sut := EVMDownloaderImplementation{
+			ethClient:        mockEthClient,
+			addressesToQuery: []common.Address{contractAddr},
+			log:              log.WithFields("test", "EVMDownloaderImplementation"),
+			rh: &RetryHandler{
+				RetryAfterErrorPeriod:      time.Millisecond,
+				MaxRetryAttemptsAfterError: 5,
+			},
+		}
+		ctx := context.TODO()
+		// First call times out (after 40 seconds, which is longer than the 30-second timeout)
+		mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, fmt.Errorf("network error %w", context.DeadlineExceeded)).After(time.Second * 40).Once()
+		// Second call succeeds after retry
+		mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, nil).Once()
+		logs := sut.GetLogs(ctx, 0, 1)
+		require.Equal(t, []types.Log{}, logs)
+	})
+
+	t.Run("success scenario", func(t *testing.T) {
+		mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+		sut := EVMDownloaderImplementation{
+			ethClient:        mockEthClient,
+			addressesToQuery: []common.Address{contractAddr},
+			log:              log.WithFields("test", "EVMDownloaderImplementation"),
+			rh: &RetryHandler{
+				RetryAfterErrorPeriod:      time.Millisecond,
+				MaxRetryAttemptsAfterError: 5,
+			},
+		}
+		ctx := context.TODO()
+		// Call succeeds immediately
+		mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, nil).Once()
+		logs := sut.GetLogs(ctx, 0, 1)
+		require.Equal(t, []types.Log{}, logs)
+	})
 }
 
 func TestDownloadBeforeFinalized(t *testing.T) {
@@ -569,7 +591,7 @@ func runSteps(t *testing.T, fromBlock uint64, steps []evmTestStep) {
 		downloader.setStopDownloaderOnIterationN(i + 1)
 		expectedBlocks := EVMBlocks{}
 		for _, step := range steps[:i+1] {
-			mockEthDownloader.On("GetLastFinalizedBlock", mock.Anything).Return(&types.Header{Number: big.NewInt(int64(step.finalizedBlock))}, nil).Once()
+			mockEthDownloader.On("GetLastFinalizedBlock", mock.Anything).Return(step.finalizedBlock, nil).Once()
 			if step.waitForNewBlocks {
 				mockEthDownloader.On("WaitForNewBlocks", mock.Anything, step.waitForNewBlocksRequest).Return(step.waitForNewBlockReply).Once()
 			}
@@ -594,4 +616,67 @@ func runSteps(t *testing.T, fromBlock uint64, steps []evmTestStep) {
 			require.Equal(t, *expectedBlock, actualBlock)
 		}
 	}
+}
+
+func TestTooManyResultsErrorHandling(t *testing.T) {
+	mockEthClient := aggkittypesmocks.NewBaseEthereumClienter(t)
+	sut := EVMDownloaderImplementation{
+		ethClient:        mockEthClient,
+		addressesToQuery: []common.Address{contractAddr},
+		log:              log.WithFields("test", "EVMDownloaderImplementation"),
+		rh: &RetryHandler{
+			RetryAfterErrorPeriod:      time.Millisecond,
+			MaxRetryAttemptsAfterError: 5,
+		},
+	}
+
+	ctx := context.Background()
+	fromBlock := uint64(100)
+	toBlock := uint64(200)
+
+	// First call returns "too many results" error
+	tooManyResultsErr := errors.New("Query returned more than 20000 results.")
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(nil, tooManyResultsErr).Once()
+
+	// Second call for first batch (100-149) succeeds
+	firstBatchLogs := []types.Log{
+		{
+			Address:     contractAddr,
+			BlockNumber: 125,
+			Topics:      []common.Hash{eventSignature},
+			BlockHash:   common.HexToHash("0x123"),
+		},
+	}
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(firstBatchLogs, nil).Once()
+
+	// Third call for second batch (150-199) succeeds
+	secondBatchLogs := []types.Log{
+		{
+			Address:     contractAddr,
+			BlockNumber: 175,
+			Topics:      []common.Hash{eventSignature},
+			BlockHash:   common.HexToHash("0x456"),
+		},
+	}
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(secondBatchLogs, nil).Once()
+
+	// Fourth call for third batch (200-200) succeeds
+	thirdBatchLogs := []types.Log{
+		{
+			Address:     contractAddr,
+			BlockNumber: 200,
+			Topics:      []common.Hash{eventSignature},
+			BlockHash:   common.HexToHash("0x789"),
+		},
+	}
+	mockEthClient.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(thirdBatchLogs, nil).Once()
+
+	result := sut.getUnfilteredLogs(ctx, fromBlock, toBlock)
+
+	// Should combine all batches
+	expected := make([]types.Log, 0, len(firstBatchLogs)+len(secondBatchLogs)+len(thirdBatchLogs))
+	expected = append(expected, firstBatchLogs...)
+	expected = append(expected, secondBatchLogs...)
+	expected = append(expected, thirdBatchLogs...)
+	assert.Equal(t, expected, result)
 }
