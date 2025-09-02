@@ -592,13 +592,13 @@ func TestGetNetworkStatus(t *testing.T) {
 			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
-		networkStateServiceMock.EXPECT().GetNetworkStatus(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetNetworkState(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
-		_, err := client.GetNetworkStatus(ctx, networkID)
+		_, err := client.GetNetworkState(ctx, networkID)
 		require.ErrorContains(t, err, "test error")
 	})
 
-	t.Run("returns error when network status not available", func(t *testing.T) {
+	t.Run("returns error when network state not available", func(t *testing.T) {
 		t.Parallel()
 
 		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
@@ -608,10 +608,10 @@ func TestGetNetworkStatus(t *testing.T) {
 		}
 
 		// empty response -> HasNetworkStatus() == false
-		networkStateServiceMock.EXPECT().GetNetworkStatus(mock.Anything, mock.Anything).Return(&node.GetNetworkStatusResponse{}, nil)
+		networkStateServiceMock.EXPECT().GetNetworkState(mock.Anything, mock.Anything).Return(&node.GetNetworkStateResponse{}, nil)
 
-		_, err := client.GetNetworkStatus(ctx, networkID)
-		require.ErrorContains(t, err, "network status is not available")
+		_, err := client.GetNetworkState(ctx, networkID)
+		require.ErrorContains(t, err, "network state is not available")
 	})
 
 	t.Run("returns response on success", func(t *testing.T) {
@@ -624,41 +624,45 @@ func TestGetNetworkStatus(t *testing.T) {
 		}
 
 		settledClaimIdx := big.NewInt(84)
+		settledHeight := uint64(55)
+		settledLeafCount := uint64(100)
+		latestPendingHeight := uint64(99)
+		latestEpochWithSettlement := uint64(3)
 
-		expectedProto := &v1nodetypes.NetworkStatus{
-			NetworkStatus: "ok",
-			NetworkType:   "test",
+		expectedProto := &v1nodetypes.NetworkState{
+			NetworkStatus: v1nodetypes.NetworkStatus_NETWORK_STATUS_ACTIVE,
+			NetworkType:   v1nodetypes.NetworkType_NETWORK_TYPE_ECDSA,
 			NetworkId:     networkID,
 			SettledCertificateId: &v1nodetypes.CertificateId{Value: &v1types.FixedBytes32{
 				Value: common.HexToHash("0x010203").Bytes(),
 			}},
-			SettledHeight:       55,
+			SettledHeight:       &settledHeight,
 			SettledPpRoot:       &v1types.FixedBytes32{Value: common.HexToHash("0x010204").Bytes()},
 			SettledLer:          &v1types.FixedBytes32{Value: common.HexToHash("0x010205").Bytes()},
-			SettledLetLeafCount: 100,
+			SettledLetLeafCount: &settledLeafCount,
 			SettledClaim: &v1nodetypes.SettledClaim{
 				GlobalIndex:    &v1types.FixedBytes32{Value: common.BigToHash(settledClaimIdx).Bytes()},
 				BridgeExitHash: &v1types.FixedBytes32{Value: common.HexToHash("0x010206").Bytes()},
 			},
-			LatestPendingHeight:       99,
-			LatestPendingStatus:       "Settled",
-			LatestPendingError:        "some error",
-			LatestEpochWithSettlement: 3,
+			LatestPendingHeight:       &latestPendingHeight,
+			LatestPendingStatus:       v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_SETTLED.Enum(),
+			LatestPendingError:        &v1nodetypes.CertificateStatusError{Message: []byte("some error")},
+			LatestEpochWithSettlement: &latestEpochWithSettlement,
 		}
 
-		networkStateServiceMock.EXPECT().GetNetworkStatus(mock.Anything, mock.Anything).Return(&node.GetNetworkStatusResponse{
-			NetworkStatus: expectedProto,
+		networkStateServiceMock.EXPECT().GetNetworkState(mock.Anything, mock.Anything).Return(&node.GetNetworkStateResponse{
+			NetworkState: expectedProto,
 		}, nil)
 
-		resp, err := client.GetNetworkStatus(ctx, networkID)
+		resp, err := client.GetNetworkState(ctx, networkID)
 		require.NoError(t, err)
 
-		require.Equal(t, expectedProto.NetworkStatus, resp.Status)
-		require.Equal(t, expectedProto.NetworkType, resp.NetworkType)
+		require.Equal(t, expectedProto.NetworkStatus.String(), resp.Status)
+		require.Equal(t, expectedProto.NetworkType.String(), resp.NetworkType)
 		require.Equal(t, expectedProto.NetworkId, resp.NetworkID)
 		require.Equal(t, expectedProto.SettledHeight, resp.SettledHeight)
 		require.Equal(t, expectedProto.LatestPendingHeight, resp.LatestPendingHeight)
-		require.Equal(t, expectedProto.LatestPendingError, resp.LatestPendingError)
+		require.Equal(t, string(expectedProto.LatestPendingError.Message), resp.LatestPendingError)
 		require.Equal(t, expectedProto.LatestEpochWithSettlement, resp.LatestEpochWithSettlement)
 		require.Equal(t, expectedProto.SettledLetLeafCount, resp.SettledLETLeafCount)
 
@@ -675,7 +679,8 @@ func TestGetNetworkStatus(t *testing.T) {
 		require.Equal(t, expectedClaim, resp.SettledImportedBridgeExit)
 
 		// LatestPendingStatus defaults to types.Pending when proto field is empty
-		require.Equal(t, types.Settled, resp.LatestPendingStatus)
+		expected := convertProtoCertStatus(expectedProto.LatestPendingStatus)
+		require.Equal(t, expected, resp.LatestPendingStatus)
 	})
 }
 

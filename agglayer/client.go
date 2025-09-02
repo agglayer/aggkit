@@ -30,7 +30,7 @@ type AggLayerClientCertificateIDQuerier interface {
 type AgglayerClientInterface interface {
 	SendCertificate(ctx context.Context, certificate *types.Certificate) (common.Hash, error)
 	GetCertificateHeader(ctx context.Context, certificateHash common.Hash) (*types.CertificateHeader, error)
-	GetNetworkStatus(ctx context.Context, networkID uint32) (types.NetworkStatus, error)
+	GetNetworkState(ctx context.Context, networkID uint32) (types.NetworkState, error)
 	AggLayerClientGetEpochConfiguration
 	AggLayerClientRecoveryQuerier
 	AggLayerClientCertificateIDQuerier

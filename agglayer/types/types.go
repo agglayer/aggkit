@@ -1441,8 +1441,8 @@ func (c ClockConfiguration) String() string {
 	return fmt.Sprintf("EpochDuration: %d, GenesisBlock: %d", c.EpochDuration, c.GenesisBlock)
 }
 
-// NetworkStatus represents the status of the network returned by the interop_getNetworkStatus RPC call
-type NetworkStatus struct {
+// NetworkState represents the state of the network returned by the interop_getNetworkStatus RPC call
+type NetworkState struct {
 	// Status is the current status of the network (e.g., "active", "syncing", "error")
 	Status string `json:"network_status"`
 	// NetworkType is the aggchain type of network
@@ -1450,7 +1450,7 @@ type NetworkStatus struct {
 	// NetworkID is the unique identifier of the network
 	NetworkID uint32 `json:"network_id"`
 	// SettledHeight is the height of the latest settled certificate
-	SettledHeight uint64 `json:"settled_height"`
+	SettledHeight *uint64 `json:"settled_height"`
 	// SettledCertificateID is the ID of the latest settled certificate
 	SettledCertificateID *common.Hash `json:"settled_certificate_id"`
 	// SettledPPRoot pessimistic proof root of the latest settled certificate
@@ -1458,17 +1458,17 @@ type NetworkStatus struct {
 	// SettledLER is the local exit root of the latest settled certificate
 	SettledLER *common.Hash `json:"settled_ler"`
 	// SettledLETLeafCount is the leaf count of the latest settled local exit tree
-	SettledLETLeafCount uint64 `json:"settled_let_leaf_count"`
+	SettledLETLeafCount *uint64 `json:"settled_let_leaf_count"`
 	// SettledImportedBridgeExit is the information about the latest settled claim
 	SettledImportedBridgeExit *SettledImportedBridgeExit `json:"settled_claim,omitempty"`
 	// LatestPendingHeight is the height of the latest pending certificate
-	LatestPendingHeight uint64 `json:"latest_pending_height"`
+	LatestPendingHeight *uint64 `json:"latest_pending_height"`
 	// LatestPendingCertificateID is the status of the latest pending certificate (e.g., "Proven", "Pending", "InError")
-	LatestPendingStatus CertificateStatus `json:"latest_pending_status"`
+	LatestPendingStatus *CertificateStatus `json:"latest_pending_status"`
 	// LatestPendingError is the error message of the latest pending certificate, if any
 	LatestPendingError string `json:"latest_pending_error"`
 	// LatestEpochWithSettlement is the epoch number of the latest settlement
-	LatestEpochWithSettlement uint64 `json:"latest_epoch_with_settlement"`
+	LatestEpochWithSettlement *uint64 `json:"latest_epoch_with_settlement"`
 }
 
 // SettledImportedBridgeExit represents the information about a settled claim
