@@ -10,7 +10,7 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
-	ethCommon "github.com/ethereum/go-ethereum/common"
+	gethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 // Config is the configuration for the AggSender
@@ -57,9 +57,9 @@ type Config struct {
 	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
-	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
+	GlobalExitRootL2Addr gethcommon.Address `mapstructure:"GlobalExitRootL2"`
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
-	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
+	SovereignRollupAddr gethcommon.Address `mapstructure:"SovereignRollupAddr"`
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
@@ -72,7 +72,7 @@ type Config struct {
 	// for the Pessimistic Proof certificates
 	RequireOneBridgeInPPCertificate bool `mapstructure:"RequireOneBridgeInPPCertificate"`
 	// RollupManagerAddr is the address of the RollupManager contract on L1
-	RollupManagerAddr ethCommon.Address `mapstructure:"RollupManagerAddr"`
+	RollupManagerAddr gethcommon.Address `mapstructure:"RollupManagerAddr"`
 	// RollupCreationBlockL1 is the block number when the rollup was created on L1
 	RollupCreationBlockL1 uint64 `mapstructure:"RollupCreationBlockL1"`
 	// MaxL2BlockNumber is the last L2 block number that is going to be included in a certificate

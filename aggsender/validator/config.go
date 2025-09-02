@@ -9,7 +9,7 @@ import (
 	"github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
-	ethCommon "github.com/ethereum/go-ethereum/common"
+	gethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 var errInvalidSovereignRollupAddr = fmt.Errorf("SovereignRollupAddr must be set for AggchainProof mode")
@@ -52,7 +52,7 @@ type PPConfig struct {
 
 type FEPConfig struct {
 	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
-	SovereignRollupAddr ethCommon.Address `mapstructure:"SovereignRollupAddr"`
+	SovereignRollupAddr gethcommon.Address `mapstructure:"SovereignRollupAddr"`
 	// RequireNoBlockGap is true if the AggSender should not accept a gap between
 	// lastBlock from lastCertificate and first block of FEP
 	RequireNoBlockGap bool `mapstructure:"RequireNoBlockGap"`
@@ -60,7 +60,7 @@ type FEPConfig struct {
 
 type LerQuerierConfig struct {
 	// RollupManagerAddr is the address of the RollupManager contract on L1
-	RollupManagerAddr ethCommon.Address `mapstructure:"RollupManagerAddr"`
+	RollupManagerAddr gethcommon.Address `mapstructure:"RollupManagerAddr"`
 	// RollupCreationBlockL1 is the block number when the rollup was created on L1
 	RollupCreationBlockL1 uint64 `mapstructure:"RollupCreationBlockL1"`
 }
