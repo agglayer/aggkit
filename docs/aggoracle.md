@@ -112,4 +112,4 @@ Implements `ChainSender` using Ethereum clients and transaction management.
 
 The **AggOracle** component automates the propagation of GERs from L1 to L2, enabling bridging across networks.
 
-Refer to the EVM implementation in [evm.go](https://github.com/agglayer/aggkit/blob/main/aggoracle/chaingersender/evm.go) for guidance on building chain senders for non-EVM chains.
+Refer to the EVM implementation in [evm.go](https://github.com/agglayer/aggkit/blob/develop/aggoracle/chaingersender/evm.go) for guidance on building chain senders for non-EVM chains.
