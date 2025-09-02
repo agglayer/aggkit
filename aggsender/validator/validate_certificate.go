@@ -117,17 +117,17 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 		return fmt.Errorf("failed flow.ValidateCertificate: %w", err)
 	}
 
+	// Compare the incoming certificate with the one generated
+	err = a.compareCertificates(params.Certificate, certificate)
+	if err != nil {
+		return fmt.Errorf("certificate not equal to expected: %w", err)
+	}
+
 	// Verify claim proofs
 	if err := a.verifyClaimProofs(
 		params.Certificate.ImportedBridgeExits,
 		buildParams.L1InfoTreeRootFromWhichToProve); err != nil {
 		return fmt.Errorf("failed to verify claim proofs: %w", err)
-	}
-
-	// Compare the incoming certificate with the one generated
-	err = a.compareCertificates(params.Certificate, certificate)
-	if err != nil {
-		return fmt.Errorf("certificate not equal to expected: %w", err)
 	}
 
 	return nil

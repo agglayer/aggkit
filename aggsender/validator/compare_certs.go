@@ -57,6 +57,10 @@ func DiffsCertificate(
 	// BridgeExits
 	diffs = append(diffs, DiffsBridgeExits(expectedCertificate.BridgeExits, validatingCertificate.BridgeExits)...)
 
+	// ImportedBridge exits
+	diffs = append(diffs, DiffsImportedBridgeExits(expectedCertificate.ImportedBridgeExits,
+		validatingCertificate.ImportedBridgeExits)...)
+
 	return diffs
 }
 
@@ -78,5 +82,20 @@ func DiffsBridgeExits(
 				i, expectedExit.Hash().Hex(), bridgeValidating.Hash().Hex()))
 		}
 	}
+	return diffs
+}
+
+// DiffsImportedBridgeExits compares two slices of ImportedBridgeExit and returns a slice of strings
+// containing the differences between them.
+func DiffsImportedBridgeExits(
+	expected []*agglayertypes.ImportedBridgeExit,
+	validating []*agglayertypes.ImportedBridgeExit) []string {
+	diffs := make([]string, 0)
+	if len(expected) != len(validating) {
+		diffs = append(diffs, fmt.Sprintf("ImportedBridgeExits length mismatch. Expected: %d, Certificate: %d",
+			len(expected), len(validating)))
+		return diffs
+	}
+
 	return diffs
 }
