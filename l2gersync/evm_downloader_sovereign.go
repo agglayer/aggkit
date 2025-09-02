@@ -89,24 +89,17 @@ func (d *downloaderSovereign) Download(ctx context.Context, fromBlock uint64, do
 
 		// Wait for new blocks and get current head
 		latestBlock := d.WaitForNewBlocks(ctx, fromBlock)
-
-		// Calculate chunk end (don't exceed latest block)
 		toBlock := fromBlock + d.syncBlockChunkSize - 1
 		if toBlock > latestBlock {
 			toBlock = latestBlock
 		}
-
 		log.Debugf("processing chunk [%d to %d] (chunk size: %d)", fromBlock, toBlock, d.syncBlockChunkSize)
 
-		// Get all blocks with events in this chunk
 		blocks := d.GetEventsByBlockRange(ctx, fromBlock, toBlock)
-
-		// Send all blocks that have events
 		for _, block := range blocks {
 			downloadedCh <- *block
 		}
 
-		// Move to next chunk
 		fromBlock = toBlock + 1
 	}
 }
