@@ -127,9 +127,9 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 
 func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	t.Skip("Skipping E2E test, this test is broken and needs a PR to be fixed. The lastProcessedBlock doesn't take in account empty blocks")
 
+	ctx := context.Background()
 	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.LegacyL2GERContract))
 
 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
