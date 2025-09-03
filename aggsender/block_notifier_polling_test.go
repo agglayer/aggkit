@@ -23,7 +23,7 @@ func TestExploratoryBlockNotifierPolling(t *testing.T) {
 	t.Skip()
 	urlRPCL1 := os.Getenv("L1URL")
 	fmt.Println("URL=", urlRPCL1)
-	ethClient, err := aggkittypes.DialWithRetry(t.Context(), urlRPCL1, 5, 1*time.Second, 2*time.Second, 2.0)
+	ethClient, err := aggkittypes.DialWithRetry(t.Context(), urlRPCL1, nil)
 	require.NoError(t, err)
 
 	sut, errSut := NewBlockNotifierPolling(ethClient,
@@ -203,15 +203,6 @@ func TestDelayBLock(t *testing.T) {
 	}
 	delay := testData.sut.nextBlockRequestDelay(&status, nil)
 	require.Equal(t, minBlockInterval, delay)
-}
-
-func TestNewBlockNotifierPolling(t *testing.T) {
-	testData := newBlockNotifierPollingTestData(t, nil)
-	require.NotNil(t, testData.sut)
-	_, err := NewBlockNotifierPolling(testData.ethClientMock, ConfigBlockNotifierPolling{
-		BlockFinalityType: aggkittypes.NewBlockNumberFinality("invalid"),
-	}, log.WithFields("test", "test"), nil)
-	require.Error(t, err)
 }
 
 func TestBlockNotifierPollingString(t *testing.T) {

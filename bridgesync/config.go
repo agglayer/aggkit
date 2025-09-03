@@ -2,6 +2,7 @@ package bridgesync
 
 import (
 	"github.com/agglayer/aggkit/config/types"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -9,7 +10,7 @@ type Config struct {
 	// DBPath path of the DB
 	DBPath string `mapstructure:"DBPath"`
 	// BlockFinality indicates the status of the blocks that will be queried in order to sync
-	BlockFinality string `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
+	BlockFinality aggkittypes.BlockNumberFinality `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 	// InitialBlockNum is the first block that will be queried when starting the synchronization from scratch.
 	// It should be a number equal or bellow the creation of the bridge contract
 	InitialBlockNum uint64 `mapstructure:"InitialBlockNum"`
@@ -27,4 +28,7 @@ type Config struct {
 	// RequireStorageContentCompatibility is true it's mandatory that data stored in the database
 	// is compatible with the running environment
 	RequireStorageContentCompatibility bool `mapstructure:"RequireStorageContentCompatibility"`
+	// DBQueryTimeout is the timeout for database operations (queries, transactions)
+	// This is separate from HTTP timeouts to allow database operations more time when needed
+	DBQueryTimeout types.Duration `mapstructure:"DBQueryTimeout"`
 }

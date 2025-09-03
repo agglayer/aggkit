@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/agglayer/aggkit/log"
@@ -18,6 +19,8 @@ import (
 const (
 	DefaultWaitPeriodBlockNotFound = time.Millisecond * 100
 	MaxRetryCountBlockHashMismatch = 5
+	// DefaultFilterLogsTimeout is the default timeout for filter logs operations to prevent hanging
+	DefaultFilterLogsTimeout = 2 * time.Minute
 )
 
 var (
@@ -29,7 +32,7 @@ type EVMDownloaderInterface interface {
 	GetEventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) EVMBlocks
 	GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log
 	GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool)
-	GetLastFinalizedBlock(ctx context.Context) (*types.Header, error)
+	GetLastFinalizedBlock(ctx context.Context) (uint64, error)
 	ChainID(ctx context.Context) (uint64, error)
 }
 
@@ -48,7 +51,7 @@ type EVMDownloader struct {
 	syncBlockChunkSize uint64
 	EVMDownloaderInterface
 	log                        *log.Logger
-	finalizedBlockType         aggkittypes.BlockNumberFinality
+	finalizedBlockType         *aggkittypes.BlockNumberFinality
 	stopDownloaderOnIterationN int
 	addressesToQuery           []common.Address
 }
@@ -57,7 +60,7 @@ func NewEVMDownloader(
 	syncerID string,
 	ethClient aggkittypes.BaseEthereumClienter,
 	syncBlockChunkSize uint64,
-	blockFinalityType aggkittypes.BlockNumberFinality,
+	finality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,
 	addressesToQuery []common.Address,
@@ -65,33 +68,24 @@ func NewEVMDownloader(
 	finalizedBlockType aggkittypes.BlockNumberFinality,
 ) (*EVMDownloader, error) {
 	logger := log.WithFields("syncer", syncerID)
-	finality, err := blockFinalityType.ToBlockNum()
-	if err != nil {
-		return nil, err
-	}
 
 	fbtEthermanType := finalizedBlockType
-	fbt, err := finalizedBlockType.ToBlockNum()
-	if err != nil {
-		return nil, err
-	}
 
-	if fbt.Cmp(finality) > 0 {
+	if finalizedBlockType.GreaterThan(&finality) {
+		fbtEthermanType = finality
 		// if someone configured the syncer to query blocks by Safe or Finalized block
 		// finalized block type should be at least the same as the block finality
-		fbt = finality
-		fbtEthermanType = blockFinalityType
 		logger.Warnf("finalized block type %s is greater than block finality %s, setting finalized block type to %s",
-			finalizedBlockType, blockFinalityType, fbtEthermanType)
+			finalizedBlockType.String(), finality.String(), fbtEthermanType.String())
 	}
 
 	logger.Infof("downloader initialized with block finality: %s, finalized block type: %s. SyncChunkSize: %d",
-		blockFinalityType, fbtEthermanType, syncBlockChunkSize)
+		finality, fbtEthermanType, syncBlockChunkSize)
 
 	return &EVMDownloader{
 		syncBlockChunkSize: syncBlockChunkSize,
 		log:                logger,
-		finalizedBlockType: fbtEthermanType,
+		finalizedBlockType: &fbtEthermanType,
 		addressesToQuery:   addressesToQuery,
 		EVMDownloaderInterface: NewEVMDownloaderImplementation(
 			syncerID,
@@ -101,7 +95,7 @@ func NewEVMDownloader(
 			appender,
 			addressesToQuery,
 			rh,
-			fbt,
+			&finalizedBlockType,
 		),
 	}, nil
 }
@@ -157,7 +151,7 @@ func (d *EVMDownloader) Download(ctx context.Context, fromBlock uint64, download
 			continue
 		}
 		// lastFinalizedBlock can't be > lastBlock
-		lastFinalizedBlockNumber := min(lastBlock, lastFinalizedBlock.Number.Uint64())
+		lastFinalizedBlockNumber := min(lastBlock, lastFinalizedBlock)
 
 		requestToBlock := toBlock
 		if toBlock >= lastBlock {
@@ -230,25 +224,27 @@ func (d *EVMDownloader) reportEmptyBlock(ctx context.Context, downloadedCh chan 
 
 type EVMDownloaderImplementation struct {
 	ethClient              aggkittypes.BaseEthereumClienter
-	blockFinality          *big.Int
+	blockFinality          aggkittypes.BlockNumberFinality
 	waitForNewBlocksPeriod time.Duration
 	appender               LogAppenderMap
 	topicsToQuery          []common.Hash
 	addressesToQuery       []common.Address
 	rh                     *RetryHandler
 	log                    *log.Logger
-	finalizedBlockType     *big.Int
+	finalizedBlockType     *aggkittypes.BlockNumberFinality
 }
 
+// NewEVMDownloaderImplementation creates a new EVMDownloaderImplementation
+// finalizedBlockType can be nil, in this case, it means that the reorgs are not happening on the network
 func NewEVMDownloaderImplementation(
 	syncerID string,
 	ethClient aggkittypes.BaseEthereumClienter,
-	blockFinality *big.Int,
+	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration,
 	appender LogAppenderMap,
 	addressesToQuery []common.Address,
 	rh *RetryHandler,
-	finalizedBlockType *big.Int,
+	finalizedBlockType *aggkittypes.BlockNumberFinality,
 ) *EVMDownloaderImplementation {
 	logger := log.WithFields("syncer", syncerID)
 	var topics []common.Hash
@@ -282,14 +278,13 @@ func (d *EVMDownloaderImplementation) ChainID(ctx context.Context) (uint64, erro
 	return chainID.Uint64(), nil
 }
 
-func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context) (*types.Header, error) {
+func (d *EVMDownloaderImplementation) GetLastFinalizedBlock(ctx context.Context) (uint64, error) {
 	blockFinality := d.finalizedBlockType
 	// if the finalized block type is nil, it means that the reorgs are not happening on the network
 	if blockFinality == nil {
-		blockFinality = d.blockFinality
+		blockFinality = &d.blockFinality
 	}
-
-	return d.ethClient.HeaderByNumber(ctx, blockFinality)
+	return blockFinality.BlockNumber(ctx, d.ethClient)
 }
 
 func (d *EVMDownloaderImplementation) WaitForNewBlocks(
@@ -303,7 +298,7 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 			d.log.Info("context cancelled")
 			return latestSyncedBlock
 		case <-ticker.C:
-			header, err := d.ethClient.HeaderByNumber(ctx, d.blockFinality)
+			blockNumber, err := d.blockFinality.BlockNumber(ctx, d.ethClient)
 			if err != nil {
 				if ctx.Err() == nil {
 					attempts++
@@ -314,8 +309,8 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 				}
 				continue
 			}
-			if header.Number.Uint64() > latestSyncedBlock {
-				return header.Number.Uint64()
+			if blockNumber > latestSyncedBlock {
+				return blockNumber
 			}
 		}
 	}
@@ -323,6 +318,11 @@ func (d *EVMDownloaderImplementation) WaitForNewBlocks(
 
 func (d *EVMDownloaderImplementation) GetEventsByBlockRange(ctx context.Context, fromBlock, toBlock uint64) EVMBlocks {
 	return d.getEventsByBlockRangeWithRetry(ctx, fromBlock, toBlock, 0)
+}
+
+func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
+	unfilteredLogs := d.getUnfilteredLogs(ctx, fromBlock, toBlock)
+	return d.filterLogs(unfilteredLogs)
 }
 
 func (d *EVMDownloaderImplementation) getEventsByBlockRangeWithRetry(
@@ -395,25 +395,57 @@ func filterQueryToString(query ethereum.FilterQuery) string {
 		query.FromBlock.String(), query.ToBlock.String(), query.Addresses, query.Topics)
 }
 
-func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
+func (d *EVMDownloaderImplementation) getUnfilteredLogs(ctx context.Context, fromBlock, toBlock uint64) []types.Log {
+	initialBatchSize := toBlock - fromBlock + 1
 	var (
-		attempts       = 0
-		unfilteredLogs []types.Log
-		err            error
+		results   []types.Log
+		batchSize = initialBatchSize
 	)
 
-	query := ethereum.FilterQuery{
-		Addresses: d.addressesToQuery,
-		FromBlock: new(big.Int).SetUint64(fromBlock),
-		ToBlock:   new(big.Int).SetUint64(toBlock),
-	}
+	for start := fromBlock; start <= toBlock; {
+		end := start + batchSize - 1
+		if end > toBlock {
+			end = toBlock
+		}
 
-	for {
-		unfilteredLogs, err = d.ethClient.FilterLogs(ctx, query)
-		if err != nil {
+		query := ethereum.FilterQuery{
+			Addresses: d.addressesToQuery,
+			FromBlock: new(big.Int).SetUint64(start),
+			ToBlock:   new(big.Int).SetUint64(end),
+		}
+
+		var attempts int
+		for {
+			ctx, cancel := context.WithTimeout(ctx, DefaultFilterLogsTimeout)
+			defer cancel()
+
+			logs, err := d.ethClient.FilterLogs(ctx, query)
+			if err == nil {
+				results = append(results, logs...)
+				break
+			}
+
 			if errors.Is(err, context.Canceled) {
 				// context is canceled, we don't want to fatal on max attempts in this case
+				d.log.Errorf("context is canceled getUnfilteredLogs, returning nil")
 				return nil
+			}
+
+			if strings.Contains(err.Error(), "Query returned more than") {
+				if batchSize == 1 {
+					d.log.Errorf("too many logs even in single block %d", start)
+					return nil
+				}
+
+				batchSize /= 2
+				d.log.Warnf("too many logs in range [%d,%d], reducing batch size to %d", start, end, batchSize)
+				end = start + batchSize - 1
+				if end > toBlock {
+					end = toBlock
+				}
+				// Update query with new range
+				query.ToBlock = new(big.Int).SetUint64(end)
+				continue
 			}
 
 			attempts++
@@ -421,23 +453,26 @@ func (d *EVMDownloaderImplementation) GetLogs(ctx context.Context, fromBlock, to
 				filterQueryToString(query),
 				err,
 			)
-			d.rh.Handle(ctx, "getLogs", attempts)
-			continue
+			d.rh.Handle(ctx, "getUnfilteredLogs", attempts)
 		}
-		break
+		start = end + 1
 	}
 
-	logs := make([]types.Log, 0, len(unfilteredLogs))
+	return results
+}
+
+func (d *EVMDownloaderImplementation) filterLogs(unfilteredLogs []types.Log) []types.Log {
+	filteredLogs := make([]types.Log, 0, len(unfilteredLogs))
 	for _, l := range unfilteredLogs {
 		if l.Removed {
 			d.log.Warnf("log removed: %+v", l)
 			continue
 		}
 		if slices.Contains(d.topicsToQuery, l.Topics[0]) {
-			logs = append(logs, l)
+			filteredLogs = append(filteredLogs, l)
 		}
 	}
-	return logs
+	return filteredLogs
 }
 
 func (d *EVMDownloaderImplementation) GetBlockHeader(ctx context.Context, blockNum uint64) (EVMBlockHeader, bool) {

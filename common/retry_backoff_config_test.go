@@ -8,38 +8,32 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var (
-	retryBackoffConfigExample = &RetryBackoffConfig{
-		InitialBackoff:    types.Duration{Duration: 10 * time.Millisecond},
-		MaxBackoff:        types.Duration{Duration: 100 * time.Millisecond},
-		BackoffMultiplier: 2.0,
-		MaxRetries:        3,
-	}
-)
-
 func TestRetryBackoffConfig_NewRetryBackoffConfig(t *testing.T) {
-	t.Run("cfg=nil", func(t *testing.T) {
+	t.Run("undefined config", func(t *testing.T) {
 		cfg, err := NewRetryBackoffConfig(nil)
 		require.Error(t, err)
 		require.Nil(t, cfg)
 	})
-	t.Run("cfg!=nil", func(t *testing.T) {
-		cfg, err := NewRetryBackoffConfig(&RetryPolicyGenericConfig{
-			InitialBackoff:    types.Duration{Duration: 10 * time.Millisecond},
-			MaxBackoff:        types.Duration{Duration: 100 * time.Millisecond},
-			BackoffMultiplier: 2.0,
-			MaxRetries:        3,
-		})
+
+	t.Run("valid config", func(t *testing.T) {
+		cfg, err := NewRetryBackoffConfig(
+			&RetryPolicyGenericConfig{
+				InitialBackoff:    types.Duration{Duration: 10 * time.Millisecond},
+				MaxBackoff:        types.Duration{Duration: 100 * time.Millisecond},
+				BackoffMultiplier: 2.0,
+				MaxRetries:        3,
+			})
 		require.NoError(t, err)
 		require.NotNil(t, cfg)
 		require.IsType(t, &RetryBackoffConfig{}, cfg)
-		require.Equal(t, retryBackoffConfigExample.String(), cfg.String())
+		expectedCfg := newRetryBackoffConfigForTest(t)
+		require.Equal(t, expectedCfg.String(), cfg.String())
 	})
 }
 
 func TestRetryBackoffConfig_NewRetryHandler(t *testing.T) {
 	t.Run("NewRetryHandler ok", func(t *testing.T) {
-		handler, err := retryBackoffConfigExample.NewRetryHandler()
+		handler, err := newRetryBackoffConfigForTest(t).NewRetryHandler()
 		require.NoError(t, err)
 		require.NotNil(t, handler)
 		require.Equal(t, "RetryHandlerDelays{RetryDelaysConfig{Delays: [10ms 20ms 40ms], MaxRetries: 3}}", handler.String())
@@ -75,21 +69,77 @@ func TestRetryBackoffConfig_NewRetryHandler(t *testing.T) {
 
 func TestRetryBackoffConfig_String(t *testing.T) {
 	require.Equal(t, "RetryBackoffConfig{InitialBackoff: 10ms, MaxBackoff: 100ms, BackoffMultiplier: 2.000000, MaxRetries: 3}",
-		retryBackoffConfigExample.String())
+		newRetryBackoffConfigForTest(t).String())
 }
 
 func TestRetryBackoffConfig_Brief(t *testing.T) {
-	require.Equal(t, "RetryBackoffConfig", retryBackoffConfigExample.Brief())
+	require.Equal(t, "RetryBackoffConfig", newRetryBackoffConfigForTest(t).Brief())
 }
 
 func TestRetryBackoffConfig_Validate(t *testing.T) {
-	require.NoError(t, retryBackoffConfigExample.Validate())
-	cfg2 := newRetryBackoffConfigForTest(t)
-	cfg2.MaxRetries = -2
-	require.ErrorContains(t, cfg2.Validate(), "max retries -2 cannot be less than -1")
-	cfg2 = newRetryBackoffConfigForTest(t)
-	cfg2.BackoffMultiplier = 0.0
-	require.ErrorContains(t, cfg2.Validate(), "backoff multiplier must be greater than zero")
+	tests := []struct {
+		name        string
+		modifyFn    func(cfg *RetryBackoffConfig)
+		expectError string
+	}{
+		{
+			name:        "valid config",
+			modifyFn:    nil,
+			expectError: "",
+		},
+		{
+			name: "negative max retries",
+			modifyFn: func(cfg *RetryBackoffConfig) {
+				cfg.MaxRetries = -2
+			},
+			expectError: "max retries -2 cannot be less than -1",
+		},
+		{
+			name: "invalid initial backoff",
+			modifyFn: func(cfg *RetryBackoffConfig) {
+				cfg.InitialBackoff = types.NewDuration(0)
+			},
+			expectError: "initial backoff must be greater than 0",
+		},
+		{
+			name: "invalid max backoff",
+			modifyFn: func(cfg *RetryBackoffConfig) {
+				cfg.MaxBackoff = types.NewDuration(0)
+			},
+			expectError: "max backoff must be greater than 0",
+		},
+		{
+			name: "invalid max backoff smaller than initial backoff",
+			modifyFn: func(cfg *RetryBackoffConfig) {
+				cfg.InitialBackoff = types.NewDuration(2 * time.Second)
+				cfg.MaxBackoff = types.NewDuration(time.Second)
+			},
+			expectError: "max backoff 1s must be greater than or equal to initial backoff 2s",
+		},
+		{
+			name: "zero backoff multiplier",
+			modifyFn: func(cfg *RetryBackoffConfig) {
+				cfg.BackoffMultiplier = 0.0
+			},
+			expectError: "backoff multiplier must be greater than 1.0",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := newRetryBackoffConfigForTest(t)
+			if tc.modifyFn != nil {
+				tc.modifyFn(cfg)
+			}
+
+			err := cfg.Validate()
+			if tc.expectError == "" {
+				require.NoError(t, err)
+			} else {
+				require.ErrorContains(t, err, tc.expectError)
+			}
+		})
+	}
 }
 
 func newRetryBackoffConfigForTest(t *testing.T) *RetryBackoffConfig {

@@ -25,8 +25,6 @@ type Config struct {
 	AggsenderPrivateKey signertypes.SignerConfig `mapstructure:"AggsenderPrivateKey"`
 	// URLRPCL2 is the URL of the L2 RPC node
 	URLRPCL2 string `mapstructure:"URLRPCL2"`
-	// BlockFinality indicates which finality the AggLayer follows
-	BlockFinality string `jsonschema:"enum=LatestBlock, enum=SafeBlock, enum=PendingBlock, enum=FinalizedBlock, enum=EarliestBlock" mapstructure:"BlockFinality"` //nolint:lll
 	// EpochNotificationPercentage indicates the percentage of the epoch
 	// the AggSender should send the certificate
 	// 0 -> Begin
@@ -100,7 +98,6 @@ func (c Config) String() string {
 	return "StoragePath: " + c.StoragePath + "\n" +
 		"AgglayerClient: " + c.AgglayerClient.String() + "\n" +
 		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
-		"BlockFinality: " + c.BlockFinality + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +

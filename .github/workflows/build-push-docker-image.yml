@@ -37,7 +37,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Prepare platform-safe variable
         id: platform_vars
@@ -118,7 +118,7 @@ jobs:
           - { suffix: "-dev", description: "development" }
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Download digests for production
         if: matrix.variant.suffix == ''

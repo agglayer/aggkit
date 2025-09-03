@@ -3,7 +3,6 @@ package l2gersync
 import (
 	"context"
 	"fmt"
-	"math/big"
 	"time"
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/globalexitrootmanagerl2sovereignchain"
@@ -36,7 +35,7 @@ func newDownloaderSovereign(
 	l2GERAddr common.Address,
 	l1InfoTreeSync L1InfoTreeQuerier,
 	rh *sync.RetryHandler,
-	blockFinality *big.Int,
+	blockFinality aggkittypes.BlockNumberFinality,
 	waitForNewBlocksPeriod time.Duration) (*downloaderSovereign, error) {
 	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERAddr, l2Client)

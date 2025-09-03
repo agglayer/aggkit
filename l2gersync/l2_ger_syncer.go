@@ -67,10 +67,6 @@ func New(
 		RetryAfterErrorPeriod:      retryAfterErrorPeriod,
 		MaxRetryAttemptsAfterError: maxRetryAttemptsAfterError,
 	}
-	bf, err := blockFinality.ToBlockNum()
-	if err != nil {
-		return nil, err
-	}
 
 	syncMode, err := resolveSyncMode(ctx, l2GERManagerAddr, l2Client)
 	if err != nil {
@@ -84,14 +80,14 @@ func New(
 		downloader, err = newDownloaderLegacy(
 			l2Client, l2GERManagerAddr,
 			l1InfoTreeSync, processor,
-			rh, bf, waitForNewBlocksPeriod,
+			rh, blockFinality, waitForNewBlocksPeriod,
 		)
 
 	case SovereignChain:
 		downloader, err = newDownloaderSovereign(
 			l2Client, l2GERManagerAddr,
 			l1InfoTreeSync,
-			rh, bf, waitForNewBlocksPeriod,
+			rh, blockFinality, waitForNewBlocksPeriod,
 		)
 
 	default:
