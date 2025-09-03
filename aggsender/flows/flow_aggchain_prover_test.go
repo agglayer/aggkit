@@ -997,6 +997,33 @@ func Test_AggchainProverFlow_UpdateAggchainData(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "successful update - with aggchain data proof with multisig",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataMultisigWithProof{
+					AggchainProof: &agglayertypes.AggchainDataProof{
+						Proof:          []byte("some-proof"),
+						Version:        "0.1",
+						Vkey:           []byte("vkey"),
+						AggchainParams: common.HexToHash("0x2"),
+						Context:        map[string][]byte{"k": []byte("v")},
+					},
+				},
+			},
+			multisig: &agglayertypes.Multisig{},
+			expectedCertificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataMultisigWithProof{
+					Multisig: &agglayertypes.Multisig{},
+					AggchainProof: &agglayertypes.AggchainDataProof{
+						Proof:          []byte("some-proof"),
+						Version:        "0.1",
+						Vkey:           []byte("vkey"),
+						AggchainParams: common.HexToHash("0x2"),
+						Context:        map[string][]byte{"k": []byte("v")},
+					},
+				},
+			},
+		},
 	}
 
 	for _, tc := range testCases {

@@ -792,12 +792,7 @@ func TestPollValidators(t *testing.T) {
 			name: "single healthy validator returns valid signature",
 			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
 				mockValidator := mocks.NewCertificateValidateAndSigner(t)
-				mockValidator.EXPECT().String().Return("Validator: http://polygon:1234 - 0x1")
 				mockValidator.EXPECT().Index().Return(uint32(1))
-				mockValidator.EXPECT().
-					HealthCheck(mock.Anything).
-					Return(&aggsendertypes.HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil).
-					Once()
 				mockValidator.EXPECT().
 					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
 					Return(make([]byte, aggkitcommon.SignatureSize), nil).
@@ -807,22 +802,6 @@ func TestPollValidators(t *testing.T) {
 			expectedMinSigs: 1,
 		},
 		{
-			name: "validator healthcheck fails",
-			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
-				mockValidator := mocks.NewCertificateValidateAndSigner(t)
-				mockValidator.EXPECT().String().Return("Validator: http://polygon:1234 - 0x1")
-				mockValidator.EXPECT().Address().Return(common.HexToAddress("0x1"))
-				mockValidator.EXPECT().
-					HealthCheck(mock.Anything).
-					Return(nil, errors.New("health fail")).
-					Once()
-				// ValidateAndSignCertificate should not be called in this case.
-				return []aggsendertypes.CertificateValidateAndSigner{mockValidator}, 1
-			},
-			expectedMinSigs:    0,
-			expectErrSubstring: "health fail",
-		},
-		{
 			name: "multiple validators reach threshold",
 			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
 				v1 := mocks.NewCertificateValidateAndSigner(t)
@@ -830,12 +809,7 @@ func TestPollValidators(t *testing.T) {
 				v3 := mocks.NewCertificateValidateAndSigner(t)
 
 				for i, v := range [](*mocks.CertificateValidateAndSigner){v1, v2, v3} {
-					v.EXPECT().String().Return(fmt.Sprintf("Validator: http://polygon:1234 - 0x%d", i+1))
 					v.EXPECT().Index().Return(uint32(i))
-					v.EXPECT().
-						HealthCheck(mock.Anything).
-						Return(&aggsendertypes.HealthCheckResponse{Status: aggsendertypes.HealthCheckStatusOK}, nil).
-						Times(1)
 					v.EXPECT().
 						ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
 						Return(make([]byte, aggkitcommon.SignatureSize), nil).
@@ -846,6 +820,27 @@ func TestPollValidators(t *testing.T) {
 				return validators, 2
 			},
 			expectedMinSigs: 2,
+		},
+		{
+			name: "threshold not reached",
+			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
+				v1 := mocks.NewCertificateValidateAndSigner(t)
+				v2 := mocks.NewCertificateValidateAndSigner(t)
+				v3 := mocks.NewCertificateValidateAndSigner(t)
+
+				for i, v := range [](*mocks.CertificateValidateAndSigner){v1, v2, v3} {
+					v.EXPECT().String().Return(fmt.Sprintf("validator-%d", i))
+					v.EXPECT().Address().Return(common.HexToAddress(fmt.Sprintf("0x%d", i+1)))
+					v.EXPECT().
+						ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
+						Return(nil, errors.New("validation failed")).
+						Times(1)
+				}
+
+				validators := []aggsendertypes.CertificateValidateAndSigner{v1, v2, v3}
+				return validators, 2
+			},
+			expectErrSubstring: "threshold not reached",
 		},
 	}
 

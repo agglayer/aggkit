@@ -466,20 +466,6 @@ func (a *AggSender) pollValidatorCommittee(
 			default:
 			}
 
-			status, err := v.HealthCheck(ctx)
-			if err != nil {
-				a.log.Warnf("error checking validator health %s: %v", v.String(), err)
-				resultsCh <- signResult{err: err, validator: v}
-				return
-			}
-
-			if !status.IsHealthy() {
-				a.log.Warnf("%s is not healthy: %s, skipping it...", v.String(), status.String())
-				return // skip unhealthy validator
-			}
-
-			a.log.Infof("%s health check: %s", v.String(), status.String())
-
 			sig, err := v.ValidateAndSignCertificate(ctx, certificate, lastL2BlockInCert)
 			if err != nil {
 				a.log.Errorf("validator %s failed to validate the certificate: %v", v.String(), err)

@@ -345,7 +345,13 @@ func (a *AggchainProverFlow) UpdateAggchainData(
 
 	proof, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
 	if !ok {
-		return fmt.Errorf("aggchainProverFlow - aggchain data field not AggchainDataProof")
+		proofWithMultisig, ok := cert.AggchainData.(*agglayertypes.AggchainDataMultisigWithProof)
+		if !ok {
+			return errors.New("aggchainProverFlow - aggchain data field not " +
+				"AggchainDataProof nor AggchainDataMultisigWithProof")
+		}
+
+		proof = proofWithMultisig.AggchainProof
 	}
 
 	// update the agchain data with multisig
