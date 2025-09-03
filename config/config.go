@@ -72,7 +72,8 @@ const (
 	lastGERSyncSyncModeDeprecatedHint     = "LastGERSync.SyncMode is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint      = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
 	reorgDetectorL1DeprecatedHint         = "ReorgDetectorL1 is deprecated, remove it from configuration"
-	sovereignRollupAddrDeprecatedHint     = "SovereignRollupAddr is deprecated, remove it from configuratin (L1NetworkConfig.RollupAddr is used instead) "
+	sovereignRollupAddrDeprecatedHint     = "SovereignRollupAddr is deprecated, remove it from configuration " +
+		"(L1NetworkConfig.RollupAddr is used instead)"
 )
 
 type DeprecatedFieldsError struct {
