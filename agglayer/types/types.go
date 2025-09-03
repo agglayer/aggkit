@@ -156,13 +156,13 @@ func (a *AggchainDataSelector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	var ok bool
-	if _, ok = obj["proof"]; ok {
+	if _, ok = obj["aggchain_data_proof"]; ok {
 		a.obj = &AggchainDataProof{}
-	} else if _, ok = obj["signature"]; ok {
+	} else if _, ok = obj["aggchain_data_signature"]; ok {
 		a.obj = &AggchainDataSignature{}
-	} else if _, ok = obj["aggchain_proof"]; ok {
+	} else if _, ok = obj["aggchain_data_multisig_with_proof"]; ok {
 		a.obj = &AggchainDataMultisigWithProof{}
-	} else if _, ok = obj["multisig"]; ok {
+	} else if _, ok = obj["aggchain_data_multisig"]; ok {
 		a.obj = &AggchainDataMultisig{}
 	} else {
 		return errors.New("invalid aggchain_data type")
@@ -181,21 +181,30 @@ type AggchainDataSignature struct {
 // MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataSignature) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Signature string `json:"signature"`
+		AggchainDataSignature struct {
+			Signature string `json:"signature"`
+		} `json:"aggchain_data_signature"`
 	}{
-		Signature: common.Bytes2Hex(a.Signature),
+		AggchainDataSignature: struct {
+			Signature string `json:"signature"`
+		}{
+			Signature: common.Bytes2Hex(a.Signature),
+		},
 	})
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataSignature) UnmarshalJSON(data []byte) error {
 	aux := &struct {
-		Signature string `json:"signature"`
+		AggchainDataSignature struct {
+			Signature string `json:"signature"`
+		} `json:"aggchain_data_signature"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	a.Signature = common.Hex2Bytes(aux.Signature)
+
+	a.Signature = common.Hex2Bytes(aux.AggchainDataSignature.Signature)
 	return nil
 }
 
@@ -213,42 +222,55 @@ type AggchainDataProof struct {
 // MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataProof) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Proof          string            `json:"proof"`
-		AggchainParams string            `json:"aggchain_params"`
-		Context        map[string][]byte `json:"context"`
-		Version        string            `json:"version"`
-		VKey           string            `json:"vkey"`
-		Signature      string            `json:"signature"`
+		AggchainDataProof struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+			Version        string            `json:"version"`
+			VKey           string            `json:"vkey"`
+			Signature      string            `json:"signature"`
+		} `json:"aggchain_data_proof"`
 	}{
-		Proof:          common.Bytes2Hex(a.Proof),
-		AggchainParams: a.AggchainParams.String(),
-		Context:        a.Context,
-		Version:        a.Version,
-		VKey:           common.Bytes2Hex(a.Vkey),
-		Signature:      common.Bytes2Hex(a.Signature),
+		AggchainDataProof: struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+			Version        string            `json:"version"`
+			VKey           string            `json:"vkey"`
+			Signature      string            `json:"signature"`
+		}{
+			Proof:          common.Bytes2Hex(a.Proof),
+			AggchainParams: a.AggchainParams.String(),
+			Context:        a.Context,
+			Version:        a.Version,
+			VKey:           common.Bytes2Hex(a.Vkey),
+			Signature:      common.Bytes2Hex(a.Signature),
+		},
 	})
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 	aux := &struct {
-		Proof          string            `json:"proof"`
-		AggchainParams string            `json:"aggchain_params"`
-		Context        map[string][]byte `json:"context"`
-		Version        string            `json:"version"`
-		VKey           string            `json:"vkey"`
-		Signature      string            `json:"signature"`
+		AggchainDataProof struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+			Version        string            `json:"version"`
+			VKey           string            `json:"vkey"`
+			Signature      string            `json:"signature"`
+		} `json:"aggchain_data_proof"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
 
-	a.Proof = common.Hex2Bytes(aux.Proof)
-	a.AggchainParams = common.HexToHash(aux.AggchainParams)
-	a.Context = aux.Context
-	a.Version = aux.Version
-	a.Vkey = common.Hex2Bytes(aux.VKey)
-	a.Signature = common.Hex2Bytes(aux.Signature)
+	a.Proof = common.Hex2Bytes(aux.AggchainDataProof.Proof)
+	a.AggchainParams = common.HexToHash(aux.AggchainDataProof.AggchainParams)
+	a.Context = aux.AggchainDataProof.Context
+	a.Version = aux.AggchainDataProof.Version
+	a.Vkey = common.Hex2Bytes(aux.AggchainDataProof.VKey)
+	a.Signature = common.Hex2Bytes(aux.AggchainDataProof.Signature)
 
 	return nil
 }
@@ -262,21 +284,29 @@ type AggchainDataMultisig struct {
 // MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataMultisig) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Multisig *Multisig `json:"multisig"`
+		AggchainDataMultisig struct {
+			Multisig *Multisig `json:"multisig"`
+		} `json:"aggchain_data_multisig"`
 	}{
-		Multisig: a.Multisig,
+		AggchainDataMultisig: struct {
+			Multisig *Multisig `json:"multisig"`
+		}{
+			Multisig: a.Multisig,
+		},
 	})
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataMultisig) UnmarshalJSON(data []byte) error {
 	aux := &struct {
-		Multisig *Multisig `json:"multisig"`
+		AggchainDataMultisig struct {
+			Multisig *Multisig `json:"multisig"`
+		} `json:"aggchain_data_multisig"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	a.Multisig = aux.Multisig
+	a.Multisig = aux.AggchainDataMultisig.Multisig
 	return nil
 }
 
@@ -290,25 +320,34 @@ type AggchainDataMultisigWithProof struct {
 // MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataMultisigWithProof) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Multisig      *Multisig          `json:"multisig"`
-		AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		AggchainDataMultisigWithProof struct {
+			Multisig      *Multisig          `json:"multisig"`
+			AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		} `json:"aggchain_data_multisig_with_proof"`
 	}{
-		Multisig:      a.Multisig,
-		AggchainProof: a.AggchainProof,
+		AggchainDataMultisigWithProof: struct {
+			Multisig      *Multisig          `json:"multisig"`
+			AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		}{
+			Multisig:      a.Multisig,
+			AggchainProof: a.AggchainProof,
+		},
 	})
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataMultisigWithProof) UnmarshalJSON(data []byte) error {
 	aux := &struct {
-		Multisig      *Multisig          `json:"multisig"`
-		AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		AggchainDataMultisigWithProof struct {
+			Multisig      *Multisig          `json:"multisig"`
+			AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		} `json:"aggchain_data_multisig_with_proof"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	a.Multisig = aux.Multisig
-	a.AggchainProof = aux.AggchainProof
+	a.Multisig = aux.AggchainDataMultisigWithProof.Multisig
+	a.AggchainProof = aux.AggchainDataMultisigWithProof.AggchainProof
 	return nil
 }
 

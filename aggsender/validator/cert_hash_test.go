@@ -1,13 +1,12 @@
 package validator
 
 import (
-	"encoding/json"
+	"math/big"
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	"github.com/agglayer/aggkit/aggsender/db"
-	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/log"
+	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -43,50 +42,138 @@ func TestHashCertificateToSign(t *testing.T) {
 	})
 
 	t.Run("check imported fields on hash", func(t *testing.T) {
-		_, cert := getCertFromAggsenderDBForTest(t)
+		cert := getTestCert(t)
 		hash, err := HashCertificateToSign(cert)
 		require.NoError(t, err)
-		require.Equal(t, "0x4e43189545291d5d69db51da28e7534b4fc1d501602c454111778f987a012977", hash.String())
+		require.Equal(t, "0xfeed673df1cdbe38aef628f0417c22ce4439c64f452090b5b4845ba799a9b10e", hash.String())
 		cert.NetworkID += 1
 		hash, err = HashCertificateToSign(cert)
 		require.NoError(t, err)
-		require.Equal(t, "0xd19f41bf5692eefcbf8efbfeed974ac9adac836abd418504c48b1f25f9480bf5", hash.String())
+		require.Equal(t, "0xbc2d8f9ea5e2b024d5007139c2b5d282d4e9a2e745340960dc5a1bc0b5703524", hash.String())
 		cert.Height += 1
 		hash, err = HashCertificateToSign(cert)
 		require.NoError(t, err)
-		require.Equal(t, "0x53054a4b3a9b64077e38e29726d51307303f040d9624f8399492c714ad74f268", hash.String())
+		require.Equal(t, "0xa504f0f8deceb412de5902c2acec8565eab9f2ae3d70e6262615fab88c317a14", hash.String())
 		cert.Metadata = [32]byte{6, 7, 8, 9, 10}
 		hash, err = HashCertificateToSign(cert)
 		require.NoError(t, err)
-		require.Equal(t, "0xbb5243f1087a7e1fdb23954f20e03ac8b9b8aca0e01f2a7c38f16d1c23fbf4f1", hash.String())
+		require.Equal(t, "0x87b7ebf8ed82ad9cb49e0fd11ef79ebb7890afb19d08262e74d1690fbaa651b8", hash.String())
 	})
 }
 
 func TestCertificateIdHash(t *testing.T) {
-	cert, unmarshalCert := getCertFromAggsenderDBForTest(t)
-	id := unmarshalCert.CertificateID()
-	require.Equal(t, cert.Header.CertificateID, id)
-	hash, err := HashCertificateToSign(unmarshalCert)
+	cert := getTestCert(t)
+	hash, err := HashCertificateToSign(cert)
 	require.NoError(t, err)
-	require.Equal(t, "0x4e43189545291d5d69db51da28e7534b4fc1d501602c454111778f987a012977", hash.String())
+	require.Equal(t, "0xfeed673df1cdbe38aef628f0417c22ce4439c64f452090b5b4845ba799a9b10e", hash.String())
 }
 
 // Returns aggsender and agglayer cert
-func getCertFromAggsenderDBForTest(t *testing.T) (*types.Certificate, *agglayertypes.Certificate) {
+func getTestCert(t *testing.T) *agglayertypes.Certificate {
 	t.Helper()
-	dbPath := "testData/aggsender.sqlite"
 
-	cfg := db.AggSenderSQLStorageConfig{
-		DBPath:                  dbPath,
-		KeepCertificatesHistory: true,
+	return &agglayertypes.Certificate{
+		AggchainData: &agglayertypes.AggchainDataProof{
+			Proof:          []byte{0x01},
+			AggchainParams: common.HexToHash("0x010203"),
+		},
+		NetworkID:           1,
+		Height:              100,
+		PrevLocalExitRoot:   common.HexToHash("0x010201"),
+		NewLocalExitRoot:    common.HexToHash("0x010202"),
+		Metadata:            aggkitcommon.ZeroHash,
+		CustomChainData:     []byte{0x1, 0x2, 0x3},
+		L1InfoTreeLeafCount: 11,
+		BridgeExits: []*agglayertypes.BridgeExit{
+			{
+				LeafType: agglayertypes.LeafTypeAsset,
+				TokenInfo: &agglayertypes.TokenInfo{
+					OriginNetwork:      2,
+					OriginTokenAddress: common.HexToAddress("0x010203"),
+				},
+				DestinationNetwork: 1,
+				DestinationAddress: common.HexToAddress("0x010204"),
+				Amount:             big.NewInt(100),
+			},
+		},
+		ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{
+			{
+				BridgeExit: &agglayertypes.BridgeExit{
+					LeafType: agglayertypes.LeafTypeAsset,
+					TokenInfo: &agglayertypes.TokenInfo{
+						OriginNetwork:      1,
+						OriginTokenAddress: common.HexToAddress("0x01111"),
+					},
+					DestinationNetwork: 2,
+					DestinationAddress: common.HexToAddress("0x011112"),
+					Amount:             big.NewInt(101),
+				},
+				GlobalIndex: &agglayertypes.GlobalIndex{
+					MainnetFlag: true,
+					RollupIndex: 0,
+					LeafIndex:   1,
+				},
+				ClaimData: &agglayertypes.ClaimFromMainnet{
+					ProofLeafMER: &agglayertypes.MerkleProof{
+						Root:  common.HexToHash("0x010203"),
+						Proof: tree.EmptyProof,
+					},
+					ProofGERToL1Root: &agglayertypes.MerkleProof{
+						Root:  common.HexToHash("0x0102011"),
+						Proof: tree.EmptyProof,
+					},
+					L1Leaf: &agglayertypes.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 1,
+						RollupExitRoot:  common.HexToHash("0x0102012"),
+						MainnetExitRoot: common.HexToHash("0x0102013"),
+						Inner: &agglayertypes.L1InfoTreeLeafInner{
+							GlobalExitRoot: common.HexToHash("0x0102014"),
+							BlockHash:      common.HexToHash("0x0102015"),
+							Timestamp:      1234567890,
+						},
+					},
+				},
+			},
+			{
+				BridgeExit: &agglayertypes.BridgeExit{
+					LeafType: agglayertypes.LeafTypeMessage,
+					TokenInfo: &agglayertypes.TokenInfo{
+						OriginNetwork:      11,
+						OriginTokenAddress: common.HexToAddress("0x011"),
+					},
+					DestinationNetwork: 22,
+					DestinationAddress: common.HexToAddress("0x012"),
+				},
+				GlobalIndex: &agglayertypes.GlobalIndex{
+					MainnetFlag: false,
+					RollupIndex: 11,
+					LeafIndex:   2,
+				},
+				ClaimData: &agglayertypes.ClaimFromRollup{
+					ProofLeafLER: &agglayertypes.MerkleProof{
+						Root:  common.HexToHash("0x0112"),
+						Proof: tree.EmptyProof,
+					},
+					ProofGERToL1Root: &agglayertypes.MerkleProof{
+						Root:  common.HexToHash("0x0122"),
+						Proof: tree.EmptyProof,
+					},
+					ProofLERToRER: &agglayertypes.MerkleProof{
+						Root:  common.HexToHash("0x0123"),
+						Proof: tree.EmptyProof,
+					},
+					L1Leaf: &agglayertypes.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 2,
+						RollupExitRoot:  common.HexToHash("0x11"),
+						MainnetExitRoot: common.HexToHash("0x12"),
+						Inner: &agglayertypes.L1InfoTreeLeafInner{
+							GlobalExitRoot: common.HexToHash("0x13"),
+							BlockHash:      common.HexToHash("0x14"),
+							Timestamp:      122222,
+						},
+					},
+				},
+			},
+		},
 	}
-	logger := log.WithFields("test", "TestCertificateHash")
-	database, err := db.NewAggSenderSQLStorage(logger, cfg)
-	require.NoError(t, err)
-	cert, err := database.GetLastSentCertificate()
-	require.NoError(t, err)
-	var unmarshalCert *agglayertypes.Certificate
-	err = json.Unmarshal([]byte(*cert.SignedCertificate), &unmarshalCert)
-	require.NoError(t, err)
-	return cert, unmarshalCert
 }
