@@ -44,7 +44,6 @@ var (
 	claimMessageEtrogMethodID    = common.Hex2Bytes("f5efcd79")
 	claimAssetPreEtrogMethodID   = common.Hex2Bytes("2cffd02e")
 	claimMessagePreEtrogMethodID = common.Hex2Bytes("2d2c9d94")
-	zeroAddress                  = common.HexToAddress("0x0")
 )
 
 const (
@@ -76,16 +75,11 @@ func buildAppender(
 			bridgeAddr, err)
 	}
 
-	gasTokenAddress, err := bridgeContractV2.GasTokenAddress(nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get gas token address: %w", err)
-	}
-
 	appender := make(sync.LogAppenderMap)
 
 	// Add event handlers for the bridge contract
 	appender[bridgeEventSignature] = buildBridgeEventHandler(
-		bridgeContractV2, client, bridgeAddr, gasTokenAddress, logger)
+		bridgeContractV2, client, bridgeAddr, logger)
 	appender[claimEventSignature] = buildClaimEventHandler(
 		bridgeContractV2, client, bridgeAddr, syncFullClaims, logger)
 	appender[claimEventSignaturePreEtrog] = buildClaimEventHandlerPreEtrog(
@@ -106,7 +100,7 @@ func buildAppender(
 // buildBridgeEventHandler creates a handler for the Bridge event log.
 func buildBridgeEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 	client aggkittypes.EthClienter,
-	bridgeAddr common.Address, gasTokenAddress common.Address, logger *logger.Logger,
+	bridgeAddr common.Address, logger *logger.Logger,
 ) func(*sync.EVMBlock, types.Log) error {
 	return func(b *sync.EVMBlock, l types.Log) error {
 		bridgeEvent, err := contract.ParseBridgeEvent(l)
