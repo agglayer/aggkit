@@ -1235,7 +1235,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL1.EXPECT().
 			GetLegacyTokenMigrations(mock.Anything, mock.Anything, mock.Anything).
-			Return(nil, 0, fmt.Errorf(fooErrMsg))
+			Return(nil, 0, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set("network_id", "0")
@@ -1250,7 +1250,7 @@ func TestGetLegacyTokenMigrationsHandler(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 		bridgeMocks.bridgeL2.EXPECT().
 			GetLegacyTokenMigrations(mock.Anything, mock.Anything, mock.Anything).
-			Return(nil, 0, fmt.Errorf(barErrMsg))
+			Return(nil, 0, errors.New(barErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set("network_id", fmt.Sprintf("%d", l2NetworkID))
@@ -1385,7 +1385,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetLastInfo().
-			Return(nil, fmt.Errorf(fooErrMsg))
+			Return(nil, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set("network_id", "0")
@@ -1411,7 +1411,7 @@ func TestL1InfoTreeIndexForBridgeHandler(t *testing.T) {
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetRootByLER(mock.Anything, mock.Anything).
-			Return(nil, fmt.Errorf(barErrMsg))
+			Return(nil, errors.New(barErrMsg))
 
 		// With the fallback logic, it will try GetLastRoot when GetRootByLER fails
 		bridgeMocks.bridgeL1.EXPECT().
@@ -1533,7 +1533,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(nil, fmt.Errorf(fooErrMsg))
+			Return(nil, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
@@ -1551,7 +1551,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 
 		bridgeMocks.injectedGERs.EXPECT().
 			GetFirstGERAfterL1InfoTreeIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(l2gersync.GlobalExitRootInfo{}, fmt.Errorf(barErrMsg))
+			Return(l2gersync.GlobalExitRootInfo{}, errors.New(barErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
@@ -1574,7 +1574,7 @@ func TestInjectedL1InfoLeafHandler(t *testing.T) {
 
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetInfoByIndex(mock.Anything, l1InfoTreeLeaf.L1InfoTreeIndex).
-			Return(nil, fmt.Errorf(fooErrMsg))
+			Return(nil, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
@@ -1627,7 +1627,7 @@ func TestClaimProofHandler(t *testing.T) {
 
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetInfoByIndex(mock.Anything, l1InfoTreeIndex).
-			Return(nil, fmt.Errorf(fooErrMsg))
+			Return(nil, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, strconv.Itoa(mainnetNetworkID))
@@ -1668,7 +1668,7 @@ func TestClaimProofHandler(t *testing.T) {
 
 		bridgeMocks.bridgeL1.EXPECT().
 			GetProof(mock.Anything, depositCount, l1InfoTreeLeaf.MainnetExitRoot).
-			Return(tree.Proof{}, fmt.Errorf(fooErrMsg))
+			Return(tree.Proof{}, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", mainnetNetworkID))
@@ -1715,7 +1715,7 @@ func TestClaimProofHandler(t *testing.T) {
 
 		bridgeMocks.l1InfoTree.EXPECT().
 			GetLocalExitRoot(mock.Anything, l2NetworkID, l1InfoTreeLeaf.RollupExitRoot).
-			Return(common.Hash{}, fmt.Errorf(fooErrMsg))
+			Return(common.Hash{}, errors.New(fooErrMsg))
 
 		queryParams := url.Values{}
 		queryParams.Set(networkIDParam, fmt.Sprintf("%d", l2NetworkID))
@@ -1899,7 +1899,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 	t.Run("GetLastReorgEvent for L1 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		bridgeMocks.bridgeL1.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, fmt.Errorf(fooErrMsg))
+		bridgeMocks.bridgeL1.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, errors.New(fooErrMsg))
 
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, mainnetNetworkID), nil)
@@ -1910,7 +1910,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 	t.Run("GetLastReorgEvent for L2 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
 
-		bridgeMocks.bridgeL2.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, fmt.Errorf(barErrMsg))
+		bridgeMocks.bridgeL2.EXPECT().GetLastReorgEvent(mock.Anything).Return(nil, errors.New(barErrMsg))
 
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, l2NetworkID), nil)
