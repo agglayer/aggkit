@@ -184,20 +184,20 @@ func TestConfigRenderComplexStruct(t *testing.T) {
 func TestConfigRenderConvertFileToToml(t *testing.T) {
 	jsonFile := `{
 	"rollupCreationBlockNumber": 63,
-  "rollupManagerCreationBlockNumber": 57,
-  "genesisBlockNumber": 63,
-  "L1Config": {
-    "chainId": 271828,
-    "polygonZkEVMGlobalExitRootAddress": "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674",
-    "polygonRollupManagerAddress": "0x2F50ef6b8e8Ee4E579B17619A92dE3E2ffbD8AD2",
-    "polTokenAddress": "0xEdE9cf798E0fE25D35469493f43E88FeA4a5da0E",
-    "polygonZkEVMAddress": "0x1Fe038B54aeBf558638CA51C91bC8cCa06609e91"
-  }
+  	"rollupManagerCreationBlockNumber": 57,
+  	"genesisBlockNumber": 63,
+  	"L1Config": {
+    	"chainId": 271828,
+    	"gerManagerAddress": "0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674",
+    	"polTokenAddress": "0xEdE9cf798E0fE25D35469493f43E88FeA4a5da0E",
+    	"rollupAddress": "0x1Fe038B54aeBf558638CA51C91bC8cCa06609e91",
+    	"rollupManagerAddress": "0x2F50ef6b8e8Ee4E579B17619A92dE3E2ffbD8AD2"
+  	}
 }
 `
 	data, err := convertFileToToml(jsonFile, "json")
 	require.NoError(t, err)
-	require.Equal(t, "genesisBlockNumber = 63.0\nrollupCreationBlockNumber = 63.0\nrollupManagerCreationBlockNumber = 57.0\n\n[L1Config]\n  chainId = 271828.0\n  polTokenAddress = \"0xEdE9cf798E0fE25D35469493f43E88FeA4a5da0E\"\n  polygonRollupManagerAddress = \"0x2F50ef6b8e8Ee4E579B17619A92dE3E2ffbD8AD2\"\n  polygonZkEVMAddress = \"0x1Fe038B54aeBf558638CA51C91bC8cCa06609e91\"\n  polygonZkEVMGlobalExitRootAddress = \"0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674\"\n", data)
+	require.Equal(t, "genesisBlockNumber = 63.0\nrollupCreationBlockNumber = 63.0\nrollupManagerCreationBlockNumber = 57.0\n\n[L1Config]\n  chainId = 271828.0\n  gerManagerAddress = \"0x1f7ad7caA53e35b4f0D138dC5CBF91aC108a2674\"\n  polTokenAddress = \"0xEdE9cf798E0fE25D35469493f43E88FeA4a5da0E\"\n  rollupAddress = \"0x1Fe038B54aeBf558638CA51C91bC8cCa06609e91\"\n  rollupManagerAddress = \"0x2F50ef6b8e8Ee4E579B17619A92dE3E2ffbD8AD2\"\n", data)
 }
 
 func TestConfigRenderComplexStructCopy(t *testing.T) {

@@ -40,7 +40,6 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.Retry.MaxAttempts, 20)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
 	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
-	require.Equal(t, cfg.AggSender.OptimisticModeConfig.SovereignRollupAddr, cfg.AggSender.SovereignRollupAddr)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")
 	require.Equal(t, cfg.AggSender.RetriesToBuildAndSendCertificate.String(),
@@ -146,7 +145,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[NetworkConfig.L1]
 	URL="{{L1URL}}"
 	PolAddr="{{L1Config.polTokenAddress}}"
-	ZkEVMAddr="{{L1Config.polygonZkEVMAddress}}"
+	ZkEVMAddr="{{L1Config.rollupAddress}}"
 
 	[L1InfoTreeSync]
 	BlockFinality = "LatestBlock"

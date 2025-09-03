@@ -28,10 +28,11 @@ func NewOptimisticSignatureCalculatorImpl(
 	ctx context.Context,
 	logger *log.Logger,
 	l1Client aggkittypes.BaseEthereumClienter,
+	rollupAddr common.Address,
 	chainID uint64,
 	cfg Config,
 ) (*OptimisticSignatureCalculatorImpl, error) {
-	aggchainFEPContract, err := aggchainfep.NewAggchainfep(cfg.SovereignRollupAddr, l1Client)
+	aggchainFEPContract, err := aggchainfep.NewAggchainfep(rollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("newOptimisticSignatureCalculatorImpl.NewAggchainfep Err: %w", err)
 	}
@@ -66,7 +67,7 @@ func NewOptimisticSignatureCalculatorImpl(
 		trustedSequencerAddr.Hex())
 	query := NewOptimisticAggregationProofPublicValuesQuery(
 		aggchainFEPContract,
-		cfg.SovereignRollupAddr,
+		rollupAddr,
 		opnode.NewOpNodeClient(cfg.OpNodeURL),
 		signer.PublicAddress())
 

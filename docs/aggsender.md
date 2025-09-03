@@ -170,7 +170,6 @@ The certificate is the data submitted to `Agglayer`. Must be signed to be accept
 | RetryCertAfterInError             | bool                                                      | If true, Aggsender will re-send InError certificates immediately after status change                            |
 | MaxSubmitCertificateRate          | [RateLimitConfig](./common_config.md#ratelimitconfig)     | Maximum allowed rate of submission of certificates in a given time.                                             |
 | GlobalExitRootL2Addr              | Address                                                   | Address of the GlobalExitRootManager contract on L2 sovereign chain (needed for AggchainProof mode)             |
-| SovereignRollupAddr               | Address                                                   | Address of the sovereign rollup contract on L1                                                                  |
 | RequireStorageContentCompatibility| bool                                                      | If true, data stored in the database must be compatible with the running environment                            |
 | RequireNoFEPBlockGap              | bool                                                      | If true, AggSender should not accept a gap between lastBlock from lastCertificate and first block of FEP        |
 | OptimisticModeConfig              | [optimistic.Config](#optimisticconfig)                    | Configuration for optimistic mode (required by FEP mode).                                                       |
@@ -183,7 +182,6 @@ The `OptimisticConfig` structure configures the optimistic mode for the AggSende
 
 | Field Name                    | Type                | Description                                                                                                     |
 |-------------------------------|---------------------|-----------------------------------------------------------------------------------------------------------------|
-| SovereignRollupAddr          | Address             | The L1 address of the AggchainFEP contract                                                                      |
 | TrustedSequencerKey          | [SignerConfig](./common_config.md#signerconfig) | The private key used to sign optimistic proofs. Must be the trusted sequencer's key.                            |
 | OpNodeURL                    | string              | The URL of the OpNode service used to fetch aggregation proof public values                                     |
 | RequireKeyMatchTrustedSequencer | bool             | If true, enables a sanity check that the signer's public key matches the trusted sequencer address. This ensures the signer is the trusted sequencer and not a random signer. |
@@ -192,7 +190,6 @@ Example:
 ```
 [AggSender]
     [AggSender.OptimisticModeConfig]
-        SovereignRollupAddr = "0x1234..."
         TrustedSequencerKey = { Method="local", Path="/opt/private_key.keystore", Password="password" }
         OpNodeURL = "http://localhost:8080"
         RequireKeyMatchTrustedSequencer = true

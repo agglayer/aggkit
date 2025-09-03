@@ -69,13 +69,13 @@ func NewFlow(
 		}
 
 		optimisticSigner, optimisticModeQuerier, err := optimistic.NewOptimistic(
-			ctx, logger, l1Client, l2ChainID, cfg.OptimisticModeConfig)
+			ctx, logger, l1Client, rollupDataQuerier.GetRollupAddress(), l2ChainID, cfg.OptimisticModeConfig)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating optimistic mode querier: %w", err)
 		}
 
 		aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(logger, types.AggchainProofMode,
-			cfg.SovereignRollupAddr, l1Client)
+			rollupDataQuerier.GetRollupAddress(), l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("aggchainProverFlow - error creating aggchain FEP querier: %w", err)
 		}

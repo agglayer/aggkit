@@ -52,12 +52,12 @@ chainId = "{{.l1_chain_id}}"
 # ------------------------------------------------------------------------------
 # Address of the zkevm global exit root contract on L1
 # ------------------------------------------------------------------------------
-polygonZkEVMGlobalExitRootAddress = "{{.zkevm_global_exit_root_address}}"
+gerManagerAddress = "{{.zkevm_global_exit_root_address}}"
 
 # ------------------------------------------------------------------------------
 # Address of the rollup manager contract on L1
 # ------------------------------------------------------------------------------
-polygonRollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
+rollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
 
 # ------------------------------------------------------------------------------
 # Address of the pol token address on L1
@@ -65,9 +65,9 @@ polygonRollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
 polTokenAddress = "{{.pol_token_address}}"
 
 # ------------------------------------------------------------------------------
-# Address of the sovereign rollup contract on L2
+# Address of the rollup contract on L1
 # ------------------------------------------------------------------------------
-polygonZkEVMAddress = "{{.zkevm_rollup_address}}"
+rollupAddress = "{{.zkevm_rollup_address}}"
 
 # ==============================================================================
 #  _     ____   ____ ___  _   _ _____ ___ ____

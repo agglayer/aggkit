@@ -57,12 +57,12 @@ chainId = "{{.l1_chain_id}}"
 # ------------------------------------------------------------------------------
 # Address of the zkevm global exit root contract on L1
 # ------------------------------------------------------------------------------
-polygonZkEVMGlobalExitRootAddress = "{{.zkevm_global_exit_root_address}}"
+gerManagerAddress = "{{.zkevm_global_exit_root_address}}"
 
 # ------------------------------------------------------------------------------
 # Address of the rollup manager contract on L1
 # ------------------------------------------------------------------------------
-polygonRollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
+rollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
 
 # ------------------------------------------------------------------------------
 # Address of the pol token address on L1
@@ -70,9 +70,9 @@ polygonRollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
 polTokenAddress = "{{.pol_token_address}}"
 
 # ------------------------------------------------------------------------------
-# Address of the sovereign rollup contract on L2
+# Address of the rollup contract on L1
 # ------------------------------------------------------------------------------
-polygonZkEVMAddress = "{{.sovereign_rollup_addr}}"
+rollupAddress = "{{.sovereign_rollup_addr}}"
 
 # ==============================================================================
 #  _     ____   ____ ___  _   _ _____ ___ ____
@@ -176,7 +176,6 @@ Mode = "AggchainProof"
 CheckStatusCertificateInterval = "1s"
 
 [AggSender.OptimisticModeConfig]
-SovereignRollupAddr = "{{.sovereign_rollup_addr}}"
 TrustedSequencerKey = {Path = "{{.zkevm_l2_sequencer_keystore_file_path}}", Password = "{{.zkevm_l2_keystore_password}}"}
 OpNodeURL = "{{.op_cl_rpc_url}}"
 RequireKeyMatchTrustedSequencer = true
@@ -411,10 +410,6 @@ BlockFinality = "LatestBlock"
 #       |___/ |___/                         |_|                        |___/
 # ------------------------------------------------------------------------------
 [AggchainProofGen]
-# ------------------------------------------------------------------------------
-# SovereignRollupAddr is the address of the sovereign rollup contract on L1
-# ------------------------------------------------------------------------------
-SovereignRollupAddr = "{{.sovereign_rollup_addr}}"
 
 # ------------------------------------------------------------------------------
 # GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain

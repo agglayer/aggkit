@@ -12,7 +12,7 @@ import (
 	gethcommon "github.com/ethereum/go-ethereum/common"
 )
 
-var errInvalidSovereignRollupAddr = fmt.Errorf("SovereignRollupAddr must be set for AggchainProof mode")
+var errInvalidSovereignRollupAddr = fmt.Errorf("RollupAddr must be set for AggchainProof mode")
 
 // Config defines the configuration for the validator validator service.
 type Config struct {
@@ -51,8 +51,6 @@ type PPConfig struct {
 }
 
 type FEPConfig struct {
-	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
-	SovereignRollupAddr gethcommon.Address `mapstructure:"SovereignRollupAddr"`
 	// RequireNoBlockGap is true if the AggSender should not accept a gap between
 	// lastBlock from lastCertificate and first block of FEP
 	RequireNoBlockGap bool `mapstructure:"RequireNoBlockGap"`
@@ -66,7 +64,7 @@ type LerQuerierConfig struct {
 }
 
 // Validate checks if the configuration is valid
-func (c *Config) Validate() error {
+func (c *Config) Validate(rollupAddr gethcommon.Address) error {
 	if c.Mode != aggsendertypes.PessimisticProofMode.String() &&
 		c.Mode != aggsendertypes.AggchainProofMode.String() {
 		return fmt.Errorf("invalid mode %s, must be one of %s or %s",
@@ -76,7 +74,7 @@ func (c *Config) Validate() error {
 	}
 
 	if c.Mode == aggsendertypes.AggchainProofMode.String() {
-		if c.FEPConfig.SovereignRollupAddr == aggkitcommon.ZeroAddress {
+		if rollupAddr == aggkitcommon.ZeroAddress {
 			return errInvalidSovereignRollupAddr
 		}
 	}

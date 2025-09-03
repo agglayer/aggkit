@@ -40,9 +40,6 @@ type Config struct {
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
 	GlobalExitRootL2Addr common.Address `mapstructure:"GlobalExitRootL2"`
-
-	// SovereignRollupAddr is the address of the sovereign rollup contract on L1
-	SovereignRollupAddr common.Address `mapstructure:"SovereignRollupAddr"`
 }
 
 // AggchainProofGenerationTool is a tool to generate Aggchain proofs

@@ -2,13 +2,10 @@ package optimistic
 
 import (
 	signertypes "github.com/agglayer/go_signer/signer/types"
-	gethcommon "github.com/ethereum/go-ethereum/common"
 )
 
 // Config holds the configuration for the Optimistic Mode
 type Config struct {
-	// SovereignRollupAddr is the L1 address of the AggchainFEP contract.
-	SovereignRollupAddr gethcommon.Address `mapstructure:"SovereignRollupAddr"`
 	// TrustedSequencerKey is the private key used to sign the optimistic proofs, must be trustedSequencer.
 	TrustedSequencerKey signertypes.SignerConfig `mapstructure:"TrustedSequencerKey"`
 	// OpNodeURL is the URL of the OpNode service used to fetch aggregation proof public value

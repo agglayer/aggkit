@@ -154,7 +154,7 @@ func start(cliCtx *cli.Context) error {
 		case aggkitcommon.AGGSENDERVALIDATOR:
 			aggsenderValidator, err := createAggSenderValidator(
 				cliCtx.Context,
-				cfg.Validator,
+				*cfg,
 				l1InfoTreeSync,
 				l2BridgeSync,
 				l1Client,
@@ -218,18 +218,19 @@ func createAggchainProofGen(
 }
 
 func createAggSenderValidator(ctx context.Context,
-	cfg validator.Config,
+	cfg config.Config,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *etherman.RollupDataQuerier,
 ) (*aggsender.AggsenderValidator, error) {
-	if err := cfg.Validate(); err != nil {
+	validatorCfg := cfg.Validator
+	if err := validatorCfg.Validate(cfg.L1NetworkConfig.RollupAddr); err != nil {
 		return nil, fmt.Errorf("invalid aggsender validator config: %w", err)
 	}
 
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
-	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient)
+	agglayerClient, err := agglayer.NewAgglayerClient(validatorCfg.AgglayerClient)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
@@ -239,13 +240,14 @@ func createAggSenderValidator(ctx context.Context,
 		commonFlowComponents *flows.CommonFlowComponents
 	)
 
-	switch cfg.Mode {
+	switch validatorCfg.Mode {
 	case aggsendertypes.PessimisticProofMode.String():
 		commonFlowComponents, err = flows.CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
 			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, false,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
+			validatorCfg.MaxCertSize, validatorCfg.LerQuerier.RollupCreationBlockL1,
+			validatorCfg.DelayBetweenRetries.Duration, validatorCfg.Signer,
 			false, // full claims are not needed in validator mode
 		)
 		if err != nil {
@@ -259,16 +261,16 @@ func createAggSenderValidator(ctx context.Context,
 			commonFlowComponents.L1InfoTreeDataQuerier,
 			commonFlowComponents.L2BridgeQuerier,
 			commonFlowComponents.Signer,
-			cfg.PPConfig.RequireOneBridgeInPPCertificate,
-			cfg.MaxL2BlockNumber,
+			validatorCfg.PPConfig.RequireOneBridgeInPPCertificate,
+			validatorCfg.MaxL2BlockNumber,
 		)
 	case aggsendertypes.AggchainProofMode.String():
 		commonFlowComponents, err = flows.CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
-			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, cfg.FEPConfig.RequireNoBlockGap,
-			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
-			cfg.DelayBetweenRetries.Duration, cfg.Signer,
+			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, validatorCfg.FEPConfig.RequireNoBlockGap,
+			validatorCfg.MaxCertSize, validatorCfg.LerQuerier.RollupCreationBlockL1,
+			validatorCfg.DelayBetweenRetries.Duration, validatorCfg.Signer,
 			false, // full claims are not needed in validator mode
 		)
 		if err != nil {
@@ -276,14 +278,14 @@ func createAggSenderValidator(ctx context.Context,
 		}
 
 		optimisticModeQuerier, err := optimistic.NewOptimisticModeQuerierFromContract(
-			cfg.FEPConfig.SovereignRollupAddr, l1Client)
+			cfg.L1NetworkConfig.RollupAddr, l1Client)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create optimistic mode querier: %w", err)
 		}
 
 		flow = flows.NewAggchainProverFlow(
 			logger,
-			flows.NewAggchainProverFlowConfig(cfg.MaxL2BlockNumber),
+			flows.NewAggchainProverFlowConfig(validatorCfg.MaxL2BlockNumber),
 			commonFlowComponents.BaseFlow,
 			nil, // storage is not used in validator
 			commonFlowComponents.L1InfoTreeDataQuerier,
@@ -294,13 +296,13 @@ func createAggSenderValidator(ctx context.Context,
 			nil, // we don't query the prover in validator mode
 		)
 	default:
-		return nil, fmt.Errorf("unsupported mode %s", cfg.Mode)
+		return nil, fmt.Errorf("unsupported mode %s", validatorCfg.Mode)
 	}
 
 	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
 		logger,
-		aggsendertypes.AggsenderMode(cfg.Mode),
-		cfg.FEPConfig.SovereignRollupAddr,
+		aggsendertypes.AggsenderMode(validatorCfg.Mode),
+		cfg.L1NetworkConfig.RollupAddr,
 		l1Client,
 	)
 	if err != nil {
@@ -314,7 +316,7 @@ func createAggSenderValidator(ctx context.Context,
 	)
 
 	return aggsender.NewAggsenderValidator(
-		ctx, logger, cfg, flow,
+		ctx, logger, validatorCfg, flow,
 		commonFlowComponents.L1InfoTreeDataQuerier,
 		agglayerClient,
 		certQuerier,

@@ -33,6 +33,7 @@ type RollupManagerFactoryFunc func(rollupAddress common.Address,
 // RollupDataQuerier is a simple implementation of Etherman.
 type RollupDataQuerier struct {
 	rollupManagerSC RollupManagerContract
+	rollupAddr      common.Address
 	RollupID        uint32
 }
 
@@ -56,6 +57,7 @@ func NewRollupDataQuerier(
 
 	return &RollupDataQuerier{
 		rollupManagerSC: rmContract,
+		rollupAddr:      l1Config.RollupAddr,
 		RollupID:        rollupID,
 	}, nil
 }
@@ -119,4 +121,9 @@ func (r *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (
 	}
 
 	return rollupData, nil
+}
+
+// GetRollupAddress returns the rollup contract address
+func (r *RollupDataQuerier) GetRollupAddress() common.Address {
+	return r.rollupAddr
 }

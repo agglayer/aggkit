@@ -49,7 +49,6 @@ func TestConfigString(t *testing.T) {
 		URLRPCL2:                    "http://l2.rpc.url",
 		EpochNotificationPercentage: 50,
 		Mode:                        "PP",
-		SovereignRollupAddr:         common.HexToAddress("0x1"),
 	}
 
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
@@ -63,7 +62,6 @@ func TestConfigString(t *testing.T) {
 		"CheckStatusCertificateInterval: 0s\n"+
 		"RetryCertAfterInError: false\n"+
 		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
-		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
 		"RequireNoFEPBlockGap: false\n"+
 		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n",
 		config.AgglayerClient.String())
@@ -84,6 +82,7 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	rollupQuerierMock.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
+	rollupQuerierMock.EXPECT().GetRollupAddress().Return(common.HexToAddress("0x1"))
 
 	ctx := t.Context()
 	aggSender, err := New(
@@ -582,6 +581,7 @@ func TestNewAggSender(t *testing.T) {
 	mockRollupQuerier := mocks.NewRollupDataQuerier(t)
 	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
 	mockRollupQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
+	mockRollupQuerier.EXPECT().GetRollupAddress().Return(common.HexToAddress("0x1"))
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,

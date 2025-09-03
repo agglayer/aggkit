@@ -28,11 +28,10 @@ defaultDBQueryTimeout = "30s"
 [L1Config]
 	URL = "{{L1URL}}"
 	chainId = 0
-	polygonZkEVMGlobalExitRootAddress = "0x0000000000000000000000000000000000000000"
-	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
+	gerManagerAddress = "0x0000000000000000000000000000000000000000"
+	rollupManagerAddress = "0x0000000000000000000000000000000000000000"
+	rollupAddress = "0x0000000000000000000000000000000000000000"
 	polTokenAddress = "0x0000000000000000000000000000000000000000"
-	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
-	AggchainFEPAddr = "0x0000000000000000000000000000000000000000"
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
@@ -71,9 +70,9 @@ L2RPC = {{L2RPC}}
 [L1NetworkConfig]
 L1ChainID = {{L1Config.chainId}}
 POLTokenAddr = "{{L1Config.polTokenAddress}}"
-RollupAddr = "{{L1Config.polygonZkEVMAddress}}"
-RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
-GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+RollupAddr = "{{L1Config.rollupAddress}}"
+RollupManagerAddr = "{{L1Config.rollupManagerAddress}}"
+GlobalExitRootManagerAddr = "{{L1Config.gerManagerAddress}}"
 	[L1NetworkConfig.RPC]
 		URL = "{{L1Config.URL}}"
 		RetryMode = "backoff"
@@ -195,11 +194,10 @@ Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
-SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = false
 RequireOneBridgeInPPCertificate = false
-RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
+RollupManagerAddr = "{{L1Config.rollupManagerAddress}}"
 RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
@@ -232,7 +230,6 @@ RequireValidatorCall = false
 		NumRequests = 20
 		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
-		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
 		# By default use the same key that aggsender signs certs
 		TrustedSequencerKey = {{AggSender.AggsenderPrivateKey}}
 		OpNodeURL = "{{OpNodeURL}}"
@@ -250,7 +247,6 @@ Host = "localhost"
 Port = 9091
 
 [AggchainProofGen]
-SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"
@@ -283,7 +279,6 @@ Mode = "PessimisticProof"
 [Validator.PPConfig]
 	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
 [Validator.FEPConfig]
-	SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
 	RequireNoBlockGap = "{{AggSender.RequireNoFEPBlockGap}}"
 [Validator.AgglayerClient]
 	Cached = true

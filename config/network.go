@@ -31,13 +31,13 @@ type L1NetworkConfig struct {
 	// Chain ID of the L1 network
 	ChainID uint64 `json:"chainId"`
 	// RollupAddr Address of the L1 rollup contract
-	RollupAddr gethcommon.Address `json:"polygonZkEVMAddress"`
+	RollupAddr gethcommon.Address `json:"rollupAddress"`
 	// RollupManagerAddr Address of the L1 contract
-	RollupManagerAddr gethcommon.Address `json:"polygonRollupManagerAddress"`
+	RollupManagerAddr gethcommon.Address `json:"rollupManagerAddress"`
 	// POLTokenAddr Address of the L1 POL token Contract
 	POLTokenAddr gethcommon.Address `json:"polTokenAddress"`
 	// GlobalExitRootManagerAddr Address of the L1 GlobalExitRootManager contract
-	GlobalExitRootManagerAddr gethcommon.Address `json:"polygonZkEVMGlobalExitRootAddress"`
+	GlobalExitRootManagerAddr gethcommon.Address `json:"gerManagerAddress"`
 }
 
 // Validate checks if the L1NetworkConfig is valid

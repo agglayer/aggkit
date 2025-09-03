@@ -18,6 +18,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 	testCases := []struct {
 		name        string
 		config      Config
+		rollupAddr  common.Address
 		expectedErr string
 	}{
 		{
@@ -31,12 +32,11 @@ func TestValidatorConfigValidate(t *testing.T) {
 			},
 		},
 		{
-			name: "Valid AggchainProof mode",
+			name:       "Valid AggchainProof mode",
+			rollupAddr: common.HexToAddress("0x1"),
 			config: Config{
-				Mode: aggsendertypes.AggchainProofMode.String(),
-				FEPConfig: FEPConfig{
-					SovereignRollupAddr: common.HexToAddress("0x1"),
-				},
+				Mode:      aggsendertypes.AggchainProofMode.String(),
+				FEPConfig: FEPConfig{},
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -44,12 +44,11 @@ func TestValidatorConfigValidate(t *testing.T) {
 			},
 		},
 		{
-			name: "Invalid AggchainProof mode",
+			name:       "Invalid rollup address",
+			rollupAddr: common.HexToAddress("0x0"),
 			config: Config{
-				Mode: aggsendertypes.AggchainProofMode.String(),
-				FEPConfig: FEPConfig{
-					SovereignRollupAddr: common.HexToAddress("0x0"), // Zero address
-				},
+				Mode:      aggsendertypes.AggchainProofMode.String(),
+				FEPConfig: FEPConfig{},
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -95,7 +94,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			err := tc.config.Validate()
+			err := tc.config.Validate(tc.rollupAddr)
 			if tc.expectedErr != "" {
 				require.ErrorContains(t, err, tc.expectedErr)
 			} else {

@@ -113,7 +113,7 @@ func New(
 	)
 
 	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, types.AggsenderMode(cfg.Mode),
-		cfg.SovereignRollupAddr, l1Client)
+		rollupDataQuerier.GetRollupAddress(), l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)
 	}
