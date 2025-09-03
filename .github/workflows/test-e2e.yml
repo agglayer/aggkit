@@ -278,6 +278,7 @@ jobs:
       - get-kurtosis-cdk-commit
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@b89e67587388ddf57c992b9113b28ef1d90ee8ef
     secrets: inherit
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
       agglayer-e2e-ref: b89e67587388ddf57c992b9113b28ef1d90ee8ef
@@ -293,6 +294,7 @@ jobs:
     needs:
       - test-multi-l2-networks-3-chains
     runs-on: ubuntu-latest
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains.result) }}
