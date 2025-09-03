@@ -509,6 +509,7 @@ func runL1ClientIfNeeded(ctx context.Context,
 		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.L2GERSYNC,
 		aggkitcommon.AGGCHAINPROOFGEN,
 		aggkitcommon.L1BRIDGESYNC,
 	}, components) {
