@@ -279,12 +279,13 @@ func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certi
 func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	certificateHeight uint64,
 	certificateID common.Hash,
-	signedCertContent string) (string, error) {
+	signedCertContent string,
+	retryCount int) (string, error) {
 	// Get the directory where the database is stored
 	dbDir := filepath.Dir(a.cfg.DBPath)
 
 	// Create a filename using the certificate ID
-	fileName := fmt.Sprintf("signed_cert_%d_%s.json", certificateHeight, certificateID)
+	fileName := fmt.Sprintf("signed_cert_%d_%s_%d.json", certificateHeight, certificateID, retryCount)
 	filePath := filepath.Join(dbDir, fileName)
 
 	// Write the signed certificate content to the file
@@ -570,6 +571,7 @@ func (a *AggSenderSQLStorage) handleCertificateFile(certificate *types.Certifica
 			certificate.Header.Height,
 			certificate.Header.CertificateID,
 			*certificate.SignedCertificate,
+			certificate.Header.RetryCount,
 		)
 		if err != nil {
 			return fmt.Errorf("error saving signed certificate to file: %w", err)
