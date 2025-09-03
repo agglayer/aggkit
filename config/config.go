@@ -72,6 +72,7 @@ const (
 	lastGERSyncSyncModeDeprecatedHint     = "LastGERSync.SyncMode is deprecated, remove it from configuration"
 	l1NetworkConfigURLDeprecatedHint      = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
 	reorgDetectorL1DeprecatedHint         = "ReorgDetectorL1 is deprecated, remove it from configuration"
+	sovereignRollupAddrDeprecatedHint     = "SovereignRollupAddr is deprecated, remove it from configuratin (L1NetworkConfig.RollupAddr is used instead) "
 )
 
 type DeprecatedFieldsError struct {
@@ -216,6 +217,22 @@ var (
 		{
 			FieldNamePattern: "Aggsender.BlockFinality",
 			Reason:           "aggsender use as finality BridgeL2Sync.BlockFinality",
+		},
+		{
+			FieldNamePattern: "AggSender.SovereignRollupAddr",
+			Reason:           sovereignRollupAddrDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "AggSender.OptimisticModeConfig.SovereignRollupAddr",
+			Reason:           sovereignRollupAddrDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "AggchainProofGen.SovereignRollupAddr",
+			Reason:           sovereignRollupAddrDeprecatedHint,
+		},
+		{
+			FieldNamePattern: "Validator.FEPConfig.SovereignRollupAddr",
+			Reason:           sovereignRollupAddrDeprecatedHint,
 		},
 	}
 )

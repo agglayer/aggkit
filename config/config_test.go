@@ -137,15 +137,22 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	UseAggkitProverTLS = true
 	GenerateAggchainProofTimeout = "1h"
 	DelayBeetweenRetries = "1s"
+	SovereignRollupAddr = "0x0000000000000000000000000000000000000001"
+		[OptimisticModeConfig]
+		SovereignRollupAddr = "0x0000000000000000000000000000000000000001"
 
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
 	GenerateAggchainProofTimeout = "1h"
+	SovereignRollupAddr = "0x0000000000000000000000000000000000000001"
 
 	[NetworkConfig.L1]
 	URL="{{L1URL}}"
 	PolAddr="{{L1Config.polTokenAddress}}"
 	ZkEVMAddr="{{L1Config.rollupAddress}}"
+
+	[Validator.FEPConfig]
+	SovereignRollupAddr = "0x0000000000000000000000000000000000000001"
 
 	[L1InfoTreeSync]
 	BlockFinality = "LatestBlock"
@@ -203,4 +210,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 	require.ErrorContains(t, err, reorgDetectorL1DeprecatedHint)
+	require.ErrorContains(t, err, sovereignRollupAddrDeprecatedHint)
 }
