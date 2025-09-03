@@ -45,7 +45,6 @@ func TestConfigString(t *testing.T) {
 		AgglayerClient:              agglayer.ClientConfig{GRPC: &grpc.ClientConfig{URL: "http://agglayer.url"}},
 		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                    "http://l2.rpc.url",
-		BlockFinality:               "latestBlock",
 		EpochNotificationPercentage: 50,
 		Mode:                        "PP",
 		SovereignRollupAddr:         common.HexToAddress("0x1"),
@@ -54,7 +53,6 @@ func TestConfigString(t *testing.T) {
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
 		"AgglayerClient: %s\n"+
 		"AggsenderPrivateKey: local\n"+
-		"BlockFinality: latestBlock\n"+
 		"EpochNotificationPercentage: 50\n"+
 		"DryRun: false\n"+
 		"EnableRPC: false\n"+
@@ -83,6 +81,7 @@ func TestAggSenderStart(t *testing.T) {
 	bridgeL2SyncerMock.EXPECT().GetLastProcessedBlock(mock.Anything).Return(uint64(0), nil)
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
+	rollupQuerierMock.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
 
 	ctx := t.Context()
 	aggSender, err := New(
@@ -495,13 +494,15 @@ func TestSendCertificate(t *testing.T) {
 
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
+	mockRollupQuerier := mocks.NewRollupDataQuerier(t)
 	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
+	mockRollupQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
 		},
 		Mode: "PessimisticProof",
-	}, nil, nil, mockBridgeSyncer, nil, nil, nil, nil)
+	}, nil, nil, mockBridgeSyncer, nil, nil, nil, mockRollupQuerier)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
 	require.Contains(t, sut.rateLimiter.String(), "Unlimited")

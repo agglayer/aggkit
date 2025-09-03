@@ -29,12 +29,11 @@ func (n Network) String() string {
 }
 
 type ReorgDetector struct {
-	client               aggkittypes.BaseEthereumClienter
-	db                   *sql.DB
-	checkReorgInterval   time.Duration
-	finalizedBlockType   aggkittypes.BlockNumberFinality
-	finalizedBlockNumber *big.Int
-	network              Network
+	client             aggkittypes.BaseEthereumClienter
+	db                 *sql.DB
+	checkReorgInterval time.Duration
+	finalizedBlockType aggkittypes.BlockNumberFinality
+	network            Network
 
 	trackedBlocksLock sync.RWMutex
 	trackedBlocks     map[string]*headersList
@@ -60,26 +59,20 @@ func New(client aggkittypes.BaseEthereumClienter, cfg Config, network Network) (
 		cfg.FinalizedBlock = aggkittypes.FinalizedBlock
 	}
 
-	finalizedBlockNumber, err := cfg.FinalizedBlock.ToBlockNum()
-	if err != nil {
-		return nil, err
-	}
-
 	return &ReorgDetector{
-		client:               client,
-		db:                   db,
-		checkReorgInterval:   cfg.GetCheckReorgsInterval(),
-		finalizedBlockType:   cfg.FinalizedBlock,
-		finalizedBlockNumber: finalizedBlockNumber,
-		network:              network,
-		trackedBlocks:        make(map[string]*headersList),
-		subscriptions:        make(map[string]*Subscription),
-		log:                  log,
+		client:             client,
+		db:                 db,
+		checkReorgInterval: cfg.GetCheckReorgsInterval(),
+		finalizedBlockType: cfg.FinalizedBlock,
+		network:            network,
+		trackedBlocks:      make(map[string]*headersList),
+		subscriptions:      make(map[string]*Subscription),
+		log:                log,
 	}, nil
 }
 
 func (rd *ReorgDetector) IsDisabled() bool {
-	return rd.finalizedBlockType == aggkittypes.LatestBlock
+	return rd.finalizedBlockType.IsLatest()
 }
 
 // Start starts the reorg detector
@@ -155,11 +148,15 @@ func (rd *ReorgDetector) detectReorgInTrackedList(ctx context.Context) error {
 		return nil
 	}
 	// Get the latest finalized block
-	lastFinalisedBlock, err := rd.client.HeaderByNumber(ctx, rd.finalizedBlockNumber)
+
+	blockNumber, err := rd.finalizedBlockType.BlockNumber(ctx, rd.client)
 	if err != nil {
 		return fmt.Errorf("failed to get the latest finalized block: %w", err)
 	}
-
+	lastFinalisedBlock, err := rd.client.HeaderByNumber(ctx, new(big.Int).SetUint64(blockNumber))
+	if err != nil {
+		return fmt.Errorf("failed to get the header %d. Err: %w", blockNumber, err)
+	}
 	var (
 		headersCacheLock sync.Mutex
 		headersCache     = map[uint64]*types.Header{
