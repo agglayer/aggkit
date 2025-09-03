@@ -134,7 +134,7 @@ func SendTx(ctx context.Context, client *SimulatedBackendWithMutex, auth *bind.T
 
 	// Synchronize access to the simulated backend to prevent race conditions
 	client.Mutex.Lock()
-	client.Backend.Commit()
+	client.Commit()
 	client.Mutex.Unlock()
 
 	return nil

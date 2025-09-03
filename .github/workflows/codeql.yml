@@ -29,14 +29,14 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       # Setup environment
       - name: Setup Go
         if: ${{ matrix.language == 'go' }}
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.x
+          go-version: 1.25.x
 
       - name: Verify Go version
         if: ${{ matrix.language == 'go' }}
