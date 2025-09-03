@@ -15,6 +15,7 @@ import (
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	"github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/common"
@@ -40,7 +41,7 @@ func TestAgglayerGRPCCLientExploratory(t *testing.T) {
 		NetworkID: 1,
 		Height:    0,
 		AggchainData: &types.AggchainDataSignature{
-			Signature: make([]byte, 65),
+			Signature: make([]byte, aggkitcommon.SignatureSize),
 		},
 	}
 	// 100000 iteration produces a transaction of 12800188 bytes

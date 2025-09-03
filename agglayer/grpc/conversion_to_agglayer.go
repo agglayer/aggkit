@@ -309,32 +309,96 @@ func grpcAggchainDataToAgglayer(
 			Signature: ad.Signature.Value,
 		}, nil
 	case *v1types.AggchainData_Generic:
-		sp1Proof, ok := ad.Generic.Proof.(*v1types.AggchainProof_Sp1Stark)
-		if !ok {
-			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. expected Sp1Stark proof, got: %T", ad.Generic.Proof)
+		return grpcAggchainProofToAgglayer(ad.Generic)
+	case *v1types.AggchainData_Multisig:
+		multisig, err := grpcMultisigToAgglayer(ad.Multisig)
+		if err != nil {
+			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. failed to convert multisig: %w", err)
+		}
+		return &agglayertypes.AggchainDataMultisig{
+			Multisig: multisig,
+		}, nil
+	case *v1types.AggchainData_MultisigAndAggchainProof:
+		if ad.MultisigAndAggchainProof == nil {
+			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil MultisigAndAggchainProof. %w",
+				ErrNilCertificate)
 		}
 
-		if sp1Proof.Sp1Stark == nil {
-			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil Sp1Stark proof. %w", ErrNilCertificate)
+		aggchainProof, err := grpcAggchainProofToAgglayer(ad.MultisigAndAggchainProof.AggchainProof)
+		if err != nil {
+			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. failed to convert aggchain proof: %w", err)
 		}
 
-		if ad.Generic.AggchainParams == nil {
-			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil AggchainParams. %w", ErrNilCertificate)
+		multisig, err := grpcMultisigToAgglayer(ad.MultisigAndAggchainProof.Multisig)
+		if err != nil {
+			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. failed to convert multisig: %w", err)
 		}
 
-		if ad.Generic.Signature == nil {
-			return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil Signature. %w", ErrNilCertificate)
-		}
-
-		return &agglayertypes.AggchainDataProof{
-			Proof:          sp1Proof.Sp1Stark.Proof,
-			Version:        sp1Proof.Sp1Stark.Version,
-			Vkey:           sp1Proof.Sp1Stark.Vkey,
-			AggchainParams: common.BytesToHash(ad.Generic.AggchainParams.Value),
-			Context:        ad.Generic.Context,
-			Signature:      ad.Generic.Signature.Value,
+		return &agglayertypes.AggchainDataMultisigWithProof{
+			AggchainProof: aggchainProof,
+			Multisig:      multisig,
 		}, nil
 	default:
 		return nil, fmt.Errorf("grpcAggchainDataToAgglayer. unknown aggchain data type: %T", aggchainData)
 	}
+}
+
+func grpcMultisigToAgglayer(multisig *v1types.Multisig) (*agglayertypes.Multisig, error) {
+	if multisig == nil {
+		return nil, fmt.Errorf("grpcMultisigToAgglayer. multisig is nil. %w", ErrNilCertificate)
+	}
+
+	multisigEcdsa, ok := multisig.Data.(*v1types.Multisig_Ecdsa)
+	if !ok {
+		return nil, fmt.Errorf("grpcMultisigToAgglayer. expected Ecdsa multisig, got: %T", multisig.Data)
+	}
+
+	if multisigEcdsa.Ecdsa == nil {
+		return nil, fmt.Errorf("grpcMultisigToAgglayer. multisig Ecdsa is nil. %w", ErrNilCertificate)
+	}
+
+	multisigAgglayer := &agglayertypes.Multisig{
+		Signatures: make([]agglayertypes.ECDSAMultisigEntry, len(multisigEcdsa.Ecdsa.Signatures)),
+	}
+
+	for i, sig := range multisigEcdsa.Ecdsa.Signatures {
+		multisigAgglayer.Signatures[i] = agglayertypes.ECDSAMultisigEntry{
+			Signature: sig.Signature.Value,
+			Index:     sig.Index,
+		}
+	}
+
+	return multisigAgglayer, nil
+}
+
+func grpcAggchainProofToAgglayer(aggchainProof *v1types.AggchainProof) (*agglayertypes.AggchainDataProof, error) {
+	if aggchainProof == nil {
+		return nil, fmt.Errorf("grpcAggchainProofToAgglayer. aggchain proof is nil. %w", ErrNilCertificate)
+	}
+
+	sp1Proof, ok := aggchainProof.Proof.(*v1types.AggchainProof_Sp1Stark)
+	if !ok {
+		return nil, fmt.Errorf("grpcAggchainDataToAgglayer. expected Sp1Stark proof, got: %T", aggchainProof.Proof)
+	}
+
+	if sp1Proof.Sp1Stark == nil {
+		return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil Sp1Stark proof. %w", ErrNilCertificate)
+	}
+
+	if aggchainProof.AggchainParams == nil {
+		return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil AggchainParams. %w", ErrNilCertificate)
+	}
+
+	if aggchainProof.Signature == nil {
+		return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data has nil Signature. %w", ErrNilCertificate)
+	}
+
+	return &agglayertypes.AggchainDataProof{
+		Proof:          sp1Proof.Sp1Stark.Proof,
+		Version:        sp1Proof.Sp1Stark.Version,
+		Vkey:           sp1Proof.Sp1Stark.Vkey,
+		AggchainParams: common.BytesToHash(aggchainProof.AggchainParams.Value),
+		Context:        aggchainProof.Context,
+		Signature:      aggchainProof.Signature.Value,
+	}, nil
 }
