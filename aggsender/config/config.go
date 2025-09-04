@@ -87,6 +87,8 @@ type Config struct {
 	ValidatorClient *grpc.ClientConfig `mapstructure:"ValidatorClient"`
 	// RetriesToBuildAndSendCertificate is the configuration for the retries to build and send a certificate
 	RetriesToBuildAndSendCertificate common.RetryPolicyGenericConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
+	// RequireCommitteeMembershipCheck indicates whether to check if the signer is part of the committee
+	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

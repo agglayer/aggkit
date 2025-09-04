@@ -204,6 +204,7 @@ RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
+RequireCommitteeMembershipCheck = false
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
@@ -272,6 +273,7 @@ MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
 DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 # PessimisticProof or AggchainProof
 Mode = "PessimisticProof"
+RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 [Validator.ServerConfig]
 	Host = "0.0.0.0"
 	Port = 5578

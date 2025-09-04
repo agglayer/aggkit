@@ -46,6 +46,7 @@ func NewFlow(
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
+			cfg.RequireCommitteeMembershipCheck,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -91,6 +92,7 @@ func NewFlow(
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
+			cfg.RequireCommitteeMembershipCheck,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -152,13 +154,15 @@ func CreateCommonFlowComponents(
 	delayBetweenRetries time.Duration,
 	signerCfg signertypes.SignerConfig,
 	fullClaimsRequired bool,
+	requireCommitteeMembershipCheck bool,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {
 		return nil, fmt.Errorf("error getting rollup chain id: %w", err)
 	}
 
-	signer, err := initializeSigner(ctx, signerCfg, logger, l2ChainID, committeeQuerier)
+	signer, err := initializeSigner(ctx, signerCfg, logger, l2ChainID,
+		committeeQuerier, requireCommitteeMembershipCheck)
 	if err != nil {
 		return nil, err
 	}
@@ -187,6 +191,7 @@ func initializeSigner(
 	logger *log.Logger,
 	l2ChainID uint64,
 	committeeQuerier types.MultisigQuerier,
+	requireCommitteeMembershipCheck bool,
 ) (signertypes.Signer, error) {
 	signer, err := signer.NewSigner(ctx, l2ChainID, signerCfg, aggkitcommon.AGGSENDER, logger)
 	if err != nil {
@@ -203,7 +208,12 @@ func initializeSigner(
 	}
 
 	if !multisigCommittee.IsMember(signer.PublicAddress()) {
-		return nil, fmt.Errorf("signer address %s is not part of the multisig committee: %s",
+		if requireCommitteeMembershipCheck {
+			return nil, fmt.Errorf("signer address %s is not part of the multisig committee: %s",
+				signer.PublicAddress(), multisigCommittee.String())
+		}
+
+		logger.Warnf("signer address %s is not part of the multisig committee: %s",
 			signer.PublicAddress(), multisigCommittee.String())
 	}
 

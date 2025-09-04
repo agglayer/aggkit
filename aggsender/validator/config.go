@@ -42,6 +42,8 @@ type Config struct {
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 	// Mode is the mode of the AggSender Validator (regular pessimistic proof mode or the aggchain proof mode)
 	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
+	// RequireCommitteeMembershipCheck indicates whether to check if the validator is part of the committee
+	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
 }
 
 type PPConfig struct {

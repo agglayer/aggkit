@@ -244,6 +244,7 @@ func createAggSenderValidator(ctx context.Context,
 			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			false, // full claims are not needed in validator mode
+			cfg.RequireCommitteeMembershipCheck,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -267,7 +268,8 @@ func createAggSenderValidator(ctx context.Context,
 			0, cfg.FEPConfig.RequireNoBlockGap,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.Signer,
-			false, // full claims are not needed in validator mode
+			false, // full claims are not needed in validator mode,
+			cfg.RequireCommitteeMembershipCheck,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)

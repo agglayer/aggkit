@@ -46,12 +46,34 @@ func TestNewFlow(t *testing.T) {
 			},
 		},
 		{
+			name: "committee membership check disabled with PessimisticProofMode",
+			cfg: config.Config{
+				Mode:                            string(types.PessimisticProofMode),
+				AggsenderPrivateKey:             signertypes.SignerConfig{Method: signertypes.MethodNone},
+				MaxCertSize:                     100,
+				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
+				RequireCommitteeMembershipCheck: false,
+			},
+			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
+				signers := []*types.SignerInfo{
+					types.NewSignerInfo("http://signer2", common.HexToAddress("0x2222222222222222222222222222222222222222")),
+					types.NewSignerInfo("http://signer3", common.HexToAddress("0x3333333333333333333333333333333333333333")),
+					types.NewSignerInfo("http://signer4", common.HexToAddress("0x4444444444444444444444444444444444")),
+				}
+
+				committee, err := types.NewMultisigCommittee(signers, 2)
+				require.NoError(t, err)
+				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Maybe()
+			},
+		},
+		{
 			name: "not member of committee",
 			cfg: config.Config{
-				Mode:                string(types.PessimisticProofMode),
-				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
-				MaxCertSize:         100,
-				AggkitProverClient:  aggkitgrpc.DefaultConfig(),
+				Mode:                            string(types.PessimisticProofMode),
+				AggsenderPrivateKey:             signertypes.SignerConfig{Method: signertypes.MethodNone},
+				MaxCertSize:                     100,
+				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
+				RequireCommitteeMembershipCheck: true,
 			},
 			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
 				signers := []*types.SignerInfo{
