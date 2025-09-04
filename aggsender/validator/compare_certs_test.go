@@ -52,6 +52,20 @@ func TestDiffsCertificates(t *testing.T) {
 	}, DiffsCertificate(
 		&agglayertypes.Certificate{L1InfoTreeLeafCount: 123},
 		&agglayertypes.Certificate{}))
+
+	require.Equal(t, []string{
+		"BridgeExits length mismatch. Expected: 1, Certificate: 0",
+	}, DiffsCertificate(
+		&agglayertypes.Certificate{BridgeExits: []*agglayertypes.BridgeExit{
+			{DestinationNetwork: 1},
+		}},
+		&agglayertypes.Certificate{}))
+
+	require.Equal(t, []string{
+		"ImportedBridgeExits length mismatch. Expected: 1, Certificate: 0",
+	}, DiffsCertificate(
+		&agglayertypes.Certificate{ImportedBridgeExits: []*agglayertypes.ImportedBridgeExit{{}}},
+		&agglayertypes.Certificate{}))
 }
 
 func TestDiffsBridgeExits(t *testing.T) {
@@ -81,4 +95,63 @@ func TestDiffsBridgeExits(t *testing.T) {
 				TokenInfo:          &agglayertypes.TokenInfo{},
 			},
 		}))
+}
+
+func TestDiffsImportedBridgeExits(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name       string
+		expected   []*agglayertypes.ImportedBridgeExit
+		validating []*agglayertypes.ImportedBridgeExit
+		want       []string
+	}{
+		{
+			name:       "both nil -> no diffs",
+			expected:   nil,
+			validating: nil,
+			want:       []string{},
+		},
+		{
+			name:       "expected longer -> length mismatch",
+			expected:   []*agglayertypes.ImportedBridgeExit{{}},
+			validating: nil,
+			want:       []string{"ImportedBridgeExits length mismatch. Expected: 1, Certificate: 0"},
+		},
+		{
+			name:       "validating longer -> length mismatch",
+			expected:   nil,
+			validating: []*agglayertypes.ImportedBridgeExit{{}},
+			want:       []string{"ImportedBridgeExits length mismatch. Expected: 0, Certificate: 1"},
+		},
+		{
+			name: "same length, different content -> no diffs (no content comparison implemented)",
+			expected: []*agglayertypes.ImportedBridgeExit{
+				{GlobalIndex: &agglayertypes.GlobalIndex{MainnetFlag: true, RollupIndex: 0, LeafIndex: 1}},
+			},
+			validating: []*agglayertypes.ImportedBridgeExit{
+				{GlobalIndex: &agglayertypes.GlobalIndex{MainnetFlag: true, RollupIndex: 0, LeafIndex: 1}},
+			},
+			want: []string{},
+		},
+		{
+			name: "global index mismatch",
+			expected: []*agglayertypes.ImportedBridgeExit{
+				{GlobalIndex: &agglayertypes.GlobalIndex{MainnetFlag: true, RollupIndex: 0, LeafIndex: 1}},
+			},
+			validating: []*agglayertypes.ImportedBridgeExit{
+				{GlobalIndex: &agglayertypes.GlobalIndex{MainnetFlag: true, RollupIndex: 0, LeafIndex: 2}},
+			},
+			want: []string{"ImportedBridgeExit 0 GlobalIndex mismatch. Expected: MainnetFlag: true, RollupIndex: 0, LeafIndex: 1, Certificate: MainnetFlag: true, RollupIndex: 0, LeafIndex: 2"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			got := DiffsImportedBridgeExits(tc.expected, tc.validating)
+			require.Equal(t, tc.want, got)
+		})
+	}
 }

@@ -15,6 +15,7 @@ import (
 	v1types "buf.build/gen/go/agglayer/interop/protocolbuffers/go/agglayer/interop/types/v1"
 	"github.com/agglayer/aggkit/agglayer/mocks"
 	"github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	configtypes "github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/ethereum/go-ethereum/common"
@@ -40,7 +41,7 @@ func TestAgglayerGRPCCLientExploratory(t *testing.T) {
 		NetworkID: 1,
 		Height:    0,
 		AggchainData: &types.AggchainDataSignature{
-			Signature: make([]byte, 65),
+			Signature: make([]byte, aggkitcommon.SignatureSize),
 		},
 	}
 	// 100000 iteration produces a transaction of 12800188 bytes
@@ -58,7 +59,7 @@ func TestAgglayerGRPCCLientExploratory(t *testing.T) {
 		})
 	}
 
-	id, err := client.SendCertificate(t.Context(), certificate, nil)
+	id, err := client.SendCertificate(t.Context(), certificate)
 	require.NoError(t, err)
 	t.Log("Certificate ID:", id.Hex())
 }
@@ -335,95 +336,122 @@ func TestSendCertificate(t *testing.T) {
 
 	ctx := context.Background()
 
-	t.Run("returns error when AggchainData not defined", func(t *testing.T) {
-		t.Parallel()
-
-		client := &AgglayerGRPCClient{
-			cfg: aggkitgrpc.DefaultConfig(),
-		}
-
-		certificate := &types.Certificate{}
-
-		_, err := client.SendCertificate(ctx, certificate, nil)
-		require.ErrorIs(t, err, errUndefinedAggchainData)
-	})
-
-	t.Run("returns error from submission service", func(t *testing.T) {
-		t.Parallel()
-
-		submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
-		client := &AgglayerGRPCClient{
-			submissionService: submissionServiceMock,
-			cfg:               aggkitgrpc.DefaultConfig(),
-		}
-
-		certificate := &types.Certificate{
-			AggchainData: &types.AggchainDataSignature{
-				Signature: []byte{0x01},
-			},
-		}
-
-		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
-
-		_, err := client.SendCertificate(ctx, certificate, nil)
-		require.ErrorContains(t, err, "test error")
-	})
-
-	t.Run("has validator signature", func(t *testing.T) {
-		t.Parallel()
-
-		signature := crypto.Keccak256Hash([]byte("test signature"))
-		submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
-		client := &AgglayerGRPCClient{
-			submissionService: submissionServiceMock,
-			cfg:               aggkitgrpc.DefaultConfig(),
-		}
-
-		certificate := &types.Certificate{
-			Height:    100,
-			NetworkID: 1,
-			AggchainData: &types.AggchainDataSignature{
-				Signature: []byte{0x01}, // regular aggsender signature
-			},
-		}
-
-		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(&node.SubmitCertificateResponse{
-			CertificateId: &v1nodetypes.CertificateId{
-				Value: &v1types.FixedBytes32{
-					Value: common.HexToHash("0x010203").Bytes(),
+	testCases := []struct {
+		name           string
+		certificate    *types.Certificate
+		mockFn         func(*mocks.CertificateSubmissionServiceClient)
+		expectedCertID common.Hash
+		expectedError  string
+	}{
+		{
+			name:          "returns error when AggchainData not defined",
+			certificate:   &types.Certificate{},
+			expectedError: "undefined aggchain data",
+		},
+		{
+			name: "returns error from submission service",
+			certificate: &types.Certificate{
+				AggchainData: &types.AggchainDataSignature{
+					Signature: []byte{0x01},
 				},
 			},
-		}, nil)
-
-		_, err := client.SendCertificate(ctx, certificate, signature.Bytes())
-		require.NoError(t, err)
-	})
-
-	t.Run("returns certificate ID on success", func(t *testing.T) {
-		t.Parallel()
-
-		submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
-		client := &AgglayerGRPCClient{
-			submissionService: submissionServiceMock,
-			cfg:               aggkitgrpc.DefaultConfig(),
-		}
-
-		certificate := exampleTestAgglayerCert
-
-		expectedResponse := &node.SubmitCertificateResponse{
-			CertificateId: &v1nodetypes.CertificateId{
-				Value: &v1types.FixedBytes32{
-					Value: common.HexToHash("0x010203").Bytes(),
+			mockFn: func(submissionServiceMock *mocks.CertificateSubmissionServiceClient) {
+				submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
+			},
+			expectedError: "test error",
+		},
+		{
+			name:        "returns certificate ID on success",
+			certificate: exampleTestAgglayerCert,
+			mockFn: func(submissionServiceMock *mocks.CertificateSubmissionServiceClient) {
+				expectedResponse := &node.SubmitCertificateResponse{
+					CertificateId: &v1nodetypes.CertificateId{
+						Value: &v1types.FixedBytes32{
+							Value: common.HexToHash("0x010203").Bytes(),
+						},
+					},
+				}
+				submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
+			},
+			expectedCertID: common.HexToHash("0x010203"),
+		},
+		{
+			name: "submit certificate with multisig",
+			certificate: &types.Certificate{
+				AggchainData: &types.AggchainDataMultisig{
+					Multisig: &types.Multisig{
+						Signatures: []types.ECDSAMultisigEntry{
+							{Signature: []byte{0x01}, Index: 0},
+							{Signature: []byte{0x02}, Index: 1},
+						},
+					},
 				},
 			},
-		}
+			mockFn: func(submissionServiceMock *mocks.CertificateSubmissionServiceClient) {
+				expectedResponse := &node.SubmitCertificateResponse{
+					CertificateId: &v1nodetypes.CertificateId{
+						Value: &v1types.FixedBytes32{
+							Value: common.HexToHash("0x010203").Bytes(),
+						},
+					},
+				}
+				submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
+			},
+			expectedCertID: common.HexToHash("0x010203"),
+		},
+		{
+			name: "certificate with proof and multisig",
+			certificate: &types.Certificate{
+				AggchainData: &types.AggchainDataMultisigWithProof{
+					Multisig: &types.Multisig{
+						Signatures: []types.ECDSAMultisigEntry{
+							{Signature: []byte{0x01}, Index: 0},
+							{Signature: []byte{0x02}, Index: 1},
+						},
+					},
+					AggchainProof: &types.AggchainDataProof{
+						Proof: []byte{0x01},
+					},
+				},
+			},
+			mockFn: func(submissionServiceMock *mocks.CertificateSubmissionServiceClient) {
+				expectedResponse := &node.SubmitCertificateResponse{
+					CertificateId: &v1nodetypes.CertificateId{
+						Value: &v1types.FixedBytes32{
+							Value: common.HexToHash("0x010203").Bytes(),
+						},
+					},
+				}
+				submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
+			},
+			expectedCertID: common.HexToHash("0x010203"),
+		},
+	}
 
-		submissionServiceMock.EXPECT().SubmitCertificate(mock.Anything, mock.Anything).Return(expectedResponse, nil)
+	for _, tc := range testCases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
 
-		resp, err := client.SendCertificate(ctx, certificate, nil)
-		require.NoError(t, err)
-		require.Equal(t, expectedResponse.CertificateId.Value.Value, resp.Bytes())
-	})
+			submissionServiceMock := mocks.NewCertificateSubmissionServiceClient(t)
+			client := &AgglayerGRPCClient{
+				submissionService: submissionServiceMock,
+				cfg:               aggkitgrpc.DefaultConfig(),
+			}
+
+			if tc.mockFn != nil {
+				tc.mockFn(submissionServiceMock)
+			}
+
+			resp, err := client.SendCertificate(ctx, tc.certificate)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedCertID.Bytes(), resp.Bytes())
+			}
+		})
+	}
 }
 
 func TestLeafTypeToProto(t *testing.T) {
@@ -565,13 +593,13 @@ func TestGetNetworkStatus(t *testing.T) {
 			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
-		networkStateServiceMock.EXPECT().GetNetworkStatus(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetNetworkState(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
-		_, err := client.GetNetworkStatus(ctx, networkID)
+		_, err := client.GetNetworkState(ctx, networkID)
 		require.ErrorContains(t, err, "test error")
 	})
 
-	t.Run("returns error when network status not available", func(t *testing.T) {
+	t.Run("returns error when network state not available", func(t *testing.T) {
 		t.Parallel()
 
 		networkStateServiceMock := mocks.NewNodeStateServiceClient(t)
@@ -581,10 +609,10 @@ func TestGetNetworkStatus(t *testing.T) {
 		}
 
 		// empty response -> HasNetworkStatus() == false
-		networkStateServiceMock.EXPECT().GetNetworkStatus(mock.Anything, mock.Anything).Return(&node.GetNetworkStatusResponse{}, nil)
+		networkStateServiceMock.EXPECT().GetNetworkState(mock.Anything, mock.Anything).Return(&node.GetNetworkStateResponse{}, nil)
 
-		_, err := client.GetNetworkStatus(ctx, networkID)
-		require.ErrorContains(t, err, "network status is not available")
+		_, err := client.GetNetworkState(ctx, networkID)
+		require.ErrorContains(t, err, "network state is not available")
 	})
 
 	t.Run("returns response on success", func(t *testing.T) {
@@ -597,41 +625,45 @@ func TestGetNetworkStatus(t *testing.T) {
 		}
 
 		settledClaimIdx := big.NewInt(84)
+		settledHeight := uint64(55)
+		settledLeafCount := uint64(100)
+		latestPendingHeight := uint64(99)
+		latestEpochWithSettlement := uint64(3)
 
-		expectedProto := &v1nodetypes.NetworkStatus{
-			NetworkStatus: "ok",
-			NetworkType:   "test",
+		expectedProto := &v1nodetypes.NetworkState{
+			NetworkStatus: v1nodetypes.NetworkStatus_NETWORK_STATUS_ACTIVE,
+			NetworkType:   v1nodetypes.NetworkType_NETWORK_TYPE_ECDSA,
 			NetworkId:     networkID,
 			SettledCertificateId: &v1nodetypes.CertificateId{Value: &v1types.FixedBytes32{
 				Value: common.HexToHash("0x010203").Bytes(),
 			}},
-			SettledHeight:       55,
+			SettledHeight:       &settledHeight,
 			SettledPpRoot:       &v1types.FixedBytes32{Value: common.HexToHash("0x010204").Bytes()},
 			SettledLer:          &v1types.FixedBytes32{Value: common.HexToHash("0x010205").Bytes()},
-			SettledLetLeafCount: 100,
+			SettledLetLeafCount: &settledLeafCount,
 			SettledClaim: &v1nodetypes.SettledClaim{
 				GlobalIndex:    &v1types.FixedBytes32{Value: common.BigToHash(settledClaimIdx).Bytes()},
 				BridgeExitHash: &v1types.FixedBytes32{Value: common.HexToHash("0x010206").Bytes()},
 			},
-			LatestPendingHeight:       99,
-			LatestPendingStatus:       "Settled",
-			LatestPendingError:        "some error",
-			LatestEpochWithSettlement: 3,
+			LatestPendingHeight:       &latestPendingHeight,
+			LatestPendingStatus:       v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_SETTLED.Enum(),
+			LatestPendingError:        &v1nodetypes.CertificateStatusError{Message: []byte("some error")},
+			LatestEpochWithSettlement: &latestEpochWithSettlement,
 		}
 
-		networkStateServiceMock.EXPECT().GetNetworkStatus(mock.Anything, mock.Anything).Return(&node.GetNetworkStatusResponse{
-			NetworkStatus: expectedProto,
+		networkStateServiceMock.EXPECT().GetNetworkState(mock.Anything, mock.Anything).Return(&node.GetNetworkStateResponse{
+			NetworkState: expectedProto,
 		}, nil)
 
-		resp, err := client.GetNetworkStatus(ctx, networkID)
+		resp, err := client.GetNetworkState(ctx, networkID)
 		require.NoError(t, err)
 
-		require.Equal(t, expectedProto.NetworkStatus, resp.Status)
-		require.Equal(t, expectedProto.NetworkType, resp.NetworkType)
+		require.Equal(t, expectedProto.NetworkStatus.String(), resp.Status)
+		require.Equal(t, expectedProto.NetworkType.String(), resp.NetworkType)
 		require.Equal(t, expectedProto.NetworkId, resp.NetworkID)
 		require.Equal(t, expectedProto.SettledHeight, resp.SettledHeight)
 		require.Equal(t, expectedProto.LatestPendingHeight, resp.LatestPendingHeight)
-		require.Equal(t, expectedProto.LatestPendingError, resp.LatestPendingError)
+		require.Equal(t, string(expectedProto.LatestPendingError.Message), resp.LatestPendingError)
 		require.Equal(t, expectedProto.LatestEpochWithSettlement, resp.LatestEpochWithSettlement)
 		require.Equal(t, expectedProto.SettledLetLeafCount, resp.SettledLETLeafCount)
 
@@ -648,7 +680,8 @@ func TestGetNetworkStatus(t *testing.T) {
 		require.Equal(t, expectedClaim, resp.SettledImportedBridgeExit)
 
 		// LatestPendingStatus defaults to types.Pending when proto field is empty
-		require.Equal(t, types.Settled, resp.LatestPendingStatus)
+		expected := convertProtoCertStatus(expectedProto.LatestPendingStatus)
+		require.Equal(t, expected, resp.LatestPendingStatus)
 	})
 }
 

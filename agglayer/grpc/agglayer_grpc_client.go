@@ -64,8 +64,7 @@ func (a *AgglayerGRPCClient) GetEpochConfiguration(ctx context.Context) (*types.
 // SendCertificate sends a certificate to the AggLayer
 // It returns the certificate ID
 func (a *AgglayerGRPCClient) SendCertificate(ctx context.Context,
-	certificate *types.Certificate,
-	validatorSignature []byte) (common.Hash, error) {
+	certificate *types.Certificate) (common.Hash, error) {
 	protoCert, err := ConvertCertToProtoCertificate(certificate)
 	if err != nil {
 		return common.Hash{}, err
@@ -147,23 +146,23 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
 }
 
-func (a *AgglayerGRPCClient) GetNetworkStatus(ctx context.Context, networkID uint32) (types.NetworkStatus, error) {
-	status, err := a.networkStateService.GetNetworkStatus(ctx, &v1.GetNetworkStatusRequest{
+func (a *AgglayerGRPCClient) GetNetworkState(ctx context.Context, networkID uint32) (types.NetworkState, error) {
+	status, err := a.networkStateService.GetNetworkState(ctx, &v1.GetNetworkStateRequest{
 		NetworkId: networkID,
 	})
 	if err != nil {
-		return types.NetworkStatus{}, fmt.Errorf("failed to get network status: %w",
+		return types.NetworkState{}, fmt.Errorf("failed to get network status: %w",
 			aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
-	if !status.HasNetworkStatus() {
-		return types.NetworkStatus{}, errors.New("network status is not available")
+	if !status.HasNetworkState() {
+		return types.NetworkState{}, errors.New("network state is not available")
 	}
 
-	return convertProtoNetworkStatus(status.NetworkStatus)
+	return convertProtoNetworkState(status.NetworkState)
 }
 
-func convertProtoNetworkStatus(status *v1nodetypes.NetworkStatus) (types.NetworkStatus, error) {
+func convertProtoNetworkState(status *v1nodetypes.NetworkState) (types.NetworkState, error) {
 	var settledCertID *common.Hash
 	if status.SettledCertificateId != nil {
 		certID := common.BytesToHash(status.SettledCertificateId.Value.Value)
@@ -190,18 +189,14 @@ func convertProtoNetworkStatus(status *v1nodetypes.NetworkStatus) (types.Network
 		}
 	}
 
-	latestPendingStatus := types.Pending
-	if status.LatestPendingStatus != "" {
-		if err := latestPendingStatus.UnmarshalJSON([]byte(status.LatestPendingStatus)); err != nil {
-			return types.NetworkStatus{},
-				fmt.Errorf("failed to unmarshal latest pending status %q from NetworkStatus struct: %w",
-					status.LatestPendingStatus, err)
-		}
+	var latestPendingError string
+	if status.LatestPendingError != nil {
+		latestPendingError = string(status.LatestPendingError.Message)
 	}
 
-	return types.NetworkStatus{
-		Status:                    status.NetworkStatus,
-		NetworkType:               status.NetworkType,
+	return types.NetworkState{
+		Status:                    status.NetworkStatus.String(),
+		NetworkType:               status.NetworkType.String(),
 		NetworkID:                 status.NetworkId,
 		SettledCertificateID:      settledCertID,
 		SettledHeight:             status.SettledHeight,
@@ -210,10 +205,23 @@ func convertProtoNetworkStatus(status *v1nodetypes.NetworkStatus) (types.Network
 		SettledLETLeafCount:       status.SettledLetLeafCount,
 		SettledImportedBridgeExit: settledClaim,
 		LatestPendingHeight:       status.LatestPendingHeight,
-		LatestPendingStatus:       latestPendingStatus,
-		LatestPendingError:        status.LatestPendingError,
+		LatestPendingStatus:       convertProtoCertStatus(status.LatestPendingStatus),
+		LatestPendingError:        latestPendingError,
 		LatestEpochWithSettlement: status.LatestEpochWithSettlement,
 	}, nil
+}
+
+func convertProtoCertStatus(status *v1nodetypes.CertificateStatus) *types.CertificateStatus {
+	if status == nil || status == v1nodetypes.CertificateStatus_CERTIFICATE_STATUS_UNSPECIFIED.Enum() {
+		return nil
+	}
+
+	// we do not have unspecified type of cert status which is a grpc proto standard to be on value 0,
+	// so if it is not unspecified, just subtract 1 from the status value to get our types
+	statusInt := int(*status) - 1
+	typesStatus := types.CertificateStatus(statusInt)
+
+	return &typesStatus
 }
 
 // ConvertCertToProtoCertificate converts a types.Certificate to a grpc v1nodetypes.Certificate
@@ -274,22 +282,7 @@ func convertAggchainData(aggchainData types.AggchainData) (*v1types.AggchainData
 	case *types.AggchainDataProof:
 		return &v1types.AggchainData{
 			Data: &v1types.AggchainData_Generic{
-				Generic: &v1types.AggchainProof{
-					Proof: &v1types.AggchainProof_Sp1Stark{
-						Sp1Stark: &v1types.SP1StarkProof{
-							Version: ad.Version,
-							Proof:   ad.Proof,
-							Vkey:    ad.Vkey,
-						},
-					},
-					AggchainParams: &v1types.FixedBytes32{
-						Value: ad.AggchainParams.Bytes(),
-					},
-					Context: ad.Context,
-					Signature: &v1types.FixedBytes65{
-						Value: ad.Signature,
-					},
-				},
+				Generic: convertAggchainDataProofToProto(ad),
 			},
 		}, nil
 	case *types.AggchainDataSignature:
@@ -300,8 +293,73 @@ func convertAggchainData(aggchainData types.AggchainData) (*v1types.AggchainData
 				},
 			},
 		}, nil
+	case *types.AggchainDataMultisigWithProof:
+		return &v1types.AggchainData{
+			Data: &v1types.AggchainData_MultisigAndAggchainProof{
+				MultisigAndAggchainProof: &v1types.AggchainProofWithMultisig{
+					Multisig:      convertMultisigToProtoMultisig(ad.Multisig),
+					AggchainProof: convertAggchainDataProofToProto(ad.AggchainProof),
+				},
+			},
+		}, nil
+	case *types.AggchainDataMultisig:
+		return &v1types.AggchainData{
+			Data: &v1types.AggchainData_Multisig{
+				Multisig: convertMultisigToProtoMultisig(ad.Multisig),
+			},
+		}, nil
 	default:
 		return nil, errUnknownAggchainData
+	}
+}
+
+// convertAggchainDataProofToProto converts an aggchain data proof to proto aggchain proof
+func convertAggchainDataProofToProto(proof *types.AggchainDataProof) *v1types.AggchainProof {
+	if proof == nil {
+		return nil
+	}
+
+	return &v1types.AggchainProof{
+		Proof: &v1types.AggchainProof_Sp1Stark{
+			Sp1Stark: &v1types.SP1StarkProof{
+				Version: proof.Version,
+				Proof:   proof.Proof,
+				Vkey:    proof.Vkey,
+			},
+		},
+		AggchainParams: &v1types.FixedBytes32{
+			Value: proof.AggchainParams.Bytes(),
+		},
+		Context: proof.Context,
+		Signature: &v1types.FixedBytes65{
+			Value: proof.Signature,
+		},
+	}
+}
+
+// convertMultisigToProtoMultisig converts a multisig to a proto multisig
+func convertMultisigToProtoMultisig(multisig *types.Multisig) *v1types.Multisig {
+	if multisig == nil {
+		return nil
+	}
+
+	protoEntries := make([]*v1types.ECDSAMultisig_ECDSAMultisigEntry, 0, len(multisig.Signatures))
+
+	for _, entry := range multisig.Signatures {
+		protoEntries = append(protoEntries, &v1types.ECDSAMultisig_ECDSAMultisigEntry{
+			Signature: &v1types.FixedBytes65{
+				Value: entry.Signature,
+			},
+			Index: entry.Index,
+		})
+	}
+
+	return &v1types.Multisig{
+		Data: &v1types.Multisig_Ecdsa{
+			Ecdsa: &v1types.ECDSAMultisig{
+				Signatures: protoEntries,
+			},
+		},
 	}
 }
 

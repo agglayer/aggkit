@@ -156,10 +156,14 @@ func (a *AggchainDataSelector) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	var ok bool
-	if _, ok = obj["proof"]; ok {
+	if _, ok = obj["aggchain_data_proof"]; ok {
 		a.obj = &AggchainDataProof{}
-	} else if _, ok = obj["signature"]; ok {
+	} else if _, ok = obj["aggchain_data_signature"]; ok {
 		a.obj = &AggchainDataSignature{}
+	} else if _, ok = obj["aggchain_data_multisig_with_proof"]; ok {
+		a.obj = &AggchainDataMultisigWithProof{}
+	} else if _, ok = obj["aggchain_data_multisig"]; ok {
+		a.obj = &AggchainDataMultisig{}
 	} else {
 		return errors.New("invalid aggchain_data type")
 	}
@@ -177,21 +181,30 @@ type AggchainDataSignature struct {
 // MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataSignature) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Signature string `json:"signature"`
+		AggchainDataSignature struct {
+			Signature string `json:"signature"`
+		} `json:"aggchain_data_signature"`
 	}{
-		Signature: common.Bytes2Hex(a.Signature),
+		AggchainDataSignature: struct {
+			Signature string `json:"signature"`
+		}{
+			Signature: common.Bytes2Hex(a.Signature),
+		},
 	})
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataSignature) UnmarshalJSON(data []byte) error {
 	aux := &struct {
-		Signature string `json:"signature"`
+		AggchainDataSignature struct {
+			Signature string `json:"signature"`
+		} `json:"aggchain_data_signature"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
-	a.Signature = common.Hex2Bytes(aux.Signature)
+
+	a.Signature = common.Hex2Bytes(aux.AggchainDataSignature.Signature)
 	return nil
 }
 
@@ -209,44 +222,172 @@ type AggchainDataProof struct {
 // MarshalJSON is the implementation of the json.Marshaler interface
 func (a *AggchainDataProof) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&struct {
-		Proof          string            `json:"proof"`
-		AggchainParams string            `json:"aggchain_params"`
-		Context        map[string][]byte `json:"context"`
-		Version        string            `json:"version"`
-		VKey           string            `json:"vkey"`
-		Signature      string            `json:"signature"`
+		AggchainDataProof struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+			Version        string            `json:"version"`
+			VKey           string            `json:"vkey"`
+			Signature      string            `json:"signature"`
+		} `json:"aggchain_data_proof"`
 	}{
-		Proof:          common.Bytes2Hex(a.Proof),
-		AggchainParams: a.AggchainParams.String(),
-		Context:        a.Context,
-		Version:        a.Version,
-		VKey:           common.Bytes2Hex(a.Vkey),
-		Signature:      common.Bytes2Hex(a.Signature),
+		AggchainDataProof: struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+			Version        string            `json:"version"`
+			VKey           string            `json:"vkey"`
+			Signature      string            `json:"signature"`
+		}{
+			Proof:          common.Bytes2Hex(a.Proof),
+			AggchainParams: a.AggchainParams.String(),
+			Context:        a.Context,
+			Version:        a.Version,
+			VKey:           common.Bytes2Hex(a.Vkey),
+			Signature:      common.Bytes2Hex(a.Signature),
+		},
 	})
 }
 
 // UnmarshalJSON is the implementation of the json.Unmarshaler interface
 func (a *AggchainDataProof) UnmarshalJSON(data []byte) error {
 	aux := &struct {
-		Proof          string            `json:"proof"`
-		AggchainParams string            `json:"aggchain_params"`
-		Context        map[string][]byte `json:"context"`
-		Version        string            `json:"version"`
-		VKey           string            `json:"vkey"`
-		Signature      string            `json:"signature"`
+		AggchainDataProof struct {
+			Proof          string            `json:"proof"`
+			AggchainParams string            `json:"aggchain_params"`
+			Context        map[string][]byte `json:"context"`
+			Version        string            `json:"version"`
+			VKey           string            `json:"vkey"`
+			Signature      string            `json:"signature"`
+		} `json:"aggchain_data_proof"`
 	}{}
 	if err := json.Unmarshal(data, &aux); err != nil {
 		return err
 	}
 
-	a.Proof = common.Hex2Bytes(aux.Proof)
-	a.AggchainParams = common.HexToHash(aux.AggchainParams)
-	a.Context = aux.Context
-	a.Version = aux.Version
-	a.Vkey = common.Hex2Bytes(aux.VKey)
-	a.Signature = common.Hex2Bytes(aux.Signature)
+	a.Proof = common.Hex2Bytes(aux.AggchainDataProof.Proof)
+	a.AggchainParams = common.HexToHash(aux.AggchainDataProof.AggchainParams)
+	a.Context = aux.AggchainDataProof.Context
+	a.Version = aux.AggchainDataProof.Version
+	a.Vkey = common.Hex2Bytes(aux.AggchainDataProof.VKey)
+	a.Signature = common.Hex2Bytes(aux.AggchainDataProof.Signature)
 
 	return nil
+}
+
+// AggchainDataMultisig is the data structure that will hold the multisig information
+// for PP networks
+type AggchainDataMultisig struct {
+	Multisig *Multisig `json:"multisig"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataMultisig) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		AggchainDataMultisig struct {
+			Multisig *Multisig `json:"multisig"`
+		} `json:"aggchain_data_multisig"`
+	}{
+		AggchainDataMultisig: struct {
+			Multisig *Multisig `json:"multisig"`
+		}{
+			Multisig: a.Multisig,
+		},
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataMultisig) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		AggchainDataMultisig struct {
+			Multisig *Multisig `json:"multisig"`
+		} `json:"aggchain_data_multisig"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	a.Multisig = aux.AggchainDataMultisig.Multisig
+	return nil
+}
+
+// AggchainDataMultisigWithProof is the data structure that will hold the
+// multisig and aggchain proof information for FEP networks
+type AggchainDataMultisigWithProof struct {
+	Multisig      *Multisig          `json:"multisig"`
+	AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (a *AggchainDataMultisigWithProof) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		AggchainDataMultisigWithProof struct {
+			Multisig      *Multisig          `json:"multisig"`
+			AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		} `json:"aggchain_data_multisig_with_proof"`
+	}{
+		AggchainDataMultisigWithProof: struct {
+			Multisig      *Multisig          `json:"multisig"`
+			AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		}{
+			Multisig:      a.Multisig,
+			AggchainProof: a.AggchainProof,
+		},
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (a *AggchainDataMultisigWithProof) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		AggchainDataMultisigWithProof struct {
+			Multisig      *Multisig          `json:"multisig"`
+			AggchainProof *AggchainDataProof `json:"aggchain_proof"`
+		} `json:"aggchain_data_multisig_with_proof"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+	a.Multisig = aux.AggchainDataMultisigWithProof.Multisig
+	a.AggchainProof = aux.AggchainDataMultisigWithProof.AggchainProof
+	return nil
+}
+
+// ECDSAMultisigEntry is the data structure that will hold the information
+// about a single signature in the multisig
+type ECDSAMultisigEntry struct {
+	Index     uint32 `json:"index"`
+	Signature []byte `json:"signature"`
+}
+
+// MarshalJSON is the implementation of the json.Marshaler interface
+func (e *ECDSAMultisigEntry) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&struct {
+		Index     uint32 `json:"index"`
+		Signature string `json:"signature"`
+	}{
+		Index:     e.Index,
+		Signature: common.Bytes2Hex(e.Signature),
+	})
+}
+
+// UnmarshalJSON is the implementation of the json.Unmarshaler interface
+func (e *ECDSAMultisigEntry) UnmarshalJSON(data []byte) error {
+	aux := &struct {
+		Index     uint32 `json:"index"`
+		Signature string `json:"signature"`
+	}{}
+	if err := json.Unmarshal(data, &aux); err != nil {
+		return err
+	}
+
+	e.Index = aux.Index
+	e.Signature = common.Hex2Bytes(aux.Signature)
+
+	return nil
+}
+
+// Multisig is the data structure that will hold the multisig information
+type Multisig struct {
+	Signatures []ECDSAMultisigEntry `json:"signatures"`
 }
 
 // Certificate is the data structure that will be sent to the agglayer
@@ -335,7 +476,6 @@ func (c *Certificate) Brief() string {
 
 // CertificateID returns a certificateID that identifies the certificate
 // next fields are not included: CustomChainData, AggchainData, L1InfoTreeLeafCount
-// TODO: probably about to be changed for phase III
 func (c *Certificate) CertificateID() common.Hash {
 	bridgeExitsHashes := make([][]byte, len(c.BridgeExits))
 	for i, bridgeExit := range c.BridgeExits {
@@ -351,7 +491,7 @@ func (c *Certificate) CertificateID() common.Hash {
 	importedBridgeExitsPart := crypto.Keccak256(importedBridgeExitsHashes...)
 
 	return crypto.Keccak256Hash(
-		aggkitcommon.Uint32ToBytes(c.NetworkID),
+		aggkitcommon.Uint32ToBigEndianBytes(c.NetworkID),
 		aggkitcommon.Uint64ToBigEndianBytes(c.Height),
 		c.PrevLocalExitRoot.Bytes(),
 		c.NewLocalExitRoot.Bytes(),
@@ -1339,8 +1479,8 @@ func (c ClockConfiguration) String() string {
 	return fmt.Sprintf("EpochDuration: %d, GenesisBlock: %d", c.EpochDuration, c.GenesisBlock)
 }
 
-// NetworkStatus represents the status of the network returned by the interop_getNetworkStatus RPC call
-type NetworkStatus struct {
+// NetworkState represents the state of the network returned by the interop_getNetworkStatus RPC call
+type NetworkState struct {
 	// Status is the current status of the network (e.g., "active", "syncing", "error")
 	Status string `json:"network_status"`
 	// NetworkType is the aggchain type of network
@@ -1348,7 +1488,7 @@ type NetworkStatus struct {
 	// NetworkID is the unique identifier of the network
 	NetworkID uint32 `json:"network_id"`
 	// SettledHeight is the height of the latest settled certificate
-	SettledHeight uint64 `json:"settled_height"`
+	SettledHeight *uint64 `json:"settled_height"`
 	// SettledCertificateID is the ID of the latest settled certificate
 	SettledCertificateID *common.Hash `json:"settled_certificate_id"`
 	// SettledPPRoot pessimistic proof root of the latest settled certificate
@@ -1356,17 +1496,17 @@ type NetworkStatus struct {
 	// SettledLER is the local exit root of the latest settled certificate
 	SettledLER *common.Hash `json:"settled_ler"`
 	// SettledLETLeafCount is the leaf count of the latest settled local exit tree
-	SettledLETLeafCount uint64 `json:"settled_let_leaf_count"`
+	SettledLETLeafCount *uint64 `json:"settled_let_leaf_count"`
 	// SettledImportedBridgeExit is the information about the latest settled claim
 	SettledImportedBridgeExit *SettledImportedBridgeExit `json:"settled_claim,omitempty"`
 	// LatestPendingHeight is the height of the latest pending certificate
-	LatestPendingHeight uint64 `json:"latest_pending_height"`
+	LatestPendingHeight *uint64 `json:"latest_pending_height"`
 	// LatestPendingCertificateID is the status of the latest pending certificate (e.g., "Proven", "Pending", "InError")
-	LatestPendingStatus CertificateStatus `json:"latest_pending_status"`
+	LatestPendingStatus *CertificateStatus `json:"latest_pending_status"`
 	// LatestPendingError is the error message of the latest pending certificate, if any
 	LatestPendingError string `json:"latest_pending_error"`
 	// LatestEpochWithSettlement is the epoch number of the latest settlement
-	LatestEpochWithSettlement uint64 `json:"latest_epoch_with_settlement"`
+	LatestEpochWithSettlement *uint64 `json:"latest_epoch_with_settlement"`
 }
 
 // SettledImportedBridgeExit represents the information about a settled claim

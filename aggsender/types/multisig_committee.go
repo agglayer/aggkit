@@ -23,7 +23,10 @@ type SignerInfo struct {
 
 // NewSignerInfo creates a new instance of a signer
 func NewSignerInfo(url string, address common.Address) *SignerInfo {
-	return &SignerInfo{URL: url, Address: address}
+	return &SignerInfo{
+		URL:     url,
+		Address: address,
+	}
 }
 
 // MultisigCommittee represents a set of authorized signers with a signing threshold.

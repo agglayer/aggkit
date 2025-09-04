@@ -104,9 +104,10 @@ func (c *AgglayerClientCache) GetCertificateHeader(
 }
 
 // SendCertificate sends a certificate to the Agglayer client. (no cache)
-func (c *AgglayerClientCache) SendCertificate(ctx context.Context,
-	certificate *agglayertypes.Certificate, validatorSignature []byte) (common.Hash, error) {
-	return c.agglayerClient.SendCertificate(ctx, certificate, validatorSignature)
+func (c *AgglayerClientCache) SendCertificate(
+	ctx context.Context,
+	certificate *agglayertypes.Certificate) (common.Hash, error) {
+	return c.agglayerClient.SendCertificate(ctx, certificate)
 }
 
 // GetEpochConfiguration retrieves the current epoch configuration from the Agglayer client. (no cache)
@@ -126,8 +127,8 @@ func (c *AgglayerClientCache) GetLatestPendingCertificateHeader(ctx context.Cont
 	return c.agglayerClient.GetLatestPendingCertificateHeader(ctx, networkID)
 }
 
-// GetNetworkStatus retrieves the network status for a given network ID from the Agglayer client. (no cache)
-func (c *AgglayerClientCache) GetNetworkStatus(
-	ctx context.Context, networkID uint32) (agglayertypes.NetworkStatus, error) {
-	return c.agglayerClient.GetNetworkStatus(ctx, networkID)
+// GetNetworkState retrieves the network state for a given network ID from the Agglayer client. (no cache)
+func (c *AgglayerClientCache) GetNetworkState(
+	ctx context.Context, networkID uint32) (agglayertypes.NetworkState, error) {
+	return c.agglayerClient.GetNetworkState(ctx, networkID)
 }

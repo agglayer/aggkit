@@ -130,6 +130,23 @@ func (p *PPFlow) BuildCertificate(ctx context.Context,
 	return signedCert, nil
 }
 
+// UpdateAggchainData updates the AggchainData field in certificate with the multisig if needed
+func (p *PPFlow) UpdateAggchainData(
+	cert *agglayertypes.Certificate,
+	multisig *agglayertypes.Multisig) error {
+	if multisig == nil {
+		// multisig not turned on, we don't need to update the certificate
+		return nil
+	}
+
+	// update the aggchain data with multisig
+	cert.AggchainData = &agglayertypes.AggchainDataMultisig{
+		Multisig: multisig,
+	}
+
+	return nil
+}
+
 // signCertificate signs a certificate with the aggsender key
 func (p *PPFlow) signCertificate(ctx context.Context,
 	certificate *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
