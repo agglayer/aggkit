@@ -95,6 +95,8 @@ func start(cliCtx *cli.Context) error {
 		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
 
+	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client)
+
 	var rpcServices []jRPC.Service
 	for _, component := range components {
 		switch component {
@@ -114,13 +116,6 @@ func start(cliCtx *cli.Context) error {
 
 			go b.Start(cliCtx.Context)
 		case aggkitcommon.AGGSENDER:
-			// TODO: Check if the RollupAddr is the right SC address, or we should use some other.
-			committeeQuerier, err := query.NewECDSAMultisigCommitteeQuery(cfg.L1NetworkConfig.RollupAddr, l1Client)
-			if err != nil {
-				return fmt.Errorf("failed to create ECDSA multisig committee querier (SC address: %s): %w",
-					cfg.L1NetworkConfig.RollupAddr, err)
-			}
-
 			aggsender, err := createAggSender(
 				cliCtx.Context,
 				cfg.AggSender,
@@ -159,6 +154,7 @@ func start(cliCtx *cli.Context) error {
 				l2BridgeSync,
 				l1Client,
 				rollupDataQuerier,
+				committeeQuerier,
 			)
 			if err != nil {
 				log.Fatal(err)
@@ -223,6 +219,7 @@ func createAggSenderValidator(ctx context.Context,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *etherman.RollupDataQuerier,
+	committeeQuerier *query.ECDSAMultisigCommitteeQuery,
 ) (*aggsender.AggsenderValidator, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid aggsender validator config: %w", err)
@@ -244,7 +241,7 @@ func createAggSenderValidator(ctx context.Context,
 		commonFlowComponents, err = flows.CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
-			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, false,
+			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, committeeQuerier, 0, false,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1, cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			false, // full claims are not needed in validator mode
 		)
@@ -266,7 +263,8 @@ func createAggSenderValidator(ctx context.Context,
 		commonFlowComponents, err = flows.CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
-			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, 0, cfg.FEPConfig.RequireNoBlockGap,
+			l1Client, l1InfoTreeSync, l2Syncer, rollupDataQuerier, committeeQuerier,
+			0, cfg.FEPConfig.RequireNoBlockGap,
 			cfg.MaxCertSize, cfg.LerQuerier.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.Signer,
 			false, // full claims are not needed in validator mode
@@ -724,6 +722,23 @@ func runBridgeSyncL2IfNeeded(
 	go bridgeSyncL2.Start(ctx)
 
 	return bridgeSyncL2
+}
+
+func runAggsenderMultisigCommitteeIfNeeded(
+	components []string,
+	rollupAddr common.Address,
+	l1Client aggkittypes.BaseEthereumClienter,
+) *query.ECDSAMultisigCommitteeQuery {
+	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR}, components) {
+		return nil
+	}
+
+	committeeQuerier, err := query.NewECDSAMultisigCommitteeQuery(rollupAddr, l1Client)
+	if err != nil {
+		log.Fatalf("failed to create ECDSA multisig committee querier (SC address: %s): %w", rollupAddr, err)
+	}
+
+	return committeeQuerier
 }
 
 func createBridgeService(

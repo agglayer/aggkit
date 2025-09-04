@@ -129,3 +129,64 @@ func TestMultisigCommittee_Signers(t *testing.T) {
 	cpySigners[0].Address = common.HexToAddress("0x4")
 	require.NotEqual(t, signers, cpySigners)
 }
+
+func TestMultisigCommittee_IsMember(t *testing.T) {
+	s1 := NewSignerInfo("http://localhost:7001", common.HexToAddress("0x1"))
+	s2 := NewSignerInfo("http://localhost:7002", common.HexToAddress("0x2"))
+
+	mc, err := NewMultisigCommittee([]*SignerInfo{s1}, 1)
+	require.NoError(t, err)
+
+	// existing member
+	require.True(t, mc.IsMember(s1.Address))
+
+	// non-member
+	require.False(t, mc.IsMember(s2.Address))
+
+	// add new signer and verify membership
+	require.NoError(t, mc.AddSigner(s2))
+	require.True(t, mc.IsMember(s2.Address))
+
+	// zero address should not be a member
+	require.False(t, mc.IsMember(common.Address{}))
+}
+
+func TestMultisigCommittee_String(t *testing.T) {
+	s1 := NewSignerInfo("http://localhost:7001", common.HexToAddress("0x1"))
+	s2 := NewSignerInfo("http://localhost:7002", common.HexToAddress("0x2"))
+	s3 := NewSignerInfo("http://localhost:7003", common.HexToAddress("0x3"))
+
+	tests := []struct {
+		name      string
+		members   []*SignerInfo
+		threshold uint32
+		expected  string
+	}{
+		{
+			name:      "single signer",
+			members:   []*SignerInfo{s1},
+			threshold: 1,
+			expected:  "[Committee: " + s1.Address.Hex() + " Threshold: 1]",
+		},
+		{
+			name:      "two signers",
+			members:   []*SignerInfo{s1, s2},
+			threshold: 2,
+			expected:  "[Committee: " + s1.Address.Hex() + ", " + s2.Address.Hex() + " Threshold: 2]",
+		},
+		{
+			name:      "three signers, threshold less than size",
+			members:   []*SignerInfo{s1, s2, s3},
+			threshold: 2,
+			expected:  "[Committee: " + s1.Address.Hex() + ", " + s2.Address.Hex() + ", " + s3.Address.Hex() + " Threshold: 2]",
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			mc, err := NewMultisigCommittee(tc.members, tc.threshold)
+			require.NoError(t, err)
+			require.Equal(t, tc.expected, mc.String())
+		})
+	}
+}

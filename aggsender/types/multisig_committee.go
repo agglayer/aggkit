@@ -100,3 +100,22 @@ func (m *MultisigCommittee) Signers() []SignerInfo {
 func (m *MultisigCommittee) Size() int {
 	return len(m.signers)
 }
+
+// IsMember checks if the given address is part of the committee
+func (m *MultisigCommittee) IsMember(address common.Address) bool {
+	_, exists := m.signersSet[address]
+	return exists
+}
+
+// String returns a string representation of the committee
+func (m *MultisigCommittee) String() string {
+	s := "[Committee: "
+	for i, signer := range m.signers {
+		s += signer.Address.Hex()
+		if i < len(m.signers)-1 {
+			s += ", "
+		}
+	}
+	s += fmt.Sprintf(" Threshold: %d]", m.threshold)
+	return s
+}
