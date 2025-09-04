@@ -219,7 +219,7 @@ func createAggSenderValidator(ctx context.Context,
 	l2Syncer *bridgesync.BridgeSync,
 	l1Client aggkittypes.BaseEthereumClienter,
 	rollupDataQuerier *etherman.RollupDataQuerier,
-	committeeQuerier *query.ECDSAMultisigCommitteeQuery,
+	committeeQuerier aggsendertypes.MultisigQuerier,
 ) (*aggsender.AggsenderValidator, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid aggsender validator config: %w", err)
@@ -730,7 +730,7 @@ func runAggsenderMultisigCommitteeIfNeeded(
 	components []string,
 	rollupAddr common.Address,
 	l1Client aggkittypes.BaseEthereumClienter,
-) *query.ECDSAMultisigCommitteeQuery {
+) aggsendertypes.MultisigQuerier {
 	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR}, components) {
 		return nil
 	}
