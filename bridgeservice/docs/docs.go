@@ -607,11 +607,6 @@ const docTemplate = `{
                     "type": "string",
                     "example": "0xabc1234567890abcdef1234567890abcdef1234"
                 },
-                "is_native_token": {
-                    "description": "Indicates whether the bridged token is a native token (true) or wrapped (false)",
-                    "type": "boolean",
-                    "example": true
-                },
                 "leaf_type": {
                     "description": "Type of leaf (bridge event type) used in the tree structure",
                     "type": "integer",
