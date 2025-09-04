@@ -24,9 +24,9 @@ func (_m *RollupManagerContract) EXPECT() *RollupManagerContract_Expecter {
 	return &RollupManagerContract_Expecter{mock: &_m.Mock}
 }
 
-// RollupAddressToID provides a mock function with given fields: opts, rollupAddress
-func (_m *RollupManagerContract) RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error) {
-	ret := _m.Called(opts, rollupAddress)
+// RollupAddressToID provides a mock function with given fields: opts, polygonZkEVMAddress
+func (_m *RollupManagerContract) RollupAddressToID(opts *bind.CallOpts, polygonZkEVMAddress common.Address) (uint32, error) {
+	ret := _m.Called(opts, polygonZkEVMAddress)
 
 	if len(ret) == 0 {
 		panic("no return value specified for RollupAddressToID")
@@ -35,16 +35,16 @@ func (_m *RollupManagerContract) RollupAddressToID(opts *bind.CallOpts, rollupAd
 	var r0 uint32
 	var r1 error
 	if rf, ok := ret.Get(0).(func(*bind.CallOpts, common.Address) (uint32, error)); ok {
-		return rf(opts, rollupAddress)
+		return rf(opts, polygonZkEVMAddress)
 	}
 	if rf, ok := ret.Get(0).(func(*bind.CallOpts, common.Address) uint32); ok {
-		r0 = rf(opts, rollupAddress)
+		r0 = rf(opts, polygonZkEVMAddress)
 	} else {
 		r0 = ret.Get(0).(uint32)
 	}
 
 	if rf, ok := ret.Get(1).(func(*bind.CallOpts, common.Address) error); ok {
-		r1 = rf(opts, rollupAddress)
+		r1 = rf(opts, polygonZkEVMAddress)
 	} else {
 		r1 = ret.Error(1)
 	}
@@ -59,12 +59,12 @@ type RollupManagerContract_RollupAddressToID_Call struct {
 
 // RollupAddressToID is a helper method to define mock.On call
 //   - opts *bind.CallOpts
-//   - rollupAddress common.Address
-func (_e *RollupManagerContract_Expecter) RollupAddressToID(opts interface{}, rollupAddress interface{}) *RollupManagerContract_RollupAddressToID_Call {
-	return &RollupManagerContract_RollupAddressToID_Call{Call: _e.mock.On("RollupAddressToID", opts, rollupAddress)}
+//   - polygonZkEVMAddress common.Address
+func (_e *RollupManagerContract_Expecter) RollupAddressToID(opts interface{}, polygonZkEVMAddress interface{}) *RollupManagerContract_RollupAddressToID_Call {
+	return &RollupManagerContract_RollupAddressToID_Call{Call: _e.mock.On("RollupAddressToID", opts, polygonZkEVMAddress)}
 }
 
-func (_c *RollupManagerContract_RollupAddressToID_Call) Run(run func(opts *bind.CallOpts, rollupAddress common.Address)) *RollupManagerContract_RollupAddressToID_Call {
+func (_c *RollupManagerContract_RollupAddressToID_Call) Run(run func(opts *bind.CallOpts, polygonZkEVMAddress common.Address)) *RollupManagerContract_RollupAddressToID_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(*bind.CallOpts), args[1].(common.Address))
 	})

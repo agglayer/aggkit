@@ -22,12 +22,12 @@ var (
 type RollupManagerContract interface {
 	RollupIDToRollupData(opts *bind.CallOpts, rollupID uint32) (
 		polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error)
-	RollupAddressToID(opts *bind.CallOpts, rollupAddress common.Address) (uint32, error)
+	RollupAddressToID(opts *bind.CallOpts, polygonZkEVMAddress common.Address) (uint32, error)
 }
 
 // mockery:ignore
 // RollupManagerFactoryFunc is a callback function that creates RollupManager contrat instance
-type RollupManagerFactoryFunc func(rollupAddress common.Address,
+type RollupManagerFactoryFunc func(polygonZkEVMAddress common.Address,
 	client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error)
 
 // RollupDataQuerier is a simple implementation of Etherman.

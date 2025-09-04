@@ -5,7 +5,7 @@ KURTOSIS_ENCLAVE=${KURTOSIS_ENCLAVE:-aggkit}
 function set_rollup_address_from_kurtosis(){
     local DEST=$(mktemp -d)
     kurtosis files download $KURTOSIS_ENCLAVE $KURTOSIS_ARTIFACT_AGGKIT_CONFIG $DEST
-    ROLLUP_ADDRESS=$(cat $DEST/config.toml | grep rollupAddress | cut -f 2 -d '=' | tr -d '[:space:]'  | tr -d '"') 
+    ROLLUP_ADDRESS=$(cat $DEST/config.toml | grep polygonZkEVMAddress | cut -f 2 -d '=' | tr -d '[:space:]'  | tr -d '"') 
 }
 
 

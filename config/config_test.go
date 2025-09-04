@@ -149,7 +149,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	[NetworkConfig.L1]
 	URL="{{L1URL}}"
 	PolAddr="{{L1Config.polTokenAddress}}"
-	ZkEVMAddr="{{L1Config.rollupAddress}}"
+	ZkEVMAddr="{{L1Config.polygonZkEVMAddress}}"
 
 	[Validator.FEPConfig]
 	SovereignRollupAddr = "0x0000000000000000000000000000000000000001"
