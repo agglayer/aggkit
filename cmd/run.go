@@ -821,8 +821,8 @@ func createRollupDataQuerier(ctx context.Context,
 	}
 
 	return etherman.NewRollupDataQuerier(cfg, ethClient,
-		func(rollupAddr common.Address,
+		func(rollupManagerAddr common.Address,
 			client aggkittypes.BaseEthereumClienter) (etherman.RollupManagerContract, error) {
-			return polygonrollupmanager.NewPolygonrollupmanager(rollupAddr, client)
+			return polygonrollupmanager.NewPolygonrollupmanager(rollupManagerAddr, client)
 		})
 }

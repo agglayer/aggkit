@@ -27,7 +27,7 @@ type RollupManagerContract interface {
 
 // mockery:ignore
 // RollupManagerFactoryFunc is a callback function that creates RollupManager contrat instance
-type RollupManagerFactoryFunc func(polygonZkEVMAddress common.Address,
+type RollupManagerFactoryFunc func(rollupManagerAddr common.Address,
 	client aggkittypes.BaseEthereumClienter) (RollupManagerContract, error)
 
 // RollupDataQuerier is a simple implementation of Etherman.
