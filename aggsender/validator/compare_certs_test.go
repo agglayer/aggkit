@@ -125,10 +125,24 @@ func TestDiffsImportedBridgeExits(t *testing.T) {
 			want:       []string{"ImportedBridgeExits length mismatch. Expected: 0, Certificate: 1"},
 		},
 		{
-			name:       "same length, different content -> no diffs (no content comparison implemented)",
-			expected:   []*agglayertypes.ImportedBridgeExit{{}},
-			validating: []*agglayertypes.ImportedBridgeExit{{}},
-			want:       []string{},
+			name: "same length, different content -> no diffs (no content comparison implemented)",
+			expected: []*agglayertypes.ImportedBridgeExit{
+				{GlobalIndex: &agglayertypes.GlobalIndex{MainnetFlag: true, RollupIndex: 0, LeafIndex: 1}},
+			},
+			validating: []*agglayertypes.ImportedBridgeExit{
+				{GlobalIndex: &agglayertypes.GlobalIndex{MainnetFlag: true, RollupIndex: 0, LeafIndex: 1}},
+			},
+			want: []string{},
+		},
+		{
+			name: "global index mismatch",
+			expected: []*agglayertypes.ImportedBridgeExit{
+				{GlobalIndex: &agglayertypes.GlobalIndex{MainnetFlag: true, RollupIndex: 0, LeafIndex: 1}},
+			},
+			validating: []*agglayertypes.ImportedBridgeExit{
+				{GlobalIndex: &agglayertypes.GlobalIndex{MainnetFlag: true, RollupIndex: 0, LeafIndex: 2}},
+			},
+			want: []string{"ImportedBridgeExit 0 GlobalIndex mismatch. Expected: MainnetFlag: true, RollupIndex: 0, LeafIndex: 1, Certificate: MainnetFlag: true, RollupIndex: 0, LeafIndex: 2"},
 		},
 	}
 

@@ -97,5 +97,15 @@ func DiffsImportedBridgeExits(
 		return diffs
 	}
 
+	for i, expectedImportedBridge := range expected {
+		importedBridgeValidating := validating[i]
+
+		// check if global index matches
+		if importedBridgeValidating.GlobalIndex.Hash() != expectedImportedBridge.GlobalIndex.Hash() {
+			diffs = append(diffs, fmt.Sprintf("ImportedBridgeExit %d GlobalIndex mismatch. Expected: %s, Certificate: %s",
+				i, expectedImportedBridge.GlobalIndex.String(), importedBridgeValidating.GlobalIndex.String()))
+		}
+	}
+
 	return diffs
 }
