@@ -182,3 +182,8 @@ func (p *PPFlow) ValidateCertificate(ctx context.Context, cert *agglayertypes.Ce
 
 	return nil
 }
+
+// Signer returns the signer used to sign the certificate
+func (p *PPFlow) Signer() signertypes.Signer {
+	return p.signer
+}
