@@ -1,177 +1,294 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*.*.*"
-      - "v*.*.*-*"
+    push:
+        branches:
+            - feat/ci-revamp
+        tags:
+            - "v*.*.*"
+            - "v*.*.*-*"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
-  cancel-in-progress: true
+    group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+    cancel-in-progress: true
 
 permissions:
-  contents: write
-  packages: write
+    contents: write
+    packages: write
 
 env:
-  REGISTRY: ghcr.io
-  REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
-  REGEX_IMAGE: ${{ github.repository }}:\\d+.\\d+.\\d+
+    REGISTRY: ghcr.io
+    REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
+    REGEX_IMAGE: ${{ github.repository }}:\\d+.\\d+.\\d+
 
 jobs:
-  build:
-    runs-on: amd-runner-2204
-    strategy:
-      fail-fast: false
-      matrix:
-        platform:
-          - linux/amd64
-          - linux/arm64
-        variant:
-          - { suffix: "", include_shell: "false", description: "production" }
-          - {
-              suffix: "-dev",
-              include_shell: "true",
-              description: "development",
-            }
-    outputs:
-      IMAGE_NAME_PROD: ${{ steps.image_builder_prod.outputs.IMAGE }}
-      IMAGE_NAME_DEV: ${{ steps.image_builder_dev.outputs.IMAGE }}
-      TAGS_PROD: ${{ steps.meta_prod.outputs.tags }}
-      TAGS_DEV: ${{ steps.meta_dev.outputs.tags }}
-      VERSION: ${{ steps.meta_prod.outputs.version }}
-    steps:
-      - name: Prepare
-        run: |
-          platform=${{ matrix.platform }}
-          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
-          VARIANT_SUFFIX="${{ matrix.variant.suffix }}"
-          echo "VARIANT_SUFFIX=$VARIANT_SUFFIX" >> $GITHUB_ENV
-          PLATFORM_VARIANT="${platform//\//-}${VARIANT_SUFFIX}"
-          echo "PLATFORM_VARIANT=$PLATFORM_VARIANT" >> $GITHUB_ENV
+    setup:
+        runs-on: ubuntu-latest
+        env:
+            GH_TOKEN: ${{ github.token }}
+        outputs:
+            release-id: ${{ steps.create-release.outputs.release-id }}
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0 # Needed for git-cliff to access commit history
 
-      - name: Checkout
-        uses: actions/checkout@v5
+            # Step 1: Set up git-cliff
+            - name: Setup git-cliff
+              uses: kenji-miyake/setup-git-cliff@v1
 
-      - name: Docker meta (prod)
-        id: meta_prod
-        if: matrix.variant.suffix == ''
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY_IMAGE }}
-          tags: |
-            type=ref,event=branch
-            type=ref,event=pr
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
+            # Step 2: Generate dynamic release notes template
+            - name: Generate release notes
+              id: generate-notes
+              run: |
+                  TAG_VERSION="${{ github.ref_name }}"
 
-      - name: Docker meta (dev)
-        id: meta_dev
-        if: matrix.variant.suffix != ''
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY_IMAGE }}
-          tags: |
-            type=ref,event=branch,suffix=-dev
-            type=ref,event=pr,suffix=-dev
-            type=semver,pattern={{version}}-dev
-            type=semver,pattern={{major}}.{{minor}}-dev
+                  echo "📝 Generating release notes for $TAG_VERSION..."
 
-      - name: Image name builder (prod)
-        id: image_builder_prod
-        if: matrix.variant.suffix == ''
-        run: |
-          IMAGE=$(jq -ecr '.tags | map(select(match("${{ env.REGEX_IMAGE }}", "i"))) | first| sub(":.*$";"")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
+                  # Generate release notes with git-cliff
+                  git-cliff --latest --output release_notes.md || {
+                    echo "⚠️ git-cliff failed, creating fallback release notes"
 
-      - name: Image name builder (dev)
-        id: image_builder_dev
-        if: matrix.variant.suffix != ''
-        run: |
-          IMAGE=$(jq -ecr '.tags | map(select(match("${{ env.REGEX_IMAGE }}-dev", "i"))) | first| sub(":.*$";"")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
-          echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
+                    # Get previous tag for fallback
+                    PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+                    # Create fallback content with proper tag handling
+                    if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$TAG_VERSION" ]; then
+                      CHANGELOG_LINK="https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$TAG_VERSION"
+                    else
+                      CHANGELOG_LINK="https://github.com/${{ github.repository }}/commits/$TAG_VERSION"
+                    fi
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+                    cat > release_notes.md << EOF
+                  ## 🚀 What's New
+                  - [Brief description of new features]
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+                  ## ✅ Testing & Validation
+                  <!-- TEST_PLACEHOLDER_START -->
+                  <!-- TEST_PLACEHOLDER_END -->
 
-      - name: Build and push by digest
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          platforms: ${{ matrix.platform }}
-          labels: ${{ (matrix.variant.suffix == '') && steps.meta_prod.outputs.labels || steps.meta_dev.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          build-args: |
-            INCLUDE_SHELL=${{ matrix.variant.include_shell }}
-          outputs: type=image,name=${{ (matrix.variant.suffix == '') && steps.image_builder_prod.outputs.IMAGE || steps.image_builder_dev.outputs.IMAGE }},push-by-digest=true,push=true
+                  ## 📦 Full Changelog
+                  See the [full changelog]($CHANGELOG_LINK) for detailed changes.
+                  EOF
+                  }
 
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}.${{ env.PLATFORM_VARIANT }}"
+                  # Always replace the test placeholder with dynamic test list (whether git-cliff succeeds or fails)
+                  TEST_LINES=$(echo '${{ env.TEST_CONFIG }}' | jq -r '.[] | "- **" + .name + "**: [Running...](#)"')
 
-      - name: Upload digest
-        uses: actions/upload-artifact@v4
-        with:
-          name: digests-${{ env.PLATFORM_VARIANT }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
+                  # Replace placeholder in release notes
+                  if [ -n "$TEST_LINES" ]; then
+                    # Create replacement content
+                    cat > replacement_content.tmp << EOF
+                  <!-- TEST_PLACEHOLDER_START -->
+                  $TEST_LINES
+                  <!-- TEST_PLACEHOLDER_END -->
+                  EOF
 
-  merge:
-    runs-on: arm-runner-2204
-    needs:
-      - build
-    strategy:
-      matrix:
-        variant:
-          - { suffix: "", description: "production" }
-          - { suffix: "-dev", description: "development" }
-    steps:
-      - name: Download digests
-        uses: actions/download-artifact@v4
-        with:
-          path: /tmp/digests
-          pattern: digests-*${{ matrix.variant.suffix }}
-          merge-multiple: true
+                    # Replace placeholder section
+                    sed -i '/<!-- TEST_PLACEHOLDER_START -->/,/<!-- TEST_PLACEHOLDER_END -->/d' release_notes.md
+                    sed -i '/## ✅ Testing & Validation/r replacement_content.tmp' release_notes.md
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+                    # Clean up
+                    rm -f replacement_content.tmp
+                  else
+                    echo "⚠️ No test configuration found, using default placeholder"
+                  fi
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+                  echo "✅ Release notes generated"
 
-      - name: Create manifest list and push
-        working-directory: /tmp/digests
-        run: |
-          IMAGE_NAME="${{ (matrix.variant.suffix == '') && needs.build.outputs.IMAGE_NAME_PROD || needs.build.outputs.IMAGE_NAME_DEV }}"
-          TAGS="${{ (matrix.variant.suffix == '') && needs.build.outputs.TAGS_PROD || needs.build.outputs.TAGS_DEV }}"
-          docker buildx imagetools create $(jq -cRr 'split("\n") | map(gsub("\\s+";"")) | map("-t "+ .) | join(" ")' <<< "$TAGS") \
-            $(for f in *${{ matrix.variant.suffix }}; do echo "${IMAGE_NAME}@sha256:${f%%.*}"; done)
+            # Step 3: Create pre-release
+            - name: Create pre-release
+              id: create-release
+              run: |
+                  TAG_VERSION="${{ github.ref_name }}"
 
-      - name: Inspect image
-        run: |
-          IMAGE_NAME="${{ (matrix.variant.suffix == '') && needs.build.outputs.IMAGE_NAME_PROD || needs.build.outputs.IMAGE_NAME_DEV }}"
-          TAGS="${{ (matrix.variant.suffix == '') && needs.build.outputs.TAGS_PROD || needs.build.outputs.TAGS_DEV }}"
-          # Use the first tag for inspection
-          FIRST_TAG=$(echo "$TAGS" | head -n1)
-          docker buildx imagetools inspect "$FIRST_TAG"
+                  echo "📦 Creating pre-release: $TAG_VERSION"
+
+                  # Get previous tag for comparison link
+                  PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
+
+                  # Read the generated release notes
+                  RELEASE_NOTES=$(cat release_notes.md)
+
+                  # Add header with tag comparison link if we have a previous tag
+                  if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$TAG_VERSION" ]; then
+                    HEADER="**Full Changelog**: [\`$PREVIOUS_TAG...$TAG_VERSION\`](https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$TAG_VERSION)"$'\n\n'
+                  else
+                    HEADER="**Full Changelog**: [View all commits](https://github.com/${{ github.repository }}/commits/$TAG_VERSION)"$'\n\n'
+                  fi
+
+                  FULL_NOTES="$HEADER$RELEASE_NOTES"
+
+                  # Create pre-release using git-cliff generated notes
+                  RELEASE_DATA=$(gh api repos/${{ github.repository }}/releases \
+                    --method POST \
+                    --field tag_name="$TAG_VERSION" \
+                    --field name="$TAG_VERSION" \
+                    --field body="$FULL_NOTES" \
+                    --field draft=false \
+                    --field prerelease=true)
+
+                  RELEASE_ID=$(echo "$RELEASE_DATA" | jq -r '.id')
+                  echo "release-id=$RELEASE_ID" >> $GITHUB_OUTPUT
+                  echo "✅ Created pre-release: $TAG_VERSION (ID: $RELEASE_ID)"
+
+    build:
+        runs-on: amd-runner-2204
+        strategy:
+            fail-fast: false
+            matrix:
+                platform:
+                    - linux/amd64
+                    - linux/arm64
+                variant:
+                    - {
+                          suffix: "",
+                          include_shell: "false",
+                          description: "production",
+                      }
+                    - {
+                          suffix: "-dev",
+                          include_shell: "true",
+                          description: "development",
+                      }
+        outputs:
+            IMAGE_NAME_PROD: ${{ steps.image_builder_prod.outputs.IMAGE }}
+            IMAGE_NAME_DEV: ${{ steps.image_builder_dev.outputs.IMAGE }}
+            TAGS_PROD: ${{ steps.meta_prod.outputs.tags }}
+            TAGS_DEV: ${{ steps.meta_dev.outputs.tags }}
+            VERSION: ${{ steps.meta_prod.outputs.version }}
+        steps:
+            - name: Prepare
+              run: |
+                  platform=${{ matrix.platform }}
+                  echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+                  VARIANT_SUFFIX="${{ matrix.variant.suffix }}"
+                  echo "VARIANT_SUFFIX=$VARIANT_SUFFIX" >> $GITHUB_ENV
+                  PLATFORM_VARIANT="${platform//\//-}${VARIANT_SUFFIX}"
+                  echo "PLATFORM_VARIANT=$PLATFORM_VARIANT" >> $GITHUB_ENV
+
+            - name: Checkout
+              uses: actions/checkout@v5
+
+            - name: Docker meta (prod)
+              id: meta_prod
+              if: matrix.variant.suffix == ''
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ env.REGISTRY_IMAGE }}
+                  tags: |
+                      type=ref,event=branch
+                      type=ref,event=pr
+                      type=semver,pattern={{version}}
+                      type=semver,pattern={{major}}.{{minor}}
+
+            - name: Docker meta (dev)
+              id: meta_dev
+              if: matrix.variant.suffix != ''
+              uses: docker/metadata-action@v5
+              with:
+                  images: ${{ env.REGISTRY_IMAGE }}
+                  tags: |
+                      type=ref,event=branch,suffix=-dev
+                      type=ref,event=pr,suffix=-dev
+                      type=semver,pattern={{version}}-dev
+                      type=semver,pattern={{major}}.{{minor}}-dev
+
+            - name: Image name builder (prod)
+              id: image_builder_prod
+              if: matrix.variant.suffix == ''
+              run: |
+                  IMAGE=$(jq -ecr '.tags | map(select(match("${{ env.REGEX_IMAGE }}", "i"))) | first| sub(":.*$";"")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+                  echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
+
+            - name: Image name builder (dev)
+              id: image_builder_dev
+              if: matrix.variant.suffix != ''
+              run: |
+                  IMAGE=$(jq -ecr '.tags | map(select(match("${{ env.REGEX_IMAGE }}-dev", "i"))) | first| sub(":.*$";"")' <<< "$DOCKER_METADATA_OUTPUT_JSON")
+                  echo "IMAGE=$IMAGE" >> $GITHUB_OUTPUT
+
+            - name: Set up QEMU
+              uses: docker/setup-qemu-action@v3
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to Docker Hub
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Build and push by digest
+              id: build
+              uses: docker/build-push-action@v6
+              with:
+                  context: .
+                  push: false
+                  platforms: ${{ matrix.platform }}
+                  labels: ${{ (matrix.variant.suffix == '') && steps.meta_prod.outputs.labels || steps.meta_dev.outputs.labels }}
+                  cache-from: type=gha
+                  cache-to: type=gha,mode=max
+                  build-args: |
+                      INCLUDE_SHELL=${{ matrix.variant.include_shell }}
+                  outputs: type=image,name=${{ (matrix.variant.suffix == '') && steps.image_builder_prod.outputs.IMAGE || steps.image_builder_dev.outputs.IMAGE }},push-by-digest=true,push=true
+
+            - name: Export digest
+              run: |
+                  mkdir -p /tmp/digests
+                  digest="${{ steps.build.outputs.digest }}"
+                  touch "/tmp/digests/${digest#sha256:}.${{ env.PLATFORM_VARIANT }}"
+
+            - name: Upload digest
+              uses: actions/upload-artifact@v4
+              with:
+                  name: digests-${{ env.PLATFORM_VARIANT }}
+                  path: /tmp/digests/*
+                  if-no-files-found: error
+                  retention-days: 1
+
+    merge:
+        runs-on: arm-runner-2204
+        needs:
+            - build
+        strategy:
+            matrix:
+                variant:
+                    - { suffix: "", description: "production" }
+                    - { suffix: "-dev", description: "development" }
+        steps:
+            - name: Download digests
+              uses: actions/download-artifact@v4
+              with:
+                  path: /tmp/digests
+                  pattern: digests-*${{ matrix.variant.suffix }}
+                  merge-multiple: true
+
+            - name: Set up Docker Buildx
+              uses: docker/setup-buildx-action@v3
+
+            - name: Login to Docker Hub
+              uses: docker/login-action@v3
+              with:
+                  registry: ${{ env.REGISTRY }}
+                  username: ${{ github.actor }}
+                  password: ${{ secrets.GITHUB_TOKEN }}
+
+            - name: Create manifest list and push
+              working-directory: /tmp/digests
+              run: |
+                  IMAGE_NAME="${{ (matrix.variant.suffix == '') && needs.build.outputs.IMAGE_NAME_PROD || needs.build.outputs.IMAGE_NAME_DEV }}"
+                  TAGS="${{ (matrix.variant.suffix == '') && needs.build.outputs.TAGS_PROD || needs.build.outputs.TAGS_DEV }}"
+                  docker buildx imagetools create $(jq -cRr 'split("\n") | map(gsub("\\s+";"")) | map("-t "+ .) | join(" ")' <<< "$TAGS") \
+                    $(for f in *${{ matrix.variant.suffix }}; do echo "${IMAGE_NAME}@sha256:${f%%.*}"; done)
+
+            - name: Inspect image
+              run: |
+                  IMAGE_NAME="${{ (matrix.variant.suffix == '') && needs.build.outputs.IMAGE_NAME_PROD || needs.build.outputs.IMAGE_NAME_DEV }}"
+                  TAGS="${{ (matrix.variant.suffix == '') && needs.build.outputs.TAGS_PROD || needs.build.outputs.TAGS_DEV }}"
+                  # Use the first tag for inspection
+                  FIRST_TAG=$(echo "$TAGS" | head -n1)
+                  docker buildx imagetools inspect "$FIRST_TAG"
