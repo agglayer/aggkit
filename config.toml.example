@@ -6,19 +6,19 @@
 # /_/   \_\____|\____|_|\_\___| |_|
 #
 # This is a reference config file used for Aggkit
-# setup. The values used here are template. DYOR
+# setup.
 # The below configs are the default mandatory parameters to be used.
 # ==============================================================================
 
-PathRWData = "{{.zkevm_path_rw_data}}"
-L1URL = "{{.l1_rpc_url}}"
-L2URL = "{{.l2_rpc_url}}"
+PathRWData = "<PATH>"
+L1URL = "<URL>"
+L2URL = "<URL>"
 
-AggLayerURL = "{{.agglayer_grpc_url}}"
+AggLayerURL = "<URL>"
 
-AggchainProofURL= "{{.aggkit_prover_grpc_url_prefix}}{{.deployment_suffix}}:{{.aggkit_prover_grpc_port}}"
+AggchainProofURL= "<URL>"
 
-NetworkID = {{.zkevm_rollup_id}}
+NetworkID = <NETWORK_ID>
 
 SequencerPrivateKeyPath = "<PATH>"
 SequencerPrivateKeyPassword  = "<PASSWORD>"
