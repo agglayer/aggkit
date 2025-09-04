@@ -52,17 +52,14 @@ func TestL2GERSyncE2E(t *testing.T) {
 
 	go syncer.Start(ctx)
 
-	updateL1GlobalExitRoot(t, l1Setup, 1)
-	for i := 2; i <= testIterations; i++ {
+	for i := range testIterations {
 		updateL1GlobalExitRoot(t, l1Setup, i)
-		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i-1)
+		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i)
 	}
 }
 
 func TestL2GERSync_GERRemoval(t *testing.T) {
 	t.Parallel()
-	t.Skip("Skipping E2E test, this test is broken and needs a PR to be fixed. The lastProcessedBlock doesn't take in account empty blocks")
-
 	ctx := t.Context()
 	l1Environment, l2Environment := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
 
@@ -90,7 +87,6 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 	for i := range testIterations {
 		ger := updateL1GlobalExitRoot(t, l1Environment, i)
 		updatedGERs = append(updatedGERs, ger)
-		time.Sleep(syncDelay)
 		testGERSyncer(t, ctx, l1Environment, l2Environment, syncer, i)
 	}
 
@@ -212,7 +208,7 @@ func testGERSyncer(t *testing.T, ctx context.Context,
 	l1Setup *helpers.L1Environment, l2Setup *helpers.L2Environment,
 	syncer *l2gersync.L2GERSync, i int) {
 	t.Helper()
-	time.Sleep(2 * time.Second)
+	time.Sleep(100 * time.Millisecond)
 
 	expectedGER, err := l1Setup.GERContract.GetLastGlobalExitRoot(&bind.CallOpts{Pending: false})
 	require.NoError(t, err)
