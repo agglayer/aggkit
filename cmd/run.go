@@ -735,7 +735,7 @@ func runAggsenderMultisigCommitteeIfNeeded(
 
 	committeeQuerier, err := query.NewECDSAMultisigCommitteeQuery(rollupAddr, l1Client)
 	if err != nil {
-		log.Fatalf("failed to create ECDSA multisig committee querier (SC address: %s): %w", rollupAddr, err)
+		log.Fatalf("failed to create ECDSA multisig committee querier (SC address: %s): %s", rollupAddr, err)
 	}
 
 	return committeeQuerier
