@@ -90,7 +90,7 @@ func start(cliCtx *cli.Context) error {
 	l1InfoTreeSync := runL1InfoTreeSyncerIfNeeded(cliCtx.Context, components, *cfg, l1Client)
 	l1BridgeSync := runBridgeSyncL1IfNeeded(cliCtx.Context, components, cfg.BridgeL1Sync, l1Client, 0)
 	l2BridgeSync := runBridgeSyncL2IfNeeded(cliCtx.Context, components, cfg.BridgeL2Sync, reorgDetectorL2,
-		l2Client, rollupDataQuerier.RollupID)
+		l2Client, rollupDataQuerier.GetRollupID())
 	l2GERSync := runL2GERSyncIfNeeded(
 		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)

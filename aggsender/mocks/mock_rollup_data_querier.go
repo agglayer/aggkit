@@ -182,6 +182,51 @@ func (_c *RollupDataQuerier_GetRollupData_Call) RunAndReturn(run func(*big.Int) 
 	return _c
 }
 
+// GetRollupID provides a mock function with no fields
+func (_m *RollupDataQuerier) GetRollupID() uint32 {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRollupID")
+	}
+
+	var r0 uint32
+	if rf, ok := ret.Get(0).(func() uint32); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(uint32)
+	}
+
+	return r0
+}
+
+// RollupDataQuerier_GetRollupID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRollupID'
+type RollupDataQuerier_GetRollupID_Call struct {
+	*mock.Call
+}
+
+// GetRollupID is a helper method to define mock.On call
+func (_e *RollupDataQuerier_Expecter) GetRollupID() *RollupDataQuerier_GetRollupID_Call {
+	return &RollupDataQuerier_GetRollupID_Call{Call: _e.mock.On("GetRollupID")}
+}
+
+func (_c *RollupDataQuerier_GetRollupID_Call) Run(run func()) *RollupDataQuerier_GetRollupID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *RollupDataQuerier_GetRollupID_Call) Return(_a0 uint32) *RollupDataQuerier_GetRollupID_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *RollupDataQuerier_GetRollupID_Call) RunAndReturn(run func() uint32) *RollupDataQuerier_GetRollupID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewRollupDataQuerier creates a new instance of RollupDataQuerier. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewRollupDataQuerier(t interface {

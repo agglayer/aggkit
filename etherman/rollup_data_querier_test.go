@@ -82,7 +82,7 @@ func TestNewClient(t *testing.T) {
 				require.Contains(t, err.Error(), tt.expectedErr)
 			} else {
 				require.NoError(t, err)
-				require.Equal(t, tt.expectedRollup, client.RollupID)
+				require.Equal(t, tt.expectedRollup, client.GetRollupID())
 			}
 		})
 	}
@@ -138,7 +138,7 @@ func TestClient_GetL2ChainID(t *testing.T) {
 
 			client := &RollupDataQuerier{
 				rollupManagerSC: mockRM,
-				RollupID:        tt.rollupID,
+				rollupID:        tt.rollupID,
 			}
 
 			id, err := client.GetRollupChainID()
@@ -151,6 +151,16 @@ func TestClient_GetL2ChainID(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestClient_GetRollupAddress(t *testing.T) {
+	rollupAddr := common.HexToAddress("0x1")
+	client := &RollupDataQuerier{
+		rollupAddr: rollupAddr,
+	}
+
+	actualAddr := client.GetRollupAddress()
+	require.Equal(t, rollupAddr, actualAddr)
 }
 
 func TestFetchRollupID(t *testing.T) {

@@ -34,7 +34,7 @@ type RollupManagerFactoryFunc func(polygonZkEVMAddress common.Address,
 type RollupDataQuerier struct {
 	rollupManagerSC RollupManagerContract
 	rollupAddr      common.Address
-	RollupID        uint32
+	rollupID        uint32
 }
 
 // NewRollupDataQuerier creates a new rollup data querier instance
@@ -58,7 +58,7 @@ func NewRollupDataQuerier(
 	return &RollupDataQuerier{
 		rollupManagerSC: rmContract,
 		rollupAddr:      l1Config.RollupAddr,
-		RollupID:        rollupID,
+		rollupID:        rollupID,
 	}, nil
 }
 
@@ -113,11 +113,11 @@ func (r *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (
 		&bind.CallOpts{
 			Pending:     false,
 			BlockNumber: blockNumber,
-		}, r.RollupID)
+		}, r.rollupID)
 	if err != nil {
 		log.Debug("error from rollupManager: ", err)
 		return polygonrollupmanager.PolygonRollupManagerRollupDataReturn{},
-			fmt.Errorf("failed to retrieve rollup data for rollup id %d: %w", r.RollupID, err)
+			fmt.Errorf("failed to retrieve rollup data for rollup id %d: %w", r.rollupID, err)
 	}
 
 	return rollupData, nil
@@ -126,4 +126,9 @@ func (r *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (
 // GetRollupAddress returns the rollup contract address
 func (r *RollupDataQuerier) GetRollupAddress() common.Address {
 	return r.rollupAddr
+}
+
+// GetRollupID returns the rollup id
+func (r *RollupDataQuerier) GetRollupID() uint32 {
+	return r.rollupID
 }
