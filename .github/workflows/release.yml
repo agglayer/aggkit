@@ -126,7 +126,7 @@ jobs:
                     --field tag_name="$TAG_VERSION" \
                     --field name="$TAG_VERSION" \
                     --field body="$FULL_NOTES" \
-                    --field draft=false \
+                    --field draft=true \
                     --field prerelease=true)
 
                   RELEASE_ID=$(echo "$RELEASE_DATA" | jq -r '.id')
