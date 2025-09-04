@@ -22,14 +22,12 @@ const (
 	maxRetryAttemptsAfterError = 10
 	waitForNewBlocksPeriod     = 30 * time.Millisecond
 	syncBlockChunkSize         = 10
-	testIterations             = 3
+	testIterations             = 5
 	syncDelay                  = 1 * time.Second
 )
 
 func TestL2GERSyncE2E(t *testing.T) {
 	t.Parallel()
-	t.Skip("Skipping E2E test, this test is broken and needs a PR to be fixed. The lastProcessedBlock doesn't take in account empty blocks")
-
 	ctx, _ := context.WithTimeout(context.Background(), 30*time.Minute)
 
 	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.SovereignChainL2GERContract))
@@ -54,10 +52,10 @@ func TestL2GERSyncE2E(t *testing.T) {
 
 	go syncer.Start(ctx)
 
-	for i := range testIterations {
+	updateL1GlobalExitRoot(t, l1Setup, 1)
+	for i := 2; i <= testIterations; i++ {
 		updateL1GlobalExitRoot(t, l1Setup, i)
-		time.Sleep(15 * syncDelay)
-		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i)
+		testGERSyncer(t, ctx, l1Setup, l2Setup, syncer, i-1)
 	}
 }
 
