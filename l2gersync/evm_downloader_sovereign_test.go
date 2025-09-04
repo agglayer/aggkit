@@ -1,0 +1,113 @@
+package l2gersync
+
+import (
+	"context"
+	"math/big"
+	"testing"
+	"time"
+
+	"github.com/agglayer/aggkit/l1infotreesync"
+	l2gersyncmocks "github.com/agglayer/aggkit/l2gersync/mocks"
+	"github.com/agglayer/aggkit/sync"
+	aggkittypes "github.com/agglayer/aggkit/types"
+	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
+	"github.com/ethereum/go-ethereum/common"
+	ethtypes "github.com/ethereum/go-ethereum/core/types"
+	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
+)
+
+func TestDownloaderSovereign_Download(t *testing.T) {
+	t.Parallel()
+
+	fromBlock := uint64(100)
+	syncBlockChunkSize := uint64(10)
+	latestBlock := uint64(120)
+	l2GERAddr := common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678")
+
+	mockL2Client := aggkittypesmocks.NewBaseEthereumClienter(t)
+	mockL1InfoTreeSync := &l2gersyncmocks.L1InfoTreeQuerier{}
+	rh := &sync.RetryHandler{
+		MaxRetryAttemptsAfterError: 5,
+		RetryAfterErrorPeriod:      time.Millisecond,
+	}
+
+	testGER := common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef")
+	testHashChainValue := common.HexToHash("0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890")
+	testL1InfoTreeIndex := uint32(42)
+	testBlockHeader := &ethtypes.Header{
+		Number:      big.NewInt(int64(fromBlock)),
+		ParentHash:  common.HexToHash("0xabc123"),
+		Root:        common.HexToHash("0xdef456"),
+		TxHash:      common.HexToHash("0x789abc"),
+		ReceiptHash: common.HexToHash("0x101112"),
+		Time:        uint64(time.Now().Unix()),
+		GasLimit:    8000000,
+		GasUsed:     21000,
+	}
+	testBlockHash := testBlockHeader.Hash()
+	testLogs := []ethtypes.Log{
+		{
+			Address:     l2GERAddr,
+			Topics:      []common.Hash{insertGEREventSignature, testGER, testHashChainValue},
+			Data:        []byte{},
+			BlockNumber: fromBlock,
+			TxHash:      common.HexToHash("0x111"),
+			TxIndex:     0,
+			BlockHash:   testBlockHash,
+			Index:       0,
+		},
+	}
+
+	mockL2Client.On("ChainID", mock.Anything).Return(big.NewInt(1), nil).Maybe()
+	mockL2Client.On("HeaderByNumber", mock.Anything, (*big.Int)(nil)).Return(&ethtypes.Header{
+		Number: big.NewInt(int64(latestBlock)),
+	}, nil).Maybe()
+	mockL2Client.On("HeaderByNumber", mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
+	mockL1InfoTreeSync.On("GetInfoByGlobalExitRoot", testGER).Return(&l1infotreesync.L1InfoTreeLeaf{
+		L1InfoTreeIndex:   testL1InfoTreeIndex,
+		GlobalExitRoot:    testGER,
+		Timestamp:         uint64(time.Now().Unix()),
+		PreviousBlockHash: common.Hash{},
+		BlockNumber:       fromBlock,
+		BlockPosition:     0,
+		MainnetExitRoot:   common.Hash{},
+		RollupExitRoot:    common.Hash{},
+		Hash:              common.Hash{},
+	}, nil)
+	mockL2Client.On("FilterLogs", mock.Anything, mock.Anything).Return(testLogs, nil).Maybe()
+
+	downloader, err := newDownloaderSovereign(
+		mockL2Client,
+		l2GERAddr,
+		mockL1InfoTreeSync,
+		rh,
+		aggkittypes.LatestBlock,
+		time.Millisecond*10, // waitForNewBlocksPeriod
+		syncBlockChunkSize,
+	)
+	require.NoError(t, err)
+	downloadedCh := make(chan sync.EVMBlock, 10)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+
+	downloader.Download(ctx, fromBlock, downloadedCh)
+
+	// Collect blocks sent through the channel
+	for block := range downloadedCh {
+		require.Equal(t, fromBlock, block.Num, "Block number should match")
+
+		// Verify event content
+		require.Len(t, block.Events, 1, "Should have exactly one event")
+		event, ok := block.Events[0].(*Event)
+		require.True(t, ok, "Event should be of type *Event")
+		require.NotNil(t, event.GERInfo, "Event should have GERInfo")
+		require.Equal(t, testGER, event.GERInfo.GlobalExitRoot, "GER should match test data")
+		require.Equal(t, testL1InfoTreeIndex, event.GERInfo.L1InfoTreeIndex, "L1InfoTreeIndex should match")
+		require.Equal(t, GEREventTypeInsert, event.EventType, "Should be insert event type")
+		t.Logf("✅ Successfully verified block with processed GER event!")
+	}
+
+	mockL2Client.AssertExpectations(t)
+	mockL1InfoTreeSync.AssertExpectations(t)
+}
