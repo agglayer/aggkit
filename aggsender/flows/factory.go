@@ -204,7 +204,12 @@ func initializeSigner(
 
 	multisigCommittee, err := committeeQuerier.GetMultisigCommittee(ctx, big.NewInt(int64(aggkittypes.Latest)))
 	if err != nil {
-		return nil, fmt.Errorf("error getting multisig committee: %w", err)
+		if requireCommitteeMembershipCheck {
+			return nil, fmt.Errorf("error getting multisig committee: %w", err)
+		}
+
+		logger.Warnf("error getting multisig committee: %v", err)
+		return signer, nil
 	}
 
 	if !multisigCommittee.IsMember(signer.PublicAddress()) {

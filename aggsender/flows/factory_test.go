@@ -2,6 +2,7 @@ package flows
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -43,6 +44,33 @@ func TestNewFlow(t *testing.T) {
 				require.NoError(t, err)
 
 				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Maybe()
+			},
+		},
+		{
+			name: "error getting multisig committee when RequireCommitteeMembershipCheck is true",
+			cfg: config.Config{
+				Mode:                            string(types.PessimisticProofMode),
+				AggsenderPrivateKey:             signertypes.SignerConfig{Method: signertypes.MethodNone},
+				MaxCertSize:                     100,
+				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
+				RequireCommitteeMembershipCheck: true,
+			},
+			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
+				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(nil, errors.New("test error")).Maybe()
+			},
+			expectedError: "error getting multisig committee: test error",
+		},
+		{
+			name: "error getting multisig committee when RequireCommitteeMembershipCheck is false",
+			cfg: config.Config{
+				Mode:                            string(types.PessimisticProofMode),
+				AggsenderPrivateKey:             signertypes.SignerConfig{Method: signertypes.MethodNone},
+				MaxCertSize:                     100,
+				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
+				RequireCommitteeMembershipCheck: false,
+			},
+			mockFn: func(mockCommittee *mocks.MultisigQuerier) {
+				mockCommittee.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(nil, errors.New("test error")).Maybe()
 			},
 		},
 		{
