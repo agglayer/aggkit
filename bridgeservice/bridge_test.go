@@ -1021,7 +1021,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		}
 		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
 
-		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
+		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, page, pageSize, mock.Anything).
 			Return(tokenMappings, len(tokenMappings), nil)
 
 		query := url.Values{}
@@ -1062,7 +1062,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		}
 		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
 
-		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
+		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, page, pageSize, mock.Anything).
 			Return(tokenMappings, len(tokenMappings), nil)
 
 		query := url.Values{}
@@ -1094,7 +1094,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 
 	t.Run("GetTokenMappingsHandler for L1 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).
+		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(fooErrMsg))
 
 		query := url.Values{}
@@ -1107,7 +1107,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 
 	t.Run("GetTokenMappingsHandler for L2 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).
+		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
 		query := url.Values{}

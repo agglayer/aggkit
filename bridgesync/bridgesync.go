@@ -353,7 +353,7 @@ func (s *BridgeSync) GetBridges(ctx context.Context, fromBlock, toBlock uint64) 
 	return s.processor.GetBridges(ctx, fromBlock, toBlock)
 }
 
-func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
+func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32, originTokenAddress string) ([]*TokenMapping, int, error) {
 	if s.processor.isHalted() {
 		return nil, 0, sync.ErrInconsistentState
 	}
@@ -366,7 +366,7 @@ func (s *BridgeSync) GetTokenMappings(ctx context.Context, pageNumber, pageSize 
 		return nil, 0, ErrInvalidPageSize
 	}
 
-	return s.processor.GetTokenMappings(ctx, pageNumber, pageSize)
+	return s.processor.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
 }
 
 func (s *BridgeSync) GetLegacyTokenMigrations(
