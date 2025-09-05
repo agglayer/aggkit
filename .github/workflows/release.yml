@@ -85,35 +85,11 @@ jobs:
 
                   ## ✅ Testing & Validation
                   [![Release](https://github.com/agglayer/aggkit/actions/workflows/release.yml/badge.svg?branch=$TAG_VERSION)](https://github.com/agglayer/aggkit/actions/workflows/release.yml)
-                  <!-- TEST_PLACEHOLDER_START -->
-                  <!-- TEST_PLACEHOLDER_END -->
 
                   ## 📦 Full Changelog
                   See the [full changelog]($CHANGELOG_LINK) for detailed changes.
                   EOF
                   }
-
-                  # Always replace the test placeholder with dynamic test list (whether git-cliff succeeds or fails)
-                  TEST_LINES=$(echo '${{ env.TEST_CONFIG }}' | jq -r '.[] | "- **" + .name + "**: [Running...](#)"')
-
-                  # Replace placeholder in release notes
-                  if [ -n "$TEST_LINES" ]; then
-                    # Create replacement content
-                    cat > replacement_content.tmp << EOF
-                  <!-- TEST_PLACEHOLDER_START -->
-                  $TEST_LINES
-                  <!-- TEST_PLACEHOLDER_END -->
-                  EOF
-
-                    # Replace placeholder section
-                    sed -i '/<!-- TEST_PLACEHOLDER_START -->/,/<!-- TEST_PLACEHOLDER_END -->/d' release_notes.md
-                    sed -i '/## ✅ Testing & Validation/r replacement_content.tmp' release_notes.md
-
-                    # Clean up
-                    rm -f replacement_content.tmp
-                  else
-                    echo "⚠️ No test configuration found, using default placeholder"
-                  fi
 
                   echo "✅ Release notes generated"
 
