@@ -30,7 +30,7 @@ body = """
 - [Brief description of new features]
 
 ## ✅ Testing & Validation
-[![Release](https://github.com/agglayer/aggkit/actions/workflows/release.yml/badge.svg?branch=$TAG_VERSION)](https://github.com/agglayer/aggkit/actions/workflows/release.yml)
+[![Release](https://github.com/agglayer/aggkit/actions/workflows/release.yml/badge.svg?branch={{ version }})](https://github.com/agglayer/aggkit/actions/workflows/release.yml)
 <!-- TEST_PLACEHOLDER_START -->
 <!-- TEST_PLACEHOLDER_END -->
 

@@ -66,31 +66,7 @@ jobs:
                   echo "📝 Generating release notes for $TAG_VERSION..."
 
                   # Generate release notes with git-cliff
-                  git-cliff --latest --output release_notes.md || {
-                    echo "⚠️ git-cliff failed, creating fallback release notes"
-
-                    # Get previous tag for fallback
-                    PREVIOUS_TAG=$(git describe --tags --abbrev=0 HEAD^ 2>/dev/null || echo "")
-
-                    # Create fallback content with proper tag handling
-                    if [ -n "$PREVIOUS_TAG" ] && [ "$PREVIOUS_TAG" != "$TAG_VERSION" ]; then
-                      CHANGELOG_LINK="https://github.com/${{ github.repository }}/compare/$PREVIOUS_TAG...$TAG_VERSION"
-                    else
-                      CHANGELOG_LINK="https://github.com/${{ github.repository }}/commits/$TAG_VERSION"
-                    fi
-
-                    cat > release_notes.md << EOF
-                  ## 🚀 What's New
-                  - [Brief description of new features]
-
-                  ## ✅ Testing & Validation
-                  [![Release](https://github.com/agglayer/aggkit/actions/workflows/release.yml/badge.svg?branch=$TAG_VERSION)](https://github.com/agglayer/aggkit/actions/workflows/release.yml)
-
-                  ## 📦 Full Changelog
-                  See the [full changelog]($CHANGELOG_LINK) for detailed changes.
-                  EOF
-                  }
-
+                  git-cliff --latest --output release_notes.md
                   echo "✅ Release notes generated"
 
             # Step 3: Create pre-release
