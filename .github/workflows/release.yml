@@ -20,26 +20,6 @@ env:
     REGISTRY: ghcr.io
     REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
     REGEX_IMAGE: ${{ github.repository }}:\\d+.\\d+.\\d+
-    # Configuration: Customize your test suite here
-    # Each test configuration includes: name, workflow, allow-failure
-    TEST_CONFIG: |
-        [
-          {
-            "name": "Unit Tests",
-            "workflow": "./.github/workflows/test-unit.yml",
-            "allow_failure": false
-          },
-          {
-            "name": "Integration Tests",
-            "workflow": "./.github/workflows/test-e2e.yml",
-            "allow_failure": true
-          },
-          {
-            "name": "Security Scan",
-            "workflow": "./.github/workflows/govulncheck.yml",
-            "allow_failure": true
-          }
-        ]
 
 jobs:
     setup:
@@ -172,8 +152,23 @@ jobs:
                   echo "release-id=$RELEASE_ID" >> $GITHUB_OUTPUT
                   echo "✅ Created pre-release: $TAG_VERSION (ID: $RELEASE_ID)"
 
-    build:
+    # Dynamic test jobs - calling reusable workflows as black boxes
+    unit-tests:
+        needs: setup
+        uses: ./.github/workflows/test-unit.yml
+
+    integration-tests:
+        needs: setup
+        uses: ./.github/workflows/test-e2e.yml
+
+    security-scan:
+        needs: setup
+        uses: ./.github/workflows/govulncheck.yml
+
+    promote:
         runs-on: amd-runner-2204
+        needs: [setup, unit-tests, integration-tests, security-scan]
+        if: needs.setup.outputs.version-changed == 'true' && needs.unit-tests.result == 'success' && needs.integration-tests.result == 'success' && needs.security-scan.result == 'success'
         strategy:
             fail-fast: false
             matrix:
