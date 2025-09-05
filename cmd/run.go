@@ -597,6 +597,7 @@ func runL2GERSyncIfNeeded(
 		l2Client,
 		cfg.GlobalExitRootL2Addr,
 		l1InfoTreeSync,
+		cfg.SyncBlockChunkSize,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
 		cfg.BlockFinality,

@@ -516,7 +516,6 @@ func TestGetBridgesHandler(t *testing.T) {
 				DepositCount:       0,
 				Metadata:           []byte("metadata"),
 				Calldata:           common.Hex2Bytes("efabcd"),
-				IsNativeToken:      true,
 			},
 		}
 		bridgesResp := aggkitcommon.MapSlice(expectedBridges, NewBridgeResponse)
@@ -592,7 +591,6 @@ func TestGetBridgesHandler(t *testing.T) {
 				DepositCount:       0,
 				Metadata:           []byte("metadata"),
 				Calldata:           []byte{},
-				IsNativeToken:      true,
 			},
 		}
 		bridgesResp := aggkitcommon.MapSlice(expectedBridges, NewBridgeResponse)
