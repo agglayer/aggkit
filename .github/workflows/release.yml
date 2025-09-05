@@ -84,6 +84,7 @@ jobs:
                   - [Brief description of new features]
 
                   ## ✅ Testing & Validation
+                  [![Release](https://github.com/agglayer/aggkit/actions/workflows/release.yml/badge.svg?branch=$TAG_VERSION)](https://github.com/agglayer/aggkit/actions/workflows/release.yml)
                   <!-- TEST_PLACEHOLDER_START -->
                   <!-- TEST_PLACEHOLDER_END -->
 
@@ -99,7 +100,6 @@ jobs:
                   if [ -n "$TEST_LINES" ]; then
                     # Create replacement content
                     cat > replacement_content.tmp << EOF
-                  [![Release](https://github.com/agglayer/aggkit/actions/workflows/release.yml/badge.svg?branch=$TAG_VERSION)](https://github.com/agglayer/aggkit/actions/workflows/release.yml)
                   <!-- TEST_PLACEHOLDER_START -->
                   $TEST_LINES
                   <!-- TEST_PLACEHOLDER_END -->
