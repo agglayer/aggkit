@@ -200,9 +200,12 @@ RequireValidatorCall = false
 	[AggSender.RetriesToBuildAndSendCertificate]
 		Mode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
-		MaxRetries = 6 # 1+6 attempts, around 22m 
+		MaxRetries = 6 # 1+6 attempts, around 22m
 	[AggSender.AgglayerClient]
 		Cached = false
+		[AggSender.AgglayerClient.APIRateLimits] = [
+			{ MethodName = "SendCertificate", RateLimit = {{NumRequests = 20, Interval = "1h"}}}
+		]
 		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "5m"
 			Capacity = 100
@@ -221,9 +224,6 @@ RequireValidatorCall = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 		UseTLS = false
-	[AggSender.MaxSubmitCertificateRate]
-		NumRequests = 20
-		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
 		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
 		# By default use the same key that aggsender signs certs

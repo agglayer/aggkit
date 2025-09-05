@@ -73,7 +73,7 @@ func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
 		sleepTime := r.cfg.Interval.Duration - TimeProvider().Sub(r.calls[0])
 		if allowToSleep {
 			if msg != "" {
-				log.Debugf("Rate limit reached, sleeping for %s for %s", sleepTime, msg)
+				log.Infof("Rate limit reached, sleeping for %s for %s", sleepTime, msg)
 			}
 			time.Sleep(sleepTime)
 		} else {

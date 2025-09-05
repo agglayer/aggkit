@@ -7,30 +7,29 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
-	"github.com/agglayer/aggkit/log"
 	ethCommon "github.com/ethereum/go-ethereum/common"
 )
 
 // RateLimitWrapper wraps an AgglayerClientInterface and applies rate limiting based on configuration
 type RateLimitWrapper struct {
 	client       AgglayerClientInterface
-	rateLimiters map[string]*aggkitcommon.RateLimit
-	logger       *log.Logger
+	rateLimiters map[string]aggkitcommon.RateLimit
+	logger       aggkitcommon.Logger
 	mu           sync.RWMutex
 }
 
 // NewRateLimitWrapper creates a new rate limiting wrapper around an agglayer client
-func NewRateLimitWrapper(client AgglayerClientInterface, config ClientConfig, logger *log.Logger) *RateLimitWrapper {
+func NewRateLimitWrapper(client AgglayerClientInterface, config ClientConfig, logger aggkitcommon.Logger) *RateLimitWrapper {
 	wrapper := &RateLimitWrapper{
 		client:       client,
-		rateLimiters: make(map[string]*aggkitcommon.RateLimit),
+		rateLimiters: make(map[string]aggkitcommon.RateLimit),
 		logger:       logger,
 	}
 
 	// Initialize rate limiters for each configured API method
 	for _, apiConfig := range config.APIRateLimits {
 		if apiConfig.RateLimit.Enabled() {
-			wrapper.rateLimiters[apiConfig.MethodName] = aggkitcommon.NewRateLimit(apiConfig.RateLimit)
+			wrapper.rateLimiters[apiConfig.MethodName] = *aggkitcommon.NewRateLimit(apiConfig.RateLimit)
 			if logger != nil {
 				logger.Infof("Rate limiting enabled for method '%s': %s", apiConfig.MethodName, apiConfig.RateLimit.String())
 			}
@@ -52,7 +51,7 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 
 	if sleepTime := rateLimiter.Call(methodName, true); sleepTime != nil {
 		if r.logger != nil {
-			r.logger.Debugf("Rate limit applied for method '%s', slept for %s", methodName, sleepTime.String())
+			r.logger.Infof("Rate limit applied for method '%s', slept for %s", methodName, sleepTime.String())
 		}
 	}
 }
