@@ -133,7 +133,7 @@ func (d *downloaderSovereign) buildAppender(
 
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
-			log.Fatalf("CRITICAL: GER %s received from L2 is not present in L1InfoTreeSync: %v",
+			log.Fatalf("GER %s received from L2 is not present in L1InfoTreeSync: %v",
 				insertGEREvent.NewGlobalExitRoot, err)
 		}
 
