@@ -20,6 +20,26 @@ env:
     REGISTRY: ghcr.io
     REGISTRY_IMAGE: ghcr.io/${{ github.repository }}
     REGEX_IMAGE: ${{ github.repository }}:\\d+.\\d+.\\d+
+    # Configuration: Customize your test suite here
+    # Each test configuration includes: name, workflow, allow-failure
+    TEST_CONFIG: |
+        [
+          {
+            "name": "Unit Tests",
+            "workflow": "./.github/workflows/test-unit.yml",
+            "allow_failure": false
+          },
+          {
+            "name": "Integration Tests",
+            "workflow": "./.github/workflows/test-e2e.yml",
+            "allow_failure": true
+          },
+          {
+            "name": "Security Scan",
+            "workflow": "./.github/workflows/govulncheck.yml",
+            "allow_failure": true
+          }
+        ]
 
 jobs:
     setup:
@@ -33,6 +53,24 @@ jobs:
               uses: actions/checkout@v5
               with:
                   fetch-depth: 0 # Needed for git-cliff to access commit history
+
+            # Step 2: Parse test configuration
+            - name: Parse test configuration
+              id: parse-config
+              run: |
+                  echo "📋 Parsing test configuration..."
+
+                  # Parse the test configuration and extract test names
+                  TEST_NAMES=$(echo '${{ env.TEST_CONFIG }}' | jq -r '.[].name')
+
+                  # Create the test configuration output
+                  echo "test-config<<EOF" >> $GITHUB_OUTPUT
+                  echo '${{ env.TEST_CONFIG }}' >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+
+                  echo "✅ Test configuration parsed"
+                  echo "Test names:"
+                  echo "$TEST_NAMES"
 
             # Step 1: Set up git-cliff
             - name: Setup git-cliff
@@ -81,6 +119,7 @@ jobs:
                     # Create replacement content
                     cat > replacement_content.tmp << EOF
                   <!-- TEST_PLACEHOLDER_START -->
+                  [![Release](https://github.com/agglayer/aggkit/actions/workflows/release.yml/badge.svg?branch=$TAG_VERSION)](https://github.com/agglayer/aggkit/actions/workflows/release.yml)
                   $TEST_LINES
                   <!-- TEST_PLACEHOLDER_END -->
                   EOF
