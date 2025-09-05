@@ -12,8 +12,8 @@ AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
 
 NetworkID = 1
-SequencerPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
-SequencerPrivateKeyPassword = "test"
+AggSenderPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
+AggSenderPrivateKeyPassword = "test"
 
 polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 
@@ -57,7 +57,7 @@ GenerateAggchainProofTimeout = "1h"
 
 // DefaultValues is the default configuration
 const DefaultValues = `
-AggsenderPrivateKey = "{Method =  \"local\", Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
+AggsenderPrivateKey = "{Method =  \"local\", Path = \"{{AggSenderPrivateKeyPath}}\", Password = \"{{AggSenderPrivateKeyPassword}}\"}"
 
 [Log]
 Environment = "development" # "production" or "development"
