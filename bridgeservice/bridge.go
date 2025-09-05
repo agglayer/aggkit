@@ -464,8 +464,6 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /token-mappings [get]
-//
-//nolint:dupl
 func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 	b.logger.Debugf(
 		"GetTokenMappings request received (network id=%s, page number=%s, page size=%s, origin token address=%s)",
