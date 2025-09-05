@@ -157,6 +157,7 @@ jobs:
     unit-tests:
         needs: setup
         uses: ./.github/workflows/test-unit.yml
+        secrets: inherit
 
     # integration-tests:
     #     needs: setup
