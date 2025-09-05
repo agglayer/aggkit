@@ -1,4 +1,4 @@
-package validator
+package aggsender
 
 import (
 	"context"
@@ -12,6 +12,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/metrics"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/grpc"
 	signertypes "github.com/agglayer/go_signer/signer/types"
@@ -67,10 +68,6 @@ func (vp *validatorPoller) PollValidators(
 		return nil, fmt.Errorf("failed to get validators: %w", err)
 	}
 
-	if len(validators) == 0 {
-		return nil, errors.New("no validators available in the committee")
-	}
-
 	return vp.executeRequest(ctx, req, threshold, validators)
 }
 
@@ -114,13 +111,24 @@ func (vp *validatorPoller) getValidators(
 	validators := make([]types.CertificateValidateAndSigner, 0, committee.Size())
 	for i, signer := range committee.Signers() {
 		clientCfg := vp.validatorClientCfg.WithURL(signer.URL)
-		validator, err := NewRemoteValidator(&clientCfg, vp.storage, signer.Address, uint32(i))
+		validator, err := validator.NewRemoteValidator(&clientCfg, vp.storage, signer.Address, uint32(i))
 		if err != nil {
 			return nil, 0, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
 				signer.Address, signer.URL, err)
 		}
 
 		validators = append(validators, validator)
+	}
+
+	if len(validators) == 0 {
+		return nil, 0, errors.New("no validators available in the committee")
+	}
+
+	firstValidatorAddress := validators[0].Address()
+	proposerAddress := vp.proposerSigner.PublicAddress()
+	if firstValidatorAddress != proposerAddress {
+		return nil, 0, fmt.Errorf("expected proposer %s to be the first member of the validator committee, got %s",
+			proposerAddress, firstValidatorAddress)
 	}
 
 	return validators, committee.Threshold(), nil
@@ -190,7 +198,7 @@ func (vp *validatorPoller) signCertificateForMultisigAsProposer(
 	ctx context.Context,
 	cert *agglayertypes.Certificate,
 ) ([]byte, error) {
-	hashToSign, err := HashCertificateToSign(cert)
+	hashToSign, err := validator.HashCertificateToSign(cert)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash certificate for proposer signing: %w", err)
 	}

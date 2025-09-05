@@ -1,4 +1,4 @@
-package validator
+package aggsender
 
 import (
 	"context"
@@ -290,83 +290,6 @@ func TestValidateRequest(t *testing.T) {
 	}
 }
 
-func TestGetValidators(t *testing.T) {
-	allSigners := []*types.SignerInfo{
-		types.NewSignerInfo("http://localhost:8001", common.HexToAddress("0x1")),
-		types.NewSignerInfo("http://localhost:8002", common.HexToAddress("0x2")),
-		types.NewSignerInfo("http://localhost:8003", common.HexToAddress("0x3")),
-		types.NewSignerInfo("http://localhost:8004", common.HexToAddress("0x4")),
-		types.NewSignerInfo("http://localhost:8005", common.HexToAddress("0x5")),
-		types.NewSignerInfo("http://localhost:8006", common.HexToAddress("0x6")),
-	}
-
-	testCases := []struct {
-		name                 string
-		signers              []*types.SignerInfo
-		expectedValidatorsFn func(*testing.T, []*types.SignerInfo) []types.CertificateValidateAndSigner
-		expectedThreshold    uint32
-		expectedError        string
-	}{
-		{
-			name:              "successful return of committee validators",
-			signers:           allSigners[:len(allSigners)/2],
-			expectedThreshold: uint32(len(allSigners) / 2),
-			expectedValidatorsFn: func(t *testing.T,
-				signers []*types.SignerInfo) []types.CertificateValidateAndSigner {
-				t.Helper()
-
-				validators := make([]types.CertificateValidateAndSigner, 0, len(signers))
-				for i, signer := range signers {
-					validator, err := NewRemoteValidator(&grpc.ClientConfig{URL: signer.URL}, nil, signer.Address, uint32(i))
-					require.NoError(t, err)
-					validators = append(validators, validator)
-				}
-				return validators
-			},
-		},
-		{
-			name:          "failed to query the committee",
-			expectedError: "invalid parameters",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			multisigQuerierMock := mocks.NewMultisigQuerier(t)
-
-			if tc.expectedError == "" {
-				committee, err := types.NewMultisigCommittee(tc.signers, uint32(len(tc.signers)))
-				require.NoError(t, err)
-				multisigQuerierMock.EXPECT().
-					GetMultisigCommittee(mock.Anything, mock.Anything).
-					Return(committee, nil)
-			} else {
-				multisigQuerierMock.EXPECT().
-					GetMultisigCommittee(mock.Anything, mock.Anything).
-					Return(nil, errors.New(tc.expectedError))
-			}
-
-			poller := &validatorPoller{
-				log:                log.WithFields("test", tc.name),
-				validatorClientCfg: &grpc.ClientConfig{},
-				multisigQuerier:    multisigQuerierMock,
-			}
-
-			validators, threshold, err := poller.getValidators(t.Context(), 10)
-			if tc.expectedError != "" {
-				require.ErrorContains(t, err, tc.expectedError)
-			} else {
-				expectedValidators := tc.expectedValidatorsFn(t, tc.signers)
-				require.Len(t, validators, len(tc.signers))
-				for i, v := range expectedValidators {
-					require.Equal(t, v.URL(), validators[i].URL())
-				}
-				require.Equal(t, tc.expectedThreshold, threshold)
-			}
-		})
-	}
-}
-
 func TestPollValidators(t *testing.T) {
 	t.Parallel()
 
@@ -426,6 +349,149 @@ func TestPollValidators(t *testing.T) {
 			}
 
 			mockMultisigQuerier.AssertExpectations(t)
+		})
+	}
+}
+
+func TestGetValidators(t *testing.T) {
+	t.Parallel()
+
+	// Sample addresses for testing
+	proposerAddr := common.HexToAddress("0x1")
+	validator2Addr := common.HexToAddress("0x2")
+	validator3Addr := common.HexToAddress("0x3")
+
+	testCases := []struct {
+		name           string
+		setupMocks     func(*mocks.MultisigQuerier, *mocks.Signer)
+		expectedCount  int
+		expectedThresh uint32
+		expectedErr    string
+	}{
+		{
+			name: "successful retrieval with single validator (proposer only)",
+			setupMocks: func(mockQuerier *mocks.MultisigQuerier, mockSigner *mocks.Signer) {
+				signers := []types.SignerInfo{
+					{Address: proposerAddr, URL: "http://validator1:8001"},
+				}
+				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{&signers[0]}, 1)
+				require.NoError(t, err)
+
+				mockQuerier.EXPECT().
+					GetMultisigCommittee(mock.Anything, mock.Anything).
+					Return(committee, nil).
+					Once()
+
+				// Mock proposer address check
+				mockSigner.EXPECT().PublicAddress().Return(proposerAddr).Once()
+			},
+			expectedCount:  1,
+			expectedThresh: 1,
+		},
+		{
+			name: "successful retrieval with multiple validators",
+			setupMocks: func(mockQuerier *mocks.MultisigQuerier, mockSigner *mocks.Signer) {
+				// Create committee with multiple validators (proposer first)
+				signers := []types.SignerInfo{
+					{Address: proposerAddr, URL: "http://validator1:8001"},
+					{Address: validator2Addr, URL: "http://validator2:8002"},
+					{Address: validator3Addr, URL: "http://validator3:8003"},
+				}
+				signersPtr := []*types.SignerInfo{&signers[0], &signers[1], &signers[2]}
+				committee, err := types.NewMultisigCommittee(signersPtr, 2)
+				require.NoError(t, err)
+
+				mockQuerier.EXPECT().
+					GetMultisigCommittee(mock.Anything, mock.Anything).
+					Return(committee, nil).
+					Once()
+
+				mockSigner.EXPECT().PublicAddress().Return(proposerAddr).Once()
+			},
+			expectedCount:  3,
+			expectedThresh: 2,
+		},
+		{
+			name: "multisig querier fails",
+			setupMocks: func(mockQuerier *mocks.MultisigQuerier, mockSigner *mocks.Signer) {
+				mockQuerier.EXPECT().
+					GetMultisigCommittee(mock.Anything, mock.Anything).
+					Return(nil, errors.New("blockchain connection error")).
+					Once()
+			},
+			expectedErr: "failed to retrieve the latest multisig committee: blockchain connection error",
+		},
+		{
+			name: "empty committee",
+			setupMocks: func(mockQuerier *mocks.MultisigQuerier, mockSigner *mocks.Signer) {
+				mockQuerier.EXPECT().
+					GetMultisigCommittee(mock.Anything, mock.Anything).
+					Return(&types.MultisigCommittee{}, nil).
+					Once()
+			},
+			expectedErr: "no validators available in the committee",
+		},
+		{
+			name: "proposer not first in committee",
+			setupMocks: func(mockQuerier *mocks.MultisigQuerier, mockSigner *mocks.Signer) {
+				// Create committee where proposer is NOT the first validator
+				signers := []types.SignerInfo{
+					{Address: validator2Addr, URL: "http://validator2:8002"}, // Different validator first
+					{Address: proposerAddr, URL: "http://validator1:8001"},   // Proposer second
+				}
+				signersPtr := []*types.SignerInfo{&signers[0], &signers[1]}
+				committee, err := types.NewMultisigCommittee(signersPtr, 1)
+				require.NoError(t, err)
+
+				mockQuerier.EXPECT().
+					GetMultisigCommittee(mock.Anything, mock.Anything).
+					Return(committee, nil).
+					Once()
+
+				mockSigner.EXPECT().PublicAddress().Return(proposerAddr).Once()
+			},
+			expectedErr: "expected proposer 0x0000000000000000000000000000000000000001 to be the first member of the validator committee, got 0x0000000000000000000000000000000000000002",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			mockQuerier := mocks.NewMultisigQuerier(t)
+			mockSigner := mocks.NewSigner(t)
+
+			if tc.setupMocks != nil {
+				tc.setupMocks(mockQuerier, mockSigner)
+			}
+
+			clientCfg := &grpc.ClientConfig{
+				URL: "http://base-url:8000",
+			}
+
+			vp := NewValidatorPoller(
+				log.WithFields("test", tc.name),
+				nil, // storage
+				mockSigner,
+				mockQuerier,
+				clientCfg,
+			)
+
+			validators, threshold, err := vp.getValidators(context.Background(), 10)
+
+			if tc.expectedErr != "" {
+				require.ErrorContains(t, err, tc.expectedErr)
+				require.Nil(t, validators)
+				require.Equal(t, uint32(0), threshold)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, validators)
+				require.Len(t, validators, tc.expectedCount)
+				require.Equal(t, tc.expectedThresh, threshold)
+			}
+
+			mockQuerier.AssertExpectations(t)
+			mockSigner.AssertExpectations(t)
 		})
 	}
 }

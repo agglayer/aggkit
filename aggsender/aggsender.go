@@ -136,7 +136,7 @@ func New(
 		l2OriginNetwork:              l2OriginNetwork,
 		certQuerier:                  certQuerier,
 		rollupDataQuerier:            rollupDataQuerier,
-		validatorPoller: validator.NewValidatorPoller(
+		validatorPoller: NewValidatorPoller(
 			logger,
 			storage,
 			flowManager.Signer(),
