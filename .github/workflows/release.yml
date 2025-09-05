@@ -163,7 +163,7 @@ jobs:
 
     security-scan:
         needs: setup
-        uses: ./.github/workflows/govulncheck.yml
+        uses: ./.github/workflows/test-security.yml
 
     build:
         runs-on: amd-runner-2204

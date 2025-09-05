@@ -1,44 +1,45 @@
 name: Test Unit and SonarCloud analysis
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-      - 'release/**'
-  pull_request:
-  workflow_dispatch: {}
+    push:
+        branches:
+            - main
+            - develop
+            - "release/**"
+    pull_request:
+    workflow_dispatch: {}
+    workflow_call: {}
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+    group: ${{ github.workflow }}-${{ github.ref }}
+    cancel-in-progress: true
 
 jobs:
-  test-unit:
-    strategy:
-      fail-fast: false
-      matrix:
-        go-version: [1.25.0]
-        goarch: ["amd64"]
-    runs-on: amd-runner-2204
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v5
-        with:
-          fetch-depth: 0  # Shallow clones should be disabled for a better relevancy of analysis
+    test-unit:
+        strategy:
+            fail-fast: false
+            matrix:
+                go-version: [1.25.0]
+                goarch: ["amd64"]
+        runs-on: amd-runner-2204
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v5
+              with:
+                  fetch-depth: 0 # Shallow clones should be disabled for a better relevancy of analysis
 
-      - name: Install Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: ${{ matrix.go-version }}
-        env:
-          GOARCH: ${{ matrix.goarch }}
+            - name: Install Go
+              uses: actions/setup-go@v5
+              with:
+                  go-version: ${{ matrix.go-version }}
+              env:
+                  GOARCH: ${{ matrix.goarch }}
 
-      - name: Test
-        run: make test-unit
+            - name: Test
+              run: make test-unit
 
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v4.2.1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+            - name: SonarQube Scan
+              uses: SonarSource/sonarqube-scan-action@v4.2.1
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
