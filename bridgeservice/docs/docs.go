@@ -498,6 +498,12 @@ const docTemplate = `{
                         "description": "Page size",
                         "name": "page_size",
                         "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by origin token address",
+                        "name": "origin_token_address",
+                        "in": "query"
                     }
                 ],
                 "responses": {
