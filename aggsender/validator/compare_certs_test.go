@@ -36,12 +36,6 @@ func TestDiffsCertificates(t *testing.T) {
 		&agglayertypes.Certificate{}))
 
 	require.Equal(t, []string{
-		"Metadata mismatch. Expected: 0x0000000000000000000000000000000000000000000000000000000000000000, Certificate: 0x0000000000000000000000000000000000000000000000000000000000000001",
-	}, DiffsCertificate(
-		&agglayertypes.Certificate{},
-		&agglayertypes.Certificate{Metadata: common.HexToHash("0x1")}))
-
-	require.Equal(t, []string{
 		"CustomChainData mismatch. Expected: 0102, Certificate: ",
 	}, DiffsCertificate(
 		&agglayertypes.Certificate{CustomChainData: []byte{0x1, 0x2}},

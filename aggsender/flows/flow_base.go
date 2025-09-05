@@ -296,7 +296,6 @@ func (f *baseFlow) BuildCertificate(ctx context.Context,
 		BridgeExits:         bridgeExits,
 		ImportedBridgeExits: importedBridgeExits,
 		Height:              height,
-		Metadata:            aggkitcommon.ZeroHash, // Metadata is deprecated, but will be kept as ZeroHash
 		L1InfoTreeLeafCount: certParams.L1InfoTreeLeafCount,
 	}, nil
 }

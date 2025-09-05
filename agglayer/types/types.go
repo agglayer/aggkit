@@ -398,7 +398,6 @@ type Certificate struct {
 	NewLocalExitRoot    common.Hash           `json:"new_local_exit_root"`
 	BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
-	Metadata            common.Hash           `json:"metadata"`
 	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 	AggchainData        AggchainData          `json:"aggchain_data,omitempty"`
 	L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
@@ -431,7 +430,6 @@ func (c *Certificate) UnmarshalJSON(data []byte) error {
 		NewLocalExitRoot    common.Hash           `json:"new_local_exit_root"`
 		BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 		ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
-		Metadata            common.Hash           `json:"metadata"`
 		CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 		AggchainData        AggchainDataSelector  `json:"aggchain_data,omitempty"`
 		L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
@@ -446,7 +444,6 @@ func (c *Certificate) UnmarshalJSON(data []byte) error {
 	c.NewLocalExitRoot = aux.NewLocalExitRoot
 	c.BridgeExits = aux.BridgeExits
 	c.ImportedBridgeExits = aux.ImportedBridgeExits
-	c.Metadata = aux.Metadata
 	c.CustomChainData = aux.CustomChainData
 	c.AggchainData = aux.AggchainData.GetObject()
 	c.L1InfoTreeLeafCount = aux.L1InfoTreeLeafCount
@@ -497,7 +494,7 @@ func (c *Certificate) CertificateID() common.Hash {
 		c.NewLocalExitRoot.Bytes(),
 		bridgeExitsPart,
 		importedBridgeExitsPart,
-		c.Metadata.Bytes(),
+		aggkitcommon.ZeroHash.Bytes(), // zero hash is used instead of old Metadata field
 	)
 }
 

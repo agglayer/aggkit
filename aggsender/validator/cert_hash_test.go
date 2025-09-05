@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
-	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/tree"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
@@ -18,12 +17,11 @@ func TestHashCertificateToSign(t *testing.T) {
 			Height:              100,
 			NewLocalExitRoot:    common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
 			ImportedBridgeExits: nil,
-			Metadata:            [32]byte{1, 2, 3, 4, 5},
 		}
 
 		hash, err := HashCertificateToSign(cert)
 		require.NoError(t, err)
-		require.Equal(t, "0xf60d40dabaa4d0a427d04a19b6cd58d57c28a5c58b76791e349fc1b5e0223c45", hash.String())
+		require.Equal(t, "0x5452b3b83e9ed28c61062aa89ae2dab7941fdf5bf41181a5698b2828c0f64ab8", hash.String())
 	})
 
 	t.Run("error hashing invalid cert ", func(t *testing.T) {
@@ -32,7 +30,6 @@ func TestHashCertificateToSign(t *testing.T) {
 			Height:              100,
 			NewLocalExitRoot:    common.HexToHash("0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"),
 			ImportedBridgeExits: nil,
-			Metadata:            [32]byte{1, 2, 3, 4, 5},
 			BridgeExits: []*agglayertypes.BridgeExit{
 				{},
 			},
@@ -54,10 +51,9 @@ func TestHashCertificateToSign(t *testing.T) {
 		hash, err = HashCertificateToSign(cert)
 		require.NoError(t, err)
 		require.Equal(t, "0xa504f0f8deceb412de5902c2acec8565eab9f2ae3d70e6262615fab88c317a14", hash.String())
-		cert.Metadata = [32]byte{6, 7, 8, 9, 10}
 		hash, err = HashCertificateToSign(cert)
 		require.NoError(t, err)
-		require.Equal(t, "0x87b7ebf8ed82ad9cb49e0fd11ef79ebb7890afb19d08262e74d1690fbaa651b8", hash.String())
+		require.Equal(t, "0xa504f0f8deceb412de5902c2acec8565eab9f2ae3d70e6262615fab88c317a14", hash.String())
 	})
 }
 
@@ -81,7 +77,6 @@ func getTestCert(t *testing.T) *agglayertypes.Certificate {
 		Height:              100,
 		PrevLocalExitRoot:   common.HexToHash("0x010201"),
 		NewLocalExitRoot:    common.HexToHash("0x010202"),
-		Metadata:            aggkitcommon.ZeroHash,
 		CustomChainData:     []byte{0x1, 0x2, 0x3},
 		L1InfoTreeLeafCount: 11,
 		BridgeExits: []*agglayertypes.BridgeExit{
