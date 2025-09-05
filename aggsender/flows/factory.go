@@ -3,6 +3,7 @@ package flows
 import (
 	"context"
 	"fmt"
+	"math/big"
 	"time"
 
 	"github.com/agglayer/aggkit/aggsender/aggchainproofclient"
@@ -34,14 +35,18 @@ func NewFlow(
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
+	committeeQuerier types.MultisigQuerier,
 ) (types.AggsenderFlow, error) {
 	switch types.AggsenderMode(cfg.Mode) {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier, 0, false,
+			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,
+			rollupDataQuerier, committeeQuerier,
+			0, false,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
+			cfg.RequireCommitteeMembershipCheck,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -81,11 +86,13 @@ func NewFlow(
 		}
 
 		commonFlowComponents, err := CreateCommonFlowComponents(
-			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer, rollupDataQuerier,
+			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,
+			rollupDataQuerier, committeeQuerier,
 			aggchainFEPQuerier.StartL2Block(), cfg.RequireNoFEPBlockGap,
 			cfg.MaxCertSize, cfg.RollupCreationBlockL1,
 			cfg.DelayBetweenRetries.Duration, cfg.AggsenderPrivateKey,
 			true,
+			cfg.RequireCommitteeMembershipCheck,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create common flow components: %w", err)
@@ -139,6 +146,7 @@ func CreateCommonFlowComponents(
 	l1InfoTreeSyncer types.L1InfoTreeSyncer,
 	l2Syncer types.L2BridgeSyncer,
 	rollupDataQuerier types.RollupDataQuerier,
+	committeeQuerier types.MultisigQuerier,
 	startL2Block uint64,
 	requireNoFEPBlockGap bool,
 	maxCertSize uint,
@@ -146,13 +154,15 @@ func CreateCommonFlowComponents(
 	delayBetweenRetries time.Duration,
 	signerCfg signertypes.SignerConfig,
 	fullClaimsRequired bool,
+	requireCommitteeMembershipCheck bool,
 ) (*CommonFlowComponents, error) {
 	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
 	if err != nil {
 		return nil, fmt.Errorf("error getting rollup chain id: %w", err)
 	}
 
-	signer, err := initializeSigner(ctx, signerCfg, logger, l2ChainID)
+	signer, err := initializeSigner(ctx, signerCfg, logger, l2ChainID,
+		committeeQuerier, requireCommitteeMembershipCheck)
 	if err != nil {
 		return nil, err
 	}
@@ -180,6 +190,8 @@ func initializeSigner(
 	signerCfg signertypes.SignerConfig,
 	logger *log.Logger,
 	l2ChainID uint64,
+	committeeQuerier types.MultisigQuerier,
+	requireCommitteeMembershipCheck bool,
 ) (signertypes.Signer, error) {
 	signer, err := signer.NewSigner(ctx, l2ChainID, signerCfg, aggkitcommon.AGGSENDER, logger)
 	if err != nil {
@@ -188,6 +200,26 @@ func initializeSigner(
 
 	if err := signer.Initialize(ctx); err != nil {
 		return nil, fmt.Errorf("error signer.Initialize. Err: %w", err)
+	}
+
+	multisigCommittee, err := committeeQuerier.GetMultisigCommittee(ctx, big.NewInt(int64(aggkittypes.Latest)))
+	if err != nil {
+		if requireCommitteeMembershipCheck {
+			return nil, fmt.Errorf("error getting multisig committee: %w", err)
+		}
+
+		logger.Warnf("error getting multisig committee: %v", err)
+		return signer, nil
+	}
+
+	if !multisigCommittee.IsMember(signer.PublicAddress()) {
+		if requireCommitteeMembershipCheck {
+			return nil, fmt.Errorf("signer address %s is not part of the multisig committee: %s",
+				signer.PublicAddress(), multisigCommittee.String())
+		}
+
+		logger.Warnf("signer address %s is not part of the multisig committee: %s",
+			signer.PublicAddress(), multisigCommittee.String())
 	}
 
 	return signer, nil

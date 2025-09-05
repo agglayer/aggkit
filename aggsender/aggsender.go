@@ -96,6 +96,7 @@ func New(
 		l1InfoTreeSyncer,
 		l2Syncer,
 		rollupDataQuerier,
+		committeeQuerier,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("error creating flow manager: %w", err)

@@ -76,6 +76,7 @@ func TestAggSenderStart(t *testing.T) {
 	epochNotifierMock := mocks.NewEpochNotifier(t)
 	bridgeL2SyncerMock := mocks.NewL2BridgeSyncer(t)
 	rollupQuerierMock := mocks.NewRollupDataQuerier(t)
+	committeQuerierMock := mocks.NewMultisigQuerier(t)
 	ch := make(chan aggsendertypes.EpochEvent)
 	epochNotifierMock.EXPECT().Subscribe("aggsender").Return(ch)
 	epochNotifierMock.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{}).Once()
@@ -84,6 +85,9 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	rollupQuerierMock.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
+	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, 1)
+	require.NoError(t, err)
+	committeQuerierMock.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
 
 	ctx := t.Context()
 	aggSender, err := New(
@@ -104,7 +108,7 @@ func TestAggSenderStart(t *testing.T) {
 		nil, // l1 client
 		nil, // l2 client
 		rollupQuerierMock,
-		nil, // committee querier
+		committeQuerierMock,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, aggSender)
@@ -570,8 +574,13 @@ func TestGetValidators(t *testing.T) {
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
 	mockRollupQuerier := mocks.NewRollupDataQuerier(t)
+	mockCommitteeQuerier := mocks.NewMultisigQuerier(t)
 	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
 	mockRollupQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
+	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, 1)
+	require.NoError(t, err)
+	mockCommitteeQuerier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
+
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
@@ -582,7 +591,7 @@ func TestNewAggSender(t *testing.T) {
 		nil, // l1 client
 		nil, // l2 client
 		mockRollupQuerier,
-		nil, // committee querier
+		mockCommitteeQuerier,
 	)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
