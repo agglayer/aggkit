@@ -467,7 +467,8 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 //
 //nolint:dupl
 func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
-	b.logger.Debugf("GetTokenMappings request received (network id=%s, page number=%s, page size=%s, origin token address=%s)",
+	b.logger.Debugf(
+		"GetTokenMappings request received (network id=%s, page number=%s, page size=%s, origin token address=%s)",
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(originTokenAddrParam))
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
@@ -530,8 +531,6 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /legacy-token-migrations [get]
-//
-//nolint:dupl
 func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%s, page number=%s, page size=%s)",
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))

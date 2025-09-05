@@ -16,7 +16,8 @@ type Bridger interface {
 	GetLastRoot(ctx context.Context) (*tree.Root, error)
 	GetBridgesPaged(ctx context.Context, pageNumber, pageSize uint32,
 		depositCount *uint64, networkIDs []uint32, fromAddress string) ([]*bridgesync.Bridge, int, error)
-	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32, originTokenAddress string) ([]*bridgesync.TokenMapping, int, error)
+	GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32,
+		originTokenAddress string) ([]*bridgesync.TokenMapping, int, error)
 	GetLegacyTokenMigrations(ctx context.Context,
 		pageNumber, pageSize uint32) ([]*bridgesync.LegacyTokenMigration, int, error)
 	GetClaimsPaged(ctx context.Context, page, pageSize uint32,

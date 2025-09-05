@@ -887,7 +887,8 @@ func (p *processor) GetTotalNumberOfRecords(ctx context.Context, tableName, wher
 }
 
 // GetTokenMappings returns the paged token mappings from the database
-func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32, originTokenAddress string) ([]*TokenMapping, int, error) {
+func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32, originTokenAddress string,
+) ([]*TokenMapping, int, error) {
 	whereClause := p.buildTokenMappingsFilterClause(originTokenAddress)
 	totalTokenMappings, err := p.GetTotalNumberOfRecords(ctx, tokenMappingTableName, whereClause)
 	if err != nil {
@@ -912,7 +913,8 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 }
 
 // fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
-func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32, whereClause string) ([]*TokenMapping, error) {
+func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32, whereClause string,
+) ([]*TokenMapping, error) {
 	orderByClause := "block_num DESC"
 
 	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, tokenMappingTableName, orderByClause, whereClause)
