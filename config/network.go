@@ -45,16 +45,16 @@ func (c *L1NetworkConfig) Validate() error {
 	if err := c.RPC.Validate(); err != nil {
 		return fmt.Errorf("invalid RPC configuration: %w", err)
 	}
-	if c.RollupAddr == (gethcommon.Address{}) {
+	if c.RollupAddr == common.ZeroAddress {
 		return ErrMissingRollupAddress
 	}
-	if c.RollupManagerAddr == (gethcommon.Address{}) {
+	if c.RollupManagerAddr == common.ZeroAddress {
 		return ErrMissingRollupManagerAddress
 	}
-	if c.POLTokenAddr == (gethcommon.Address{}) {
+	if c.POLTokenAddr == common.ZeroAddress {
 		return ErrMissingPOLTokenAddress
 	}
-	if c.GlobalExitRootManagerAddr == (gethcommon.Address{}) {
+	if c.GlobalExitRootManagerAddr == common.ZeroAddress {
 		return ErrMissingGlobalExitRootManagerAddress
 	}
 	return nil

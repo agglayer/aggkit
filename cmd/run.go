@@ -114,7 +114,6 @@ func start(cliCtx *cli.Context) error {
 
 			go b.Start(cliCtx.Context)
 		case aggkitcommon.AGGSENDER:
-			// TODO: Check if the RollupAddr is the right SC address, or we should use some other.
 			committeeQuerier, err := query.NewECDSAMultisigCommitteeQuery(cfg.L1NetworkConfig.RollupAddr, l1Client)
 			if err != nil {
 				return fmt.Errorf("failed to create ECDSA multisig committee querier (SC address: %s): %w",
