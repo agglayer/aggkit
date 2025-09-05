@@ -186,24 +186,22 @@ func (_c *EVMDownloaderMock_GetEventsByBlockRange_Call) RunAndReturn(run func(co
 }
 
 // GetLastFinalizedBlock provides a mock function with given fields: ctx
-func (_m *EVMDownloaderMock) GetLastFinalizedBlock(ctx context.Context) (*types.Header, error) {
+func (_m *EVMDownloaderMock) GetLastFinalizedBlock(ctx context.Context) (uint64, error) {
 	ret := _m.Called(ctx)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetLastFinalizedBlock")
 	}
 
-	var r0 *types.Header
+	var r0 uint64
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context) (*types.Header, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) (uint64, error)); ok {
 		return rf(ctx)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context) *types.Header); ok {
+	if rf, ok := ret.Get(0).(func(context.Context) uint64); ok {
 		r0 = rf(ctx)
 	} else {
-		if ret.Get(0) != nil {
-			r0 = ret.Get(0).(*types.Header)
-		}
+		r0 = ret.Get(0).(uint64)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context) error); ok {
@@ -233,12 +231,12 @@ func (_c *EVMDownloaderMock_GetLastFinalizedBlock_Call) Run(run func(ctx context
 	return _c
 }
 
-func (_c *EVMDownloaderMock_GetLastFinalizedBlock_Call) Return(_a0 *types.Header, _a1 error) *EVMDownloaderMock_GetLastFinalizedBlock_Call {
+func (_c *EVMDownloaderMock_GetLastFinalizedBlock_Call) Return(_a0 uint64, _a1 error) *EVMDownloaderMock_GetLastFinalizedBlock_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *EVMDownloaderMock_GetLastFinalizedBlock_Call) RunAndReturn(run func(context.Context) (*types.Header, error)) *EVMDownloaderMock_GetLastFinalizedBlock_Call {
+func (_c *EVMDownloaderMock_GetLastFinalizedBlock_Call) RunAndReturn(run func(context.Context) (uint64, error)) *EVMDownloaderMock_GetLastFinalizedBlock_Call {
 	_c.Call.Return(run)
 	return _c
 }

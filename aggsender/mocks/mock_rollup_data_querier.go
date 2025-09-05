@@ -22,6 +22,61 @@ func (_m *RollupDataQuerier) EXPECT() *RollupDataQuerier_Expecter {
 	return &RollupDataQuerier_Expecter{mock: &_m.Mock}
 }
 
+// GetRollupChainID provides a mock function with no fields
+func (_m *RollupDataQuerier) GetRollupChainID() (uint64, error) {
+	ret := _m.Called()
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetRollupChainID")
+	}
+
+	var r0 uint64
+	var r1 error
+	if rf, ok := ret.Get(0).(func() (uint64, error)); ok {
+		return rf()
+	}
+	if rf, ok := ret.Get(0).(func() uint64); ok {
+		r0 = rf()
+	} else {
+		r0 = ret.Get(0).(uint64)
+	}
+
+	if rf, ok := ret.Get(1).(func() error); ok {
+		r1 = rf()
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// RollupDataQuerier_GetRollupChainID_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetRollupChainID'
+type RollupDataQuerier_GetRollupChainID_Call struct {
+	*mock.Call
+}
+
+// GetRollupChainID is a helper method to define mock.On call
+func (_e *RollupDataQuerier_Expecter) GetRollupChainID() *RollupDataQuerier_GetRollupChainID_Call {
+	return &RollupDataQuerier_GetRollupChainID_Call{Call: _e.mock.On("GetRollupChainID")}
+}
+
+func (_c *RollupDataQuerier_GetRollupChainID_Call) Run(run func()) *RollupDataQuerier_GetRollupChainID_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run()
+	})
+	return _c
+}
+
+func (_c *RollupDataQuerier_GetRollupChainID_Call) Return(_a0 uint64, _a1 error) *RollupDataQuerier_GetRollupChainID_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *RollupDataQuerier_GetRollupChainID_Call) RunAndReturn(run func() (uint64, error)) *RollupDataQuerier_GetRollupChainID_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetRollupData provides a mock function with given fields: blockNumber
 func (_m *RollupDataQuerier) GetRollupData(blockNumber *big.Int) (polygonrollupmanager.PolygonRollupManagerRollupDataReturn, error) {
 	ret := _m.Called(blockNumber)

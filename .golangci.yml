@@ -1,78 +1,85 @@
-# This file configures github.com/golangci/golangci-lint.
-
+version: "2"
 run:
-  timeout: 3m
   tests: true
-    
 linters:
-  disable-all: true
+  default: none
   enable:
-    - whitespace # Tool for detection of leading and trailing whitespace
-    - wastedassign # Finds wasted assignment statements
-    - unconvert  # Unnecessary type conversions
-    - tparallel # Detects inappropriate usage of t.Parallel() method in your Go test codes
-    - thelper # Detects golang test helpers without t.Helper() call and checks the consistency of test helpers
-    - stylecheck # Stylecheck is a replacement for golint
-    - prealloc # Finds slice declarations that could potentially be pre-allocated
-    - predeclared # Finds code that shadows one of Go's predeclared identifiers
-    - nolintlint # Ill-formed or insufficient nolint directives
-    - misspell # Misspelled English words in comments
-    - makezero # Finds slice declarations with non-zero initial length
-    - lll # Long lines
-    - importas  # Enforces consistent import aliases
-    - gosec # Security problems
-    - gofmt # Whether the code was gofmt-ed
-    - goimports # Unused imports
-    - goconst # Repeated strings that could be replaced by a constant
-    - forcetypeassert # Finds forced type assertions
-    - dogsled # Checks assignments with too many blank identifiers (e.g. x, , , _, := f())
-    - dupl # Code clone detection
-    - errname # Checks that sentinel errors are prefixed with Err and error types are suffixed with Error
-    - errorlint # Error wrapping introduced in Go 1.13
-    - gocritic # gocritic is a Go source code linter that maintains checks that are not in other linters
-    - errcheck # Errcheck is a go lint rule for checking for unchecked errors
-    # - godox # Linter for TODOs and FIXMEs left in the code
-    - gci # Gci checks the consistency of the code with the Go code style guide
-    - mnd # mnd is a linter for magic numbers
-    # - revive
-    - unparam # Unused function parameters
+    - dogsled
+    - dupl
+    - errcheck
+    - errname
+    - errorlint
+    - forcetypeassert
+    - goconst
+    - gocritic
+    - gosec
+    - importas
+    - lll
+    - makezero
+    - misspell
+    - mnd
+    - nolintlint
+    - prealloc
+    - predeclared
+    - staticcheck
+    - thelper
+    - tparallel
+    - unconvert
+    - unparam
     - unused
-
-linters-settings:
-  gofmt:
-    simplify: true
-  gocritic:
-    enabled-checks:
-      - ruleguard
-    disabled-checks:
-      - ifElseChain
-  revive:
+    - wastedassign
+    - whitespace
+  settings:
+    goconst:
+      min-len: 3
+      min-occurrences: 3
+    gocritic:
+      enabled-checks:
+        - ruleguard
+      disabled-checks:
+        - ifElseChain
+    gosec:
+      excludes:
+        - G115
+    revive:
+      rules:
+        - name: exported
+          arguments:
+            - disableStutteringCheck
+  exclusions:
+    generated: lax
+    presets:
+      - common-false-positives
+      - legacy
+      - std-error-handling
     rules:
-      - name: exported
-        arguments:
-          - disableStutteringCheck
-  goconst:
-    min-len: 3
-    min-occurrences: 3
-  gosec:
-     excludes:
-      - G115  # Potential integer overflow when converting between integer types
-
+      - linters:
+          - gosec
+          - lll
+          - unparam
+        path: (_test\.go|^test/.*)
+      - linters:
+          - dupl
+        path: etherman/contracts/contracts_(banana|elderberry)\.go
+    paths:
+      - tests
+      - third_party$
+      - builtin$
+      - examples$
 issues:
   whole-files: true
-  exclude-rules:
-    - path: '(_test\.go|^test/.*)'
-      linters:
-        - gosec
-        - unparam
-        - lll
-    - path: 'etherman/contracts/contracts_(banana|elderberry)\.go'
-      linters:
-        - dupl
-  exclude-dirs:
-    - tests
-  include:
-    - EXC0012 # Exported (.+) should have comment( \(or a comment on this block\))? or be unexported
-    - EXC0013 # Package comment should be of the form "(.+)...
-    - EXC0014 # Comment on exported (.+) should be of the form "(.+)..."
-    - EXC0015 # Should have a package comment
+formatters:
+  enable:
+    - gci
+    - gofmt
+    - goimports
+  settings:
+    gofmt:
+      simplify: true
+  exclusions:
+    generated: lax
+    paths:
+      - tests
+      - third_party$
+      - builtin$
+      - examples$

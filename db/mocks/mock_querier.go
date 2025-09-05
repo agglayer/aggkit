@@ -3,6 +3,7 @@
 package mocks
 
 import (
+	context "context"
 	sql "database/sql"
 
 	mock "github.com/stretchr/testify/mock"
@@ -159,6 +160,76 @@ func (_c *Querier_Query_Call) RunAndReturn(run func(string, ...interface{}) (*sq
 	return _c
 }
 
+// QueryContext provides a mock function with given fields: ctx, query, args
+func (_m *Querier) QueryContext(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
+	var _ca []interface{}
+	_ca = append(_ca, ctx, query)
+	_ca = append(_ca, args...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for QueryContext")
+	}
+
+	var r0 *sql.Rows
+	var r1 error
+	if rf, ok := ret.Get(0).(func(context.Context, string, ...interface{}) (*sql.Rows, error)); ok {
+		return rf(ctx, query, args...)
+	}
+	if rf, ok := ret.Get(0).(func(context.Context, string, ...interface{}) *sql.Rows); ok {
+		r0 = rf(ctx, query, args...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*sql.Rows)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(context.Context, string, ...interface{}) error); ok {
+		r1 = rf(ctx, query, args...)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// Querier_QueryContext_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'QueryContext'
+type Querier_QueryContext_Call struct {
+	*mock.Call
+}
+
+// QueryContext is a helper method to define mock.On call
+//   - ctx context.Context
+//   - query string
+//   - args ...interface{}
+func (_e *Querier_Expecter) QueryContext(ctx interface{}, query interface{}, args ...interface{}) *Querier_QueryContext_Call {
+	return &Querier_QueryContext_Call{Call: _e.mock.On("QueryContext",
+		append([]interface{}{ctx, query}, args...)...)}
+}
+
+func (_c *Querier_QueryContext_Call) Run(run func(ctx context.Context, query string, args ...interface{})) *Querier_QueryContext_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]interface{}, len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(interface{})
+			}
+		}
+		run(args[0].(context.Context), args[1].(string), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *Querier_QueryContext_Call) Return(_a0 *sql.Rows, _a1 error) *Querier_QueryContext_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *Querier_QueryContext_Call) RunAndReturn(run func(context.Context, string, ...interface{}) (*sql.Rows, error)) *Querier_QueryContext_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // QueryRow provides a mock function with given fields: query, args
 func (_m *Querier) QueryRow(query string, args ...interface{}) *sql.Row {
 	var _ca []interface{}
@@ -214,6 +285,66 @@ func (_c *Querier_QueryRow_Call) Return(_a0 *sql.Row) *Querier_QueryRow_Call {
 }
 
 func (_c *Querier_QueryRow_Call) RunAndReturn(run func(string, ...interface{}) *sql.Row) *Querier_QueryRow_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// QueryRowContext provides a mock function with given fields: ctx, query, args
+func (_m *Querier) QueryRowContext(ctx context.Context, query string, args ...interface{}) *sql.Row {
+	var _ca []interface{}
+	_ca = append(_ca, ctx, query)
+	_ca = append(_ca, args...)
+	ret := _m.Called(_ca...)
+
+	if len(ret) == 0 {
+		panic("no return value specified for QueryRowContext")
+	}
+
+	var r0 *sql.Row
+	if rf, ok := ret.Get(0).(func(context.Context, string, ...interface{}) *sql.Row); ok {
+		r0 = rf(ctx, query, args...)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*sql.Row)
+		}
+	}
+
+	return r0
+}
+
+// Querier_QueryRowContext_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'QueryRowContext'
+type Querier_QueryRowContext_Call struct {
+	*mock.Call
+}
+
+// QueryRowContext is a helper method to define mock.On call
+//   - ctx context.Context
+//   - query string
+//   - args ...interface{}
+func (_e *Querier_Expecter) QueryRowContext(ctx interface{}, query interface{}, args ...interface{}) *Querier_QueryRowContext_Call {
+	return &Querier_QueryRowContext_Call{Call: _e.mock.On("QueryRowContext",
+		append([]interface{}{ctx, query}, args...)...)}
+}
+
+func (_c *Querier_QueryRowContext_Call) Run(run func(ctx context.Context, query string, args ...interface{})) *Querier_QueryRowContext_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		variadicArgs := make([]interface{}, len(args)-2)
+		for i, a := range args[2:] {
+			if a != nil {
+				variadicArgs[i] = a.(interface{})
+			}
+		}
+		run(args[0].(context.Context), args[1].(string), variadicArgs...)
+	})
+	return _c
+}
+
+func (_c *Querier_QueryRowContext_Call) Return(_a0 *sql.Row) *Querier_QueryRowContext_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *Querier_QueryRowContext_Call) RunAndReturn(run func(context.Context, string, ...interface{}) *sql.Row) *Querier_QueryRowContext_Call {
 	_c.Call.Return(run)
 	return _c
 }

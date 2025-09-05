@@ -82,7 +82,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig, components)
+	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create etherman client: %w", err)
 	}
@@ -216,7 +216,11 @@ func createAggSenderValidator(ctx context.Context,
 	rollupDataQuerier *etherman.RollupDataQuerier) (*aggsender.AggsenderValidator, error) {
 	logger := log.WithFields("module", aggkitcommon.AGGSENDERVALIDATOR)
 
-	signer, err := signer.NewSigner(ctx, 0, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
+	l2ChainID, err := rollupDataQuerier.GetRollupChainID()
+	if err != nil {
+		logger.Errorf("Failed to retrieve L2ChainID: %v", err)
+	}
+	signer, err := signer.NewSigner(ctx, l2ChainID, cfg.Signer, aggkitcommon.AGGSENDERVALIDATOR, logger)
 	if err != nil {
 		return nil, fmt.Errorf("error NewSigner. Err: %w", err)
 	}
@@ -279,7 +283,7 @@ func createAggSender(
 	}
 	blockNotifier, err := aggsender.NewBlockNotifierPolling(l1EthClient,
 		aggsender.ConfigBlockNotifierPolling{
-			BlockFinalityType:     aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+			BlockFinalityType:     aggkittypes.LatestBlock,
 			CheckNewBlockInterval: aggsender.AutomaticBlockInterval,
 		}, logger, nil)
 	if err != nil {
@@ -469,7 +473,7 @@ func runL1InfoTreeSyncerIfNeeded(
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC, aggkitcommon.L2GERSYNC,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
@@ -505,18 +509,20 @@ func runL1ClientIfNeeded(ctx context.Context,
 		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.L2GERSYNC,
 		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L1BRIDGESYNC,
 	}, components) {
 		return nil
 	}
 	log.Debugf("dialing L1 client at: %s", rpcClientCfg.URL)
-	ethClient, err := aggkittypes.DialWithRetry(
-		ctx,
-		rpcClientCfg.URL,
-		rpcClientCfg.MaxRetries,
-		rpcClientCfg.InitialBackoff.Duration,
-		rpcClientCfg.MaxBackoff.Duration,
-		rpcClientCfg.BackoffMultiplier)
+
+	retryHandler, err := rpcClientCfg.NewRetryHandler()
+	if err != nil {
+		log.Fatalf("failed to create retry handler: %w", err)
+	}
+
+	ethClient, err := aggkittypes.DialWithRetry(ctx, rpcClientCfg.URL, retryHandler)
 	if err != nil {
 		log.Fatalf("failed to create client for L1 using URL: %s. Err:%v", rpcClientCfg.URL, err)
 	}
@@ -531,7 +537,9 @@ func runL2ClientIfNeeded(ctx context.Context,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.AGGCHAINPROOFGEN}, components) {
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L2BRIDGESYNC,
+		aggkitcommon.L2GERSYNC}, components) {
 		return nil
 	}
 	l2Client, err := etherman.NewRPCClient(ctx, urlRPCL2)
@@ -553,7 +561,9 @@ func runReorgDetectorL2IfNeeded(
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.AGGCHAINPROOFGEN}, components) {
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L2BRIDGESYNC,
+		aggkitcommon.L2GERSYNC}, components) {
 		return nil, nil
 	}
 	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
@@ -577,7 +587,7 @@ func runL2GERSyncIfNeeded(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 ) *l2gersync.L2GERSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) {
+	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2GERSYNC}, components) {
 		return nil
 	}
 	l2GERSync, err := l2gersync.New(
@@ -589,7 +599,7 @@ func runL2GERSyncIfNeeded(
 		l1InfoTreeSync,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
-		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+		cfg.BlockFinality,
 		cfg.WaitForNewBlocksPeriod.Duration,
 		cfg.DownloadBufferSize,
 		cfg.RequireStorageContentCompatibility,
@@ -610,7 +620,7 @@ func runBridgeSyncL1IfNeeded(
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) {
+	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
 		return nil
 	}
 
@@ -628,6 +638,7 @@ func runBridgeSyncL1IfNeeded(
 		rollupID,
 		true,
 		cfg.RequireStorageContentCompatibility,
+		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -649,7 +660,8 @@ func runBridgeSyncL2IfNeeded(
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.AGGCHAINPROOFGEN}, components) {
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L2BRIDGESYNC}, components) {
 		return nil
 	}
 
@@ -658,7 +670,7 @@ func runBridgeSyncL2IfNeeded(
 		cfg.DBPath,
 		cfg.BridgeAddr,
 		cfg.SyncBlockChunkSize,
-		aggkittypes.NewBlockNumberFinality(cfg.BlockFinality),
+		cfg.BlockFinality,
 		reorgDetectorL2,
 		l2Client,
 		cfg.InitialBlockNum,
@@ -668,6 +680,7 @@ func runBridgeSyncL2IfNeeded(
 		rollupID,
 		true,
 		cfg.RequireStorageContentCompatibility,
+		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
@@ -747,24 +760,13 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 // clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
 func createRollupDataQuerier(ctx context.Context,
 	cfg config.L1NetworkConfig,
-	components []string) (*etherman.RollupDataQuerier, error) {
-	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE,
-		aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE,
-	}, components) {
-		return &etherman.RollupDataQuerier{}, nil
+) (*etherman.RollupDataQuerier, error) {
+	retryHandler, err := cfg.RPC.NewRetryHandler()
+	if err != nil {
+		log.Fatalf("failed to create retry handler: %w", err)
 	}
 
-	ethClient, err := aggkittypes.DialWithRetry(
-		ctx,
-		cfg.RPC.URL,
-		cfg.RPC.MaxRetries,
-		cfg.RPC.InitialBackoff.Duration,
-		cfg.RPC.MaxBackoff.Duration,
-		cfg.RPC.BackoffMultiplier)
+	ethClient, err := aggkittypes.DialWithRetry(ctx, cfg.RPC.URL, retryHandler)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create Ethereum client for L1 using URL: %s. Err: %w", cfg.RPC.URL, err)
 	}

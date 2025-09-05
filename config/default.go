@@ -21,6 +21,10 @@ polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 rollupCreationBlockNumber = 0
 rollupManagerCreationBlockNumber = 0
 genesisBlockNumber = 0
+
+# Default database query timeout
+defaultDBQueryTimeout = "30s"
+
 [L1Config]
 	URL = "{{L1URL}}"
 	chainId = 0
@@ -44,6 +48,7 @@ GenerateAggchainProofTimeout = "1h"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
+	RetryMode = "backoff"
 	MaxRetries = 5
 	InitialBackoff = "2s"
 	MaxBackoff = "10s"
@@ -71,6 +76,7 @@ RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
 	[L1NetworkConfig.RPC]
 		URL = "{{L1Config.URL}}"
+		RetryMode = "backoff"
 		MaxRetries = 5
 		InitialBackoff = "2s"
 		MaxBackoff = "10s"
@@ -148,6 +154,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 
 [BridgeL2Sync]
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
@@ -159,6 +166,7 @@ RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 WaitForNewBlocksPeriod = "3s"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 
 [L2GERSync]
 DBPath = "{{PathRWData}}/l2gersync.sqlite"
@@ -174,7 +182,6 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
 AggsenderPrivateKey = {{AggsenderPrivateKey}}
-BlockFinality = "LatestBlock"
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
 DelayBetweenRetries = "30s"
@@ -198,7 +205,7 @@ MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
 	[AggSender.RetriesToBuildAndSendCertificate]
-		Mode = "delays"
+		RetryMode = "delays"
 		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
 		MaxRetries = 6 # 1+6 attempts, around 22m
 	[AggSender.AgglayerClient]

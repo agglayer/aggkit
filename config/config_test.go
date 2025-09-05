@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/stretchr/testify/require"
 	"github.com/urfave/cli/v2"
@@ -45,11 +46,14 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.L1InfoTreeSync.RequireStorageContentCompatibility, true)
 	require.Equal(t, L2RPCClientConfig{
 		RPCClientConfig: RPCClientConfig{
-			URL:               "http://localhost:8123",
-			MaxRetries:        5,
-			InitialBackoff:    types.NewDuration(2 * time.Second),
-			MaxBackoff:        types.NewDuration(10 * time.Second),
-			BackoffMultiplier: 2.0,
+			URL: "http://localhost:8123",
+			RetryPolicyGenericConfig: aggkitcommon.RetryPolicyGenericConfig{
+				Mode:              aggkitcommon.RetryConfigModeBackoff,
+				MaxRetries:        5,
+				InitialBackoff:    types.NewDuration(2 * time.Second),
+				MaxBackoff:        types.NewDuration(10 * time.Second),
+				BackoffMultiplier: 2.0,
+			},
 		},
 		Mode: RPCModeBasic,
 	}, cfg.Common.L2RPC)
