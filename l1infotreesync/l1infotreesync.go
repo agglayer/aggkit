@@ -134,6 +134,7 @@ func New(
 
 // Start starts the synchronization process
 func (s *L1InfoTreeSync) Start(ctx context.Context) {
+	s.processor.log.Info("starting l1infotreesync")
 	s.driver.Sync(ctx)
 }
 

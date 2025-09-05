@@ -82,7 +82,7 @@ func start(cliCtx *cli.Context) error {
 		}
 	}()
 
-	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig, components)
+	rollupDataQuerier, err := createRollupDataQuerier(cliCtx.Context, cfg.L1NetworkConfig)
 	if err != nil {
 		return fmt.Errorf("failed to create rollup data querier: %w", err)
 	}
@@ -510,7 +510,7 @@ func runL1InfoTreeSyncerIfNeeded(
 ) *l1infotreesync.L1InfoTreeSync {
 	if !isNeeded([]string{
 		aggkitcommon.AGGORACLE, aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.BRIDGE, aggkitcommon.L1INFOTREESYNC, aggkitcommon.L2GERSYNC,
 		aggkitcommon.AGGCHAINPROOFGEN}, components) {
 		return nil
 	}
@@ -546,7 +546,9 @@ func runL1ClientIfNeeded(ctx context.Context,
 		aggkitcommon.AGGSENDERVALIDATOR,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.L1INFOTREESYNC,
+		aggkitcommon.L2GERSYNC,
 		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L1BRIDGESYNC,
 	}, components) {
 		return nil
 	}
@@ -572,7 +574,9 @@ func runL2ClientIfNeeded(ctx context.Context,
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.AGGCHAINPROOFGEN}, components) {
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L2BRIDGESYNC,
+		aggkitcommon.L2GERSYNC}, components) {
 		return nil
 	}
 	l2Client, err := etherman.NewRPCClient(ctx, urlRPCL2)
@@ -594,7 +598,9 @@ func runReorgDetectorL2IfNeeded(
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.AGGCHAINPROOFGEN}, components) {
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L2BRIDGESYNC,
+		aggkitcommon.L2GERSYNC}, components) {
 		return nil, nil
 	}
 	rd := newReorgDetector(cfg, l2Client, reorgdetector.L2)
@@ -618,7 +624,7 @@ func runL2GERSyncIfNeeded(
 	l2Client aggkittypes.BaseEthereumClienter,
 	l1InfoTreeSync *l1infotreesync.L1InfoTreeSync,
 ) *l2gersync.L2GERSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) {
+	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L2GERSYNC}, components) {
 		return nil
 	}
 	l2GERSync, err := l2gersync.New(
@@ -628,6 +634,7 @@ func runL2GERSyncIfNeeded(
 		l2Client,
 		cfg.GlobalExitRootL2Addr,
 		l1InfoTreeSync,
+		cfg.SyncBlockChunkSize,
 		cfg.RetryAfterErrorPeriod.Duration,
 		cfg.MaxRetryAttemptsAfterError,
 		cfg.BlockFinality,
@@ -651,7 +658,7 @@ func runBridgeSyncL1IfNeeded(
 	l1Client aggkittypes.EthClienter,
 	rollupID uint32,
 ) *bridgesync.BridgeSync {
-	if !isNeeded([]string{aggkitcommon.BRIDGE}, components) {
+	if !isNeeded([]string{aggkitcommon.BRIDGE, aggkitcommon.L1BRIDGESYNC}, components) {
 		return nil
 	}
 
@@ -690,7 +697,8 @@ func runBridgeSyncL2IfNeeded(
 	fullClaimsNeeded := isNeeded([]string{
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGCHAINPROOFGEN}, components)
+		aggkitcommon.AGGCHAINPROOFGEN,
+		aggkitcommon.L2BRIDGESYNC}, components)
 
 	fullClaimsNotNeeded := isNeeded([]string{
 		aggkitcommon.AGGSENDERVALIDATOR,
@@ -813,18 +821,7 @@ func startPrometheusHTTPServer(c prometheus.Config) {
 // clients and rollup manager contracts. Returns (nil, nil) if none of the required components are needed.
 func createRollupDataQuerier(ctx context.Context,
 	cfg config.L1NetworkConfig,
-	components []string) (*etherman.RollupDataQuerier, error) {
-	if !isNeeded([]string{
-		aggkitcommon.AGGORACLE,
-		aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.AGGSENDER,
-		aggkitcommon.AGGSENDERVALIDATOR,
-		aggkitcommon.BRIDGE,
-		aggkitcommon.L1INFOTREESYNC,
-	}, components) {
-		return &etherman.RollupDataQuerier{}, nil
-	}
-
+) (*etherman.RollupDataQuerier, error) {
 	retryHandler, err := cfg.RPC.NewRetryHandler()
 	if err != nil {
 		log.Fatalf("failed to create retry handler: %w", err)

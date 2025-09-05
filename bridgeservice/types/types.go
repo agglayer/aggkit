@@ -135,9 +135,6 @@ type BridgeResponse struct {
 	// Count of total deposits processed so far for the given token/address
 	DepositCount uint32 `json:"deposit_count" example:"10"`
 
-	// Indicates whether the bridged token is a native token (true) or wrapped (false)
-	IsNativeToken bool `json:"is_native_token" example:"true"`
-
 	// Unique hash representing the bridge event, often used as an identifier
 	BridgeHash Hash `json:"bridge_hash" example:"0xabc1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd"`
 }
