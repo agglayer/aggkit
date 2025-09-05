@@ -59,12 +59,12 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 		},
 	}
 
-	mockL2Client.On("ChainID", mock.Anything).Return(big.NewInt(1), nil).Maybe()
-	mockL2Client.On("HeaderByNumber", mock.Anything, (*big.Int)(nil)).Return(&ethtypes.Header{
+	mockL2Client.EXPECT().ChainID(mock.Anything).Return(big.NewInt(1), nil).Maybe()
+	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, (*big.Int)(nil)).Return(&ethtypes.Header{
 		Number: big.NewInt(int64(latestBlock)),
 	}, nil).Maybe()
-	mockL2Client.On("HeaderByNumber", mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
-	mockL1InfoTreeSync.On("GetInfoByGlobalExitRoot", testGER).Return(&l1infotreesync.L1InfoTreeLeaf{
+	mockL2Client.EXPECT().HeaderByNumber(mock.Anything, big.NewInt(int64(fromBlock))).Return(testBlockHeader, nil).Maybe()
+	mockL1InfoTreeSync.EXPECT().GetInfoByGlobalExitRoot(testGER).Return(&l1infotreesync.L1InfoTreeLeaf{
 		L1InfoTreeIndex:   testL1InfoTreeIndex,
 		GlobalExitRoot:    testGER,
 		Timestamp:         uint64(time.Now().Unix()),
@@ -75,7 +75,7 @@ func TestDownloaderSovereign_Download(t *testing.T) {
 		RollupExitRoot:    common.Hash{},
 		Hash:              common.Hash{},
 	}, nil)
-	mockL2Client.On("FilterLogs", mock.Anything, mock.Anything).Return(testLogs, nil).Maybe()
+	mockL2Client.EXPECT().FilterLogs(mock.Anything, mock.Anything).Return(testLogs, nil).Maybe()
 
 	downloader, err := newDownloaderSovereign(
 		mockL2Client,
