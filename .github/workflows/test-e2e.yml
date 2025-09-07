@@ -62,7 +62,7 @@ jobs:
   build-aggkit-image:
     uses: ./.github/workflows/build-aggkit-image.yml
     with:
-      go-version: 1.24.x
+      go-version: 1.25.x
       docker-image-name: aggkit
 
   read-aggkit-args:
@@ -87,7 +87,7 @@ jobs:
       kurtosis-cdk-args-5: ${{ steps.read-args.outputs.kurtosis-cdk-args-5 }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Read kurtosis-cdk-args from file
         id: read-args
@@ -129,11 +129,11 @@ jobs:
     runs-on: amd-runner-2204
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install Go
         uses: actions/setup-go@v5
         with:
-          go-version: 1.24.x
+          go-version: 1.25.x
       - name: Build Aggsender Find Imported Bridge
         run: make build-tools
       - name: Upload Binary
@@ -317,6 +317,7 @@ jobs:
       - get-kurtosis-cdk-commit
     uses: agglayer/e2e/.github/workflows/aggkit-e2e-multi-chains.yml@1e8541a85a6f6261aa762acdd32880b343329152
     secrets: inherit
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     with:
       kurtosis-cdk-ref: ${{ needs.get-kurtosis-cdk-commit.outputs.kurtosis-commit }}
       agglayer-e2e-ref: 1e8541a85a6f6261aa762acdd32880b343329152
@@ -332,6 +333,7 @@ jobs:
     needs:
       - test-multi-l2-networks-3-chains
     runs-on: ubuntu-latest
+    if: always() && github.event_name == 'schedule' && github.ref == 'refs/heads/develop'
     steps:
       - run: exit 1
         if: ${{ contains(fromJSON('["failure", "cancelled"]'), needs.test-multi-l2-networks-3-chains.result) }}

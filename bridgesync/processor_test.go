@@ -2389,7 +2389,6 @@ func createTestBridge(blockNum uint64, blockPos int) *Bridge {
 		Amount:             big.NewInt(1000000000000000000),
 		Metadata:           []byte{},
 		DepositCount:       0,
-		IsNativeToken:      false,
 	}
 }
 

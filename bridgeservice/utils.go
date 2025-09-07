@@ -108,7 +108,6 @@ func NewBridgeResponse(bridge *bridgesync.Bridge) *bridgetypes.BridgeResponse {
 		Amount:             bridgetypes.BigIntString(bridge.Amount.String()),
 		Metadata:           fmt.Sprintf("0x%s", hex.EncodeToString(bridge.Metadata)),
 		DepositCount:       bridge.DepositCount,
-		IsNativeToken:      bridge.IsNativeToken,
 		BridgeHash:         bridgetypes.Hash(bridge.Hash().Hex()),
 	}
 }

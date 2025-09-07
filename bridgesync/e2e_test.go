@@ -43,7 +43,6 @@ func TestBridgeEventE2E(t *testing.T) {
 			DestinationNetwork: uint32(i + 1),
 			DestinationAddress: common.HexToAddress("f00"),
 			Metadata:           []byte{},
-			IsNativeToken:      true,
 		}
 
 		lastDepositCount++

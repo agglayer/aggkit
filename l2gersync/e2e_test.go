@@ -43,11 +43,12 @@ func TestL2GERSyncE2E(t *testing.T) {
 		l2Setup.SimBackend.Client(),
 		l2Setup.GERAddr,
 		l1Setup.InfoTreeSync,
+		syncBlockChunkSize,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
 		aggkittypes.LatestBlock,
 		waitForNewBlocksPeriod,
-		syncBlockChunkSize,
+		10, // downloadBufferSize
 		true,
 	)
 	require.NoError(t, err)
@@ -77,11 +78,12 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 		l2Environment.SimBackend.Client(),
 		l2Environment.GERAddr,
 		l1Environment.InfoTreeSync,
+		syncBlockChunkSize,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
 		aggkittypes.LatestBlock,
 		waitForNewBlocksPeriod,
-		syncBlockChunkSize,
+		10, // downloadBufferSize
 		true,
 	)
 	require.NoError(t, err)
@@ -127,9 +129,9 @@ func TestL2GERSync_GERRemoval(t *testing.T) {
 
 func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 	t.Parallel()
-	ctx := context.Background()
 	t.Skip("Skipping E2E test, this test is broken and needs a PR to be fixed. The lastProcessedBlock doesn't take in account empty blocks")
 
+	ctx := context.Background()
 	l1Setup, l2Setup := helpers.NewSimulatedEVMEnvironment(t, helpers.DefaultEnvironmentConfig(helpers.LegacyL2GERContract))
 
 	dbPathSyncer := path.Join(t.TempDir(), "l2GERSyncTestE2E.sqlite")
@@ -141,11 +143,12 @@ func TestL2GERSync_IndexLegacyGERManagerSC(t *testing.T) {
 		l2Setup.SimBackend.Client(),
 		l2Setup.GERAddr,
 		l1Setup.InfoTreeSync,
+		syncBlockChunkSize,
 		retryAfterErrorPeriod,
 		maxRetryAttemptsAfterError,
 		aggkittypes.LatestBlock,
 		waitForNewBlocksPeriod,
-		syncBlockChunkSize,
+		10, // downloadBufferSize
 		true,
 	)
 	require.NoError(t, err)

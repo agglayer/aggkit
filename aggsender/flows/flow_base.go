@@ -511,7 +511,7 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 }
 
 // getLastSentBlockAndRetryCount returns the last sent block of the last sent certificate
-// if there is no previosly sent certificate, it returns startL2Block and 0
+// if there is no previously sent certificate, it returns startL2Block and 0
 func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.CertificateHeader) (uint64, int) {
 	if lastSentCertificateInfo == nil {
 		// this is the first certificate so we start from what we have set in start L2 block

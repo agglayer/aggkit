@@ -578,7 +578,6 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 				Amount:             big.NewInt(1000000),
 				Metadata:           []byte{0x04, 0x05, 0x06},
 				DepositCount:       0,
-				IsNativeToken:      true,
 			}},
 			Event{Bridge: &Bridge{
 				BlockNum:           1,
@@ -595,7 +594,6 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 				Amount:             big.NewInt(2000000),
 				Metadata:           []byte{0x0a, 0x0b, 0x0c},
 				DepositCount:       1,
-				IsNativeToken:      false,
 			}},
 		}
 
@@ -642,7 +640,6 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 				Amount:             big.NewInt(3000000),
 				Metadata:           []byte{0x10, 0x11, 0x12},
 				DepositCount:       2,
-				IsNativeToken:      true,
 			}},
 		}
 
