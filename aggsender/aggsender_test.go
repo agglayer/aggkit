@@ -509,13 +509,13 @@ func TestGetValidators(t *testing.T) {
 		name                 string
 		signers              []*aggsendertypes.SignerInfo
 		expectedValidatorsFn func(*testing.T, []*aggsendertypes.SignerInfo) []aggsendertypes.CertificateValidateAndSigner
-		expectedThreshold    uint32
+		expectedThreshold    *big.Int
 		expectedError        string
 	}{
 		{
 			name:              "successful return of committee validators",
 			signers:           allSigners[:len(allSigners)/2],
-			expectedThreshold: uint32(len(allSigners) / 2),
+			expectedThreshold: big.NewInt(int64(len(allSigners) / 2)),
 			expectedValidatorsFn: func(t *testing.T,
 				signers []*aggsendertypes.SignerInfo) []aggsendertypes.CertificateValidateAndSigner {
 				t.Helper()
