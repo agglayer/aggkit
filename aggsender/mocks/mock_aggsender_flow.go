@@ -343,53 +343,6 @@ func (_c *AggsenderFlow_UpdateAggchainData_Call) RunAndReturn(run func(*agglayer
 	return _c
 }
 
-// ValidateCertificate provides a mock function with given fields: ctx, cert
-func (_m *AggsenderFlow) ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error {
-	ret := _m.Called(ctx, cert)
-
-	if len(ret) == 0 {
-		panic("no return value specified for ValidateCertificate")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(context.Context, *agglayertypes.Certificate) error); ok {
-		r0 = rf(ctx, cert)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// AggsenderFlow_ValidateCertificate_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ValidateCertificate'
-type AggsenderFlow_ValidateCertificate_Call struct {
-	*mock.Call
-}
-
-// ValidateCertificate is a helper method to define mock.On call
-//   - ctx context.Context
-//   - cert *agglayertypes.Certificate
-func (_e *AggsenderFlow_Expecter) ValidateCertificate(ctx interface{}, cert interface{}) *AggsenderFlow_ValidateCertificate_Call {
-	return &AggsenderFlow_ValidateCertificate_Call{Call: _e.mock.On("ValidateCertificate", ctx, cert)}
-}
-
-func (_c *AggsenderFlow_ValidateCertificate_Call) Run(run func(ctx context.Context, cert *agglayertypes.Certificate)) *AggsenderFlow_ValidateCertificate_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(*agglayertypes.Certificate))
-	})
-	return _c
-}
-
-func (_c *AggsenderFlow_ValidateCertificate_Call) Return(_a0 error) *AggsenderFlow_ValidateCertificate_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *AggsenderFlow_ValidateCertificate_Call) RunAndReturn(run func(context.Context, *agglayertypes.Certificate) error) *AggsenderFlow_ValidateCertificate_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // NewAggsenderFlow creates a new instance of AggsenderFlow. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewAggsenderFlow(t interface {

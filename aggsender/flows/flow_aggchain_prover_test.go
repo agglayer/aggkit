@@ -488,14 +488,14 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 
 	testCases := []struct {
 		name           string
-		mockFn         func(*mocks.BridgeQuerier, *mocks.LERQuerier, *mocks.Signer)
+		mockFn         func(*mocks.BridgeQuerier, *mocks.LERQuerier)
 		buildParams    *types.CertificateBuildParams
 		expectedError  string
 		expectedResult *agglayertypes.Certificate
 	}{
 		{
 			name: "error building certificate",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier, mockSigner *mocks.Signer) {
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier) {
 				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 				mockL2BridgeQuerier.EXPECT().GetExitRootByIndex(mock.Anything, uint32(0)).Return(common.Hash{}, errors.New("some error"))
 			},
@@ -510,10 +510,8 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 		},
 		{
 			name: "success building certificate",
-			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier, mockSigner *mocks.Signer) {
+			mockFn: func(mockL2BridgeQuerier *mocks.BridgeQuerier, mockLERQuerier *mocks.LERQuerier) {
 				mockL2BridgeQuerier.EXPECT().OriginNetwork().Return(uint32(1))
-				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0x123"))
-				mockSigner.EXPECT().SignHash(mock.Anything, mock.Anything).Return([]byte("signature"), nil)
 				mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, nil)
 			},
 			buildParams: &types.CertificateBuildParams{
@@ -557,7 +555,6 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 					Context: map[string][]byte{
 						"key1": []byte("value1"),
 					},
-					Signature: []byte("signature"),
 				},
 			},
 		},
@@ -572,7 +569,7 @@ func Test_AggchainProverFlow_BuildCertificate(t *testing.T) {
 			mockL2BridgeQuerier := mocks.NewBridgeQuerier(t)
 			mockLERQuerier := mocks.NewLERQuerier(t)
 			if tc.mockFn != nil {
-				tc.mockFn(mockL2BridgeQuerier, mockLERQuerier, mockSigner)
+				tc.mockFn(mockL2BridgeQuerier, mockLERQuerier)
 			}
 			flowBase := NewBaseFlow(
 				logger,
@@ -777,73 +774,6 @@ func Test_AggchainProverFlow_CheckInitialStatus(t *testing.T) {
 			mockStorage.AssertExpectations(t)
 			mockBaseFlow.AssertExpectations(t)
 			mockL2BridgeSyncer.AssertExpectations(t)
-		})
-	}
-}
-
-func Test_AggchainProverFlow_ValidateCertificate(t *testing.T) {
-	t.Parallel()
-
-	ctx := t.Context()
-
-	testCases := []struct {
-		name          string
-		certificate   *agglayertypes.Certificate
-		expectedError string
-	}{
-		{
-			name:          "certificate is nil",
-			certificate:   nil,
-			expectedError: "aggchainProverFlow - ValidateCertificate - certificate is nil",
-		},
-		{
-			name: "AggchainData is not of type AggchainDataProof",
-			certificate: &agglayertypes.Certificate{
-				AggchainData: &agglayertypes.AggchainDataSignature{},
-			},
-			expectedError: "aggchainProverFlow - ValidateCertificate - AggchainData is not of type AggchainDataProof",
-		},
-		{
-			name: "AggchainData is nil",
-			certificate: &agglayertypes.Certificate{
-				AggchainData: nil,
-			},
-			expectedError: "aggchainProverFlow - ValidateCertificate - AggchainData is not of type AggchainDataProof",
-		},
-		{
-			name: "success - valid certificate with AggchainDataProof",
-			certificate: &agglayertypes.Certificate{
-				AggchainData: &agglayertypes.AggchainDataProof{
-					Proof:          []byte("some-proof"),
-					Version:        "0.1",
-					Vkey:           []byte("some-vkey"),
-					AggchainParams: common.HexToHash("0x123"),
-					Context: map[string][]byte{
-						"key1": []byte("value1"),
-					},
-					Signature: []byte("signature"),
-				},
-			},
-			expectedError: "",
-		},
-	}
-
-	for _, tc := range testCases {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			logger := log.WithFields("flowManager", "Test_AggchainProverFlow_ValidateCertificate")
-			flow := &AggchainProverFlow{
-				log: logger,
-			}
-
-			err := flow.ValidateCertificate(ctx, tc.certificate)
-			if tc.expectedError != "" {
-				require.ErrorContains(t, err, tc.expectedError)
-			} else {
-				require.NoError(t, err)
-			}
 		})
 	}
 }
