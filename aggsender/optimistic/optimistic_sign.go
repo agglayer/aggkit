@@ -38,20 +38,58 @@ func NewOptimisticSignatureCalculatorImpl(
 	if err := signer.Initialize(ctx); err != nil {
 		return nil, fmt.Errorf("[OPTIMISTIC] failed to initialize signer. Err: %w", err)
 	}
+
 	signerAddr := signer.PublicAddress()
-	signers, err := aggchainFEPContract.GetAggchainSigners(nil)
+	trustedSignerAddr, err := validateSignerAgainstContract(
+		logger,
+		aggchainFEPContract,
+		signerAddr,
+		cfg.RequireKeyMatchTrustedSequencer,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	logger.Infof("OptimisticSignatureCalculatorImpl.signerAddress: %s, trustedSignerAddr: %s",
+		signerAddr.Hex(),
+		trustedSignerAddr.Hex(),
+	)
+
+	query := NewOptimisticAggregationProofPublicValuesQuery(
+		aggchainFEPContract,
+		cfg.SovereignRollupAddr,
+		opnode.NewOpNodeClient(cfg.OpNodeURL),
+		signerAddr,
+	)
+
+	return &OptimisticSignatureCalculatorImpl{
+		queryAggregationProofPublicValues: query,
+		signer:                            signer,
+		logger:                            logger,
+	}, nil
+}
+
+// validateSignerAgainstContract ensures the signer is present in the AggchainFEP contract signers
+// and matches the trusted signer address if required.
+func validateSignerAgainstContract(
+	logger *log.Logger,
+	contract FEPContractQuerier,
+	signerAddr common.Address,
+	requireKeyMatch bool,
+) (common.Address, error) {
+	signers, err := contract.GetAggchainSigners(nil)
 	if err != nil {
 		err = fmt.Errorf("[OPTIMISTIC] failed to fetch the aggchain signers from the AggchainFEP contract. Err: %w", err)
-		if cfg.RequireKeyMatchTrustedSequencer {
-			return nil, err
+		if requireKeyMatch {
+			return common.Address{}, err
 		}
 		logger.Warn(err.Error())
 	}
 
 	if len(signers) < 1 {
 		err = fmt.Errorf("[OPTIMISTIC] there should be at least one aggchain signer in the AggchainFEP contract")
-		if cfg.RequireKeyMatchTrustedSequencer {
-			return nil, err
+		if requireKeyMatch {
+			return common.Address{}, err
 		}
 		logger.Warn(err.Error())
 	}
@@ -61,8 +99,8 @@ func NewOptimisticSignatureCalculatorImpl(
 		err = fmt.Errorf("[OPTIMISTIC] "+
 			"configured trusted signer address (%s) not found in the AggchainFEP contract signers: %v",
 			signerAddr.Hex(), signers)
-		if cfg.RequireKeyMatchTrustedSequencer {
-			return nil, err
+		if requireKeyMatch {
+			return common.Address{}, err
 		}
 		logger.Warn(err.Error())
 	}
@@ -72,26 +110,13 @@ func NewOptimisticSignatureCalculatorImpl(
 		err := fmt.Errorf("[OPTIMISTIC] "+
 			"configured trusted signer address (%s) differs from the one initialized on the AggchainFEP contract (%s)",
 			signerAddr.Hex(), trustedSignerAddr.Hex())
-		if cfg.RequireKeyMatchTrustedSequencer {
-			return nil, err
+		if requireKeyMatch {
+			return trustedSignerAddr, err
 		}
 		logger.Warn(err.Error())
 	}
 
-	logger.Infof("OptimisticSignatureCalculatorImpl.signerAddress: %s, trustedSignerAddr: %s",
-		signer.PublicAddress().Hex(),
-		trustedSignerAddr.Hex())
-	query := NewOptimisticAggregationProofPublicValuesQuery(
-		aggchainFEPContract,
-		cfg.SovereignRollupAddr,
-		opnode.NewOpNodeClient(cfg.OpNodeURL),
-		signer.PublicAddress())
-
-	return &OptimisticSignatureCalculatorImpl{
-		queryAggregationProofPublicValues: query,
-		signer:                            signer,
-		logger:                            logger,
-	}, nil
+	return trustedSignerAddr, nil
 }
 
 // Sign calculate hash and sign it.
