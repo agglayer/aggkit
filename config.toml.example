@@ -46,11 +46,6 @@ genesisBlockNumber = "<BLOCK_NUM>"
 URL = "<URL>"
 
 # ------------------------------------------------------------------------------
-# L1 chain id
-# ------------------------------------------------------------------------------
-chainId = "<CHAIN_ID>"
-
-# ------------------------------------------------------------------------------
 # Address of the zkevm global exit root contract on L1
 # ------------------------------------------------------------------------------
 polygonZkEVMGlobalExitRootAddress = "<ADDR>"
@@ -66,7 +61,7 @@ polygonRollupManagerAddress = "<ADDR>"
 polTokenAddress = "<ADDR>"
 
 # ------------------------------------------------------------------------------
-# Address of the sovereign rollup contract on L2
+# Address of the sovereign rollup contract on L1
 # ------------------------------------------------------------------------------
 polygonZkEVMAddress = "<ADDR>"
 
@@ -109,14 +104,6 @@ Environment = "production" # "production" or "development"
 # something specifically otherwise we leave it at info
 # ------------------------------------------------------------------------------
 # Level = "info"
-
-# ------------------------------------------------------------------------------
-# Outputs define the output paths for writing logs. The default is to
-# write to stderr, but other output paths should be supported
-#
-# https://github.com/uber-go/zap/blob/a55bdc32f526699c3b4cc51a2cc97e944d02fbbf/writer.go#L32-L50
-# ------------------------------------------------------------------------------
-Outputs = ["stderr"]
 
 # ==============================================================================
 # ____  ____   ____
