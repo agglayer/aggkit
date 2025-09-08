@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"testing"
 
 	optimisticmocks "github.com/agglayer/aggkit/aggsender/optimistic/mocks"
@@ -29,7 +30,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 	signerAddr := crypto.PubkeyToAddress(signerKey.PublicKey)
 	chainID := uint64(1337)
 
-	keyConfig := signertypes.SignerConfig{
+	signerKeyCfg := signertypes.SignerConfig{
 		Method: signertypes.MethodMock,
 		Config: map[string]any{
 			signer.FieldMockPrivateKey: hex.EncodeToString(crypto.FromECDSA(signerKey)),
@@ -51,7 +52,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 			},
 			cfg: Config{
 				RequireKeyMatchTrustedSequencer: true,
-				TrustedSequencerKey:             keyConfig,
+				TrustedSequencerKey:             signerKeyCfg,
 			},
 		},
 		{
@@ -63,7 +64,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 			},
 			cfg: Config{
 				RequireKeyMatchTrustedSequencer: true,
-				TrustedSequencerKey:             keyConfig,
+				TrustedSequencerKey:             signerKeyCfg,
 			},
 			expectedErr: "failed to fetch the aggchain signers",
 		},
@@ -76,7 +77,7 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 			},
 			cfg: Config{
 				RequireKeyMatchTrustedSequencer: true,
-				TrustedSequencerKey:             keyConfig,
+				TrustedSequencerKey:             signerKeyCfg,
 			},
 			expectedErr: "there should be at least one aggchain signer",
 		},
@@ -92,6 +93,20 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 				TrustedSequencerKey:             signer.NewMockSignerConfig(""),
 			},
 			expectedErr: "not found in the AggchainFEP contract signers",
+		},
+		{
+			name: "signer differs from trusted sequencer address and RequireKeyMatchTrustedSequencer = false",
+			setupMock: func(m *optimisticmocks.FEPContractQuerier) {
+				m.EXPECT().
+					GetAggchainSigners(mock.Anything).
+					Return([]common.Address{common.HexToAddress("0xdeadbeef"), signerAddr}, nil)
+			},
+			cfg: Config{
+				RequireKeyMatchTrustedSequencer: true,
+				TrustedSequencerKey:             signerKeyCfg,
+			},
+			expectedErr: fmt.Sprintf("configured trusted signer address (%s) differs from the one initialized on the AggchainFEP contract (%s)",
+				signerAddr.Hex(), common.HexToAddress("0xdeadbeef").Hex()),
 		},
 	}
 
