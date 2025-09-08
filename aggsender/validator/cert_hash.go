@@ -23,7 +23,7 @@ func HashCertificateToSign(cert *agglayertypes.Certificate) (common.Hash, error)
 
 	claimsHash := crypto.Keccak256(claimsRawMetadata)
 
-	var aggchainParams []byte
+	aggchainParams := aggkitcommon.ZeroHash.Bytes()
 	aggchainData, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
 	if ok {
 		aggchainParams = aggchainData.AggchainParams.Bytes()

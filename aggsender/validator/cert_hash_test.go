@@ -21,7 +21,7 @@ func TestHashCertificateToSign(t *testing.T) {
 
 		hash, err := HashCertificateToSign(cert)
 		require.NoError(t, err)
-		require.Equal(t, "0x5452b3b83e9ed28c61062aa89ae2dab7941fdf5bf41181a5698b2828c0f64ab8", hash.String())
+		require.Equal(t, "0x6e06392739303bf2162efe4d887b981eb36e88e90ec930e0c6b12f862e3e0ab2", hash.String())
 	})
 
 	t.Run("error hashing invalid cert ", func(t *testing.T) {
