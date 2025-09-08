@@ -24,10 +24,11 @@ var (
 
 type downloaderSovereign struct {
 	*sync.EVMDownloaderImplementation
-	l2GERManager   *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
-	l2GERAddr      common.Address
-	l1InfoTreeSync L1InfoTreeQuerier
-	rh             *sync.RetryHandler
+	l2GERManager       *globalexitrootmanagerl2sovereignchain.Globalexitrootmanagerl2sovereignchain
+	l2GERAddr          common.Address
+	l1InfoTreeSync     L1InfoTreeQuerier
+	rh                 *sync.RetryHandler
+	syncBlockChunkSize uint64
 }
 
 func newDownloaderSovereign(
@@ -36,7 +37,8 @@ func newDownloaderSovereign(
 	l1InfoTreeSync L1InfoTreeQuerier,
 	rh *sync.RetryHandler,
 	blockFinality aggkittypes.BlockNumberFinality,
-	waitForNewBlocksPeriod time.Duration) (*downloaderSovereign, error) {
+	waitForNewBlocksPeriod time.Duration,
+	syncBlockChunkSize uint64) (*downloaderSovereign, error) {
 	l2GERManager, err := globalexitrootmanagerl2sovereignchain.NewGlobalexitrootmanagerl2sovereignchain(
 		l2GERAddr, l2Client)
 	if err != nil {
@@ -44,10 +46,11 @@ func newDownloaderSovereign(
 	}
 
 	d := &downloaderSovereign{
-		l2GERManager:   l2GERManager,
-		l2GERAddr:      l2GERAddr,
-		l1InfoTreeSync: l1InfoTreeSync,
-		rh:             rh,
+		l2GERManager:       l2GERManager,
+		l2GERAddr:          l2GERAddr,
+		l1InfoTreeSync:     l1InfoTreeSync,
+		rh:                 rh,
+		syncBlockChunkSize: syncBlockChunkSize,
 	}
 
 	appender := d.buildAppender(l2GERManager)
@@ -80,16 +83,21 @@ func (d *downloaderSovereign) Download(ctx context.Context, fromBlock uint64, do
 		case <-ctx.Done():
 			log.Debug("aborting the l2GERSync downloader...")
 			close(downloadedCh)
-
 			return
 		default:
 		}
 
-		// Wait for new blocks before processing
-		fromBlock = d.WaitForNewBlocks(ctx, fromBlock)
-		for _, block := range d.GetEventsByBlockRange(ctx, fromBlock, fromBlock) {
+		// Wait for new blocks and get current head
+		latestBlock := d.WaitForNewBlocks(ctx, fromBlock)
+		toBlock := min(fromBlock+d.syncBlockChunkSize-1, latestBlock)
+		log.Debugf("processing chunk [%d to %d] (chunk size: %d)", fromBlock, toBlock, d.syncBlockChunkSize)
+
+		blocks := d.GetEventsByBlockRange(ctx, fromBlock, toBlock)
+		for _, block := range blocks {
 			downloadedCh <- *block
 		}
+
+		fromBlock = toBlock + 1
 	}
 }
 
@@ -125,7 +133,7 @@ func (d *downloaderSovereign) buildAppender(
 
 		l1InfoTreeLeaf, err := d.l1InfoTreeSync.GetInfoByGlobalExitRoot(insertGEREvent.NewGlobalExitRoot)
 		if err != nil {
-			return fmt.Errorf("failed to fetch l1 info tree for global exit root %s: %w",
+			log.Fatalf("GER %s received from L2 is not present in L1InfoTreeSync: %v",
 				insertGEREvent.NewGlobalExitRoot, err)
 		}
 
