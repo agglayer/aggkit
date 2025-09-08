@@ -1,7 +1,6 @@
 package flows
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -135,7 +134,7 @@ func TestNewFlow(t *testing.T) {
 			expectedError: "unsupported Aggsender mode: unsupported-mode",
 		},
 		{
-			name: "error optimistic mode creating TrustedSequencerContract AggchainProofMode",
+			name: "error optimistic mode fetching aggchain signers in AggchainProofMode",
 			cfg: config.Config{
 				Mode:                string(types.AggchainProofMode),
 				AggsenderPrivateKey: keyConfig,
@@ -148,14 +147,14 @@ func TestNewFlow(t *testing.T) {
 					RequireKeyMatchTrustedSequencer: true,
 				},
 			},
-			expectedError: "error aggchainFEPContract",
+			expectedError: "failed to fetch the aggchain signers from the AggchainFEP contract",
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			ctx := context.Background()
+			ctx := t.Context()
 
 			mockStorage := mocks.NewAggSenderStorage(t)
 			mockL1Client := typesmocks.NewBaseEthereumClienter(t)
