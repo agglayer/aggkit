@@ -34,6 +34,8 @@ func HashCertificateToSign(cert *agglayertypes.Certificate) (common.Hash, error)
 	), nil
 }
 
+// getAggchainParams extracts the aggchain params field from the certificate
+// with handling different types of aggchain data.
 func getAggchainParams(cert *agglayertypes.Certificate) []byte {
 	aggchainDataProof, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
 	if ok {
