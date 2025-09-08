@@ -306,6 +306,29 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		require.ErrorIs(t, err, ErrInvalidPageSize)
 	})
 
+	t.Run("filter by valid origin token address", func(t *testing.T) {
+		s.processor.halted = false
+
+		targetOriginAddress := common.HexToAddress("5").Hex()
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount, targetOriginAddress)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, totalTokenMappings)
+		require.Len(t, tokenMappings, 1)
+		require.Equal(t, common.HexToAddress("5"), tokenMappings[0].OriginTokenAddress)
+		require.Equal(t, uint32(5), tokenMappings[0].OriginNetwork)
+		require.Equal(t, common.HexToAddress("6"), tokenMappings[0].WrappedTokenAddress)
+	})
+
+	t.Run("filter by non-existent origin token address", func(t *testing.T) {
+		nonExistentAddress := common.HexToAddress("999").Hex()
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount, nonExistentAddress)
+		require.NoError(t, err)
+
+		require.Equal(t, 0, totalTokenMappings)
+		require.Empty(t, tokenMappings)
+	})
+
 	t.Run("inconsistent state", func(t *testing.T) {
 		s.processor.halted = true
 		_, _, err := s.GetTokenMappings(context.Background(), 0, 0, "")
