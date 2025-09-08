@@ -20,7 +20,7 @@ body = """
 {%- set config_change_commits = [] -%}
 {%- for commit in commits -%}
   {%- for footer in commit.footers -%}
-    {%- if footer.token == '## 📋 Config Updates' -%}
+    {%- if footer.token == 'CONFIG-CHANGE' -%}
       {%- set_global config_change_commits = config_change_commits | concat(with=commit) -%}
     {%- endif -%}
   {%- endfor -%}
@@ -50,7 +50,7 @@ body = """
   ## 📋 Configuration Changes
   {%- for commit in config_change_commits %}
     {%- for line in commit.footers %}
-      {%- if line.token == '## 📋 Config Updates' %}
+      {%- if line.token == 'CONFIG-CHANGE' %}
         - {{ line.value | trim }}
           ***Original commit:*** {% if commit.type %}{{ commit.type }}{% endif -%}{% if commit.scope %}(_{{commit.scope}}_){% endif -%} {{ commit.message | trim }}
       {%- endif %}

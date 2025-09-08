@@ -1,13 +1,8 @@
 ## 🔄 Changes Summary
 - [Brief description of what was added, fixed, or changed in this PR]
 
-## ⚠️ Breaking Changes
-- 🛠️ **Config**: [Optional: Changes to TOML config]
-- 🔌 **API/CLI**: [Optional: Breaking interface changes]
-- 🗑️ **Deprecated Features**: [Optional: Removed features]
-
 ## 📋 Config Updates
-- 🧾 **Diff/Config snippet**: [Optional: Enumerate config changes/provide snippet of changes]
+CONFIG-CHANGE: [Optional: Enumerate config changes/provide snippet of changes]
 
 ## ✅ Testing
 - 🤖 **Automatic**: [Optional: Enumerate E2E tests]
@@ -21,3 +16,6 @@
 
 ## 📝 Notes
 - [Optional: design decisions, tradeoffs, or TODOs]
+
+## ⚠️ Breaking Changes
+BREAKING-CHANGE: [Optional: Enumerate breaking changes]
