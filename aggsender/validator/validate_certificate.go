@@ -24,7 +24,6 @@ type FlowInterface interface {
 		preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)
 	BuildCertificate(ctx context.Context,
 		buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error)
-	ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error
 }
 
 type L1InfoTreeRootByLeafQuerier interface {
@@ -105,11 +104,6 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	certificate, err := a.flow.BuildCertificate(ctx, buildParams)
 	if err != nil {
 		return fmt.Errorf("failed flow.BuildCertificate: %w", err)
-	}
-
-	// Validate flow specific things
-	if err := a.flow.ValidateCertificate(ctx, certificate); err != nil {
-		return fmt.Errorf("failed flow.ValidateCertificate: %w", err)
 	}
 
 	// Compare the incoming certificate with the one generated

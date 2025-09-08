@@ -186,7 +186,6 @@ func TestValidateCertificate(t *testing.T) {
 			GenerateBuildParams(testData.ctx, mock.Anything).Return(&types.CertificateBuildParams{}, nil)
 		testData.mockFlow.EXPECT().
 			BuildCertificate(testData.ctx, mock.Anything).Return(&agglayertypes.Certificate{}, nil)
-		testData.mockFlow.EXPECT().ValidateCertificate(testData.ctx, mock.Anything).Return(nil)
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:              0,

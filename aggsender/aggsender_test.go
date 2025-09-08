@@ -264,7 +264,6 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	signedCertificate, err := aggSender.sendCertificate(ctx)
 	require.NoError(t, err)
 	require.NotNil(t, signedCertificate)
-	require.NotNil(t, signedCertificate.AggchainData)
 	require.NotNil(t, signedCertificate.ImportedBridgeExits)
 	require.Len(t, signedCertificate.BridgeExits, 1)
 

@@ -498,50 +498,6 @@ func (c *Certificate) CertificateID() common.Hash {
 	)
 }
 
-// PPHashToSign is the actual hash that needs to be signed by the aggsender
-// as expected by the agglayer for the PP flow
-func (c *Certificate) PPHashToSign() common.Hash {
-	globalIndexHashes := make([][]byte, len(c.ImportedBridgeExits))
-	for i, importedBridgeExit := range c.ImportedBridgeExits {
-		globalIndexHashes[i] = importedBridgeExit.GlobalIndex.Hash().Bytes()
-	}
-
-	return crypto.Keccak256Hash(
-		c.NewLocalExitRoot.Bytes(),
-		crypto.Keccak256Hash(globalIndexHashes...).Bytes(),
-	)
-}
-
-// FEPHashToSign is the actual hash that needs to be signed by the aggsender
-// as expected by the agglayer for the FEP flow
-func (c *Certificate) FEPHashToSign() common.Hash {
-	chunks := make([][]byte, 0, len(c.ImportedBridgeExits))
-	for _, importedBridgeExit := range c.ImportedBridgeExits {
-		indexBytes := importedBridgeExit.GlobalIndexToLittleEndianBytes()
-		hashBytes := importedBridgeExit.BridgeExit.Hash().Bytes()
-
-		combined := make([]byte, 0, len(indexBytes)+len(hashBytes))
-		combined = append(combined, indexBytes...) // combine into one slice
-		combined = append(combined, hashBytes...)  // combine into one slice
-		chunks = append(chunks, combined)
-	}
-
-	importedBridgeExitsHash := crypto.Keccak256(chunks...)
-
-	aggchainParams := aggkitcommon.EmptyBytesHash
-	aggchainDataProof, ok := c.AggchainData.(*AggchainDataProof)
-	if ok {
-		aggchainParams = aggchainDataProof.AggchainParams.Bytes()
-	}
-
-	return crypto.Keccak256Hash(
-		c.NewLocalExitRoot.Bytes(),
-		importedBridgeExitsHash,
-		aggkitcommon.Uint64ToLittleEndianBytes(c.Height),
-		aggchainParams,
-	)
-}
-
 // SignedCertificate is the struct that contains the certificate and the signature of the signer
 // NOTE: this is an old and deprecated struct, only to be used for backward compatibility
 type SignedCertificate struct {
