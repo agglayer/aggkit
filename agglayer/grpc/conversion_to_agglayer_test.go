@@ -21,7 +21,6 @@ var exampleTestAgglayerCert = &agglayertypes.Certificate{
 	Height:              100,
 	PrevLocalExitRoot:   common.HexToHash("0x010201"),
 	NewLocalExitRoot:    common.HexToHash("0x010202"),
-	Metadata:            aggkitcommon.ZeroHash,
 	CustomChainData:     []byte{0x1, 0x2, 0x3},
 	L1InfoTreeLeafCount: 11,
 	BridgeExits: []*agglayertypes.BridgeExit{
@@ -138,16 +137,6 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
 		require.NoError(t, err)
 		protoCert.NewLocalExitRoot = nil
-		result, err := ConvertProtoCertToAgglayer(protoCert)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNilCertificate)
-		require.ErrorContains(t, err, "Certificate has nil fields")
-	})
-
-	t.Run("nil Metadata", func(t *testing.T) {
-		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
-		require.NoError(t, err)
-		protoCert.Metadata = nil
 		result, err := ConvertProtoCertToAgglayer(protoCert)
 		require.Nil(t, result)
 		require.ErrorIs(t, err, ErrNilCertificate)

@@ -159,7 +159,6 @@ func start(cliCtx *cli.Context) error {
 			if err != nil {
 				log.Fatal(err)
 			}
-			rpcServices = append(rpcServices, aggsenderValidator.GetRPCServices()...)
 			go aggsenderValidator.Start(cliCtx.Context)
 		}
 	}

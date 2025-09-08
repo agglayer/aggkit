@@ -25,9 +25,9 @@ func ConvertProtoCertToAgglayer(cert *v1nodetypes.Certificate) (*agglayertypes.C
 		return nil, ErrNilCertificate
 	}
 
-	if cert.PrevLocalExitRoot == nil || cert.NewLocalExitRoot == nil || cert.Metadata == nil {
+	if cert.PrevLocalExitRoot == nil || cert.NewLocalExitRoot == nil {
 		return nil, fmt.Errorf("convertProtoCertToAgglayer. Certificate has nil fields: "+
-			"PrevLocalExitRoot, NewLocalExitRoot, or Metadata. %w", ErrNilCertificate)
+			"PrevLocalExitRoot or NewLocalExitRoot. %w", ErrNilCertificate)
 	}
 
 	if cert.L1InfoTreeLeafCount == nil {
@@ -54,7 +54,6 @@ func ConvertProtoCertToAgglayer(cert *v1nodetypes.Certificate) (*agglayertypes.C
 		Height:              cert.Height,
 		PrevLocalExitRoot:   common.BytesToHash(cert.PrevLocalExitRoot.Value),
 		NewLocalExitRoot:    common.BytesToHash(cert.NewLocalExitRoot.Value),
-		Metadata:            common.BytesToHash(cert.Metadata.Value),
 		CustomChainData:     cert.CustomChainData,
 		L1InfoTreeLeafCount: *cert.L1InfoTreeLeafCount,
 		BridgeExits:         bridgeExits,

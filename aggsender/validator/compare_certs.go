@@ -39,11 +39,6 @@ func DiffsCertificate(
 			expectedCertificate.NewLocalExitRoot.Hex(), validatingCertificate.NewLocalExitRoot.Hex()))
 	}
 
-	if validatingCertificate.Metadata != expectedCertificate.Metadata {
-		diffs = append(diffs, fmt.Sprintf("Metadata mismatch. Expected: %s, Certificate: %s",
-			expectedCertificate.Metadata.Hex(), validatingCertificate.Metadata.Hex()))
-	}
-
 	if !bytes.Equal(validatingCertificate.CustomChainData, expectedCertificate.CustomChainData) {
 		diffs = append(diffs, fmt.Sprintf("CustomChainData mismatch. Expected: %x, Certificate: %x",
 			expectedCertificate.CustomChainData, validatingCertificate.CustomChainData))

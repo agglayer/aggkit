@@ -11,7 +11,6 @@ import (
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	v1 "github.com/agglayer/aggkit/aggsender/validator/proto/v1"
-	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/require"
 )
@@ -79,7 +78,6 @@ func TestClient_ValidateCertificate(t *testing.T) {
 				},
 			},
 		},
-		Metadata:            aggkitcommon.ZeroHash,
 		CustomChainData:     []byte("custom-data"),
 		L1InfoTreeLeafCount: 100,
 		AggchainData: &agglayertypes.AggchainDataSignature{
