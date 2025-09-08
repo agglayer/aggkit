@@ -154,10 +154,10 @@ Port = "<PORT>"
 AggSenderPrivateKey = {Path = "<PATH>", Password = "<PASSWORD>"}
 
 # ------------------------------------------------------------------------------
-# Proof Mode. Default is "AggchainProof" for FEP mode. Use "PessimisticProof"
-# for PP mode
+# Proof Mode. Default is "PessimisticProof" for PP mode. Use "AggchainProof"
+# for FEP mode
 # ------------------------------------------------------------------------------
-Mode = "AggchainProof"
+Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "1s"
 
 # ------------------------------------------------------------------------------
@@ -192,18 +192,6 @@ NumRequests = 20
 Interval = "1m"
 
 # ------------------------------------------------------------------------------
-# URLRPCL2 is the URL of the L2 RPC node
-# ------------------------------------------------------------------------------
-# URLRPCL2 = "<URL>"
-
-# ------------------------------------------------------------------------------
-# BlockFinality indicates which finality follows AggLayer accepted values are:
-# LatestBlock, SafeBlock, PendingBlock, FinalizedBlock, EarliestBlock
-# Default value is "LatestBlock"
-# ------------------------------------------------------------------------------
-BlockFinality = "LatestBlock"
-
-# ------------------------------------------------------------------------------
 # EpochNotificationPercentage indicates the percentage of the epoch
 # the AggSender should send the certificate
 # 0 -> Begin
@@ -229,11 +217,6 @@ BlockFinality = "LatestBlock"
 # KeepCertificatesHistory = false
 
 # ------------------------------------------------------------------------------
-# BridgeMetadataAsHash is a flag to import the bridge metadata as hash
-# ------------------------------------------------------------------------------
-# BridgeMetadataAsHash = false
-
-# ------------------------------------------------------------------------------
 # DryRun is a flag to enable the dry run mode
 # in this mode the AggSender will not send the certificates to Agglayer
 # ------------------------------------------------------------------------------
@@ -242,10 +225,10 @@ BlockFinality = "LatestBlock"
 # ------------------------------------------------------------------------------
 # EnableRPC is a flag to enable the RPC for aggsender
 # ------------------------------------------------------------------------------
-# EnableRPC = false
+# EnableRPC = true
 
 # ------------------------------------------------------------------------------
-# EnableRPC if aggsender validator is enabled
+# Enable if aggsender validator is enabled
 # ------------------------------------------------------------------------------
 # [AggSender.AgglayerClient]
 # Cached = true
@@ -329,11 +312,6 @@ WaitPeriodNextGER = "10s"
 GlobalExitRootL2 = "<ADDR>"
 
 # ------------------------------------------------------------------------------
-# URLRPCL2 is the URL of the L2 RPC node
-# ------------------------------------------------------------------------------
-# URLRPCL2 = "<URL>"
-
-# ------------------------------------------------------------------------------
 # GasOffset is the gas to add on the estimated gas when sending the claim txs
 # ------------------------------------------------------------------------------
 # GasOffset = 0
@@ -353,7 +331,7 @@ WaitPeriodMonitorTx = "10s"
 # PrivateKeys defines all the key store files that are going
 # to be read in order to provide the private keys to sign the L1 txs
 # ------------------------------------------------------------------------------
-PrivateKeys = [{Path = "<PATH>", Password = "<PASSWORD>"}]
+PrivateKeys = [{Method =  "local", Path = "<PATH>", Password = "<PASSWORD>"}]
 
 # ------------------------------------------------------------------------------
 # FrequencyToMonitorTxs frequency of the resending failed txs
