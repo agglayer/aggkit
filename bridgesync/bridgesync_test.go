@@ -683,7 +683,7 @@ func TestBridgeSync_GetClaimByGlobalIndex(t *testing.T) {
 
 	mockEthClient := mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(
-		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Times(2)
+		common.FromHex("0x000000000000000000000000000000000000000000000000000000000000002a"), nil).Times(1)
 	mockEthClient.EXPECT().
 		CallContract(
 			mock.Anything,
