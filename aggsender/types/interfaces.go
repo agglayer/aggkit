@@ -277,6 +277,10 @@ type MultisigQuerier interface {
 type AggchainFEPCaller interface {
 	StartingBlockNumber(opts *bind.CallOpts) (*big.Int, error)
 	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
+	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
+	RollupConfigHash(opts *bind.CallOpts) ([32]byte, error)
+	RangeVkeyCommitment(opts *bind.CallOpts) ([32]byte, error)
+	OptimisticMode(opts *bind.CallOpts) (bool, error)
 }
 
 // AggchainFEPRollupQuerier is an interface defining functions that an AggchainFEPRollupQuerier should implement

@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
 	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/opnode"
-	aggkittypes "github.com/agglayer/aggkit/types"
 	"github.com/agglayer/go_signer/signer"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/common"
@@ -28,14 +26,10 @@ type OptimisticSignatureCalculatorImpl struct {
 func NewOptimisticSignatureCalculatorImpl(
 	ctx context.Context,
 	logger *log.Logger,
-	l1Client aggkittypes.BaseEthereumClienter,
+	aggchainFEPContract FEPContractQuerier,
 	chainID uint64,
 	cfg Config,
 ) (*OptimisticSignatureCalculatorImpl, error) {
-	aggchainFEPContract, err := aggchainfep.NewAggchainfep(cfg.SovereignRollupAddr, l1Client)
-	if err != nil {
-		return nil, fmt.Errorf("[OPTIMISTIC] failed to create AggchainFEP contract binding. Err: %w", err)
-	}
 	signer, err := signer.NewSigner(ctx, chainID, cfg.TrustedSequencerKey, "optimistic", logger)
 	if err != nil {
 		return nil, fmt.Errorf("[OPTIMISTIC] failed to instantiate signer. Err: %w", err)

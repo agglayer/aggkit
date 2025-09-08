@@ -13,6 +13,7 @@ type OpNodeClienter interface {
 
 // FEPContractQuerier is an interface that defines the methods for interacting with the FEP contract.
 type FEPContractQuerier interface {
+	GetAggchainSigners(opts *bind.CallOpts) ([]common.Address, error)
 	RollupConfigHash(opts *bind.CallOpts) ([32]byte, error)
 	RangeVkeyCommitment(opts *bind.CallOpts) ([32]byte, error)
 	OptimisticMode(opts *bind.CallOpts) (bool, error)
