@@ -12,8 +12,8 @@ import (
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/ethereum/go-ethereum/common"
-	"golang.org/x/crypto/sha3"
 )
 
 var (
@@ -393,7 +393,7 @@ func (f *baseFlow) getNextHeightAndPreviousLER(
 // verifyClaimGERs verifies the correctnes GERs of the claims
 func (f *baseFlow) verifyClaimGERs(claims []bridgesync.Claim) error {
 	for _, claim := range claims {
-		ger := calculateGER(claim.MainnetExitRoot, claim.RollupExitRoot)
+		ger := l1infotreesync.CalculateGER(claim.MainnetExitRoot, claim.RollupExitRoot)
 		if ger != claim.GlobalExitRoot {
 			return fmt.Errorf("claim[GlobalIndex: %s, BlockNum: %d]: GER mismatch. Expected: %s, got: %s",
 				claim.GlobalIndex.String(), claim.BlockNum, claim.GlobalExitRoot.String(), ger.String())
@@ -489,15 +489,4 @@ func (f *baseFlow) getLastSentBlockAndRetryCount(lastSentCertificateInfo *types.
 		retryCount = lastSentCertificateInfo.RetryCount + 1
 	}
 	return lastSentBlock, retryCount
-}
-
-// calculateGER calculates the GER hash based on the mainnet exit root and the rollup exit root
-func calculateGER(mainnetExitRoot, rollupExitRoot common.Hash) common.Hash {
-	var gerBytes [common.HashLength]byte
-	hasher := sha3.NewLegacyKeccak256()
-	hasher.Write(mainnetExitRoot.Bytes())
-	hasher.Write(rollupExitRoot.Bytes())
-	copy(gerBytes[:], hasher.Sum(nil))
-
-	return gerBytes
 }

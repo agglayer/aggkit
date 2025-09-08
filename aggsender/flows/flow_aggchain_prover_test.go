@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/query"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypesmocks "github.com/agglayer/aggkit/types/mocks"
@@ -59,7 +60,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{
 					Height:                  0,
 					FromBlock:               1,
@@ -91,7 +92,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
-					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
@@ -118,7 +119,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{
 					Height:        0,
 					FromBlock:     1,
@@ -159,7 +160,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
-					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
@@ -177,7 +178,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(nil, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(nil, nil).Once()
 				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
@@ -222,7 +223,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{ToBlock: 5, Status: agglayertypes.Settled}, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
 				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
@@ -254,7 +255,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
-					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{
@@ -274,7 +275,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoDataQuery *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockStorage.EXPECT().GetLastSentCertificateHeaderWithProofIfInError(ctx).Return(&types.CertificateHeader{ToBlock: 5, Status: agglayertypes.Settled}, nil, nil).Once()
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil).Once()
 				mockL1InfoDataQuery.EXPECT().GetLatestFinalizedL1InfoRoot(mock.Anything).Return(
@@ -307,7 +308,7 @@ func Test_AggchainProverFlow_GetCertificateBuildParams(t *testing.T) {
 					GlobalIndex:     big.NewInt(1),
 					RollupExitRoot:  common.HexToHash("0x1"),
 					MainnetExitRoot: common.HexToHash("0x2"),
-					GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+					GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 				}},
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x1"),
 				AggchainProof: &types.AggchainProof{

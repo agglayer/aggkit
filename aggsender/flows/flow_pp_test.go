@@ -351,7 +351,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{
 					{
 						BlockNum:        1,
@@ -375,7 +375,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNum:        1,
 						RollupExitRoot:  common.HexToHash("0x1"),
 						MainnetExitRoot: common.HexToHash("0x2"),
-						GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+						GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					}},
 				CreatedAt:                      timeNowUTCForTest(),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
@@ -413,7 +413,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
@@ -437,7 +437,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					{
 						RollupExitRoot:  common.HexToHash("0x1"),
 						MainnetExitRoot: common.HexToHash("0x2"),
-						GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+						GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					}},
 				CreatedAt:                      timeNowUTCForTest(),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
