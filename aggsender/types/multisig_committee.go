@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math/big"
 
+	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -119,4 +120,10 @@ func (m *MultisigCommittee) String() string {
 	}
 	s += fmt.Sprintf(" Threshold: %d]", m.threshold)
 	return s
+}
+
+// ValidationRequest contains all parameters needed for committee validation
+type ValidationRequest struct {
+	Certificate       *agglayertypes.Certificate
+	LastL2BlockInCert uint64
 }

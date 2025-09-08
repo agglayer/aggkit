@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/big"
-	"sync"
 	"time"
 
 	jRPC "github.com/0xPolygon/cdk-rpc/rpc"
@@ -46,7 +44,7 @@ type AggSender struct {
 	certStatusChecker            types.CertificateStatusChecker
 	certQuerier                  types.CertificateQuerier
 	rollupDataQuerier            types.RollupDataQuerier
-	committeeQuerier             types.MultisigQuerier
+	validatorPoller              types.ValidatorPoller
 
 	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
@@ -138,7 +136,13 @@ func New(
 		l2OriginNetwork:              l2OriginNetwork,
 		certQuerier:                  certQuerier,
 		rollupDataQuerier:            rollupDataQuerier,
-		committeeQuerier:             committeeQuerier,
+		validatorPoller: NewValidatorPoller(
+			logger,
+			storage,
+			flowManager.Signer(),
+			committeeQuerier,
+			cfg.ValidatorClient,
+		),
 		certStatusChecker: statuschecker.NewCertStatusChecker(
 			logger, storage, aggLayerClient, certQuerier, l2OriginNetwork),
 		l1Client:         l1Client,
@@ -345,13 +349,10 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 			a.log.Warnf("local validation of certificate failed: %v. Cert: %s", err, certificate.Brief())
 		}
 	} else {
-		validators, signaturesThreshold, err := a.getValidators(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get validators: %w", err)
-		}
-
-		multisig, err = a.pollValidatorCommittee(ctx, validators, signaturesThreshold,
-			certificate, certificateParams.ToBlock)
+		multisig, err = a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{
+			Certificate:       certificate,
+			LastL2BlockInCert: certificateParams.ToBlock,
+		})
 		if err != nil {
 			return nil, fmt.Errorf("error polling validator committee: %w", err)
 		}
@@ -425,135 +426,6 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		certInfo.Header.ID(), certificateParams.FromBlock, certificateParams.ToBlock, certificate.Brief())
 
 	return certificate, nil
-}
-
-// pollValidatorCommittee invokes validator committee members to validate and sign the certificate
-func (a *AggSender) pollValidatorCommittee(
-	ctx context.Context,
-	validators []types.CertificateValidateAndSigner,
-	signaturesThreshold *big.Int,
-	certificate *agglayertypes.Certificate,
-	lastL2BlockInCert uint64,
-) (*agglayertypes.Multisig, error) {
-	if len(validators) == 0 {
-		a.log.Warnf("skipping certificate validation, because there are no validators configured")
-		return nil, nil
-	}
-
-	a.log.Infof("delegating certificate validation: %s", certificate.Brief())
-
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	type signResult struct {
-		signature []byte
-		err       error
-		validator types.CertificateValidateAndSigner
-	}
-
-	resultsCh := make(chan signResult, len(validators))
-	var wg sync.WaitGroup
-
-	start := time.Now()
-
-	for _, v := range validators {
-		wg.Add(1)
-		go func(v types.CertificateValidateAndSigner) {
-			defer wg.Done()
-
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-
-			sig, err := v.ValidateAndSignCertificate(ctx, certificate, lastL2BlockInCert)
-			if err != nil {
-				a.log.Errorf("validator %s failed to validate the certificate: %v", v.String(), err)
-				resultsCh <- signResult{err: err, validator: v}
-				return
-			}
-
-			resultsCh <- signResult{signature: sig, validator: v}
-		}(v)
-	}
-
-	go func() {
-		wg.Wait()
-		close(resultsCh)
-		metrics.ValidateTime(time.Since(start).Seconds())
-	}()
-
-	multisig := &agglayertypes.Multisig{
-		Signatures: make([]agglayertypes.ECDSAMultisigEntry, 0, len(validators)),
-	}
-	errs := make([]error, 0)
-
-	signaturesCount := big.NewInt(0)
-	for res := range resultsCh {
-		if res.err != nil {
-			errs = append(errs, res.err)
-			metrics.ValidatorError(res.validator.Address())
-
-			continue
-		}
-
-		if len(res.signature) != aggkitcommon.SignatureSize {
-			a.log.Errorf("validator %v returned an invalid signature with length %d",
-				res.validator.String(), len(res.signature))
-			metrics.ValidatorInvalidSignature(res.validator.Address())
-
-			errs = append(errs, fmt.Errorf("validator %s returned an invalid signature with length %d",
-				res.validator.String(), len(res.signature)))
-
-			continue
-		}
-
-		multisig.Signatures = append(multisig.Signatures, agglayertypes.ECDSAMultisigEntry{
-			Index:     res.validator.Index(),
-			Signature: res.signature,
-		})
-
-		signaturesCount = big.NewInt(int64(len(multisig.Signatures)))
-		if signaturesCount.Cmp(signaturesThreshold) >= 0 {
-			cancel() // signal other goroutines to stop early
-		}
-	}
-
-	if signaturesCount.Cmp(signaturesThreshold) < 0 {
-		metrics.MultiSigThresholdNotReached()
-
-		return nil, fmt.Errorf("threshold not reached: %d/%d. Errors: %w",
-			len(multisig.Signatures), signaturesThreshold, errors.Join(errs...))
-	}
-
-	a.log.Infof("certificate validation passed with %d/%d signatures: %s",
-		len(multisig.Signatures), signaturesThreshold, certificate.Brief())
-
-	return multisig, nil
-}
-
-// getValidators retrieves the actual multisig committee and creates a set of the validators
-// that are going to validate the provided certificate
-func (a *AggSender) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, *big.Int, error) {
-	committee, err := a.committeeQuerier.GetMultisigCommittee(ctx, big.NewInt(int64(aggkittypes.Latest)))
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
-	}
-
-	validators := make([]types.CertificateValidateAndSigner, 0, committee.Size())
-	for i, signer := range committee.Signers() {
-		clientCfg := a.cfg.ValidatorClient.WithURL(signer.URL)
-		validator, err := validator.NewRemoteValidator(&clientCfg, a.storage, signer.Address, uint32(i))
-		if err != nil {
-			return nil, nil, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
-				signer.Address, signer.URL, err)
-		}
-
-		validators = append(validators, validator)
-	}
-
-	return validators, committee.Threshold(), nil
 }
 
 // saveCertificateToStorage saves the certificate to the storage

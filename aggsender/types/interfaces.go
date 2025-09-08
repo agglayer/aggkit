@@ -13,6 +13,7 @@ import (
 	"github.com/agglayer/aggkit/l2gersync"
 	treetypes "github.com/agglayer/aggkit/tree/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
+	signertypes "github.com/agglayer/go_signer/signer/types"
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -34,6 +35,8 @@ type AggsenderFlow interface {
 	ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error
 	// UpdateAggchainData updates the aggchain data field for the given certificate
 	UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error
+	// Signer is the signer used to sign the certificate
+	Signer() signertypes.Signer
 }
 
 type AggsenderFlowBaser interface {
@@ -271,6 +274,11 @@ type MultisigContract interface {
 // MultisigQuerier is an abstraction for querying the multisig committee
 type MultisigQuerier interface {
 	GetMultisigCommittee(ctx context.Context, blockNum *big.Int) (*MultisigCommittee, error)
+}
+
+// ValidatorPoller is an interface defining functions that a ValidatorPoller should implement
+type ValidatorPoller interface {
+	PollValidators(ctx context.Context, req *ValidationRequest) (*agglayertypes.Multisig, error)
 }
 
 // AggchainFEPCaller is an interface defining functions that an AggchainFEPCaller should implement
