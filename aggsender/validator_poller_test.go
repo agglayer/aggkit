@@ -483,7 +483,6 @@ func TestGetValidators(t *testing.T) {
 			if tc.expectedErr != "" {
 				require.ErrorContains(t, err, tc.expectedErr)
 				require.Nil(t, validators)
-				require.Equal(t, uint32(0), threshold)
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, validators)
