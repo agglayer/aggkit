@@ -431,7 +431,7 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 func (a *AggSender) pollValidatorCommittee(
 	ctx context.Context,
 	validators []types.CertificateValidateAndSigner,
-	signaturesThreshold uint32,
+	signaturesThreshold *big.Int,
 	certificate *agglayertypes.Certificate,
 	lastL2BlockInCert uint64,
 ) (*agglayertypes.Multisig, error) {
@@ -489,6 +489,7 @@ func (a *AggSender) pollValidatorCommittee(
 	}
 	errs := make([]error, 0)
 
+	signaturesCount := big.NewInt(0)
 	for res := range resultsCh {
 		if res.err != nil {
 			errs = append(errs, res.err)
@@ -513,12 +514,13 @@ func (a *AggSender) pollValidatorCommittee(
 			Signature: res.signature,
 		})
 
-		if uint32(len(multisig.Signatures)) >= signaturesThreshold {
+		signaturesCount = big.NewInt(int64(len(multisig.Signatures)))
+		if signaturesCount.Cmp(signaturesThreshold) >= 0 {
 			cancel() // signal other goroutines to stop early
 		}
 	}
 
-	if uint32(len(multisig.Signatures)) < signaturesThreshold {
+	if signaturesCount.Cmp(signaturesThreshold) < 0 {
 		metrics.MultiSigThresholdNotReached()
 
 		return nil, fmt.Errorf("threshold not reached: %d/%d. Errors: %w",
@@ -533,10 +535,10 @@ func (a *AggSender) pollValidatorCommittee(
 
 // getValidators retrieves the actual multisig committee and creates a set of the validators
 // that are going to validate the provided certificate
-func (a *AggSender) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, uint32, error) {
+func (a *AggSender) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, *big.Int, error) {
 	committee, err := a.committeeQuerier.GetMultisigCommittee(ctx, big.NewInt(int64(aggkittypes.Latest)))
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
+		return nil, nil, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
 	}
 
 	validators := make([]types.CertificateValidateAndSigner, 0, committee.Size())
@@ -544,7 +546,7 @@ func (a *AggSender) getValidators(ctx context.Context) ([]types.CertificateValid
 		clientCfg := a.cfg.ValidatorClient.WithURL(signer.URL)
 		validator, err := validator.NewRemoteValidator(&clientCfg, a.storage, signer.Address, uint32(i))
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
+			return nil, nil, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
 				signer.Address, signer.URL, err)
 		}
 

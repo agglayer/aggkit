@@ -3,6 +3,7 @@ package types
 import (
 	"errors"
 	"fmt"
+	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
 )
@@ -33,20 +34,20 @@ func NewSignerInfo(url string, address common.Address) *SignerInfo {
 type MultisigCommittee struct {
 	signers    []*SignerInfo
 	signersSet map[common.Address]struct{}
-	threshold  uint32
+	threshold  *big.Int
 }
 
 // NewMultisigCommittee creates a new committee and builds the address set for quick lookup.
-func NewMultisigCommittee(signers []*SignerInfo, threshold uint32) (*MultisigCommittee, error) {
+func NewMultisigCommittee(signers []*SignerInfo, threshold *big.Int) (*MultisigCommittee, error) {
 	if len(signers) == 0 {
 		return nil, errEmptyCommittee
 	}
 
-	if threshold == 0 {
+	if threshold.Cmp(big.NewInt(0)) == 0 {
 		return nil, errZeroThreshold
 	}
 
-	if uint32(len(signers)) < threshold {
+	if big.NewInt(int64(len(signers))).Cmp(threshold) < 0 {
 		return nil, fmt.Errorf("committee size (%d) must be greater than or equal to the signatures threshold (%d)",
 			len(signers), threshold)
 	}
@@ -80,7 +81,7 @@ func (m *MultisigCommittee) AddSigner(info *SignerInfo) error {
 }
 
 // Threshold returns the signature threshold required for quorum.
-func (m *MultisigCommittee) Threshold() uint32 {
+func (m *MultisigCommittee) Threshold() *big.Int {
 	return m.threshold
 }
 

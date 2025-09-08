@@ -264,8 +264,8 @@ type AggchainProofQuerier interface {
 
 // MultisigContract is an abstraction for Multisig smart contract
 type MultisigContract interface {
-	Threshold(opts *bind.CallOpts) (uint32, error)
-	GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainecdsamultisig.AggchainBaseSignerInfo, error)
+	Threshold(opts *bind.CallOpts) (*big.Int, error)
+	GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainecdsamultisig.IAggchainSignersSignerInfo, error)
 }
 
 // MultisigQuerier is an abstraction for querying the multisig committee

@@ -85,7 +85,7 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	rollupQuerierMock.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
-	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, 1)
+	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, big.NewInt(1))
 	require.NoError(t, err)
 	committeQuerierMock.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
 
@@ -540,7 +540,7 @@ func TestGetValidators(t *testing.T) {
 			committeeQuerierMock := mocks.NewMultisigQuerier(t)
 
 			if tc.expectedError == "" {
-				committee, err := aggsendertypes.NewMultisigCommittee(tc.signers, uint32(len(tc.signers)))
+				committee, err := aggsendertypes.NewMultisigCommittee(tc.signers, big.NewInt(int64(len(tc.signers))))
 				require.NoError(t, err)
 				committeeQuerierMock.EXPECT().
 					GetMultisigCommittee(mock.Anything, mock.Anything).
@@ -577,7 +577,8 @@ func TestNewAggSender(t *testing.T) {
 	mockCommitteeQuerier := mocks.NewMultisigQuerier(t)
 	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
 	mockRollupQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
-	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, 1)
+	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})},
+		big.NewInt(1))
 	require.NoError(t, err)
 	mockCommitteeQuerier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
 
@@ -789,7 +790,7 @@ func TestPollValidators(t *testing.T) {
 
 	tests := []struct {
 		name               string
-		setupMocks         func() ([]aggsendertypes.CertificateValidateAndSigner, uint32)
+		setupMocks         func() ([]aggsendertypes.CertificateValidateAndSigner, *big.Int)
 		expectedMinSigs    int
 		expectErrSubstring string
 	}{
@@ -799,20 +800,20 @@ func TestPollValidators(t *testing.T) {
 		},
 		{
 			name: "single healthy validator returns valid signature",
-			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
+			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, *big.Int) {
 				mockValidator := mocks.NewCertificateValidateAndSigner(t)
 				mockValidator.EXPECT().Index().Return(uint32(1))
 				mockValidator.EXPECT().
 					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
 					Return(make([]byte, aggkitcommon.SignatureSize), nil).
 					Once()
-				return []aggsendertypes.CertificateValidateAndSigner{mockValidator}, 1
+				return []aggsendertypes.CertificateValidateAndSigner{mockValidator}, big.NewInt(1)
 			},
 			expectedMinSigs: 1,
 		},
 		{
 			name: "multiple validators reach threshold",
-			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
+			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, *big.Int) {
 				v1 := mocks.NewCertificateValidateAndSigner(t)
 				v2 := mocks.NewCertificateValidateAndSigner(t)
 				v3 := mocks.NewCertificateValidateAndSigner(t)
@@ -826,13 +827,13 @@ func TestPollValidators(t *testing.T) {
 				}
 
 				validators := []aggsendertypes.CertificateValidateAndSigner{v1, v2, v3}
-				return validators, 2
+				return validators, big.NewInt(2)
 			},
 			expectedMinSigs: 2,
 		},
 		{
 			name: "threshold not reached",
-			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
+			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, *big.Int) {
 				v1 := mocks.NewCertificateValidateAndSigner(t)
 				v2 := mocks.NewCertificateValidateAndSigner(t)
 				v3 := mocks.NewCertificateValidateAndSigner(t)
@@ -847,7 +848,7 @@ func TestPollValidators(t *testing.T) {
 				}
 
 				validators := []aggsendertypes.CertificateValidateAndSigner{v1, v2, v3}
-				return validators, 2
+				return validators, big.NewInt(2)
 			},
 			expectErrSubstring: "threshold not reached",
 		},
@@ -860,7 +861,7 @@ func TestPollValidators(t *testing.T) {
 
 			var (
 				validators []aggsendertypes.CertificateValidateAndSigner
-				threshold  uint32
+				threshold  *big.Int
 			)
 
 			if tc.setupMocks != nil {
