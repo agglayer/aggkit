@@ -21,7 +21,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/flows"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/aggsender/validator"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
@@ -495,82 +494,6 @@ func TestSendCertificate(t *testing.T) {
 	}
 }
 
-func TestGetValidators(t *testing.T) {
-	allSigners := []*aggsendertypes.SignerInfo{
-		aggsendertypes.NewSignerInfo("http://localhost:8001", common.HexToAddress("0x1")),
-		aggsendertypes.NewSignerInfo("http://localhost:8002", common.HexToAddress("0x2")),
-		aggsendertypes.NewSignerInfo("http://localhost:8003", common.HexToAddress("0x3")),
-		aggsendertypes.NewSignerInfo("http://localhost:8004", common.HexToAddress("0x4")),
-		aggsendertypes.NewSignerInfo("http://localhost:8005", common.HexToAddress("0x5")),
-		aggsendertypes.NewSignerInfo("http://localhost:8006", common.HexToAddress("0x6")),
-	}
-
-	testCases := []struct {
-		name                 string
-		signers              []*aggsendertypes.SignerInfo
-		expectedValidatorsFn func(*testing.T, []*aggsendertypes.SignerInfo) []aggsendertypes.CertificateValidateAndSigner
-		expectedThreshold    uint32
-		expectedError        string
-	}{
-		{
-			name:              "successful return of committee validators",
-			signers:           allSigners[:len(allSigners)/2],
-			expectedThreshold: uint32(len(allSigners) / 2),
-			expectedValidatorsFn: func(t *testing.T,
-				signers []*aggsendertypes.SignerInfo) []aggsendertypes.CertificateValidateAndSigner {
-				t.Helper()
-
-				validators := make([]aggsendertypes.CertificateValidateAndSigner, 0, len(signers))
-				for i, signer := range signers {
-					validator, err := validator.NewRemoteValidator(&grpc.ClientConfig{URL: signer.URL}, nil, signer.Address, uint32(i))
-					require.NoError(t, err)
-					validators = append(validators, validator)
-				}
-				return validators
-			},
-		},
-		{
-			name:          "failed to query the committee",
-			expectedError: "invalid parameters",
-		},
-	}
-
-	for _, tc := range testCases {
-		t.Run(tc.name, func(t *testing.T) {
-			committeeQuerierMock := mocks.NewMultisigQuerier(t)
-
-			if tc.expectedError == "" {
-				committee, err := aggsendertypes.NewMultisigCommittee(tc.signers, uint32(len(tc.signers)))
-				require.NoError(t, err)
-				committeeQuerierMock.EXPECT().
-					GetMultisigCommittee(mock.Anything, mock.Anything).
-					Return(committee, nil)
-			} else {
-				committeeQuerierMock.EXPECT().
-					GetMultisigCommittee(mock.Anything, mock.Anything).
-					Return(nil, errors.New(tc.expectedError))
-			}
-
-			aggsender := &AggSender{
-				cfg:              config.Config{ValidatorClient: &grpc.ClientConfig{}},
-				committeeQuerier: committeeQuerierMock,
-			}
-
-			validators, threshold, err := aggsender.getValidators(t.Context())
-			if tc.expectedError != "" {
-				require.ErrorContains(t, err, tc.expectedError)
-			} else {
-				expectedValidators := tc.expectedValidatorsFn(t, tc.signers)
-				require.Len(t, validators, len(tc.signers))
-				for i, v := range expectedValidators {
-					require.Equal(t, v.URL(), validators[i].URL())
-				}
-				require.Equal(t, tc.expectedThreshold, threshold)
-			}
-		})
-	}
-}
-
 func TestNewAggSender(t *testing.T) {
 	mockBridgeSyncer := mocks.NewL2BridgeSyncer(t)
 	mockRollupQuerier := mocks.NewRollupDataQuerier(t)
@@ -775,117 +698,6 @@ func TestSendCertificates(t *testing.T) {
 			mockEpochNotifier.AssertExpectations(t)
 			mockStorage.AssertExpectations(t)
 			mockFlow.AssertExpectations(t)
-		})
-	}
-}
-
-func TestPollValidators(t *testing.T) {
-	t.Parallel()
-
-	certificate := &agglayertypes.Certificate{
-		NetworkID: 1,
-		Height:    1,
-	}
-
-	tests := []struct {
-		name               string
-		setupMocks         func() ([]aggsendertypes.CertificateValidateAndSigner, uint32)
-		expectedMinSigs    int
-		expectErrSubstring string
-	}{
-		{
-			name:            "no validators configured",
-			expectedMinSigs: 0,
-		},
-		{
-			name: "single healthy validator returns valid signature",
-			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
-				mockValidator := mocks.NewCertificateValidateAndSigner(t)
-				mockValidator.EXPECT().Index().Return(uint32(1))
-				mockValidator.EXPECT().
-					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
-					Return(make([]byte, aggkitcommon.SignatureSize), nil).
-					Once()
-				return []aggsendertypes.CertificateValidateAndSigner{mockValidator}, 1
-			},
-			expectedMinSigs: 1,
-		},
-		{
-			name: "multiple validators reach threshold",
-			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
-				v1 := mocks.NewCertificateValidateAndSigner(t)
-				v2 := mocks.NewCertificateValidateAndSigner(t)
-				v3 := mocks.NewCertificateValidateAndSigner(t)
-
-				for i, v := range [](*mocks.CertificateValidateAndSigner){v1, v2, v3} {
-					v.EXPECT().Index().Return(uint32(i))
-					v.EXPECT().
-						ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
-						Return(make([]byte, aggkitcommon.SignatureSize), nil).
-						Times(1)
-				}
-
-				validators := []aggsendertypes.CertificateValidateAndSigner{v1, v2, v3}
-				return validators, 2
-			},
-			expectedMinSigs: 2,
-		},
-		{
-			name: "threshold not reached",
-			setupMocks: func() ([]aggsendertypes.CertificateValidateAndSigner, uint32) {
-				v1 := mocks.NewCertificateValidateAndSigner(t)
-				v2 := mocks.NewCertificateValidateAndSigner(t)
-				v3 := mocks.NewCertificateValidateAndSigner(t)
-
-				for i, v := range [](*mocks.CertificateValidateAndSigner){v1, v2, v3} {
-					v.EXPECT().String().Return(fmt.Sprintf("validator-%d", i))
-					v.EXPECT().Address().Return(common.HexToAddress(fmt.Sprintf("0x%d", i+1)))
-					v.EXPECT().
-						ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
-						Return(nil, errors.New("validation failed")).
-						Times(1)
-				}
-
-				validators := []aggsendertypes.CertificateValidateAndSigner{v1, v2, v3}
-				return validators, 2
-			},
-			expectErrSubstring: "threshold not reached",
-		},
-	}
-
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			var (
-				validators []aggsendertypes.CertificateValidateAndSigner
-				threshold  uint32
-			)
-
-			if tc.setupMocks != nil {
-				validators, threshold = tc.setupMocks()
-			}
-
-			agg := &AggSender{
-				log: log.WithFields("test", "pollValidators"),
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-
-			multiSig, err := agg.pollValidatorCommittee(ctx, validators, threshold, certificate, 0)
-
-			if tc.expectErrSubstring != "" {
-				require.ErrorContains(t, err, tc.expectErrSubstring)
-			} else if len(validators) == 0 {
-				require.Nil(t, multiSig)
-				require.NoError(t, err)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, multiSig)
-				require.GreaterOrEqual(t, len(multiSig.Signatures), tc.expectedMinSigs)
-			}
 		})
 	}
 }

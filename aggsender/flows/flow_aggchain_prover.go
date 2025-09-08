@@ -444,3 +444,8 @@ func (a *AggchainProverFlow) ValidateCertificate(ctx context.Context, cert *aggl
 
 	return nil
 }
+
+// Signer returns the signer used to sign the certificate
+func (a *AggchainProverFlow) Signer() signertypes.Signer {
+	return a.certificateSigner
+}

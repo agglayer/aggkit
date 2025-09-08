@@ -17,7 +17,7 @@ var _ types.AggsenderFlow = (*PPFlow)(nil)
 // PPFlow is a struct that holds the logic for the regular pessimistic proof flow
 type PPFlow struct {
 	baseFlow              types.AggsenderFlowBaser
-	signer                signertypes.Signer
+	certificateSigner     signertypes.Signer
 	log                   types.Logger
 	l1InfoTreeDataQuerier types.L1InfoTreeDataQuerier
 
@@ -41,7 +41,7 @@ func NewPPFlow(log types.Logger,
 		forceOneBridgeExit,
 	)
 	return &PPFlow{
-		signer:                signer,
+		certificateSigner:     signer,
 		log:                   log,
 		l1InfoTreeDataQuerier: l1InfoTreeQuerier,
 		baseFlow:              baseFlow,
@@ -151,13 +151,13 @@ func (p *PPFlow) UpdateAggchainData(
 func (p *PPFlow) signCertificate(ctx context.Context,
 	certificate *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
 	hashToSign := certificate.PPHashToSign()
-	sig, err := p.signer.SignHash(ctx, hashToSign)
+	sig, err := p.certificateSigner.SignHash(ctx, hashToSign)
 	if err != nil {
 		return nil, err
 	}
 
 	p.log.Infof("ppFlow - Signed certificate. Sequencer address: %s. New local exit root: %s Hash signed: %s",
-		p.signer.PublicAddress().String(),
+		p.certificateSigner.PublicAddress().String(),
 		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
 		hashToSign.String(),
 	)
@@ -181,4 +181,9 @@ func (p *PPFlow) ValidateCertificate(ctx context.Context, cert *agglayertypes.Ce
 	}
 
 	return nil
+}
+
+// Signer returns the signer used to sign the certificate
+func (p *PPFlow) Signer() signertypes.Signer {
+	return p.certificateSigner
 }
