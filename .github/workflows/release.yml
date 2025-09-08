@@ -121,7 +121,7 @@ jobs:
 
     build:
         runs-on: amd-runner-2204
-        needs: [setup, unit-tests]
+        needs: [setup, unit-tests, security-scan]
         if: needs.setup.outputs.version-changed == 'true' && needs.unit-tests.result == 'success' && needs.integration-tests.result == 'success' && needs.security-scan.result == 'success'
         strategy:
             fail-fast: false
