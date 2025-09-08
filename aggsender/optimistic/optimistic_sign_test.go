@@ -22,7 +22,7 @@ import (
 )
 
 func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 	signerKey, err := crypto.GenerateKey()
 	require.NoError(t, err)
 
