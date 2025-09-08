@@ -2,6 +2,8 @@ name: Release
 
 on:
     push:
+        branches:
+            - feat/ci-revamp
         tags:
             - "v*.*.*"
             - "v*.*.*-*"
@@ -113,9 +115,9 @@ jobs:
     #     needs: setup
     #     uses: ./.github/workflows/test-e2e.yml
 
-    # security-scan:
-    #     needs: setup
-    #     uses: ./.github/workflows/test-security.yml
+    security-scan:
+        needs: setup
+        uses: ./.github/workflows/test-security.yml
 
     build:
         runs-on: amd-runner-2204
