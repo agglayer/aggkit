@@ -14,7 +14,7 @@ on:
     workflow_call: {}
 
 concurrency:
-    group: ${{ github.workflow }}-${{ github.ref }}
+    group: test-e2e-${{ github.workflow }}-${{ github.ref }}
     cancel-in-progress: true
 
 env:
