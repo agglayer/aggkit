@@ -157,7 +157,7 @@ func (c *EVMChainGERSender) initializeAndValidateAggOracleCommitteeMode() error 
 // IsGERInjected checks if the provided global exit root is already injected into the
 // L2 GER manager contract by querying the map
 func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
-	gerIndex, err := c.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: false}, ger)
+	gerIndex, err := c.l2GERManager.GlobalExitRootMap(&bind.CallOpts{Pending: true}, ger)
 	if err != nil {
 		return false, fmt.Errorf("failed to check if global exit root is injected %s: %w", ger, err)
 	}
@@ -168,7 +168,7 @@ func (c *EVMChainGERSender) IsGERInjected(ger common.Hash) (bool, error) {
 // IsGERProposed checks if the provided global exit root has already been proposed by the oracle committee member
 func (c *EVMChainGERSender) IsGERProposed(ger common.Hash) (bool, error) {
 	lastProposedGER, err := c.aggOracleCommittee.AddressToLastProposedGER(
-		&bind.CallOpts{Pending: false}, c.ethTxMan.From())
+		&bind.CallOpts{Pending: true}, c.ethTxMan.From())
 	if err != nil {
 		return false, fmt.Errorf("failed to check last proposed GER for oracle committee member %s: %w",
 			c.ethTxMan.From(), err)
