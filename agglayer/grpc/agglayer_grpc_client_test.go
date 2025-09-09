@@ -612,7 +612,7 @@ func TestGetNetworkStatus(t *testing.T) {
 		networkStateServiceMock.EXPECT().GetNetworkInfo(mock.Anything, mock.Anything).Return(&node.GetNetworkInfoResponse{}, nil)
 
 		_, err := client.GetNetworkInfo(ctx, networkID)
-		require.ErrorContains(t, err, "network state is not available")
+		require.ErrorContains(t, err, "network info is not available")
 	})
 
 	t.Run("returns response on success", func(t *testing.T) {
