@@ -713,6 +713,18 @@ func Test_baseFlow_VerifyBlockRangeGaps(t *testing.T) {
 					Return([]bridgesync.Bridge{}, []bridgesync.Claim{}, nil)
 			},
 		},
+		{
+			name: "lastSentCertificate is Settled, and SC.StartingBlockNumber is < that last Cert, so nothing to check",
+			args: args{
+				lastSentCertificate: &types.CertificateHeader{
+					Status:    agglayertypes.Settled,
+					FromBlock: 5,
+					ToBlock:   10,
+				},
+				newFromBlock: 1,
+				newToBlock:   1,
+			},
+		},
 	}
 
 	for _, tt := range tests {
