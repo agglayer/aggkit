@@ -728,6 +728,10 @@ paths:
         in: query
         name: page_size
         type: integer
+      - description: Filter by origin token address
+        in: query
+        name: origin_token_address
+        type: string
       produces:
       - application/json
       responses:
