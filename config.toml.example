@@ -10,577 +10,318 @@
 # The below configs are the default mandatory parameters to be used.
 # ==============================================================================
 
-PathRWData = "<PATH>"
 L1URL = "<URL>"
 L2URL = "<URL>"
+# ------------------------------------------------------------------------------
+# OP Node URL. To be used when deploying OP stack
+# ------------------------------------------------------------------------------
+OpNodeURL = "http://localhost:8080"
 
 AggLayerURL = "<URL>"
-
+# ------------------------------------------------------------------------------
+# Aggkit Prover URL. To be used when FEP is enabled
+# ------------------------------------------------------------------------------
 AggchainProofURL= "<URL>"
 
 NetworkID = <NETWORK_ID>
-
 AggSenderPrivateKeyPath = "<PATH>"
 AggSenderPrivateKeyPassword  = "<PASSWORD>"
 
 polygonBridgeAddr = "<ADDR>"
 
-# These values can be overridden directly from genesis.json
 rollupCreationBlockNumber = "<BLOCK_NUM>"
 rollupManagerCreationBlockNumber = "<BLOCK_NUM>"
 genesisBlockNumber = "<BLOCK_NUM>"
-# ------------------------------------------------------------------------------
 
-# ==============================================================================
-#  _     _  ____ ___  _   _ _____ ___ ____
-# | |   / |/ ___/ _ \| \ | |  ___|_ _/ ___|
-# | |   | | |  | | | |  \| | |_   | | |  _
-# | |___| | |__| |_| | |\  |  _|  | | |_| |
-# |_____|_|\____\___/|_| \_|_|   |___\____|
-#
-# ------------------------------------------------------------------------------
 [L1Config]
 # ------------------------------------------------------------------------------
 # URL is the L1 network url
 # ------------------------------------------------------------------------------
 URL = "<URL>"
-
 # ------------------------------------------------------------------------------
 # Address of the zkevm global exit root contract on L1
 # ------------------------------------------------------------------------------
 polygonZkEVMGlobalExitRootAddress = "<ADDR>"
-
 # ------------------------------------------------------------------------------
 # Address of the rollup manager contract on L1
 # ------------------------------------------------------------------------------
 polygonRollupManagerAddress = "<ADDR>"
-
 # ------------------------------------------------------------------------------
 # Address of the pol token address on L1
 # ------------------------------------------------------------------------------
 polTokenAddress = "<ADDR>"
-
 # ------------------------------------------------------------------------------
 # Address of the sovereign rollup contract on L1
 # ------------------------------------------------------------------------------
 polygonZkEVMAddress = "<ADDR>"
 
-# ==============================================================================
-#  _     ____   ____ ___  _   _ _____ ___ ____
-# | |   |___ \ / ___/ _ \| \ | |  ___|_ _/ ___|
-# | |     __) | |  | | | |  \| | |_   | | |  _
-# | |___ / __/| |__| |_| | |\  |  _|  | | |_| |
-# |_____|_____|\____\___/|_| \_|_|   |___\____|
-#
-# ------------------------------------------------------------------------------
 [L2Config]
 # ------------------------------------------------------------------------------
 # Address of the sovereign global exit root proxy contract on L2
 # ------------------------------------------------------------------------------
 GlobalExitRootAddr = "<ADDR>"
-
-# ==============================================================================
-#  _     ___   ____
-# | |   / _ \ / ___|
-# | |  | | | | |  _
-# | |__| |_| | |_| |
-# |_____\___/ \____|
-#
 # ------------------------------------------------------------------------------
+# Address of the aggoracle committee. To be used when aggoracle committee is enabled
+# ------------------------------------------------------------------------------
+AggOracleCommitteeAddr = "0x0000000000000000000000000000000000000000"
+
+
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# The below configs are the default parameters to be used.
+# The user can modify it based on requirements
+# ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+
+PathRWData = "/tmp/aggkit"
+RequireStorageContentCompatibility = true
+GenerateAggchainProofTimeout = "1h"
+AggsenderPrivateKey = "{Method =  \"local\", Path = \"{{AggSenderPrivateKeyPath}}\", Password = \"{{AggSenderPrivateKeyPassword}}\"}"
+[L2RPC]
+	Mode = "basic"
+	URL = "{{L2URL}}"
+	RetryMode = "backoff"
+	MaxRetries = 5
+	InitialBackoff = "2s"
+	MaxBackoff = "10s"
+	BackoffMultiplier = 2.0
 [Log]
-# ------------------------------------------------------------------------------
-# Environment generally dictates the format of the logs and the
-# sampling rate. We often default to production even for development
-# because of the JSON encoding.
-#
-# https://github.com/uber-go/zap/blob/a55bdc32f526699c3b4cc51a2cc97e944d02fbbf/config.go#L120
-# https://github.com/uber-go/zap/blob/a55bdc32f526699c3b4cc51a2cc97e944d02fbbf/config.go#L161
-# ------------------------------------------------------------------------------
-Environment = "production" # "production" or "development"
+Environment = "production"
+Level = "info"
 
-# ------------------------------------------------------------------------------
-# Level determines the log level that will be written to the
-# log. Generally we'll switch to debug if we want to troubleshoot
-# something specifically otherwise we leave it at info
-# ------------------------------------------------------------------------------
-# Level = "info"
+[Common]
+NetworkID = {{NetworkID}}
+L2RPC = {{L2RPC}}
 
-# ==============================================================================
-# ____  ____   ____
-# |  _ \|  _ \ / ___|
-# | |_) | |_) | |
-# |  _ <|  __/| |___
-# |_| \_\_|    \____|
-#
+[L1NetworkConfig]
+L1ChainID = {{L1Config.chainId}}
+POLTokenAddr = "{{L1Config.polTokenAddress}}"
+RollupAddr = "{{L1Config.polygonZkEVMAddress}}"
+RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
+GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+	[L1NetworkConfig.RPC]
+		URL = "{{L1Config.URL}}"
+		RetryMode = "backoff"
+		MaxRetries = 5
+		InitialBackoff = "2s"
+		MaxBackoff = "10s"
+		BackoffMultiplier = 2.0
+
+[ReorgDetectorL2]
+DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
+FinalizedBlock = "LatestBlock"
+
+[L1InfoTreeSync]
+DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
+GlobalExitRootAddr = "{{L1NetworkConfig.GlobalExitRootManagerAddr}}"
+RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
+SyncBlockChunkSize = 100
+URLRPCL1 = "{{L1URL}}"
+WaitForNewBlocksPeriod = "100ms"
+InitialBlock = {{genesisBlockNumber}}
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+
+[AggOracle]
+TargetChainType = "EVM"
+URLRPCL1 = "{{L1URL}}"
+WaitPeriodNextGER = "10s"
 # ------------------------------------------------------------------------------
+# Set to true if enabling aggoracle committee mode
+# ------------------------------------------------------------------------------
+EnableAggOracleCommittee = false
+	[AggOracle.EVMSender]
+		GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+		AggOracleCommitteeAddr = "{{L2Config.AggOracleCommitteeAddr}}"
+		GasOffset = 0
+		WaitPeriodMonitorTx = "1s"
+		[AggOracle.EVMSender.EthTxManager]
+				FrequencyToMonitorTxs = "1s"
+				WaitTxToBeMined = "2s"
+				GetReceiptMaxTime = "250ms"
+				GetReceiptWaitInterval = "1s"
+				PrivateKeys = [
+					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
+				]
+				ForcedGas = 0
+				GasPriceMarginFactor = 1
+				MaxGasPriceLimit = 0
+				StoragePath = "{{PathRWData}}/ethtxmanager-aggoracle.sqlite"
+				ReadPendingL1Txs = false
+				SafeStatusL1NumberOfBlocks = 5
+				FinalizedStatusL1NumberOfBlocks = 10
+					[AggOracle.EVMSender.EthTxManager.Etherman]
+						URL = "{{L2URL}}"
+						MultiGasProvider = false
+						# L1ChainID = 0 indicates it will be set at runtime
+						# This field should be populated with L2ChainID
+						L1ChainID = 0
+						HTTPHeaders = []
+
 [RPC]
-# ------------------------------------------------------------------------------
-# Port will configure the port that the JSON RPC server will listen on
-# ------------------------------------------------------------------------------
-Port = "<PORT>"
+Host = "0.0.0.0"
+Port = 5576
+ReadTimeout = "2s"
+WriteTimeout = "2s"
+MaxRequestsPerIPAndSecond = 10
 
-# ==============================================================================
-#  ____  _____ ____ _____
-# |  _ \| ____/ ___|_   _|
-# | |_) |  _| \___ \ | |
-# |  _ <| |___ ___) || |
-# |_| \_\_____|____/ |_|
-#
-# ------------------------------------------------------------------------------
 [REST]
-# ------------------------------------------------------------------------------
-# Port will configure the port that the REST API HTTP server will
-# listen on
-# ------------------------------------------------------------------------------
-Port = "<PORT>"
+Host = "0.0.0.0"
+Port = 5577
+ReadTimeout = "2s"
+WriteTimeout = "2s"
+MaxRequestsPerIPAndSecond = 10
 
-# ==============================================================================
-#     _    ____  ____ ____  _____ _   _ ____  _____ ____
-#    / \  / ___|/ ___/ ___|| ____| \ | |  _ \| ____|  _ \
-#   / _ \| |  _| |  _\___ \|  _| |  \| | | | |  _| | |_) |
-#  / ___ \ |_| | |_| |___) | |___| |\  | |_| | |___|  _ <
-# /_/   \_\____|\____|____/|_____|_| \_|____/|_____|_| \_\
-#
-# ------------------------------------------------------------------------------
+[BridgeL1Sync]
+DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
+InitialBlockNum = 0
+BridgeAddr = "{{polygonBridgeAddr}}"
+SyncBlockChunkSize = 100
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+WaitForNewBlocksPeriod = "3s"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
+
+[BridgeL2Sync]
+DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
+BlockFinality = "LatestBlock"
+InitialBlockNum = 0
+BridgeAddr = "{{polygonBridgeAddr}}"
+SyncBlockChunkSize = 100
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+WaitForNewBlocksPeriod = "3s"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+DBQueryTimeout = "{{defaultDBQueryTimeout}}"
+
+[L2GERSync]
+DBPath = "{{PathRWData}}/l2gersync.sqlite"
+BlockFinality = "LatestBlock"
+InitialBlockNum = 0
+GlobalExitRootL2Addr = "{{L2Config.GlobalExitRootAddr}}"
+SyncBlockChunkSize = 100
+RetryAfterErrorPeriod = "1s"
+MaxRetryAttemptsAfterError = -1
+WaitForNewBlocksPeriod = "1s"
+DownloadBufferSize = 100
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+
 [AggSender]
+StoragePath = "{{PathRWData}}/aggsender.sqlite"
+AggsenderPrivateKey = {{AggsenderPrivateKey}}
+EpochNotificationPercentage = 50
+MaxRetriesStoreCertificate = 3
+DelayBetweenRetries = "30s"
+KeepCertificatesHistory = true
+MaxCertSize = 8388608 # MaxSize of the certificate to 8Mb
+DryRun = false
+EnableRPC = true
 # ------------------------------------------------------------------------------
-# StoragePath is the path of the sqlite db for the AggSender to store the data
-# ------------------------------------------------------------------------------
-# StoragePath = "/tmp"
-
-# ------------------------------------------------------------------------------
-# AggsenderPrivateKey is the private key which is used to sign certificates
-# ------------------------------------------------------------------------------
-AggSenderPrivateKey = {Path = "<PATH>", Password = "<PASSWORD>"}
-
-# ------------------------------------------------------------------------------
-# Proof Mode. Default is "PessimisticProof" for PP mode. Use "AggchainProof"
-# for FEP mode
+# Set to AggchainProof when enabling FEP
 # ------------------------------------------------------------------------------
 Mode = "PessimisticProof"
-CheckStatusCertificateInterval = "1s"
+CheckStatusCertificateInterval = "5m"
+RetryCertAfterInError = false
+GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
+RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
+RequireNoFEPBlockGap = false
+RequireOneBridgeInPPCertificate = false
+RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
+RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
+MaxL2BlockNumber = 0
+StopOnFinishedSendingAllCertificates = false
+RequireValidatorCall = false
+	[AggSender.RetriesToBuildAndSendCertificate]
+		RetryMode = "delays"
+		Delays = [ "1m", "1m", "2m", "5m", "5m", "8m" ]
+		MaxRetries = 6 # 1+6 attempts, around 22m
+	[AggSender.AgglayerClient]
+		Cached = false
+		[AggSender.AgglayerClient.ConfigurationCache]
+			TTL = "5m"
+			Capacity = 100
+		[AggSender.AgglayerClient.GRPC]
+			URL = "{{AggLayerURL}}"
+			MinConnectTimeout = "5s"
+			RequestTimeout = "300s"
+			UseTLS = false
+			[AggSender.AgglayerClient.GRPC.Retry]
+				InitialBackoff = "1s"
+				MaxBackoff = "10s"
+				BackoffMultiplier = 2.0
+				MaxAttempts = 20
+	[AggSender.AggkitProverClient]
+		URL = "{{AggchainProofURL}}"
+		MinConnectTimeout = "5s"
+		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
+		UseTLS = false
+	[AggSender.MaxSubmitCertificateRate]
+		NumRequests = 20
+		Interval = "1h"
+	[AggSender.OptimisticModeConfig]
+		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
+		# By default use the same key that aggsender signs certs
+		TrustedSequencerKey = {{AggSender.AggsenderPrivateKey}}
+		OpNodeURL = "{{OpNodeURL}}"
+		# TODO: For now set it to false, until it gets fixed on the contracts deployment end
+		RequireKeyMatchTrustedSequencer = false
+	[AggSender.ValidatorClient]
+		URL = ""
+		MinConnectTimeout = "5s"
+		RequestTimeout = "30s"
+		UseTLS = false
 
-# ------------------------------------------------------------------------------
-# MaxCertSize is the maximum size of the certificate
-# i.e (the emitted certificate cannot be bigger that this size)
-# 0 is infinite
-# ------------------------------------------------------------------------------
-# MaxCertSize = 0
+[Prometheus]
+Enabled = true
+Host = "localhost"
+Port = 9091
 
-# ------------------------------------------------------------------------------
-# RequireValidatorCall is set to true if using aggsender validator in PP mode
-# URL to be configured if using aggsender validator
-# ------------------------------------------------------------------------------
-# RequireValidatorCall = false
-# [AggSender.ValidatorClient]
-# URL = "<URL>"
-
-[AggSender.AggkitProverClient]
-UseTLS = false
-
-# ------------------------------------------------------------------------------
-# Config for Full Execution Proof chains
-# ------------------------------------------------------------------------------
-# [AggSender.OptimisticModeConfig]
-# SovereignRollupAddr = "<ADDR>"
-# TrustedSequencerKey = {Path = "<PATH>", Password = "<PASSWORD>"}
-# OpNodeURL = "<URL>"
-# RequireKeyMatchTrustedSequencer = true
-
-[AggSender.MaxSubmitCertificateRate]
-NumRequests = 20
-Interval = "1m"
-
-# ------------------------------------------------------------------------------
-# EpochNotificationPercentage indicates the percentage of the epoch
-# the AggSender should send the certificate
-# 0 -> Begin
-# 50 -> Middle
-# ------------------------------------------------------------------------------
-# EpochNotificationPercentage = 50
-
-# ------------------------------------------------------------------------------
-# MaxRetriesStoreCertificate is the maximum number of retries to store a certificate
-# 0 is infinite
-# ------------------------------------------------------------------------------
-# MaxRetriesStoreCertificate = 3
-
-# ------------------------------------------------------------------------------
-# DelayBetweenRetries is the delay between retries
-# Duration expressed in units: [ns, us, ms, s, m, h, d]"
-# ------------------------------------------------------------------------------
-# DelayBetweenRetries = 5s
-
-# ------------------------------------------------------------------------------
-# KeepCertificatesHistory is a flag to keep the certificates history on storage
-# ------------------------------------------------------------------------------
-# KeepCertificatesHistory = false
-
-# ------------------------------------------------------------------------------
-# DryRun is a flag to enable the dry run mode
-# in this mode the AggSender will not send the certificates to Agglayer
-# ------------------------------------------------------------------------------
-# DryRun = false
-
-# ------------------------------------------------------------------------------
-# EnableRPC is a flag to enable the RPC for aggsender
-# ------------------------------------------------------------------------------
-# EnableRPC = true
-
-# ------------------------------------------------------------------------------
-# Enable if aggsender validator is enabled
-# ------------------------------------------------------------------------------
-# [AggSender.AgglayerClient]
-# Cached = true
-# [Validator.AgglayerClient.ConfigurationCache]
-# TTL = "15m"
-# Capacity = 100
-# [AggSender.AgglayerClient.GRPC]
-# URL = "<URL>"
-# MinConnectTimeout = "5s"
-# RequestTimeout = "300s"
-# UseTLS = false
-# [AggSender.AgglayerClient.GRPC.Retry]
-# InitialBackoff = "1s"
-# MaxBackoff = "10s"
-# BackoffMultiplier = 2.0
-# MaxAttempts = 20
-
-# ------------------------------------------------------------------------------
-# RetryCertAfterInError when a cert pass to 'InError'state
-# the AggSender will try to resend it immediately
-# ------------------------------------------------------------------------------
-# RetryCertAfterInError = false
-
-# ------------------------------------------------------------------------------
-# RequireNoFEPBlockGap is true if the AggSender should not accept a gap between
-# lastBlock from lastCertificate and first block of FEP
-# ------------------------------------------------------------------------------
-# RequireNoFEPBlockGap = false
-
-# ------------------------------------------------------------------------------
-# RequireOneBridgeInPPCertificate is a flag to force the AggSender to have at least one bridge exit
-# for the Pessimistic Proof certificates
-# ------------------------------------------------------------------------------
-# RequireOneBridgeInPPCertificate = false
-
-# ------------------------------------------------------------------------------
-# MaxL2BlockNumber is the last L2 block number that is going to be included in a certificate
-# 0 means disabled
-# ------------------------------------------------------------------------------
-# MaxL2BlockNumber = 0
-
-# ------------------------------------------------------------------------------
-# StopOnFinishedSendingAllCertificates is a flag to stop the AggSender when it finishes sending all certificates
-# up to MaxL2BlockNumber
-# ------------------------------------------------------------------------------
-# StopOnFinishedSendingAllCertificates = false
-
-# ==============================================================================
-#     _    ____  ____  ___  ____      _    ____ _     _____
-#    / \  / ___|/ ___|/ _ \|  _ \    / \  / ___| |   | ____|
-#   / _ \| |  _| |  _| | | | |_) |  / _ \| |   | |   |  _|
-#  / ___ \ |_| | |_| | |_| |  _ <  / ___ \ |___| |___| |___
-# /_/   \_\____|\____|\___/|_| \_\/_/   \_\____|_____|_____|
-#
-# ------------------------------------------------------------------------------
-[AggOracle]
-# ------------------------------------------------------------------------------
-# TargetChainType currently only supports "EVM"
-# ------------------------------------------------------------------------------
-# TargetChainType = "EVM"
-
-# ------------------------------------------------------------------------------
-# URLRPCL1 is the URL of the L1 RPC node
-# ------------------------------------------------------------------------------
-# URLRPCL1 = "<URL>"
-
-# ------------------------------------------------------------------------------
-# Duration expressed in units: [ns, us, ms, s, m, h, d]"
-# ------------------------------------------------------------------------------
-WaitPeriodNextGER = "10s"
-
-# ------------------------------------------------------------------------------
-# Flag to enable aggoracle committee mode. Default: false
-# ------------------------------------------------------------------------------
-# EnableAggOracleCommittee = false
-
-[AggOracle.EVMSender]
-# ------------------------------------------------------------------------------
-# Address of the sovereign global exit root proxy contract on L2
-# ------------------------------------------------------------------------------
-GlobalExitRootL2 = "<ADDR>"
-
-# ------------------------------------------------------------------------------
-# GasOffset is the gas to add on the estimated gas when sending the claim txs
-# ------------------------------------------------------------------------------
-# GasOffset = 0
-
-# ------------------------------------------------------------------------------
-# Duration expressed in units: [ns, us, ms, s, m, h, d]"
-# ------------------------------------------------------------------------------
-WaitPeriodMonitorTx = "10s"
-
-# ------------------------------------------------------------------------------
-# Set if `EnableAggOracleCommittee` if enabled
-# ------------------------------------------------------------------------------
-# AggOracleCommitteeAddr = "<ADDR>"
-
-[AggOracle.EVMSender.EthTxManager]
-# ------------------------------------------------------------------------------
-# PrivateKeys defines all the key store files that are going
-# to be read in order to provide the private keys to sign the L1 txs
-# ------------------------------------------------------------------------------
-PrivateKeys = [{Method =  "local", Path = "<PATH>", Password = "<PASSWORD>"}]
-
-# ------------------------------------------------------------------------------
-# FrequencyToMonitorTxs frequency of the resending failed txs
-# Duration expressed in units: [ns, us, ms, s, m, h, d]"
-# ------------------------------------------------------------------------------
-# FrequencyToMonitorTxs = "1s"
-
-# ------------------------------------------------------------------------------
-# WaitTxToBeMined time to wait after transaction was sent to the ethereum
-# ------------------------------------------------------------------------------
-# WaitTxToBeMined = "2s"
-
-# ------------------------------------------------------------------------------
-# GetReceiptMaxTime is the max time to wait to get the receipt of the mined transaction
-# ------------------------------------------------------------------------------
-# GetReceiptMaxTime = "250ms"
-
-# ------------------------------------------------------------------------------
-# GetReceiptWaitInterval is the time to sleep before trying to get the receipt of the mined transaction
-# ------------------------------------------------------------------------------
-# GetReceiptWaitInterval = "1s"
-
-# ------------------------------------------------------------------------------
-# ForcedGas is the amount of gas to be forced in case of gas estimation error
-# ------------------------------------------------------------------------------
-# ForcedGas = 0
-
-# ------------------------------------------------------------------------------
-# GasPriceMarginFactor is used to multiply the suggested gas price provided by the network
-# in order to allow a different gas price to be set for all the transactions and making it
-# easier to have the txs prioritized in the pool, default value is 1.
-#
-# example:
-# suggested gas price: 100
-# GasPriceMarginFactor: 1
-# gas price = 100
-#
-# suggested gas price: 100
-# GasPriceMarginFactor: 1.1
-# gas price = 110
-# ------------------------------------------------------------------------------
-# GasPriceMarginFactor = 1
-
-# ------------------------------------------------------------------------------
-# MaxGasPriceLimit helps avoiding transactions to be sent over an specified
-# gas price amount, default value is 0, which means no limit.
-# If the gas price provided by the network and adjusted by the GasPriceMarginFactor
-# is greater than this configuration, transaction will have its gas price set to
-# the value configured in this config as the limit.
-#
-# example:
-# suggested gas price: 100
-# gas price margin factor: 20%
-# max gas price limit: 150
-# tx gas price = 120
-#
-# suggested gas price: 100
-# gas price margin factor: 20%
-# max gas price limit: 110
-# tx gas price = 110
-# ------------------------------------------------------------------------------
-# MaxGasPriceLimit = 0
-
-# ------------------------------------------------------------------------------
-# StoragePath is the path of the internal storage
-# ------------------------------------------------------------------------------
-# StoragePath = "<PATH>"
-
-# ------------------------------------------------------------------------------
-# ReadPendingL1Txs is a flag to enable the reading of pending L1 txs
-# It can only be enabled if DBPath is empty
-# ------------------------------------------------------------------------------
-# ReadPendingL1Txs = false
-
-# ------------------------------------------------------------------------------
-# SafeStatusL1NumberOfBlocks overwrites the number of blocks to consider a tx as safe
-# overwriting the default value provided by the network
-# 0 means that the default value will be used
-# ------------------------------------------------------------------------------
-# SafeStatusL1NumberOfBlocks = 5
-
-# ------------------------------------------------------------------------------
-# FinalizedStatusL1NumberOfBlocks overwrites the number of blocks to
-# consider a tx as finalized overwriting the default value provided by the network
-# 0 means that the default value will be used
-# ------------------------------------------------------------------------------
-# FinalizedStatusL1NumberOfBlocks = 10
-
-[AggOracle.EVMSender.EthTxManager.Etherman]
-# ------------------------------------------------------------------------------
-# Needs to be set to be the sovereign L2 chain id
-# ------------------------------------------------------------------------------
-L1ChainID = "<CHAIN_ID>"
-
-# ==============================================================================
-#  ____  ____  ___ ____   ____ _____ _     ____  ______   ___   _  ____
-# | __ )|  _ \|_ _|  _ \ / ___| ____| |   |___ \/ ___\ \ / / \ | |/ ___|
-# |  _ \| |_) || || | | | |  _|  _| | |     __) \___ \\ V /|  \| | |
-# | |_) |  _ < | || |_| | |_| | |___| |___ / __/ ___) || | | |\  | |___
-# |____/|_| \_\___|____/ \____|_____|_____|_____|____/ |_| |_| \_|\____|
-# ------------------------------------------------------------------------------
-[BridgeL2Sync]
-# ------------------------------------------------------------------------------
-# BridgeAddr is the address of the sovereign bridge contract on L2
-# ------------------------------------------------------------------------------
-BridgeAddr = "<ADDR>"
-
-# ------------------------------------------------------------------------------
-# DBPath path of the sqlite db
-# ------------------------------------------------------------------------------
-# DBPath = "<PATH>"
-
-# ------------------------------------------------------------------------------
-# BlockFinality indicates the status of the blocks that will be queried to sync
-# LatestBlock, SafeBlock, PendingBlock, FinalizedBlock, EarliestBlock
-# Default value is "LatestBlock"
-# ------------------------------------------------------------------------------
-BlockFinality = "LatestBlock"
-
-# ------------------------------------------------------------------------------
-# First block that will be queried when starting the synchronization from scratch.
-# It should be a number equal or bellow the creation of the bridge contract
-# ------------------------------------------------------------------------------
-# InitialBlockNum = 0
-
-# ------------------------------------------------------------------------------
-# The amount of blocks that will be queried to the client on each request
-# ------------------------------------------------------------------------------
-# SyncBlockChunkSize = 100
-
-# ------------------------------------------------------------------------------
-# The time that will be waited when an unexpected error happens before retry
-# ------------------------------------------------------------------------------
-# RetryAfterErrorPeriod = "1s"
-
-# ------------------------------------------------------------------------------
-# The maximum number of consecutive attempts that will happen before panic.
-# Any number smaller than zero will be considered as unlimited retries
-# ------------------------------------------------------------------------------
-# MaxRetryAttemptsAfterError = -1
-
-# ------------------------------------------------------------------------------
-# Time that will be waited when the synchronizer has reached the latest block
-# ------------------------------------------------------------------------------
-# WaitForNewBlocksPeriod = "3s"
-
-# ==============================================================================
-#  _     _ ___ _   _ _____ ___ _____ ____  _____ _____ ______   ___   _  ____
-# | |   / |_ _| \ | |  ___/ _ \_   _|  _ \| ____| ____/ ___\ \ / / \ | |/ ___|
-# | |   | || ||  \| | |_ | | | || | | |_) |  _| |  _| \___ \\ V /|  \| | |
-# | |___| || || |\  |  _|| |_| || | |  _ <| |___| |___ ___) || | | |\  | |___
-# |_____|_|___|_| \_|_|   \___/ |_| |_| \_\_____|_____|____/ |_| |_| \_|\____|
-#
-# ------------------------------------------------------------------------------
-[L1InfoTreeSync]
-# ------------------------------------------------------------------------------
-# The initial block number from which to start syncing.
-# Default: 0
-# ------------------------------------------------------------------------------
-InitialBlock = 0
-
-# ==============================================================================
-#  _     ____   ____ _____ ____  ______   ___   _  ____
-# | |   |___ \ / ___| ____|  _ \/ ___\ \ / / \ | |/ ___|
-# | |     __) | |  _|  _| | |_) \___ \\ V /|  \| | |
-# | |___ / __/| |_| | |___|  _ < ___) || | | |\  | |___
-# |_____|_____|\____|_____|_| \_\____/ |_| |_| \_|\____|
-# ==============================================================================
-[L2GERSync]
-# ------------------------------------------------------------------------------
-# BlockFinality indicates which finality follows AggLayer accepted values are:
-# LatestBlock, SafeBlock, PendingBlock, FinalizedBlock, EarliestBlock
-# Default value is "LatestBlock"
-# ------------------------------------------------------------------------------
-BlockFinality = "LatestBlock"
-
-# ==============================================================================
-#     _                ____ _           _       ____                   __  ____
-#    / \   __ _  __ _ / ___| |__   __ _(_)_ __ |  _ \ _ __ ___   ___  / _|/ ___| ___ _ __
-#   / _ \ / _` |/ _` | |   | '_ \ / _` | | '_ \| |_) | '__/ _ \ / _ \| |_| |  _ / _ \ '_ \
-#  / ___ \ (_| | (_| | |___| | | | (_| | | | | |  __/| | | (_) | (_) |  _| |_| |  __/ | | |
-# /_/   \_\__, |\__, |\____|_| |_|\__,_|_|_| |_|_|   |_|  \___/ \___/|_|  \____|\___|_| |_|
-#         |___/ |___/
-# ------------------------------------------------------------------------------
 [AggchainProofGen]
-# ------------------------------------------------------------------------------
-# SovereignRollupAddr is the address of the sovereign rollup contract on L1
-# ------------------------------------------------------------------------------
-SovereignRollupAddr = "<ADDR>"
+SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
+GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
+	[AggchainProofGen.AggkitProverClient]
+		URL = "{{AggchainProofURL}}"
+		MinConnectTimeout = "5s"
+		UseTLS = false
+		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 
-# ------------------------------------------------------------------------------
-# GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
-# this address is needed for the AggchainProof mode of the AggSender
-# ------------------------------------------------------------------------------
-GlobalExitRootL2 = "<ADDR>"
-
-[AggchainProofGen.AggkitProverClient]
-# ------------------------------------------------------------------------------
-# UseTLS is a flag to enable the AggkitProver TLS handshake in the AggSender-AggkitProver gRPC connection
-# ------------------------------------------------------------------------------
-# UseTLS = false
-
-# ==============================================================================
-#  ____             __ _ _ _
-# |  _ \ _ __ ___  / _(_) (_)_ __   __ _
-# | |_) | '__/ _ \| |_| | | | '_ \ / _` |
-# |  __/| | | (_) |  _| | | | | | | (_| |
-# |_|   |_|  \___/|_| |_|_|_|_| |_|\__, |
-#                                  |___/
-# ------------------------------------------------------------------------------
 [Profiling]
-# ------------------------------------------------------------------------------
-# ProfilingHost is the address to bind the profiling server
-# Default: "localhost"
-# ------------------------------------------------------------------------------
-ProfilingHost = "0.0.0.0"
-
-# ------------------------------------------------------------------------------
-# ProfilingPort is the port to bind the profiling server
-# Default: 6060
-# ------------------------------------------------------------------------------
+ProfilingHost = "localhost"
 ProfilingPort = 6060
-
-# ------------------------------------------------------------------------------
-# ProfilingEnabled is the flag to enable/disable the profiling server
-# Default: false
-# ------------------------------------------------------------------------------
 ProfilingEnabled = false
 
 [Validator]
-EnableRPC = true
-Signer = { Method = "local", Path = "<PATH>", Password = "<PASSWORD>" }
-
+EnableRPC = false
+# check SignerConfig in docs/common_config.md for more details
+Signer = {{AggsenderPrivateKey}}
+MaxCertSize = "{{AggSender.MaxCertSize}}"
+MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
+DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
 [Validator.ServerConfig]
-Host = "0.0.0.0"
-Port = <PORT>
-MaxDecodingMessageSize = 1073741824  # 1GB
-
+	Host = "0.0.0.0"
+	Port = 5578
+	EnableReflection = true
+	MaxDecodingMessageSize = 26214400  # 25Mb
 [Validator.LerQuerierConfig]
-RollupManagerAddr = "<ADDR>"
-RollupCreationBlockL1 = "<BLOCK_NUM>"
-
+	RollupManagerAddr = "{{AggSender.RollupManagerAddr}}"
+	RollupCreationBlockL1 = "{{AggSender.RollupCreationBlockL1}}"
+[Validator.PPConfig]
+	RequireOneBridgeInPPCertificate = "{{AggSender.RequireOneBridgeInPPCertificate}}"
 [Validator.AgglayerClient]
-Cached = true
-
-[Validator.AgglayerClient.ConfigurationCache]
-TTL = "15m"
-Capacity = 100
-
-[Validator.AgglayerClient.GRPC]
-URL = "<URL>"
-UseTLS = false
+	Cached = true
+	[Validator.AgglayerClient.ConfigurationCache]
+		TTL = "5m"
+		Capacity = 100
+	[Validator.AgglayerClient.GRPC]
+		URL = "{{AggSender.AgglayerClient.GRPC.URL}}"
+		MinConnectTimeout = "{{AggSender.AgglayerClient.GRPC.MinConnectTimeout}}"
+		RequestTimeout = "{{AggSender.AgglayerClient.GRPC.RequestTimeout}}"
+		UseTLS = "{{AggSender.AgglayerClient.GRPC.UseTLS}}"
+		[Validator.AgglayerClient.GRPC.Retry]
+			InitialBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.InitialBackoff}}"
+			MaxBackoff = "{{AggSender.AgglayerClient.GRPC.Retry.MaxBackoff}}"
+			BackoffMultiplier = "{{AggSender.AgglayerClient.GRPC.Retry.BackoffMultiplier}}"
+			MaxAttempts = "{{AggSender.AgglayerClient.GRPC.Retry.MaxAttempts}}"
