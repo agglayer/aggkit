@@ -75,7 +75,7 @@ func (vp *validatorPoller) PollValidators(
 func (vp *validatorPoller) executeRequest(
 	ctx context.Context,
 	req *types.ValidationRequest,
-	threshold uint32,
+	threshold *big.Int,
 	validators []types.CertificateValidateAndSigner) (*agglayertypes.Multisig, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -102,10 +102,10 @@ func (vp *validatorPoller) validateRequest(req *types.ValidationRequest) error {
 // that are going to validate the provided certificate
 func (vp *validatorPoller) getValidators(
 	ctx context.Context,
-	lastL2BlockInCert uint64) ([]types.CertificateValidateAndSigner, uint32, error) {
+	lastL2BlockInCert uint64) ([]types.CertificateValidateAndSigner, *big.Int, error) {
 	committee, err := vp.multisigQuerier.GetMultisigCommittee(ctx, new(big.Int).SetUint64(lastL2BlockInCert))
 	if err != nil {
-		return nil, 0, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
+		return nil, nil, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
 	}
 
 	validators := make([]types.CertificateValidateAndSigner, 0, committee.Size())
@@ -113,7 +113,7 @@ func (vp *validatorPoller) getValidators(
 		clientCfg := vp.validatorClientCfg.WithURL(signer.URL)
 		validator, err := validator.NewRemoteValidator(&clientCfg, vp.storage, signer.Address, uint32(i))
 		if err != nil {
-			return nil, 0, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
+			return nil, nil, fmt.Errorf("failed to create a remote validator for committee signer (Address=%s, URL=%s): %w",
 				signer.Address, signer.URL, err)
 		}
 
@@ -121,13 +121,13 @@ func (vp *validatorPoller) getValidators(
 	}
 
 	if len(validators) == 0 {
-		return nil, 0, errors.New("no validators available in the committee")
+		return nil, nil, errors.New("no validators available in the committee")
 	}
 
 	firstValidatorAddress := validators[0].Address()
 	proposerAddress := vp.proposerSigner.PublicAddress()
 	if firstValidatorAddress != proposerAddress {
-		return nil, 0, fmt.Errorf("expected proposer %s to be the first member of the validator committee, got %s",
+		return nil, nil, fmt.Errorf("expected proposer %s to be the first member of the validator committee, got %s",
 			proposerAddress, firstValidatorAddress)
 	}
 
@@ -209,7 +209,7 @@ func (vp *validatorPoller) signCertificateForMultisigAsProposer(
 // processResults collects and validates all results from validators
 func (vp *validatorPoller) processResults(
 	resultsCh <-chan signResult,
-	threshold uint32,
+	threshold *big.Int,
 	cert *agglayertypes.Certificate,
 	cancel context.CancelFunc,
 ) (*agglayertypes.Multisig, error) {
@@ -244,7 +244,7 @@ func (vp *validatorPoller) processResults(
 			Signature: res.signature,
 		})
 
-		if uint32(len(multisig.Signatures)) >= threshold {
+		if big.NewInt(int64(len(multisig.Signatures))).Cmp(threshold) >= 0 {
 			cancel()
 			break // signal other goroutines to stop early
 		}
@@ -262,10 +262,10 @@ func (vp *validatorPoller) isValidSignature(signature []byte) bool {
 func (vp *validatorPoller) isThresholdReached(
 	multisig *agglayertypes.Multisig,
 	cert *agglayertypes.Certificate,
-	threshold uint32,
+	threshold *big.Int,
 	errs []error,
 ) (*agglayertypes.Multisig, error) {
-	if uint32(len(multisig.Signatures)) < threshold {
+	if big.NewInt(int64(len(multisig.Signatures))).Cmp(threshold) < 0 {
 		metrics.MultiSigThresholdNotReached()
 		return nil, fmt.Errorf("threshold not reached: %d/%d. Errors: %w",
 			len(multisig.Signatures), threshold, errors.Join(errs...))

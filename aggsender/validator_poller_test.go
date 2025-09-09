@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/big"
 	"testing"
 	"time"
 
@@ -55,7 +56,7 @@ func TestIsThresholdReached(t *testing.T) {
 		name        string
 		multisig    *agglayertypes.Multisig
 		cert        *agglayertypes.Certificate
-		threshold   uint32
+		threshold   *big.Int
 		errs        []error
 		expectedErr string
 	}{
@@ -67,7 +68,7 @@ func TestIsThresholdReached(t *testing.T) {
 				},
 			},
 			cert:      &agglayertypes.Certificate{},
-			threshold: 1,
+			threshold: big.NewInt(1),
 		},
 		{
 			name: "threshold reached - multiple signers",
@@ -79,7 +80,7 @@ func TestIsThresholdReached(t *testing.T) {
 				},
 			},
 			cert:      &agglayertypes.Certificate{},
-			threshold: 2,
+			threshold: big.NewInt(2),
 		},
 		{
 			name: "threshold not reached",
@@ -89,7 +90,7 @@ func TestIsThresholdReached(t *testing.T) {
 				},
 			},
 			cert:        &agglayertypes.Certificate{},
-			threshold:   2,
+			threshold:   big.NewInt(2),
 			expectedErr: "threshold not reached",
 		},
 	}
@@ -362,11 +363,11 @@ func TestGetValidators(t *testing.T) {
 	validator3Addr := common.HexToAddress("0x3")
 
 	testCases := []struct {
-		name           string
-		setupMocks     func(*mocks.MultisigQuerier, *mocks.Signer)
-		expectedCount  int
-		expectedThresh uint32
-		expectedErr    string
+		name              string
+		setupMocks        func(*mocks.MultisigQuerier, *mocks.Signer)
+		expectedCount     int
+		expectedThreshold *big.Int
+		expectedErr       string
 	}{
 		{
 			name: "successful retrieval with single validator (proposer only)",
@@ -374,7 +375,7 @@ func TestGetValidators(t *testing.T) {
 				signers := []types.SignerInfo{
 					{Address: proposerAddr, URL: "http://validator1:8001"},
 				}
-				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{&signers[0]}, 1)
+				committee, err := types.NewMultisigCommittee([]*types.SignerInfo{&signers[0]}, big.NewInt(1))
 				require.NoError(t, err)
 
 				mockQuerier.EXPECT().
@@ -385,8 +386,8 @@ func TestGetValidators(t *testing.T) {
 				// Mock proposer address check
 				mockSigner.EXPECT().PublicAddress().Return(proposerAddr).Once()
 			},
-			expectedCount:  1,
-			expectedThresh: 1,
+			expectedCount:     1,
+			expectedThreshold: big.NewInt(1),
 		},
 		{
 			name: "successful retrieval with multiple validators",
@@ -398,7 +399,7 @@ func TestGetValidators(t *testing.T) {
 					{Address: validator3Addr, URL: "http://validator3:8003"},
 				}
 				signersPtr := []*types.SignerInfo{&signers[0], &signers[1], &signers[2]}
-				committee, err := types.NewMultisigCommittee(signersPtr, 2)
+				committee, err := types.NewMultisigCommittee(signersPtr, big.NewInt(2))
 				require.NoError(t, err)
 
 				mockQuerier.EXPECT().
@@ -408,8 +409,8 @@ func TestGetValidators(t *testing.T) {
 
 				mockSigner.EXPECT().PublicAddress().Return(proposerAddr).Once()
 			},
-			expectedCount:  3,
-			expectedThresh: 2,
+			expectedCount:     3,
+			expectedThreshold: big.NewInt(2),
 		},
 		{
 			name: "multisig querier fails",
@@ -440,7 +441,7 @@ func TestGetValidators(t *testing.T) {
 					{Address: proposerAddr, URL: "http://validator1:8001"},   // Proposer second
 				}
 				signersPtr := []*types.SignerInfo{&signers[0], &signers[1]}
-				committee, err := types.NewMultisigCommittee(signersPtr, 1)
+				committee, err := types.NewMultisigCommittee(signersPtr, big.NewInt(1))
 				require.NoError(t, err)
 
 				mockQuerier.EXPECT().
@@ -482,12 +483,11 @@ func TestGetValidators(t *testing.T) {
 			if tc.expectedErr != "" {
 				require.ErrorContains(t, err, tc.expectedErr)
 				require.Nil(t, validators)
-				require.Equal(t, uint32(0), threshold)
 			} else {
 				require.NoError(t, err)
 				require.NotNil(t, validators)
 				require.Len(t, validators, tc.expectedCount)
-				require.Equal(t, tc.expectedThresh, threshold)
+				require.Equal(t, tc.expectedThreshold, threshold)
 			}
 
 			mockQuerier.AssertExpectations(t)
@@ -506,13 +506,13 @@ func TestExecuteRequest(t *testing.T) {
 
 	tests := []struct {
 		name               string
-		setupMocks         func(*mocks.Signer) ([]types.CertificateValidateAndSigner, uint32)
+		setupMocks         func(*mocks.Signer) ([]types.CertificateValidateAndSigner, *big.Int)
 		expectedMinSigs    int
 		expectErrSubstring string
 	}{
 		{
 			name: "single healthy validator returns valid signature",
-			setupMocks: func(mockSigner *mocks.Signer) ([]types.CertificateValidateAndSigner, uint32) {
+			setupMocks: func(mockSigner *mocks.Signer) ([]types.CertificateValidateAndSigner, *big.Int) {
 				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0xdeadbeef")).Once()
 
 				mockValidator := mocks.NewCertificateValidateAndSigner(t)
@@ -522,13 +522,13 @@ func TestExecuteRequest(t *testing.T) {
 					ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).
 					Return(make([]byte, aggkitcommon.SignatureSize), nil).
 					Once()
-				return []types.CertificateValidateAndSigner{mockValidator}, 1
+				return []types.CertificateValidateAndSigner{mockValidator}, big.NewInt(1)
 			},
 			expectedMinSigs: 1,
 		},
 		{
 			name: "multiple validators reach threshold",
-			setupMocks: func(mockSigner *mocks.Signer) ([]types.CertificateValidateAndSigner, uint32) {
+			setupMocks: func(mockSigner *mocks.Signer) ([]types.CertificateValidateAndSigner, *big.Int) {
 				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0xdeadbeef"))
 
 				v1 := mocks.NewCertificateValidateAndSigner(t)
@@ -544,13 +544,13 @@ func TestExecuteRequest(t *testing.T) {
 				}
 
 				validators := []types.CertificateValidateAndSigner{v1, v2, v3}
-				return validators, 2
+				return validators, big.NewInt(2)
 			},
 			expectedMinSigs: 2,
 		},
 		{
 			name: "threshold not reached",
-			setupMocks: func(mockSigner *mocks.Signer) ([]types.CertificateValidateAndSigner, uint32) {
+			setupMocks: func(mockSigner *mocks.Signer) ([]types.CertificateValidateAndSigner, *big.Int) {
 				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0xdeadbeef"))
 
 				v1 := mocks.NewCertificateValidateAndSigner(t)
@@ -567,7 +567,7 @@ func TestExecuteRequest(t *testing.T) {
 				}
 
 				validators := []types.CertificateValidateAndSigner{v1, v2, v3}
-				return validators, 2
+				return validators, big.NewInt(2)
 			},
 			expectErrSubstring: "threshold not reached",
 		},
@@ -582,7 +582,7 @@ func TestExecuteRequest(t *testing.T) {
 
 			var (
 				validators []types.CertificateValidateAndSigner
-				threshold  uint32
+				threshold  *big.Int
 			)
 
 			if tc.setupMocks != nil {

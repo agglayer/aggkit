@@ -3,7 +3,7 @@ package optimistic
 import (
 	"fmt"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/aggchainfep"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainfep"
 	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/agglayer/aggkit/opnode"
 	"github.com/ethereum/go-ethereum/common"

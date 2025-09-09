@@ -84,7 +84,7 @@ func TestAggSenderStart(t *testing.T) {
 	aggLayerMock.EXPECT().GetLatestPendingCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	aggLayerMock.EXPECT().GetLatestSettledCertificateHeader(mock.Anything, mock.Anything).Return(nil, nil)
 	rollupQuerierMock.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
-	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, 1)
+	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, big.NewInt(1))
 	require.NoError(t, err)
 	committeQuerierMock.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
 
@@ -499,7 +499,8 @@ func TestNewAggSender(t *testing.T) {
 	mockCommitteeQuerier := mocks.NewMultisigQuerier(t)
 	mockBridgeSyncer.EXPECT().OriginNetwork().Return(uint32(1)).Times(2)
 	mockRollupQuerier.EXPECT().GetRollupChainID().Return(uint64(1234), nil)
-	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, 1)
+	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})},
+		big.NewInt(1))
 	require.NoError(t, err)
 	mockCommitteeQuerier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
 

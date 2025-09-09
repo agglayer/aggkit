@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainecdsamultisig"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/polygonrollupmanager"
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
 	"github.com/agglayer/aggkit/bridgesync"
@@ -265,8 +265,8 @@ type AggchainProofQuerier interface {
 
 // MultisigContract is an abstraction for Multisig smart contract
 type MultisigContract interface {
-	Threshold(opts *bind.CallOpts) (uint32, error)
-	GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainecdsamultisig.AggchainBaseSignerInfo, error)
+	Threshold(opts *bind.CallOpts) (*big.Int, error)
+	GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error)
 }
 
 // MultisigQuerier is an abstraction for querying the multisig committee
@@ -277,12 +277,6 @@ type MultisigQuerier interface {
 // ValidatorPoller is an interface defining functions that a ValidatorPoller should implement
 type ValidatorPoller interface {
 	PollValidators(ctx context.Context, req *ValidationRequest) (*agglayertypes.Multisig, error)
-}
-
-// AggchainFEPCaller is an interface defining functions that an AggchainFEPCaller should implement
-type AggchainFEPCaller interface {
-	StartingBlockNumber(opts *bind.CallOpts) (*big.Int, error)
-	LatestBlockNumber(opts *bind.CallOpts) (*big.Int, error)
 }
 
 // AggchainFEPRollupQuerier is an interface defining functions that an AggchainFEPRollupQuerier should implement

@@ -3,7 +3,10 @@
 package mocks
 
 import (
-	aggchainecdsamultisig "github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainecdsamultisig"
+	big "math/big"
+
+	aggchainbase "github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
+
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
 
 	mock "github.com/stretchr/testify/mock"
@@ -23,23 +26,23 @@ func (_m *MultisigContract) EXPECT() *MultisigContract_Expecter {
 }
 
 // GetAggchainSignerInfos provides a mock function with given fields: opts
-func (_m *MultisigContract) GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainecdsamultisig.AggchainBaseSignerInfo, error) {
+func (_m *MultisigContract) GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error) {
 	ret := _m.Called(opts)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAggchainSignerInfos")
 	}
 
-	var r0 []aggchainecdsamultisig.AggchainBaseSignerInfo
+	var r0 []aggchainbase.IAggchainSignersSignerInfo
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]aggchainecdsamultisig.AggchainBaseSignerInfo, error)); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error)); ok {
 		return rf(opts)
 	}
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []aggchainecdsamultisig.AggchainBaseSignerInfo); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []aggchainbase.IAggchainSignersSignerInfo); ok {
 		r0 = rf(opts)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]aggchainecdsamultisig.AggchainBaseSignerInfo)
+			r0 = ret.Get(0).([]aggchainbase.IAggchainSignersSignerInfo)
 		}
 	}
 
@@ -70,33 +73,35 @@ func (_c *MultisigContract_GetAggchainSignerInfos_Call) Run(run func(opts *bind.
 	return _c
 }
 
-func (_c *MultisigContract_GetAggchainSignerInfos_Call) Return(_a0 []aggchainecdsamultisig.AggchainBaseSignerInfo, _a1 error) *MultisigContract_GetAggchainSignerInfos_Call {
+func (_c *MultisigContract_GetAggchainSignerInfos_Call) Return(_a0 []aggchainbase.IAggchainSignersSignerInfo, _a1 error) *MultisigContract_GetAggchainSignerInfos_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MultisigContract_GetAggchainSignerInfos_Call) RunAndReturn(run func(*bind.CallOpts) ([]aggchainecdsamultisig.AggchainBaseSignerInfo, error)) *MultisigContract_GetAggchainSignerInfos_Call {
+func (_c *MultisigContract_GetAggchainSignerInfos_Call) RunAndReturn(run func(*bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error)) *MultisigContract_GetAggchainSignerInfos_Call {
 	_c.Call.Return(run)
 	return _c
 }
 
 // Threshold provides a mock function with given fields: opts
-func (_m *MultisigContract) Threshold(opts *bind.CallOpts) (uint32, error) {
+func (_m *MultisigContract) Threshold(opts *bind.CallOpts) (*big.Int, error) {
 	ret := _m.Called(opts)
 
 	if len(ret) == 0 {
 		panic("no return value specified for Threshold")
 	}
 
-	var r0 uint32
+	var r0 *big.Int
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) (uint32, error)); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) (*big.Int, error)); ok {
 		return rf(opts)
 	}
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) uint32); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) *big.Int); ok {
 		r0 = rf(opts)
 	} else {
-		r0 = ret.Get(0).(uint32)
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*big.Int)
+		}
 	}
 
 	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
@@ -126,12 +131,12 @@ func (_c *MultisigContract_Threshold_Call) Run(run func(opts *bind.CallOpts)) *M
 	return _c
 }
 
-func (_c *MultisigContract_Threshold_Call) Return(_a0 uint32, _a1 error) *MultisigContract_Threshold_Call {
+func (_c *MultisigContract_Threshold_Call) Return(_a0 *big.Int, _a1 error) *MultisigContract_Threshold_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MultisigContract_Threshold_Call) RunAndReturn(run func(*bind.CallOpts) (uint32, error)) *MultisigContract_Threshold_Call {
+func (_c *MultisigContract_Threshold_Call) RunAndReturn(run func(*bind.CallOpts) (*big.Int, error)) *MultisigContract_Threshold_Call {
 	_c.Call.Return(run)
 	return _c
 }
