@@ -1021,7 +1021,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		}
 		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
 
-		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
+		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, page, pageSize, mock.Anything).
 			Return(tokenMappings, len(tokenMappings), nil)
 
 		query := url.Values{}
@@ -1062,7 +1062,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		}
 		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
 
-		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, page, pageSize).
+		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, page, pageSize, mock.Anything).
 			Return(tokenMappings, len(tokenMappings), nil)
 
 		query := url.Values{}
@@ -1094,7 +1094,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 
 	t.Run("GetTokenMappingsHandler for L1 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).
+		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(fooErrMsg))
 
 		query := url.Values{}
@@ -1107,7 +1107,7 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 
 	t.Run("GetTokenMappingsHandler for L2 network failed", func(t *testing.T) {
 		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
-		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything).
+		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
 			Return(nil, 0, errors.New(barErrMsg))
 
 		query := url.Values{}
@@ -1129,6 +1129,92 @@ func TestGetTokenMappingsHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusBadRequest, w.Code)
 		require.Contains(t, w.Body.String(), fmt.Sprintf("invalid %s parameter", networkIDParam))
+	})
+
+	t.Run("GetTokenMappingsHandler for L1 network with valid origin_token_address", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		originTokenAddr := "0x1234567890abcdef1234567890abcdef12345678"
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		tokenMappings := []*bridgesync.TokenMapping{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x1"),
+				OriginNetwork:       1,
+				OriginTokenAddress:  common.HexToAddress(originTokenAddr),
+				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Metadata:            common.Hex2Bytes("abcd"),
+				Calldata:            common.Hex2Bytes("efabcd"),
+			},
+		}
+		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
+
+		bridgeMocks.bridgeL1.EXPECT().GetTokenMappings(mock.Anything, page, pageSize, originTokenAddr).
+			Return(tokenMappings, len(tokenMappings), nil)
+
+		query := url.Values{}
+		query.Set(networkIDParam, "0")
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set("origin_token_address", originTokenAddr)
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.TokenMappingsResult
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, len(tokenMappings), response.Count)
+		require.Equal(t, tokenMappingsResp, response.TokenMappings)
+		require.Equal(t, common.HexToAddress(originTokenAddr).String(), string(response.TokenMappings[0].OriginTokenAddress))
+
+		bridgeMocks.bridgeL1.AssertExpectations(t)
+	})
+
+	t.Run("GetTokenMappingsHandler for L2 network with valid origin_token_address", func(t *testing.T) {
+		page := uint32(1)
+		pageSize := uint32(10)
+		originTokenAddr := "0xabcdef1234567890abcdef1234567890abcdef12"
+
+		bridgeMocks := newBridgeWithMocks(t, l2NetworkID)
+		tokenMappings := []*bridgesync.TokenMapping{
+			{
+				BlockNum:            1,
+				BlockPos:            1,
+				BlockTimestamp:      1617184800,
+				TxHash:              common.HexToHash("0x1"),
+				OriginNetwork:       1,
+				OriginTokenAddress:  common.HexToAddress(originTokenAddr),
+				WrappedTokenAddress: common.HexToAddress("0x2"),
+				Metadata:            []byte("metadata"),
+				Calldata:            []byte{},
+				Type:                bridgetypes.SovereignToken,
+				IsNotMintable:       true,
+			},
+		}
+		tokenMappingsResp := aggkitcommon.MapSlice(tokenMappings, NewTokenMappingResponse)
+
+		bridgeMocks.bridgeL2.EXPECT().GetTokenMappings(mock.Anything, page, pageSize, originTokenAddr).
+			Return(tokenMappings, len(tokenMappings), nil)
+
+		query := url.Values{}
+		query.Set(networkIDParam, "10")
+		query.Set(pageNumberParam, "1")
+		query.Set(pageSizeParam, "10")
+		query.Set("origin_token_address", originTokenAddr)
+
+		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/token-mappings?%s", BridgeV1Prefix, query.Encode()), nil)
+		require.Equal(t, http.StatusOK, w.Code)
+
+		var response bridgetypes.TokenMappingsResult
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+		require.Equal(t, len(tokenMappings), response.Count)
+		require.Equal(t, tokenMappingsResp, response.TokenMappings)
+		require.Equal(t, common.HexToAddress(originTokenAddr).String(), string(response.TokenMappings[0].OriginTokenAddress))
+
+		bridgeMocks.bridgeL2.AssertExpectations(t)
 	})
 }
 
