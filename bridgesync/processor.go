@@ -583,7 +583,7 @@ func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress str
 // buildTokenMappingsFilterClause builds the WHERE clause for the token_mapping table
 // based on the provided originTokenAddress
 func (p *processor) buildTokenMappingsFilterClause(originTokenAddress string) string {
-	if originTokenAddress != "" && common.IsHexAddress(originTokenAddress) {
+	if common.IsHexAddress(originTokenAddress) {
 		return fmt.Sprintf(" WHERE UPPER(origin_token_address) LIKE '%s'", strings.ToUpper(originTokenAddress))
 	}
 	return ""
