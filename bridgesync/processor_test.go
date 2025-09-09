@@ -2318,7 +2318,7 @@ func TestGetClaimByGlobalIndex(t *testing.T) {
 	// Test case 6: Test with nil global index (should handle gracefully)
 	t.Run("nil global index", func(t *testing.T) {
 		claims, err := p.GetClaimsByGlobalIndex(ctx, nil)
-		require.ErrorContains(t, err, "global index cannot be nil")
+		require.ErrorContains(t, err, "global index parameter cannot be nil")
 		require.Empty(t, claims)
 	})
 
