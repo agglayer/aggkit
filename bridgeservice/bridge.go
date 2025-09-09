@@ -42,14 +42,15 @@ const (
 	BridgeV1Prefix = "/bridge/v1"
 	meterName      = "github.com/agglayer/aggkit/bridgeservice"
 
-	networkIDParam    = "network_id"
-	networkIDsParam   = "network_ids"
-	pageNumberParam   = "page_number"
-	pageSizeParam     = "page_size"
-	depositCountParam = "deposit_count"
-	fromAddressParam  = "from_address"
-	leafIndexParam    = "leaf_index"
-	includeAllFields  = "include_all_fields"
+	networkIDParam       = "network_id"
+	networkIDsParam      = "network_ids"
+	pageNumberParam      = "page_number"
+	pageSizeParam        = "page_size"
+	depositCountParam    = "deposit_count"
+	fromAddressParam     = "from_address"
+	originTokenAddrParam = "origin_token_address"
+	leafIndexParam       = "leaf_index"
+	includeAllFields     = "include_all_fields"
 
 	binarySearchDivider = 2
 	mainnetNetworkID    = 0
@@ -456,16 +457,16 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 // @Param network_id query int true "Network ID"
 // @Param page_number query int false "Page number"
 // @Param page_size query int false "Page size"
+// @Param origin_token_address query string false "Filter by origin token address"
 // @Produce json
 // @Success 200 {object} types.TokenMappingsResult
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /token-mappings [get]
-//
-//nolint:dupl
 func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
-	b.logger.Debugf("GetTokenMappings request received (network id=%s, page number=%s, page size=%s)",
-		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))
+	b.logger.Debugf(
+		"GetTokenMappings request received (network id=%s, page number=%s, page size=%s, origin token address=%s)",
+		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam), c.Query(originTokenAddrParam))
 
 	networkID, err := parseUintQuery(c, networkIDParam, true, uint32(0))
 	if err != nil {
@@ -473,6 +474,8 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	originTokenAddress := c.Query(originTokenAddrParam)
 
 	ctx, cancel, pageNumber, pageSize, err := b.setupRequest(c, "get_token_mappings")
 	if err != nil {
@@ -489,9 +492,9 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 
 	switch networkID {
 	case mainnetNetworkID:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize)
+		tokenMappings, tokenMappingsCount, err = b.bridgeL1.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
 	case b.networkID:
-		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize)
+		tokenMappings, tokenMappingsCount, err = b.bridgeL2.GetTokenMappings(ctx, pageNumber, pageSize, originTokenAddress)
 	default:
 		b.logger.Warnf(errNetworkID, networkID)
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf(errNetworkID, networkID)})
@@ -525,8 +528,6 @@ func (b *BridgeService) GetTokenMappingsHandler(c *gin.Context) {
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /legacy-token-migrations [get]
-//
-//nolint:dupl
 func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 	b.logger.Debugf("GetLegacyTokenMigrations request received (network id=%s, page number=%s, page size=%s)",
 		c.Query(networkIDParam), c.Query(pageNumberParam), c.Query(pageSizeParam))

@@ -523,9 +523,9 @@ func (_c *Bridger_GetRootByLER_Call) RunAndReturn(run func(context.Context, comm
 	return _c
 }
 
-// GetTokenMappings provides a mock function with given fields: ctx, pageNumber, pageSize
-func (_m *Bridger) GetTokenMappings(ctx context.Context, pageNumber uint32, pageSize uint32) ([]*bridgesync.TokenMapping, int, error) {
-	ret := _m.Called(ctx, pageNumber, pageSize)
+// GetTokenMappings provides a mock function with given fields: ctx, pageNumber, pageSize, originTokenAddress
+func (_m *Bridger) GetTokenMappings(ctx context.Context, pageNumber uint32, pageSize uint32, originTokenAddress string) ([]*bridgesync.TokenMapping, int, error) {
+	ret := _m.Called(ctx, pageNumber, pageSize, originTokenAddress)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetTokenMappings")
@@ -569,13 +569,14 @@ type Bridger_GetTokenMappings_Call struct {
 //   - ctx context.Context
 //   - pageNumber uint32
 //   - pageSize uint32
-func (_e *Bridger_Expecter) GetTokenMappings(ctx interface{}, pageNumber interface{}, pageSize interface{}) *Bridger_GetTokenMappings_Call {
-	return &Bridger_GetTokenMappings_Call{Call: _e.mock.On("GetTokenMappings", ctx, pageNumber, pageSize)}
+//   - originTokenAddress string
+func (_e *Bridger_Expecter) GetTokenMappings(ctx interface{}, pageNumber interface{}, pageSize interface{}, originTokenAddress interface{}) *Bridger_GetTokenMappings_Call {
+	return &Bridger_GetTokenMappings_Call{Call: _e.mock.On("GetTokenMappings", ctx, pageNumber, pageSize, originTokenAddress)}
 }
 
-func (_c *Bridger_GetTokenMappings_Call) Run(run func(ctx context.Context, pageNumber uint32, pageSize uint32)) *Bridger_GetTokenMappings_Call {
+func (_c *Bridger_GetTokenMappings_Call) Run(run func(ctx context.Context, pageNumber uint32, pageSize uint32, originTokenAddress string)) *Bridger_GetTokenMappings_Call {
 	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32))
+		run(args[0].(context.Context), args[1].(uint32), args[2].(uint32), args[3].(string))
 	})
 	return _c
 }
@@ -585,7 +586,7 @@ func (_c *Bridger_GetTokenMappings_Call) Return(_a0 []*bridgesync.TokenMapping, 
 	return _c
 }
 
-func (_c *Bridger_GetTokenMappings_Call) RunAndReturn(run func(context.Context, uint32, uint32) ([]*bridgesync.TokenMapping, int, error)) *Bridger_GetTokenMappings_Call {
+func (_c *Bridger_GetTokenMappings_Call) RunAndReturn(run func(context.Context, uint32, uint32, string) ([]*bridgesync.TokenMapping, int, error)) *Bridger_GetTokenMappings_Call {
 	_c.Call.Return(run)
 	return _c
 }

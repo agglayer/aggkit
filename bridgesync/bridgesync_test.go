@@ -266,7 +266,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 	require.NoError(t, err)
 
 	t.Run("retrieve all mappings", func(t *testing.T) {
-		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount)
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount, "")
 		require.NoError(t, err)
 		require.Equal(t, tokenMappingsCount, totalTokenMappings)
 		require.Equal(t, allTokenMappings, tokenMappings)
@@ -276,7 +276,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageSize := uint32(5)
 
 		for page := uint32(1); page <= 4; page++ {
-			tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), page, pageSize)
+			tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), page, pageSize, "")
 			require.NoError(t, err)
 			require.Equal(t, tokenMappingsCount, totalTokenMappings)
 
@@ -290,7 +290,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageSize := uint32(5)
 		pageNum := uint32(5)
 
-		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), pageNum, pageSize, "")
 		require.ErrorContains(t, err, "invalid page number for given page size and total number of token mappings")
 		require.Equal(t, 0, totalTokenMappings)
 		require.Nil(t, tokenMappings)
@@ -300,7 +300,7 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageSize := uint32(0)
 		pageNum := uint32(0)
 
-		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize, "")
 		require.ErrorIs(t, err, ErrInvalidPageNumber)
 	})
 
@@ -308,13 +308,36 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 		pageSize := uint32(0)
 		pageNum := uint32(4)
 
-		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize, "")
 		require.ErrorIs(t, err, ErrInvalidPageSize)
+	})
+
+	t.Run("filter by valid origin token address", func(t *testing.T) {
+		s.processor.halted = false
+
+		targetOriginAddress := common.HexToAddress("5").Hex()
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount, targetOriginAddress)
+		require.NoError(t, err)
+
+		require.Equal(t, 1, totalTokenMappings)
+		require.Len(t, tokenMappings, 1)
+		require.Equal(t, common.HexToAddress("5"), tokenMappings[0].OriginTokenAddress)
+		require.Equal(t, uint32(5), tokenMappings[0].OriginNetwork)
+		require.Equal(t, common.HexToAddress("6"), tokenMappings[0].WrappedTokenAddress)
+	})
+
+	t.Run("filter by non-existent origin token address", func(t *testing.T) {
+		nonExistentAddress := common.HexToAddress("999").Hex()
+		tokenMappings, totalTokenMappings, err := s.GetTokenMappings(context.Background(), 1, tokenMappingsCount, nonExistentAddress)
+		require.NoError(t, err)
+
+		require.Equal(t, 0, totalTokenMappings)
+		require.Empty(t, tokenMappings)
 	})
 
 	t.Run("inconsistent state", func(t *testing.T) {
 		s.processor.halted = true
-		_, _, err := s.GetTokenMappings(context.Background(), 0, 0)
+		_, _, err := s.GetTokenMappings(context.Background(), 0, 0, "")
 		require.ErrorIs(t, err, sync.ErrInconsistentState)
 	})
 }
@@ -444,13 +467,13 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 		pageSize := uint32(0)
 		pageNum := uint32(4)
 
-		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize)
+		_, _, err := s.GetTokenMappings(context.Background(), pageNum, pageSize, "")
 		require.ErrorIs(t, err, ErrInvalidPageSize)
 	})
 
 	t.Run("inconsistent state", func(t *testing.T) {
 		s.processor.halted = true
-		_, _, err := s.GetTokenMappings(context.Background(), 0, 0)
+		_, _, err := s.GetTokenMappings(context.Background(), 0, 0, "")
 		require.ErrorIs(t, err, sync.ErrInconsistentState)
 	})
 }
