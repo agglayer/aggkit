@@ -10,18 +10,18 @@
 # The below configs are the default mandatory parameters to be used.
 # ==============================================================================
 
-L1URL = "https://xxxx:xxxx"
-L2URL = "https://xxxx:xxxx"
+L1URL = "https://xxxx/"
+L2URL = "https://xxxx/"
 # ------------------------------------------------------------------------------
 # OP Node URL. To be used when deploying OP stack
 # ------------------------------------------------------------------------------
-OpNodeURL = "http://xxxx:xxxx"
+OpNodeURL = "http://xxxx/"
 
-AggLayerURL = "https://xxxx:xxxx"
+AggLayerURL = "https://xxxx/"
 # ------------------------------------------------------------------------------
 # Aggkit Prover URL. To be used when FEP is enabled
 # ------------------------------------------------------------------------------
-AggchainProofURL = "http://xxxx:xxxx"
+AggchainProofURL = "http://xxxx/"
 
 NetworkID = 1
 AggSenderPrivateKeyPath = "/path/to/keystore"
