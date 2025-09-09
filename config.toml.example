@@ -129,10 +129,6 @@ genesisBlockNumber = 0
 # Set to "AggchainProof" when enabling FEP. Possible values - "PessimisticProof", "AggchainProof"
 # ------------------------------------------------------------------------------
 # Mode = "PessimisticProof"
-# ------------------------------------------------------------------------------
-# Set RequireValidatorCall to true to enable aggsender validators
-# ------------------------------------------------------------------------------
-# RequireValidatorCall = false
 #
 # [Prometheus]
 # Enabled = true
