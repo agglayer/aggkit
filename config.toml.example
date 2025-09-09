@@ -21,7 +21,7 @@ AggLayerURL = "https://xxxx/"
 # ------------------------------------------------------------------------------
 # Aggkit Prover URL. To be used when FEP is enabled
 # ------------------------------------------------------------------------------
-AggchainProofURL = "http://xxxx/"
+AggchainProofURL = "https://xxxx/"
 
 NetworkID = 1
 AggSenderPrivateKeyPath = "/path/to/keystore"
