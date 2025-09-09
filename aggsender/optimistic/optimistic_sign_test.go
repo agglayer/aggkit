@@ -82,19 +82,6 @@ func TestNewOptimisticSignatureCalculatorImpl(t *testing.T) {
 			expectedErr: "there should be at least one aggchain signer",
 		},
 		{
-			name: "signer not found in list",
-			setupMock: func(m *optimisticmocks.FEPContractQuerier) {
-				m.EXPECT().
-					GetAggchainSigners(mock.Anything).
-					Return([]common.Address{common.HexToAddress("0xdeadbeef")}, nil)
-			},
-			cfg: Config{
-				RequireKeyMatchTrustedSequencer: true,
-				TrustedSequencerKey:             signer.NewMockSignerConfig(""),
-			},
-			expectedErr: "not found in the AggchainFEP contract signers",
-		},
-		{
 			name: "signer differs from trusted sequencer address and RequireKeyMatchTrustedSequencer = false",
 			setupMock: func(m *optimisticmocks.FEPContractQuerier) {
 				m.EXPECT().

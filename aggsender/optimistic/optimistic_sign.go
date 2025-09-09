@@ -3,7 +3,6 @@ package optimistic
 import (
 	"context"
 	"fmt"
-	"slices"
 
 	optimistichash "github.com/agglayer/aggkit/aggsender/optimistic/optimistichash"
 	"github.com/agglayer/aggkit/aggsender/types"
@@ -88,17 +87,6 @@ func validateSignerAgainstContract(
 
 	if len(signers) < 1 {
 		err = fmt.Errorf("[OPTIMISTIC] there should be at least one aggchain signer in the AggchainFEP contract")
-		if requireKeyMatch {
-			return common.Address{}, err
-		}
-		logger.Warn(err.Error())
-	}
-
-	signerIndex := slices.Index(signers, signerAddr)
-	if signerIndex < 0 {
-		err = fmt.Errorf("[OPTIMISTIC] "+
-			"configured trusted signer address (%s) not found in the AggchainFEP contract signers: %v",
-			signerAddr.Hex(), signers)
 		if requireKeyMatch {
 			return common.Address{}, err
 		}
