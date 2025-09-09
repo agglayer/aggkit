@@ -1432,8 +1432,8 @@ func (c ClockConfiguration) String() string {
 	return fmt.Sprintf("EpochDuration: %d, GenesisBlock: %d", c.EpochDuration, c.GenesisBlock)
 }
 
-// NetworkState represents the state of the network returned by the interop_getNetworkStatus RPC call
-type NetworkState struct {
+// NetworkInfo represents the state of the network returned by the interop_getNetworkInfo RPC call
+type NetworkInfo struct {
 	// Status is the current status of the network (e.g., "active", "syncing", "error")
 	Status string `json:"network_status"`
 	// NetworkType is the aggchain type of network

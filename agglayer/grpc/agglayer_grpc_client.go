@@ -146,23 +146,23 @@ func (a *AgglayerGRPCClient) GetCertificateHeader(
 	return convertProtoCertificateHeader(response.CertificateHeader), nil
 }
 
-func (a *AgglayerGRPCClient) GetNetworkState(ctx context.Context, networkID uint32) (types.NetworkState, error) {
-	status, err := a.networkStateService.GetNetworkState(ctx, &v1.GetNetworkStateRequest{
+func (a *AgglayerGRPCClient) GetNetworkInfo(ctx context.Context, networkID uint32) (types.NetworkInfo, error) {
+	status, err := a.networkStateService.GetNetworkInfo(ctx, &v1.GetNetworkInfoRequest{
 		NetworkId: networkID,
 	})
 	if err != nil {
-		return types.NetworkState{}, fmt.Errorf("failed to get network status: %w",
+		return types.NetworkInfo{}, fmt.Errorf("failed to get network info: %w",
 			aggkitgrpc.RepackGRPCErrorWithDetails(err))
 	}
 
-	if !status.HasNetworkState() {
-		return types.NetworkState{}, errors.New("network state is not available")
+	if !status.HasNetworkInfo() {
+		return types.NetworkInfo{}, errors.New("network info is not available")
 	}
 
-	return convertProtoNetworkState(status.NetworkState)
+	return convertProtoNetworkState(status.NetworkInfo)
 }
 
-func convertProtoNetworkState(status *v1nodetypes.NetworkState) (types.NetworkState, error) {
+func convertProtoNetworkState(status *v1nodetypes.NetworkInfo) (types.NetworkInfo, error) {
 	var settledCertID *common.Hash
 	if status.SettledCertificateId != nil {
 		certID := common.BytesToHash(status.SettledCertificateId.Value.Value)
@@ -194,7 +194,7 @@ func convertProtoNetworkState(status *v1nodetypes.NetworkState) (types.NetworkSt
 		latestPendingError = string(status.LatestPendingError.Message)
 	}
 
-	return types.NetworkState{
+	return types.NetworkInfo{
 		Status:                    status.NetworkStatus.String(),
 		NetworkType:               status.NetworkType.String(),
 		NetworkID:                 status.NetworkId,

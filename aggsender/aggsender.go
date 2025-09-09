@@ -19,7 +19,6 @@ import (
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/statuschecker"
 	"github.com/agglayer/aggkit/aggsender/types"
-	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
@@ -48,7 +47,6 @@ type AggSender struct {
 
 	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
-	localValidator   types.CertificateValidateAndSigner
 
 	cfg config.Config
 
@@ -191,22 +189,6 @@ func (a *AggSender) Start(ctx context.Context) {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
 	}
 
-	// TODO: The local validator implementation is there solely for testing purposes
-	// and it should be removed after integration testing is done.
-	if !a.cfg.RequireValidatorCall {
-		a.localValidator = validator.NewLocalValidator(
-			a.log,
-			a.storage,
-			validator.NewAggsenderValidator(
-				a.log,
-				a.flow,
-				query.NewL1InfoTreeDataQuerier(a.l1Client, a.l1InfoTreeSyncer),
-				a.certQuerier,
-				a.GetLERQuerier(),
-			),
-		)
-	}
-
 	a.sendCertificates(ctx, 0)
 }
 
@@ -342,20 +324,12 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
-	var multisig *agglayertypes.Multisig
-	if a.localValidator != nil {
-		if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
-			// TODO - just log the failure of local validation for now
-			a.log.Warnf("local validation of certificate failed: %v. Cert: %s", err, certificate.Brief())
-		}
-	} else {
-		multisig, err = a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{
-			Certificate:       certificate,
-			LastL2BlockInCert: certificateParams.ToBlock,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("error polling validator committee: %w", err)
-		}
+	multisig, err := a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{
+		Certificate:       certificate,
+		LastL2BlockInCert: certificateParams.ToBlock,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error polling validator committee: %w", err)
 	}
 
 	if err := a.flow.UpdateAggchainData(certificate, multisig); err != nil {
