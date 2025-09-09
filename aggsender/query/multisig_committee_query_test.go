@@ -5,7 +5,7 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainecdsamultisig"
+	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -16,7 +16,7 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 	type testCase struct {
 		name               string
 		threshold          *big.Int
-		signerInfos        []aggchainecdsamultisig.IAggchainSignersSignerInfo
+		signerInfos        []aggchainbase.IAggchainSignersSignerInfo
 		thresholdErr       error
 		getSignersErr      error
 		expectedErr        string
@@ -27,7 +27,7 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 		{
 			name:      "successfully returns committee",
 			threshold: big.NewInt(2),
-			signerInfos: []aggchainecdsamultisig.IAggchainSignersSignerInfo{
+			signerInfos: []aggchainbase.IAggchainSignersSignerInfo{
 				{
 					Addr: common.HexToAddress("0x1"),
 					Url:  "http://localhost:8001",
@@ -65,7 +65,7 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 					Return(tc.signerInfos, tc.getSignersErr)
 			}
 
-			q := &ECDSAMultisigCommitteeQuery{
+			q := &BaseMultisigCommitteeQuery{
 				multisigCommitteeSC:   mockSC,
 				multisigCommitteeAddr: common.Address{},
 			}

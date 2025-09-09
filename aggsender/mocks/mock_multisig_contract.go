@@ -5,7 +5,7 @@ package mocks
 import (
 	big "math/big"
 
-	aggchainecdsamultisig "github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainecdsamultisig"
+	aggchainbase "github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
 
 	bind "github.com/ethereum/go-ethereum/accounts/abi/bind"
 
@@ -26,23 +26,23 @@ func (_m *MultisigContract) EXPECT() *MultisigContract_Expecter {
 }
 
 // GetAggchainSignerInfos provides a mock function with given fields: opts
-func (_m *MultisigContract) GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainecdsamultisig.IAggchainSignersSignerInfo, error) {
+func (_m *MultisigContract) GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error) {
 	ret := _m.Called(opts)
 
 	if len(ret) == 0 {
 		panic("no return value specified for GetAggchainSignerInfos")
 	}
 
-	var r0 []aggchainecdsamultisig.IAggchainSignersSignerInfo
+	var r0 []aggchainbase.IAggchainSignersSignerInfo
 	var r1 error
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]aggchainecdsamultisig.IAggchainSignersSignerInfo, error)); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error)); ok {
 		return rf(opts)
 	}
-	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []aggchainecdsamultisig.IAggchainSignersSignerInfo); ok {
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) []aggchainbase.IAggchainSignersSignerInfo); ok {
 		r0 = rf(opts)
 	} else {
 		if ret.Get(0) != nil {
-			r0 = ret.Get(0).([]aggchainecdsamultisig.IAggchainSignersSignerInfo)
+			r0 = ret.Get(0).([]aggchainbase.IAggchainSignersSignerInfo)
 		}
 	}
 
@@ -73,12 +73,12 @@ func (_c *MultisigContract_GetAggchainSignerInfos_Call) Run(run func(opts *bind.
 	return _c
 }
 
-func (_c *MultisigContract_GetAggchainSignerInfos_Call) Return(_a0 []aggchainecdsamultisig.IAggchainSignersSignerInfo, _a1 error) *MultisigContract_GetAggchainSignerInfos_Call {
+func (_c *MultisigContract_GetAggchainSignerInfos_Call) Return(_a0 []aggchainbase.IAggchainSignersSignerInfo, _a1 error) *MultisigContract_GetAggchainSignerInfos_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *MultisigContract_GetAggchainSignerInfos_Call) RunAndReturn(run func(*bind.CallOpts) ([]aggchainecdsamultisig.IAggchainSignersSignerInfo, error)) *MultisigContract_GetAggchainSignerInfos_Call {
+func (_c *MultisigContract_GetAggchainSignerInfos_Call) RunAndReturn(run func(*bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error)) *MultisigContract_GetAggchainSignerInfos_Call {
 	_c.Call.Return(run)
 	return _c
 }
