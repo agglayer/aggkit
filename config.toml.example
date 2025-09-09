@@ -35,13 +35,15 @@ rollupManagerCreationBlockNumber = 0
 genesisBlockNumber = 0
 
 # Default database query timeout
-defaultDBQueryTimeout = "30s"
 
 [L1Config]
     # ------------------------------------------------------------------------------
     # URL is the L1 network url
     # ------------------------------------------------------------------------------
 	URL = "{{L1URL}}"
+    # ------------------------------------------------------------------------------
+    # chainId is the for the network. chainID = 0 indicates it will be set at runtime
+    # ------------------------------------------------------------------------------
 	chainId = 0
     # ------------------------------------------------------------------------------
     # Address of the zkevm global exit root contract on L1
@@ -59,7 +61,6 @@ defaultDBQueryTimeout = "30s"
     # Address of the sovereign rollup contract on L1
     # ------------------------------------------------------------------------------
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
-	AggchainFEPAddr = "0x0000000000000000000000000000000000000000"
 
 [L2Config]
     # ------------------------------------------------------------------------------
@@ -80,7 +81,11 @@ defaultDBQueryTimeout = "30s"
 # PathRWData = "/tmp/aggkit"
 # RequireStorageContentCompatibility = true
 # GenerateAggchainProofTimeout = "1h"
+# defaultDBQueryTimeout = "30s"
 # [L2RPC]
+# ------------------------------------------------------------------------------
+# Possible values for Mode - "basic", "op"
+# ------------------------------------------------------------------------------
 # 	Mode = "basic"
 # 	URL = "{{L2URL}}"
 # 	RetryMode = "backoff"
@@ -90,15 +95,17 @@ defaultDBQueryTimeout = "30s"
 # 	BackoffMultiplier = 2.0
 #
 # [Log]
+# ------------------------------------------------------------------------------
+# Possible values for Environment - "production", "development"
+# ------------------------------------------------------------------------------
 # Environment = "production"
+# ------------------------------------------------------------------------------
+# Possible values for Level - "debug", "info", "warn", "error", "panic", "fatal"
+# ------------------------------------------------------------------------------
 # Level = "info"
 #
-# [ReorgDetectorL2]
-# DBPath = "{{PathRWData}}/reorgdetectorl2.sqlite"
-# FinalizedBlock = "LatestBlock"
-#
 # [L1InfoTreeSync]
-# DBPath = "{{PathRWData}}/L1InfoTreeSync.sqlite"
+# SyncBlockChunkSize = 100
 #
 # [AggOracle]
 # ------------------------------------------------------------------------------
@@ -106,13 +113,12 @@ defaultDBQueryTimeout = "30s"
 # ------------------------------------------------------------------------------
 # EnableAggOracleCommittee = false
 # 		[AggOracle.EVMSender.EthTxManager]
+# ------------------------------------------------------------------------------
+# PrivateKeys is private key for aggoracle keystore
+# ------------------------------------------------------------------------------
 # 				PrivateKeys = [
 # 					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
 # 				]
-# 				StoragePath = "{{PathRWData}}/ethtxmanager-aggoracle.sqlite"
-# 					[AggOracle.EVMSender.EthTxManager.Etherman]
-# 						# This field should be populated with L2ChainID
-# 						L1ChainID = 0
 #
 # [RPC]
 # Host = "0.0.0.0"
@@ -122,46 +128,15 @@ defaultDBQueryTimeout = "30s"
 # Host = "0.0.0.0"
 # Port = 5577
 #
-# [BridgeL1Sync]
-# DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
-#
-# [BridgeL2Sync]
-# DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
-# BlockFinality = "LatestBlock"
-#
-# [L2GERSync]
-# DBPath = "{{PathRWData}}/l2gersync.sqlite"
-# BlockFinality = "LatestBlock"
-#
 # [AggSender]
-# StoragePath = "{{PathRWData}}/aggsender.sqlite"
-# AggsenderPrivateKey = {{AggsenderPrivateKey}}
 # ------------------------------------------------------------------------------
-# Set to "AggchainProof" when enabling FEP
+# Set to "AggchainProof" when enabling FEP. Possible values - "PessimisticProof", "AggchainProof"
 # ------------------------------------------------------------------------------
 # Mode = "PessimisticProof"
 # ------------------------------------------------------------------------------
 # Set RequireValidatorCall to true to enable aggsender validators
 # ------------------------------------------------------------------------------
 # RequireValidatorCall = false
-# 	[AggSender.AgglayerClient]
-# 		Cached = false
-# 		[AggSender.AgglayerClient.ConfigurationCache]
-# 			TTL = "5m"
-# 			Capacity = 100
-# 		[AggSender.AgglayerClient.GRPC]
-# 			UseTLS = false
-# 	[AggSender.AggkitProverClient]
-# 		UseTLS = false
-# 	[AggSender.MaxSubmitCertificateRate]
-# 		NumRequests = 20
-# 		Interval = "1h"
-# 	[AggSender.OptimisticModeConfig]
-# 		# By default use the same key that aggsender signs certs
-# 		TrustedSequencerKey = {{AggSender.AggsenderPrivateKey}}
-# 	[AggSender.ValidatorClient]
-# 		URL = ""
-# 		UseTLS = false
 #
 # [Prometheus]
 # Enabled = true
@@ -178,12 +153,6 @@ defaultDBQueryTimeout = "30s"
 # ProfilingEnabled = false
 #
 # [Validator]
-# EnableRPC = false
 # [Validator.ServerConfig]
 # 	Host = "0.0.0.0"
 # 	Port = 5578
-# [Validator.AgglayerClient]
-# 	Cached = true
-# 	[Validator.AgglayerClient.ConfigurationCache]
-# 		TTL = "5m"
-#		Capacity = 100
