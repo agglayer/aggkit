@@ -19,6 +19,7 @@ import (
 	aggsenderrpc "github.com/agglayer/aggkit/aggsender/rpc"
 	"github.com/agglayer/aggkit/aggsender/statuschecker"
 	"github.com/agglayer/aggkit/aggsender/types"
+	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/db/compatibility"
 	"github.com/agglayer/aggkit/log"
@@ -44,6 +45,7 @@ type AggSender struct {
 	certQuerier                  types.CertificateQuerier
 	rollupDataQuerier            types.RollupDataQuerier
 	validatorPoller              types.ValidatorPoller
+	localValidator               types.CertificateValidateAndSigner
 
 	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
@@ -121,6 +123,18 @@ func New(
 		aggLayerClient,
 	)
 
+	localValidator := validator.NewLocalValidator(
+		logger,
+		storage,
+		validator.NewAggsenderValidator(
+			logger,
+			flowManager,
+			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			certQuerier,
+			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
+		),
+	)
+
 	return &AggSender{
 		cfg:                          cfg,
 		log:                          logger,
@@ -134,6 +148,7 @@ func New(
 		l2OriginNetwork:              l2OriginNetwork,
 		certQuerier:                  certQuerier,
 		rollupDataQuerier:            rollupDataQuerier,
+		localValidator:               localValidator,
 		validatorPoller: NewValidatorPoller(
 			logger,
 			storage,
@@ -146,10 +161,6 @@ func New(
 		l1Client:         l1Client,
 		l1InfoTreeSyncer: l1InfoTreeSyncer,
 	}, nil
-}
-
-func (a *AggSender) GetLERQuerier() types.LERQuerier {
-	return query.NewLERDataQuerier(a.cfg.RollupCreationBlockL1, a.rollupDataQuerier)
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {
@@ -322,6 +333,10 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	certificate, err := a.flow.BuildCertificate(ctx, certificateParams)
 	if err != nil {
 		return nil, fmt.Errorf("error building certificate: %w", err)
+	}
+
+	if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
+		return nil, fmt.Errorf("error validating certificate locally: %w", err)
 	}
 
 	multisig, err := a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{

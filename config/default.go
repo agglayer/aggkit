@@ -204,7 +204,6 @@ RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
 RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
-RequireValidatorCall = false
 RequireCommitteeMembershipCheck = false
 	[AggSender.RetriesToBuildAndSendCertificate]
 		RetryMode = "delays"

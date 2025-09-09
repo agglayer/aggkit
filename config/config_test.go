@@ -137,6 +137,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	UseAggkitProverTLS = true
 	GenerateAggchainProofTimeout = "1h"
 	DelayBeetweenRetries = "1s"
+	RequireValidatorCall = true
 
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
@@ -203,4 +204,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, lastGERSyncSyncModeDeprecatedHint)
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 	require.ErrorContains(t, err, reorgDetectorL1DeprecatedHint)
+	require.ErrorContains(t, err, requireValidatorCallDeprecatedHint)
 }

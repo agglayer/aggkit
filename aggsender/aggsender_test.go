@@ -214,6 +214,8 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockLERQuerier := mocks.NewLERQuerier(t)
 	logger := log.WithFields("aggsender-test", "no claims test")
 	signer := signer.NewLocalSignFromPrivateKey("ut", log.WithFields("aggsender", 1), privateKey, 0)
+	mockLocalValidator := mocks.NewCertificateValidateAndSigner(t)
+	mockLocalValidator.EXPECT().ValidateAndSignCertificate(ctx, mock.Anything, mock.Anything).Return(nil, nil).Once()
 	mockValidatorPoller := mocks.NewValidatorPoller(t)
 	mockValidatorPoller.EXPECT().PollValidators(ctx, mock.Anything).Return(&agglayertypes.Multisig{}, nil).Once()
 	aggSender := &AggSender{
@@ -224,6 +226,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 		epochNotifier:   mockEpochNotifier,
 		cfg:             config.Config{},
 		validatorPoller: mockValidatorPoller,
+		localValidator:  mockLocalValidator,
 		flow: flows.NewPPFlow(logger,
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
 				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
@@ -269,6 +272,7 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 	mockL2BridgeQuerier.AssertExpectations(t)
 	mockAggLayerClient.AssertExpectations(t)
 	mockValidatorPoller.AssertExpectations(t)
+	mockLocalValidator.AssertExpectations(t)
 }
 
 //nolint:dupl
@@ -278,7 +282,7 @@ func TestSendCertificate(t *testing.T) {
 	testCases := []struct {
 		name            string
 		mockFn          func(*mocks.AggSenderStorage, *mocks.AggsenderFlow, *agglayermocks.AgglayerClientMock)
-		mockValidatorFn func() *mocks.ValidatorPoller
+		mockValidatorFn func() (*mocks.ValidatorPoller, *mocks.CertificateValidateAndSigner)
 		expectedError   string
 	}{
 		{
@@ -329,12 +333,14 @@ func TestSendCertificate(t *testing.T) {
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.Hash{}, errors.New("some error")).Once()
 				mockStorage.EXPECT().SaveNonAcceptedCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
-			mockValidatorFn: func() *mocks.ValidatorPoller {
+			mockValidatorFn: func() (*mocks.ValidatorPoller, *mocks.CertificateValidateAndSigner) {
 				mockValidator := mocks.NewValidatorPoller(t)
 				mockValidator.EXPECT().
 					PollValidators(mock.Anything, mock.Anything).
 					Return(&agglayertypes.Multisig{}, nil).Once()
-				return mockValidator
+				mockLocalValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockLocalValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+				return mockValidator, mockLocalValidator
 			},
 			expectedError: "error sending certificate",
 		},
@@ -357,12 +363,14 @@ func TestSendCertificate(t *testing.T) {
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(errors.New("some error")).Once()
 			},
-			mockValidatorFn: func() *mocks.ValidatorPoller {
+			mockValidatorFn: func() (*mocks.ValidatorPoller, *mocks.CertificateValidateAndSigner) {
 				mockValidator := mocks.NewValidatorPoller(t)
 				mockValidator.EXPECT().
 					PollValidators(mock.Anything, mock.Anything).
 					Return(&agglayertypes.Multisig{}, nil).Once()
-				return mockValidator
+				mockLocalValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockLocalValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+				return mockValidator, mockLocalValidator
 			},
 			expectedError: "error saving last sent certificate",
 		},
@@ -381,12 +389,14 @@ func TestSendCertificate(t *testing.T) {
 					BridgeExits:      []*agglayertypes.BridgeExit{{}},
 				}, nil).Once()
 			},
-			mockValidatorFn: func() *mocks.ValidatorPoller {
+			mockValidatorFn: func() (*mocks.ValidatorPoller, *mocks.CertificateValidateAndSigner) {
+				mockLocalValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockLocalValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
 				mockValidator := mocks.NewValidatorPoller(t)
 				mockValidator.EXPECT().
 					PollValidators(mock.Anything, mock.Anything).
 					Return(nil, errors.New("some error")).Once()
-				return mockValidator
+				return mockValidator, mockLocalValidator
 			},
 			expectedError: "error polling validator committee: some error",
 		},
@@ -410,11 +420,13 @@ func TestSendCertificate(t *testing.T) {
 					Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
-			mockValidatorFn: func() *mocks.ValidatorPoller {
+			mockValidatorFn: func() (*mocks.ValidatorPoller, *mocks.CertificateValidateAndSigner) {
 				mockValidator := mocks.NewValidatorPoller(t)
 				mockValidator.EXPECT().PollValidators(mock.Anything, mock.Anything).
 					Return(&agglayertypes.Multisig{}, nil).Once()
-				return mockValidator
+				mockLocalValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockLocalValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+				return mockValidator, mockLocalValidator
 			},
 		},
 		{
@@ -436,12 +448,14 @@ func TestSendCertificate(t *testing.T) {
 				mockAgglayerClient.EXPECT().SendCertificate(mock.Anything, mock.Anything).Return(common.HexToHash("0x22"), nil).Once()
 				mockStorage.EXPECT().SaveLastSentCertificate(mock.Anything, mock.Anything).Return(nil).Once()
 			},
-			mockValidatorFn: func() *mocks.ValidatorPoller {
+			mockValidatorFn: func() (*mocks.ValidatorPoller, *mocks.CertificateValidateAndSigner) {
 				mockValidator := mocks.NewValidatorPoller(t)
 				mockValidator.EXPECT().
 					PollValidators(mock.Anything, mock.Anything).
 					Return(&agglayertypes.Multisig{}, nil).Once()
-				return mockValidator
+				mockLocalValidator := mocks.NewCertificateValidateAndSigner(t)
+				mockLocalValidator.EXPECT().ValidateAndSignCertificate(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
+				return mockValidator, mockLocalValidator
 			},
 		},
 	}
@@ -471,7 +485,7 @@ func TestSendCertificate(t *testing.T) {
 			}
 
 			if tt.mockValidatorFn != nil {
-				aggsender.validatorPoller = tt.mockValidatorFn()
+				aggsender.validatorPoller, aggsender.localValidator = tt.mockValidatorFn()
 			}
 
 			mockEpochNotifier.EXPECT().GetEpochStatus().Return(aggsendertypes.EpochStatus{})
