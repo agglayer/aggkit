@@ -24,7 +24,6 @@ type FlowInterface interface {
 		preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error)
 	BuildCertificate(ctx context.Context,
 		buildParams *types.CertificateBuildParams) (*agglayertypes.Certificate, error)
-	ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error
 }
 
 type L1InfoTreeRootByLeafQuerier interface {
@@ -60,11 +59,6 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	if params.Certificate == nil {
 		return ErrNilCertificate
 	}
-	// Check if the certificate Metadata is compatible with the current version
-	if err := a.checkMetadataCompatibility(params); err != nil {
-		return fmt.Errorf("failed CheckMetadataCompatibility: %w", err)
-	}
-
 	var (
 		previousCertificateToBlock uint64
 		err                        error
@@ -110,11 +104,6 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	certificate, err := a.flow.BuildCertificate(ctx, buildParams)
 	if err != nil {
 		return fmt.Errorf("failed flow.BuildCertificate: %w", err)
-	}
-
-	// Validate flow specific things
-	if err := a.flow.ValidateCertificate(ctx, certificate); err != nil {
-		return fmt.Errorf("failed flow.ValidateCertificate: %w", err)
 	}
 
 	// Compare the incoming certificate with the one generated
@@ -174,20 +163,6 @@ func (a *CertificateValidator) checkContigousCertificates(params types.VerifyInc
 		return fmt.Errorf("certificate PrevLocalExitRoot %s is not equal to previous certificate NewLocalExitRoot %s",
 			params.Certificate.PrevLocalExitRoot.String(),
 			params.PreviousCertificate.NewLocalExitRoot.String())
-	}
-
-	return nil
-}
-
-// checkMetadataCompatibility checks if the certificate metadata is compatible with the current version
-func (a *CertificateValidator) checkMetadataCompatibility(params types.VerifyIncomingRequest) error {
-	if params.Certificate == nil {
-		return nil
-	}
-
-	if params.Certificate.Metadata != aggkitcommon.ZeroHash {
-		return fmt.Errorf("certificate metadata is expected to be zero hash, but got: %s",
-			params.Certificate.Metadata.Hex())
 	}
 
 	return nil

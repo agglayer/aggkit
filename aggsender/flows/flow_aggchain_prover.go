@@ -325,12 +325,7 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 		cert.CustomChainData = buildParams.AggchainProof.CustomChainData
 	}
 
-	signedCert, err := a.signCertificate(ctx, cert)
-	if err != nil {
-		return nil, fmt.Errorf("aggchainProverFlow - error signing certificate: %w", err)
-	}
-
-	return signedCert, nil
+	return cert, nil
 }
 
 // UpdateAggchainData updates the AggchainData field in certificate with the multisig if needed
@@ -401,48 +396,6 @@ func (a *AggchainProverFlow) getLastProvenBlock(fromBlock uint64, lastCertificat
 	}
 
 	return fromBlock - 1
-}
-
-// signCertificate signs a certificate with the aggsender key
-func (a *AggchainProverFlow) signCertificate(
-	ctx context.Context, cert *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
-	aggchainData, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
-	if !ok {
-		return nil, fmt.Errorf("aggchainProverFlow - signCertificate - AggchainData is not of type AggchainDataProof")
-	}
-
-	hashToSign := cert.FEPHashToSign()
-	sig, err := a.certificateSigner.SignHash(ctx, hashToSign)
-	if err != nil {
-		return nil, err
-	}
-
-	aggchainData.Signature = sig
-
-	a.log.Infof("aggchainProverFlow - Signed certificate. Sequencer address: %s. "+
-		"New local exit root: %s. Aggchain Params: %s. Height: %d Hash signed: %s",
-		a.certificateSigner.PublicAddress().String(),
-		cert.NewLocalExitRoot.String(),
-		aggchainData.AggchainParams.String(),
-		cert.Height,
-		hashToSign.String(),
-	)
-
-	return cert, nil
-}
-
-// ValidateCertificate validates the certificate for the FEP specific things
-func (a *AggchainProverFlow) ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error {
-	if cert == nil {
-		return fmt.Errorf("aggchainProverFlow - ValidateCertificate - certificate is nil")
-	}
-
-	_, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
-	if !ok {
-		return fmt.Errorf("aggchainProverFlow - ValidateCertificate - AggchainData is not of type AggchainDataProof")
-	}
-
-	return nil
 }
 
 // Signer returns the signer used to sign the certificate

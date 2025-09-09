@@ -398,7 +398,6 @@ type Certificate struct {
 	NewLocalExitRoot    common.Hash           `json:"new_local_exit_root"`
 	BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 	ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
-	Metadata            common.Hash           `json:"metadata"`
 	CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 	AggchainData        AggchainData          `json:"aggchain_data,omitempty"`
 	L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
@@ -431,7 +430,6 @@ func (c *Certificate) UnmarshalJSON(data []byte) error {
 		NewLocalExitRoot    common.Hash           `json:"new_local_exit_root"`
 		BridgeExits         []*BridgeExit         `json:"bridge_exits"`
 		ImportedBridgeExits []*ImportedBridgeExit `json:"imported_bridge_exits"`
-		Metadata            common.Hash           `json:"metadata"`
 		CustomChainData     []byte                `json:"custom_chain_data,omitempty"`
 		AggchainData        AggchainDataSelector  `json:"aggchain_data,omitempty"`
 		L1InfoTreeLeafCount uint32                `json:"l1_info_tree_leaf_count,omitempty"`
@@ -446,7 +444,6 @@ func (c *Certificate) UnmarshalJSON(data []byte) error {
 	c.NewLocalExitRoot = aux.NewLocalExitRoot
 	c.BridgeExits = aux.BridgeExits
 	c.ImportedBridgeExits = aux.ImportedBridgeExits
-	c.Metadata = aux.Metadata
 	c.CustomChainData = aux.CustomChainData
 	c.AggchainData = aux.AggchainData.GetObject()
 	c.L1InfoTreeLeafCount = aux.L1InfoTreeLeafCount
@@ -497,51 +494,7 @@ func (c *Certificate) CertificateID() common.Hash {
 		c.NewLocalExitRoot.Bytes(),
 		bridgeExitsPart,
 		importedBridgeExitsPart,
-		c.Metadata.Bytes(),
-	)
-}
-
-// PPHashToSign is the actual hash that needs to be signed by the aggsender
-// as expected by the agglayer for the PP flow
-func (c *Certificate) PPHashToSign() common.Hash {
-	globalIndexHashes := make([][]byte, len(c.ImportedBridgeExits))
-	for i, importedBridgeExit := range c.ImportedBridgeExits {
-		globalIndexHashes[i] = importedBridgeExit.GlobalIndex.Hash().Bytes()
-	}
-
-	return crypto.Keccak256Hash(
-		c.NewLocalExitRoot.Bytes(),
-		crypto.Keccak256Hash(globalIndexHashes...).Bytes(),
-	)
-}
-
-// FEPHashToSign is the actual hash that needs to be signed by the aggsender
-// as expected by the agglayer for the FEP flow
-func (c *Certificate) FEPHashToSign() common.Hash {
-	chunks := make([][]byte, 0, len(c.ImportedBridgeExits))
-	for _, importedBridgeExit := range c.ImportedBridgeExits {
-		indexBytes := importedBridgeExit.GlobalIndexToLittleEndianBytes()
-		hashBytes := importedBridgeExit.BridgeExit.Hash().Bytes()
-
-		combined := make([]byte, 0, len(indexBytes)+len(hashBytes))
-		combined = append(combined, indexBytes...) // combine into one slice
-		combined = append(combined, hashBytes...)  // combine into one slice
-		chunks = append(chunks, combined)
-	}
-
-	importedBridgeExitsHash := crypto.Keccak256(chunks...)
-
-	aggchainParams := aggkitcommon.EmptyBytesHash
-	aggchainDataProof, ok := c.AggchainData.(*AggchainDataProof)
-	if ok {
-		aggchainParams = aggchainDataProof.AggchainParams.Bytes()
-	}
-
-	return crypto.Keccak256Hash(
-		c.NewLocalExitRoot.Bytes(),
-		importedBridgeExitsHash,
-		aggkitcommon.Uint64ToLittleEndianBytes(c.Height),
-		aggchainParams,
+		aggkitcommon.ZeroHash.Bytes(), // zero hash is used instead of old Metadata field
 	)
 }
 

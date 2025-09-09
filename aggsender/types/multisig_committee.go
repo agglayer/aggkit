@@ -31,6 +31,11 @@ func NewSignerInfo(url string, address common.Address) *SignerInfo {
 	}
 }
 
+// String returns a string representation of the signer
+func (s *SignerInfo) String() string {
+	return fmt.Sprintf("{URL: %s, Address: %s}", s.URL, s.Address.Hex())
+}
+
 // MultisigCommittee represents a set of authorized signers with a signing threshold.
 type MultisigCommittee struct {
 	signers    []*SignerInfo
@@ -73,7 +78,7 @@ func NewMultisigCommittee(signers []*SignerInfo, threshold *big.Int) (*MultisigC
 // Returns an error if the address already exists.
 func (m *MultisigCommittee) AddSigner(info *SignerInfo) error {
 	if _, exists := m.signersSet[info.Address]; exists {
-		return fmt.Errorf("signer %s already in committee", info.Address)
+		return fmt.Errorf("signer %s already in committee", info.String())
 	}
 
 	m.signers = append(m.signers, info)

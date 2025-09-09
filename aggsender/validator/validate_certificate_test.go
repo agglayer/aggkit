@@ -28,26 +28,12 @@ var (
 )
 
 func TestValidateCertificate(t *testing.T) {
-	t.Run("metadata not latest", func(t *testing.T) {
-		testData := newTestDataCertificateValidator(t)
-		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
-			Certificate: &agglayertypes.Certificate{
-				Height:   0,
-				Metadata: common.HexToHash("0x1"),
-			},
-			PreviousCertificate: nil,
-		})
-		require.Error(t, err)
-		require.ErrorContains(t, err, "certificate metadata is expected to be zero hash")
-	})
-
 	t.Run("invalid LastL2BlockInCert - ToBlock in cert larger", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
 		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
-				Height:   1,
-				Metadata: aggkitcommon.ZeroHash,
+				Height: 1,
 			},
 			PreviousCertificate: nil,
 			LastL2BlockInCert:   5,
@@ -61,8 +47,7 @@ func TestValidateCertificate(t *testing.T) {
 		testData.mockCertQuerier.EXPECT().GetLastSettledCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(20), nil)
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
-				Height:   1,
-				Metadata: aggkitcommon.ZeroHash,
+				Height: 1,
 			},
 			PreviousCertificate: &agglayertypes.CertificateHeader{
 				Height:           0,
@@ -81,8 +66,7 @@ func TestValidateCertificate(t *testing.T) {
 		testData.mockCertQuerier.EXPECT().GetNewCertificateToBlock(testData.ctx, mock.Anything).Return(uint64(10), nil)
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
-				Height:   1,
-				Metadata: aggkitcommon.ZeroHash,
+				Height: 1,
 			},
 			PreviousCertificate: nil,
 			LastL2BlockInCert:   10,
@@ -98,7 +82,6 @@ func TestValidateCertificate(t *testing.T) {
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:            0,
-				Metadata:          aggkitcommon.ZeroHash,
 				PrevLocalExitRoot: common.HexToHash("0x1"),
 			},
 			PreviousCertificate: nil,
@@ -115,7 +98,6 @@ func TestValidateCertificate(t *testing.T) {
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:            1,
-				Metadata:          aggkitcommon.ZeroHash,
 				PrevLocalExitRoot: common.HexToHash("0x1"),
 			},
 			PreviousCertificate: &agglayertypes.CertificateHeader{
@@ -140,7 +122,6 @@ func TestValidateCertificate(t *testing.T) {
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:              0,
-				Metadata:            aggkitcommon.ZeroHash,
 				L1InfoTreeLeafCount: 10,
 				PrevLocalExitRoot:   types.EmptyLER,
 			},
@@ -162,7 +143,6 @@ func TestValidateCertificate(t *testing.T) {
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:              0,
-				Metadata:            aggkitcommon.ZeroHash,
 				L1InfoTreeLeafCount: 10,
 				PrevLocalExitRoot:   types.EmptyLER,
 			},
@@ -186,7 +166,6 @@ func TestValidateCertificate(t *testing.T) {
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:              0,
-				Metadata:            aggkitcommon.ZeroHash,
 				L1InfoTreeLeafCount: 10,
 				PrevLocalExitRoot:   types.EmptyLER,
 			},
@@ -206,14 +185,10 @@ func TestValidateCertificate(t *testing.T) {
 		testData.mockFlow.EXPECT().
 			GenerateBuildParams(testData.ctx, mock.Anything).Return(&types.CertificateBuildParams{}, nil)
 		testData.mockFlow.EXPECT().
-			BuildCertificate(testData.ctx, mock.Anything).Return(&agglayertypes.Certificate{
-			Metadata: aggkitcommon.ZeroHash,
-		}, nil)
-		testData.mockFlow.EXPECT().ValidateCertificate(testData.ctx, mock.Anything).Return(nil)
+			BuildCertificate(testData.ctx, mock.Anything).Return(&agglayertypes.Certificate{}, nil)
 		err := testData.sut.ValidateCertificate(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:              0,
-				Metadata:            aggkitcommon.ZeroHash,
 				L1InfoTreeLeafCount: 10,
 				PrevLocalExitRoot:   types.EmptyLER,
 			},
@@ -310,7 +285,6 @@ func TestGetCertificatePreBuildParams(t *testing.T) {
 		_, err := testData.sut.getCertificatePreBuildParams(testData.ctx, types.VerifyIncomingRequest{
 			Certificate: &agglayertypes.Certificate{
 				Height:              2,
-				Metadata:            aggkitcommon.ZeroHash,
 				L1InfoTreeLeafCount: 10,
 			},
 			PreviousCertificate: &agglayertypes.CertificateHeader{

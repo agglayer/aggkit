@@ -247,9 +247,6 @@ func ConvertCertToProtoCertificate(
 		NewLocalExitRoot: &v1types.FixedBytes32{
 			Value: certificate.NewLocalExitRoot.Bytes(),
 		},
-		Metadata: &v1types.FixedBytes32{
-			Value: certificate.Metadata.Bytes(),
-		},
 		CustomChainData:     certificate.CustomChainData,
 		AggchainData:        aggchainDataProto,
 		BridgeExits:         make([]*v1types.BridgeExit, 0, len(certificate.BridgeExits)),

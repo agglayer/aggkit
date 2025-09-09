@@ -23,11 +23,7 @@ func HashCertificateToSign(cert *agglayertypes.Certificate) (common.Hash, error)
 
 	claimsHash := crypto.Keccak256(claimsRawMetadata)
 
-	var aggchainParams []byte
-	aggchainData, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
-	if ok {
-		aggchainParams = aggchainData.AggchainParams.Bytes()
-	}
+	aggchainParams := getAggchainParams(cert)
 
 	return crypto.Keccak256Hash(
 		cert.NewLocalExitRoot.Bytes(),
@@ -36,4 +32,20 @@ func HashCertificateToSign(cert *agglayertypes.Certificate) (common.Hash, error)
 		aggchainParams,
 		cert.CertificateID().Bytes(),
 	), nil
+}
+
+// getAggchainParams extracts the aggchain params field from the certificate
+// with handling different types of aggchain data.
+func getAggchainParams(cert *agglayertypes.Certificate) []byte {
+	aggchainDataProof, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
+	if ok {
+		return aggchainDataProof.AggchainParams.Bytes()
+	}
+
+	aggchainDataProofWithMultisig, ok := cert.AggchainData.(*agglayertypes.AggchainDataMultisigWithProof)
+	if ok && aggchainDataProofWithMultisig.AggchainProof != nil {
+		return aggchainDataProofWithMultisig.AggchainProof.AggchainParams.Bytes()
+	}
+
+	return aggkitcommon.ZeroHash.Bytes()
 }

@@ -19,7 +19,6 @@ The Aggsender Validator serves as an independent validation layer that verifies 
 
 The validator performs comprehensive checks on incoming certificates:
 
-- **Metadata Validation**: As per newest version, Metadata field on certificates must be ZeroHash
 - **Certificate Continuity**: Verifies certificates are contiguous (no gaps in height)
 - **Previous Certificate Status**: Checks that previous certificates are properly settled
 - **Certificate Reconstruction**: Rebuilds the certificate using data indexed from the L1 and L2 RPCs and compares with incoming certificate. Validators and proposers should use independent RPCs 
@@ -122,7 +121,7 @@ This committee-based approach provides several security benefits:
 The main validation engine that implements the core validation logic:
 
 - `ValidateCertificate(ctx, params)`: Main validation method
-- Checks metadata compatibility, certificate continuity, and content verification
+- Checks certificate continuity, and content verification, verifies proof for each claim (imported bridge exit)
 
 #### ValidatorService (gRPC)
 
@@ -286,19 +285,18 @@ message ValidateCertificateResponse {
 ### Certificate Validation Steps
 
 1. **Null Check**: Ensure proposed certificate is not null
-2. **Metadata Compatibility**: Verify certificate metadata format compatibility
 3. **Certificate Continuity**: Check height progression and LocalExitRoot continuity
 4. **Previous Certificate Status**: Ensure previous certificate is settled
 5. **Certificate Reconstruction**: Rebuild certificate using the same building logic the proposer used
 6. **Content Comparison**: Compare reconstructed vs. incoming certificate
-7. **Signing**: Sign the certificate if validation passes
+7. **Proof Verification**: Verifying proofs for each claim (iimported bridge exit)
+8. **Signing**: Sign the certificate if validation passes
 
 ### Key Validation Rules
 
 - **Height Continuity**: Each certificate height must be previous + 1
 - **LER Consistency**: `PrevLocalExitRoot` must match previous certificate's `NewLocalExitRoot`
 - **First Certificate**: Height 0 must have correct starting LocalExitRoot defined in the rollup contract
-- **Metadata**: Must be zero hash (current requirement)
 - **Block Range**: Must be contiguous with no gaps
 
 ### Error Handling
@@ -306,7 +304,6 @@ message ValidateCertificateResponse {
 The validator returns specific errors for different validation failures:
 
 - `ErrNilCertificate`: Certificate is null
-- `ErrMetadataNotCompatible`: Metadata version mismatch
 - Certificate height mismatch errors
 - LocalExitRoot continuity errors
 - Certificate comparison differences
@@ -335,9 +332,8 @@ The validator provides detailed logging for debugging:
 
 1. **Certificate Height Gaps**: Ensure continuous certificate submission
 2. **LocalExitRoot Mismatches**: Verify bridge synchronization is correct  
-3. **Metadata Errors**: Check version compatibility
-4. **Signing Failures**: Verify signer configuration and key access
-5. **gRPC Connection Issues**: Check network connectivity and service status
+3. **Signing Failures**: Verify signer configuration and key access
+4. **gRPC Connection Issues**: Check network connectivity and service status
 
 ## Best Practices
 

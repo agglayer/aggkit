@@ -31,8 +31,6 @@ type AggsenderFlow interface {
 	// GenerateBuildParams generates the build parameters based on the preParams
 	GenerateBuildParams(ctx context.Context,
 		preParams *CertificatePreBuildParams) (*CertificateBuildParams, error)
-	// ValidateCertificate validates the built certificate
-	ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error
 	// UpdateAggchainData updates the aggchain data field for the given certificate
 	UpdateAggchainData(cert *agglayertypes.Certificate, multisig *agglayertypes.Multisig) error
 	// Signer is the signer used to sign the certificate

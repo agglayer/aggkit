@@ -11,7 +11,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
-	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -83,7 +82,6 @@ func TestBuildCertificate(t *testing.T) {
 				NetworkID:         1,
 				PrevLocalExitRoot: common.HexToHash("0x123"),
 				NewLocalExitRoot:  common.HexToHash("0x789"),
-				Metadata:          aggkitcommon.ZeroHash,
 				BridgeExits: []*agglayertypes.BridgeExit{
 					{
 						LeafType: agglayertypes.LeafTypeAsset,
@@ -353,7 +351,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{}, []bridgesync.Claim{
 					{
 						BlockNum:        1,
@@ -377,7 +375,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 						BlockNum:        1,
 						RollupExitRoot:  common.HexToHash("0x1"),
 						MainnetExitRoot: common.HexToHash("0x2"),
-						GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+						GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					}},
 				CreatedAt:                      timeNowUTCForTest(),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
@@ -415,7 +413,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 				mockL1InfoTreeQuerier *mocks.L1InfoTreeDataQuerier) {
 				rer := common.HexToHash("0x1")
 				mer := common.HexToHash("0x2")
-				ger := calculateGER(mer, rer)
+				ger := l1infotreesync.CalculateGER(mer, rer)
 				mockL2BridgeQuerier.EXPECT().GetLastProcessedBlock(ctx).Return(uint64(10), nil)
 				mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&types.CertificateHeader{ToBlock: 5}, nil)
 				mockL2BridgeQuerier.EXPECT().GetBridgesAndClaims(ctx, uint64(6), uint64(10)).Return([]bridgesync.Bridge{{}}, []bridgesync.Claim{
@@ -439,7 +437,7 @@ func Test_PPFlow_GetCertificateBuildParams(t *testing.T) {
 					{
 						RollupExitRoot:  common.HexToHash("0x1"),
 						MainnetExitRoot: common.HexToHash("0x2"),
-						GlobalExitRoot:  calculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
+						GlobalExitRoot:  l1infotreesync.CalculateGER(common.HexToHash("0x2"), common.HexToHash("0x1")),
 					}},
 				CreatedAt:                      timeNowUTCForTest(),
 				L1InfoTreeRootFromWhichToProve: common.HexToHash("0x123"),
@@ -553,164 +551,6 @@ func TestGetLastSentBlockAndRetryCount(t *testing.T) {
 func Test_PPFlow_CheckInitialStatus(t *testing.T) {
 	sut := &PPFlow{}
 	require.Nil(t, sut.CheckInitialStatus(context.TODO()))
-}
-
-func Test_PPFlow_SignCertificate(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	tests := []struct {
-		name          string
-		mockSignerFn  func(*mocks.Signer)
-		certificate   *agglayertypes.Certificate
-		expectedCert  *agglayertypes.Certificate
-		expectedError string
-	}{
-		{
-			name: "successfully signs certificate",
-			mockSignerFn: func(mockSigner *mocks.Signer) {
-				mockSigner.EXPECT().SignHash(ctx, mock.Anything).Return([]byte("mock_signature"), nil)
-				mockSigner.EXPECT().PublicAddress().Return(common.HexToAddress("0x123"))
-			},
-			certificate: &agglayertypes.Certificate{
-				NewLocalExitRoot: common.HexToHash("0x456"),
-			},
-			expectedCert: &agglayertypes.Certificate{
-				NewLocalExitRoot: common.HexToHash("0x456"),
-				AggchainData: &agglayertypes.AggchainDataSignature{
-					Signature: []byte("mock_signature"),
-				},
-			},
-		},
-		{
-			name: "error signing certificate",
-			mockSignerFn: func(mockSigner *mocks.Signer) {
-				mockSigner.EXPECT().SignHash(ctx, mock.Anything).Return(nil, errors.New("signing error"))
-			},
-			certificate: &agglayertypes.Certificate{
-				NewLocalExitRoot: common.HexToHash("0x456"),
-			},
-			expectedError: "signing error",
-		},
-	}
-
-	for _, tt := range tests {
-		tt := tt
-
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			mockSigner := mocks.NewSigner(t)
-			if tt.mockSignerFn != nil {
-				tt.mockSignerFn(mockSigner)
-			}
-			logger := log.WithFields("test", "Test_PPFlow_SignCertificate")
-			flowBase := NewBaseFlow(
-				logger,
-				nil, // mockL2BridgeQuerier,
-				nil, // mockStorage,
-				nil, // mockL1InfoTreeDataQuerier,
-				nil, // mockLERQuerier,
-				NewBaseFlowConfigDefault())
-
-			ppFlow := NewPPFlow(
-				logger,
-				flowBase,
-				nil, // storage
-				nil, // l1InfoTreeDataQuerier
-				nil, // l2BridgeQuerier
-				mockSigner,
-				false, // forceOneBridgeExit
-				0,     // maxL2BlockNumber
-			)
-
-			signedCert, err := ppFlow.signCertificate(ctx, tt.certificate)
-
-			if tt.expectedError != "" {
-				require.ErrorContains(t, err, tt.expectedError)
-				require.Nil(t, signedCert)
-			} else {
-				require.NoError(t, err)
-				require.Equal(t, tt.expectedCert, signedCert)
-			}
-		})
-	}
-}
-
-func Test_PPFlow_ValidateCertificate(t *testing.T) {
-	t.Parallel()
-
-	ctx := context.Background()
-
-	tests := []struct {
-		name          string
-		certificate   *agglayertypes.Certificate
-		expectedError string
-	}{
-		{
-			name:          "nil certificate",
-			certificate:   nil,
-			expectedError: "ppFlow - certificate is nil",
-		},
-		{
-			name: "certificate with nil AggchainData",
-			certificate: &agglayertypes.Certificate{
-				AggchainData: nil,
-			},
-			expectedError: "ppFlow - certificate AggchainData is not of type AggchainDataSignature",
-		},
-		{
-			name: "certificate with wrong AggchainData type",
-			certificate: &agglayertypes.Certificate{
-				AggchainData: &agglayertypes.AggchainDataProof{},
-			},
-			expectedError: "ppFlow - certificate AggchainData is not of type AggchainDataSignature",
-		},
-		{
-			name: "valid certificate with AggchainDataSignature",
-			certificate: &agglayertypes.Certificate{
-				AggchainData: &agglayertypes.AggchainDataSignature{
-					Signature: []byte("mock_signature"),
-				},
-			},
-			expectedError: "",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			t.Parallel()
-
-			logger := log.WithFields("test", "Test_PPFlow_ValidateCertificate")
-			flowBase := NewBaseFlow(
-				logger,
-				nil, // mockL2BridgeQuerier,
-				nil, // mockStorage,
-				nil, // mockL1InfoTreeDataQuerier,
-				nil, // mockLERQuerier,
-				NewBaseFlowConfigDefault())
-
-			ppFlow := NewPPFlow(
-				logger,
-				flowBase,
-				nil,   // storage
-				nil,   // l1InfoTreeDataQuerier
-				nil,   // l2BridgeQuerier
-				nil,   // signer
-				false, // forceOneBridgeExit
-				0,     // maxL2BlockNumber
-			)
-
-			err := ppFlow.ValidateCertificate(ctx, tt.certificate)
-
-			if tt.expectedError != "" {
-				require.ErrorContains(t, err, tt.expectedError)
-			} else {
-				require.NoError(t, err)
-			}
-		})
-	}
 }
 
 func Test_PPFlow_UpdateAggchainData(t *testing.T) {

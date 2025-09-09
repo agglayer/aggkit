@@ -9,7 +9,6 @@ import (
 	"github.com/agglayer/aggkit/aggsender/db"
 	"github.com/agglayer/aggkit/aggsender/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
-	"github.com/ethereum/go-ethereum/common"
 )
 
 var _ types.AggsenderFlow = (*PPFlow)(nil)
@@ -122,12 +121,7 @@ func (p *PPFlow) BuildCertificate(ctx context.Context,
 		return nil, fmt.Errorf("ppFlow - error building certificate: %w", err)
 	}
 
-	signedCert, err := p.signCertificate(ctx, certificate)
-	if err != nil {
-		return nil, fmt.Errorf("ppFlow - error signing certificate: %w", err)
-	}
-
-	return signedCert, nil
+	return certificate, nil
 }
 
 // UpdateAggchainData updates the AggchainData field in certificate with the multisig if needed
@@ -142,42 +136,6 @@ func (p *PPFlow) UpdateAggchainData(
 	// update the aggchain data with multisig
 	cert.AggchainData = &agglayertypes.AggchainDataMultisig{
 		Multisig: multisig,
-	}
-
-	return nil
-}
-
-// signCertificate signs a certificate with the aggsender key
-func (p *PPFlow) signCertificate(ctx context.Context,
-	certificate *agglayertypes.Certificate) (*agglayertypes.Certificate, error) {
-	hashToSign := certificate.PPHashToSign()
-	sig, err := p.certificateSigner.SignHash(ctx, hashToSign)
-	if err != nil {
-		return nil, err
-	}
-
-	p.log.Infof("ppFlow - Signed certificate. Sequencer address: %s. New local exit root: %s Hash signed: %s",
-		p.certificateSigner.PublicAddress().String(),
-		common.BytesToHash(certificate.NewLocalExitRoot[:]).String(),
-		hashToSign.String(),
-	)
-
-	certificate.AggchainData = &agglayertypes.AggchainDataSignature{
-		Signature: sig,
-	}
-
-	return certificate, nil
-}
-
-// ValidateCertificate validates the certificate for the PP specific things
-func (p *PPFlow) ValidateCertificate(ctx context.Context, cert *agglayertypes.Certificate) error {
-	if cert == nil {
-		return fmt.Errorf("ppFlow - certificate is nil")
-	}
-
-	_, ok := cert.AggchainData.(*agglayertypes.AggchainDataSignature)
-	if !ok {
-		return fmt.Errorf("ppFlow - certificate AggchainData is not of type AggchainDataSignature")
 	}
 
 	return nil
