@@ -81,8 +81,6 @@ type Config struct {
 	// StopOnFinishedSendingAllCertificates is a flag to stop the AggSender when it finishes sending all certificates
 	// up to MaxL2BlockNumber
 	StopOnFinishedSendingAllCertificates bool `mapstructure:"StopOnFinishedSendingAllCertificates"`
-	// RequireValidatorCall indicates whether the validator call is mandatory.
-	RequireValidatorCall bool `mapstructure:"RequireValidatorCall"`
 	// ValidatorClient is the configuration for the ValidatorClient
 	ValidatorClient *grpc.ClientConfig `mapstructure:"ValidatorClient"`
 	// RetriesToBuildAndSendCertificate is the configuration for the retries to build and send a certificate
@@ -115,15 +113,6 @@ func (c Config) String() string {
 
 // Validate checks if the configuration is valid
 func (c Config) Validate() error {
-	if c.RequireValidatorCall {
-		if c.Mode != aggsendertypes.PessimisticProofMode.String() &&
-			c.Mode != aggsendertypes.AggchainProofMode.String() {
-			return fmt.Errorf(
-				"RequireValidatorCall can only be true in PessimisticProof or AggchainProof mode, got %s",
-				c.Mode)
-		}
-	}
-
 	if err := c.AgglayerClient.Validate(); err != nil {
 		return fmt.Errorf("invalid agglayer client config: %w", err)
 	}

@@ -78,7 +78,7 @@ func (c *certificateQuerier) GetLastSettledCertificateToBlock(
 	}
 
 	// 2. Get the latest settled imported bridge exit block number
-	networkState, err := c.agglayerClient.GetNetworkState(ctx, cert.NetworkID)
+	networkState, err := c.agglayerClient.GetNetworkInfo(ctx, cert.NetworkID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to get latest settled imported bridge exit from agglayer: %w", err)
 	}

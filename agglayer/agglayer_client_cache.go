@@ -127,8 +127,8 @@ func (c *AgglayerClientCache) GetLatestPendingCertificateHeader(ctx context.Cont
 	return c.agglayerClient.GetLatestPendingCertificateHeader(ctx, networkID)
 }
 
-// GetNetworkState retrieves the network state for a given network ID from the Agglayer client. (no cache)
-func (c *AgglayerClientCache) GetNetworkState(
-	ctx context.Context, networkID uint32) (agglayertypes.NetworkState, error) {
-	return c.agglayerClient.GetNetworkState(ctx, networkID)
+// GetNetworkInfo retrieves the network state for a given network ID from the Agglayer client. (no cache)
+func (c *AgglayerClientCache) GetNetworkInfo(
+	ctx context.Context, networkID uint32) (agglayertypes.NetworkInfo, error) {
+	return c.agglayerClient.GetNetworkInfo(ctx, networkID)
 }

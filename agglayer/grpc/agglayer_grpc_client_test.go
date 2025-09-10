@@ -593,9 +593,9 @@ func TestGetNetworkStatus(t *testing.T) {
 			cfg:                 aggkitgrpc.DefaultConfig(),
 		}
 
-		networkStateServiceMock.EXPECT().GetNetworkState(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
+		networkStateServiceMock.EXPECT().GetNetworkInfo(mock.Anything, mock.Anything).Return(nil, errors.New("test error"))
 
-		_, err := client.GetNetworkState(ctx, networkID)
+		_, err := client.GetNetworkInfo(ctx, networkID)
 		require.ErrorContains(t, err, "test error")
 	})
 
@@ -609,10 +609,10 @@ func TestGetNetworkStatus(t *testing.T) {
 		}
 
 		// empty response -> HasNetworkStatus() == false
-		networkStateServiceMock.EXPECT().GetNetworkState(mock.Anything, mock.Anything).Return(&node.GetNetworkStateResponse{}, nil)
+		networkStateServiceMock.EXPECT().GetNetworkInfo(mock.Anything, mock.Anything).Return(&node.GetNetworkInfoResponse{}, nil)
 
-		_, err := client.GetNetworkState(ctx, networkID)
-		require.ErrorContains(t, err, "network state is not available")
+		_, err := client.GetNetworkInfo(ctx, networkID)
+		require.ErrorContains(t, err, "network info is not available")
 	})
 
 	t.Run("returns response on success", func(t *testing.T) {
@@ -630,7 +630,7 @@ func TestGetNetworkStatus(t *testing.T) {
 		latestPendingHeight := uint64(99)
 		latestEpochWithSettlement := uint64(3)
 
-		expectedProto := &v1nodetypes.NetworkState{
+		expectedProto := &v1nodetypes.NetworkInfo{
 			NetworkStatus: v1nodetypes.NetworkStatus_NETWORK_STATUS_ACTIVE,
 			NetworkType:   v1nodetypes.NetworkType_NETWORK_TYPE_ECDSA,
 			NetworkId:     networkID,
@@ -651,11 +651,11 @@ func TestGetNetworkStatus(t *testing.T) {
 			LatestEpochWithSettlement: &latestEpochWithSettlement,
 		}
 
-		networkStateServiceMock.EXPECT().GetNetworkState(mock.Anything, mock.Anything).Return(&node.GetNetworkStateResponse{
-			NetworkState: expectedProto,
+		networkStateServiceMock.EXPECT().GetNetworkInfo(mock.Anything, mock.Anything).Return(&node.GetNetworkInfoResponse{
+			NetworkInfo: expectedProto,
 		}, nil)
 
-		resp, err := client.GetNetworkState(ctx, networkID)
+		resp, err := client.GetNetworkInfo(ctx, networkID)
 		require.NoError(t, err)
 
 		require.Equal(t, expectedProto.NetworkStatus.String(), resp.Status)

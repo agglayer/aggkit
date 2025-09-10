@@ -45,10 +45,10 @@ type AggSender struct {
 	certQuerier                  types.CertificateQuerier
 	rollupDataQuerier            types.RollupDataQuerier
 	validatorPoller              types.ValidatorPoller
+	localValidator               types.CertificateValidateAndSigner
 
 	l1Client         aggkittypes.BaseEthereumClienter
 	l1InfoTreeSyncer types.L1InfoTreeSyncer
-	localValidator   types.CertificateValidateAndSigner
 
 	cfg config.Config
 
@@ -123,6 +123,18 @@ func New(
 		aggLayerClient,
 	)
 
+	localValidator := validator.NewLocalValidator(
+		logger,
+		storage,
+		validator.NewAggsenderValidator(
+			logger,
+			flowManager,
+			query.NewL1InfoTreeDataQuerier(l1Client, l1InfoTreeSyncer),
+			certQuerier,
+			query.NewLERDataQuerier(cfg.RollupCreationBlockL1, rollupDataQuerier),
+		),
+	)
+
 	return &AggSender{
 		cfg:                          cfg,
 		log:                          logger,
@@ -136,6 +148,7 @@ func New(
 		l2OriginNetwork:              l2OriginNetwork,
 		certQuerier:                  certQuerier,
 		rollupDataQuerier:            rollupDataQuerier,
+		localValidator:               localValidator,
 		validatorPoller: NewValidatorPoller(
 			logger,
 			storage,
@@ -148,10 +161,6 @@ func New(
 		l1Client:         l1Client,
 		l1InfoTreeSyncer: l1InfoTreeSyncer,
 	}, nil
-}
-
-func (a *AggSender) GetLERQuerier() types.LERQuerier {
-	return query.NewLERDataQuerier(a.cfg.RollupCreationBlockL1, a.rollupDataQuerier)
 }
 
 func (a *AggSender) Info() types.AggsenderInfo {
@@ -189,22 +198,6 @@ func (a *AggSender) Start(ctx context.Context) {
 	a.certStatusChecker.CheckInitialStatus(ctx, a.cfg.DelayBetweenRetries.Duration, a.status)
 	if err := a.flow.CheckInitialStatus(ctx); err != nil {
 		a.log.Panicf("error checking flow Initial Status: %v", err)
-	}
-
-	// TODO: The local validator implementation is there solely for testing purposes
-	// and it should be removed after integration testing is done.
-	if !a.cfg.RequireValidatorCall {
-		a.localValidator = validator.NewLocalValidator(
-			a.log,
-			a.storage,
-			validator.NewAggsenderValidator(
-				a.log,
-				a.flow,
-				query.NewL1InfoTreeDataQuerier(a.l1Client, a.l1InfoTreeSyncer),
-				a.certQuerier,
-				a.GetLERQuerier(),
-			),
-		)
 	}
 
 	a.sendCertificates(ctx, 0)
@@ -342,20 +335,16 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 		return nil, fmt.Errorf("error building certificate: %w", err)
 	}
 
-	var multisig *agglayertypes.Multisig
-	if a.localValidator != nil {
-		if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
-			// TODO - just log the failure of local validation for now
-			a.log.Warnf("local validation of certificate failed: %v. Cert: %s", err, certificate.Brief())
-		}
-	} else {
-		multisig, err = a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{
-			Certificate:       certificate,
-			LastL2BlockInCert: certificateParams.ToBlock,
-		})
-		if err != nil {
-			return nil, fmt.Errorf("error polling validator committee: %w", err)
-		}
+	if _, err := a.localValidator.ValidateAndSignCertificate(ctx, certificate, certificateParams.ToBlock); err != nil {
+		return nil, fmt.Errorf("error validating certificate locally: %w", err)
+	}
+
+	multisig, err := a.validatorPoller.PollValidators(ctx, &types.ValidationRequest{
+		Certificate:       certificate,
+		LastL2BlockInCert: certificateParams.ToBlock,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("error polling validator committee: %w", err)
 	}
 
 	if err := a.flow.UpdateAggchainData(certificate, multisig); err != nil {

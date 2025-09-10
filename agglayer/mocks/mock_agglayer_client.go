@@ -260,23 +260,23 @@ func (_c *AgglayerClientMock_GetLatestSettledCertificateHeader_Call) RunAndRetur
 	return _c
 }
 
-// GetNetworkState provides a mock function with given fields: ctx, networkID
-func (_m *AgglayerClientMock) GetNetworkState(ctx context.Context, networkID uint32) (types.NetworkState, error) {
+// GetNetworkInfo provides a mock function with given fields: ctx, networkID
+func (_m *AgglayerClientMock) GetNetworkInfo(ctx context.Context, networkID uint32) (types.NetworkInfo, error) {
 	ret := _m.Called(ctx, networkID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for GetNetworkState")
+		panic("no return value specified for GetNetworkInfo")
 	}
 
-	var r0 types.NetworkState
+	var r0 types.NetworkInfo
 	var r1 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32) (types.NetworkState, error)); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) (types.NetworkInfo, error)); ok {
 		return rf(ctx, networkID)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32) types.NetworkState); ok {
+	if rf, ok := ret.Get(0).(func(context.Context, uint32) types.NetworkInfo); ok {
 		r0 = rf(ctx, networkID)
 	} else {
-		r0 = ret.Get(0).(types.NetworkState)
+		r0 = ret.Get(0).(types.NetworkInfo)
 	}
 
 	if rf, ok := ret.Get(1).(func(context.Context, uint32) error); ok {
@@ -288,31 +288,31 @@ func (_m *AgglayerClientMock) GetNetworkState(ctx context.Context, networkID uin
 	return r0, r1
 }
 
-// AgglayerClientMock_GetNetworkState_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNetworkState'
-type AgglayerClientMock_GetNetworkState_Call struct {
+// AgglayerClientMock_GetNetworkInfo_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetNetworkInfo'
+type AgglayerClientMock_GetNetworkInfo_Call struct {
 	*mock.Call
 }
 
-// GetNetworkState is a helper method to define mock.On call
+// GetNetworkInfo is a helper method to define mock.On call
 //   - ctx context.Context
 //   - networkID uint32
-func (_e *AgglayerClientMock_Expecter) GetNetworkState(ctx interface{}, networkID interface{}) *AgglayerClientMock_GetNetworkState_Call {
-	return &AgglayerClientMock_GetNetworkState_Call{Call: _e.mock.On("GetNetworkState", ctx, networkID)}
+func (_e *AgglayerClientMock_Expecter) GetNetworkInfo(ctx interface{}, networkID interface{}) *AgglayerClientMock_GetNetworkInfo_Call {
+	return &AgglayerClientMock_GetNetworkInfo_Call{Call: _e.mock.On("GetNetworkInfo", ctx, networkID)}
 }
 
-func (_c *AgglayerClientMock_GetNetworkState_Call) Run(run func(ctx context.Context, networkID uint32)) *AgglayerClientMock_GetNetworkState_Call {
+func (_c *AgglayerClientMock_GetNetworkInfo_Call) Run(run func(ctx context.Context, networkID uint32)) *AgglayerClientMock_GetNetworkInfo_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		run(args[0].(context.Context), args[1].(uint32))
 	})
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetNetworkState_Call) Return(_a0 types.NetworkState, _a1 error) *AgglayerClientMock_GetNetworkState_Call {
+func (_c *AgglayerClientMock_GetNetworkInfo_Call) Return(_a0 types.NetworkInfo, _a1 error) *AgglayerClientMock_GetNetworkInfo_Call {
 	_c.Call.Return(_a0, _a1)
 	return _c
 }
 
-func (_c *AgglayerClientMock_GetNetworkState_Call) RunAndReturn(run func(context.Context, uint32) (types.NetworkState, error)) *AgglayerClientMock_GetNetworkState_Call {
+func (_c *AgglayerClientMock_GetNetworkInfo_Call) RunAndReturn(run func(context.Context, uint32) (types.NetworkInfo, error)) *AgglayerClientMock_GetNetworkInfo_Call {
 	_c.Call.Return(run)
 	return _c
 }

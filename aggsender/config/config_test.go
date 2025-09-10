@@ -20,33 +20,6 @@ func TestValidate(t *testing.T) {
 		expectedErr string
 	}{
 		{
-			name: "RequireValidatorCall not PP or FEP mode",
-			config: Config{
-				Mode:                 "some-other-mode",
-				RequireValidatorCall: true,
-				ValidatorClient: &grpc.ClientConfig{
-					URL:               "http://localhost:8080",
-					MinConnectTimeout: types.NewDuration(5 * time.Second),
-				},
-			},
-			expectedErr: "RequireValidatorCall can only be true in PessimisticProof or AggchainProof mode",
-		},
-		{
-			name: "RequireValidatorCall is true with ValidatorClient URL set",
-			config: Config{
-				Mode:                 aggsendertypes.PessimisticProofMode.String(),
-				RequireValidatorCall: true,
-				ValidatorClient: &grpc.ClientConfig{
-					URL: "http://localhost:8080",
-				},
-				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
-					URL:               "http://localhost:9090",
-					MinConnectTimeout: types.NewDuration(5 * time.Second),
-				},
-				},
-			},
-		},
-		{
 			name: "Invalid AgglayerClient configuration",
 			config: Config{
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
