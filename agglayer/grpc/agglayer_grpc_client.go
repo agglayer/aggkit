@@ -18,9 +18,8 @@ import (
 )
 
 var (
-	errUndefinedAggchainData = errors.New("undefined aggchain data parameter")
-	errUnknownAggchainData   = errors.New("unknown aggchain data type")
-	errNilCertificate        = errors.New("nil certificate provided for conversion to proto")
+	errUnknownAggchainData = errors.New("unknown aggchain data type")
+	errNilCertificate      = errors.New("nil certificate provided for conversion to proto")
 )
 
 type AgglayerGRPCClient struct {
