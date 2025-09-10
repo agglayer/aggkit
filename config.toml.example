@@ -24,8 +24,8 @@ AggLayerURL = "https://xxxx/"
 AggchainProofURL = "https://xxxx/"
 
 NetworkID = 1
-AggSenderPrivateKeyPath = "/path/to/keystore"
-AggSenderPrivateKeyPassword = "test"
+SequencerPrivateKeyPath = "/path/to/keystore"
+SequencerPrivateKeyPassword = "test"
 
 polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 
