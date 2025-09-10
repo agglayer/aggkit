@@ -286,8 +286,6 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 
 	// Create a 'certificates' subfolder within the database directory
 	certDir := filepath.Join(dbDir, "certificates")
-
-	// Create the certificates directory if it doesn't exist
 	if err := os.MkdirAll(certDir, 0755); err != nil { //nolint:mnd
 		return "", fmt.Errorf("failed to create certificates directory %s: %w", certDir, err)
 	}
