@@ -1238,7 +1238,8 @@ func Test_deleteCertificate(t *testing.T) {
 		t.Helper()
 		dbPath := path.Join(t.TempDir(), testName+".sqlite")
 		cfg := AggSenderSQLStorageConfig{
-			DBPath: dbPath,
+			DBPath:          dbPath,
+			CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
 		}
 		storage, err := NewAggSenderSQLStorage(logger, cfg)
 		require.NoError(t, err)

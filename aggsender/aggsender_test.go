@@ -52,6 +52,7 @@ func TestConfigString(t *testing.T) {
 	}
 
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
+		"CertificatesDir: \n"+
 		"AgglayerClient: %s\n"+
 		"AggsenderPrivateKey: local\n"+
 		"EpochNotificationPercentage: 50\n"+
