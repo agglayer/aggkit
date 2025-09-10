@@ -103,18 +103,18 @@ genesisBlockNumber = 0
 # [L1InfoTreeSync]
 # SyncBlockChunkSize = 100
 #
-# [AggOracle]
+[AggOracle]
 # ------------------------------------------------------------------------------
 # Set to true if enabling aggoracle committee mode
 # ------------------------------------------------------------------------------
-# EnableAggOracleCommittee = false
-# 		[AggOracle.EVMSender.EthTxManager]
+EnableAggOracleCommittee = false
+	    [AggOracle.EVMSender.EthTxManager]
 # ------------------------------------------------------------------------------
 # PrivateKeys is private key for aggoracle keystore
 # ------------------------------------------------------------------------------
-# 				PrivateKeys = [
-# 					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
-# 				]
+				PrivateKeys = [
+					{Method =  "local", Path = "/app/keystore/aggoracle.keystore", Password = "testonly"},
+				]
 #
 # [RPC]
 # Host = "0.0.0.0"
@@ -124,11 +124,11 @@ genesisBlockNumber = 0
 # Host = "0.0.0.0"
 # Port = 5577
 #
-# [AggSender]
+[AggSender]
 # ------------------------------------------------------------------------------
 # Set to "AggchainProof" when enabling FEP. Possible values - "PessimisticProof", "AggchainProof"
 # ------------------------------------------------------------------------------
-# Mode = "PessimisticProof"
+Mode = "PessimisticProof"
 #
 # [Prometheus]
 # Enabled = true
