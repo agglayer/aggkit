@@ -272,7 +272,7 @@ func ConvertCertToProtoCertificate(
 // convertAggchainData converts the aggchain data to a proto aggchain data
 func convertAggchainData(aggchainData types.AggchainData) (*v1types.AggchainData, error) {
 	if aggchainData == nil {
-		return nil, errUndefinedAggchainData
+		return nil, nil
 	}
 
 	switch ad := aggchainData.(type) {
