@@ -18,22 +18,44 @@ var (
 )
 
 type BaseMultisigCommitteeQuery struct {
-	multisigCommitteeSC   types.MultisigContract
-	multisigCommitteeAddr common.Address
+	sovereignRollupAddrSC types.MultisigContract
+	sovereignRollupAddr   common.Address
+	overrideURL           *CommiteeURLOverride
+}
+
+type CommiteeURLOverride struct {
+	URL map[common.Address]string
+}
+
+func (m *CommiteeURLOverride) ReplaceURL(committee []aggchainbase.IAggchainSignersSignerInfo) []aggchainbase.IAggchainSignersSignerInfo {
+	if m == nil || len(m.URL) == 0 {
+		return nil
+	}
+	newCommittee := make([]aggchainbase.IAggchainSignersSignerInfo, 0, len(committee))
+	for _, member := range committee {
+		newMember := member
+		if url, ok := m.URL[member.Addr]; ok {
+			newMember.Url = url
+		}
+		newCommittee = append(newCommittee, newMember)
+	}
+	return newCommittee
 }
 
 // NewBaseMultisigCommitteeQuery creates a new instance of BaseMultisigCommitteeQuery
-func NewBaseMultisigCommitteeQuery(multisigCommitteeAddr common.Address,
-	l1Client aggkittypes.BaseEthereumClienter) (*BaseMultisigCommitteeQuery, error) {
-	multisigCommitteeSC, err := aggchainbase.NewAggchainbaseCaller(
-		multisigCommitteeAddr, l1Client)
+func NewBaseMultisigCommitteeQuery(sovereignRollupAddr common.Address,
+	l1Client aggkittypes.BaseEthereumClienter,
+	overrideURL *CommiteeURLOverride) (*BaseMultisigCommitteeQuery, error) {
+	sovereignRollupAddrSC, err := aggchainbase.NewAggchainbaseCaller(
+		sovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, err
 	}
 
 	return &BaseMultisigCommitteeQuery{
-		multisigCommitteeSC:   multisigCommitteeSC,
-		multisigCommitteeAddr: multisigCommitteeAddr,
+		sovereignRollupAddrSC: sovereignRollupAddrSC,
+		sovereignRollupAddr:   sovereignRollupAddr,
+		overrideURL:           overrideURL,
 	}, nil
 }
 
@@ -41,14 +63,19 @@ func NewBaseMultisigCommitteeQuery(multisigCommitteeAddr common.Address,
 func (m *BaseMultisigCommitteeQuery) GetMultisigCommittee(
 	ctx context.Context, blockNum *big.Int) (*types.MultisigCommittee, error) {
 	callOpts := &bind.CallOpts{Pending: false, BlockNumber: blockNum}
-	threshold, err := m.multisigCommitteeSC.Threshold(callOpts)
+	threshold, err := m.sovereignRollupAddrSC.Threshold(callOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query the signatures threshold for block %d: %w", blockNum, err)
+		return nil, fmt.Errorf("failed to query the signatures threshold from for block %d to rollupAddr %s : %w",
+			blockNum, m.sovereignRollupAddr.String(), err)
 	}
 
-	aggChainSigners, err := m.multisigCommitteeSC.GetAggchainSignerInfos(callOpts)
+	aggChainSigners, err := m.sovereignRollupAddrSC.GetAggchainSignerInfos(callOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query the committee signers for block %d: %w", blockNum, err)
+		return nil, fmt.Errorf("failed to query the committee signers for block %d to rollupAddr %s: %w",
+			blockNum, m.sovereignRollupAddr.String(), err)
+	}
+	if m.overrideURL != nil {
+		aggChainSigners = m.overrideURL.ReplaceURL(aggChainSigners)
 	}
 
 	signerInfos := make([]*types.SignerInfo, 0, len(aggChainSigners))

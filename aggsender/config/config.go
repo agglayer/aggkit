@@ -5,6 +5,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer"
 	"github.com/agglayer/aggkit/aggsender/optimistic"
+	"github.com/agglayer/aggkit/aggsender/query"
 	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
@@ -87,6 +88,8 @@ type Config struct {
 	RetriesToBuildAndSendCertificate common.RetryPolicyGenericConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
 	// RequireCommitteeMembershipCheck indicates whether to check if the signer is part of the committee
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
+	// It allow to change commitee URL for testing purposes
+	CommiteeOverride query.CommiteeURLOverride `mapstructure:"CommiteeURLOverride"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {

@@ -244,6 +244,8 @@ RequireCommitteeMembershipCheck = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "30s"
 		UseTLS = false
+	[AggSender.CommiteeOverride]
+		URL = [ "0x00000000000000000000000": "http://localhost:8080" ]
 
 [Prometheus]
 Enabled = true

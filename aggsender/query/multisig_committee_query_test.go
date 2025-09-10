@@ -66,8 +66,8 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 			}
 
 			q := &BaseMultisigCommitteeQuery{
-				multisigCommitteeSC:   mockSC,
-				multisigCommitteeAddr: common.Address{},
+				sovereignRollupAddrSC: mockSC,
+				sovereignRollupAddr:   common.Address{},
 			}
 
 			blockNum := big.NewInt(100)
@@ -87,4 +87,76 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 			mockSC.AssertExpectations(t)
 		})
 	}
+}
+
+func Test_CommiteeURLOverride(t *testing.T) {
+	t.Run("ReplaceURL replaces URLs based on the override map", func(t *testing.T) {
+		override := &CommiteeURLOverride{
+			URL: map[common.Address]string{
+				common.HexToAddress("0x1"): "http://override1",
+				common.HexToAddress("0x3"): "http://override3",
+			},
+		}
+
+		committee := []aggchainbase.IAggchainSignersSignerInfo{
+			{
+				Addr: common.HexToAddress("0x1"),
+				Url:  "http://original1",
+			},
+			{
+				Addr: common.HexToAddress("0x2"),
+				Url:  "http://original2",
+			},
+			{
+				Addr: common.HexToAddress("0x3"),
+				Url:  "http://original3",
+			},
+		}
+
+		expected := []aggchainbase.IAggchainSignersSignerInfo{
+			{
+				Addr: common.HexToAddress("0x1"),
+				Url:  "http://override1",
+			},
+			{
+				Addr: common.HexToAddress("0x2"),
+				Url:  "http://original2",
+			},
+			{
+				Addr: common.HexToAddress("0x3"),
+				Url:  "http://override3",
+			},
+		}
+
+		result := override.ReplaceURL(committee)
+		require.Equal(t, expected, result)
+	})
+	t.Run("ReplaceURL returns nil if override is nil", func(t *testing.T) {
+		var override *CommiteeURLOverride = nil
+
+		committee := []aggchainbase.IAggchainSignersSignerInfo{
+			{
+				Addr: common.HexToAddress("0x1"),
+				Url:  "http://original1",
+			},
+		}
+
+		result := override.ReplaceURL(committee)
+		require.Nil(t, result)
+	})
+	t.Run("ReplaceURL returns nil if override map is empty", func(t *testing.T) {
+		override := &CommiteeURLOverride{
+			URL: map[common.Address]string{},
+		}
+
+		committee := []aggchainbase.IAggchainSignersSignerInfo{
+			{
+				Addr: common.HexToAddress("0x1"),
+				Url:  "http://original1",
+			},
+		}
+
+		result := override.ReplaceURL(committee)
+		require.Nil(t, result)
+	})
 }
