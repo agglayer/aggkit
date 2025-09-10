@@ -95,7 +95,8 @@ func start(cliCtx *cli.Context) error {
 		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
 
-	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client, &cfg.AggSender.CommiteeOverride)
+	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
+		&cfg.AggSender.CommiteeOverride)
 
 	var rpcServices []jRPC.Service
 	for _, component := range components {

@@ -88,7 +88,7 @@ type Config struct {
 	RetriesToBuildAndSendCertificate common.RetryPolicyGenericConfig `mapstructure:"RetriesToBuildAndSendCertificate"`
 	// RequireCommitteeMembershipCheck indicates whether to check if the signer is part of the committee
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
-	// It allow to change commitee URL for testing purposes
+	// It allow to change committee URL for testing purposes
 	CommiteeOverride query.CommiteeURLOverride `mapstructure:"CommiteeURLOverride"`
 }
 

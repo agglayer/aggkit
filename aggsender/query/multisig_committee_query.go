@@ -23,11 +23,15 @@ type BaseMultisigCommitteeQuery struct {
 	overrideURL           *CommiteeURLOverride
 }
 
+// CommiteeURLOverride is used to override the URLs of the committee members
 type CommiteeURLOverride struct {
+	// URL[address] = newURL
 	URL map[common.Address]string
 }
 
-func (m *CommiteeURLOverride) ReplaceURL(committee []aggchainbase.IAggchainSignersSignerInfo) []aggchainbase.IAggchainSignersSignerInfo {
+// ReplaceURL replaces the URLs of the committee members with the ones in the override map
+func (m *CommiteeURLOverride) ReplaceURL(
+	committee []aggchainbase.IAggchainSignersSignerInfo) []aggchainbase.IAggchainSignersSignerInfo {
 	if m == nil || len(m.URL) == 0 {
 		return nil
 	}
