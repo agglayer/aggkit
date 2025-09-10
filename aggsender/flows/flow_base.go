@@ -453,6 +453,13 @@ func (f *baseFlow) VerifyBlockRangeGaps(
 	nextBlockRange := types.NewBlockRange(newFromBlock, newToBlock)
 	lastBlockRange := types.NewBlockRange(lastSettledFromBlock, lastSettledToBlock)
 
+	if lastBlockRange.Greater(nextBlockRange) {
+		// This is a strange situation, but don't need to check anything.
+		// the way of using this function is that newXXXBlock is SC.StartingBlockNumber
+		// so newXXXBlock can be a previous block
+		return nil
+	}
+
 	// case 2: is a new cert but is not contiguous to previous one
 	gap := nextBlockRange.Gap(lastBlockRange)
 	if gap.IsEmpty() {
