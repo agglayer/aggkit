@@ -344,11 +344,6 @@ func TestSendCertificate(t *testing.T) {
 		expectedError  string
 	}{
 		{
-			name:          "returns error when AggchainData not defined",
-			certificate:   &types.Certificate{},
-			expectedError: "undefined aggchain data",
-		},
-		{
 			name: "returns error from submission service",
 			certificate: &types.Certificate{
 				AggchainData: &types.AggchainDataSignature{

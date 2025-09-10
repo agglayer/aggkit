@@ -152,7 +152,7 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 	}
 	if previousState.lastBlockSeen > currentBlock {
 		b.logger.Warnf("Block number decreased [finality:%s]: %d -> %d",
-			b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock)
+			b.config.BlockFinalityType.String(), previousState.lastBlockSeen, currentBlock)
 		// It start from scratch because something fails in calculation of block period
 		newState := previousState.initialBlock(currentBlock)
 		return b.nextBlockRequestDelay(nil, nil), newState, eventToEmit
@@ -161,7 +161,7 @@ func (b *BlockNotifierPolling) step(ctx context.Context,
 	if currentBlock-previousState.lastBlockSeen != 1 {
 		if !b.config.BlockFinalityType.IsSafe() && !b.config.BlockFinalityType.IsFinalized() {
 			b.logger.Warnf("Missed block(s) [finality:%s]: %d -> %d",
-				b.config.BlockFinalityType, previousState.lastBlockSeen, currentBlock)
+				b.config.BlockFinalityType.String(), previousState.lastBlockSeen, currentBlock)
 		}
 
 		// It start from scratch because something fails in calculation of block period

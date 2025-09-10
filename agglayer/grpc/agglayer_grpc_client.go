@@ -18,9 +18,8 @@ import (
 )
 
 var (
-	errUndefinedAggchainData = errors.New("undefined aggchain data parameter")
-	errUnknownAggchainData   = errors.New("unknown aggchain data type")
-	errNilCertificate        = errors.New("nil certificate provided for conversion to proto")
+	errUnknownAggchainData = errors.New("unknown aggchain data type")
+	errNilCertificate      = errors.New("nil certificate provided for conversion to proto")
 )
 
 type AgglayerGRPCClient struct {
@@ -272,7 +271,7 @@ func ConvertCertToProtoCertificate(
 // convertAggchainData converts the aggchain data to a proto aggchain data
 func convertAggchainData(aggchainData types.AggchainData) (*v1types.AggchainData, error) {
 	if aggchainData == nil {
-		return nil, errUndefinedAggchainData
+		return nil, nil
 	}
 
 	switch ad := aggchainData.(type) {
