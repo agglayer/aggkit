@@ -107,7 +107,7 @@ func TestBlockNotifierPollingStep(t *testing.T) {
 			},
 			mockLoggerFn: func() aggkitcommon.Logger {
 				mockLogger := mocks.NewLogger(t)
-				mockLogger.EXPECT().Warnf("Missed block(s) [finality:%s]: %d -> %d", aggkittypes.LatestBlock, uint64(100), uint64(105)).Once()
+				mockLogger.EXPECT().Warnf("Missed block(s) [finality:%s]: %d -> %d", aggkittypes.LatestBlock.String(), uint64(100), uint64(105)).Once()
 				return mockLogger
 			},
 			headerByNumberError:       false,
