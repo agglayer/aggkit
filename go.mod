@@ -5,14 +5,14 @@ go 1.25.0
 require (
 	buf.build/gen/go/agglayer/agglayer/grpc/go v1.5.1-20250520190516-57743a879f16.2
 	buf.build/gen/go/agglayer/agglayer/protocolbuffers/go v1.36.7-20250520190516-57743a879f16.1
-	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.8-20250519093743-85e8a3d9f59c.1
+	buf.build/gen/go/agglayer/interop/protocolbuffers/go v1.36.8-20250908082243-610ba4f69850.1
 	buf.build/gen/go/agglayer/provers/grpc/go v1.5.1-20250520163122-7efa0a2f81a8.2
 	buf.build/gen/go/agglayer/provers/protocolbuffers/go v1.36.8-00000000000000-0c6deb66b075.1
 	github.com/0xPolygon/cdk-contracts-tooling v0.0.5-0.20250716091746-57b1cac5324d
 	github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229
 	github.com/0xPolygon/zkevm-ethtx-manager v0.2.15
 	github.com/agglayer/go_signer v0.0.7
-	github.com/ethereum/go-ethereum v1.16.2
+	github.com/ethereum/go-ethereum v1.16.3
 	github.com/gin-gonic/gin v1.10.1
 	github.com/golang-collections/collections v0.0.0-20130729185459-604e922904d3
 	github.com/hermeznetwork/tracerr v0.3.2
@@ -26,23 +26,23 @@ require (
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/mitchellh/mapstructure v1.5.0
 	github.com/pelletier/go-toml/v2 v2.2.4
-	github.com/prometheus/client_golang v1.23.0
+	github.com/prometheus/client_golang v1.23.2
 	github.com/prometheus/client_model v0.6.2
 	github.com/rubenv/sql-migrate v1.8.0
 	github.com/russross/meddler v1.0.1
 	github.com/spf13/viper v1.20.1
 	github.com/stretchr/testify v1.11.1
 	github.com/swaggo/files v1.0.1
-	github.com/swaggo/gin-swagger v1.6.0
+	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6
 	github.com/urfave/cli/v2 v2.27.7
 	github.com/valyala/fasttemplate v1.2.2
-	go.opentelemetry.io/otel v1.37.0
-	go.opentelemetry.io/otel/metric v1.37.0
+	go.opentelemetry.io/otel v1.38.0
+	go.opentelemetry.io/otel/metric v1.38.0
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.41.0
 	golang.org/x/net v0.43.0
-	golang.org/x/sync v0.16.0
+	golang.org/x/sync v0.17.0
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250707201910-8d1bb00bc6a7
 	google.golang.org/grpc v1.75.0
 	google.golang.org/protobuf v1.36.8
@@ -95,6 +95,7 @@ require (
 	github.com/crate-crypto/go-eth-kzg v1.3.0 // indirect
 	github.com/crate-crypto/go-ipa v0.0.0-20240724233137-53bbb0ceb27a // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
+	github.com/dchest/siphash v1.2.3 // indirect
 	github.com/deckarep/golang-set/v2 v2.6.0 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0 // indirect
 	github.com/didip/tollbooth/v6 v6.1.2 // indirect
@@ -172,7 +173,7 @@ require (
 	github.com/pion/transport/v3 v3.0.7 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
-	github.com/prometheus/common v0.65.0 // indirect
+	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
@@ -200,8 +201,9 @@ require (
 	go.opentelemetry.io/auto/sdk v1.1.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.54.0 // indirect
 	go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp v0.54.0 // indirect
-	go.opentelemetry.io/otel/trace v1.37.0 // indirect
+	go.opentelemetry.io/otel/trace v1.38.0 // indirect
 	go.uber.org/multierr v1.10.0 // indirect
+	go.yaml.in/yaml/v2 v2.4.2 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/exp v0.0.0-20250408133849-7e4ce0ab07d0 // indirect
 	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
