@@ -321,7 +321,6 @@ func TestPollValidators(t *testing.T) {
 	}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -478,7 +477,7 @@ func TestGetValidators(t *testing.T) {
 				clientCfg,
 			)
 
-			validators, threshold, err := vp.getValidators(context.Background(), 10)
+			validators, threshold, err := vp.getValidators(context.Background())
 
 			if tc.expectedErr != "" {
 				require.ErrorContains(t, err, tc.expectedErr)

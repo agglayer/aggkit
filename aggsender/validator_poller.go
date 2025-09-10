@@ -15,6 +15,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/validator"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/grpc"
+	aggkittypes "github.com/agglayer/aggkit/types"
 	signertypes "github.com/agglayer/go_signer/signer/types"
 )
 
@@ -63,7 +64,7 @@ func (vp *validatorPoller) PollValidators(
 
 	vp.log.Infof("delegating certificate validation: %s", req.Certificate.Brief())
 
-	validators, threshold, err := vp.getValidators(ctx, req.LastL2BlockInCert)
+	validators, threshold, err := vp.getValidators(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get validators: %w", err)
 	}
@@ -100,10 +101,8 @@ func (vp *validatorPoller) validateRequest(req *types.ValidationRequest) error {
 
 // getValidators retrieves the actual multisig committee and creates a set of the validators
 // that are going to validate the provided certificate
-func (vp *validatorPoller) getValidators(
-	ctx context.Context,
-	lastL2BlockInCert uint64) ([]types.CertificateValidateAndSigner, *big.Int, error) {
-	committee, err := vp.multisigQuerier.GetMultisigCommittee(ctx, new(big.Int).SetUint64(lastL2BlockInCert))
+func (vp *validatorPoller) getValidators(ctx context.Context) ([]types.CertificateValidateAndSigner, *big.Int, error) {
+	committee, err := vp.multisigQuerier.GetMultisigCommittee(ctx, big.NewInt(int64(aggkittypes.Latest)))
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to retrieve the latest multisig committee: %w", err)
 	}
