@@ -340,7 +340,7 @@ type NetworkSyncInfo struct {
 	BridgeDepositCount   uint32 `json:"bridge_deposit_count" example:"676797" description:"Bridge deposits in database"`
 	IsSynced             bool   `json:"is_synced" example:"true" description:"True if counts match (sync up-to-date)"`
 	IsActive             bool   `json:"is_active" example:"true" description:"True if bridge syncer is running"`
-	LastProcessedBlock   uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed"`
+	LastProcessedBlock   uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed"` //nolint:lll
 	NetworkBlock         uint64 `json:"network_block,omitempty" example:"12350000" description:"Current latest block"`
 }
 
