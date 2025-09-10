@@ -2098,11 +2098,20 @@ func TestGetSyncStatusHandler(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.description, func(t *testing.T) {
+			// L1 syncer status check and data retrieval
+			b.bridgeL1.EXPECT().IsActive(mock.Anything).
+				Return(true).
+				Once()
 			b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 				Return(tc.l1ContractCount, nil).
 				Once()
 			b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 				Return(nil, int(tc.l1BridgeCount), nil).
+				Once()
+
+			// L2 syncer status check and data retrieval
+			b.bridgeL2.EXPECT().IsActive(mock.Anything).
+				Return(true).
 				Once()
 			b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 				Return(tc.l2ContractCount, nil).
@@ -2110,6 +2119,24 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 				Return(nil, int(tc.l2BridgeCount), nil).
 				Once()
+
+			// Add expectations for block information when not synced
+			if !tc.l1IsSynced {
+				b.bridgeL1.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(1234), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetLatestNetworkBlock(mock.Anything).
+					Return(uint64(2555), nil).
+					Once()
+			}
+			if !tc.l2IsSynced {
+				b.bridgeL2.EXPECT().GetLastProcessedBlock(mock.Anything).
+					Return(uint64(1234), nil).
+					Once()
+				b.bridgeL2.EXPECT().GetLatestNetworkBlock(mock.Anything).
+					Return(uint64(2555), nil).
+					Once()
+			}
 
 			w := httptest.NewRecorder()
 			c, _ := gin.CreateTestContext(w)
@@ -2121,12 +2148,28 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			var response bridgetypes.SyncStatus
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			require.NoError(t, err)
+
+			// Check L1 info
+			require.NotNil(t, response.L1Info)
 			require.Equal(t, tc.l1BridgeCount, response.L1Info.BridgeDepositCount)
 			require.Equal(t, tc.l1ContractCount, response.L1Info.ContractDepositCount)
 			require.Equal(t, tc.l1IsSynced, response.L1Info.IsSynced)
+			require.True(t, response.L1Info.IsActive) // L1 syncer is always active in tests
+			if !tc.l1IsSynced {
+				require.Equal(t, uint64(1234), response.L1Info.LastProcessedBlock)
+				require.Equal(t, uint64(2555), response.L1Info.NetworkBlock)
+			}
+
+			// Check L2 info
+			require.NotNil(t, response.L2Info)
 			require.Equal(t, tc.l2BridgeCount, response.L2Info.BridgeDepositCount)
 			require.Equal(t, tc.l2ContractCount, response.L2Info.ContractDepositCount)
 			require.Equal(t, tc.l2IsSynced, response.L2Info.IsSynced)
+			require.True(t, response.L2Info.IsActive) // L2 syncer is always active in tests
+			if !tc.l2IsSynced {
+				require.Equal(t, uint64(1234), response.L2Info.LastProcessedBlock)
+				require.Equal(t, uint64(2555), response.L2Info.NetworkBlock)
+			}
 		})
 	}
 
@@ -2140,6 +2183,9 @@ func TestGetSyncStatusHandler(t *testing.T) {
 		{
 			description: "error getting L1 contract deposit count",
 			setupMocks: func() {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), errors.New("L1 contract error")).
 					Once()
@@ -2150,6 +2196,9 @@ func TestGetSyncStatusHandler(t *testing.T) {
 		{
 			description: "error getting L1 bridges from database",
 			setupMocks: func() {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
@@ -2163,11 +2212,17 @@ func TestGetSyncStatusHandler(t *testing.T) {
 		{
 			description: "error getting L2 contract deposit count",
 			setupMocks: func() {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
 				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(true).
 					Once()
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), errors.New("L2 contract error")).
@@ -2179,11 +2234,17 @@ func TestGetSyncStatusHandler(t *testing.T) {
 		{
 			description: "error getting L2 bridges from database",
 			setupMocks: func() {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
 				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(true).
 					Once()
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(200), nil).
@@ -2198,6 +2259,9 @@ func TestGetSyncStatusHandler(t *testing.T) {
 		{
 			description: "error getting L1 contract deposit count with context timeout",
 			setupMocks: func() {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), context.DeadlineExceeded).
 					Once()
@@ -2208,11 +2272,17 @@ func TestGetSyncStatusHandler(t *testing.T) {
 		{
 			description: "error getting L2 contract deposit count with context timeout",
 			setupMocks: func() {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
 				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(100), nil).
 					Once()
 				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
 					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(true).
 					Once()
 				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
 					Return(uint32(0), context.DeadlineExceeded).
@@ -2220,6 +2290,57 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			},
 			expectedStatusCode: http.StatusInternalServerError,
 			expectedError:      "failed to get deposit count from L2 bridge contract: context deadline exceeded",
+		},
+		{
+			description: "L1 syncer inactive - only isActive field populated",
+			setupMocks: func() {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(false).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
+				b.bridgeL2.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(200), nil).
+					Once()
+				b.bridgeL2.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 200, nil).
+					Once()
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedError:      "",
+		},
+		{
+			description: "L2 syncer inactive - only isActive field populated",
+			setupMocks: func() {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(true).
+					Once()
+				b.bridgeL1.EXPECT().GetContractDepositCount(mock.Anything).
+					Return(uint32(100), nil).
+					Once()
+				b.bridgeL1.EXPECT().GetBridgesPaged(mock.Anything, uint32(1), uint32(1), (*uint64)(nil), []uint32(nil), "").
+					Return(nil, 100, nil).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(false).
+					Once()
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedError:      "",
+		},
+		{
+			description: "Both syncers inactive - only isActive fields populated",
+			setupMocks: func() {
+				b.bridgeL1.EXPECT().IsActive(mock.Anything).
+					Return(false).
+					Once()
+				b.bridgeL2.EXPECT().IsActive(mock.Anything).
+					Return(false).
+					Once()
+			},
+			expectedStatusCode: http.StatusOK,
+			expectedError:      "",
 		},
 	}
 
@@ -2233,10 +2354,66 @@ func TestGetSyncStatusHandler(t *testing.T) {
 			b.bridge.GetSyncStatusHandler(c)
 
 			require.Equal(t, tc.expectedStatusCode, w.Code)
-			var response gin.H
-			err := json.Unmarshal(w.Body.Bytes(), &response)
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedError, response["error"])
+
+			if tc.expectedStatusCode == http.StatusOK {
+				// For successful responses, check the sync status structure
+				var response bridgetypes.SyncStatus
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				require.NoError(t, err)
+
+				// For inactive syncer test cases, verify only isActive field is populated
+				if tc.description == "L1 syncer inactive - only isActive field populated" {
+					require.NotNil(t, response.L1Info)
+					require.False(t, response.L1Info.IsActive)
+					require.Equal(t, uint32(0), response.L1Info.BridgeDepositCount)
+					require.Equal(t, uint32(0), response.L1Info.ContractDepositCount)
+					require.False(t, response.L1Info.IsSynced)
+					require.Equal(t, uint64(0), response.L1Info.LastProcessedBlock)
+					require.Equal(t, uint64(0), response.L1Info.NetworkBlock)
+
+					require.NotNil(t, response.L2Info)
+					require.True(t, response.L2Info.IsActive)
+					require.Equal(t, uint32(200), response.L2Info.BridgeDepositCount)
+					require.Equal(t, uint32(200), response.L2Info.ContractDepositCount)
+					require.True(t, response.L2Info.IsSynced)
+				} else if tc.description == "L2 syncer inactive - only isActive field populated" {
+					require.NotNil(t, response.L1Info)
+					require.True(t, response.L1Info.IsActive)
+					require.Equal(t, uint32(100), response.L1Info.BridgeDepositCount)
+					require.Equal(t, uint32(100), response.L1Info.ContractDepositCount)
+					require.True(t, response.L1Info.IsSynced)
+
+					require.NotNil(t, response.L2Info)
+					require.False(t, response.L2Info.IsActive)
+					require.Equal(t, uint32(0), response.L2Info.BridgeDepositCount)
+					require.Equal(t, uint32(0), response.L2Info.ContractDepositCount)
+					require.False(t, response.L2Info.IsSynced)
+					require.Equal(t, uint64(0), response.L2Info.LastProcessedBlock)
+					require.Equal(t, uint64(0), response.L2Info.NetworkBlock)
+				} else if tc.description == "Both syncers inactive - only isActive fields populated" {
+					require.NotNil(t, response.L1Info)
+					require.False(t, response.L1Info.IsActive)
+					require.Equal(t, uint32(0), response.L1Info.BridgeDepositCount)
+					require.Equal(t, uint32(0), response.L1Info.ContractDepositCount)
+					require.False(t, response.L1Info.IsSynced)
+					require.Equal(t, uint64(0), response.L1Info.LastProcessedBlock)
+					require.Equal(t, uint64(0), response.L1Info.NetworkBlock)
+
+					require.NotNil(t, response.L2Info)
+					require.False(t, response.L2Info.IsActive)
+					require.Equal(t, uint32(0), response.L2Info.BridgeDepositCount)
+					require.Equal(t, uint32(0), response.L2Info.ContractDepositCount)
+					require.False(t, response.L2Info.IsSynced)
+					require.Equal(t, uint64(0), response.L2Info.LastProcessedBlock)
+					require.Equal(t, uint64(0), response.L2Info.NetworkBlock)
+				}
+			} else {
+				// For error responses, check the error message
+				var response gin.H
+				err := json.Unmarshal(w.Body.Bytes(), &response)
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedError, response["error"])
+			}
 		})
 	}
 }

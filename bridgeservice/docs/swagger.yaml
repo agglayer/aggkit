@@ -314,17 +314,31 @@ definitions:
         type: array
     type: object
   types.NetworkSyncInfo:
-    description: Contains network-specific synchronization information
+    description: Network-specific bridge sync status with deposit counts and block
+      information
     properties:
       bridge_deposit_count:
+        example: 676797
         type: integer
       contract_deposit_count:
+        example: 676797
         type: integer
-      is_synced:
+      is_active:
+        example: true
         type: boolean
+      is_synced:
+        example: true
+        type: boolean
+      last_processed_block:
+        example: 12345678
+        type: integer
+      network_block:
+        example: 12350000
+        type: integer
     type: object
   types.SyncStatus:
-    description: Contains synchronization information for both L1 and L2 networks
+    description: Bridge sync status comparing on-chain deposit counts with local database
+      counts
     properties:
       l1_info:
         $ref: '#/definitions/types.NetworkSyncInfo'
@@ -695,20 +709,20 @@ paths:
   /sync-status:
     get:
       description: |-
-        Returns the sync status by comparing the deposit count
-        from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
+        Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.
+        Shows if bridge syncers are active and whether they're keeping up with on-chain events.
       produces:
       - application/json
       responses:
         "200":
-          description: Bridge sync status for both L1 and L2 networks
+          description: Bridge synchronization status for L1 and L2 networks
           schema:
             $ref: '#/definitions/types.SyncStatus'
         "500":
           description: Internal Server Error
           schema:
             $ref: '#/definitions/types.ErrorResponse'
-      summary: Get bridge sync status
+      summary: Get bridge synchronization status
       tags:
       - sync
   /token-mappings:

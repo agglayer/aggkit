@@ -891,14 +891,14 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 	c.JSON(http.StatusOK, reorgEvent)
 }
 
-// GetSyncStatusHandler returns the sync status of the bridge service.
+// GetSyncStatusHandler returns the bridge synchronization status for L1 and L2 networks.
 //
-// @Summary Get bridge sync status
-// @Description Returns the sync status by comparing the deposit count
-// @Description from the bridge contract with the deposit count in the bridge sync database for both L1 and L2 networks.
+// @Summary Get bridge synchronization status
+// @Description Returns bridge sync status by comparing on-chain bridge deposit counts with local database counts.
+// @Description Shows if bridge syncers are active and whether they're keeping up with on-chain events.
 // @Tags sync
 // @Produce json
-// @Success 200 {object} types.SyncStatus "Bridge sync status for both L1 and L2 networks"
+// @Success 200 {object} types.SyncStatus "Bridge synchronization status for L1 and L2 networks"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /sync-status [get]
 func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
@@ -914,48 +914,92 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	cnt.Add(ctx, 1)
 
 	var syncStatus types.SyncStatus
-	syncStatus.L1Info = &types.NetworkSyncInfo{}
-	syncStatus.L2Info = &types.NetworkSyncInfo{}
 
 	// Check L1 sync status
-	l1ContractDepositCount, err := b.bridgeL1.GetContractDepositCount(ctx)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get deposit count from L1 bridge contract: %s", err)})
-		return
+	l1IsActive := b.bridgeL1.IsActive(ctx)
+	syncStatus.L1Info = &types.NetworkSyncInfo{
+		IsActive: l1IsActive,
 	}
 
-	// Get the last bridge from L1 database
-	_, bridgesCount, err := b.bridgeL1.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get bridges from L1 database: %s", err)})
-		return
-	}
+	if l1IsActive {
+		l1ContractDepositCount, err := b.bridgeL1.GetContractDepositCount(ctx)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get deposit count from L1 bridge contract: %s", err)})
+			return
+		}
 
-	syncStatus.L1Info.BridgeDepositCount = uint32(bridgesCount)
-	syncStatus.L1Info.ContractDepositCount = l1ContractDepositCount
-	syncStatus.L1Info.IsSynced = syncStatus.L1Info.ContractDepositCount == syncStatus.L1Info.BridgeDepositCount
+		// Get the last bridge from L1 database
+		_, bridgesCount, err := b.bridgeL1.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get bridges from L1 database: %s", err)})
+			return
+		}
+
+		syncStatus.L1Info.BridgeDepositCount = uint32(bridgesCount)
+		syncStatus.L1Info.ContractDepositCount = l1ContractDepositCount
+		syncStatus.L1Info.IsSynced = syncStatus.L1Info.ContractDepositCount == syncStatus.L1Info.BridgeDepositCount
+
+		if !syncStatus.L1Info.IsSynced {
+			lastProcessedBlock, err := b.bridgeL1.GetLastProcessedBlock(ctx)
+			if err != nil {
+				b.logger.Warnf("failed to get last processed block for L1: %s", err)
+			} else {
+				syncStatus.L1Info.LastProcessedBlock = lastProcessedBlock
+			}
+
+			networkBlock, err := b.bridgeL1.GetLatestNetworkBlock(ctx)
+			if err != nil {
+				b.logger.Warnf("failed to get latest network block for L1: %s", err)
+			} else {
+				syncStatus.L1Info.NetworkBlock = networkBlock
+			}
+		}
+	}
 
 	// Check L2 sync status
-	l2ContractDepositCount, err := b.bridgeL2.GetContractDepositCount(ctx)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get deposit count from L2 bridge contract: %s", err)})
-		return
+	l2IsActive := b.bridgeL2.IsActive(ctx)
+	syncStatus.L2Info = &types.NetworkSyncInfo{
+		IsActive: l2IsActive,
 	}
 
-	// Get the last bridge from L2 database
-	_, bridgesCount, err = b.bridgeL2.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
-	if err != nil {
-		c.JSON(http.StatusInternalServerError,
-			gin.H{"error": fmt.Sprintf("failed to get bridges from L2 database: %s", err)})
-		return
-	}
+	if l2IsActive {
+		l2ContractDepositCount, err := b.bridgeL2.GetContractDepositCount(ctx)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get deposit count from L2 bridge contract: %s", err)})
+			return
+		}
 
-	syncStatus.L2Info.BridgeDepositCount = uint32(bridgesCount)
-	syncStatus.L2Info.ContractDepositCount = l2ContractDepositCount
-	syncStatus.L2Info.IsSynced = syncStatus.L2Info.ContractDepositCount == syncStatus.L2Info.BridgeDepositCount
+		// Get the last bridge from L2 database
+		_, bridgesCount, err := b.bridgeL2.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
+		if err != nil {
+			c.JSON(http.StatusInternalServerError,
+				gin.H{"error": fmt.Sprintf("failed to get bridges from L2 database: %s", err)})
+			return
+		}
+
+		syncStatus.L2Info.BridgeDepositCount = uint32(bridgesCount)
+		syncStatus.L2Info.ContractDepositCount = l2ContractDepositCount
+		syncStatus.L2Info.IsSynced = syncStatus.L2Info.ContractDepositCount == syncStatus.L2Info.BridgeDepositCount
+
+		if !syncStatus.L2Info.IsSynced {
+			lastProcessedBlock, err := b.bridgeL2.GetLastProcessedBlock(ctx)
+			if err != nil {
+				b.logger.Warnf("failed to get last processed block for L2: %s", err)
+			} else {
+				syncStatus.L2Info.LastProcessedBlock = lastProcessedBlock
+			}
+
+			networkBlock, err := b.bridgeL2.GetLatestNetworkBlock(ctx)
+			if err != nil {
+				b.logger.Warnf("failed to get latest network block for L2: %s", err)
+			} else {
+				syncStatus.L2Info.NetworkBlock = networkBlock
+			}
+		}
+	}
 
 	c.JSON(http.StatusOK, syncStatus)
 }
