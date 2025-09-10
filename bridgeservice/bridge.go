@@ -892,9 +892,13 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 }
 
 // populateNetworkSyncInfo populates sync information for a network if it's active
-func (b *BridgeService) populateNetworkSyncInfo(ctx context.Context, c *gin.Context,
-	bridge Bridger, networkInfo *types.NetworkSyncInfo, networkName string) bool {
-
+func (b *BridgeService) populateNetworkSyncInfo(
+	ctx context.Context,
+	c *gin.Context,
+	bridge Bridger,
+	networkInfo *types.NetworkSyncInfo,
+	networkName string,
+) bool {
 	contractDepositCount, err := bridge.GetContractDepositCount(ctx)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError,
