@@ -333,14 +333,15 @@ type SyncStatus struct {
 
 // NetworkSyncInfo represents the bridge synchronization status of a single network (L1 or L2)
 // @Description Network-specific bridge sync status with deposit counts and block information
-// @example {"contract_deposit_count":100,"bridge_deposit_count":100,"is_synced":true,"is_active":true,"last_processed_block":1234,"network_block":2555}
+// @example {"contract_deposit_count":100,"bridge_deposit_count":100,"is_synced":true,"is_active":true,
+// "last_processed_block":1234,"network_block":2555}
 type NetworkSyncInfo struct {
-	ContractDepositCount uint32 `json:"contract_deposit_count" example:"676797" description:"Bridge deposits recorded in smart contract"`
-	BridgeDepositCount   uint32 `json:"bridge_deposit_count" example:"676797" description:"Bridge deposits stored in local database"`
+	ContractDepositCount uint32 `json:"contract_deposit_count" example:"676797" description:"Bridge deposits in contract"`
+	BridgeDepositCount   uint32 `json:"bridge_deposit_count" example:"676797" description:"Bridge deposits in database"`
 	IsSynced             bool   `json:"is_synced" example:"true" description:"True if counts match (sync up-to-date)"`
 	IsActive             bool   `json:"is_active" example:"true" description:"True if bridge syncer is running"`
-	LastProcessedBlock   uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed by syncer (when not synced)"`
-	NetworkBlock         uint64 `json:"network_block,omitempty" example:"12350000" description:"Current latest block on network (when not synced)"`
+	LastProcessedBlock   uint64 `json:"last_processed_block,omitempty" example:"12345678" description:"Last block processed (when not synced)"`
+	NetworkBlock         uint64 `json:"network_block,omitempty" example:"12350000" description:"Current latest block (when not synced)"`
 }
 
 // HealthCheckResponse represents the JSON returned by HealthCheckHandler.

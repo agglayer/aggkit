@@ -2362,7 +2362,8 @@ func TestGetSyncStatusHandler(t *testing.T) {
 				require.NoError(t, err)
 
 				// For inactive syncer test cases, verify only isActive field is populated
-				if tc.description == "L1 syncer inactive - only isActive field populated" {
+				switch tc.description {
+				case "L1 syncer inactive - only isActive field populated":
 					require.NotNil(t, response.L1Info)
 					require.False(t, response.L1Info.IsActive)
 					require.Equal(t, uint32(0), response.L1Info.BridgeDepositCount)
@@ -2376,7 +2377,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 					require.Equal(t, uint32(200), response.L2Info.BridgeDepositCount)
 					require.Equal(t, uint32(200), response.L2Info.ContractDepositCount)
 					require.True(t, response.L2Info.IsSynced)
-				} else if tc.description == "L2 syncer inactive - only isActive field populated" {
+				case "L2 syncer inactive - only isActive field populated":
 					require.NotNil(t, response.L1Info)
 					require.True(t, response.L1Info.IsActive)
 					require.Equal(t, uint32(100), response.L1Info.BridgeDepositCount)
@@ -2390,7 +2391,7 @@ func TestGetSyncStatusHandler(t *testing.T) {
 					require.False(t, response.L2Info.IsSynced)
 					require.Equal(t, uint64(0), response.L2Info.LastProcessedBlock)
 					require.Equal(t, uint64(0), response.L2Info.NetworkBlock)
-				} else if tc.description == "Both syncers inactive - only isActive fields populated" {
+				case "Both syncers inactive - only isActive fields populated":
 					require.NotNil(t, response.L1Info)
 					require.False(t, response.L1Info.IsActive)
 					require.Equal(t, uint32(0), response.L1Info.BridgeDepositCount)
