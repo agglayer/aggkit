@@ -274,8 +274,8 @@ func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certi
 	return nil
 }
 
-// saveSignedCertificateToFile saves the signed certificate content to a file in the same directory as the database
-// and returns the file path
+// saveSignedCertificateToFile saves the signed certificate content to a file in a 'certificates' subfolder
+// within the database directory and returns the file path
 func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	certificateHeight uint64,
 	certificateID common.Hash,
@@ -284,9 +284,17 @@ func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	// Get the directory where the database is stored
 	dbDir := filepath.Dir(a.cfg.DBPath)
 
+	// Create a 'certificates' subfolder within the database directory
+	certDir := filepath.Join(dbDir, "certificates")
+
+	// Create the certificates directory if it doesn't exist
+	if err := os.MkdirAll(certDir, 0755); err != nil { //nolint:mnd
+		return "", fmt.Errorf("failed to create certificates directory %s: %w", certDir, err)
+	}
+
 	// Create a filename using the certificate ID
 	fileName := fmt.Sprintf("signed_cert_%d_%s_%d.json", certificateHeight, certificateID, retryCount)
-	filePath := filepath.Join(dbDir, fileName)
+	filePath := filepath.Join(certDir, fileName)
 
 	// Write the signed certificate content to the file
 	err := os.WriteFile(filePath, []byte(signedCertContent), 0600) //nolint:mnd
