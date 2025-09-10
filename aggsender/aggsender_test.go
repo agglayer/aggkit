@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -760,6 +761,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		dbPath := path.Join(t.TempDir(), "newAggsenderTestData.sqlite")
 		storageConfig := db.AggSenderSQLStorageConfig{
 			DBPath:                  dbPath,
+			CertificatesDir:         filepath.Join(filepath.Dir(dbPath), "certificates"),
 			KeepCertificatesHistory: true,
 		}
 		storage, err = db.NewAggSenderSQLStorage(logger, storageConfig)
