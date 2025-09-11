@@ -296,7 +296,7 @@ func grpcAggchainDataToAgglayer(
 	aggchainData *v1types.AggchainData,
 ) (agglayertypes.AggchainData, error) {
 	if aggchainData == nil || aggchainData.Data == nil {
-		return nil, fmt.Errorf("grpcAggchainDataToAgglayer. aggchain data is nil. %w", ErrNilCertificate)
+		return nil, nil
 	}
 
 	switch ad := aggchainData.Data.(type) {

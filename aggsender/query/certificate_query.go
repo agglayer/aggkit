@@ -140,18 +140,19 @@ func (c *certificateQuerier) GetNewCertificateToBlock(
 
 // CalculateCertificateType determines the type of certificate based on the last block number in certificate
 func (c *certificateQuerier) CalculateCertificateType(
-	cert *agglayertypes.Certificate, certToBlock uint64) types.CertificateType {
-	if cert.AggchainData != nil {
-		// if AggchainData is present, we can use it to determine the certificate type
-		_, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
-		if !ok {
-			return types.CertificateTypeFEP
-		}
-
+	cert *agglayertypes.Certificate, certToBlock uint64,
+) types.CertificateType {
+	switch cert.AggchainData.(type) {
+	case *agglayertypes.AggchainDataMultisig:
+		// AggchainDataMultisig → PP type
 		return types.CertificateTypePP
+	case *agglayertypes.AggchainDataProof:
+	case *agglayertypes.AggchainDataMultisigWithProof:
+		// AggchainDataProof and AggchainDataMultisigWithProof → FEP type
+		return types.CertificateTypeFEP
 	}
 
-	// if AggchainData is not present, must try to determine the type based on the block number
+	// no AggchainData → fallback on block-based logic
 	return c.CalculateCertificateTypeFromToBlock(certToBlock)
 }
 

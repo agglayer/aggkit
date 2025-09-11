@@ -520,6 +520,14 @@ func TestCalculateCertificateType(t *testing.T) {
 			expectedCertType: types.CertificateTypeFEP,
 		},
 		{
+			name: "AggchainData is AggchainDataMultisigWithProof - returns FEP",
+			certificate: &agglayertypes.Certificate{
+				AggchainData: &agglayertypes.AggchainDataMultisigWithProof{},
+			},
+			certToBlock:      100,
+			expectedCertType: types.CertificateTypeFEP,
+		},
+		{
 			name: "AggchainData is nil - falls back to CalculateCertificateTypeFromToBlock with FEP network and block before start",
 			certificate: &agglayertypes.Certificate{
 				AggchainData: nil,
