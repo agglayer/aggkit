@@ -21,10 +21,6 @@ polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 rollupCreationBlockNumber = 0
 rollupManagerCreationBlockNumber = 0
 genesisBlockNumber = 0
-
-# Default database query timeout
-defaultDBQueryTimeout = "30s"
-
 [L1Config]
 	URL = "{{L1URL}}"
 	chainId = 0
@@ -32,7 +28,6 @@ defaultDBQueryTimeout = "30s"
 	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
 	polTokenAddress = "0x0000000000000000000000000000000000000000"
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
-	AggchainFEPAddr = "0x0000000000000000000000000000000000000000"
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
@@ -45,6 +40,8 @@ const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = true
 GenerateAggchainProofTimeout = "1h"
+# Default database query timeout
+defaultDBQueryTimeout = "30s"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
