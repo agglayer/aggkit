@@ -74,12 +74,20 @@ func TestGenerateAggchainProof_Success(t *testing.T) {
 		},
 		Unclaims: []*agglayer.Unclaim{
 			{
-				UnclaimHash: common.HexToHash("0x3333333333333333333333333333333333333333333333333333333333333333"),
+				GlobalIndex: &agglayer.GlobalIndex{
+					MainnetFlag: true,
+					RollupIndex: 1,
+					LeafIndex:   1,
+				},
 				BlockNumber: 160,
 				BlockIndex:  3,
 			},
 			{
-				UnclaimHash: common.HexToHash("0x4444444444444444444444444444444444444444444444444444444444444444"),
+				GlobalIndex: &agglayer.GlobalIndex{
+					MainnetFlag: false,
+					RollupIndex: 2,
+					LeafIndex:   2,
+				},
 				BlockNumber: 185,
 				BlockIndex:  4,
 			},
@@ -245,12 +253,20 @@ func TestGenerateAggchainProof_Error(t *testing.T) {
 		},
 		Unclaims: []*agglayer.Unclaim{
 			{
-				UnclaimHash: common.HexToHash("0x7777777777777777777777777777777777777777777777777777777777777777"),
+				GlobalIndex: &agglayer.GlobalIndex{
+					MainnetFlag: true,
+					RollupIndex: 3,
+					LeafIndex:   3,
+				},
 				BlockNumber: 360,
 				BlockIndex:  7,
 			},
 			{
-				UnclaimHash: common.HexToHash("0x8888888888888888888888888888888888888888888888888888888888888888"),
+				GlobalIndex: &agglayer.GlobalIndex{
+					MainnetFlag: false,
+					RollupIndex: 4,
+					LeafIndex:   4,
+				},
 				BlockNumber: 385,
 				BlockIndex:  8,
 			},

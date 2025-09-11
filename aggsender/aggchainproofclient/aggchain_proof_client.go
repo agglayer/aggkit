@@ -194,8 +194,12 @@ func convertAggchainProofRequestToGrpcRequest(
 	convertedUnclaims := make([]*aggkitProverV1Proto.Unclaim, len(req.Unclaims))
 	for i, unclaim := range req.Unclaims {
 		convertedUnclaims[i] = &aggkitProverV1Proto.Unclaim{
-			UnclaimHash: &agglayerInteropTypesV1Proto.FixedBytes32{
-				Value: unclaim.UnclaimHash[:],
+			GlobalIndex: &agglayerInteropTypesV1Proto.FixedBytes32{
+				Value: common.BigToHash(bridgesync.GenerateGlobalIndex(
+					unclaim.GlobalIndex.MainnetFlag,
+					unclaim.GlobalIndex.RollupIndex,
+					unclaim.GlobalIndex.LeafIndex,
+				)).Bytes(),
 			},
 			BlockNumber: unclaim.BlockNumber,
 			BlockIndex:  uint64(unclaim.BlockIndex),

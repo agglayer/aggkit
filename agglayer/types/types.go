@@ -750,9 +750,9 @@ type RemovedGER struct {
 }
 
 type Unclaim struct {
-	UnclaimHash common.Hash `json:"unclaim_hash"`
-	BlockNumber uint64      `json:"block_number"`
-	BlockIndex  uint        `json:"block_index"`
+	GlobalIndex *GlobalIndex `json:"global_index"`
+	BlockNumber uint64       `json:"block_number"`
+	BlockIndex  uint         `json:"block_index"`
 }
 
 type ProvenInsertedGERWithBlockNumber struct {
