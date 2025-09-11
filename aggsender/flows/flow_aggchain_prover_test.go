@@ -899,7 +899,7 @@ func Test_AggchainProverFlow_UpdateAggchainData(t *testing.T) {
 				AggchainData: &agglayertypes.AggchainDataSignature{}, // wrong type
 			},
 			multisig:      &agglayertypes.Multisig{},
-			expectedError: "aggchainProverFlow - aggchain data field not AggchainDataProof",
+			expectedError: "aggchainProverFlow: AggchainData of unknown type *types.AggchainDataSignature received",
 		},
 		{
 			name: "successful update - wraps proof with multisig",

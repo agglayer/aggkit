@@ -154,14 +154,13 @@ func TestConvertProtoCertToAgglayer(t *testing.T) {
 		require.ErrorContains(t, err, "has nil L1InfoTreeLeafCount")
 	})
 
-	t.Run("nil AggchainData", func(t *testing.T) {
+	t.Run("undefined AggchainData", func(t *testing.T) {
 		protoCert, err := ConvertCertToProtoCertificate(exampleTestAgglayerCert)
 		require.NoError(t, err)
 		protoCert.AggchainData = nil
 		result, err := ConvertProtoCertToAgglayer(protoCert)
-		require.Nil(t, result)
-		require.ErrorIs(t, err, ErrNilCertificate)
-		require.ErrorContains(t, err, "aggchain data is nil")
+		require.NoError(t, err)
+		require.Nil(t, result.AggchainData)
 	})
 
 	t.Run("successful conversion", func(t *testing.T) {

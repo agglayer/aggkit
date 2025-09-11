@@ -111,7 +111,7 @@ func TestCertificateHeaderString(t *testing.T) {
 	require.Equal(t, "nil", certNil.String())
 }
 
-func TestMarshalJSON(t *testing.T) {
+func TestCertificateMarshalJSON(t *testing.T) {
 	t.Parallel()
 
 	t.Run("MarshalJSON with empty proofs", func(t *testing.T) {
@@ -267,6 +267,56 @@ func TestMarshalJSON(t *testing.T) {
 		require.Equal(t, "0xe1a594db4275e6e5ab302057e48955c7faf53a8910497590a742b3da89046320", cert.ImportedBridgeExits[0].Hash().String())
 		require.Equal(t, "0xcc9e20b86e9984d9f68b0252f224cb4bc774981c320ef375fb63706220f5af4d", cert.ImportedBridgeExits[1].Hash().String())
 	})
+}
+
+func TestCertificate_ExtractAggchainParams(t *testing.T) {
+	hash1 := common.HexToHash("0x1111")
+	hash2 := common.HexToHash("0x2222")
+
+	tests := []struct {
+		name     string
+		data     AggchainData
+		expected []byte
+	}{
+		{
+			name: "AggchainDataProof returns its params",
+			data: &AggchainDataProof{
+				AggchainParams: hash1,
+			},
+			expected: hash1.Bytes(),
+		},
+		{
+			name: "AggchainDataMultisigWithProof returns nested params",
+			data: &AggchainDataMultisigWithProof{
+				AggchainProof: &AggchainDataProof{
+					AggchainParams: hash2,
+				},
+			},
+			expected: hash2.Bytes(),
+		},
+		{
+			name: "AggchainDataMultisigWithProof with nil proof returns ZeroHash",
+			data: &AggchainDataMultisigWithProof{
+				AggchainProof: nil,
+			},
+			expected: aggkitcommon.ZeroHash.Bytes(),
+		},
+		{
+			name:     "Nil AggchainData returns ZeroHash",
+			data:     nil,
+			expected: aggkitcommon.ZeroHash.Bytes(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cert := &Certificate{
+				AggchainData: tt.data,
+			}
+			actual := cert.ExtractAggchainParams()
+			require.Equal(t, tt.expected, actual)
+		})
+	}
 }
 
 func TestGlobalIndex_UnmarshalFromMap(t *testing.T) {

@@ -498,6 +498,22 @@ func (c *Certificate) CertificateID() common.Hash {
 	)
 }
 
+// ExtractAggchainParams extracts the aggchain params field from the certificate
+// with handling different types of aggchain data.
+func (c *Certificate) ExtractAggchainParams() []byte {
+	switch data := c.AggchainData.(type) {
+	case *AggchainDataProof:
+		return data.AggchainParams.Bytes()
+
+	case *AggchainDataMultisigWithProof:
+		if data.AggchainProof != nil {
+			return data.AggchainProof.AggchainParams.Bytes()
+		}
+	}
+
+	return aggkitcommon.ZeroHash.Bytes()
+}
+
 // SignedCertificate is the struct that contains the certificate and the signature of the signer
 // NOTE: this is an old and deprecated struct, only to be used for backward compatibility
 type SignedCertificate struct {

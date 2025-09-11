@@ -328,28 +328,27 @@ func (a *AggchainProverFlow) BuildCertificate(ctx context.Context,
 	return cert, nil
 }
 
-// UpdateAggchainData updates the AggchainData field in certificate with the multisig if needed
+// UpdateAggchainData updates the AggchainData field in certificate with the multisig if provided.
 func (a *AggchainProverFlow) UpdateAggchainData(
 	cert *agglayertypes.Certificate,
 	multisig *agglayertypes.Multisig,
 ) error {
 	if multisig == nil {
-		// multisig not turned on, we don't need to update the certificate
+		// Multisig not enabled, nothing to do
 		return nil
 	}
 
-	proof, ok := cert.AggchainData.(*agglayertypes.AggchainDataProof)
-	if !ok {
-		proofWithMultisig, ok := cert.AggchainData.(*agglayertypes.AggchainDataMultisigWithProof)
-		if !ok {
-			return errors.New("aggchainProverFlow - aggchain data field not " +
-				"AggchainDataProof nor AggchainDataMultisigWithProof")
-		}
+	var proof *agglayertypes.AggchainDataProof
 
-		proof = proofWithMultisig.AggchainProof
+	switch data := cert.AggchainData.(type) {
+	case *agglayertypes.AggchainDataProof:
+		proof = data
+	case *agglayertypes.AggchainDataMultisigWithProof:
+		proof = data.AggchainProof
+	default:
+		return fmt.Errorf("aggchainProverFlow: AggchainData of unknown type %T received", data)
 	}
 
-	// update the agchain data with multisig
 	cert.AggchainData = &agglayertypes.AggchainDataMultisigWithProof{
 		Multisig:      multisig,
 		AggchainProof: proof,
