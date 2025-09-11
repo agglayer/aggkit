@@ -68,6 +68,14 @@ func (b BlockRange) Gap(other BlockRange) BlockRange {
 	}
 }
 
+// Greater returns true if the receiver BlockRange (b) is strictly greater than the other BlockRange (other).
+// [ 10 - 50 ] > [ 1 - 9 ] = true
+// [ 10 - 50 ] > [ 5 - 15 ] = false (overlap)
+// [ 10 - 50 ] > [ 51 - 100 ] = false (not greater)
+func (b BlockRange) Greater(other BlockRange) bool {
+	return b.FromBlock > other.ToBlock
+}
+
 func getBlockMinusOne(fromBlock uint64) uint64 {
 	if fromBlock > 0 {
 		return fromBlock - 1
