@@ -150,7 +150,7 @@ func (c *certificateQuerier) CalculateCertificateType(
 		// AggchainDataProof → FEP type
 		return types.CertificateTypeFEP
 	case *agglayertypes.AggchainDataMultisigWithProof:
-		// AggchainDataProof and AggchainDataMultisigWithProof → FEP type
+		// AggchainDataMultisigWithProof → FEP type
 		return types.CertificateTypeFEP
 	}
 
