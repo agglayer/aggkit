@@ -143,6 +143,9 @@ func (c *certificateQuerier) CalculateCertificateType(
 	cert *agglayertypes.Certificate, certToBlock uint64,
 ) types.CertificateType {
 	switch cert.AggchainData.(type) {
+	case *agglayertypes.AggchainDataSignature:
+		// AggchainDataSignature → PP type
+		return types.CertificateTypePP
 	case *agglayertypes.AggchainDataMultisig:
 		// AggchainDataMultisig → PP type
 		return types.CertificateTypePP
