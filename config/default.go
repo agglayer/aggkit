@@ -244,9 +244,10 @@ RequireCommitteeMembershipCheck = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "30s"
 		UseTLS = false
-	[AggSender.CommiteeOverride]
-		URL = [ "0x00000000000000000000000": "http://localhost:8080" ]
-
+# Overide a commitee URL to point to a local service
+#  	[AggSender.CommiteeOverride]
+#		URLMapping = { "http://aggkit-001-aggsender-validator-001:5578" = "http://localhost:32954" }
+	
 [Prometheus]
 Enabled = true
 Host = "localhost"

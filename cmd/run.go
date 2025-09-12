@@ -738,7 +738,7 @@ func runAggsenderMultisigCommitteeIfNeeded(
 	components []string,
 	rollupAddr common.Address,
 	l1Client aggkittypes.BaseEthereumClienter,
-	cfg *query.CommiteeURLOverride,
+	cfg *query.CommiteeOverride,
 ) aggsendertypes.MultisigQuerier {
 	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR}, components) {
 		return nil

@@ -91,10 +91,10 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 
 func Test_CommiteeURLOverride(t *testing.T) {
 	t.Run("ReplaceURL replaces URLs based on the override map", func(t *testing.T) {
-		override := &CommiteeURLOverride{
-			URL: map[common.Address]string{
-				common.HexToAddress("0x1"): "http://override1",
-				common.HexToAddress("0x3"): "http://override3",
+		override := &CommiteeOverride{
+			URLMapping: map[string]string{
+				"http://original1": "http://override1",
+				"http://original3": "http://override3",
 			},
 		}
 
@@ -132,7 +132,7 @@ func Test_CommiteeURLOverride(t *testing.T) {
 		require.Equal(t, expected, result)
 	})
 	t.Run("ReplaceURL returns nil if override is nil", func(t *testing.T) {
-		var override *CommiteeURLOverride = nil
+		var override *CommiteeOverride = nil
 
 		committee := []aggchainbase.IAggchainSignersSignerInfo{
 			{
@@ -142,11 +142,11 @@ func Test_CommiteeURLOverride(t *testing.T) {
 		}
 
 		result := override.ReplaceURL(committee)
-		require.Nil(t, result)
+		require.Equal(t, committee, result)
 	})
 	t.Run("ReplaceURL returns nil if override map is empty", func(t *testing.T) {
-		override := &CommiteeURLOverride{
-			URL: map[common.Address]string{},
+		override := &CommiteeOverride{
+			URLMapping: map[string]string{},
 		}
 
 		committee := []aggchainbase.IAggchainSignersSignerInfo{
@@ -157,6 +157,6 @@ func Test_CommiteeURLOverride(t *testing.T) {
 		}
 
 		result := override.ReplaceURL(committee)
-		require.Nil(t, result)
+		require.Equal(t, committee, result)
 	})
 }

@@ -235,6 +235,8 @@ SaveCertificatesToFilesPath = "{{.zkevm_path_rw_data}}"
 # ------------------------------------------------------------------------------
 # EnableRPC = false
 
+[AggSender.CommiteeOverride]
+    URLMapping = {{.aggsender_commitee_override_urls}}
 # ==============================================================================
 #     _    ____  ____  ___  ____      _    ____ _     _____
 #    / \  / ___|/ ___|/ _ \|  _ \    / \  / ___| |   | ____|
