@@ -207,14 +207,10 @@ func Test_NewBaseMultisigCommitteeQuery(t *testing.T) {
 	t.Run("successfully creates a new BaseMultisigCommitteeQuery", func(t *testing.T) {
 		mockClient := typesmocks.NewEthClienter(t)
 		rollupAddr := common.HexToAddress("0x123")
-
-		//mockClient.EXPECT().CodeAt(mock.Anything, rollupAddr, mock.Anything).Return([]byte{0x1, 0x2}, nil)
-
 		query, err := NewBaseMultisigCommitteeQuery(rollupAddr, mockClient, nil)
 		require.NoError(t, err)
 		require.NotNil(t, query)
 		require.Equal(t, rollupAddr, query.sovereignRollupAddr)
 		require.NotNil(t, query.sovereignRollupAddrSC)
 	})
-
 }
