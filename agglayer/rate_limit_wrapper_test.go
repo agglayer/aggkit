@@ -66,12 +66,17 @@ func TestNewRateLimitWrapper(t *testing.T) {
 		},
 	}
 
-	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	mockLogger := &MockLogger{}
+	setupMockLoggerExpectations(mockLogger, "SendCertificate", "GetEpochConfiguration")
+
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 	require.NotNil(t, wrapper)
 	require.Equal(t, mockClient, wrapper.client)
 	require.Len(t, wrapper.rateLimiters, 2)
 	require.Contains(t, wrapper.rateLimiters, "SendCertificate")
 	require.Contains(t, wrapper.rateLimiters, "GetEpochConfiguration")
+
+	mockLogger.AssertExpectations(t)
 }
 
 func TestRateLimitWrapper_NoRateLimits(t *testing.T) {
@@ -82,9 +87,12 @@ func TestRateLimitWrapper_NoRateLimits(t *testing.T) {
 		APIRateLimits: []APIRateLimitConfig{},
 	}
 
-	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	mockLogger := &MockLogger{}
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 	require.NotNil(t, wrapper)
 	require.Len(t, wrapper.rateLimiters, 0)
+
+	mockLogger.AssertExpectations(t)
 }
 
 func TestRateLimitWrapper_SendCertificate(t *testing.T) {
@@ -103,7 +111,15 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 		},
 	}
 
-	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	mockLogger := &MockLogger{}
+	setupMockLoggerExpectations(mockLogger, "SendCertificate")
+
+	// Set up expectations for rate limiting log messages
+	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
+		return s != ""
+	})).Return()
+
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
 	// First call should succeed immediately
 	cert := &types.Certificate{}
@@ -133,6 +149,7 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited (allowing for timing precision)
 
 	mockClient.AssertExpectations(t)
+	mockLogger.AssertExpectations(t)
 }
 
 func TestRateLimitWrapper_String(t *testing.T) {
@@ -151,10 +168,36 @@ func TestRateLimitWrapper_String(t *testing.T) {
 		},
 	}
 
-	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	mockLogger := &MockLogger{}
+	setupMockLoggerExpectations(mockLogger, "SendCertificate")
+
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 	str := wrapper.String()
 	require.Contains(t, str, "RateLimitWrapper")
 	require.Contains(t, str, "SendCertificate")
+
+	mockLogger.AssertExpectations(t)
+}
+
+func TestNewRateLimitWrapper_WithNilLogger_Panics(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &MockAgglayerClientInterface{}
+	config := ClientConfig{
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "SendCertificate",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 1,
+					Interval:    configtypes.Duration{Duration: time.Second},
+				},
+			},
+		},
+	}
+
+	require.Panics(t, func() {
+		NewRateLimitWrapper(mockClient, config, nil)
+	}, "Expected panic when logger is nil")
 }
 
 func TestNewRateLimitWrapper_WithLogger(t *testing.T) {
@@ -212,7 +255,8 @@ func TestNewRateLimitWrapper_WithDisabledRateLimits(t *testing.T) {
 		},
 	}
 
-	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	mockLogger := &MockLogger{}
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 	require.NotNil(t, wrapper)
 	require.Len(t, wrapper.rateLimiters, 0) // No rate limiters should be created
 }
@@ -233,13 +277,17 @@ func TestRateLimitWrapper_ApplyRateLimit_NonExistentMethod(t *testing.T) {
 		},
 	}
 
-	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	mockLogger := &MockLogger{}
+	setupMockLoggerExpectations(mockLogger, "SendCertificate")
+
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
 	// Test applyRateLimit with a method that doesn't exist
 	// This should return early without doing anything
 	wrapper.applyRateLimit("NonExistentMethod")
 
 	// No assertions needed as this should complete without error
+	mockLogger.AssertExpectations(t)
 }
 
 func TestRateLimitWrapper_ApplyRateLimit_WithLogger(t *testing.T) {
@@ -259,11 +307,7 @@ func TestRateLimitWrapper_ApplyRateLimit_WithLogger(t *testing.T) {
 		},
 	}
 
-	// Expect logger to be called during initialization
-	mockLogger.On("Infof", "Rate limiting enabled for method '%s': %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
-		return s != ""
-	})).Return()
-
+	setupMockLoggerExpectations(mockLogger, "SendCertificate")
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
 	// First call should not trigger rate limiting
@@ -298,7 +342,15 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 		},
 	}
 
-	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	mockLogger := &MockLogger{}
+	setupMockLoggerExpectations(mockLogger, "GetCertificateHeader")
+
+	// Set up expectations for rate limiting log messages
+	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "GetCertificateHeader", mock.MatchedBy(func(s string) bool {
+		return s != ""
+	})).Return()
+
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
 	// Test first call
 	certHash := common.HexToHash("0x123")
@@ -330,6 +382,7 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
 
 	mockClient.AssertExpectations(t)
+	mockLogger.AssertExpectations(t)
 }
 
 func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
@@ -348,7 +401,15 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 		},
 	}
 
-	wrapper := NewRateLimitWrapper(mockClient, clientConfig, nil)
+	mockLogger := &MockLogger{}
+	setupMockLoggerExpectations(mockLogger, "GetEpochConfiguration")
+
+	// Set up expectations for rate limiting log messages
+	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "GetEpochConfiguration", mock.MatchedBy(func(s string) bool {
+		return s != ""
+	})).Return()
+
+	wrapper := NewRateLimitWrapper(mockClient, clientConfig, mockLogger)
 
 	// Test first call
 	expectedConfig := &types.ClockConfiguration{
@@ -379,11 +440,17 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
 
 	mockClient.AssertExpectations(t)
+	mockLogger.AssertExpectations(t)
 }
 
 // testCertificateHeaderMethod is a helper function to test certificate header methods with rate limiting
-func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64, wrapper *RateLimitWrapper, mockClient *MockAgglayerClientInterface) {
+func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64, wrapper *RateLimitWrapper, mockClient *MockAgglayerClientInterface, mockLogger *MockLogger) {
 	t.Helper()
+
+	// Set up expectations for rate limiting log messages
+	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", methodName, mock.MatchedBy(func(s string) bool {
+		return s != ""
+	})).Return()
 
 	// Test first call
 	networkID := uint32(1)
@@ -426,6 +493,7 @@ func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64,
 	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
 
 	mockClient.AssertExpectations(t)
+	mockLogger.AssertExpectations(t)
 }
 
 func TestRateLimitWrapper_GetLatestSettledCertificateHeader(t *testing.T) {
@@ -443,9 +511,12 @@ func TestRateLimitWrapper_GetLatestSettledCertificateHeader(t *testing.T) {
 			},
 		},
 	}
-	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	mockLogger := &MockLogger{}
+	setupMockLoggerExpectations(mockLogger, "GetLatestSettledCertificateHeader")
 
-	testCertificateHeaderMethod(t, "GetLatestSettledCertificateHeader", 200, wrapper, mockClient)
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
+
+	testCertificateHeaderMethod(t, "GetLatestSettledCertificateHeader", 200, wrapper, mockClient, mockLogger)
 }
 
 func TestRateLimitWrapper_GetLatestPendingCertificateHeader(t *testing.T) {
@@ -463,14 +534,26 @@ func TestRateLimitWrapper_GetLatestPendingCertificateHeader(t *testing.T) {
 			},
 		},
 	}
-	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	mockLogger := &MockLogger{}
+	setupMockLoggerExpectations(mockLogger, "GetLatestPendingCertificateHeader")
 
-	testCertificateHeaderMethod(t, "GetLatestPendingCertificateHeader", 300, wrapper, mockClient)
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
+
+	testCertificateHeaderMethod(t, "GetLatestPendingCertificateHeader", 300, wrapper, mockClient, mockLogger)
 }
 
 // MockLogger is a mock implementation for testing
 type MockLogger struct {
 	mock.Mock
+}
+
+// setupMockLoggerExpectations sets up the mock logger to expect initialization calls
+func setupMockLoggerExpectations(mockLogger *MockLogger, methodNames ...string) {
+	for _, methodName := range methodNames {
+		mockLogger.On("Infof", "Rate limiting enabled for method '%s': %s", methodName, mock.MatchedBy(func(s string) bool {
+			return s != ""
+		})).Return()
+	}
 }
 
 func (m *MockLogger) Panicf(format string, args ...interface{}) {

@@ -34,9 +34,7 @@ func NewRateLimitWrapper(
 	for _, apiConfig := range config.APIRateLimits {
 		if apiConfig.RateLimit.Enabled() {
 			wrapper.rateLimiters[apiConfig.MethodName] = aggkitcommon.NewRateLimit(apiConfig.RateLimit)
-			if logger != nil {
-				logger.Infof("Rate limiting enabled for method '%s': %s", apiConfig.MethodName, apiConfig.RateLimit.String())
-			}
+			logger.Infof("Rate limiting enabled for method '%s': %s", apiConfig.MethodName, apiConfig.RateLimit.String())
 		}
 	}
 
@@ -54,9 +52,7 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 	}
 
 	if sleepTime := rateLimiter.Call(methodName, true); sleepTime != nil {
-		if r.logger != nil {
-			r.logger.Infof("Rate limit applied for method '%s', slept for %s", methodName, sleepTime.String())
-		}
+		r.logger.Infof("Rate limit applied for method '%s', slept for %s", methodName, sleepTime.String())
 	}
 }
 
