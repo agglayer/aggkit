@@ -410,7 +410,7 @@ func (c *Claim) setClaimCalldata(
 
 	// Check if the root call was successful
 	if callFrame.Err != nil {
-		return fmt.Errorf("root call reverted: %s", *callFrame.Err)
+		return fmt.Errorf("execution reverted in root call (block %d, tx %s): %s", c.BlockNum, txHash.Hex(), *callFrame.Err)
 	}
 
 	_, err = findCall(*callFrame, bridge,
