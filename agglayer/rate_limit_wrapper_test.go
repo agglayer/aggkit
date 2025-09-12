@@ -307,20 +307,25 @@ func TestRateLimitWrapper_ApplyRateLimit_WithLogger(t *testing.T) {
 		},
 	}
 
-	setupMockLoggerExpectations(mockLogger, "SendCertificate")
+	// Expect logger to be called during initialization
+	mockLogger.On("Infof", "Rate limiting enabled for method '%s': %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
+		return s != ""
+	})).Return()
+
+	// Expect logger to be called when rate limit is applied
+	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
+		return s != ""
+	})).Return()
+
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
 	// First call should not trigger rate limiting
 	wrapper.applyRateLimit("SendCertificate")
 
-	// Second call should trigger rate limiting and logger
-	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
-		return s != ""
-	})).Return()
-
 	// Add a small delay to ensure the calls are not happening in the same microsecond
 	time.Sleep(1 * time.Millisecond)
 
+	// Second call should trigger rate limiting and logger
 	wrapper.applyRateLimit("SendCertificate")
 
 	mockLogger.AssertExpectations(t)
