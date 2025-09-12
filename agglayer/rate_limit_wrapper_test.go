@@ -381,6 +381,53 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 	mockClient.AssertExpectations(t)
 }
 
+// testCertificateHeaderMethod is a helper function to test certificate header methods with rate limiting
+func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64, wrapper *RateLimitWrapper, mockClient *MockAgglayerClientInterface) {
+	t.Helper()
+
+	// Test first call
+	networkID := uint32(1)
+	expectedHeader := &types.CertificateHeader{
+		NetworkID: networkID,
+		Height:    height,
+	}
+	mockClient.On(methodName, mock.Anything, networkID).Return(expectedHeader, nil).Once()
+
+	start := time.Now()
+	var header *types.CertificateHeader
+	var err error
+
+	if methodName == "GetLatestSettledCertificateHeader" {
+		header, err = wrapper.GetLatestSettledCertificateHeader(context.Background(), networkID)
+	} else {
+		header, err = wrapper.GetLatestPendingCertificateHeader(context.Background(), networkID)
+	}
+	duration := time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedHeader, header)
+	require.Less(t, duration, 50*time.Millisecond) // Should be fast
+
+	// Test second call (rate limited)
+	mockClient.On(methodName, mock.Anything, networkID).Return(expectedHeader, nil).Once()
+
+	time.Sleep(1 * time.Millisecond)
+
+	start = time.Now()
+	if methodName == "GetLatestSettledCertificateHeader" {
+		header, err = wrapper.GetLatestSettledCertificateHeader(context.Background(), networkID)
+	} else {
+		header, err = wrapper.GetLatestPendingCertificateHeader(context.Background(), networkID)
+	}
+	duration = time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedHeader, header)
+	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
+
+	mockClient.AssertExpectations(t)
+}
+
 func TestRateLimitWrapper_GetLatestSettledCertificateHeader(t *testing.T) {
 	t.Parallel()
 
@@ -396,39 +443,9 @@ func TestRateLimitWrapper_GetLatestSettledCertificateHeader(t *testing.T) {
 			},
 		},
 	}
-
 	wrapper := NewRateLimitWrapper(mockClient, config, nil)
 
-	// Test first call
-	networkID := uint32(1)
-	expectedHeader := &types.CertificateHeader{
-		NetworkID: networkID,
-		Height:    200,
-	}
-	mockClient.On("GetLatestSettledCertificateHeader", mock.Anything, networkID).Return(expectedHeader, nil).Once()
-
-	start := time.Now()
-	header, err := wrapper.GetLatestSettledCertificateHeader(context.Background(), networkID)
-	duration := time.Since(start)
-
-	require.NoError(t, err)
-	require.Equal(t, expectedHeader, header)
-	require.Less(t, duration, 50*time.Millisecond) // Should be fast
-
-	// Test second call (rate limited)
-	mockClient.On("GetLatestSettledCertificateHeader", mock.Anything, networkID).Return(expectedHeader, nil).Once()
-
-	time.Sleep(1 * time.Millisecond)
-
-	start = time.Now()
-	header, err = wrapper.GetLatestSettledCertificateHeader(context.Background(), networkID)
-	duration = time.Since(start)
-
-	require.NoError(t, err)
-	require.Equal(t, expectedHeader, header)
-	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
-
-	mockClient.AssertExpectations(t)
+	testCertificateHeaderMethod(t, "GetLatestSettledCertificateHeader", 200, wrapper, mockClient)
 }
 
 func TestRateLimitWrapper_GetLatestPendingCertificateHeader(t *testing.T) {
@@ -446,39 +463,9 @@ func TestRateLimitWrapper_GetLatestPendingCertificateHeader(t *testing.T) {
 			},
 		},
 	}
-
 	wrapper := NewRateLimitWrapper(mockClient, config, nil)
 
-	// Test first call
-	networkID := uint32(1)
-	expectedHeader := &types.CertificateHeader{
-		NetworkID: networkID,
-		Height:    300,
-	}
-	mockClient.On("GetLatestPendingCertificateHeader", mock.Anything, networkID).Return(expectedHeader, nil).Once()
-
-	start := time.Now()
-	header, err := wrapper.GetLatestPendingCertificateHeader(context.Background(), networkID)
-	duration := time.Since(start)
-
-	require.NoError(t, err)
-	require.Equal(t, expectedHeader, header)
-	require.Less(t, duration, 50*time.Millisecond) // Should be fast
-
-	// Test second call (rate limited)
-	mockClient.On("GetLatestPendingCertificateHeader", mock.Anything, networkID).Return(expectedHeader, nil).Once()
-
-	time.Sleep(1 * time.Millisecond)
-
-	start = time.Now()
-	header, err = wrapper.GetLatestPendingCertificateHeader(context.Background(), networkID)
-	duration = time.Since(start)
-
-	require.NoError(t, err)
-	require.Equal(t, expectedHeader, header)
-	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
-
-	mockClient.AssertExpectations(t)
+	testCertificateHeaderMethod(t, "GetLatestPendingCertificateHeader", 300, wrapper, mockClient)
 }
 
 // MockLogger is a mock implementation for testing
