@@ -81,9 +81,6 @@ func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
 				log.Infof("Rate limit reached, sleeping for %s for %s", sleepTime, msg)
 			}
 			time.Sleep(sleepTime)
-		} else {
-			// If no sleep, ignore the call
-			return &sleepTime
 		}
 		returnSleepTime = &sleepTime
 	}
@@ -91,13 +88,13 @@ func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
 }
 
 func (r *RateLimit) cleanOutdatedCalls(now time.Time) {
-	for i, call := range r.calls {
+	// Remove all calls that are outside the interval
+	var validCalls []time.Time
+	for _, call := range r.calls {
 		diff := now.Sub(call)
-		if diff >= r.cfg.Interval.Duration {
-			// This call is outside the interval, keep all calls after this one
-			r.calls = r.calls[i+1:]
-			return
+		if diff < r.cfg.Interval.Duration {
+			validCalls = append(validCalls, call)
 		}
 	}
-	// All calls are within the interval, keep them all
+	r.calls = validCalls
 }
