@@ -200,12 +200,6 @@ func TestValidateCertificate(t *testing.T) {
 }
 
 func TestCheckContigousCertificates(t *testing.T) {
-	t.Run("Nil New Cert", func(t *testing.T) {
-		testData := newTestDataCertificateValidator(t)
-		err := testData.sut.checkContigousCertificates(types.VerifyIncomingRequest{})
-		require.ErrorIs(t, err, ErrNilCertificate)
-	})
-
 	t.Run("Nil PreviousCertificate, err getting start LER", func(t *testing.T) {
 		testData := newTestDataCertificateValidator(t)
 		testData.mockLERQuerier.EXPECT().GetLastLocalExitRoot().Return(types.EmptyLER, errors.New("some error"))

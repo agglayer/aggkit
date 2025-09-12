@@ -82,7 +82,7 @@ func (a *CertificateValidator) ValidateCertificate(ctx context.Context, params t
 	}
 
 	// Check if the previous certificate is settled
-	if err := a.checkisPreviousCertificateSettled(params.PreviousCertificate); err != nil {
+	if err := a.checkIsPreviousCertificateSettled(params.PreviousCertificate); err != nil {
 		return fmt.Errorf("failed CheckCertificatesContents: %w", err)
 	}
 
@@ -135,23 +135,19 @@ func (a *CertificateValidator) verifyClaimProofs(
 	return nil
 }
 
-// checkisPreviousCertificateSettled checks if the previous certificate is settled
-func (a *CertificateValidator) checkisPreviousCertificateSettled(
+// checkIsPreviousCertificateSettled checks if the previous certificate is settled
+func (a *CertificateValidator) checkIsPreviousCertificateSettled(
 	previousCertificate *agglayertypes.CertificateHeader) error {
-	if previousCertificate != nil {
-		if !previousCertificate.Status.IsSettled() {
-			return fmt.Errorf("previous certificate %s is not settled (status:%s)",
-				previousCertificate.ID(), previousCertificate.Status.String())
-		}
+	if previousCertificate != nil && !previousCertificate.Status.IsSettled() {
+		return fmt.Errorf("previous certificate %s is not settled (status: %s)",
+			previousCertificate.ID(), previousCertificate.Status.String())
 	}
+
 	return nil
 }
 
 // checkContigousCertificates checks if the incoming certificate is contiguous with the previous one.
 func (a *CertificateValidator) checkContigousCertificates(params types.VerifyIncomingRequest) error {
-	if params.Certificate == nil {
-		return ErrNilCertificate
-	}
 	if params.PreviousCertificate == nil {
 		return a.checkFirstCertificateBlocks(params)
 	}
@@ -180,12 +176,11 @@ func (a *CertificateValidator) compareCertificates(
 	diffStr := strings.Join(diffs, "\n")
 	// This is redudant, but just in case
 	if incomingCertificate.CertificateID() != localCertificate.CertificateID() {
-		return fmt.Errorf("certificates hash mismatch, incoming: %s, local: %s.\n FullDiff: %s",
+		return fmt.Errorf("certificates ids mismatch, incoming: %s, local: %s.\n FullDiff: %s",
 			incomingCertificate.CertificateID().Hex(), localCertificate.CertificateID().Hex(), diffStr)
 	}
 	if len(diffs) > 0 {
-		return fmt.Errorf("certificates mismatch. FullDiff: %s",
-			diffStr)
+		return fmt.Errorf("certificates mismatch. FullDiff: %s", diffStr)
 	}
 	return nil
 }
