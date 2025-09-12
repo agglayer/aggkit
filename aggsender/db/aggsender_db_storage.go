@@ -84,6 +84,7 @@ var _ AggSenderStorage = (*AggSenderSQLStorage)(nil)
 // AggSenderSQLStorageConfig is the configuration for the AggSenderSQLStorage
 type AggSenderSQLStorageConfig struct {
 	DBPath                  string
+	CertificatesDir         string
 	KeepCertificatesHistory bool
 }
 
@@ -274,19 +275,22 @@ func (a *AggSenderSQLStorage) SaveOrUpdateCertificate(ctx context.Context, certi
 	return nil
 }
 
-// saveSignedCertificateToFile saves the signed certificate content to a file in the same directory as the database
+// saveSignedCertificateToFile saves the signed certificate content to a file in the configured certificate directory
 // and returns the file path
 func (a *AggSenderSQLStorage) saveSignedCertificateToFile(
 	certificateHeight uint64,
 	certificateID common.Hash,
 	signedCertContent string,
 	retryCount int) (string, error) {
-	// Get the directory where the database is stored
-	dbDir := filepath.Dir(a.cfg.DBPath)
+	// Use the configured certificate directory
+	certDir := a.cfg.CertificatesDir
+	if err := os.MkdirAll(certDir, 0755); err != nil { //nolint:mnd
+		return "", fmt.Errorf("failed to create certificates directory %s: %w", certDir, err)
+	}
 
 	// Create a filename using the certificate ID
 	fileName := fmt.Sprintf("signed_cert_%d_%s_%d.json", certificateHeight, certificateID, retryCount)
-	filePath := filepath.Join(dbDir, fileName)
+	filePath := filepath.Join(certDir, fileName)
 
 	// Write the signed certificate content to the file
 	err := os.WriteFile(filePath, []byte(signedCertContent), 0600) //nolint:mnd

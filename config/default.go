@@ -179,6 +179,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
+CertificatesDir = "{{PathRWData}}/certificates/"
 AggsenderPrivateKey = {{AggsenderPrivateKey}}
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
