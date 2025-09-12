@@ -506,7 +506,7 @@ func TestSetClaimCalldata(t *testing.T) {
 	claim = &Claim{}
 	err = claim.setClaimCalldata(client, bridgeAddr, txHash, logger)
 	require.Error(t, err)
-	require.Contains(t, err.Error(), "root call reverted")
+	require.Contains(t, err.Error(), "execution reverted in root call")
 
 	// Case 3: All internal calls reverted
 	rootCall = &call{
