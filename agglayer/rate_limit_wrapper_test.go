@@ -156,3 +156,390 @@ func TestRateLimitWrapper_String(t *testing.T) {
 	require.Contains(t, str, "RateLimitWrapper")
 	require.Contains(t, str, "SendCertificate")
 }
+
+func TestNewRateLimitWrapper_WithLogger(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &MockAgglayerClientInterface{}
+	mockLogger := &MockLogger{}
+	config := ClientConfig{
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "SendCertificate",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 2,
+					Interval:    configtypes.Duration{Duration: time.Second},
+				},
+			},
+		},
+	}
+
+	// Expect logger to be called during initialization
+	mockLogger.On("Infof", "Rate limiting enabled for method '%s': %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
+		return s != ""
+	})).Return()
+
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
+	require.NotNil(t, wrapper)
+	require.Equal(t, mockClient, wrapper.client)
+	require.Len(t, wrapper.rateLimiters, 1)
+	require.Contains(t, wrapper.rateLimiters, "SendCertificate")
+
+	// Verify logger was called
+	mockLogger.AssertExpectations(t)
+}
+
+func TestNewRateLimitWrapper_WithDisabledRateLimits(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &MockAgglayerClientInterface{}
+	config := ClientConfig{
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "SendCertificate",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 0, // Disabled
+					Interval:    configtypes.Duration{Duration: time.Second},
+				},
+			},
+			{
+				MethodName: "GetEpochConfiguration",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 1,
+					Interval:    configtypes.Duration{Duration: 0}, // Disabled
+				},
+			},
+		},
+	}
+
+	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+	require.NotNil(t, wrapper)
+	require.Len(t, wrapper.rateLimiters, 0) // No rate limiters should be created
+}
+
+func TestRateLimitWrapper_ApplyRateLimit_NonExistentMethod(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &MockAgglayerClientInterface{}
+	config := ClientConfig{
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "SendCertificate",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 1,
+					Interval:    configtypes.Duration{Duration: time.Second},
+				},
+			},
+		},
+	}
+
+	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+
+	// Test applyRateLimit with a method that doesn't exist
+	// This should return early without doing anything
+	wrapper.applyRateLimit("NonExistentMethod")
+
+	// No assertions needed as this should complete without error
+}
+
+func TestRateLimitWrapper_ApplyRateLimit_WithLogger(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &MockAgglayerClientInterface{}
+	mockLogger := &MockLogger{}
+	config := ClientConfig{
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "SendCertificate",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 1,
+					Interval:    configtypes.Duration{Duration: 100 * time.Millisecond},
+				},
+			},
+		},
+	}
+
+	// Expect logger to be called during initialization
+	mockLogger.On("Infof", "Rate limiting enabled for method '%s': %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
+		return s != ""
+	})).Return()
+
+	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
+
+	// First call should not trigger rate limiting
+	wrapper.applyRateLimit("SendCertificate")
+
+	// Second call should trigger rate limiting and logger
+	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
+		return s != ""
+	})).Return()
+
+	// Add a small delay to ensure the calls are not happening in the same microsecond
+	time.Sleep(1 * time.Millisecond)
+
+	wrapper.applyRateLimit("SendCertificate")
+
+	mockLogger.AssertExpectations(t)
+}
+
+func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &MockAgglayerClientInterface{}
+	config := ClientConfig{
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "GetCertificateHeader",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 1,
+					Interval:    configtypes.Duration{Duration: 100 * time.Millisecond},
+				},
+			},
+		},
+	}
+
+	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+
+	// Test first call
+	certHash := common.HexToHash("0x123")
+	expectedHeader := &types.CertificateHeader{
+		NetworkID: 1,
+		Height:    100,
+	}
+	mockClient.On("GetCertificateHeader", mock.Anything, certHash).Return(expectedHeader, nil).Once()
+
+	start := time.Now()
+	header, err := wrapper.GetCertificateHeader(context.Background(), certHash)
+	duration := time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedHeader, header)
+	require.Less(t, duration, 50*time.Millisecond) // Should be fast
+
+	// Test second call (rate limited)
+	mockClient.On("GetCertificateHeader", mock.Anything, certHash).Return(expectedHeader, nil).Once()
+
+	time.Sleep(1 * time.Millisecond)
+
+	start = time.Now()
+	header, err = wrapper.GetCertificateHeader(context.Background(), certHash)
+	duration = time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedHeader, header)
+	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
+
+	mockClient.AssertExpectations(t)
+}
+
+func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &MockAgglayerClientInterface{}
+	clientConfig := ClientConfig{
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "GetEpochConfiguration",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 1,
+					Interval:    configtypes.Duration{Duration: 100 * time.Millisecond},
+				},
+			},
+		},
+	}
+
+	wrapper := NewRateLimitWrapper(mockClient, clientConfig, nil)
+
+	// Test first call
+	expectedConfig := &types.ClockConfiguration{
+		EpochDuration: 1000,
+		GenesisBlock:  0,
+	}
+	mockClient.On("GetEpochConfiguration", mock.Anything).Return(expectedConfig, nil).Once()
+
+	start := time.Now()
+	epochConfig, err := wrapper.GetEpochConfiguration(context.Background())
+	duration := time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedConfig, epochConfig)
+	require.Less(t, duration, 50*time.Millisecond) // Should be fast
+
+	// Test second call (rate limited)
+	mockClient.On("GetEpochConfiguration", mock.Anything).Return(expectedConfig, nil).Once()
+
+	time.Sleep(1 * time.Millisecond)
+
+	start = time.Now()
+	epochConfig, err = wrapper.GetEpochConfiguration(context.Background())
+	duration = time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedConfig, epochConfig)
+	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
+
+	mockClient.AssertExpectations(t)
+}
+
+func TestRateLimitWrapper_GetLatestSettledCertificateHeader(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &MockAgglayerClientInterface{}
+	config := ClientConfig{
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "GetLatestSettledCertificateHeader",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 1,
+					Interval:    configtypes.Duration{Duration: 100 * time.Millisecond},
+				},
+			},
+		},
+	}
+
+	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+
+	// Test first call
+	networkID := uint32(1)
+	expectedHeader := &types.CertificateHeader{
+		NetworkID: networkID,
+		Height:    200,
+	}
+	mockClient.On("GetLatestSettledCertificateHeader", mock.Anything, networkID).Return(expectedHeader, nil).Once()
+
+	start := time.Now()
+	header, err := wrapper.GetLatestSettledCertificateHeader(context.Background(), networkID)
+	duration := time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedHeader, header)
+	require.Less(t, duration, 50*time.Millisecond) // Should be fast
+
+	// Test second call (rate limited)
+	mockClient.On("GetLatestSettledCertificateHeader", mock.Anything, networkID).Return(expectedHeader, nil).Once()
+
+	time.Sleep(1 * time.Millisecond)
+
+	start = time.Now()
+	header, err = wrapper.GetLatestSettledCertificateHeader(context.Background(), networkID)
+	duration = time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedHeader, header)
+	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
+
+	mockClient.AssertExpectations(t)
+}
+
+func TestRateLimitWrapper_GetLatestPendingCertificateHeader(t *testing.T) {
+	t.Parallel()
+
+	mockClient := &MockAgglayerClientInterface{}
+	config := ClientConfig{
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "GetLatestPendingCertificateHeader",
+				RateLimit: aggkitcommon.RateLimitConfig{
+					NumRequests: 1,
+					Interval:    configtypes.Duration{Duration: 100 * time.Millisecond},
+				},
+			},
+		},
+	}
+
+	wrapper := NewRateLimitWrapper(mockClient, config, nil)
+
+	// Test first call
+	networkID := uint32(1)
+	expectedHeader := &types.CertificateHeader{
+		NetworkID: networkID,
+		Height:    300,
+	}
+	mockClient.On("GetLatestPendingCertificateHeader", mock.Anything, networkID).Return(expectedHeader, nil).Once()
+
+	start := time.Now()
+	header, err := wrapper.GetLatestPendingCertificateHeader(context.Background(), networkID)
+	duration := time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedHeader, header)
+	require.Less(t, duration, 50*time.Millisecond) // Should be fast
+
+	// Test second call (rate limited)
+	mockClient.On("GetLatestPendingCertificateHeader", mock.Anything, networkID).Return(expectedHeader, nil).Once()
+
+	time.Sleep(1 * time.Millisecond)
+
+	start = time.Now()
+	header, err = wrapper.GetLatestPendingCertificateHeader(context.Background(), networkID)
+	duration = time.Since(start)
+
+	require.NoError(t, err)
+	require.Equal(t, expectedHeader, header)
+	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited
+
+	mockClient.AssertExpectations(t)
+}
+
+// MockLogger is a mock implementation for testing
+type MockLogger struct {
+	mock.Mock
+}
+
+func (m *MockLogger) Panicf(format string, args ...interface{}) {
+	allArgs := make([]interface{}, 0, len(args)+1)
+	allArgs = append(allArgs, format)
+	allArgs = append(allArgs, args...)
+	m.Called(allArgs...)
+}
+
+func (m *MockLogger) Fatalf(format string, args ...interface{}) {
+	allArgs := make([]interface{}, 0, len(args)+1)
+	allArgs = append(allArgs, format)
+	allArgs = append(allArgs, args...)
+	m.Called(allArgs...)
+}
+
+func (m *MockLogger) Debugf(format string, args ...interface{}) {
+	allArgs := make([]interface{}, 0, len(args)+1)
+	allArgs = append(allArgs, format)
+	allArgs = append(allArgs, args...)
+	m.Called(allArgs...)
+}
+
+func (m *MockLogger) Infof(format string, args ...interface{}) {
+	allArgs := make([]interface{}, 0, len(args)+1)
+	allArgs = append(allArgs, format)
+	allArgs = append(allArgs, args...)
+	m.Called(allArgs...)
+}
+
+func (m *MockLogger) Warnf(format string, args ...interface{}) {
+	allArgs := make([]interface{}, 0, len(args)+1)
+	allArgs = append(allArgs, format)
+	allArgs = append(allArgs, args...)
+	m.Called(allArgs...)
+}
+
+func (m *MockLogger) Errorf(format string, args ...interface{}) {
+	allArgs := make([]interface{}, 0, len(args)+1)
+	allArgs = append(allArgs, format)
+	allArgs = append(allArgs, args...)
+	m.Called(allArgs...)
+}
+
+func (m *MockLogger) Debug(args ...interface{}) {
+	m.Called(args)
+}
+
+func (m *MockLogger) Info(args ...interface{}) {
+	m.Called(args)
+}
+
+func (m *MockLogger) Warn(args ...interface{}) {
+	m.Called(args)
+}
+
+func (m *MockLogger) Error(args ...interface{}) {
+	m.Called(args)
+}
