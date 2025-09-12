@@ -196,7 +196,7 @@ func (c *certificateQuerier) getBlockNumFromGlobalIndex(
 	ctx context.Context, globalIndex *big.Int, bridgeExitHash common.Hash) (uint64, error) {
 	claims, err := c.l2BridgeSyncer.GetClaimsByGlobalIndex(ctx, globalIndex)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get claim by global index %s: %w", globalIndex.String(), err)
+		return 0, fmt.Errorf("failed to get claim(s) by global index %s: %w", globalIndex.String(), err)
 	}
 
 	for _, claim := range claims {

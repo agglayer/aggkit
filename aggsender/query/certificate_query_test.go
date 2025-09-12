@@ -144,7 +144,7 @@ func TestGetLastSettledCertificateToBlock(t *testing.T) {
 				agglayerClient.EXPECT().GetNetworkInfo(ctx, uint32(0)).Return(networkStatus, nil)
 				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, networkStatus.SettledImportedBridgeExit.GlobalIndex).Return(nil, errors.New("claim not found"))
 			},
-			expectedErr: "failed to get claim by global index",
+			expectedErr: "failed to get claim(s) by global index",
 		},
 		{
 			name: "error getting last settled L2 block",
@@ -317,7 +317,7 @@ func TestGetNewCertificateToBlock(t *testing.T) {
 			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
 				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, testIbe.GlobalIndex.ToBigInt()).Return(nil, errors.New("claim not found"))
 			},
-			expectedErr: "failed to get claim by global index",
+			expectedErr: "failed to get claim(s) by global index",
 		},
 		{
 			name: "multiple imported bridge exits uses last one",
@@ -694,7 +694,7 @@ func TestGetBlockNumFromGlobalIndex(t *testing.T) {
 			mockFn: func(bridgeSyncer *mocks.L2BridgeSyncer) {
 				bridgeSyncer.EXPECT().GetClaimsByGlobalIndex(ctx, testIbe.GlobalIndex.ToBigInt()).Return(nil, errors.New("database error"))
 			},
-			expectedErr: "failed to get claim by global index",
+			expectedErr: "failed to get claim(s) by global index",
 		},
 	}
 
