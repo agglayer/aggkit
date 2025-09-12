@@ -7,6 +7,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
@@ -17,10 +18,12 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 		name               string
 		threshold          *big.Int
 		signerInfos        []aggchainbase.IAggchainSignersSignerInfo
+		overrideURL        *CommitteeOverride
 		thresholdErr       error
 		getSignersErr      error
 		expectedErr        string
 		expectedNumSigners int
+		expectedSigner     string
 	}
 
 	testCases := []testCase{
@@ -51,6 +54,29 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 			getSignersErr: errors.New("signers error"),
 			expectedErr:   "failed to query the committee signers",
 		},
+		{
+			name:      "successfully returns committee",
+			threshold: big.NewInt(2),
+			signerInfos: []aggchainbase.IAggchainSignersSignerInfo{
+				{
+					Addr: common.HexToAddress("0x1"),
+					Url:  "http://localhost:8001",
+				},
+				{
+					Addr: common.HexToAddress("0x2"),
+					Url:  "http://localhost:8002",
+				},
+			},
+			overrideURL: &CommitteeOverride{
+				URLMapping: map[string]string{
+					"http://localhost:8001": "http://override1:8001",
+					"http://localhost:8002": "http://override2:8002",
+				},
+			},
+			expectedErr:        "",
+			expectedNumSigners: 2,
+			expectedSigner:     "{Committee: {0x0000000000000000000000000000000000000001=http://override1:8001, 0x0000000000000000000000000000000000000002=http://override2:8002},  Threshold: 2}",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -68,6 +94,7 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 			q := &BaseMultisigCommitteeQuery{
 				sovereignRollupAddrSC: mockSC,
 				sovereignRollupAddr:   common.Address{},
+				overrideURL:           tc.overrideURL,
 			}
 
 			blockNum := big.NewInt(100)
@@ -82,6 +109,9 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 				require.NotNil(t, committee)
 				require.Equal(t, tc.threshold, committee.Threshold())
 				require.Len(t, committee.Signers(), tc.expectedNumSigners)
+				if tc.expectedSigner != "" {
+					require.Equal(t, tc.expectedSigner, committee.String())
+				}
 			}
 
 			mockSC.AssertExpectations(t)
@@ -89,7 +119,7 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 	}
 }
 
-func Test_CommiteeURLOverride(t *testing.T) {
+func Test_CommitteeURLOverride(t *testing.T) {
 	t.Run("ReplaceURL replaces URLs based on the override map", func(t *testing.T) {
 		override := &CommitteeOverride{
 			URLMapping: map[string]string{
@@ -159,4 +189,32 @@ func Test_CommiteeURLOverride(t *testing.T) {
 		result := override.ReplaceURL(committee)
 		require.Equal(t, committee, result)
 	})
+}
+
+func Test_CommitteeURLOverride_String(t *testing.T) {
+	require.Equal(t, "CommitteeOverride{URL: map[oldURL1:newURL1 oldURL2:newURL2]}", (&CommitteeOverride{
+		URLMapping: map[string]string{
+			"oldURL1": "newURL1",
+			"oldURL2": "newURL2",
+		},
+	}).String())
+	require.Equal(t, "CommitteeOverride{URL: map[]}", (&CommitteeOverride{}).String())
+	var CommitteeOverride *CommitteeOverride = nil
+	require.Equal(t, "CommitteeOverride{nil}", CommitteeOverride.String())
+}
+
+func Test_NewBaseMultisigCommitteeQuery(t *testing.T) {
+	t.Run("successfully creates a new BaseMultisigCommitteeQuery", func(t *testing.T) {
+		mockClient := typesmocks.NewEthClienter(t)
+		rollupAddr := common.HexToAddress("0x123")
+
+		//mockClient.EXPECT().CodeAt(mock.Anything, rollupAddr, mock.Anything).Return([]byte{0x1, 0x2}, nil)
+
+		query, err := NewBaseMultisigCommitteeQuery(rollupAddr, mockClient, nil)
+		require.NoError(t, err)
+		require.NotNil(t, query)
+		require.Equal(t, rollupAddr, query.sovereignRollupAddr)
+		require.NotNil(t, query.sovereignRollupAddrSC)
+	})
+
 }

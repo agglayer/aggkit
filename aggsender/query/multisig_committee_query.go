@@ -30,6 +30,9 @@ type CommitteeOverride struct {
 }
 
 func (c *CommitteeOverride) String() string {
+	if c == nil {
+		return "CommitteeOverride{nil}"
+	}
 	return fmt.Sprintf("CommitteeOverride{URL: %v}", c.URLMapping)
 }
 
