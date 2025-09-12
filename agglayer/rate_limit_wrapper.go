@@ -13,7 +13,7 @@ import (
 // RateLimitWrapper wraps an AgglayerClientInterface and applies rate limiting based on configuration
 type RateLimitWrapper struct {
 	client       AgglayerClientInterface
-	rateLimiters map[string]aggkitcommon.RateLimit
+	rateLimiters map[string]*aggkitcommon.RateLimit
 	logger       aggkitcommon.Logger
 	mu           sync.RWMutex
 }
@@ -26,14 +26,14 @@ func NewRateLimitWrapper(
 ) *RateLimitWrapper {
 	wrapper := &RateLimitWrapper{
 		client:       client,
-		rateLimiters: make(map[string]aggkitcommon.RateLimit),
+		rateLimiters: make(map[string]*aggkitcommon.RateLimit),
 		logger:       logger,
 	}
 
 	// Initialize rate limiters for each configured API method
 	for _, apiConfig := range config.APIRateLimits {
 		if apiConfig.RateLimit.Enabled() {
-			wrapper.rateLimiters[apiConfig.MethodName] = *aggkitcommon.NewRateLimit(apiConfig.RateLimit)
+			wrapper.rateLimiters[apiConfig.MethodName] = aggkitcommon.NewRateLimit(apiConfig.RateLimit)
 			if logger != nil {
 				logger.Infof("Rate limiting enabled for method '%s': %s", apiConfig.MethodName, apiConfig.RateLimit.String())
 			}

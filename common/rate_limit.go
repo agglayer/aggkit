@@ -69,7 +69,12 @@ func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
 	var returnSleepTime *time.Duration
 	now := TimeProvider()
 	r.cleanOutdatedCalls(now)
-	if len(r.calls) >= r.cfg.NumRequests {
+
+	// Add the current call to the tracking
+	r.calls = append(r.calls, now)
+
+	// Rate limit check
+	if len(r.calls) > r.cfg.NumRequests {
 		sleepTime := r.cfg.Interval.Duration - TimeProvider().Sub(r.calls[0])
 		if allowToSleep {
 			if msg != "" {
@@ -82,17 +87,17 @@ func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
 		}
 		returnSleepTime = &sleepTime
 	}
-	r.calls = append(r.calls, now)
 	return returnSleepTime
 }
 
 func (r *RateLimit) cleanOutdatedCalls(now time.Time) {
 	for i, call := range r.calls {
 		diff := now.Sub(call)
-		if diff < r.cfg.Interval.Duration {
-			r.calls = r.calls[i:]
+		if diff >= r.cfg.Interval.Duration {
+			// This call is outside the interval, keep all calls after this one
+			r.calls = r.calls[i+1:]
 			return
 		}
 	}
-	r.calls = []time.Time{}
+	// All calls are within the interval, keep them all
 }

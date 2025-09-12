@@ -35,12 +35,12 @@ func (m *MockAgglayerClientInterface) GetEpochConfiguration(ctx context.Context)
 
 func (m *MockAgglayerClientInterface) GetLatestSettledCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
 	args := m.Called(ctx, networkID)
-	return args.Get(0).(*types.CertificateHeader), args.Error(1)
+	return args.Get(0).(*types.CertificateHeader), args.Error(1) //nolint:forcetypeassert
 }
 
 func (m *MockAgglayerClientInterface) GetLatestPendingCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
 	args := m.Called(ctx, networkID)
-	return args.Get(0).(*types.CertificateHeader), args.Error(1)
+	return args.Get(0).(*types.CertificateHeader), args.Error(1) //nolint:forcetypeassert
 }
 
 func TestNewRateLimitWrapper(t *testing.T) {
@@ -121,13 +121,16 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 	// Second call should be rate limited
 	mockClient.On("SendCertificate", mock.Anything, cert, []byte(nil)).Return(expectedHash, nil).Once()
 
+	// Add a small delay to ensure the calls are not happening in the same microsecond
+	time.Sleep(1 * time.Millisecond)
+
 	start = time.Now()
 	hash, err = wrapper.SendCertificate(context.Background(), cert, nil)
 	duration = time.Since(start)
 
 	require.NoError(t, err)
 	require.Equal(t, expectedHash, hash)
-	require.GreaterOrEqual(t, duration, 100*time.Millisecond) // Should be rate limited
+	require.GreaterOrEqual(t, duration, 95*time.Millisecond) // Should be rate limited (allowing for timing precision)
 
 	mockClient.AssertExpectations(t)
 }

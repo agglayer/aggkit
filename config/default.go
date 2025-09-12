@@ -208,9 +208,11 @@ RequireValidatorCall = false
 		MaxRetries = 6 # 1+6 attempts, around 22m
 	[AggSender.AgglayerClient]
 		Cached = false
-		[AggSender.AgglayerClient.APIRateLimits] = [
-			{ MethodName = "SendCertificate", RateLimit = {{NumRequests = 20, Interval = "1h"}}}
-		]
+	[[AggSender.AgglayerClient.APIRateLimits]]
+		MethodName = "SendCertificate"
+		[AggSender.AgglayerClient.APIRateLimits.RateLimit]
+		NumRequests = 20
+		Interval = "1h"
 		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "5m"
 			Capacity = 100
