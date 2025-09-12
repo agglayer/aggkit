@@ -120,6 +120,7 @@ EnableAggOracleCommittee = false
 				ReadPendingL1Txs = false
 				SafeStatusL1NumberOfBlocks = 5
 				FinalizedStatusL1NumberOfBlocks = 10
+				MaxRetries = 1
 					[AggOracle.EVMSender.EthTxManager.Etherman]
 						URL = "{{L2URL}}"
 						MultiGasProvider = false
