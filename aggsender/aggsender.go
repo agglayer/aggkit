@@ -25,7 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 )
 
-// RateLimiter interface is deprecated - rate limiting is now handled by the agglayer client
 type RateLimiter interface {
 	Call(msg string, allowToSleep bool) *time.Duration
 	String() string

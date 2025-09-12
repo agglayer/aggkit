@@ -65,13 +65,14 @@ const (
 	l1NetworkConfigUseRollupAddrHint      = "Use L1NetworkConfig.RollupAddr instead"
 	delayBetweenRetriesHint               = "AggSender.DelayBeetweenRetries is deprecated, " +
 		"use AggSender.DelayBetweenRetries instead"
-	aggOracleBlockFinalityDeprecated      = "AggOracle.BlockFinality is deprecated, remove it from configuration"
-	l1InfoTreeSyncBlockFinalityDeprecated = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
-	bridgeL1SyncBlockFinalityDeprecated   = "BridgeL1Sync.BlockFinality is deprecated, remove it from configuration"
-	lastGERSyncDeprecatedHint             = "LastGERSync is deprecated, use L2GERSync instead"
-	lastGERSyncSyncModeDeprecatedHint     = "LastGERSync.SyncMode is deprecated, remove it from configuration"
-	l1NetworkConfigURLDeprecatedHint      = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
-	reorgDetectorL1DeprecatedHint         = "ReorgDetectorL1 is deprecated, remove it from configuration"
+	aggOracleBlockFinalityDeprecated       = "AggOracle.BlockFinality is deprecated, remove it from configuration"
+	l1InfoTreeSyncBlockFinalityDeprecated  = "L1InfoTreeSync.BlockFinality is deprecated, remove it from configuration"
+	bridgeL1SyncBlockFinalityDeprecated    = "BridgeL1Sync.BlockFinality is deprecated, remove it from configuration"
+	lastGERSyncDeprecatedHint              = "LastGERSync is deprecated, use L2GERSync instead"
+	lastGERSyncSyncModeDeprecatedHint      = "LastGERSync.SyncMode is deprecated, remove it from configuration"
+	l1NetworkConfigURLDeprecatedHint       = "L1NetworkConfig.URL is deprecated, use L1NetworkConfig.RPC.URL instead"
+	reorgDetectorL1DeprecatedHint          = "ReorgDetectorL1 is deprecated, remove it from configuration"
+	maxSubmitCertificateRateDeprecatedHint = "AggSender.MaxSubmitCertificateRate is deprecated, remove it from configuration"
 )
 
 type DeprecatedFieldsError struct {
@@ -212,6 +213,10 @@ var (
 		{
 			FieldNamePattern: "ReorgDetectorL1",
 			Reason:           reorgDetectorL1DeprecatedHint,
+		},
+		{
+			FieldNamePattern: "AggSender.MaxSubmitCertificateRate",
+			Reason:           maxSubmitCertificateRateDeprecatedHint,
 		},
 		{
 			FieldNamePattern: "Aggsender.BlockFinality",

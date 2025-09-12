@@ -74,7 +74,7 @@ func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
 	r.calls = append(r.calls, now)
 
 	// Rate limit check
-	if len(r.calls) > r.cfg.NumRequests {
+	if len(r.calls) >= r.cfg.NumRequests {
 		sleepTime := r.cfg.Interval.Duration - TimeProvider().Sub(r.calls[0])
 		if allowToSleep {
 			if msg != "" {
