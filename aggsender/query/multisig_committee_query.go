@@ -20,21 +20,21 @@ var (
 type BaseMultisigCommitteeQuery struct {
 	sovereignRollupAddrSC types.MultisigContract
 	sovereignRollupAddr   common.Address
-	overrideURL           *CommiteeOverride
+	overrideURL           *CommitteeOverride
 }
 
-// CommiteeOverride is used to override the URLs of the committee members
-type CommiteeOverride struct {
+// CommitteeOverride is used to override the URLs of the committee members
+type CommitteeOverride struct {
 	// URL[oldURL] = newURL
 	URLMapping map[string]string
 }
 
-func (c *CommiteeOverride) String() string {
-	return fmt.Sprintf("CommiteeOverride{URL: %v}", c.URLMapping)
+func (c *CommitteeOverride) String() string {
+	return fmt.Sprintf("CommitteeOverride{URL: %v}", c.URLMapping)
 }
 
 // ReplaceURL replaces the URLs of the committee members with the ones in the override map
-func (m *CommiteeOverride) ReplaceURL(
+func (m *CommitteeOverride) ReplaceURL(
 	committee []aggchainbase.IAggchainSignersSignerInfo) []aggchainbase.IAggchainSignersSignerInfo {
 	if m == nil || len(m.URLMapping) == 0 {
 		return committee
@@ -53,7 +53,7 @@ func (m *CommiteeOverride) ReplaceURL(
 // NewBaseMultisigCommitteeQuery creates a new instance of BaseMultisigCommitteeQuery
 func NewBaseMultisigCommitteeQuery(sovereignRollupAddr common.Address,
 	l1Client aggkittypes.BaseEthereumClienter,
-	overrideURL *CommiteeOverride) (*BaseMultisigCommitteeQuery, error) {
+	overrideURL *CommitteeOverride) (*BaseMultisigCommitteeQuery, error) {
 	sovereignRollupAddrSC, err := aggchainbase.NewAggchainbaseCaller(
 		sovereignRollupAddr, l1Client)
 	if err != nil {

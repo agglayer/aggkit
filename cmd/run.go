@@ -96,7 +96,7 @@ func start(cliCtx *cli.Context) error {
 	)
 
 	committeeQuerier := runAggsenderMultisigCommitteeIfNeeded(components, cfg.L1NetworkConfig.RollupAddr, l1Client,
-		&cfg.AggSender.CommiteeOverride)
+		&cfg.AggSender.CommitteeOverride)
 
 	var rpcServices []jRPC.Service
 	for _, component := range components {
@@ -738,7 +738,7 @@ func runAggsenderMultisigCommitteeIfNeeded(
 	components []string,
 	rollupAddr common.Address,
 	l1Client aggkittypes.BaseEthereumClienter,
-	cfg *query.CommiteeOverride,
+	cfg *query.CommitteeOverride,
 ) aggsendertypes.MultisigQuerier {
 	if !isNeeded([]string{aggkitcommon.AGGSENDER, aggkitcommon.AGGSENDERVALIDATOR}, components) {
 		return nil

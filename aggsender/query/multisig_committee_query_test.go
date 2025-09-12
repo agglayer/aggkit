@@ -91,7 +91,7 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 
 func Test_CommiteeURLOverride(t *testing.T) {
 	t.Run("ReplaceURL replaces URLs based on the override map", func(t *testing.T) {
-		override := &CommiteeOverride{
+		override := &CommitteeOverride{
 			URLMapping: map[string]string{
 				"http://original1": "http://override1",
 				"http://original3": "http://override3",
@@ -132,7 +132,7 @@ func Test_CommiteeURLOverride(t *testing.T) {
 		require.Equal(t, expected, result)
 	})
 	t.Run("ReplaceURL returns nil if override is nil", func(t *testing.T) {
-		var override *CommiteeOverride = nil
+		var override *CommitteeOverride = nil
 
 		committee := []aggchainbase.IAggchainSignersSignerInfo{
 			{
@@ -145,7 +145,7 @@ func Test_CommiteeURLOverride(t *testing.T) {
 		require.Equal(t, committee, result)
 	})
 	t.Run("ReplaceURL returns nil if override map is empty", func(t *testing.T) {
-		override := &CommiteeOverride{
+		override := &CommitteeOverride{
 			URLMapping: map[string]string{},
 		}
 

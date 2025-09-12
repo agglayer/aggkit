@@ -89,7 +89,7 @@ type Config struct {
 	// RequireCommitteeMembershipCheck indicates whether to check if the signer is part of the committee
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
 	// It allow to change committee URL for testing purposes
-	CommiteeOverride query.CommiteeOverride `mapstructure:"CommiteeOverride"`
+	CommitteeOverride query.CommitteeOverride `mapstructure:"CommitteeOverride"`
 }
 
 func (c Config) CheckCertConfigBriefString() string {
