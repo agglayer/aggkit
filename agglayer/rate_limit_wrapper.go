@@ -19,7 +19,11 @@ type RateLimitWrapper struct {
 }
 
 // NewRateLimitWrapper creates a new rate limiting wrapper around an agglayer client
-func NewRateLimitWrapper(client AgglayerClientInterface, config ClientConfig, logger aggkitcommon.Logger) *RateLimitWrapper {
+func NewRateLimitWrapper(
+	client AgglayerClientInterface,
+	config ClientConfig,
+	logger aggkitcommon.Logger,
+) *RateLimitWrapper {
 	wrapper := &RateLimitWrapper{
 		client:       client,
 		rateLimiters: make(map[string]aggkitcommon.RateLimit),
@@ -57,13 +61,20 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 }
 
 // SendCertificate sends a certificate to the AggLayer with rate limiting
-func (r *RateLimitWrapper) SendCertificate(ctx context.Context, certificate *types.Certificate, validatorSignature []byte) (ethCommon.Hash, error) {
+func (r *RateLimitWrapper) SendCertificate(
+	ctx context.Context,
+	certificate *types.Certificate,
+	validatorSignature []byte,
+) (ethCommon.Hash, error) {
 	r.applyRateLimit("SendCertificate")
 	return r.client.SendCertificate(ctx, certificate, validatorSignature)
 }
 
 // GetCertificateHeader gets a certificate header with rate limiting
-func (r *RateLimitWrapper) GetCertificateHeader(ctx context.Context, certificateHash ethCommon.Hash) (*types.CertificateHeader, error) {
+func (r *RateLimitWrapper) GetCertificateHeader(
+	ctx context.Context,
+	certificateHash ethCommon.Hash,
+) (*types.CertificateHeader, error) {
 	r.applyRateLimit("GetCertificateHeader")
 	return r.client.GetCertificateHeader(ctx, certificateHash)
 }
@@ -75,13 +86,19 @@ func (r *RateLimitWrapper) GetEpochConfiguration(ctx context.Context) (*types.Cl
 }
 
 // GetLatestSettledCertificateHeader gets the latest settled certificate header with rate limiting
-func (r *RateLimitWrapper) GetLatestSettledCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
+func (r *RateLimitWrapper) GetLatestSettledCertificateHeader(
+	ctx context.Context,
+	networkID uint32,
+) (*types.CertificateHeader, error) {
 	r.applyRateLimit("GetLatestSettledCertificateHeader")
 	return r.client.GetLatestSettledCertificateHeader(ctx, networkID)
 }
 
 // GetLatestPendingCertificateHeader gets the latest pending certificate header with rate limiting
-func (r *RateLimitWrapper) GetLatestPendingCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
+func (r *RateLimitWrapper) GetLatestPendingCertificateHeader(
+	ctx context.Context,
+	networkID uint32,
+) (*types.CertificateHeader, error) {
 	r.applyRateLimit("GetLatestPendingCertificateHeader")
 	return r.client.GetLatestPendingCertificateHeader(ctx, networkID)
 }

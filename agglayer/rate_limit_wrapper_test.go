@@ -20,17 +20,17 @@ type MockAgglayerClientInterface struct {
 
 func (m *MockAgglayerClientInterface) SendCertificate(ctx context.Context, certificate *types.Certificate, validatorSignature []byte) (common.Hash, error) {
 	args := m.Called(ctx, certificate, validatorSignature)
-	return args.Get(0).(common.Hash), args.Error(1)
+	return args.Get(0).(common.Hash), args.Error(1) //nolint:forcetypeassert
 }
 
 func (m *MockAgglayerClientInterface) GetCertificateHeader(ctx context.Context, certificateHash common.Hash) (*types.CertificateHeader, error) {
 	args := m.Called(ctx, certificateHash)
-	return args.Get(0).(*types.CertificateHeader), args.Error(1)
+	return args.Get(0).(*types.CertificateHeader), args.Error(1) //nolint:forcetypeassert
 }
 
 func (m *MockAgglayerClientInterface) GetEpochConfiguration(ctx context.Context) (*types.ClockConfiguration, error) {
 	args := m.Called(ctx)
-	return args.Get(0).(*types.ClockConfiguration), args.Error(1)
+	return args.Get(0).(*types.ClockConfiguration), args.Error(1) //nolint:forcetypeassert
 }
 
 func (m *MockAgglayerClientInterface) GetLatestSettledCertificateHeader(ctx context.Context, networkID uint32) (*types.CertificateHeader, error) {
