@@ -697,11 +697,10 @@ func runBridgeSyncL2IfNeeded(
 		aggkitcommon.BRIDGE,
 		aggkitcommon.AGGSENDER,
 		aggkitcommon.AGGCHAINPROOFGEN,
-		aggkitcommon.L2BRIDGESYNC}, components)
+		aggkitcommon.L2BRIDGESYNC,
+		aggkitcommon.AGGSENDERVALIDATOR}, components)
 
-	fullClaimsNotNeeded := isNeeded([]string{
-		aggkitcommon.AGGSENDERVALIDATOR,
-	}, components)
+	fullClaimsNotNeeded := isNeeded([]string{}, components)
 
 	if !fullClaimsNeeded && !fullClaimsNotNeeded {
 		// no bridge sync needed
