@@ -138,7 +138,7 @@ func TestBridgeL2SovereignReader_GetUnsetClaimsForBlockRange_ErrorHandling(t *te
 
 	t.Run("nil context handling", func(t *testing.T) {
 		// Test that nil context is handled gracefully
-		unclaims, err := reader.GetUnsetClaimsForBlockRange(nil, 100, 200)
+		unclaims, err := reader.GetUnsetClaimsForBlockRange(context.TODO(), 100, 200)
 		require.NoError(t, err) // The function handles nil context gracefully
 		require.NotNil(t, unclaims)
 		require.Empty(t, unclaims)
