@@ -10,6 +10,7 @@ import (
 	"github.com/agglayer/aggkit/aggsender/mocks"
 	"github.com/agglayer/aggkit/aggsender/types"
 	"github.com/agglayer/aggkit/bridgesync"
+	bridgesynctypes "github.com/agglayer/aggkit/bridgesync/types"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	treetypes "github.com/agglayer/aggkit/tree/types"
@@ -407,5 +408,201 @@ func TestGenerateAggchainProof(t *testing.T) {
 				require.Equal(t, tc.expectedRoot, root)
 			}
 		})
+	}
+}
+
+func TestConvertUnclaimsMapToUnclaims(t *testing.T) {
+	t.Parallel()
+
+	testCases := []struct {
+		name             string
+		unclaims         map[*big.Int]*bridgesynctypes.Unclaim
+		expectedUnclaims []*agglayertypes.Unclaim
+		expectedError    string
+	}{
+		{
+			name:             "empty map",
+			unclaims:         map[*big.Int]*bridgesynctypes.Unclaim{},
+			expectedUnclaims: []*agglayertypes.Unclaim{},
+		},
+		{
+			name: "single unclaim with mainnet flag true",
+			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
+				big.NewInt(1): {
+					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 5),
+					BlockNumber: 100,
+					BlockIndex:  2,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: true,
+						RollupIndex: 0,
+						LeafIndex:   5,
+					},
+					BlockNumber: 100,
+					BlockIndex:  2,
+				},
+			},
+		},
+		{
+			name: "single unclaim with mainnet flag false and rollup index",
+			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
+				big.NewInt(1): {
+					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 3, 7),
+					BlockNumber: 200,
+					BlockIndex:  1,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 3,
+						LeafIndex:   7,
+					},
+					BlockNumber: 200,
+					BlockIndex:  1,
+				},
+			},
+		},
+		{
+			name: "multiple unclaims with different configurations",
+			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
+				big.NewInt(1): {
+					GlobalIndex: bridgesync.GenerateGlobalIndex(true, 0, 1),
+					BlockNumber: 100,
+					BlockIndex:  0,
+				},
+				big.NewInt(2): {
+					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 5, 10),
+					BlockNumber: 150,
+					BlockIndex:  3,
+				},
+				big.NewInt(3): {
+					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 0, 0),
+					BlockNumber: 200,
+					BlockIndex:  1,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: true,
+						RollupIndex: 0,
+						LeafIndex:   1,
+					},
+					BlockNumber: 100,
+					BlockIndex:  0,
+				},
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 5,
+						LeafIndex:   10,
+					},
+					BlockNumber: 150,
+					BlockIndex:  3,
+				},
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 0,
+						LeafIndex:   0,
+					},
+					BlockNumber: 200,
+					BlockIndex:  1,
+				},
+			},
+		},
+		{
+			name: "unclaim with zero global index",
+			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
+				big.NewInt(1): {
+					GlobalIndex: big.NewInt(0),
+					BlockNumber: 100,
+					BlockIndex:  0,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 0,
+						LeafIndex:   0,
+					},
+					BlockNumber: 100,
+					BlockIndex:  0,
+				},
+			},
+		},
+		{
+			name: "unclaim with large values",
+			unclaims: map[*big.Int]*bridgesynctypes.Unclaim{
+				big.NewInt(1): {
+					GlobalIndex: bridgesync.GenerateGlobalIndex(false, 4294967295, 4294967295), // max uint32 values
+					BlockNumber: 999999,
+					BlockIndex:  65535,
+				},
+			},
+			expectedUnclaims: []*agglayertypes.Unclaim{
+				{
+					GlobalIndex: &agglayertypes.GlobalIndex{
+						MainnetFlag: false,
+						RollupIndex: 4294967295,
+						LeafIndex:   4294967295,
+					},
+					BlockNumber: 999999,
+					BlockIndex:  65535,
+				},
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		tc := tc
+
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			log := log.WithFields("aggchain_proof_query", "TestConvertUnclaimsMapToUnclaims")
+			query := &aggchainProofQuery{
+				log: log,
+			}
+
+			unclaims, err := query.convertUnclaimsMapToUnclaims(tc.unclaims)
+			if tc.expectedError != "" {
+				require.ErrorContains(t, err, tc.expectedError)
+				require.Nil(t, unclaims)
+			} else {
+				require.NoError(t, err)
+				require.Len(t, unclaims, len(tc.expectedUnclaims))
+
+				// Sort both slices by BlockNumber for consistent comparison
+				// since map iteration order is not guaranteed
+				sortUnclaimsByBlockNumber(unclaims)
+				sortUnclaimsByBlockNumber(tc.expectedUnclaims)
+
+				for i, expected := range tc.expectedUnclaims {
+					require.Equal(t, expected.GlobalIndex.MainnetFlag, unclaims[i].GlobalIndex.MainnetFlag)
+					require.Equal(t, expected.GlobalIndex.RollupIndex, unclaims[i].GlobalIndex.RollupIndex)
+					require.Equal(t, expected.GlobalIndex.LeafIndex, unclaims[i].GlobalIndex.LeafIndex)
+					require.Equal(t, expected.BlockNumber, unclaims[i].BlockNumber)
+					require.Equal(t, expected.BlockIndex, unclaims[i].BlockIndex)
+				}
+			}
+		})
+	}
+}
+
+// Helper function to sort unclaims by BlockNumber for consistent comparison
+func sortUnclaimsByBlockNumber(unclaims []*agglayertypes.Unclaim) {
+	for i := 0; i < len(unclaims); i++ {
+		for j := i + 1; j < len(unclaims); j++ {
+			if unclaims[i].BlockNumber > unclaims[j].BlockNumber {
+				unclaims[i], unclaims[j] = unclaims[j], unclaims[i]
+			}
+		}
 	}
 }
