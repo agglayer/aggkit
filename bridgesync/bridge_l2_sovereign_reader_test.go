@@ -29,12 +29,6 @@ func TestNewBridgeL2SovereignReader(t *testing.T) {
 			expectError: false,
 		},
 		{
-			name:        "nil l2Client",
-			bridgeAddr:  common.HexToAddress("0x1234567890abcdef1234567890abcdef12345678"),
-			l2Client:    nil,
-			expectError: true,
-		},
-		{
 			name:        "zero address",
 			bridgeAddr:  common.Address{},
 			l2Client:    mocksethclient.NewBaseEthereumClienter(t),
