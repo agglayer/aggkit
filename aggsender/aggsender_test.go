@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -51,6 +52,7 @@ func TestConfigString(t *testing.T) {
 	}
 
 	expected := fmt.Sprintf("StoragePath: /path/to/storage\n"+
+		"CertificatesDir: \n"+
 		"AgglayerClient: %s\n"+
 		"AggsenderPrivateKey: local\n"+
 		"EpochNotificationPercentage: 50\n"+
@@ -756,6 +758,7 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 		dbPath := path.Join(t.TempDir(), "newAggsenderTestData.sqlite")
 		storageConfig := db.AggSenderSQLStorageConfig{
 			DBPath:                  dbPath,
+			CertificatesDir:         filepath.Join(filepath.Dir(dbPath), "certificates"),
 			KeepCertificatesHistory: true,
 		}
 		storage, err = db.NewAggSenderSQLStorage(logger, storageConfig)
