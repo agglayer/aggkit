@@ -62,18 +62,16 @@ func (r *RateLimit) String() string {
 }
 
 // Call is used before making a call, it will sleep if the rate limit is reached if param allowToSleep is true
-func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
+func (r *RateLimit) Call(msg string, allowToSleep bool) {
 	if r == nil || !r.cfg.Enabled() {
-		return nil
+		return
 	}
-	var returnSleepTime *time.Duration
 	now := TimeProvider()
 	r.cleanOutdatedCalls(now)
 
 	// Rate limit check BEFORE adding the current call
 	if len(r.calls) >= r.cfg.NumRequests {
 		sleepTime := r.cfg.Interval.Duration - now.Sub(r.calls[0])
-		returnSleepTime = &sleepTime
 		if allowToSleep {
 			if msg != "" {
 				log.Infof("Rate limit reached, sleeping for %s for %s", sleepTime, msg)
@@ -84,8 +82,6 @@ func (r *RateLimit) Call(msg string, allowToSleep bool) *time.Duration {
 
 	// Add the current call to the tracking
 	r.calls = append(r.calls, now)
-
-	return returnSleepTime
 }
 
 func (r *RateLimit) cleanOutdatedCalls(now time.Time) {

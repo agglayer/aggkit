@@ -51,9 +51,7 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 		return
 	}
 
-	if sleepTime := rateLimiter.Call(methodName, true); sleepTime != nil {
-		r.logger.Infof("Rate limit applied for method '%s', slept for %s", methodName, sleepTime.String())
-	}
+	rateLimiter.Call(methodName, true)
 }
 
 // SendCertificate sends a certificate to the AggLayer with rate limiting
