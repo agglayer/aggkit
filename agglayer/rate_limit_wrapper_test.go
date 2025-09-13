@@ -114,11 +114,6 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 	mockLogger := &MockLogger{}
 	setupMockLoggerExpectations(mockLogger, "SendCertificate")
 
-	// Set up expectations for rate limiting log messages
-	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
-		return s != ""
-	})).Return()
-
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
 	// First call should succeed immediately
@@ -312,11 +307,6 @@ func TestRateLimitWrapper_ApplyRateLimit_WithLogger(t *testing.T) {
 		return s != ""
 	})).Return()
 
-	// Expect logger to be called when rate limit is applied
-	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "SendCertificate", mock.MatchedBy(func(s string) bool {
-		return s != ""
-	})).Return()
-
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
 	// First call should not trigger rate limiting
@@ -349,11 +339,6 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 
 	mockLogger := &MockLogger{}
 	setupMockLoggerExpectations(mockLogger, "GetCertificateHeader")
-
-	// Set up expectations for rate limiting log messages
-	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "GetCertificateHeader", mock.MatchedBy(func(s string) bool {
-		return s != ""
-	})).Return()
 
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
@@ -409,11 +394,6 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 	mockLogger := &MockLogger{}
 	setupMockLoggerExpectations(mockLogger, "GetEpochConfiguration")
 
-	// Set up expectations for rate limiting log messages
-	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", "GetEpochConfiguration", mock.MatchedBy(func(s string) bool {
-		return s != ""
-	})).Return()
-
 	wrapper := NewRateLimitWrapper(mockClient, clientConfig, mockLogger)
 
 	// Test first call
@@ -451,11 +431,6 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 // testCertificateHeaderMethod is a helper function to test certificate header methods with rate limiting
 func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64, wrapper *RateLimitWrapper, mockClient *MockAgglayerClientInterface, mockLogger *MockLogger) {
 	t.Helper()
-
-	// Set up expectations for rate limiting log messages
-	mockLogger.On("Infof", "Rate limit applied for method '%s', slept for %s", methodName, mock.MatchedBy(func(s string) bool {
-		return s != ""
-	})).Return()
 
 	// Test first call
 	networkID := uint32(1)
