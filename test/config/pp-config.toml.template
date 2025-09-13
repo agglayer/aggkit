@@ -178,10 +178,6 @@ CheckStatusCertificateInterval = "1s"
 [AggSender.AggkitProverClient]
 UseTLS = false
 
-[AggSender.MaxSubmitCertificateRate]
-NumRequests = 20
-Interval = "1m"
-
 # ------------------------------------------------------------------------------
 # BlockFinality indicates which finality follows AggLayer accepted values are:
 # LatestBlock, SafeBlock, PendingBlock, FinalizedBlock, EarliestBlock
