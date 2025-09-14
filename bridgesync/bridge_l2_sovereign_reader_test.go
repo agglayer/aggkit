@@ -6,61 +6,15 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/0xPolygon/cdk-contracts-tooling/contracts/pp/l2-sovereign-chain/bridgel2sovereignchain"
 	"github.com/agglayer/aggkit/bridgesync/types"
 	aggkittypes "github.com/agglayer/aggkit/types"
 	mocksethclient "github.com/agglayer/aggkit/types/mocks"
-	"github.com/ethereum/go-ethereum/accounts/abi/bind"
 	"github.com/ethereum/go-ethereum/common"
 	ethtypes "github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethereum/go-ethereum/ethclient/simulated"
 	"github.com/stretchr/testify/mock"
 	"github.com/stretchr/testify/require"
 )
-
-// Mock contract for testing
-type mockBridgeSovereignChain struct {
-	mock.Mock
-}
-
-func (m *mockBridgeSovereignChain) FilterUpdatedUnsetGlobalIndexHashChain(opts *bind.FilterOpts) (*bridgel2sovereignchain.Bridgel2sovereignchainUpdatedUnsetGlobalIndexHashChainIterator, error) {
-	args := m.Called(opts)
-	return args.Get(0).(*bridgel2sovereignchain.Bridgel2sovereignchainUpdatedUnsetGlobalIndexHashChainIterator), args.Error(1)
-}
-
-// Mock iterator for testing
-type mockUnsetGlobalIndexHashChainIterator struct {
-	mock.Mock
-	events []*bridgel2sovereignchain.Bridgel2sovereignchainUpdatedUnsetGlobalIndexHashChain
-	index  int
-}
-
-func (m *mockUnsetGlobalIndexHashChainIterator) Next() bool {
-	args := m.Called()
-	if m.index < len(m.events) {
-		m.index++
-		return true
-	}
-	return args.Bool(0)
-}
-
-func (m *mockUnsetGlobalIndexHashChainIterator) Event() *bridgel2sovereignchain.Bridgel2sovereignchainUpdatedUnsetGlobalIndexHashChain {
-	args := m.Called()
-	if m.index > 0 && m.index <= len(m.events) {
-		return m.events[m.index-1]
-	}
-	return args.Get(0).(*bridgel2sovereignchain.Bridgel2sovereignchainUpdatedUnsetGlobalIndexHashChain)
-}
-
-func (m *mockUnsetGlobalIndexHashChainIterator) Close() error {
-	args := m.Called()
-	return args.Error(0)
-}
-
-func (m *mockUnsetGlobalIndexHashChainIterator) Error() error {
-	args := m.Called()
-	return args.Error(0)
-}
 
 func TestNewBridgeL2SovereignReader(t *testing.T) {
 	tests := []struct {
@@ -361,16 +315,13 @@ func TestNewBridgeL2SovereignReader_ErrorHandling(t *testing.T) {
 
 		// Create a mock client that will cause contract creation to fail
 		mockClient := mocksethclient.NewBaseEthereumClienter(t)
-		mockClient.On("FilterLogs", mock.Anything, mock.Anything).Return(nil, errors.New("contract creation failed"))
+		// Note: FilterLogs is not called during NewBridgeL2SovereignReader, only during GetUnsetClaimsForBlockRange
+		// So we don't need to mock FilterLogs here
 
 		reader, err := NewBridgeL2SovereignReader(bridgeAddr, mockClient)
-		// The contract creation might still succeed even with mocked FilterLogs
-		// This test demonstrates the structure for error testing
-		if err != nil {
-			require.Nil(t, reader)
-		} else {
-			require.NotNil(t, reader)
-		}
+		// The contract creation should succeed with a valid mock client
+		require.NoError(t, err)
+		require.NotNil(t, reader)
 	})
 }
 
