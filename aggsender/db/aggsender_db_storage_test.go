@@ -786,6 +786,19 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 	})
 }
 
+func Test_SaveNonAcceptedCertificate_Nil(t *testing.T) {
+	path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
+	log.Debugf("sqlite path: %s", path)
+	cfg := AggSenderSQLStorageConfig{
+		DBPath:          path,
+		CertificatesDir: filepath.Join(filepath.Dir(path), "certificates"),
+	}
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+	err = storage.SaveNonAcceptedCertificate(context.Background(), nil)
+	require.ErrorContains(t, err, "param nonAcceptedCert is nil")
+}
+
 func Test_SaveNonAcceptedCertificate(t *testing.T) {
 	ctx := context.Background()
 
@@ -813,11 +826,12 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 	createdAt := uint32(time.Now().UTC().UnixMilli())
 
 	testCases := []struct {
-		name          string
-		mockDBFn      func()
-		certificates  []*agglayertypes.Certificate
-		certError     string
-		expectedError string
+		name                string
+		mockDBFn            func()
+		certificates        []*agglayertypes.Certificate
+		OverrideFileContent bool
+		certError           string
+		expectedError       string
 	}{
 		{
 			name: "SaveNonAcceptedCertificate_Success_PP_Certificate",
@@ -912,6 +926,26 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			},
 			expectedError: "failed to commit tx",
 		},
+		{
+			name: "SaveNonAcceptedCertificate_Mismatch_file_on_disk",
+			certificates: []*agglayertypes.Certificate{
+				{
+					Height:              11,
+					PrevLocalExitRoot:   common.HexToHash("0x11"),
+					NewLocalExitRoot:    common.HexToHash("0x22"),
+					Metadata:            common.HexToHash("0x33"),
+					NetworkID:           2,
+					BridgeExits:         bridgeExits,
+					ImportedBridgeExits: importedBridgeExits,
+					L1InfoTreeLeafCount: 12,
+					AggchainData: &agglayertypes.AggchainDataSignature{
+						Signature: common.Hex2Bytes("0x1234567890abcdef"),
+					},
+				},
+			},
+			certError:           "yet another error occurred",
+			OverrideFileContent: true,
+		},
 	}
 
 	for _, tc := range testCases {
@@ -944,19 +978,29 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 					require.NoError(t, err, "should save non-accepted certificate without error")
 				}
 			}
+			if tc.OverrideFileContent {
+				// Override the content of the last saved certificate file to simulate file read error
+				certFilePath := filepath.Join(cfg.CertificatesDir, nonAcceptedCertFilename)
+				err = os.WriteFile(certFilePath, []byte("invalid json"), 0o644)
+				require.NoError(t, err, "should override certificate file content without error")
+			}
 
 			if tc.expectedError == "" {
 				nonAcceptedCert, err := storage.GetNonAcceptedCertificate()
-				require.NoError(t, err, "should retrieve one non-accepted certificate from DB even though multiple were saved")
+				if tc.OverrideFileContent {
+					require.ErrorContains(t, err, "certificate hash mismatch")
+				} else {
+					require.NoError(t, err, "should retrieve one non-accepted certificate from DB even though multiple were saved")
 
-				var certificate agglayertypes.Certificate
-				if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificate); err != nil {
-					t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+					var certificate agglayertypes.Certificate
+					if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificate); err != nil {
+						t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+					}
+
+					require.Equal(t, tc.certificates[len(tc.certificates)-1], &certificate, "last saved certificate should match the one retrieved from DB")
+					require.Equal(t, tc.certError, nonAcceptedCert.Error, "error message should match the expected error")
+					require.Equal(t, createdAt, nonAcceptedCert.CreatedAt, "created at timestamp should match the expected value")
 				}
-
-				require.Equal(t, tc.certificates[len(tc.certificates)-1], &certificate, "last saved certificate should match the one retrieved from DB")
-				require.Equal(t, tc.certError, nonAcceptedCert.Error, "error message should match the expected error")
-				require.Equal(t, createdAt, nonAcceptedCert.CreatedAt, "created at timestamp should match the expected value")
 			}
 		})
 	}

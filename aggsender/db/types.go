@@ -84,9 +84,10 @@ func (c *certificateInfo) ID() string {
 }
 
 type NonAcceptedCertificate struct {
-	Height            uint64 `meddler:"height"`
-	SignedCertificate string `meddler:"signed_certificate"`
-	CreatedAt         uint32 `meddler:"created_at"`
+	Height            uint64      `meddler:"height"`
+	SignedCertificate string      `meddler:"signed_certificate"`
+	CreatedAt         uint32      `meddler:"created_at"`
+	CertificateHash   common.Hash `meddler:"certificate_hash,hash"`
 	// Error message indicating why the certificate was not accepted
 	Error string `meddler:"error"`
 }
