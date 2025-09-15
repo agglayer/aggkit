@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ func Test_StorageExploratory(t *testing.T) {
 	}
 	cfg := AggSenderSQLStorageConfig{
 		DBPath:                  path,
+		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
@@ -51,6 +53,7 @@ func Test_Storage(t *testing.T) {
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
 		DBPath:                  path,
+		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 
@@ -362,6 +365,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
 		DBPath:                  path,
+		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 
@@ -915,7 +919,8 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
 			log.Debugf("sqlite path: %s", path)
 			cfg := AggSenderSQLStorageConfig{
-				DBPath: path,
+				DBPath:          path,
+				CertificatesDir: filepath.Join(filepath.Dir(path), "certificates"),
 			}
 			storage, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
 			require.NoError(t, err)
@@ -955,7 +960,8 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 func Test_GetNonAcceptedCert(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath: dbPath,
+		DBPath:          dbPath,
+		CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
 	}
 
 	newTxer = db.NewTx
@@ -996,7 +1002,8 @@ func Test_GetNonAcceptedCert(t *testing.T) {
 func TestSaveOrUpdateCertificate(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath: dbPath,
+		DBPath:          dbPath,
+		CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
 	}
 
 	newTxer = db.NewTx
@@ -1225,7 +1232,8 @@ func Test_deleteCertificate(t *testing.T) {
 		t.Helper()
 		dbPath := path.Join(t.TempDir(), testName+".sqlite")
 		cfg := AggSenderSQLStorageConfig{
-			DBPath: dbPath,
+			DBPath:          dbPath,
+			CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
 		}
 		storage, err := NewAggSenderSQLStorage(logger, cfg)
 		require.NoError(t, err)

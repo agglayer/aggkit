@@ -18,6 +18,8 @@ import (
 type Config struct {
 	// StoragePath is the path of the sqlite db on which the AggSender will store the data
 	StoragePath string `mapstructure:"StoragePath"`
+	// CertificatesDir is the directory where certificate JSON files will be stored
+	CertificatesDir string `mapstructure:"CertificatesDir"`
 	// AgglayerClient is the Agglayer gRPC client configuration
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 	// AggsenderPrivateKey is the private key which is used to sign certificates
@@ -99,6 +101,7 @@ func (c Config) CheckCertConfigBriefString() string {
 // String returns a string representation of the Config
 func (c Config) String() string {
 	return "StoragePath: " + c.StoragePath + "\n" +
+		"CertificatesDir: " + c.CertificatesDir + "\n" +
 		"AgglayerClient: " + c.AgglayerClient.String() + "\n" +
 		"AggsenderPrivateKey: " + c.AggsenderPrivateKey.Method.String() + "\n" +
 		"EpochNotificationPercentage: " + fmt.Sprintf("%d", c.EpochNotificationPercentage) + "\n" +
