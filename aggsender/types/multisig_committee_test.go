@@ -167,19 +167,19 @@ func TestMultisigCommittee_String(t *testing.T) {
 			name:      "single signer",
 			members:   []*SignerInfo{s1},
 			threshold: big.NewInt(1),
-			expected:  "[Committee: " + s1.Address.Hex() + " Threshold: 1]",
+			expected:  "{Committee: {0x0000000000000000000000000000000000000001=http://localhost:7001},  Threshold: 1}",
 		},
 		{
 			name:      "two signers",
 			members:   []*SignerInfo{s1, s2},
 			threshold: big.NewInt(2),
-			expected:  "[Committee: " + s1.Address.Hex() + ", " + s2.Address.Hex() + " Threshold: 2]",
+			expected:  "{Committee: {0x0000000000000000000000000000000000000001=http://localhost:7001, 0x0000000000000000000000000000000000000002=http://localhost:7002},  Threshold: 2}",
 		},
 		{
 			name:      "three signers, threshold less than size",
 			members:   []*SignerInfo{s1, s2, s3},
 			threshold: big.NewInt(2),
-			expected:  "[Committee: " + s1.Address.Hex() + ", " + s2.Address.Hex() + ", " + s3.Address.Hex() + " Threshold: 2]",
+			expected:  "{Committee: {0x0000000000000000000000000000000000000001=http://localhost:7001, 0x0000000000000000000000000000000000000002=http://localhost:7002, 0x0000000000000000000000000000000000000003=http://localhost:7003},  Threshold: 2}",
 		},
 	}
 

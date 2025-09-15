@@ -116,14 +116,14 @@ func (m *MultisigCommittee) IsMember(address common.Address) bool {
 
 // String returns a string representation of the committee
 func (m *MultisigCommittee) String() string {
-	s := "[Committee: "
+	s := "{Committee: {"
 	for i, signer := range m.signers {
-		s += signer.Address.Hex()
+		s += signer.Address.Hex() + "=" + signer.URL
 		if i < len(m.signers)-1 {
 			s += ", "
 		}
 	}
-	s += fmt.Sprintf(" Threshold: %d]", m.threshold)
+	s += fmt.Sprintf("},  Threshold: %d}", m.threshold)
 	return s
 }
 
