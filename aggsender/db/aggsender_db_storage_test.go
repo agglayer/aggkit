@@ -623,7 +623,7 @@ func Test_StorageAggchainProof(t *testing.T) {
 		DBPath:                  dbPath,
 		KeepCertificatesHistory: true,
 	}
-	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	storage, err := NewAggSenderSQLStorage(log.WithFields("module", "aggsender-db"), cfg)
 	require.NoError(t, err)
 	require.NotNil(t, storage)
 
@@ -911,21 +911,6 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			},
 			certError: "yet another error occurred",
 		},
-
-		{
-			name:         "SaveNonAcceptedCertificate_CommitAndRollbackFails",
-			certificates: []*agglayertypes.Certificate{{}},
-			mockDBFn: func() {
-				txnMock := dbmocks.NewTxer(t)
-				newTxer = func(_ context.Context, _ dbtypes.DBer) (dbtypes.Txer, error) {
-					return txnMock, nil
-				}
-				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil)
-				txnMock.EXPECT().Commit().Return(errors.New("failed to commit tx"))
-				txnMock.EXPECT().Rollback().Return(errors.New("failed to rollback tx"))
-			},
-			expectedError: "failed to commit tx",
-		},
 		{
 			name: "SaveNonAcceptedCertificate_Mismatch_file_on_disk",
 			certificates: []*agglayertypes.Certificate{
@@ -946,6 +931,20 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			certError:           "yet another error occurred",
 			OverrideFileContent: true,
 		},
+		{
+			name:         "SaveNonAcceptedCertificate_CommitAndRollbackFails",
+			certificates: []*agglayertypes.Certificate{{}},
+			mockDBFn: func() {
+				txnMock := dbmocks.NewTxer(t)
+				newTxer = func(_ context.Context, _ dbtypes.DBer) (dbtypes.Txer, error) {
+					return txnMock, nil
+				}
+				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil).Once()
+				txnMock.EXPECT().Commit().Return(errors.New("failed to commit tx")).Once()
+				txnMock.EXPECT().Rollback().Return(errors.New("failed to rollback tx")).Once()
+			},
+			expectedError: "failed to commit tx",
+		},
 	}
 
 	for _, tc := range testCases {
@@ -955,13 +954,13 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 				err     error
 			)
 
-			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
+			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate"+tc.name+".sqlite")
 			log.Debugf("sqlite path: %s", path)
 			cfg := AggSenderSQLStorageConfig{
 				DBPath:          path,
 				CertificatesDir: filepath.Join(filepath.Dir(path), "certificates"),
 			}
-			storage, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+			storage, err = NewAggSenderSQLStorage(log.WithFields("module", "aggsender-db"), cfg)
 			require.NoError(t, err)
 
 			if tc.mockDBFn != nil {

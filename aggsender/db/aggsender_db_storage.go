@@ -522,6 +522,7 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 	shouldRollback := true
 	defer func() {
 		if shouldRollback {
+			a.logger.Infof("saveNonAcceptedCertificate Rolling back transaction")
 			if errRllbck := tx.Rollback(); errRllbck != nil {
 				a.logger.Errorf(errWhileRollbackFormat, errRllbck)
 			}
@@ -556,8 +557,8 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 
 	shouldRollback = false
 
-	a.logger.Debugf("inserted non-accepted certificate - Height: %d. CreatedAt: %s",
-		nonAcceptedCert.Height, time.Unix(int64(nonAcceptedCert.CreatedAt), 0))
+	a.logger.Debugf("inserted non-accepted certificate - Height: %d. CreatedAt: %s Filename: %s",
+		nonAcceptedCert.Height, time.Unix(int64(nonAcceptedCert.CreatedAt), 0), fullPathFilename)
 
 	return nil
 }
