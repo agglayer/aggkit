@@ -598,7 +598,8 @@ func (a *AggSenderSQLStorage) GetNonAcceptedCertificate() (*NonAcceptedCertifica
 // handleCertificateFile Handle signed certificate file storage before database operations
 func (a *AggSenderSQLStorage) handleCertificateFile(certificate *types.Certificate) error {
 	if certificate.SignedCertificate != nil && *certificate.SignedCertificate != "" {
-		fileName := fmt.Sprintf("signed_cert_%d_%s_%d.json", certificate.Header.Height, certificate.Header.CertificateID, certificate.Header.RetryCount)
+		fileName := fmt.Sprintf("signed_cert_%d_%s_%d.json", certificate.Header.Height,
+			certificate.Header.CertificateID, certificate.Header.RetryCount)
 		filePath, err := a.saveSignedCertificateToFile(
 			fileName,
 			*certificate.SignedCertificate,
