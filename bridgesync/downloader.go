@@ -155,14 +155,13 @@ func buildClaimEventHandler(contract *polygonzkevmbridgev2.Polygonzkevmbridgev2,
 		claim := &Claim{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
+			BlockTimestamp:     b.Timestamp,
+			TxHash:             l.TxHash,
 			GlobalIndex:        claimEvent.GlobalIndex,
 			OriginNetwork:      claimEvent.OriginNetwork,
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
 			Amount:             claimEvent.Amount,
-			BlockTimestamp:     b.Timestamp,
-			TxHash:             l.TxHash,
-			FromAddress:        l.Address,
 		}
 
 		if syncFullClaims {
@@ -189,7 +188,9 @@ func buildClaimEventHandlerPreEtrog(contract *polygonzkevmbridge.Polygonzkevmbri
 		claim := &Claim{
 			BlockNum:           b.Num,
 			BlockPos:           uint64(l.Index),
-			GlobalIndex:        big.NewInt(int64(claimEvent.Index)),
+			BlockTimestamp:     b.Timestamp,
+			TxHash:             l.TxHash,
+			GlobalIndex:        new(big.Int).SetUint64(uint64(claimEvent.Index)),
 			OriginNetwork:      claimEvent.OriginNetwork,
 			OriginAddress:      claimEvent.OriginAddress,
 			DestinationAddress: claimEvent.DestinationAddress,
