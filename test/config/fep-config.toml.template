@@ -22,17 +22,16 @@ AggchainProofURL= "{{.aggchain_proof_url}}"
 
 NetworkID = {{.zkevm_rollup_id}}
 
-SequencerPrivateKeyPath = "{{.zkevm_l2_sequencer_keystore_file_path}}"
-SequencerPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
+AggSenderPrivateKeyPath = "{{.zkevm_l2_sequencer_keystore_file_path}}"
+AggSenderPrivateKeyPassword  = "{{.zkevm_l2_keystore_password}}"
 
-polygonBridgeAddr = "{{.zkevm_bridge_address}}"
+BridgeAddress = "{{.zkevm_bridge_address}}"
 
 RPCURL = "{{.op_el_rpc_url}}"
 
 # These values can be overriden directly from genesis.json
-rollupCreationBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
-rollupManagerCreationBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
-genesisBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
+RollupCreationBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
+RollupManagerCreationBlockNumber = "{{.zkevm_rollup_manager_block_number}}"
 # ------------------------------------------------------------------------------
 
 # ==============================================================================
@@ -52,27 +51,27 @@ URL = "{{.l1_rpc_url}}"
 # ------------------------------------------------------------------------------
 # L1 chain id
 # ------------------------------------------------------------------------------
-chainId = "{{.l1_chain_id}}"
+ChainId = "{{.l1_chain_id}}"
 
 # ------------------------------------------------------------------------------
 # Address of the zkevm global exit root contract on L1
 # ------------------------------------------------------------------------------
-polygonZkEVMGlobalExitRootAddress = "{{.zkevm_global_exit_root_address}}"
+GlobalExitRootManagerAddress = "{{.zkevm_global_exit_root_address}}"
 
 # ------------------------------------------------------------------------------
 # Address of the rollup manager contract on L1
 # ------------------------------------------------------------------------------
-polygonRollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
+RollupManagerAddress = "{{.zkevm_rollup_manager_address}}"
 
 # ------------------------------------------------------------------------------
 # Address of the pol token address on L1
 # ------------------------------------------------------------------------------
-polTokenAddress = "{{.pol_token_address}}"
+POLTokenAddress = "{{.pol_token_address}}"
 
 # ------------------------------------------------------------------------------
-# Address of the sovereign rollup contract on L2
+# Address of the sovereign rollup contract on L1
 # ------------------------------------------------------------------------------
-polygonZkEVMAddress = "{{.sovereign_rollup_addr}}"
+RollupAddress = "{{.sovereign_rollup_addr}}"
 
 # ==============================================================================
 #  _     ____   ____ ___  _   _ _____ ___ ____

@@ -125,7 +125,7 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	Translator = ""
 
 	[L1Config]
-	polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
+	BridgeAddress = "0x0000000000000000000000000000000000000000"
 
 	[L1NetworkConfig]
 	URL = "http://localhost:8545"
@@ -145,8 +145,8 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 
 	[NetworkConfig.L1]
 	URL="{{L1URL}}"
-	PolAddr="{{L1Config.polTokenAddress}}"
-	ZkEVMAddr="{{L1Config.polygonZkEVMAddress}}"
+	PolAddr="{{L1Config.POLTokenAddress}}"
+	ZkEVMAddr="{{L1Config.RollupAddress}}"
 
 	[L1InfoTreeSync]
 	BlockFinality = "LatestBlock"

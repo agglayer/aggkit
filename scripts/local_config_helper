@@ -252,13 +252,13 @@ function download_kurtosis_artifacts() {
 function common_export_values_of_aggkit_config() {
     local AGGKIT_CONFIG_FILE=$1
     export_key_from_toml_file_or_fatal zkevm_rollup_id $AGGKIT_CONFIG_FILE "." NetworkID
-    export_key_from_toml_file_or_fatal zkevm_rollup_manager_block_number $AGGKIT_CONFIG_FILE "." genesisBlockNumber
-    export_key_from_toml_file_or_fatal zkevm_bridge_address $AGGKIT_CONFIG_FILE "." polygonBridgeAddr
-    export_key_from_toml_file_or_fatal zkevm_l2_keystore_password $AGGKIT_CONFIG_FILE "." SequencerPrivateKeyPassword
-    export_key_from_toml_file_or_fatal l1_chain_id $AGGKIT_CONFIG_FILE L1Config chainId
-    export_key_from_toml_file_or_fatal pol_token_address $AGGKIT_CONFIG_FILE L1Config polTokenAddress
-    export_key_from_toml_file_or_fatal zkevm_rollup_manager_address $AGGKIT_CONFIG_FILE L1Config polygonRollupManagerAddress
-    export_key_from_toml_file_or_fatal zkevm_global_exit_root_address $AGGKIT_CONFIG_FILE L1Config polygonZkEVMGlobalExitRootAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_block_number $AGGKIT_CONFIG_FILE "." RollupManagerCreationBlockNumber
+    export_key_from_toml_file_or_fatal zkevm_bridge_address $AGGKIT_CONFIG_FILE "." BridgeAddress
+    export_key_from_toml_file_or_fatal zkevm_l2_keystore_password $AGGKIT_CONFIG_FILE "." AggSenderPrivateKeyPassword
+    export_key_from_toml_file_or_fatal l1_chain_id $AGGKIT_CONFIG_FILE L1Config ChainId
+    export_key_from_toml_file_or_fatal pol_token_address $AGGKIT_CONFIG_FILE L1Config POLTokenAddress
+    export_key_from_toml_file_or_fatal zkevm_rollup_manager_address $AGGKIT_CONFIG_FILE L1Config RollupManagerAddress
+    export_key_from_toml_file_or_fatal zkevm_global_exit_root_address $AGGKIT_CONFIG_FILE L1Config GlobalExitRootManagerAddress
     export_key_from_toml_file_or_fatal zkevm_rollup_chain_id $AGGKIT_CONFIG_FILE AggOracle.EVMSender.EthTxManager.Etherman L1ChainID
 }
 

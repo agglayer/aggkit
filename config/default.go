@@ -12,22 +12,21 @@ AggLayerURL = "https://agglayer-dev.polygon.technology"
 AggchainProofURL = "http://localhost:5576"
 
 NetworkID = 1
-SequencerPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
-SequencerPrivateKeyPassword = "test"
+AggSenderPrivateKeyPath = "/etc/aggkit/sequencer.keystore"
+AggSenderPrivateKeyPassword = "test"
 
-polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
+BridgeAddress = "0x0000000000000000000000000000000000000000"
 
 # This values can be override directly from genesis.json
-rollupCreationBlockNumber = 0
-rollupManagerCreationBlockNumber = 0
-genesisBlockNumber = 0
+RollupCreationBlockNumber = 0
+RollupManagerCreationBlockNumber = 0
 [L1Config]
 	URL = "{{L1URL}}"
-	chainId = 0
-	polygonZkEVMGlobalExitRootAddress = "0x0000000000000000000000000000000000000000"
-	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
-	polTokenAddress = "0x0000000000000000000000000000000000000000"
-	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
+	ChainId = 0
+	GlobalExitRootManagerAddress = "0x0000000000000000000000000000000000000000"
+	RollupManagerAddress = "0x0000000000000000000000000000000000000000"
+	POLTokenAddress = "0x0000000000000000000000000000000000000000"
+	RollupAddress = "0x0000000000000000000000000000000000000000"
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
@@ -54,7 +53,7 @@ defaultDBQueryTimeout = "30s"
 
 // DefaultValues is the default configuration
 const DefaultValues = `
-AggsenderPrivateKey = "{Method =  \"local\", Path = \"{{SequencerPrivateKeyPath}}\", Password = \"{{SequencerPrivateKeyPassword}}\"}"
+AggsenderPrivateKey = "{Method =  \"local\", Path = \"{{AggSenderPrivateKeyPath}}\", Password = \"{{AggSenderPrivateKeyPassword}}\"}"
 
 [Log]
 Environment = "development" # "production" or "development"
@@ -66,11 +65,11 @@ NetworkID = {{NetworkID}}
 L2RPC = {{L2RPC}}
 
 [L1NetworkConfig]
-L1ChainID = {{L1Config.chainId}}
-POLTokenAddr = "{{L1Config.polTokenAddress}}"
-RollupAddr = "{{L1Config.polygonZkEVMAddress}}"
-RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
-GlobalExitRootManagerAddr = "{{L1Config.polygonZkEVMGlobalExitRootAddress}}"
+L1ChainID = {{L1Config.ChainId}}
+POLTokenAddr = "{{L1Config.POLTokenAddress}}"
+RollupAddr = "{{L1Config.RollupAddress}}"
+RollupManagerAddr = "{{L1Config.RollupManagerAddress}}"
+GlobalExitRootManagerAddr = "{{L1Config.GlobalExitRootManagerAddress}}"
 	[L1NetworkConfig.RPC]
 		URL = "{{L1Config.URL}}"
 		RetryMode = "backoff"
@@ -90,7 +89,7 @@ RollupManagerAddr = "{{L1NetworkConfig.RollupManagerAddr}}"
 SyncBlockChunkSize = 100
 URLRPCL1 = "{{L1URL}}"
 WaitForNewBlocksPeriod = "100ms"
-InitialBlock = {{genesisBlockNumber}}
+InitialBlock = {{RollupManagerCreationBlockNumber}}
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
@@ -145,7 +144,7 @@ MaxRequestsPerIPAndSecond = 10
 [BridgeL1Sync]
 DBPath = "{{PathRWData}}/bridgel1sync.sqlite"
 InitialBlockNum = 0
-BridgeAddr = "{{polygonBridgeAddr}}"
+BridgeAddr = "{{BridgeAddress}}"
 SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
@@ -157,7 +156,7 @@ DBQueryTimeout = "{{defaultDBQueryTimeout}}"
 DBPath = "{{PathRWData}}/bridgel2sync.sqlite"
 BlockFinality = "LatestBlock"
 InitialBlockNum = 0
-BridgeAddr = "{{polygonBridgeAddr}}"
+BridgeAddr = "{{BridgeAddress}}"
 SyncBlockChunkSize = 100
 RetryAfterErrorPeriod = "1s"
 MaxRetryAttemptsAfterError = -1
@@ -194,12 +193,12 @@ Mode = "PessimisticProof"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
-SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
+SovereignRollupAddr = "{{L1Config.RollupAddress}}"
 RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 RequireNoFEPBlockGap = false
 RequireOneBridgeInPPCertificate = false
-RollupManagerAddr = "{{L1Config.polygonRollupManagerAddress}}"
-RollupCreationBlockL1 = {{rollupCreationBlockNumber}}
+RollupManagerAddr = "{{L1Config.RollupManagerAddress}}"
+RollupCreationBlockL1 = {{RollupCreationBlockNumber}}
 MaxL2BlockNumber = 0
 StopOnFinishedSendingAllCertificates = false
 RequireValidatorCall = false
@@ -249,7 +248,7 @@ Host = "localhost"
 Port = 9091
 
 [AggchainProofGen]
-SovereignRollupAddr = "{{L1Config.polygonZkEVMAddress}}"
+SovereignRollupAddr = "{{L1Config.RollupAddress}}"
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
 	[AggchainProofGen.AggkitProverClient]
 		URL = "{{AggchainProofURL}}"

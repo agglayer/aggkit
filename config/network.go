@@ -29,15 +29,15 @@ type L1NetworkConfig struct {
 	// RPC client configuration for the L1 network
 	RPC RPCClientConfig `mapstructure:"RPC"`
 	// Chain ID of the L1 network
-	ChainID uint64 `json:"chainId"`
+	ChainID uint64 `json:"ChainId"`
 	// RollupAddr Address of the L1 rollup contract
-	RollupAddr gethcommon.Address `json:"polygonZkEVMAddress"`
+	RollupAddr gethcommon.Address `json:"RollupAddress"`
 	// RollupManagerAddr Address of the L1 contract
-	RollupManagerAddr gethcommon.Address `json:"polygonRollupManagerAddress"`
+	RollupManagerAddr gethcommon.Address `json:"RollupManagerAddress"`
 	// POLTokenAddr Address of the L1 POL token Contract
-	POLTokenAddr gethcommon.Address `json:"polTokenAddress"`
+	POLTokenAddr gethcommon.Address `json:"POLTokenAddress"`
 	// GlobalExitRootManagerAddr Address of the L1 GlobalExitRootManager contract
-	GlobalExitRootManagerAddr gethcommon.Address `json:"polygonZkEVMGlobalExitRootAddress"`
+	GlobalExitRootManagerAddr gethcommon.Address `json:"GlobalExitRootManagerAddress"`
 }
 
 // Validate checks if the L1NetworkConfig is valid

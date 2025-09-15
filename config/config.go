@@ -46,7 +46,7 @@ const (
 	DefaultCreationFilePermissions = os.FileMode(0600)
 
 	bridgeAddrSetOnWrongSection = "Bridge contract address must be set in the root of " +
-		"config file as polygonBridgeAddr."
+		"config file as BridgeAddress."
 	l2URLHint                = "Use L2URL instead"
 	bridgeMetadataAsHashHint = "BridgeMetaDataAsHash is deprecated, remove it from configuration " +
 		"(bridge metadata is always stored as hash)"
@@ -106,11 +106,11 @@ type DeprecatedField struct {
 var (
 	deprecatedFieldsOnConfig = []DeprecatedField{
 		{
-			FieldNamePattern: "L1Config.polygonBridgeAddr",
+			FieldNamePattern: "L1Config.BridgeAddress",
 			Reason:           bridgeAddrSetOnWrongSection,
 		},
 		{
-			FieldNamePattern: "L2Config.polygonBridgeAddr",
+			FieldNamePattern: "L2Config.BridgeAddress",
 			Reason:           bridgeAddrSetOnWrongSection,
 		},
 		{

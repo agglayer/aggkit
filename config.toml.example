@@ -24,15 +24,14 @@ AggLayerURL = "https://xxxx/"
 AggchainProofURL = "https://xxxx/"
 
 NetworkID = 1
-SequencerPrivateKeyPath = "/path/to/keystore"
-SequencerPrivateKeyPassword = "test"
+AggSenderPrivateKeyPath = "/path/to/keystore"
+AggSenderPrivateKeyPassword = "test"
 
-polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
+BridgeAddress = "0x0000000000000000000000000000000000000000"
 
 # This values can be override directly from genesis.json
-rollupCreationBlockNumber = 0
-rollupManagerCreationBlockNumber = 0
-genesisBlockNumber = 0
+RollupCreationBlockNumber = 0
+RollupManagerCreationBlockNumber = 0
 
 # Default database query timeout
 
@@ -44,19 +43,19 @@ genesisBlockNumber = 0
     # ------------------------------------------------------------------------------
     # Address of the zkevm global exit root contract on L1
     # ------------------------------------------------------------------------------
-	polygonZkEVMGlobalExitRootAddress = "0x0000000000000000000000000000000000000000"
+	GlobalExitRootManagerAddress = "0x0000000000000000000000000000000000000000"
     # ------------------------------------------------------------------------------
     # Address of the rollup manager contract on L1
     # ------------------------------------------------------------------------------
-	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
+	RollupManagerAddress = "0x0000000000000000000000000000000000000000"
     # ------------------------------------------------------------------------------
     # Address of the pol token address on L1
     # ------------------------------------------------------------------------------
-	polTokenAddress = "0x0000000000000000000000000000000000000000"
+	POLTokenAddress = "0x0000000000000000000000000000000000000000"
     # ------------------------------------------------------------------------------
-    # Address of the sovereign rollup contract on L1
+    # Address of the rollup contract on L1
     # ------------------------------------------------------------------------------
-	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
+	RollupAddress = "0x0000000000000000000000000000000000000000"
 
 [L2Config]
     # ------------------------------------------------------------------------------
