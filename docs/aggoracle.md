@@ -46,7 +46,7 @@ In this mode, GER injection requires consensus from a committee of oracle member
 
 1. **Fetch Finalized GER**: AggOracle retrieves the latest GER finalized on L1.
 2. **Check GER Status**: Confirms whether the GER is already injected or proposed.
-3. **Propose GER**: If not yet proposed, committee member submits the GER via `proposeGlobalExitRoot` to the AggOracleCommittee contract.
+3. **Propose GER**: If not yet proposed, committee member submits the GER via `proposeGlobalExitRoot` function to the `AggOracleCommittee` contract.
 4. **Committee Consensus**: Other committee members vote on the proposed GER.
 5. **Automatic Injection**: Once quorum is reached, the GER is automatically injected into the L2 GER Manager contract.
 6. **Sync Locally**: L2GERSyncer fetches and stores the GER locally for downstream use.
