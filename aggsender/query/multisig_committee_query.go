@@ -25,7 +25,7 @@ type BaseMultisigCommitteeQuery struct {
 
 // CommitteeOverride is used to override the URLs of the committee members
 type CommitteeOverride struct {
-	// URL[oldURL] = newURL
+	// oldURL -> newURL
 	URLMapping map[string]string
 }
 
@@ -76,13 +76,13 @@ func (m *BaseMultisigCommitteeQuery) GetMultisigCommittee(
 	callOpts := &bind.CallOpts{Pending: false, BlockNumber: blockNum}
 	threshold, err := m.sovereignRollupAddrSC.Threshold(callOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query the signatures threshold from for block %d to rollupAddr %s : %w",
+		return nil, fmt.Errorf("failed to query the signatures threshold for block %d (rollupAddr %s): %w",
 			blockNum, m.sovereignRollupAddr.String(), err)
 	}
 
 	aggChainSigners, err := m.sovereignRollupAddrSC.GetAggchainSignerInfos(callOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to query the committee signers for block %d to rollupAddr %s: %w",
+		return nil, fmt.Errorf("failed to query the committee signers for block %d (rollupAddr %s): %w",
 			blockNum, m.sovereignRollupAddr.String(), err)
 	}
 	if m.overrideURL != nil {

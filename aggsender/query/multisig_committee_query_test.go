@@ -120,75 +120,93 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 }
 
 func Test_CommitteeURLOverride(t *testing.T) {
-	t.Run("ReplaceURL replaces URLs based on the override map", func(t *testing.T) {
-		override := &CommitteeOverride{
-			URLMapping: map[string]string{
-				"http://original1": "http://override1",
-				"http://original3": "http://override3",
-			},
-		}
+	type testCase struct {
+		name      string
+		override  *CommitteeOverride
+		committee []aggchainbase.IAggchainSignersSignerInfo
+		expected  []aggchainbase.IAggchainSignersSignerInfo
+	}
 
-		committee := []aggchainbase.IAggchainSignersSignerInfo{
-			{
-				Addr: common.HexToAddress("0x1"),
-				Url:  "http://original1",
+	testCases := []testCase{
+		{
+			name: "ReplaceURL replaces URLs based on the override map",
+			override: &CommitteeOverride{
+				URLMapping: map[string]string{
+					"http://original1": "http://override1",
+					"http://original3": "http://override3",
+				},
 			},
-			{
-				Addr: common.HexToAddress("0x2"),
-				Url:  "http://original2",
+			committee: []aggchainbase.IAggchainSignersSignerInfo{
+				{
+					Addr: common.HexToAddress("0x1"),
+					Url:  "http://original1",
+				},
+				{
+					Addr: common.HexToAddress("0x2"),
+					Url:  "http://original2",
+				},
+				{
+					Addr: common.HexToAddress("0x3"),
+					Url:  "http://original3",
+				},
 			},
-			{
-				Addr: common.HexToAddress("0x3"),
-				Url:  "http://original3",
+			expected: []aggchainbase.IAggchainSignersSignerInfo{
+				{
+					Addr: common.HexToAddress("0x1"),
+					Url:  "http://override1",
+				},
+				{
+					Addr: common.HexToAddress("0x2"),
+					Url:  "http://original2",
+				},
+				{
+					Addr: common.HexToAddress("0x3"),
+					Url:  "http://override3",
+				},
 			},
-		}
+		},
+		{
+			name:     "ReplaceURL returns input if override is nil",
+			override: nil,
+			committee: []aggchainbase.IAggchainSignersSignerInfo{
+				{
+					Addr: common.HexToAddress("0x1"),
+					Url:  "http://original1",
+				},
+			},
+			expected: []aggchainbase.IAggchainSignersSignerInfo{
+				{
+					Addr: common.HexToAddress("0x1"),
+					Url:  "http://original1",
+				},
+			},
+		},
+		{
+			name: "ReplaceURL returns input if override map is empty",
+			override: &CommitteeOverride{
+				URLMapping: map[string]string{},
+			},
+			committee: []aggchainbase.IAggchainSignersSignerInfo{
+				{
+					Addr: common.HexToAddress("0x1"),
+					Url:  "http://original1",
+				},
+			},
+			expected: []aggchainbase.IAggchainSignersSignerInfo{
+				{
+					Addr: common.HexToAddress("0x1"),
+					Url:  "http://original1",
+				},
+			},
+		},
+	}
 
-		expected := []aggchainbase.IAggchainSignersSignerInfo{
-			{
-				Addr: common.HexToAddress("0x1"),
-				Url:  "http://override1",
-			},
-			{
-				Addr: common.HexToAddress("0x2"),
-				Url:  "http://original2",
-			},
-			{
-				Addr: common.HexToAddress("0x3"),
-				Url:  "http://override3",
-			},
-		}
-
-		result := override.ReplaceURL(committee)
-		require.Equal(t, expected, result)
-	})
-	t.Run("ReplaceURL returns nil if override is nil", func(t *testing.T) {
-		var override *CommitteeOverride = nil
-
-		committee := []aggchainbase.IAggchainSignersSignerInfo{
-			{
-				Addr: common.HexToAddress("0x1"),
-				Url:  "http://original1",
-			},
-		}
-
-		result := override.ReplaceURL(committee)
-		require.Equal(t, committee, result)
-	})
-	t.Run("ReplaceURL returns nil if override map is empty", func(t *testing.T) {
-		override := &CommitteeOverride{
-			URLMapping: map[string]string{},
-		}
-
-		committee := []aggchainbase.IAggchainSignersSignerInfo{
-			{
-				Addr: common.HexToAddress("0x1"),
-				Url:  "http://original1",
-			},
-		}
-
-		result := override.ReplaceURL(committee)
-		require.Equal(t, committee, result)
-	})
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			result := tc.override.ReplaceURL(tc.committee)
+			require.Equal(t, tc.expected, result)
+		})
+	}
 }
 
 func Test_CommitteeURLOverride_String(t *testing.T) {
