@@ -18,7 +18,7 @@ import (
 	"github.com/agglayer/aggkit/db"
 	dbtypes "github.com/agglayer/aggkit/db/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/iden3/go-iden3-crypto/keccak256"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
 )
 
@@ -26,6 +26,7 @@ const (
 	errWhileRollbackFormat  = "error while rolling back tx: %w"
 	nonAcceptedCertKey      = "non_accepted_cert"
 	nonAcceptedCertFilename = "last_rejected_cert.json"
+	prefixFilename          = "@"
 )
 
 var newTxer = db.NewTx
@@ -537,8 +538,8 @@ func (a *AggSenderSQLStorage) SaveNonAcceptedCertificate(
 		Height:            nonAcceptedCert.Height,
 		CreatedAt:         nonAcceptedCert.CreatedAt,
 		Error:             nonAcceptedCert.Error,
-		SignedCertificate: "@" + fullPathFilename,
-		CertificateHash:   common.BytesToHash(keccak256.Hash([]byte(nonAcceptedCert.SignedCertificate))),
+		SignedCertificate: prefixFilename + fullPathFilename,
+		CertificateHash:   crypto.Keccak256Hash([]byte(nonAcceptedCert.SignedCertificate)),
 	}
 	raw, err := json.Marshal(entry)
 	if err != nil {
@@ -577,18 +578,18 @@ func (a *AggSenderSQLStorage) GetNonAcceptedCertificate() (*NonAcceptedCertifica
 	if err := json.Unmarshal([]byte(val), &nonAcceptedCert); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal non-accepted certificate: %w", err)
 	}
-	if nonAcceptedCert.SignedCertificate != "" && nonAcceptedCert.SignedCertificate[0] == '@' {
+	if strings.HasPrefix(nonAcceptedCert.SignedCertificate, prefixFilename) {
 		// The content is pointing to a file
-		FullFilename := nonAcceptedCert.SignedCertificate[1:]
-		data, err := os.ReadFile(FullFilename)
+		certificateFilePath := nonAcceptedCert.SignedCertificate[1:]
+		data, err := os.ReadFile(certificateFilePath)
 		if err != nil {
 			return nil, fmt.Errorf("getNonAcceptedCertificate: failed to read signed certificate file %s: %w",
-				FullFilename, err)
+				certificateFilePath, err)
 		}
-		certHash := common.BytesToHash(keccak256.Hash([]byte(string(data))))
+		certHash := crypto.Keccak256Hash([]byte(string(data)))
 		if certHash != nonAcceptedCert.CertificateHash {
 			return nil, fmt.Errorf("getNonAcceptedCertificate: certificate hash mismatch: expected %s, got %s (file: %s)",
-				nonAcceptedCert.CertificateHash.String(), certHash.String(), FullFilename)
+				nonAcceptedCert.CertificateHash.String(), certHash.String(), certificateFilePath)
 		}
 		nonAcceptedCert.SignedCertificate = string(data)
 	}
