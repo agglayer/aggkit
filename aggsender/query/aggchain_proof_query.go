@@ -150,8 +150,6 @@ func (a *aggchainProofQuery) GenerateAggchainProof(
 		"maxEndBlock: %d. root: %s.Message sent: %s", optimisticMode, lastProvenBlock, toBlock,
 		root.String(), request.String())
 
-	// TODO - filter unset claims from certBuildParams
-
 	return aggchainProof, root, nil
 }
 

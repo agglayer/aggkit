@@ -216,7 +216,7 @@ RequireValidatorCall = false
 		[[AggSender.AgglayerClient.APIRateLimits]]
 			MethodName = "SendCertificate"
 			[AggSender.AgglayerClient.APIRateLimits.RateLimit]
-				NumRequests = 2000
+				NumRequests = 20
 				Interval = "1h"
 		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "5m"

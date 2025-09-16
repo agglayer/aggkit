@@ -354,13 +354,8 @@ func (f *baseFlow) getImportedBridgeExits(
 		shouldInclude := true
 
 		// Check if this claim's global index exists in the unclaims map
-		if unclaim, exists := unclaimsMap[claim.GlobalIndex]; exists {
-			// If the claim has a lower block number and block position than the unclaim,
-			// then remove it from the claims
-			if claim.BlockNum < unclaim.BlockNumber ||
-				(claim.BlockNum == unclaim.BlockNumber && claim.BlockPos < uint64(unclaim.BlockIndex)) {
-				shouldInclude = false
-			}
+		if _, exists := unclaimsMap[claim.GlobalIndex]; exists {
+			shouldInclude = false
 		}
 
 		if shouldInclude {
