@@ -29,6 +29,8 @@ github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229 h1:6YhqNQVcXkoxq
 github.com/0xPolygon/cdk-rpc v0.0.0-20250213125803-179882ad6229/go.mod h1:2scWqMMufrQXu7TikDgQ3BsyaKoX8qP26D6E262vSOg=
 github.com/0xPolygon/zkevm-ethtx-manager v0.2.16-0.20250912153916-a9e3f7a843aa h1:WXUjmgo+lSRksFENgzApgOPoxdaIq+3NGkffX+cS/qk=
 github.com/0xPolygon/zkevm-ethtx-manager v0.2.16-0.20250912153916-a9e3f7a843aa/go.mod h1:AmLGLIk9qrf1EGqZrgjBc3YGn+0Dc7Ee2KVLuiTBY7g=
+github.com/0xPolygon/zkevm-ethtx-manager v0.2.16-0.20250916104122-a3583323e88f h1:WYDqWtJcQIdZ+4insmYnXn7qDkB1j9jX/UHuW5F7AJE=
+github.com/0xPolygon/zkevm-ethtx-manager v0.2.16-0.20250916104122-a3583323e88f/go.mod h1:AmLGLIk9qrf1EGqZrgjBc3YGn+0Dc7Ee2KVLuiTBY7g=
 github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.7 h1:KJM1QlNZdZjNRS+ajPauD4uG+uaYgItaL+96Om3f8aI=
 github.com/0xPolygonHermez/zkevm-synchronizer-l1 v1.0.7/go.mod h1:exl+KHnTN6Y8HG4nSUXni4qKbAug0HjJqpebMSgl72k=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
