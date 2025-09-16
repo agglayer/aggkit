@@ -586,7 +586,7 @@ func (a *AggSenderSQLStorage) GetNonAcceptedCertificate() (*NonAcceptedCertifica
 			return nil, fmt.Errorf("getNonAcceptedCertificate: failed to read signed certificate file %s: %w",
 				certificateFilePath, err)
 		}
-		certHash := crypto.Keccak256Hash([]byte(string(data)))
+		certHash := crypto.Keccak256Hash(data)
 		if certHash != nonAcceptedCert.CertificateHash {
 			return nil, fmt.Errorf("getNonAcceptedCertificate: certificate hash mismatch: expected %s, got %s (file: %s)",
 				nonAcceptedCert.CertificateHash.String(), certHash.String(), certificateFilePath)
