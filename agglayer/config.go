@@ -3,13 +3,30 @@ package agglayer
 import (
 	"fmt"
 
+	"github.com/agglayer/aggkit/common"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 )
+
+// APIRateLimitConfig defines rate limiting configuration for specific API methods
+type APIRateLimitConfig struct {
+	// MethodName is the name of the API method (e.g., "SendCertificate", "GetEpochConfiguration")
+	MethodName string `mapstructure:"MethodName"`
+	// RateLimit is the rate limiting configuration for this method
+	RateLimit common.RateLimitConfig `mapstructure:"RateLimit"`
+}
+
+// String returns a string representation of the APIRateLimitConfig
+func (a APIRateLimitConfig) String() string {
+	return fmt.Sprintf("APIRateLimitConfig{Method: %s, RateLimit: %s}", a.MethodName, a.RateLimit.String())
+}
 
 type ClientConfig struct {
 	GRPC               *aggkitgrpc.ClientConfig
 	Cached             bool
 	ConfigurationCache *CacheConfig
+	// APIRateLimits defines rate limiting configuration for specific API methods
+	// If empty, no rate limiting is applied
+	APIRateLimits []APIRateLimitConfig `mapstructure:"APIRateLimits"`
 }
 
 // Validate checks if the client configuration is valid.
@@ -24,8 +41,13 @@ func (c *ClientConfig) Validate() error {
 }
 
 func (c *ClientConfig) String() string {
-	return fmt.Sprintf("GRPC: %s, Cached: %t, ConfigurationCache: %s",
+	rateLimitsStr := "[]"
+	if len(c.APIRateLimits) > 0 {
+		rateLimitsStr = fmt.Sprintf("%v", c.APIRateLimits)
+	}
+	return fmt.Sprintf("GRPC: %s, Cached: %t, ConfigurationCache: %s, APIRateLimits: %s",
 		c.GRPC.String(),
 		c.Cached,
-		c.ConfigurationCache.String())
+		c.ConfigurationCache.String(),
+		rateLimitsStr)
 }
