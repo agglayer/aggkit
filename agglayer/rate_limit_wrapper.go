@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/agglayer/aggkit/agglayer/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
@@ -51,7 +52,16 @@ func (r *RateLimitWrapper) applyRateLimit(methodName string) {
 		return
 	}
 
-	rateLimiter.Call(methodName, true)
+	r.mu.Lock()
+	rateLimitSleepTime := rateLimiter.Call(methodName, false)
+	r.mu.Unlock()
+
+	if rateLimitSleepTime != nil {
+		r.logger.Warnf("rate limit reached for %s, sleeping for %s. Rate:%s",
+			methodName,
+			rateLimitSleepTime.String(), rateLimiter.String())
+		time.Sleep(*rateLimitSleepTime)
+	}
 }
 
 // SendCertificate sends a certificate to the AggLayer with rate limiting
