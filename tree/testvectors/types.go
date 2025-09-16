@@ -5,7 +5,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/iden3/go-iden3-crypto/keccak256"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
 // DepositVectorRaw represents the deposit vector
@@ -26,12 +26,12 @@ func (d *DepositVectorRaw) Hash() common.Hash {
 	destNet := make([]byte, 4) //nolint:mnd
 	binary.BigEndian.PutUint32(destNet, d.DestinationNetwork)
 
-	metaHash := keccak256.Hash(common.FromHex(d.Metadata))
+	metaHash := crypto.Keccak256(common.FromHex(d.Metadata))
 	var buf [32]byte
 	amount, _ := big.NewInt(0).SetString(d.Amount, 0)
 	origAddrBytes := common.HexToAddress(d.TokenAddress)
 	destAddrBytes := common.HexToAddress(d.DestinationAddress)
-	return common.BytesToHash(keccak256.Hash(
+	return crypto.Keccak256Hash(
 		[]byte{0}, // LeafType
 		origNet,
 		origAddrBytes[:],
@@ -39,7 +39,7 @@ func (d *DepositVectorRaw) Hash() common.Hash {
 		destAddrBytes[:],
 		amount.FillBytes(buf[:]),
 		metaHash,
-	))
+	)
 }
 
 // MTClaimVectorRaw represents the merkle proof
