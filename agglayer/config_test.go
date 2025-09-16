@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	aggkitgrpc "github.com/agglayer/aggkit/grpc"
 	"github.com/stretchr/testify/require"
@@ -27,6 +28,23 @@ var (
 		ConfigurationCache: &CacheConfig{
 			TTL:      types.Duration{Duration: time.Second},
 			Capacity: 100,
+		},
+	}
+	testValidConfigWithRateLimits = ClientConfig{
+		GRPC: &aggkitgrpc.ClientConfig{
+			URL:               "localhost:8080",
+			MinConnectTimeout: types.Duration{Duration: time.Second},
+		},
+		Cached:             false,
+		ConfigurationCache: nil,
+		APIRateLimits: []APIRateLimitConfig{
+			{
+				MethodName: "SendCertificate",
+				RateLimit: common.RateLimitConfig{
+					NumRequests: 10,
+					Interval:    types.Duration{Duration: time.Minute},
+				},
+			},
 		},
 	}
 )
@@ -64,6 +82,11 @@ func TestClientConfigValidate(t *testing.T) {
 				ConfigurationCache: nil,
 			},
 			expectedErr: "gRPC client URL cannot be empty", // This would be the GRPC validation error
+		},
+		{
+			name:        "valid config with rate limits",
+			config:      &testValidConfigWithRateLimits,
+			expectedErr: "",
 		},
 	}
 

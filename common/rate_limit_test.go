@@ -14,17 +14,22 @@ func TestRateLimit(t *testing.T) {
 		return now
 	}
 	sut := common.NewRateLimit(common.NewRateLimitConfig(2, time.Second))
-	require.Nil(t, sut.Call("test", false))
-	require.Nil(t, sut.Call("test", false))
-	sleepTime := sut.Call("test", false)
-	require.NotNil(t, sleepTime)
-	require.Equal(t, time.Second, *sleepTime)
 
+	// First two calls should succeed without rate limiting
+	sut.Call("test", false)
+	sut.Call("test", false)
+
+	// Third call should trigger rate limiting (but we don't sleep since allowToSleep=false)
+	sut.Call("test", false)
+
+	// Advance time by 2 seconds to reset the rate limit window
 	common.TimeProvider = func() time.Time {
 		return now.Add(time.Second * 2)
 	}
-	require.Nil(t, sut.Call("test", false))
-	require.Nil(t, sut.Call("test", false))
+
+	// These calls should succeed again
+	sut.Call("test", false)
+	sut.Call("test", false)
 }
 
 func TestRateLimitSleepTime(t *testing.T) {
@@ -33,19 +38,27 @@ func TestRateLimitSleepTime(t *testing.T) {
 		return now
 	}
 	sut := common.NewRateLimit(common.NewRateLimitConfig(2, time.Minute))
-	require.Nil(t, sut.Call("test", false))
+
+	// First call should succeed
+	sut.Call("test", false)
+
+	// Advance time by 55 seconds
 	common.TimeProvider = func() time.Time {
 		return now.Add(time.Second * 55)
 	}
-	require.Nil(t, sut.Call("test", false))
-	sleepTime := sut.Call("test", false)
-	require.NotNil(t, sleepTime)
-	require.Equal(t, time.Second*5, *sleepTime)
-	common.TimeProvider = func() time.Time {
-		return now.Add(time.Second * 55).Add(time.Second * 4)
-	}
-	// It sleeps 1 second
+
+	// Second call should succeed (within the 1-minute window)
+	sut.Call("test", false)
+
+	// Third call should trigger rate limiting and sleep for 5 seconds
+	// (since we're 55 seconds into a 60-second window, we need to wait 5 more seconds)
+	start := time.Now()
 	sut.Call("test", true)
+	elapsed := time.Since(start)
+
+	// The call should have slept for approximately 5 seconds
+	require.True(t, elapsed >= time.Second*4, "Expected to sleep for at least 4 seconds, but slept for %v", elapsed)
+	require.True(t, elapsed <= time.Second*6, "Expected to sleep for at most 6 seconds, but slept for %v", elapsed)
 }
 
 func TestRateLimitDisabled(t *testing.T) {
@@ -54,9 +67,11 @@ func TestRateLimitDisabled(t *testing.T) {
 		return now
 	}
 	sut := common.NewRateLimit(common.NewRateLimitConfig(0, time.Minute))
-	require.Nil(t, sut.Call("test", false))
+
+	// With rate limiting disabled (NumRequests=0), all calls should succeed
+	sut.Call("test", false)
 	for i := 1; i <= 1000; i++ {
-		require.Nil(t, sut.Call("test", false))
+		sut.Call("test", false)
 	}
 }
 

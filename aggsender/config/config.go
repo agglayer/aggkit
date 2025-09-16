@@ -57,8 +57,6 @@ type Config struct {
 	// RetryCertAfterInError when a cert pass to 'InError'
 	// state the AggSender will try to resend it immediately
 	RetryCertAfterInError bool `mapstructure:"RetryCertAfterInError"`
-	// MaxSubmitCertificateRate is the maximum rate of certificate submission allowed
-	MaxSubmitCertificateRate common.RateLimitConfig `mapstructure:"MaxSubmitCertificateRate"`
 	// GlobalExitRootL2Addr is the address of the GlobalExitRootManager contract on l2 sovereign chain
 	// this address is needed for the AggchainProof mode of the AggSender
 	GlobalExitRootL2Addr ethCommon.Address `mapstructure:"GlobalExitRootL2"`
@@ -112,7 +110,6 @@ func (c Config) String() string {
 		"Mode: " + c.Mode + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
-		"MaxSubmitRate: " + c.MaxSubmitCertificateRate.String() + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
 		"RequireNoFEPBlockGap: " + fmt.Sprintf("%t", c.RequireNoFEPBlockGap) + "\n" +
 		"RetriesToBuildAndSendCertificate: " + c.RetriesToBuildAndSendCertificate.String() + "\n"

@@ -6,6 +6,7 @@ import (
 
 	"github.com/agglayer/aggkit/agglayer/grpc"
 	"github.com/agglayer/aggkit/agglayer/types"
+	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/ethereum/go-ethereum/common"
 )
 
@@ -35,7 +36,7 @@ type AgglayerClientInterface interface {
 	AggLayerClientCertificateIDQuerier
 }
 
-func NewAgglayerClient(cfg ClientConfig) (AgglayerClientInterface, error) {
+func NewAgglayerClient(cfg ClientConfig, logger aggkitcommon.Logger) (AgglayerClientInterface, error) {
 	if err := cfg.Validate(); err != nil {
 		return nil, err
 	}
@@ -48,5 +49,11 @@ func NewAgglayerClient(cfg ClientConfig) (AgglayerClientInterface, error) {
 		client = NewCertificateCache(
 			client, cfg.ConfigurationCache.TTL.Duration, cfg.ConfigurationCache.Capacity)
 	}
+
+	// Apply rate limiting wrapper if any rate limits are configured
+	if len(cfg.APIRateLimits) > 0 {
+		client = NewRateLimitWrapper(client, cfg, logger)
+	}
+
 	return client, nil
 }
