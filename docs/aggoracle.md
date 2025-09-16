@@ -47,7 +47,7 @@ In this mode, GER injection requires consensus from a committee of oracle member
 1. **Fetch Finalized GER**: AggOracle retrieves the latest GER finalized on L1.
 2. **Check GER Status**: Confirms whether the GER is already injected or proposed.
 3. **Propose GER**: If not yet proposed, committee member submits the GER via `proposeGlobalExitRoot` function to the `AggOracleCommittee` contract.
-4. **Committee Consensus**: Other committee members vote on the proposed GER.
+4. **Committee Proposals**: Other committee members submit the same GER via `proposeGlobalExitRoot` to signal agreement.
 5. **Automatic Injection**: Once quorum is reached, the GER is automatically injected into the L2 GER Manager contract.
 6. **Sync Locally**: L2GERSyncer fetches and stores the GER locally for downstream use.
 
@@ -55,8 +55,8 @@ In this mode, GER injection requires consensus from a committee of oracle member
 
 - **Committee Members**: A predefined set of authorized oracle addresses
 - **Quorum**: Minimum number of votes required for GER injection
-- **Proposal Tracking**: Each member can propose one GER at a time
-- **Vote Counting**: The committee contract tracks votes for each proposed GER
+- **Proposal Tracking**: Each member's latest proposed GER is tracked; members cannot re-propose the same GER
+- **Proposal Counting**: The committee contract track proposals for each GER
 - **Automatic Execution**: GER injection happens automatically when quorum is reached
 
 The sequence diagrams below depict the interactions in both operational modes.
@@ -116,9 +116,9 @@ sequenceDiagram
                 ChainSender->>ChainSender: log GER already proposed
             else GER not yet proposed
                 ChainSender->>AggOracleCommittee: proposeGlobalExitRoot(GER)
-                AggOracleCommittee->>AggOracleCommittee: record vote
+                AggOracleCommittee->>AggOracleCommittee: record proposal
                 OtherCommitteeMembers->>AggOracleCommittee: other members proposeGlobalExitRoot(GER)
-                AggOracleCommittee->>AggOracleCommittee: record vote
+                AggOracleCommittee->>AggOracleCommittee: record additional proposals
                 alt quorum reached
                     AggOracleCommittee->>L2GERManager: insertGlobalExitRoot(GER)
                     L2GERManager-->>AggOracleCommittee: injection result
@@ -200,7 +200,7 @@ Used in both operational modes for final GER storage and status checking.
 
 - **Contract**: `GlobalExitRootManagerL2SovereignChain.sol`
 - **Key Functions**:
-  - `insertGlobalExitRoot`: Final GER injection (called directly in Direct Mode, or by committee in Committee Mode)
+  - `insertGlobalExitRoot`: Final GER injection (called directly in Direct Mode, or by committee contract in Committee Mode)
   - `GlobalExitRootMap`: Check if a GER is already injected
   - `GlobalExitRootUpdater`: Get authorized updater address (for Direct Mode validation)
 - **Source Code**: [zkevm-contracts](https://github.com/0xPolygonHermez/zkevm-contracts/blob/feature/audit-remediations/contracts/v2/sovereignChains/GlobalExitRootManagerL2SovereignChain.sol#L89-L103)
@@ -210,17 +210,20 @@ Used in both operational modes for final GER storage and status checking.
 
 Used exclusively in Committee Mode for consensus-based GER proposals.
 
+> **⚠️ Implementation Note**: The client-side code only handles proposal submission via `proposeGlobalExitRoot`. The consensus mechanism, quorum handling, and automatic GER injection are handled at the smart contract level. Refer to the actual [AggOracleCommittee.sol](https://github.com/agglayer/agglayer-contracts/blob/feature/descentralized_aggoracle/contracts/v2/sovereignChains/AggOracleCommittee.sol) contract for complete implementation details.
+
 - **Contract**: `AggOracleCommittee.sol`
-- **Key Functions**:
-  - `proposeGlobalExitRoot`: Submit GER proposal and record vote
-  - `AggOracleMembers`: Get committee member information
+- **Key Functions** (as defined in current interface):
+  - `proposeGlobalExitRoot`: Submit GER proposal (called via transaction)
   - `GetAggOracleMemberIndex`: Validate committee membership
   - `AddressToLastProposedGER`: Track last proposal by each member
-  - `ProposedGERToReport`: Get voting status for a specific GER
+
+- **Additional Functions** (used in implementation but not in interface):
+  - `AggOracleMembers`: Get committee member information (used in validation)
+  - `ProposedGERToReport`: Get proposal status for a specific GER
 - **Initialization Parameters**:
   - **Committee Members**: Array of authorized oracle addresses
-  - **Quorum**: Minimum votes required for automatic GER injection
-- **Source Code**: [AggOracleCommittee.sol](https://github.com/agglayer/agglayer-contracts/blob/feature/descentralized_aggoracle/contracts/v2/sovereignChains/AggOracleCommittee.sol)
+  - **Quorum**: Minimum proposals/votes required for consensus (contract-level implementation)
 - **Bindings**: Available in [cdk-contracts-tooling](https://github.com/0xPolygon/cdk-contracts-tooling/tree/main/contracts/pp/l2-sovereign-chain)
 
 ---
