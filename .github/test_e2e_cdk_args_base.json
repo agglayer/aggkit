@@ -13,7 +13,7 @@
     "aggkit_image": "aggkit:local",
     "additional_services": [],
     "binary_name": "aggkit",
-    "aggkit_components": "aggsender,bridge"
+    "aggkit_components": "aggsender,aggoracle"
   },
   "optimism_package": {
     "chains": [
