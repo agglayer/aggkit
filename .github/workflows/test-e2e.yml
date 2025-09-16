@@ -97,7 +97,7 @@ jobs:
           CONTENT=$(cat ./.github/test_e2e_single_chain_op_succinct_aggoracle_committee_args.json | jq -c .)
           echo "op_succinct_aggoracle_committee_args=${CONTENT}" >> $GITHUB_OUTPUT
           # single l2 network (fork 12, pessimistic)
-          CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_gas_token_enabled_args.json | jq -c .)
+          CONTENT=$(cat ./.github/test_e2e_cdk_args_base.json | jq -c .)
           echo "fork12_pessimistic_args=${CONTENT}" >> $GITHUB_OUTPUT
           # single l2 network (fork 12, global index pp old contracts)
           CONTENT=$(jq -s '.[0] * .[1]' ./.github/test_e2e_cdk_args_base.json ./.github/test_e2e_cdk_args_global_index_pp_old_contracts.json | jq -c .)
