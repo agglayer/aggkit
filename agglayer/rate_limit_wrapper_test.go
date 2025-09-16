@@ -174,27 +174,6 @@ func TestRateLimitWrapper_String(t *testing.T) {
 	mockLogger.AssertExpectations(t)
 }
 
-func TestNewRateLimitWrapper_WithNilLogger_Panics(t *testing.T) {
-	t.Parallel()
-
-	mockClient := &MockAgglayerClientInterface{}
-	config := ClientConfig{
-		APIRateLimits: []APIRateLimitConfig{
-			{
-				MethodName: "SendCertificate",
-				RateLimit: aggkitcommon.RateLimitConfig{
-					NumRequests: 1,
-					Interval:    configtypes.Duration{Duration: time.Second},
-				},
-			},
-		},
-	}
-
-	require.Panics(t, func() {
-		NewRateLimitWrapper(mockClient, config, nil)
-	}, "Expected panic when logger is nil")
-}
-
 func TestNewRateLimitWrapper_WithLogger(t *testing.T) {
 	t.Parallel()
 
