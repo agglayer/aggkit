@@ -112,7 +112,7 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 	}
 
 	mockLogger := &MockLogger{}
-	setupMockLoggerExpectations(mockLogger, "SendCertificate")
+	setupMockLoggerExpectationsWithRateLimit(mockLogger, "SendCertificate")
 
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
@@ -307,6 +307,16 @@ func TestRateLimitWrapper_ApplyRateLimit_WithLogger(t *testing.T) {
 		return s != ""
 	})).Return()
 
+	// Expect rate limiting warning call
+	mockLogger.On("Warnf", "rate limit reached for %s, sleeping for %s. Rate:%s",
+		"SendCertificate",
+		mock.MatchedBy(func(s string) bool {
+			return s != ""
+		}),
+		mock.MatchedBy(func(s string) bool {
+			return s != ""
+		})).Return()
+
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
 	// First call should not trigger rate limiting
@@ -338,7 +348,7 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 	}
 
 	mockLogger := &MockLogger{}
-	setupMockLoggerExpectations(mockLogger, "GetCertificateHeader")
+	setupMockLoggerExpectationsWithRateLimit(mockLogger, "GetCertificateHeader")
 
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
@@ -392,7 +402,7 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 	}
 
 	mockLogger := &MockLogger{}
-	setupMockLoggerExpectations(mockLogger, "GetEpochConfiguration")
+	setupMockLoggerExpectationsWithRateLimit(mockLogger, "GetEpochConfiguration")
 
 	wrapper := NewRateLimitWrapper(mockClient, clientConfig, mockLogger)
 
@@ -492,7 +502,7 @@ func TestRateLimitWrapper_GetLatestSettledCertificateHeader(t *testing.T) {
 		},
 	}
 	mockLogger := &MockLogger{}
-	setupMockLoggerExpectations(mockLogger, "GetLatestSettledCertificateHeader")
+	setupMockLoggerExpectationsWithRateLimit(mockLogger, "GetLatestSettledCertificateHeader")
 
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
@@ -515,7 +525,7 @@ func TestRateLimitWrapper_GetLatestPendingCertificateHeader(t *testing.T) {
 		},
 	}
 	mockLogger := &MockLogger{}
-	setupMockLoggerExpectations(mockLogger, "GetLatestPendingCertificateHeader")
+	setupMockLoggerExpectationsWithRateLimit(mockLogger, "GetLatestPendingCertificateHeader")
 
 	wrapper := NewRateLimitWrapper(mockClient, config, mockLogger)
 
@@ -533,6 +543,26 @@ func setupMockLoggerExpectations(mockLogger *MockLogger, methodNames ...string) 
 		mockLogger.On("Infof", "Rate limiting enabled for method '%s': %s", methodName, mock.MatchedBy(func(s string) bool {
 			return s != ""
 		})).Return()
+	}
+}
+
+// setupMockLoggerExpectationsWithRateLimit sets up the mock logger to expect both initialization and rate limiting calls
+func setupMockLoggerExpectationsWithRateLimit(mockLogger *MockLogger, methodNames ...string) {
+	for _, methodName := range methodNames {
+		// Expect initialization call
+		mockLogger.On("Infof", "Rate limiting enabled for method '%s': %s", methodName, mock.MatchedBy(func(s string) bool {
+			return s != ""
+		})).Return()
+
+		// Expect rate limiting warning call
+		mockLogger.On("Warnf", "rate limit reached for %s, sleeping for %s. Rate:%s",
+			methodName,
+			mock.MatchedBy(func(s string) bool {
+				return s != ""
+			}),
+			mock.MatchedBy(func(s string) bool {
+				return s != ""
+			})).Return()
 	}
 }
 
