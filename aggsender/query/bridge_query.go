@@ -154,13 +154,3 @@ func (b *bridgeDataQuerier) GetUnsetClaimsForBlockRange(ctx context.Context,
 	}
 	return unclaimsMap, nil
 }
-
-func (b *bridgeDataQuerier) GetClaimByGlobalIndex(
-	ctx context.Context, globalIndex *big.Int, blockNumber uint64,
-) (bridgesync.Claim, error) {
-	claim, err := b.bridgeSyncer.GetClaimByGlobalIndex(ctx, globalIndex, blockNumber)
-	if err != nil {
-		return bridgesync.Claim{}, fmt.Errorf("failed to get claim by global index: %w", err)
-	}
-	return claim, nil
-}

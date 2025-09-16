@@ -1054,51 +1054,6 @@ func (p *processor) unhalt() {
 	p.log.Info("processor unhalted")
 }
 
-// GetClaimByGlobalIndex fetches the latest claim with the given global index
-// that has a block number less than the provided blockNumber. If there are multiple
-// claims with the same global index, it returns the latest one (highest block_num and block_pos).
-func (p *processor) GetClaimByGlobalIndex(
-	ctx context.Context,
-	globalIndex *big.Int,
-	blockNumber uint64,
-) (Claim, error) {
-	// Query to get the latest claim with the given global index where block_num < provided blockNumber
-	// For multiple claims with same global index, we get the latest one by ordering
-	// by block_num DESC, block_pos DESC and taking the first result
-	query := fmt.Sprintf(`
-		SELECT * FROM %s
-		WHERE global_index = $1 AND block_num < $2
-		ORDER BY block_num DESC, block_pos DESC
-		LIMIT 1
-	`, claimTableName)
-
-	rows, err := p.db.QueryContext(ctx, query, globalIndex.String(), blockNumber)
-	if err != nil {
-		return Claim{}, fmt.Errorf(
-			"failed to get claim by global index: %w, globalIndex: %s, blockNumber: %d",
-			err, globalIndex, blockNumber,
-		)
-	}
-	defer rows.Close()
-
-	claims := []*Claim{}
-	if err = meddler.ScanAll(rows, &claims); err != nil {
-		return Claim{}, fmt.Errorf(
-			"failed to scan claim by global index: %w, globalIndex: %s, blockNumber: %d",
-			err, globalIndex, blockNumber,
-		)
-	}
-
-	if len(claims) == 0 {
-		return Claim{}, fmt.Errorf(
-			"claim not found with globalIndex: %s before block: %d",
-			globalIndex, blockNumber,
-		)
-	}
-
-	return *claims[0], nil
-}
-
 func (p *processor) withDatabaseTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, p.dbQueryTimeout)
 }

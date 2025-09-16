@@ -77,9 +77,6 @@ type L2BridgeSyncer interface {
 	OriginNetwork() uint32
 	BlockFinality() aggkittypes.BlockNumberFinality
 	GetLastProcessedBlock(ctx context.Context) (uint64, error)
-	GetClaimByGlobalIndex(
-		ctx context.Context, globalIndex *big.Int, blockNumber uint64,
-	) (bridgesync.Claim, error)
 }
 
 // BridgeQuerier is an interface defining functions that an BridgeQuerier should implement
@@ -94,9 +91,6 @@ type BridgeQuerier interface {
 	WaitForSyncerToCatchUp(ctx context.Context, block uint64) error
 	GetUnsetClaimsForBlockRange(ctx context.Context,
 		fromBlock, toBlock uint64) (map[*big.Int]*bridgesynctypes.Unclaim, error)
-	GetClaimByGlobalIndex(
-		ctx context.Context, globalIndex *big.Int, blockNumber uint64,
-	) (bridgesync.Claim, error)
 }
 
 // ChainGERReader is an interface defining functions that an ChainGERReader should implement
