@@ -9,6 +9,53 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+// createTestImportedBridgeExitWithBlockNumber creates a test ImportedBridgeExitWithBlockNumber for testing
+func createTestImportedBridgeExitWithBlockNumber() []*agglayer.ImportedBridgeExitWithBlockNumber {
+	return []*agglayer.ImportedBridgeExitWithBlockNumber{
+		{
+			BlockNumber: 170,
+			ImportedBridgeExit: &agglayer.ImportedBridgeExit{
+				BridgeExit: &agglayer.BridgeExit{
+					LeafType: agglayer.LeafTypeAsset,
+					TokenInfo: &agglayer.TokenInfo{
+						OriginNetwork:      1,
+						OriginTokenAddress: common.HexToAddress("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
+					},
+					DestinationNetwork: 2,
+					DestinationAddress: common.HexToAddress("0xffffffffffffffffffffffffffffffffffffffff"),
+					Amount:             nil,
+					Metadata:           []byte{0x01, 0x02, 0x03},
+				},
+				ClaimData: &agglayer.ClaimFromMainnnet{
+					ProofLeafMER: &agglayer.MerkleProof{
+						Root:  common.HexToHash("0x1010101010101010"),
+						Proof: [32]common.Hash{common.HexToHash("0x2020202020202020")},
+					},
+					ProofGERToL1Root: &agglayer.MerkleProof{
+						Root:  common.HexToHash("0x3030303030303030"),
+						Proof: [32]common.Hash{common.HexToHash("0x4040404040404040")},
+					},
+					L1Leaf: &agglayer.L1InfoTreeLeaf{
+						L1InfoTreeIndex: 7,
+						RollupExitRoot:  common.HexToHash("0x5050505050505050"),
+						MainnetExitRoot: common.HexToHash("0x6060606060606060"),
+						Inner: &agglayer.L1InfoTreeLeafInner{
+							GlobalExitRoot: common.HexToHash("0x7070707070707070"),
+							BlockHash:      common.HexToHash("0x8080808080808080"),
+							Timestamp:      1234567892,
+						},
+					},
+				},
+				GlobalIndex: &agglayer.GlobalIndex{
+					MainnetFlag: true,
+					RollupIndex: 1,
+					LeafIndex:   10,
+				},
+			},
+		},
+	}
+}
+
 func TestNewAggchainProofRequest(t *testing.T) {
 	tests := []struct {
 		name                                       string
@@ -94,49 +141,7 @@ func TestNewAggchainProofRequest(t *testing.T) {
 					BlockIndex: 2,
 				},
 			},
-			importedBridgeExitsWithBlockNumber: []*agglayer.ImportedBridgeExitWithBlockNumber{
-				{
-					BlockNumber: 170,
-					ImportedBridgeExit: &agglayer.ImportedBridgeExit{
-						BridgeExit: &agglayer.BridgeExit{
-							LeafType: agglayer.LeafTypeAsset,
-							TokenInfo: &agglayer.TokenInfo{
-								OriginNetwork:      1,
-								OriginTokenAddress: common.HexToAddress("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
-							},
-							DestinationNetwork: 2,
-							DestinationAddress: common.HexToAddress("0xffffffffffffffffffffffffffffffffffffffff"),
-							Amount:             nil,
-							Metadata:           []byte{0x01, 0x02, 0x03},
-						},
-						ClaimData: &agglayer.ClaimFromMainnnet{
-							ProofLeafMER: &agglayer.MerkleProof{
-								Root:  common.HexToHash("0x1010101010101010"),
-								Proof: [32]common.Hash{common.HexToHash("0x2020202020202020")},
-							},
-							ProofGERToL1Root: &agglayer.MerkleProof{
-								Root:  common.HexToHash("0x3030303030303030"),
-								Proof: [32]common.Hash{common.HexToHash("0x4040404040404040")},
-							},
-							L1Leaf: &agglayer.L1InfoTreeLeaf{
-								L1InfoTreeIndex: 7,
-								RollupExitRoot:  common.HexToHash("0x5050505050505050"),
-								MainnetExitRoot: common.HexToHash("0x6060606060606060"),
-								Inner: &agglayer.L1InfoTreeLeafInner{
-									GlobalExitRoot: common.HexToHash("0x7070707070707070"),
-									BlockHash:      common.HexToHash("0x8080808080808080"),
-									Timestamp:      1234567892,
-								},
-							},
-						},
-						GlobalIndex: &agglayer.GlobalIndex{
-							MainnetFlag: true,
-							RollupIndex: 1,
-							LeafIndex:   10,
-						},
-					},
-				},
-			},
+			importedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(),
 			removedGers: []*agglayer.RemovedGER{
 				{
 					GlobalExitRoot: common.HexToHash("0x9090909090909090"),
@@ -195,49 +200,7 @@ func TestNewAggchainProofRequest(t *testing.T) {
 					BlockIndex: 2,
 				},
 			},
-			expectedImportedBridgeExitsWithBlockNumber: []*agglayer.ImportedBridgeExitWithBlockNumber{
-				{
-					BlockNumber: 170,
-					ImportedBridgeExit: &agglayer.ImportedBridgeExit{
-						BridgeExit: &agglayer.BridgeExit{
-							LeafType: agglayer.LeafTypeAsset,
-							TokenInfo: &agglayer.TokenInfo{
-								OriginNetwork:      1,
-								OriginTokenAddress: common.HexToAddress("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
-							},
-							DestinationNetwork: 2,
-							DestinationAddress: common.HexToAddress("0xffffffffffffffffffffffffffffffffffffffff"),
-							Amount:             nil,
-							Metadata:           []byte{0x01, 0x02, 0x03},
-						},
-						ClaimData: &agglayer.ClaimFromMainnnet{
-							ProofLeafMER: &agglayer.MerkleProof{
-								Root:  common.HexToHash("0x1010101010101010"),
-								Proof: [32]common.Hash{common.HexToHash("0x2020202020202020")},
-							},
-							ProofGERToL1Root: &agglayer.MerkleProof{
-								Root:  common.HexToHash("0x3030303030303030"),
-								Proof: [32]common.Hash{common.HexToHash("0x4040404040404040")},
-							},
-							L1Leaf: &agglayer.L1InfoTreeLeaf{
-								L1InfoTreeIndex: 7,
-								RollupExitRoot:  common.HexToHash("0x5050505050505050"),
-								MainnetExitRoot: common.HexToHash("0x6060606060606060"),
-								Inner: &agglayer.L1InfoTreeLeafInner{
-									GlobalExitRoot: common.HexToHash("0x7070707070707070"),
-									BlockHash:      common.HexToHash("0x8080808080808080"),
-									Timestamp:      1234567892,
-								},
-							},
-						},
-						GlobalIndex: &agglayer.GlobalIndex{
-							MainnetFlag: true,
-							RollupIndex: 1,
-							LeafIndex:   10,
-						},
-					},
-				},
-			},
+			expectedImportedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(),
 			expectedRemovedGers: []*agglayer.RemovedGER{
 				{
 					GlobalExitRoot: common.HexToHash("0x9090909090909090"),
@@ -370,49 +333,7 @@ func TestAggchainProofRequest_String(t *testing.T) {
 						BlockIndex: 2,
 					},
 				},
-				ImportedBridgeExitsWithBlockNumber: []*agglayer.ImportedBridgeExitWithBlockNumber{
-					{
-						BlockNumber: 170,
-						ImportedBridgeExit: &agglayer.ImportedBridgeExit{
-							BridgeExit: &agglayer.BridgeExit{
-								LeafType: agglayer.LeafTypeAsset,
-								TokenInfo: &agglayer.TokenInfo{
-									OriginNetwork:      1,
-									OriginTokenAddress: common.HexToAddress("0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"),
-								},
-								DestinationNetwork: 2,
-								DestinationAddress: common.HexToAddress("0xffffffffffffffffffffffffffffffffffffffff"),
-								Amount:             nil,
-								Metadata:           []byte{0x01, 0x02, 0x03},
-							},
-							ClaimData: &agglayer.ClaimFromMainnnet{
-								ProofLeafMER: &agglayer.MerkleProof{
-									Root:  common.HexToHash("0x1010101010101010"),
-									Proof: [32]common.Hash{common.HexToHash("0x2020202020202020")},
-								},
-								ProofGERToL1Root: &agglayer.MerkleProof{
-									Root:  common.HexToHash("0x3030303030303030"),
-									Proof: [32]common.Hash{common.HexToHash("0x4040404040404040")},
-								},
-								L1Leaf: &agglayer.L1InfoTreeLeaf{
-									L1InfoTreeIndex: 7,
-									RollupExitRoot:  common.HexToHash("0x5050505050505050"),
-									MainnetExitRoot: common.HexToHash("0x6060606060606060"),
-									Inner: &agglayer.L1InfoTreeLeafInner{
-										GlobalExitRoot: common.HexToHash("0x7070707070707070"),
-										BlockHash:      common.HexToHash("0x8080808080808080"),
-										Timestamp:      1234567892,
-									},
-								},
-							},
-							GlobalIndex: &agglayer.GlobalIndex{
-								MainnetFlag: true,
-								RollupIndex: 1,
-								LeafIndex:   10,
-							},
-						},
-					},
-				},
+				ImportedBridgeExitsWithBlockNumber: createTestImportedBridgeExitWithBlockNumber(),
 				RemovedGers: []*agglayer.RemovedGER{
 					{
 						GlobalExitRoot: common.HexToHash("0x9090909090909090"),
