@@ -913,7 +913,6 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 					Height:              11,
 					PrevLocalExitRoot:   common.HexToHash("0x11"),
 					NewLocalExitRoot:    common.HexToHash("0x22"),
-					Metadata:            common.HexToHash("0x33"),
 					NetworkID:           2,
 					BridgeExits:         bridgeExits,
 					ImportedBridgeExits: importedBridgeExits,
