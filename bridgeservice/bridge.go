@@ -900,7 +900,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 
 	cnt, merr := b.meter.Int64Counter("last_reorg_event")
 	if merr != nil {
-		b.logger.Warnf("Failed to create last_reorg_event counter: %s", merr)
+		b.logger.Warnf("failed to create last_reorg_event counter: %s", merr)
 	}
 	cnt.Add(ctx, 1)
 
