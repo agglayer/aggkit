@@ -99,7 +99,9 @@ func start(cliCtx *cli.Context) error {
 	// Check if any bridge-related component is present and start bridge service once
 	hasBridgeComponent := false
 	for _, component := range components {
-		if component == aggkitcommon.BRIDGE || component == aggkitcommon.L1BRIDGESYNC || component == aggkitcommon.L2BRIDGESYNC {
+		if component == aggkitcommon.BRIDGE ||
+			component == aggkitcommon.L1BRIDGESYNC ||
+			component == aggkitcommon.L2BRIDGESYNC {
 			hasBridgeComponent = true
 			break
 		}
