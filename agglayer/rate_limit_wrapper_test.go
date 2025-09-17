@@ -17,7 +17,7 @@ import (
 func TestNewRateLimitWrapper(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
 			{
@@ -53,7 +53,7 @@ func TestNewRateLimitWrapper(t *testing.T) {
 func TestRateLimitWrapper_NoRateLimits(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{},
 	}
@@ -69,7 +69,7 @@ func TestRateLimitWrapper_NoRateLimits(t *testing.T) {
 func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
 			{
@@ -90,7 +90,7 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 	// First call should succeed immediately
 	cert := &types.Certificate{}
 	expectedHash := common.HexToHash("0x123")
-	mockClient.EXPECT().SendCertificate(mock.Anything, cert).Return(expectedHash, nil).Once()
+	mockClient.On("SendCertificate", mock.Anything, cert, []byte(nil)).Return(expectedHash, nil).Once()
 
 	start := time.Now()
 	hash, err := wrapper.SendCertificate(context.Background(), cert)
@@ -101,7 +101,7 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Second call should be rate limited
-	mockClient.EXPECT().SendCertificate(mock.Anything, cert).Return(expectedHash, nil).Once()
+	mockClient.On("SendCertificate", mock.Anything, cert, []byte(nil)).Return(expectedHash, nil).Once()
 
 	// Add a small delay to ensure the calls are not happening in the same microsecond
 	time.Sleep(1 * time.Millisecond)
@@ -121,7 +121,7 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 func TestRateLimitWrapper_String(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
 			{
@@ -148,7 +148,7 @@ func TestRateLimitWrapper_String(t *testing.T) {
 func TestNewRateLimitWrapper_WithLogger(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	mockLogger := &MockLogger{}
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
@@ -180,7 +180,7 @@ func TestNewRateLimitWrapper_WithLogger(t *testing.T) {
 func TestNewRateLimitWrapper_WithDisabledRateLimits(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
 			{
@@ -209,7 +209,7 @@ func TestNewRateLimitWrapper_WithDisabledRateLimits(t *testing.T) {
 func TestRateLimitWrapper_ApplyRateLimit_NonExistentMethod(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
 			{
@@ -238,7 +238,7 @@ func TestRateLimitWrapper_ApplyRateLimit_NonExistentMethod(t *testing.T) {
 func TestRateLimitWrapper_ApplyRateLimit_WithLogger(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	mockLogger := &MockLogger{}
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
@@ -284,7 +284,7 @@ func TestRateLimitWrapper_ApplyRateLimit_WithLogger(t *testing.T) {
 func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
 			{
@@ -308,7 +308,7 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 		NetworkID: 1,
 		Height:    100,
 	}
-	mockClient.EXPECT().GetCertificateHeader(mock.Anything, certHash).Return(expectedHeader, nil).Once()
+	mockClient.On("GetCertificateHeader", mock.Anything, certHash).Return(expectedHeader, nil).Once()
 
 	start := time.Now()
 	header, err := wrapper.GetCertificateHeader(context.Background(), certHash)
@@ -319,7 +319,7 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Test second call (rate limited)
-	mockClient.EXPECT().GetCertificateHeader(mock.Anything, certHash).Return(expectedHeader, nil).Once()
+	mockClient.On("GetCertificateHeader", mock.Anything, certHash).Return(expectedHeader, nil).Once()
 
 	time.Sleep(1 * time.Millisecond)
 
@@ -338,7 +338,7 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	clientConfig := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
 			{
@@ -361,7 +361,7 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 		EpochDuration: 1000,
 		GenesisBlock:  0,
 	}
-	mockClient.EXPECT().GetEpochConfiguration(mock.Anything).Return(expectedConfig, nil).Once()
+	mockClient.On("GetEpochConfiguration", mock.Anything).Return(expectedConfig, nil).Once()
 
 	start := time.Now()
 	epochConfig, err := wrapper.GetEpochConfiguration(context.Background())
@@ -372,7 +372,7 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Test second call (rate limited)
-	mockClient.EXPECT().GetEpochConfiguration(mock.Anything).Return(expectedConfig, nil).Once()
+	mockClient.On("GetEpochConfiguration", mock.Anything).Return(expectedConfig, nil).Once()
 
 	time.Sleep(1 * time.Millisecond)
 
@@ -389,8 +389,7 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 }
 
 // testCertificateHeaderMethod is a helper function to test certificate header methods with rate limiting
-func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64, wrapper *RateLimitWrapper,
-	mockClient *mocks.AgglayerClientMock, mockLogger *MockLogger) {
+func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64, wrapper *RateLimitWrapper, mockClient *mocks.AgglayerClientMock, mockLogger *MockLogger) {
 	t.Helper()
 
 	// Test first call
@@ -440,7 +439,7 @@ func testCertificateHeaderMethod(t *testing.T, methodName string, height uint64,
 func TestRateLimitWrapper_GetLatestSettledCertificateHeader(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
 			{
@@ -463,7 +462,7 @@ func TestRateLimitWrapper_GetLatestSettledCertificateHeader(t *testing.T) {
 func TestRateLimitWrapper_GetLatestPendingCertificateHeader(t *testing.T) {
 	t.Parallel()
 
-	mockClient := &mocks.AgglayerClientMock{}
+	mockClient := mocks.NewAgglayerClientMock(t)
 	config := ClientConfig{
 		APIRateLimits: []APIRateLimitConfig{
 			{
