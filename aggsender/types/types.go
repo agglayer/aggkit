@@ -54,6 +54,14 @@ func (c *AggsenderMode) Scan(value interface{}) error {
 	return nil
 }
 
+func (c *AggsenderMode) Validate() error {
+	if c == nil {
+		return fmt.Errorf("AggsenderMode: mode is nil")
+	}
+	_, err := NewAggsenderMode(c.String())
+	return err
+}
+
 func NewAggsenderMode(mode string) (AggsenderMode, error) {
 	modeUpper := strings.ToUpper(mode)
 	switch modeUpper {

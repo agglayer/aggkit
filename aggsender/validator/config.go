@@ -69,6 +69,11 @@ type LerQuerierConfig struct {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
+	err := c.Mode.Validate()
+	if err != nil {
+		return fmt.Errorf("invalid mode %s, must be one of PessimisticProof, AggchainProof, Auto: %w", c.Mode, err)
+	}
+
 	if c.Mode == aggsendertypes.AggchainProofMode {
 		if c.FEPConfig.SovereignRollupAddr == aggkitcommon.ZeroAddress {
 			return errInvalidSovereignRollupAddr
