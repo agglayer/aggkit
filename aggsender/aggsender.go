@@ -52,9 +52,8 @@ type AggSender struct {
 
 	cfg config.Config
 
-	status      *types.AggsenderStatus
-	rateLimiter RateLimiter
-	flow        types.AggsenderFlow
+	status *types.AggsenderStatus
+	flow   types.AggsenderFlow
 
 	l2OriginNetwork uint32
 }
@@ -82,8 +81,6 @@ func New(
 	if err != nil {
 		return nil, err
 	}
-
-	rateLimit := aggkitcommon.NewRateLimit(cfg.MaxSubmitCertificateRate)
 
 	flowManager, err := flows.NewFlow(
 		ctx,
@@ -144,7 +141,6 @@ func New(
 		epochNotifier:                epochNotifier,
 		status:                       &types.AggsenderStatus{Status: types.StatusNone},
 		flow:                         flowManager,
-		rateLimiter:                  rateLimit,
 		compatibilityStoragedChecker: compatibilityStoragedChecker,
 		l2OriginNetwork:              l2OriginNetwork,
 		certQuerier:                  certQuerier,
@@ -359,12 +355,6 @@ func (a *AggSender) sendCertificate(ctx context.Context) (*agglayertypes.Certifi
 	if a.cfg.DryRun {
 		a.log.Warn("dry run mode enabled, skipping sending certificate")
 		return certificate, nil
-	}
-	if rateLimitSleepTime := a.rateLimiter.Call("sendCertificate", false); rateLimitSleepTime != nil {
-		a.log.Warnf("rate limit reached , next cert %s can be submitted after %s so sleeping. Rate:%s",
-			certificate.ID(),
-			rateLimitSleepTime.String(), a.rateLimiter.String())
-		time.Sleep(*rateLimitSleepTime)
 	}
 
 	certificateHash, err := a.aggLayerClient.SendCertificate(ctx, certificate)

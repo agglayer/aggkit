@@ -63,7 +63,6 @@ func TestConfigString(t *testing.T) {
 		"Mode: PP\n"+
 		"CheckStatusCertificateInterval: 0s\n"+
 		"RetryCertAfterInError: false\n"+
-		"MaxSubmitRate: RateLimitConfig{Unlimited}\n"+
 		"SovereignRollupAddr: 0x0000000000000000000000000000000000000001\n"+
 		"RequireNoFEPBlockGap: false\n"+
 		"RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: , Config: RetryDelaysConfig{Delays: [], MaxRetries: NO RETRIES}}\n",
@@ -233,7 +232,6 @@ func TestSendCertificate_NoClaims(t *testing.T) {
 			flows.NewBaseFlow(logger, mockL2BridgeQuerier, mockStorage,
 				mockL1Querier, mockLERQuerier, flows.NewBaseFlowConfigDefault()),
 			mockStorage, mockL1Querier, mockL2BridgeQuerier, signer, true, 0),
-		rateLimiter: aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 	}
 
 	mockStorage.EXPECT().GetLastSentCertificateHeader().Return(&aggsendertypes.CertificateHeader{
@@ -480,7 +478,6 @@ func TestSendCertificate(t *testing.T) {
 				epochNotifier:  mockEpochNotifier,
 				flow:           mockAggsenderFlow,
 				aggLayerClient: mockAgglayerClient,
-				rateLimiter:    aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 				cfg: config.Config{
 					MaxRetriesStoreCertificate: 1,
 				},
@@ -530,7 +527,6 @@ func TestNewAggSender(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, sut)
-	require.Contains(t, sut.rateLimiter.String(), "Unlimited")
 }
 
 func TestCheckDBCompatibility(t *testing.T) {
@@ -808,7 +804,6 @@ func newAggsenderTestData(t *testing.T, creationFlags testDataFlags) *aggsenderT
 			MaxCertSize:         1024 * 1024,
 			DelayBetweenRetries: types.Duration{Duration: time.Millisecond},
 		},
-		rateLimiter:   aggkitcommon.NewRateLimit(aggkitcommon.RateLimitConfig{}),
 		epochNotifier: epochNotifierMock,
 		flow: flows.NewPPFlow(logger,
 			flows.NewBaseFlow(logger, l2BridgeQuerier, storage,

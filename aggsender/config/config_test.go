@@ -90,22 +90,29 @@ func TestConfigString(t *testing.T) {
 		RetryCertAfterInError:          true,
 		RequireNoFEPBlockGap:           false,
 		CheckStatusCertificateInterval: types.NewDuration(5 * time.Minute),
-		AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
-			URL:               "http://agglayer.example.com",
-			MinConnectTimeout: types.NewDuration(10 * time.Second),
-			RequestTimeout:    types.NewDuration(30 * time.Second),
-			UseTLS:            false,
-		}},
+		AgglayerClient: agglayer.ClientConfig{
+			GRPC: &grpc.ClientConfig{
+				URL:               "http://agglayer.example.com",
+				MinConnectTimeout: types.NewDuration(10 * time.Second),
+				RequestTimeout:    types.NewDuration(30 * time.Second),
+				UseTLS:            false,
+			},
+			APIRateLimits: []agglayer.APIRateLimitConfig{
+				{
+					MethodName: "SubmitCertificate",
+					RateLimit: common.RateLimitConfig{
+						NumRequests: 10,
+						Interval:    types.NewDuration(1 * time.Hour),
+					},
+				},
+			},
+		},
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodLocal,
 		},
 		AggkitProverClient: &grpc.ClientConfig{
 			URL:               "http://prover.example.com",
 			MinConnectTimeout: types.NewDuration(5 * time.Second),
-		},
-		MaxSubmitCertificateRate: common.RateLimitConfig{
-			NumRequests: 10,
-			Interval:    types.NewDuration(1 * time.Hour),
 		},
 		SovereignRollupAddr: ethCommon.HexToAddress("0x1234567890123456789012345678901234567890"),
 		RetriesToBuildAndSendCertificate: common.RetryPolicyGenericConfig{
@@ -129,7 +136,7 @@ func TestConfigString(t *testing.T) {
 	require.Contains(t, result, "Mode: PessimisticProof")
 	require.Contains(t, result, "CheckStatusCertificateInterval: 5m0s")
 	require.Contains(t, result, "RetryCertAfterInError: true")
-	require.Contains(t, result, "MaxSubmitRate: RateLimitConfig{NumRequests: 10, Period: 1h0m0s}")
+	require.Contains(t, result, "APIRateLimits: [APIRateLimitConfig{Method: SubmitCertificate, RateLimit: RateLimitConfig{NumRequests: 10, Period: 1h0m0s}}]")
 	require.Contains(t, result, "SovereignRollupAddr: 0x1234567890123456789012345678901234567890")
 	require.Contains(t, result, "RequireNoFEPBlockGap: false")
 	require.Contains(t, result, "RetriesToBuildAndSendCertificate: RetryPolicyConfig{Mode: delays")

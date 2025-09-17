@@ -38,8 +38,6 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.AggSender.AgglayerClient.Cached, false)
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.RequestTimeout.Duration, 300*time.Second)
 	require.Equal(t, cfg.AggSender.AgglayerClient.GRPC.Retry.MaxAttempts, 20)
-	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.NumRequests, 20)
-	require.Equal(t, cfg.AggSender.MaxSubmitCertificateRate.Interval.Duration, time.Hour)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.SovereignRollupAddr, cfg.AggSender.SovereignRollupAddr)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.TrustedSequencerKey, cfg.AggSender.AggsenderPrivateKey)
 	require.Equal(t, cfg.AggSender.OptimisticModeConfig.OpNodeURL, "http://localhost:8080")
@@ -138,6 +136,9 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	GenerateAggchainProofTimeout = "1h"
 	DelayBeetweenRetries = "1s"
 	RequireValidatorCall = true
+	[AggSender.MaxSubmitCertificateRate]
+		NumRequests = 20
+		Interval = "1h"
 
 	[AggchainProofGen]
 	AggchainProofUrl = "http://localhost:5577"
@@ -205,4 +206,5 @@ func TestLoadConfigWithDeprecatedFields(t *testing.T) {
 	require.ErrorContains(t, err, l1NetworkConfigURLDeprecatedHint)
 	require.ErrorContains(t, err, reorgDetectorL1DeprecatedHint)
 	require.ErrorContains(t, err, requireValidatorCallDeprecatedHint)
+	require.ErrorContains(t, err, maxSubmitCertificateRateDeprecatedHint)
 }
