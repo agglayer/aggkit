@@ -190,8 +190,8 @@ KeepCertificatesHistory = true
 MaxCertSize = 8388608
 DryRun = false
 EnableRPC = true
-# PessimisticProof or AggchainProof
-Mode = "PessimisticProof"
+# PessimisticProof, AggchainProof or Auto
+Mode = "Auto"
 CheckStatusCertificateInterval = "5m"
 RetryCertAfterInError = false
 GlobalExitRootL2 = "{{L2Config.GlobalExitRootAddr}}"
@@ -275,8 +275,8 @@ Signer = {{AggsenderPrivateKey}}
 MaxCertSize = "{{AggSender.MaxCertSize}}"
 MaxL2BlockNumber = "{{AggSender.MaxL2BlockNumber}}"
 DelayBetweenRetries = "{{AggSender.DelayBetweenRetries}}"
-# PessimisticProof or AggchainProof
-Mode = "PessimisticProof"
+# PessimisticProof, AggchainProof or Auto
+Mode = "{{AggSender.Mode}}"
 RequireCommitteeMembershipCheck = {{AggSender.RequireCommitteeMembershipCheck}}
 [Validator.ServerConfig]
 	Host = "0.0.0.0"

@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	aggsendertypes "github.com/agglayer/aggkit/aggsender/types"
 	aggkitcommon "github.com/agglayer/aggkit/common"
 	"github.com/agglayer/aggkit/config/types"
 	"github.com/stretchr/testify/require"
@@ -67,6 +68,8 @@ func TestLoadDefaultConfig(t *testing.T) {
 	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.MinConnectTimeout, cfg.AggSender.AgglayerClient.GRPC.MinConnectTimeout)
 	require.Equal(t, cfg.Validator.AgglayerClient.GRPC.Retry.MaxAttempts, cfg.AggSender.AgglayerClient.GRPC.Retry.MaxAttempts)
 	require.Equal(t, cfg.AggSender.RollupManagerAddr, cfg.Validator.LerQuerier.RollupManagerAddr)
+	require.Equal(t, aggsendertypes.AutoMode, cfg.AggSender.Mode)
+	require.Equal(t, aggsendertypes.AutoMode, cfg.Validator.Mode)
 }
 
 func TestLoadConfigWithSaveConfigFile(t *testing.T) {
