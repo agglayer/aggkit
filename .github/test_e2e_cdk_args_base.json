@@ -13,7 +13,8 @@
     "aggkit_image": "aggkit:local",
     "additional_services": [],
     "binary_name": "aggkit",
-    "aggkit_components": "aggsender,aggoracle"
+    "aggkit_components": "aggsender,aggoracle",
+    "zkevm_rollup_chain_id": 20201
   },
   "optimism_package": {
     "chains": [
