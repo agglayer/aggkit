@@ -14,7 +14,8 @@
     "additional_services": [],
     "binary_name": "aggkit",
     "aggkit_components": "aggsender,aggoracle",
-    "zkevm_rollup_chain_id": 20201
+    "zkevm_rollup_chain_id": 20201,
+    "zkevm_rollup_id": 1
   },
   "optimism_package": {
     "chains": [
