@@ -58,6 +58,17 @@ type AggSender struct {
 	l2OriginNetwork uint32
 }
 
+func aggsenderMode(mode types.AggsenderMode, committeeQuerier types.MultisigQuerier) (types.AggsenderMode, error) {
+	var err error
+	if mode == types.AutoMode {
+		mode, err = committeeQuerier.ContractMode()
+		if err != nil {
+			return mode, fmt.Errorf("aggsender mode is AUTO, but can't get contract mode from rollup contract: %w", err)
+		}
+	}
+	return mode, err
+}
+
 // New returns a new AggSender instance
 func New(
 	ctx context.Context,
@@ -72,6 +83,16 @@ func New(
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 ) (*AggSender, error) {
+	mode, err := cfg.ModeCfg.ResolveAutoMode(committeeQuerier)
+	if err != nil {
+		return nil, err
+	}
+	// Override configuration with the resolved mode
+	if cfg.ModeCfg != mode {
+		log.Infof("aggsender mode from %s to %s", cfg.ModeCfg, mode)
+		cfg.ModeCfg = mode
+	}
+
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		CertificatesDir:         cfg.CertificatesDir,
@@ -99,6 +120,7 @@ func New(
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
+
 	l2OriginNetwork := l2Syncer.OriginNetwork()
 
 	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck(
@@ -109,7 +131,7 @@ func New(
 		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
 	)
 
-	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, types.AggsenderMode(cfg.Mode),
+	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, mode,
 		cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)

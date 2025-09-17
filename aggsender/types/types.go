@@ -3,6 +3,7 @@ package types
 import (
 	"database/sql/driver"
 	"fmt"
+	"strings"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -21,7 +22,51 @@ type AggsenderMode string
 const (
 	PessimisticProofMode AggsenderMode = "PessimisticProof"
 	AggchainProofMode    AggsenderMode = "AggchainProof"
+	AutoMode             AggsenderMode = "Auto"
 )
+
+func (c AggsenderMode) ResolveAutoMode(committeeQuerier MultisigQuerier) (AggsenderMode, error) {
+	switch c {
+	case PessimisticProofMode, AggchainProofMode:
+		return c, nil
+	case AutoMode:
+		mode, err := committeeQuerier.ContractMode()
+		if err != nil {
+			return mode, fmt.Errorf("aggsender mode is AUTO, but can't get contract mode from rollup contract: %w", err)
+		}
+		return mode, nil
+	default:
+		return "", fmt.Errorf("unknown aggsender mode: %s", c)
+	}
+}
+
+// meddler support for store as string
+func (c *AggsenderMode) Scan(value interface{}) error {
+	str, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("CertificateType: expected string, got %T", value)
+	}
+	v, err := NewAggsenderMode(str)
+	if err != nil {
+		return fmt.Errorf("AggsenderMode.Scan(...): %w", err)
+	}
+	*c = v
+	return nil
+}
+
+func NewAggsenderMode(mode string) (AggsenderMode, error) {
+	modeUpper := strings.ToUpper(mode)
+	switch modeUpper {
+	case strings.ToUpper(PessimisticProofMode.String()):
+		return PessimisticProofMode, nil
+	case strings.ToUpper(AggchainProofMode.String()):
+		return AggchainProofMode, nil
+	case strings.ToUpper(AutoMode.String()):
+		return AutoMode, nil
+	default:
+		return "", fmt.Errorf("unknown AggsenderMode: %s", mode)
+	}
+}
 
 func (m AggsenderMode) String() string {
 	return string(m)

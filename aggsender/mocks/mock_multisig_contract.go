@@ -25,6 +25,120 @@ func (_m *MultisigContract) EXPECT() *MultisigContract_Expecter {
 	return &MultisigContract_Expecter{mock: &_m.Mock}
 }
 
+// AGGCHAINTYPE provides a mock function with given fields: opts
+func (_m *MultisigContract) AGGCHAINTYPE(opts *bind.CallOpts) ([2]byte, error) {
+	ret := _m.Called(opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AGGCHAINTYPE")
+	}
+
+	var r0 [2]byte
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) ([2]byte, error)); ok {
+		return rf(opts)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) [2]byte); ok {
+		r0 = rf(opts)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([2]byte)
+		}
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
+		r1 = rf(opts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MultisigContract_AGGCHAINTYPE_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AGGCHAINTYPE'
+type MultisigContract_AGGCHAINTYPE_Call struct {
+	*mock.Call
+}
+
+// AGGCHAINTYPE is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+func (_e *MultisigContract_Expecter) AGGCHAINTYPE(opts interface{}) *MultisigContract_AGGCHAINTYPE_Call {
+	return &MultisigContract_AGGCHAINTYPE_Call{Call: _e.mock.On("AGGCHAINTYPE", opts)}
+}
+
+func (_c *MultisigContract_AGGCHAINTYPE_Call) Run(run func(opts *bind.CallOpts)) *MultisigContract_AGGCHAINTYPE_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts))
+	})
+	return _c
+}
+
+func (_c *MultisigContract_AGGCHAINTYPE_Call) Return(_a0 [2]byte, _a1 error) *MultisigContract_AGGCHAINTYPE_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MultisigContract_AGGCHAINTYPE_Call) RunAndReturn(run func(*bind.CallOpts) ([2]byte, error)) *MultisigContract_AGGCHAINTYPE_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CONSENSUSTYPE provides a mock function with given fields: opts
+func (_m *MultisigContract) CONSENSUSTYPE(opts *bind.CallOpts) (uint32, error) {
+	ret := _m.Called(opts)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CONSENSUSTYPE")
+	}
+
+	var r0 uint32
+	var r1 error
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) (uint32, error)); ok {
+		return rf(opts)
+	}
+	if rf, ok := ret.Get(0).(func(*bind.CallOpts) uint32); ok {
+		r0 = rf(opts)
+	} else {
+		r0 = ret.Get(0).(uint32)
+	}
+
+	if rf, ok := ret.Get(1).(func(*bind.CallOpts) error); ok {
+		r1 = rf(opts)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MultisigContract_CONSENSUSTYPE_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CONSENSUSTYPE'
+type MultisigContract_CONSENSUSTYPE_Call struct {
+	*mock.Call
+}
+
+// CONSENSUSTYPE is a helper method to define mock.On call
+//   - opts *bind.CallOpts
+func (_e *MultisigContract_Expecter) CONSENSUSTYPE(opts interface{}) *MultisigContract_CONSENSUSTYPE_Call {
+	return &MultisigContract_CONSENSUSTYPE_Call{Call: _e.mock.On("CONSENSUSTYPE", opts)}
+}
+
+func (_c *MultisigContract_CONSENSUSTYPE_Call) Run(run func(opts *bind.CallOpts)) *MultisigContract_CONSENSUSTYPE_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(*bind.CallOpts))
+	})
+	return _c
+}
+
+func (_c *MultisigContract_CONSENSUSTYPE_Call) Return(_a0 uint32, _a1 error) *MultisigContract_CONSENSUSTYPE_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MultisigContract_CONSENSUSTYPE_Call) RunAndReturn(run func(*bind.CallOpts) (uint32, error)) *MultisigContract_CONSENSUSTYPE_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetAggchainSignerInfos provides a mock function with given fields: opts
 func (_m *MultisigContract) GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error) {
 	ret := _m.Called(opts)

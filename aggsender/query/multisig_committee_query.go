@@ -13,8 +13,10 @@ import (
 )
 
 var (
-	_ types.MultisigQuerier  = (*BaseMultisigCommitteeQuery)(nil)
-	_ types.MultisigContract = (*aggchainbase.Aggchainbase)(nil)
+	_                     types.MultisigQuerier  = (*BaseMultisigCommitteeQuery)(nil)
+	_                     types.MultisigContract = (*aggchainbase.Aggchainbase)(nil)
+	aggchainECDSAMultisig                        = [2]byte{0, 0}
+	aggchainFEP                                  = [2]byte{0, 1}
 )
 
 type BaseMultisigCommitteeQuery struct {
@@ -95,4 +97,31 @@ func (m *BaseMultisigCommitteeQuery) GetMultisigCommittee(
 	}
 
 	return types.NewMultisigCommittee(signerInfos, threshold)
+}
+
+// ContractMode returns the mode of the multisig contract (PP or FEP)
+func (m *BaseMultisigCommitteeQuery) ContractMode() (types.AggsenderMode, error) {
+	var none types.AggsenderMode
+	if m == nil {
+		return none, fmt.Errorf("object is nil")
+	}
+	consensusType, err := m.sovereignRollupAddrSC.CONSENSUSTYPE(&bind.CallOpts{})
+	if err != nil {
+		return none, fmt.Errorf("failed to get consensus type from contract: %w", err)
+	}
+	if consensusType != 1 {
+		return none, fmt.Errorf("consensus type must be 1 always: %d", consensusType)
+	}
+	aggchainType, err := m.sovereignRollupAddrSC.AGGCHAINTYPE(&bind.CallOpts{})
+	if err != nil {
+		return none, fmt.Errorf("failed to get aggchain type from contract: %w", err)
+	}
+	if aggchainType == aggchainECDSAMultisig {
+		return types.PessimisticProofMode, nil
+	}
+
+	if aggchainType == aggchainFEP { // aggchainFEP
+		return types.AggchainProofMode, nil
+	}
+	return none, fmt.Errorf("unsupported aggchain type: %v", aggchainType)
 }

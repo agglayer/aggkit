@@ -50,7 +50,7 @@ type Config struct {
 	// AggkitProverClient is the config for the AggkitProver client
 	AggkitProverClient *grpc.ClientConfig `mapstructure:"AggkitProverClient"`
 	// Mode is the mode of the AggSender (regular pessimistic proof mode or the aggchain proof mode)
-	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
+	ModeCfg aggsendertypes.AggsenderMode `jsonschema:"enum=PessimisticProof, enum=AggchainProof, enum=Auto" mapstructure:"Mode"`
 	// CheckStatusCertificateInterval is the interval at which the AggSender will check the certificate status in Agglayer
 	CheckStatusCertificateInterval types.Duration `mapstructure:"CheckStatusCertificateInterval"`
 	// RetryCertAfterInError when a cert pass to 'InError'
@@ -106,7 +106,7 @@ func (c Config) String() string {
 		"DryRun: " + fmt.Sprintf("%t", c.DryRun) + "\n" +
 		"EnableRPC: " + fmt.Sprintf("%t", c.EnableRPC) + "\n" +
 		"AggkitProverClient: " + c.AggkitProverClient.String() + "\n" +
-		"Mode: " + c.Mode + "\n" +
+		"Mode: " + c.ModeCfg.String() + "\n" +
 		"CheckStatusCertificateInterval: " + c.CheckStatusCertificateInterval.String() + "\n" +
 		"RetryCertAfterInError: " + fmt.Sprintf("%t", c.RetryCertAfterInError) + "\n" +
 		"SovereignRollupAddr: " + c.SovereignRollupAddr.Hex() + "\n" +
@@ -120,7 +120,7 @@ func (c Config) Validate() error {
 		return fmt.Errorf("invalid agglayer client config: %w", err)
 	}
 
-	if c.Mode == aggsendertypes.AggchainProofMode.String() {
+	if c.ModeCfg == aggsendertypes.AggchainProofMode {
 		if err := c.AggkitProverClient.Validate(); err != nil {
 			return fmt.Errorf("invalid aggkit prover client config: %w", err)
 		}

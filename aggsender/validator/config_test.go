@@ -23,7 +23,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Valid PessimisticProof mode",
 			config: Config{
-				Mode: aggsendertypes.PessimisticProofMode.String(),
+				ModeCfg: aggsendertypes.PessimisticProofMode,
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -33,7 +33,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Valid AggchainProof mode",
 			config: Config{
-				Mode: aggsendertypes.AggchainProofMode.String(),
+				ModeCfg: aggsendertypes.AggchainProofMode,
 				FEPConfig: FEPConfig{
 					SovereignRollupAddr: common.HexToAddress("0x1"),
 				},
@@ -46,7 +46,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Invalid AggchainProof mode",
 			config: Config{
-				Mode: aggsendertypes.AggchainProofMode.String(),
+				ModeCfg: aggsendertypes.AggchainProofMode,
 				FEPConfig: FEPConfig{
 					SovereignRollupAddr: common.HexToAddress("0x0"), // Zero address
 				},
@@ -60,7 +60,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Invalid mode",
 			config: Config{
-				Mode: "invalid-mode",
+				ModeCfg: "invalid-mode",
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -71,7 +71,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Empty mode",
 			config: Config{
-				Mode: "",
+				ModeCfg: "",
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -82,7 +82,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Invalid AgglayerClient configuration",
 			config: Config{
-				Mode: aggsendertypes.PessimisticProofMode.String(),
+				ModeCfg: aggsendertypes.PessimisticProofMode,
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL: "",
 				}},
