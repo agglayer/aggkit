@@ -221,14 +221,14 @@ func createAggSenderValidator(ctx context.Context,
 	rollupDataQuerier *etherman.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
 ) (*aggsender.AggsenderValidator, error) {
-	mode, err := cfg.ModeCfg.ResolveAutoMode(committeeQuerier)
+	mode, err := cfg.Mode.ResolveAutoMode(committeeQuerier)
 	if err != nil {
 		return nil, err
 	}
 	// Override configuration with the resolved mode
-	if cfg.ModeCfg != mode {
-		log.Infof("aggsenderValidator mode from %s to %s", cfg.ModeCfg, mode)
-		cfg.ModeCfg = mode
+	if cfg.Mode != mode {
+		log.Infof("aggsenderValidator mode from %s to %s", cfg.Mode, mode)
+		cfg.Mode = mode
 	}
 
 	if err := cfg.Validate(); err != nil {
@@ -246,7 +246,7 @@ func createAggSenderValidator(ctx context.Context,
 		commonFlowComponents *flows.CommonFlowComponents
 	)
 
-	switch cfg.ModeCfg {
+	switch cfg.Mode {
 	case aggsendertypes.PessimisticProofMode:
 		commonFlowComponents, err = flows.CreateCommonFlowComponents(
 			ctx, logger,
@@ -304,12 +304,12 @@ func createAggSenderValidator(ctx context.Context,
 			nil, // we don't query the prover in validator mode
 		)
 	default:
-		return nil, fmt.Errorf("unsupported mode %s", cfg.ModeCfg)
+		return nil, fmt.Errorf("unsupported mode %s", cfg.Mode)
 	}
 
 	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
 		logger,
-		cfg.ModeCfg,
+		cfg.Mode,
 		cfg.FEPConfig.SovereignRollupAddr,
 		l1Client,
 	)

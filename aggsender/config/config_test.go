@@ -35,7 +35,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "AggchainProof mode with AggkitProverClient not set",
 			config: Config{
-				ModeCfg: aggsendertypes.AggchainProofMode,
+				Mode: aggsendertypes.AggchainProofMode,
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -50,7 +50,7 @@ func TestValidate(t *testing.T) {
 		{
 			name: "PessimisticProof mode with AggkitProverClient not set",
 			config: Config{
-				ModeCfg: aggsendertypes.PessimisticProofMode,
+				Mode: aggsendertypes.PessimisticProofMode,
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -86,7 +86,7 @@ func TestConfigString(t *testing.T) {
 		EpochNotificationPercentage:    75,
 		DryRun:                         true,
 		EnableRPC:                      false,
-		ModeCfg:                        aggsendertypes.PessimisticProofMode,
+		Mode:                           aggsendertypes.PessimisticProofMode,
 		RetryCertAfterInError:          true,
 		RequireNoFEPBlockGap:           false,
 		CheckStatusCertificateInterval: types.NewDuration(5 * time.Minute),

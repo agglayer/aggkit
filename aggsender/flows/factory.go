@@ -37,7 +37,7 @@ func NewFlow(
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 ) (types.AggsenderFlow, error) {
-	switch cfg.ModeCfg {
+	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
 			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,
@@ -126,7 +126,7 @@ func NewFlow(
 		), nil
 
 	default:
-		return nil, fmt.Errorf("unsupported Aggsender mode: %s", cfg.ModeCfg)
+		return nil, fmt.Errorf("unsupported Aggsender mode: %s", cfg.Mode)
 	}
 }
 

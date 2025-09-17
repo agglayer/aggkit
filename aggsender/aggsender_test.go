@@ -48,7 +48,7 @@ func TestConfigString(t *testing.T) {
 		AggsenderPrivateKey:         signer.NewLocalSignerConfig("/path/to/key", "password"),
 		URLRPCL2:                    "http://l2.rpc.url",
 		EpochNotificationPercentage: 50,
-		ModeCfg:                     "PP",
+		Mode:                        "PP",
 		SovereignRollupAddr:         common.HexToAddress("0x1"),
 	}
 
@@ -94,7 +94,7 @@ func TestAggSenderStart(t *testing.T) {
 		ctx,
 		log.WithFields("test", "unittest"),
 		config.Config{
-			ModeCfg:             "PessimisticProof",
+			Mode:                "PessimisticProof",
 			StoragePath:         path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
 			DelayBetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
 			AggsenderPrivateKey: signertypes.SignerConfig{
@@ -517,7 +517,7 @@ func TestNewAggSender(t *testing.T) {
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
 		},
-		ModeCfg: "PessimisticProof",
+		Mode: "PessimisticProof",
 	}, nil, nil, mockBridgeSyncer,
 		nil, // epoch notifier
 		nil, // l1 client
