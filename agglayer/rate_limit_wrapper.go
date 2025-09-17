@@ -115,11 +115,6 @@ func (r *RateLimitWrapper) GetLatestPendingCertificateHeader(
 	return r.client.GetLatestPendingCertificateHeader(ctx, networkID)
 }
 
-func (r *RateLimitWrapper) GetNetworkInfo(ctx context.Context, networkID uint32) (types.NetworkInfo, error) {
-	r.applyRateLimit("GetNetworkInfo")
-	return r.client.GetNetworkInfo(ctx, networkID)
-}
-
 // String returns a string representation of the rate limit wrapper
 func (r *RateLimitWrapper) String() string {
 	r.mu.RLock()
