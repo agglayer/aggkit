@@ -66,13 +66,13 @@ func buildAppender(
 ) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge SC binding (bridge addr: %s): %w", bridgeAddr, err)
+		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge contract binding for address %s: %w", bridgeAddr.Hex(), err)
 	}
 
 	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, client)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain SC binding (bridge addr: %s): %w",
-			bridgeAddr, err)
+		return nil, fmt.Errorf("failed to create BridgeL2SovereignChain contract binding for address %s: %w",
+			bridgeAddr.Hex(), err)
 	}
 
 	appender := make(sync.LogAppenderMap)

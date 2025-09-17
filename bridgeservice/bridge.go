@@ -27,6 +27,7 @@ import (
 	"github.com/agglayer/aggkit/bridgeservice/types"
 	"github.com/agglayer/aggkit/bridgesync"
 	aggkitcommon "github.com/agglayer/aggkit/common"
+	"github.com/agglayer/aggkit/db"
 	"github.com/agglayer/aggkit/l1infotreesync"
 	"github.com/agglayer/aggkit/log"
 	tree "github.com/agglayer/aggkit/tree/types"
@@ -324,7 +325,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L1 network: %v", err)
 			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get bridges for the L1 network, error: %s", err)})
+				gin.H{"error": fmt.Sprintf("failed to get bridges for L1 network, error: %s", err)})
 			return
 		}
 	case b.networkID:
@@ -332,7 +333,7 @@ func (b *BridgeService) GetBridgesHandler(c *gin.Context) {
 		if err != nil {
 			b.logger.Errorf("failed to get bridges for L2 network (ID=%d): %v", networkID, err)
 			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get bridges for the L2 network (ID=%d), error: %s", networkID, err)})
+				gin.H{"error": fmt.Sprintf("failed to get bridges for L2 network (ID=%d), error: %s", networkID, err)})
 			return
 		}
 	default:
@@ -419,17 +420,17 @@ func (b *BridgeService) GetClaimsHandler(c *gin.Context) {
 	case mainnetNetworkID:
 		claims, count, err = b.bridgeL1.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress)
 		if err != nil {
-			b.logger.Warnf("failed to get claims for L1 network: %v", err)
+			b.logger.Errorf("failed to get claims for L1 network: %v", err)
 			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get claims for the L1 network, error: %s", err)})
+				gin.H{"error": fmt.Sprintf("failed to get claims for L1 network, error: %s", err)})
 			return
 		}
 	case b.networkID:
 		claims, count, err = b.bridgeL2.GetClaimsPaged(ctx, pageNumber, pageSize, networkIDs, fromAddress)
 		if err != nil {
-			b.logger.Warnf("failed to get claims for L2 network (ID=%d): %v", networkID, err)
+			b.logger.Errorf("failed to get claims for L2 network (ID=%d): %v", networkID, err)
 			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get claims for the L2 network (ID=%d), error: %s", networkID, err)})
+				gin.H{"error": fmt.Sprintf("failed to get claims for L2 network (ID=%d), error: %s", networkID, err)})
 			return
 		}
 	default:
@@ -587,6 +588,7 @@ func (b *BridgeService) GetLegacyTokenMigrationsHandler(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} uint32
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 422 {object} types.ErrorResponse "Unprocessable Entity - Bridge not yet included in L1 Info Tree"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /l1-info-tree-index [get]
 func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
@@ -630,6 +632,14 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 	}
 
 	if err != nil {
+		if errors.Is(err, ErrNotOnL1Info) {
+			b.logger.Warnf("bridge not yet included in L1 info tree (network id=%d, deposit count=%d): %v",
+				networkID, depositCount, err)
+			c.JSON(http.StatusUnprocessableEntity,
+				gin.H{"error": fmt.Sprintf("bridge with deposit count %d has not been included in L1 info tree yet for network %d",
+					depositCount, networkID)})
+			return
+		}
 		b.logger.Errorf(
 			"failed to get L1 info tree index (network id=%d, deposit count=%d): %v",
 			networkID,
@@ -654,6 +664,7 @@ func (b *BridgeService) L1InfoTreeIndexForBridgeHandler(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} types.L1InfoTreeLeafResponse
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - L1 info tree leaf does not exist"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /injected-l1-info-leaf [get]
 func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
@@ -691,6 +702,13 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	case b.networkID:
 		e, err := b.injectedGERs.GetFirstGERAfterL1InfoTreeIndex(ctx, l1InfoTreeIndex)
 		if err != nil {
+			// Check if this is a "not found" type error
+			if errors.Is(err, db.ErrNotFound) {
+				b.logger.Warnf("no injected global exit root found after L1 info tree index %d: %v", l1InfoTreeIndex, err)
+				c.JSON(http.StatusNotFound,
+					gin.H{"error": fmt.Sprintf("no injected global exit root found after L1 info tree index %d", l1InfoTreeIndex)})
+				return
+			}
 			b.logger.Errorf("failed to get injected global exit root for leaf index=%d: %v", l1InfoTreeIndex, err)
 			c.JSON(http.StatusInternalServerError,
 				gin.H{"error": fmt.Sprintf("failed to get injected global exit root for leaf index=%d, error: %s",
@@ -700,6 +718,13 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 
 		l1InfoLeaf, err = b.l1InfoTree.GetInfoByIndex(ctx, e.L1InfoTreeIndex)
 		if err != nil {
+			// Check if this is a "not found" type error
+			if errors.Is(err, l1infotreesync.ErrNotFound) {
+				b.logger.Warnf("L1 info tree leaf not found for index %d: %v", e.L1InfoTreeIndex, err)
+				c.JSON(http.StatusNotFound,
+					gin.H{"error": fmt.Sprintf("L1 info tree leaf not found for index %d", e.L1InfoTreeIndex)})
+				return
+			}
 			b.logger.Errorf("failed to get L1 info tree leaf (leaf index=%d): %v", e.L1InfoTreeIndex, err)
 			c.JSON(http.StatusInternalServerError,
 				gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (leaf index=%d), error: %s",
@@ -713,6 +738,14 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 	}
 
 	if err != nil {
+		// Check if this is a "not found" type error
+		if errors.Is(err, l1infotreesync.ErrNotFound) {
+			b.logger.Warnf("L1 info tree leaf not found (network id=%d, leaf index=%d): %v", networkID, l1InfoTreeIndex, err)
+			c.JSON(http.StatusNotFound,
+				gin.H{"error": fmt.Sprintf("L1 info tree leaf not found for network %d and leaf index %d",
+					networkID, l1InfoTreeIndex)})
+			return
+		}
 		b.logger.Errorf("failed to get L1 info tree leaf (network id=%d, leaf index=%d): %v", networkID, l1InfoTreeIndex, err)
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get L1 info tree leaf (network id=%d, leaf index=%d), error: %s",
@@ -736,6 +769,7 @@ func (b *BridgeService) InjectedL1InfoLeafHandler(c *gin.Context) {
 // @Produce json
 // @Success 200 {object} types.ClaimProof "Merkle proofs and L1 info tree leaf"
 // @Failure 400 {object} types.ErrorResponse "Bad Request"
+// @Failure 404 {object} types.ErrorResponse "Not Found - L1 info tree leaf does not exist"
 // @Failure 500 {object} types.ErrorResponse "Internal Server Error"
 // @Router /claim-proof [get]
 func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
@@ -773,6 +807,13 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 
 	info, err := b.l1InfoTree.GetInfoByIndex(ctx, l1InfoTreeIndex)
 	if err != nil {
+		// Check if this is a "not found" type error
+		if errors.Is(err, l1infotreesync.ErrNotFound) {
+			b.logger.Warnf("L1 info tree leaf not found for index %d: %v", l1InfoTreeIndex, err)
+			c.JSON(http.StatusNotFound,
+				gin.H{"error": fmt.Sprintf("L1 info tree leaf not found for index %d", l1InfoTreeIndex)})
+			return
+		}
 		b.logger.Errorf("failed to get L1 info tree leaf for index %d: %v", l1InfoTreeIndex, err)
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get l1 info tree leaf for index %d: %s", l1InfoTreeIndex, err)})
@@ -793,6 +834,14 @@ func (b *BridgeService) ClaimProofHandler(c *gin.Context) {
 	case b.networkID:
 		localExitRoot, err := b.l1InfoTree.GetLocalExitRoot(ctx, networkID, info.RollupExitRoot)
 		if err != nil {
+			// Check if this is a "not found" type error
+			if errors.Is(err, db.ErrNotFound) {
+				b.logger.Warnf("local exit root not found in rollup exit tree for network %d: %v", networkID, err)
+				c.JSON(http.StatusNotFound,
+					gin.H{"error": fmt.Sprintf("local exit root not found for network %d and rollup exit root %s",
+						networkID, info.RollupExitRoot.Hex())})
+				return
+			}
 			b.logger.Errorf("failed to get local exit root from rollup exit tree: %v", err)
 			c.JSON(http.StatusInternalServerError,
 				gin.H{"error": fmt.Sprintf("failed to get local exit root from rollup exit tree, error: %s", err)})
@@ -870,7 +919,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 		if err != nil {
 			b.logger.Errorf("failed to get last reorg event for L1 network: %v", err)
 			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", err)})
+				gin.H{"error": fmt.Sprintf("failed to get last reorg event for L1 network, error: %s", err)})
 			return
 		}
 	case b.networkID:
@@ -878,7 +927,7 @@ func (b *BridgeService) GetLastReorgEventHandler(c *gin.Context) {
 		if err != nil {
 			b.logger.Errorf("failed to get last reorg event for L2 network (ID=%d): %v", networkID, err)
 			c.JSON(http.StatusInternalServerError,
-				gin.H{"error": fmt.Sprintf("failed to get last reorg event for the L2 network (ID=%d), error: %s", networkID, err)})
+				gin.H{"error": fmt.Sprintf("failed to get last reorg event for L2 network (ID=%d), error: %s", networkID, err)})
 			return
 		}
 	default:
@@ -920,6 +969,7 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	// Check L1 sync status
 	l1ContractDepositCount, err := b.bridgeL1.GetContractDepositCount(ctx)
 	if err != nil {
+		b.logger.Errorf("failed to get deposit count from L1 bridge contract: %v", err)
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get deposit count from L1 bridge contract: %s", err)})
 		return
@@ -928,6 +978,7 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	// Get the last bridge from L1 database
 	_, bridgesCount, err := b.bridgeL1.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
 	if err != nil {
+		b.logger.Errorf("failed to get bridges from L1 database: %v", err)
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get bridges from L1 database: %s", err)})
 		return
@@ -940,6 +991,7 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	// Check L2 sync status
 	l2ContractDepositCount, err := b.bridgeL2.GetContractDepositCount(ctx)
 	if err != nil {
+		b.logger.Errorf("failed to get deposit count from L2 bridge contract: %v", err)
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get deposit count from L2 bridge contract: %s", err)})
 		return
@@ -948,6 +1000,7 @@ func (b *BridgeService) GetSyncStatusHandler(c *gin.Context) {
 	// Get the last bridge from L2 database
 	_, bridgesCount, err = b.bridgeL2.GetBridgesPaged(ctx, 1, 1, nil, nil, "")
 	if err != nil {
+		b.logger.Errorf("failed to get bridges from L2 database: %v", err)
 		c.JSON(http.StatusInternalServerError,
 			gin.H{"error": fmt.Sprintf("failed to get bridges from L2 database: %s", err)})
 		return
@@ -968,10 +1021,10 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, 
 
 	root, err := b.bridgeL1.GetRootByLER(ctx, lastInfo.MainnetExitRoot)
 	if err != nil {
-		b.logger.Infof(
-			"failed to get root by LER for L1: %v, lastInfo MainnetExitRoot: %v, using fallback mechanism",
+		b.logger.Warnf(
+			"failed to get root by LER for L1, using fallback mechanism: %v (lastInfo MainnetExitRoot: %s)",
 			err,
-			lastInfo.MainnetExitRoot,
+			lastInfo.MainnetExitRoot.Hex(),
 		)
 		root, err = b.bridgeL1.GetLastRoot(ctx)
 		if err != nil {
@@ -979,7 +1032,7 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL1Bridge(ctx context.Context, 
 		}
 		lastInfo, err = b.l1InfoTree.GetInfoByIndex(ctx, root.Index)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get last info for L1: %w", err)
+			return 0, fmt.Errorf("failed to get L1 info by index %d: %w", root.Index, err)
 		}
 	}
 	if root.Index < depositCount {
@@ -1033,10 +1086,10 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 
 	root, err := b.bridgeL2.GetRootByLER(ctx, lastVerified.ExitRoot)
 	if err != nil {
-		b.logger.Infof(
-			"failed to get root by LER for L2: %v, lastVerified ExitRoot: %v, using fallback mechanism",
+		b.logger.Warnf(
+			"failed to get root by LER for L2: %v, lastVerified ExitRoot: %s, using fallback mechanism",
 			err,
-			lastVerified.ExitRoot,
+			lastVerified.ExitRoot.Hex(),
 		)
 		root, err = b.bridgeL2.GetLastRoot(ctx)
 		if err != nil {
@@ -1044,7 +1097,7 @@ func (b *BridgeService) getFirstL1InfoTreeIndexForL2Bridge(ctx context.Context, 
 		}
 		lastVerified, err = b.l1InfoTree.GetFirstVerifiedBatchesAfterBlock(b.networkID, root.BlockNum)
 		if err != nil {
-			return 0, fmt.Errorf("failed to get first verified batch after block for L2: %w, block num: %d", err, root.BlockNum)
+			return 0, fmt.Errorf("failed to get first verified batch after block %d for L2: %w", root.BlockNum, err)
 		}
 	}
 	if root.Index < depositCount {

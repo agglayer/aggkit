@@ -763,7 +763,7 @@ func (p *processor) Reorg(ctx context.Context, firstReorgedBlock uint64) error {
 // and updates the last processed block (can be called without events for that purpose)
 func (p *processor) ProcessBlock(ctx context.Context, block sync.Block) error {
 	if p.isHalted() {
-		p.log.Errorf("processor is halted due to: %s", p.haltedReason)
+		p.log.Errorf("cannot process block %d: processor is halted due to: %s", block.Num, p.haltedReason)
 		return sync.ErrInconsistentState
 	}
 
@@ -999,7 +999,7 @@ func DecodeGlobalIndex(globalIndex *big.Int) (mainnetFlag bool,
 // rollbackTransaction rolls back the transaction and logs an error if it fails
 func (p *processor) rollbackTransaction(tx dbtypes.SQLTxer) {
 	if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-		log.Errorf("error rolling back tx: %v", err)
+		p.log.Errorf("failed to rollback database transaction: %v", err)
 	}
 }
 

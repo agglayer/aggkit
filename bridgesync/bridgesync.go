@@ -189,9 +189,8 @@ func newBridgeSync(
 
 	err = sanityCheckContract(logger, bridge, bridgeContractV2)
 	if err != nil {
-		logger.Errorf("sanityCheckContract(bridge:%s) fails sanity check. Err: %w",
-			bridge.String(), err)
-		return nil, err
+		logger.Errorf("sanity check failed for bridge contract %s: %v", bridge.String(), err)
+		return nil, fmt.Errorf("failed to validate bridge contract %s: %w", bridge.String(), err)
 	}
 
 	processor, err := newProcessor(dbPath, "bridge_sync_"+syncerID.String(), logger, dbQueryTimeout)
@@ -205,6 +204,7 @@ func newBridgeSync(
 	}
 
 	if lastProcessedBlock < initialBlock {
+		logger.Infof("initializing from block %d (last processed: %d)", initialBlock, lastProcessedBlock)
 		block, err := ethClient.BlockByNumber(ctx, new(big.Int).SetUint64(initialBlock))
 		if err != nil {
 			return nil, fmt.Errorf("failed to get initial block %d: %w", initialBlock, err)
@@ -215,8 +215,9 @@ func newBridgeSync(
 			Hash: block.Hash(),
 		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to process initial block %d: %w", initialBlock, err)
 		}
+		logger.Infof("successfully initialized from block %d", initialBlock)
 	}
 	rh := &sync.RetryHandler{
 		MaxRetryAttemptsAfterError: maxRetryAttemptsAfterError,

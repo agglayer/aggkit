@@ -554,7 +554,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
-		require.Contains(t, w.Body.String(), "failed to get bridges for the L1 network")
+		require.Contains(t, w.Body.String(), "failed to get bridges for L1 network")
 	})
 
 	t.Run("GetBridges for L2 network error", func(t *testing.T) {
@@ -571,7 +571,7 @@ func TestGetBridgesHandler(t *testing.T) {
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
 			fmt.Sprintf("%s/bridges?%s", BridgeV1Prefix, queryParams.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
-		require.Contains(t, w.Body.String(), "failed to get bridges for the L2 network")
+		require.Contains(t, w.Body.String(), "failed to get bridges for L2 network")
 	})
 
 	t.Run("GetBridges for L2 network", func(t *testing.T) {
@@ -749,7 +749,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
-		require.Contains(t, w.Body.String(), "failed to get claims for the L1 network")
+		require.Contains(t, w.Body.String(), "failed to get claims for L1 network")
 	})
 
 	t.Run("GetClaims for L2 network failed", func(t *testing.T) {
@@ -765,7 +765,7 @@ func TestGetClaimsHandler(t *testing.T) {
 
 		w := performRequest(t, bridgeMocks.bridge.router, http.MethodGet, fmt.Sprintf("%s/claims?%s", BridgeV1Prefix, query.Encode()), nil)
 		require.Equal(t, http.StatusInternalServerError, w.Code)
-		require.Contains(t, w.Body.String(), "failed to get claims for the L2 network")
+		require.Contains(t, w.Body.String(), "failed to get claims for L2 network")
 	})
 
 	t.Run("GetClaims for L2 network failed invalid network id", func(t *testing.T) {
@@ -1902,7 +1902,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, mainnetNetworkID), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
-		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get last reorg event for the L1 network, error: %s", fooErrMsg))
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get last reorg event for L1 network: %s", fooErrMsg))
 	})
 
 	t.Run("GetLastReorgEvent for L2 network failed", func(t *testing.T) {
@@ -1914,7 +1914,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, l2NetworkID), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(),
-			fmt.Sprintf("failed to get last reorg event for the L2 network (ID=%d), error: %s", l2NetworkID, barErrMsg))
+			fmt.Sprintf("failed to get last reorg event for L2 network (ID=%d): %s", l2NetworkID, barErrMsg))
 	})
 
 	t.Run("Invalid network id parameter", func(t *testing.T) {
