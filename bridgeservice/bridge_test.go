@@ -374,7 +374,7 @@ func TestGetFirstL1InfoTreeIndexForL2Bridge(t *testing.T) {
 			},
 			depositCount:  11,
 			expectedIndex: 0,
-			expectedErr:   fmt.Errorf("failed to get first verified batch after block for L2: %w, block num: %d", fooErr, 0),
+			expectedErr:   fmt.Errorf("failed to get first verified batch after block 0 for L2: %w", fooErr),
 		},
 		{
 			description: "not included yet",
@@ -1988,7 +1988,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 		response := performRequest(t, bridgeMocks.bridge.router, http.MethodGet,
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, mainnetNetworkID), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
-		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get last reorg event for L1 network: %s", fooErrMsg))
+		require.Contains(t, response.Body.String(), fmt.Sprintf("failed to get last reorg event for L1 network, error: %s", fooErrMsg))
 	})
 
 	t.Run("GetLastReorgEvent for L2 network failed", func(t *testing.T) {
@@ -2000,7 +2000,7 @@ func TestGetLastReorgEventHandler(t *testing.T) {
 			fmt.Sprintf("%s/last-reorg-event?network_id=%d", BridgeV1Prefix, l2NetworkID), nil)
 		require.Equal(t, http.StatusInternalServerError, response.Code)
 		require.Contains(t, response.Body.String(),
-			fmt.Sprintf("failed to get last reorg event for L2 network (ID=%d): %s", l2NetworkID, barErrMsg))
+			fmt.Sprintf("failed to get last reorg event for L2 network (ID=%d), error: %s", l2NetworkID, barErrMsg))
 	})
 
 	t.Run("Invalid network id parameter", func(t *testing.T) {
@@ -2502,7 +2502,7 @@ func TestGetFirstL1InfoTreeIndexForL1Bridge_GetRootByLERFallback(t *testing.T) {
 		// Verify results - should return error from GetInfoByIndex
 		require.Error(t, err)
 		require.Equal(t, uint32(0), actualIndex)
-		require.Contains(t, err.Error(), "failed to get last info for L1")
+		require.Contains(t, err.Error(), "failed to get L1 info by index")
 
 		// Verify all mocks were called as expected
 		b.l1InfoTree.AssertExpectations(t)
