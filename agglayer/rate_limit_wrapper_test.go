@@ -90,7 +90,7 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 	// First call should succeed immediately
 	cert := &types.Certificate{}
 	expectedHash := common.HexToHash("0x123")
-	mockClient.On("SendCertificate", mock.Anything, cert, []byte(nil)).Return(expectedHash, nil).Once()
+	mockClient.EXPECT().SendCertificate(mock.Anything, cert).Return(expectedHash, nil).Once()
 
 	start := time.Now()
 	hash, err := wrapper.SendCertificate(context.Background(), cert)
@@ -101,7 +101,7 @@ func TestRateLimitWrapper_SendCertificate(t *testing.T) {
 	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Second call should be rate limited
-	mockClient.On("SendCertificate", mock.Anything, cert, []byte(nil)).Return(expectedHash, nil).Once()
+	mockClient.EXPECT().SendCertificate(mock.Anything, cert).Return(expectedHash, nil).Once()
 
 	// Add a small delay to ensure the calls are not happening in the same microsecond
 	time.Sleep(1 * time.Millisecond)
@@ -308,7 +308,7 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 		NetworkID: 1,
 		Height:    100,
 	}
-	mockClient.On("GetCertificateHeader", mock.Anything, certHash).Return(expectedHeader, nil).Once()
+	mockClient.EXPECT().GetCertificateHeader(mock.Anything, certHash).Return(expectedHeader, nil).Once()
 
 	start := time.Now()
 	header, err := wrapper.GetCertificateHeader(context.Background(), certHash)
@@ -319,7 +319,7 @@ func TestRateLimitWrapper_GetCertificateHeader(t *testing.T) {
 	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Test second call (rate limited)
-	mockClient.On("GetCertificateHeader", mock.Anything, certHash).Return(expectedHeader, nil).Once()
+	mockClient.EXPECT().GetCertificateHeader(mock.Anything, certHash).Return(expectedHeader, nil).Once()
 
 	time.Sleep(1 * time.Millisecond)
 
@@ -361,7 +361,7 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 		EpochDuration: 1000,
 		GenesisBlock:  0,
 	}
-	mockClient.On("GetEpochConfiguration", mock.Anything).Return(expectedConfig, nil).Once()
+	mockClient.EXPECT().GetEpochConfiguration(mock.Anything).Return(expectedConfig, nil).Once()
 
 	start := time.Now()
 	epochConfig, err := wrapper.GetEpochConfiguration(context.Background())
@@ -372,7 +372,7 @@ func TestRateLimitWrapper_GetEpochConfiguration(t *testing.T) {
 	require.Less(t, duration, 50*time.Millisecond) // Should be fast
 
 	// Test second call (rate limited)
-	mockClient.On("GetEpochConfiguration", mock.Anything).Return(expectedConfig, nil).Once()
+	mockClient.EXPECT().GetEpochConfiguration(mock.Anything).Return(expectedConfig, nil).Once()
 
 	time.Sleep(1 * time.Millisecond)
 
