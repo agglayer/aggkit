@@ -125,3 +125,18 @@ func (m *BaseMultisigCommitteeQuery) ContractMode() (types.AggsenderMode, error)
 	}
 	return none, fmt.Errorf("unsupported aggchain type: %v", aggchainType)
 }
+
+func (m *BaseMultisigCommitteeQuery) ResolveAutoMode(cfgMode types.AggsenderMode) (types.AggsenderMode, error) {
+	switch cfgMode {
+	case types.PessimisticProofMode, types.AggchainProofMode:
+		return cfgMode, nil
+	case types.AutoMode:
+		mode, err := m.ContractMode()
+		if err != nil {
+			return mode, fmt.Errorf("aggsender mode is AUTO, but can't get contract mode from rollup contract: %w", err)
+		}
+		return mode, nil
+	default:
+		return "", fmt.Errorf("unknown aggsender mode: %s", cfgMode)
+	}
+}

@@ -275,6 +275,7 @@ type MultisigContract interface {
 type MultisigQuerier interface {
 	GetMultisigCommittee(ctx context.Context, blockNum *big.Int) (*MultisigCommittee, error)
 	ContractMode() (AggsenderMode, error)
+	ResolveAutoMode(cfgMode AggsenderMode) (AggsenderMode, error)
 }
 
 // ValidatorPoller is an interface defining functions that a ValidatorPoller should implement

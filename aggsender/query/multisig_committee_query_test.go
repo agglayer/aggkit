@@ -7,6 +7,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/types"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -231,4 +232,75 @@ func Test_NewBaseMultisigCommitteeQuery(t *testing.T) {
 		require.Equal(t, rollupAddr, query.sovereignRollupAddr)
 		require.NotNil(t, query.sovereignRollupAddrSC)
 	})
+}
+
+func Test_ContractMode(t *testing.T) {
+	type testCase struct {
+		name                string
+		consensusTypeReturn uint32
+		consensusTypeErr    error
+		aggchainTypeReturn  [2]byte
+		aggchainTypeErr     error
+		expectedMode        types.AggsenderMode
+		expectedErr         string // if "" no error
+	}
+	errGeneric := errors.New("some error")
+	testCases := []testCase{
+		{
+			name:                "error CONSENSUSTYPE",
+			consensusTypeReturn: 0,
+			expectedErr:         "consensus type must be 1 always",
+		},
+		{
+			name:             "error getting CONSENSUSTYPE",
+			consensusTypeErr: errGeneric,
+			expectedErr:      "failed to get consensus type",
+		},
+		{
+			name:                "error getting AGGCHAINTYPE",
+			consensusTypeReturn: 1,
+			aggchainTypeErr:     errGeneric,
+			expectedErr:         "failed to get aggchain type",
+		},
+		{
+			name:                "return PessimisticProofMode",
+			consensusTypeReturn: 1,
+			aggchainTypeReturn:  aggchainECDSAMultisig,
+			expectedMode:        types.PessimisticProofMode,
+		},
+		{
+			name:                "return AggchainProofMode",
+			consensusTypeReturn: 1,
+			aggchainTypeReturn:  aggchainFEP,
+			expectedMode:        types.AggchainProofMode,
+		},
+		{
+			name:                "unknown AGGCHAINTYPE",
+			consensusTypeReturn: 1,
+			aggchainTypeReturn:  [2]byte{0xFF, 0xFF},
+			expectedErr:         "unsupported aggchain type",
+		},
+	}
+
+	for _, tc := range testCases {
+		mockSC := new(mocks.MultisigContract)
+		sut := &BaseMultisigCommitteeQuery{
+			sovereignRollupAddrSC: mockSC,
+			sovereignRollupAddr:   common.Address{},
+		}
+		mockSC.EXPECT().CONSENSUSTYPE(mock.Anything).
+			Return(tc.consensusTypeReturn, tc.consensusTypeErr).Maybe()
+		mockSC.EXPECT().AGGCHAINTYPE(mock.Anything).
+			Return(tc.aggchainTypeReturn, tc.aggchainTypeErr).Maybe()
+
+		mode, err := sut.ContractMode()
+		if tc.expectedErr != "" {
+			require.Error(t, err)
+			require.Contains(t, err.Error(), tc.expectedErr)
+		} else {
+			require.NoError(t, err)
+			require.Equal(t, tc.expectedMode, mode)
+		}
+		mockSC.AssertExpectations(t)
+	}
 }

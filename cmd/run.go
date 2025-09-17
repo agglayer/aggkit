@@ -221,7 +221,7 @@ func createAggSenderValidator(ctx context.Context,
 	rollupDataQuerier *etherman.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
 ) (*aggsender.AggsenderValidator, error) {
-	mode, err := cfg.Mode.ResolveAutoMode(committeeQuerier)
+	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
 	if err != nil {
 		return nil, err
 	}

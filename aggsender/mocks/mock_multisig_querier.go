@@ -138,6 +138,62 @@ func (_c *MultisigQuerier_GetMultisigCommittee_Call) RunAndReturn(run func(conte
 	return _c
 }
 
+// ResolveAutoMode provides a mock function with given fields: cfgMode
+func (_m *MultisigQuerier) ResolveAutoMode(cfgMode types.AggsenderMode) (types.AggsenderMode, error) {
+	ret := _m.Called(cfgMode)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ResolveAutoMode")
+	}
+
+	var r0 types.AggsenderMode
+	var r1 error
+	if rf, ok := ret.Get(0).(func(types.AggsenderMode) (types.AggsenderMode, error)); ok {
+		return rf(cfgMode)
+	}
+	if rf, ok := ret.Get(0).(func(types.AggsenderMode) types.AggsenderMode); ok {
+		r0 = rf(cfgMode)
+	} else {
+		r0 = ret.Get(0).(types.AggsenderMode)
+	}
+
+	if rf, ok := ret.Get(1).(func(types.AggsenderMode) error); ok {
+		r1 = rf(cfgMode)
+	} else {
+		r1 = ret.Error(1)
+	}
+
+	return r0, r1
+}
+
+// MultisigQuerier_ResolveAutoMode_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ResolveAutoMode'
+type MultisigQuerier_ResolveAutoMode_Call struct {
+	*mock.Call
+}
+
+// ResolveAutoMode is a helper method to define mock.On call
+//   - cfgMode types.AggsenderMode
+func (_e *MultisigQuerier_Expecter) ResolveAutoMode(cfgMode interface{}) *MultisigQuerier_ResolveAutoMode_Call {
+	return &MultisigQuerier_ResolveAutoMode_Call{Call: _e.mock.On("ResolveAutoMode", cfgMode)}
+}
+
+func (_c *MultisigQuerier_ResolveAutoMode_Call) Run(run func(cfgMode types.AggsenderMode)) *MultisigQuerier_ResolveAutoMode_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(types.AggsenderMode))
+	})
+	return _c
+}
+
+func (_c *MultisigQuerier_ResolveAutoMode_Call) Return(_a0 types.AggsenderMode, _a1 error) *MultisigQuerier_ResolveAutoMode_Call {
+	_c.Call.Return(_a0, _a1)
+	return _c
+}
+
+func (_c *MultisigQuerier_ResolveAutoMode_Call) RunAndReturn(run func(types.AggsenderMode) (types.AggsenderMode, error)) *MultisigQuerier_ResolveAutoMode_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // NewMultisigQuerier creates a new instance of MultisigQuerier. It also registers a testing interface on the mock and a cleanup function to assert the mocks expectations.
 // The first argument is typically a *testing.T value.
 func NewMultisigQuerier(t interface {

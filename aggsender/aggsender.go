@@ -72,7 +72,7 @@ func New(
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 ) (*AggSender, error) {
-	mode, err := cfg.Mode.ResolveAutoMode(committeeQuerier)
+	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
 	if err != nil {
 		return nil, err
 	}

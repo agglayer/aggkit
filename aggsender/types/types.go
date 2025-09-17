@@ -25,21 +25,6 @@ const (
 	AutoMode             AggsenderMode = "Auto"
 )
 
-func (c AggsenderMode) ResolveAutoMode(committeeQuerier MultisigQuerier) (AggsenderMode, error) {
-	switch c {
-	case PessimisticProofMode, AggchainProofMode:
-		return c, nil
-	case AutoMode:
-		mode, err := committeeQuerier.ContractMode()
-		if err != nil {
-			return mode, fmt.Errorf("aggsender mode is AUTO, but can't get contract mode from rollup contract: %w", err)
-		}
-		return mode, nil
-	default:
-		return "", fmt.Errorf("unknown aggsender mode: %s", c)
-	}
-}
-
 // meddler support for store as string
 func (c *AggsenderMode) Scan(value interface{}) error {
 	str, ok := value.(string)
