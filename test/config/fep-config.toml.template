@@ -172,7 +172,7 @@ AggSenderPrivateKey = {Path = "{{.zkevm_l2_sequencer_keystore_file_path}}", Pass
 # ------------------------------------------------------------------------------
 #BlockFinality = "LatestBlock"
 
-Mode = "AggchainProof"
+Mode = "Auto"
 CheckStatusCertificateInterval = "1s"
 
 [AggSender.OptimisticModeConfig]
