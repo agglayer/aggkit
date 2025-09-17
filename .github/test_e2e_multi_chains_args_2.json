@@ -9,10 +9,20 @@
     "zkevm_rollup_id": 2
   },
   "optimism_package": {
-    "network_params": {
-      "name": "002",
-      "network_id": "2151909",
-      "seconds_per_slot": 1
-    }
+    "chains": [
+      {
+        "proposer_params": {
+          "enabled": false
+        },
+        "challenger_params": {
+          "enabled": false
+        },
+        "network_params": {
+          "name": "002",
+          "network_id": "2151909",
+          "seconds_per_slot": 1
+        }
+      }
+    ]
   }
 }
