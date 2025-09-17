@@ -66,7 +66,8 @@ func buildAppender(
 ) (sync.LogAppenderMap, error) {
 	bridgeContractV1, err := polygonzkevmbridge.NewPolygonzkevmbridge(bridgeAddr, client)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge contract binding for address %s: %w", bridgeAddr.Hex(), err)
+		return nil, fmt.Errorf("failed to create PolygonZkEVMBridge contract binding for address %s: %w",
+			bridgeAddr.Hex(), err)
 	}
 
 	bridgeSovereignChain, err := bridgel2sovereignchain.NewBridgel2sovereignchain(bridgeAddr, client)
