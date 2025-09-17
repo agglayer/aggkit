@@ -95,23 +95,34 @@ func start(cliCtx *cli.Context) error {
 		cliCtx.Context, components, cfg.L2GERSync, reorgDetectorL2, l2Client, l1InfoTreeSync,
 	)
 	var rpcServices []jRPC.Service
+
+	// Check if any bridge-related component is present and start bridge service once
+	hasBridgeComponent := false
+	for _, component := range components {
+		if component == aggkitcommon.BRIDGE || component == aggkitcommon.L1BRIDGESYNC || component == aggkitcommon.L2BRIDGESYNC {
+			hasBridgeComponent = true
+			break
+		}
+	}
+
+	if hasBridgeComponent && (l1BridgeSync != nil || l2BridgeSync != nil) {
+		b := createBridgeService(
+			cfg.REST,
+			cfg.Common.NetworkID,
+			l1InfoTreeSync,
+			l2GERSync,
+			l1BridgeSync,
+			l2BridgeSync,
+		)
+		go b.Start(cliCtx.Context)
+		log.Info("Bridge service started")
+	}
+
 	for _, component := range components {
 		switch component {
 		case aggkitcommon.AGGORACLE:
 			aggOracle := createAggoracle(rollupDataQuerier, *cfg, l1Client, l2Client, l1InfoTreeSync)
 			go aggOracle.Start(cliCtx.Context)
-
-		case aggkitcommon.BRIDGE:
-			b := createBridgeService(
-				cfg.REST,
-				cfg.Common.NetworkID,
-				l1InfoTreeSync,
-				l2GERSync,
-				l1BridgeSync,
-				l2BridgeSync,
-			)
-
-			go b.Start(cliCtx.Context)
 		case aggkitcommon.AGGSENDER:
 			aggsender, err := createAggSender(
 				cliCtx.Context,
