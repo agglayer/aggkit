@@ -29,7 +29,7 @@ const (
 func (c *AggsenderMode) Scan(value interface{}) error {
 	str, ok := value.(string)
 	if !ok {
-		return fmt.Errorf("CertificateType: expected string, got %T", value)
+		return fmt.Errorf("AggsenderMode: expected string, got %T", value)
 	}
 	v, err := NewAggsenderMode(str)
 	if err != nil {
@@ -41,7 +41,7 @@ func (c *AggsenderMode) Scan(value interface{}) error {
 
 func (c *AggsenderMode) Validate() error {
 	if c == nil {
-		return fmt.Errorf("AggsenderMode: mode is nil")
+		return fmt.Errorf("AggsenderMode is nil")
 	}
 	_, err := NewAggsenderMode(c.String())
 	return err

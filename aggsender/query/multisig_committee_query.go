@@ -119,8 +119,7 @@ func (m *BaseMultisigCommitteeQuery) ContractMode() (types.AggsenderMode, error)
 	if aggchainType == aggchainECDSAMultisig {
 		return types.PessimisticProofMode, nil
 	}
-
-	if aggchainType == aggchainFEP { // aggchainFEP
+	if aggchainType == aggchainFEP {
 		return types.AggchainProofMode, nil
 	}
 	return none, fmt.Errorf("unsupported aggchain type: %v", aggchainType)
