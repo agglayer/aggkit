@@ -246,7 +246,7 @@ func createAggSenderValidator(ctx context.Context,
 	if err != nil {
 		return nil, fmt.Errorf("error creating LER data querier: %w", err)
 	}
-	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient)
+	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}
@@ -288,7 +288,7 @@ func createAggSender(
 		return nil, fmt.Errorf("invalid aggsender config: %w", err)
 	}
 
-	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient)
+	agglayerClient, err := agglayer.NewAgglayerClient(cfg.AgglayerClient, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create agglayer grpc client: %w", err)
 	}

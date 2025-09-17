@@ -21,6 +21,6 @@ function export_ports_from_kurtosis() {
 ###############################################################################
 # MAIN
 ###############################################################################
-ORIG_TEMPLATE_FILE=test/config/fep-config.toml.template
+ORIG_TEMPLATE_FILE=test/config/pp-config.toml.template
 DEST_TEMPLATE_FILE=$DEST/test.kurtosis.toml
 main $*
