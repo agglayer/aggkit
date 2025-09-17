@@ -88,13 +88,13 @@ func TestAggSenderStart(t *testing.T) {
 	committee, err := aggsendertypes.NewMultisigCommittee([]*aggsendertypes.SignerInfo{aggsendertypes.NewSignerInfo("", common.Address{})}, big.NewInt(1))
 	require.NoError(t, err)
 	committeQuerierMock.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
-
+	committeQuerierMock.EXPECT().ResolveAutoMode(mock.Anything).Return(aggsendertypes.PessimisticProofMode, nil).Once()
 	ctx := t.Context()
 	aggSender, err := New(
 		ctx,
 		log.WithFields("test", "unittest"),
 		config.Config{
-			Mode:                "PessimisticProof",
+			Mode:                aggsendertypes.PessimisticProofMode,
 			StoragePath:         path.Join(t.TempDir(), "aggsenderTestAggSenderStart.sqlite"),
 			DelayBetweenRetries: types.Duration{Duration: 1 * time.Microsecond},
 			AggsenderPrivateKey: signertypes.SignerConfig{
@@ -512,12 +512,12 @@ func TestNewAggSender(t *testing.T) {
 		big.NewInt(1))
 	require.NoError(t, err)
 	mockCommitteeQuerier.EXPECT().GetMultisigCommittee(mock.Anything, mock.Anything).Return(committee, nil).Once()
-
+	mockCommitteeQuerier.EXPECT().ResolveAutoMode(mock.Anything).Return(aggsendertypes.PessimisticProofMode, nil).Once()
 	sut, err := New(context.TODO(), log.WithFields("module", "ut"), config.Config{
 		AggsenderPrivateKey: signertypes.SignerConfig{
 			Method: signertypes.MethodNone,
 		},
-		Mode: "PessimisticProof",
+		Mode: aggsendertypes.PessimisticProofMode,
 	}, nil, nil, mockBridgeSyncer,
 		nil, // epoch notifier
 		nil, // l1 client

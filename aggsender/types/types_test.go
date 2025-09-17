@@ -314,7 +314,7 @@ func TestAggsenderMode_Validate(t *testing.T) {
 			name:    "NilAggsenderMode",
 			mode:    func() *AggsenderMode { return nil },
 			wantErr: true,
-			errMsg:  "mode is nil",
+			errMsg:  "AggsenderMode is nil",
 		},
 		{
 			name: "ValidPessimisticProofMode",
