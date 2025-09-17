@@ -185,7 +185,7 @@ if [ "$E2E_REPO_PATH" != "-" ]; then
             ./tests/aggkit/global-index-pp-old-contracts.bats
         ;;
     multi-l2-networks-2-chains)
-        bats ./tests/aggkit/bridge-e2e-2-l2s.bats
+        bats ./tests/aggkit/bridge-e2e-2-chains.bats
         ;;
     multi-l2-networks-3-chains)
         bats ./tests/aggkit/bridge-e2e-3-chains.bats

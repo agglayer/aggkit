@@ -24,7 +24,6 @@ import (
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/iden3/go-iden3-crypto/keccak256"
 	"github.com/russross/meddler"
 )
 
@@ -87,13 +86,13 @@ func (b *Bridge) Hash() common.Hash {
 	destNet := make([]byte, uint32ByteSize)
 	binary.BigEndian.PutUint32(destNet, b.DestinationNetwork)
 
-	metaHash := keccak256.Hash(b.Metadata)
+	metaHash := crypto.Keccak256(b.Metadata)
 	var buf [bigIntSize]byte
 	if b.Amount == nil {
 		b.Amount = common.Big0
 	}
 
-	return common.BytesToHash(keccak256.Hash(
+	return crypto.Keccak256Hash(
 		[]byte{b.LeafType},
 		origNet,
 		b.OriginAddress[:],
@@ -101,7 +100,7 @@ func (b *Bridge) Hash() common.Hash {
 		b.DestinationAddress[:],
 		b.Amount.FillBytes(buf[:]),
 		metaHash,
-	))
+	)
 }
 
 // Claim representation of a claim event
@@ -580,6 +579,15 @@ func (p *processor) buildClaimsFilterClause(networkIDs []uint32, fromAddress str
 	return ""
 }
 
+// buildTokenMappingsFilterClause builds the WHERE clause for the token_mapping table
+// based on the provided originTokenAddress
+func (p *processor) buildTokenMappingsFilterClause(originTokenAddress string) string {
+	if common.IsHexAddress(originTokenAddress) {
+		return fmt.Sprintf(" WHERE UPPER(origin_token_address) LIKE '%s'", strings.ToUpper(originTokenAddress))
+	}
+	return ""
+}
+
 // GetLegacyTokenMigrations returns the paged legacy token migrations from the database
 func (p *processor) GetLegacyTokenMigrations(
 	ctx context.Context, pageNumber, pageSize uint32) ([]*LegacyTokenMigration, int, error) {
@@ -878,8 +886,10 @@ func (p *processor) GetTotalNumberOfRecords(ctx context.Context, tableName, wher
 }
 
 // GetTokenMappings returns the paged token mappings from the database
-func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32) ([]*TokenMapping, int, error) {
-	totalTokenMappings, err := p.GetTotalNumberOfRecords(ctx, tokenMappingTableName, "")
+func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize uint32, originTokenAddress string,
+) ([]*TokenMapping, int, error) {
+	whereClause := p.buildTokenMappingsFilterClause(originTokenAddress)
+	totalTokenMappings, err := p.GetTotalNumberOfRecords(ctx, tokenMappingTableName, whereClause)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to fetch the total number of %s entries: %w", tokenMappingTableName, err)
 	}
@@ -893,7 +903,7 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 		return nil, 0, fmt.Errorf("failed to calculate offset for pageNumber=%d, pageSize=%d: %w", pageNumber, pageSize, err)
 	}
 
-	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset)
+	tokenMappings, err := p.fetchTokenMappings(ctx, pageSize, offset, whereClause)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -902,15 +912,16 @@ func (p *processor) GetTokenMappings(ctx context.Context, pageNumber, pageSize u
 }
 
 // fetchTokenMappings fetches token mappings from the database, based on the provided pagination parameters
-func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32) ([]*TokenMapping, error) {
+func (p *processor) fetchTokenMappings(ctx context.Context, pageSize uint32, offset uint32, whereClause string,
+) ([]*TokenMapping, error) {
 	orderByClause := "block_num DESC"
 
-	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, tokenMappingTableName, orderByClause, "")
+	rows, err := p.queryPaged(ctx, p.db, offset, pageSize, tokenMappingTableName, orderByClause, whereClause)
 	if err != nil {
 		if errors.Is(err, db.ErrNotFound) {
 			pageNumber := (offset / pageSize) + 1
-			p.log.Debugf("no token mappings were found for provided parameters (pageNumber=%d, pageSize=%d)",
-				pageNumber, pageSize)
+			p.log.Debugf("no token mappings were found for provided parameters (pageNumber=%d, pageSize=%d, where clause=%s)",
+				pageNumber, pageSize, whereClause)
 			return nil, nil
 		}
 
