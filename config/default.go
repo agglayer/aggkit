@@ -21,10 +21,6 @@ polygonBridgeAddr = "0x0000000000000000000000000000000000000000"
 rollupCreationBlockNumber = 0
 rollupManagerCreationBlockNumber = 0
 genesisBlockNumber = 0
-
-# Default database query timeout
-defaultDBQueryTimeout = "30s"
-
 [L1Config]
 	URL = "{{L1URL}}"
 	chainId = 0
@@ -32,7 +28,6 @@ defaultDBQueryTimeout = "30s"
 	polygonRollupManagerAddress = "0x0000000000000000000000000000000000000000"
 	polTokenAddress = "0x0000000000000000000000000000000000000000"
 	polygonZkEVMAddress = "0x0000000000000000000000000000000000000000"
-	AggchainFEPAddr = "0x0000000000000000000000000000000000000000"
 
 [L2Config]
 	GlobalExitRootAddr = "0x0000000000000000000000000000000000000000"
@@ -45,6 +40,8 @@ const DefaultVars = `
 PathRWData = "/tmp/aggkit"
 RequireStorageContentCompatibility = true
 GenerateAggchainProofTimeout = "1h"
+# Default database query timeout
+defaultDBQueryTimeout = "30s"
 [L2RPC]
 	Mode = "basic"
 	URL = "{{L2URL}}"
@@ -123,6 +120,7 @@ EnableAggOracleCommittee = false
 				ReadPendingL1Txs = false
 				SafeStatusL1NumberOfBlocks = 5
 				FinalizedStatusL1NumberOfBlocks = 10
+				EstimateGasMaxRetries = 1
 					[AggOracle.EVMSender.EthTxManager.Etherman]
 						URL = "{{L2URL}}"
 						MultiGasProvider = false
@@ -182,6 +180,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
+CertificatesDir = "{{PathRWData}}/certificates/"
 AggsenderPrivateKey = {{AggsenderPrivateKey}}
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
@@ -211,6 +210,11 @@ RequireCommitteeMembershipCheck = false
 		MaxRetries = 6 # 1+6 attempts, around 22m
 	[AggSender.AgglayerClient]
 		Cached = false
+		[[AggSender.AgglayerClient.APIRateLimits]]
+			MethodName = "SendCertificate"
+			[AggSender.AgglayerClient.APIRateLimits.RateLimit]
+				NumRequests = 20
+				Interval = "1h"
 		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "5m"
 			Capacity = 100
@@ -229,9 +233,6 @@ RequireCommitteeMembershipCheck = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 		UseTLS = false
-	[AggSender.MaxSubmitCertificateRate]
-		NumRequests = 20
-		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
 		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
 		# By default use the same key that aggsender signs certs

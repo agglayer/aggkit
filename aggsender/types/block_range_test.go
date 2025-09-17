@@ -154,3 +154,91 @@ func TestBlockRange_IsEmpty(t *testing.T) {
 		})
 	}
 }
+func TestBlockRange_Greater(t *testing.T) {
+	tests := []struct {
+		name     string
+		a        BlockRange
+		b        BlockRange
+		expected bool
+	}{
+		{
+			name:     "a strictly greater than b",
+			a:        NewBlockRange(10, 20),
+			b:        NewBlockRange(1, 9),
+			expected: true,
+		},
+		{
+			name:     "a overlaps b",
+			a:        NewBlockRange(10, 20),
+			b:        NewBlockRange(15, 25),
+			expected: false,
+		},
+		{
+			name:     "a adjacent to b",
+			a:        NewBlockRange(11, 20),
+			b:        NewBlockRange(1, 10),
+			expected: true,
+		},
+		{
+			name:     "a not greater than b",
+			a:        NewBlockRange(1, 5),
+			b:        NewBlockRange(6, 10),
+			expected: false,
+		},
+		{
+			name:     "identical ranges",
+			a:        NewBlockRange(5, 10),
+			b:        NewBlockRange(5, 10),
+			expected: false,
+		},
+		{
+			name:     "a starts after b ends by 1",
+			a:        NewBlockRange(11, 15),
+			b:        NewBlockRange(1, 10),
+			expected: true,
+		},
+		{
+			name:     "a starts at b end",
+			a:        NewBlockRange(10, 15),
+			b:        NewBlockRange(1, 10),
+			expected: false,
+		},
+		{
+			name:     "empty a, non-empty b",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(1, 10),
+			expected: false,
+		},
+		{
+			name:     "non-empty a, empty b",
+			a:        NewBlockRange(5, 10),
+			b:        NewBlockRange(0, 0),
+			expected: true,
+		},
+		{
+			name:     "both empty",
+			a:        NewBlockRange(0, 0),
+			b:        NewBlockRange(0, 0),
+			expected: false,
+		},
+		{
+			name:     "invalid a (from > to)",
+			a:        NewBlockRange(10, 5),
+			b:        NewBlockRange(1, 4),
+			expected: true,
+		},
+		{
+			name:     "invalid b (from > to)",
+			a:        NewBlockRange(5, 10),
+			b:        NewBlockRange(10, 5),
+			expected: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.a.Greater(tt.b)
+			require.Equal(t, tt.expected, got, "Greater() for %s: expected %v, got %v", tt.name, tt.expected, got)
+		})
+	}
+}

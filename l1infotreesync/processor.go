@@ -3,7 +3,6 @@ package l1infotreesync
 import (
 	"context"
 	"database/sql"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	mutex "sync"
@@ -18,7 +17,7 @@ import (
 	"github.com/agglayer/aggkit/tree"
 	treeTypes "github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/iden3/go-iden3-crypto/keccak256"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/russross/meddler"
 	"golang.org/x/crypto/sha3"
 )
@@ -125,11 +124,8 @@ func (l *L1InfoTreeInitial) String() string {
 
 // Hash as expected by the tree
 func (l *L1InfoTreeLeaf) GetHash() common.Hash {
-	var res [treeTypes.DefaultHeight]byte
-	t := make([]byte, 8) //nolint:mnd
-	binary.BigEndian.PutUint64(t, l.Timestamp)
-	copy(res[:], keccak256.Hash(l.GetGlobalExitRoot().Bytes(), l.PreviousBlockHash.Bytes(), t))
-	return res
+	rawTimestamp := aggkitcommon.Uint64ToBigEndianBytes(l.Timestamp)
+	return crypto.Keccak256Hash(l.GetGlobalExitRoot().Bytes(), l.PreviousBlockHash.Bytes(), rawTimestamp)
 }
 
 // GlobalExitRoot returns the GER

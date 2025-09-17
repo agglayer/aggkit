@@ -264,6 +264,9 @@ func (c *EVMChainGERSender) submitTransaction(
 				continue
 			case ethtxtypes.MonitoredTxStatusFailed:
 				return fmt.Errorf("%s GER tx %s failed", action, id.Hex())
+			case ethtxtypes.MonitoredTxStatusEvicted:
+				c.logger.Debugf("%s GER tx %s was evicted", action, id.Hex())
+				return nil
 			case ethtxtypes.MonitoredTxStatusMined,
 				ethtxtypes.MonitoredTxStatusSafe,
 				ethtxtypes.MonitoredTxStatusFinalized:

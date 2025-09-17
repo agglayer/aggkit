@@ -24,7 +24,6 @@ import (
 	"github.com/agglayer/aggkit/tree/types"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/iden3/go-iden3-crypto/keccak256"
 	"github.com/russross/meddler"
 )
 
@@ -90,13 +89,13 @@ func (b *Bridge) Hash() common.Hash {
 	destNet := make([]byte, uint32ByteSize)
 	binary.BigEndian.PutUint32(destNet, b.DestinationNetwork)
 
-	metaHash := keccak256.Hash(b.Metadata)
+	metaHash := crypto.Keccak256(b.Metadata)
 	var buf [bigIntSize]byte
 	if b.Amount == nil {
 		b.Amount = common.Big0
 	}
 
-	return common.BytesToHash(keccak256.Hash(
+	return crypto.Keccak256Hash(
 		[]byte{b.LeafType},
 		origNet,
 		b.OriginAddress[:],
@@ -104,7 +103,7 @@ func (b *Bridge) Hash() common.Hash {
 		b.DestinationAddress[:],
 		b.Amount.FillBytes(buf[:]),
 		metaHash,
-	))
+	)
 }
 
 // Claim representation of a claim event

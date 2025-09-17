@@ -534,25 +534,25 @@ func (_m *Bridger) GetTokenMappings(ctx context.Context, pageNumber uint32, page
 	var r0 []*bridgesync.TokenMapping
 	var r1 int
 	var r2 error
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) ([]*bridgesync.TokenMapping, int, error)); ok {
-		return rf(ctx, pageNumber, pageSize)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, string) ([]*bridgesync.TokenMapping, int, error)); ok {
+		return rf(ctx, pageNumber, pageSize, originTokenAddress)
 	}
-	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32) []*bridgesync.TokenMapping); ok {
-		r0 = rf(ctx, pageNumber, pageSize)
+	if rf, ok := ret.Get(0).(func(context.Context, uint32, uint32, string) []*bridgesync.TokenMapping); ok {
+		r0 = rf(ctx, pageNumber, pageSize, originTokenAddress)
 	} else {
 		if ret.Get(0) != nil {
 			r0 = ret.Get(0).([]*bridgesync.TokenMapping)
 		}
 	}
 
-	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32) int); ok {
-		r1 = rf(ctx, pageNumber, pageSize)
+	if rf, ok := ret.Get(1).(func(context.Context, uint32, uint32, string) int); ok {
+		r1 = rf(ctx, pageNumber, pageSize, originTokenAddress)
 	} else {
 		r1 = ret.Get(1).(int)
 	}
 
-	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32) error); ok {
-		r2 = rf(ctx, pageNumber, pageSize)
+	if rf, ok := ret.Get(2).(func(context.Context, uint32, uint32, string) error); ok {
+		r2 = rf(ctx, pageNumber, pageSize, originTokenAddress)
 	} else {
 		r2 = ret.Error(2)
 	}
