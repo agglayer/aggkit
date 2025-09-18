@@ -166,7 +166,7 @@ func (f *baseFlow) GenerateBuildParams(ctx context.Context,
 	bridges, claims, err := f.l2BridgeQuerier.GetBridgesAndClaims(ctx,
 		preParams.BlockRange.FromBlock, preParams.BlockRange.ToBlock)
 	if err != nil {
-		return nil, fmt.Errorf("generateBulidParams fails getting bridges and claims. Err: %w", err)
+		return nil, fmt.Errorf("generateBuildParams fails getting bridges and claims. Err: %w", err)
 	}
 
 	unclaimsMap, err := f.l2BridgeQuerier.GetUnsetClaimsForBlockRange(ctx,
