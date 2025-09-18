@@ -258,49 +258,114 @@ func Test_ContractMode(t *testing.T) {
 		},
 		{
 			name:                "error getting AGGCHAINTYPE",
-			consensusTypeReturn: 1,
+			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
 			aggchainTypeErr:     errGeneric,
 			expectedErr:         "failed to get aggchain type",
 		},
 		{
 			name:                "return PessimisticProofMode",
-			consensusTypeReturn: 1,
+			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
 			aggchainTypeReturn:  aggchainECDSAMultisig,
 			expectedMode:        types.PessimisticProofMode,
 		},
 		{
 			name:                "return AggchainProofMode",
-			consensusTypeReturn: 1,
+			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
 			aggchainTypeReturn:  aggchainFEP,
 			expectedMode:        types.AggchainProofMode,
 		},
 		{
 			name:                "unknown AGGCHAINTYPE",
-			consensusTypeReturn: 1,
+			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
 			aggchainTypeReturn:  [2]byte{0xFF, 0xFF},
 			expectedErr:         "unsupported aggchain type",
 		},
 	}
 
 	for _, tc := range testCases {
-		mockSC := new(mocks.MultisigContract)
-		sut := &BaseMultisigCommitteeQuery{
-			sovereignRollupSC:   mockSC,
-			sovereignRollupAddr: common.Address{},
-		}
-		mockSC.EXPECT().CONSENSUSTYPE(mock.Anything).
-			Return(tc.consensusTypeReturn, tc.consensusTypeErr).Maybe()
-		mockSC.EXPECT().AGGCHAINTYPE(mock.Anything).
-			Return(tc.aggchainTypeReturn, tc.aggchainTypeErr).Maybe()
+		t.Run(tc.name, func(t *testing.T) {
+			mockSC := new(mocks.MultisigContract)
+			sut := &BaseMultisigCommitteeQuery{
+				sovereignRollupSC:   mockSC,
+				sovereignRollupAddr: common.Address{},
+			}
+			mockSC.EXPECT().CONSENSUSTYPE(mock.Anything).
+				Return(tc.consensusTypeReturn, tc.consensusTypeErr).Maybe()
+			mockSC.EXPECT().AGGCHAINTYPE(mock.Anything).
+				Return(tc.aggchainTypeReturn, tc.aggchainTypeErr).Maybe()
 
-		mode, err := sut.ContractMode()
-		if tc.expectedErr != "" {
-			require.Error(t, err)
-			require.Contains(t, err.Error(), tc.expectedErr)
-		} else {
-			require.NoError(t, err)
-			require.Equal(t, tc.expectedMode, mode)
-		}
-		mockSC.AssertExpectations(t)
+			mode, err := sut.ContractMode()
+			if tc.expectedErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedMode, mode)
+			}
+			mockSC.AssertExpectations(t)
+		})
+	}
+}
+
+func Test_ResolveAutoMode(t *testing.T) {
+	type testCase struct {
+		name               string
+		aggchainTypeReturn [2]byte
+		aggchainTypeErr    error
+		cfgMode            types.AggsenderMode
+		expectedMode       types.AggsenderMode
+		expectedErr        string // if "" no error
+	}
+	errGeneric := errors.New("some error")
+	testCases := []testCase{
+
+		{
+			name:            "error getting ContractMode",
+			aggchainTypeErr: errGeneric,
+			cfgMode:         types.AutoMode,
+			expectedErr:     "aggsender mode is AUTO, but can't get contract mode",
+		},
+		{
+			name:            "dont ask for ContractMode due cfg is not AUTO",
+			aggchainTypeErr: errGeneric,
+			cfgMode:         types.AggchainProofMode,
+			expectedMode:    types.AggchainProofMode,
+		},
+		{
+			name:               "return PessimisticProofMode",
+			aggchainTypeReturn: aggchainECDSAMultisig,
+			cfgMode:            types.AutoMode,
+			expectedMode:       types.PessimisticProofMode,
+		},
+		{
+			name:               "return AggchainProofMode",
+			aggchainTypeReturn: aggchainFEP,
+			cfgMode:            types.AutoMode,
+			expectedMode:       types.AggchainProofMode,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSC := new(mocks.MultisigContract)
+			sut := &BaseMultisigCommitteeQuery{
+				sovereignRollupSC:   mockSC,
+				sovereignRollupAddr: common.Address{},
+			}
+			mockSC.EXPECT().CONSENSUSTYPE(mock.Anything).
+				Return(consensusTypeMultiECDSAAndSP1, nil).Maybe()
+			mockSC.EXPECT().AGGCHAINTYPE(mock.Anything).
+				Return(tc.aggchainTypeReturn, tc.aggchainTypeErr).Maybe()
+
+			mode, err := sut.ResolveAutoMode(tc.cfgMode)
+			if tc.expectedErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedMode, mode)
+			}
+			mockSC.AssertExpectations(t)
+		})
 	}
 }
