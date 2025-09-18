@@ -794,7 +794,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 		{
 			name:          "preParams is nil",
 			preParams:     nil,
-			expectedError: "ppFlow - preParams is nil",
+			expectedError: "aggchainProverFlow - preParams is nil",
 		},
 		{
 			name: "error generating build params from baseFlow",
@@ -806,7 +806,7 @@ func Test_AggchainProverFlow_GenerateBuildParams(t *testing.T) {
 					BlockRange: types.NewBlockRange(1, 10),
 				}).Return(nil, errors.New("base flow error")).Once()
 			},
-			expectedError: "ppFlow - error generating build params: base flow error",
+			expectedError: "aggchainProverFlow - error generating build params: base flow error",
 		},
 		{
 			name: "success generating build params",

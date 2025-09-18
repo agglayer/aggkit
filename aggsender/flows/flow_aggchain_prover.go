@@ -148,12 +148,12 @@ func (a *AggchainProverFlow) getCertificateTypeToGenerate() (types.CertificateTy
 func (a *AggchainProverFlow) GenerateBuildParams(ctx context.Context,
 	preParams *types.CertificatePreBuildParams) (*types.CertificateBuildParams, error) {
 	if preParams == nil {
-		return nil, fmt.Errorf("ppFlow - preParams is nil")
+		return nil, fmt.Errorf("aggchainProverFlow - preParams is nil")
 	}
 
 	params, err := a.baseFlow.GenerateBuildParams(ctx, *preParams)
 	if err != nil {
-		return nil, fmt.Errorf("ppFlow - error generating build params: %w", err)
+		return nil, fmt.Errorf("aggchainProverFlow - error generating build params: %w", err)
 	}
 
 	// we do not limit the size of the certificate in FEP flow,

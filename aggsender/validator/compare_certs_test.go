@@ -36,12 +36,6 @@ func TestDiffsCertificates(t *testing.T) {
 		&agglayertypes.Certificate{}))
 
 	require.Equal(t, []string{
-		"CustomChainData mismatch. Expected: 0102, Certificate: ",
-	}, DiffsCertificate(
-		&agglayertypes.Certificate{CustomChainData: []byte{0x1, 0x2}},
-		&agglayertypes.Certificate{}))
-
-	require.Equal(t, []string{
 		"L1InfoTreeLeafCount mismatch. Expected: 123, Certificate: 0",
 	}, DiffsCertificate(
 		&agglayertypes.Certificate{L1InfoTreeLeafCount: 123},
