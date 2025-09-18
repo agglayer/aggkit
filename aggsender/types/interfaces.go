@@ -267,11 +267,15 @@ type AggchainProofQuerier interface {
 type MultisigContract interface {
 	Threshold(opts *bind.CallOpts) (*big.Int, error)
 	GetAggchainSignerInfos(opts *bind.CallOpts) ([]aggchainbase.IAggchainSignersSignerInfo, error)
+	AGGCHAINTYPE(opts *bind.CallOpts) ([2]byte, error)
+	CONSENSUSTYPE(opts *bind.CallOpts) (uint32, error)
 }
 
 // MultisigQuerier is an abstraction for querying the multisig committee
 type MultisigQuerier interface {
 	GetMultisigCommittee(ctx context.Context, blockNum *big.Int) (*MultisigCommittee, error)
+	ContractMode() (AggsenderMode, error)
+	ResolveAutoMode(cfgMode AggsenderMode) (AggsenderMode, error)
 }
 
 // ValidatorPoller is an interface defining functions that a ValidatorPoller should implement

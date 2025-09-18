@@ -37,7 +37,7 @@ func NewFlow(
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 ) (types.AggsenderFlow, error) {
-	switch types.AggsenderMode(cfg.Mode) {
+	switch cfg.Mode {
 	case types.PessimisticProofMode:
 		commonFlowComponents, err := CreateCommonFlowComponents(
 			ctx, logger, storage, l1Client, l1InfoTreeSyncer, l2Syncer,

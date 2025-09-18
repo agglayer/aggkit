@@ -41,7 +41,7 @@ type Config struct {
 	// AgglayerClient is the Agglayer gRPC client configuration
 	AgglayerClient agglayer.ClientConfig `mapstructure:"AgglayerClient"`
 	// Mode is the mode of the AggSender Validator (regular pessimistic proof mode or the aggchain proof mode)
-	Mode string `jsonschema:"enum=PessimisticProof, enum=AggchainProof" mapstructure:"Mode"`
+	Mode aggsendertypes.AggsenderMode `jsonschema:"enum=PessimisticProof, enum=AggchainProof, enum=Auto" mapstructure:"Mode"` //nolint:lll
 	// RequireCommitteeMembershipCheck indicates whether to check if the validator is part of the committee
 	RequireCommitteeMembershipCheck bool `mapstructure:"RequireCommitteeMembershipCheck"`
 }
@@ -69,15 +69,12 @@ type LerQuerierConfig struct {
 
 // Validate checks if the configuration is valid
 func (c *Config) Validate() error {
-	if c.Mode != aggsendertypes.PessimisticProofMode.String() &&
-		c.Mode != aggsendertypes.AggchainProofMode.String() {
-		return fmt.Errorf("invalid mode %s, must be one of %s or %s",
-			c.Mode,
-			aggsendertypes.PessimisticProofMode.String(),
-			aggsendertypes.AggchainProofMode.String())
+	err := c.Mode.Validate()
+	if err != nil {
+		return fmt.Errorf("invalid mode %s, must be one of PessimisticProof, AggchainProof, Auto: %w", c.Mode, err)
 	}
 
-	if c.Mode == aggsendertypes.AggchainProofMode.String() {
+	if c.Mode == aggsendertypes.AggchainProofMode {
 		if c.FEPConfig.SovereignRollupAddr == aggkitcommon.ZeroAddress {
 			return errInvalidSovereignRollupAddr
 		}

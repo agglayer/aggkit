@@ -249,3 +249,112 @@ func TestCertificateHeader_ElapsedTimeSinceCreation(t *testing.T) {
 		require.GreaterOrEqual(t, int64(dur.Seconds()), int64(10))
 	})
 }
+
+func TestAggsenderMode_Scan(t *testing.T) {
+	tests := []struct {
+		input       interface{}
+		expected    AggsenderMode
+		expectedErr string
+	}{
+		{"PessimisticProof", AggsenderMode("PessimisticProof"), ""},
+		{"AggchainProof", AggsenderMode("AggchainProof"), ""},
+		{"Auto", AggsenderMode("Auto"), ""},
+		{"invalid", AggsenderMode(""), "unknown AggsenderMode"},
+		{123, AggsenderMode(""), "expected string, got int"}, // Non-string input
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("AggsenderMode_Scan_%v", tt.input), func(t *testing.T) {
+			var mode AggsenderMode
+			err := mode.Scan(tt.input)
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, mode)
+			}
+		})
+	}
+}
+
+func TestNewAggsenderMode(t *testing.T) {
+	tests := []struct {
+		input       string
+		expected    AggsenderMode
+		expectedErr string
+	}{
+		{"PessimisticProof", PessimisticProofMode, ""},
+		{"pessimisticproof", PessimisticProofMode, ""},
+		{"AggchainProof", AggchainProofMode, ""},
+		{"aggchainproof", AggchainProofMode, ""},
+		{"Auto", AutoMode, ""},
+		{"auto", AutoMode, ""},
+		{"invalid", "", "unknown AggsenderMode"},
+		{"", "", "unknown AggsenderMode"},
+	}
+
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("NewAggsenderMode_%s", tt.input), func(t *testing.T) {
+			result, err := NewAggsenderMode(tt.input)
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestAggsenderMode_Validate(t *testing.T) {
+	tests := []struct {
+		name    string
+		mode    func() *AggsenderMode
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "NilAggsenderMode",
+			mode:    func() *AggsenderMode { return nil },
+			wantErr: true,
+			errMsg:  "AggsenderMode is nil",
+		},
+		{
+			name: "ValidPessimisticProofMode",
+			mode: func() *AggsenderMode {
+				m := PessimisticProofMode
+				return &m
+			},
+			wantErr: false,
+		},
+		{
+			name: "ValidAggchainProofMode",
+			mode: func() *AggsenderMode {
+				m := AggchainProofMode
+				return &m
+			},
+			wantErr: false,
+		},
+		{
+			name: "ValidAutoMode",
+			mode: func() *AggsenderMode {
+				m := AutoMode
+				return &m
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mode := tt.mode()
+			err := mode.Validate()
+			if tt.wantErr {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tt.errMsg)
+			} else {
+				require.NoError(t, err)
+			}
+		})
+	}
+}

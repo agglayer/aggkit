@@ -34,7 +34,7 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "success with PessimisticProofMode",
 			cfg: config.Config{
-				Mode:                string(types.PessimisticProofMode),
+				Mode:                types.PessimisticProofMode,
 				AggsenderPrivateKey: signertypes.SignerConfig{Method: signertypes.MethodNone},
 				MaxCertSize:         100,
 				AggkitProverClient:  aggkitgrpc.DefaultConfig(),
@@ -49,7 +49,7 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "error getting multisig committee when RequireCommitteeMembershipCheck is true",
 			cfg: config.Config{
-				Mode:                            string(types.PessimisticProofMode),
+				Mode:                            types.PessimisticProofMode,
 				AggsenderPrivateKey:             signertypes.SignerConfig{Method: signertypes.MethodNone},
 				MaxCertSize:                     100,
 				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
@@ -63,7 +63,7 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "error getting multisig committee when RequireCommitteeMembershipCheck is false",
 			cfg: config.Config{
-				Mode:                            string(types.PessimisticProofMode),
+				Mode:                            types.PessimisticProofMode,
 				AggsenderPrivateKey:             signertypes.SignerConfig{Method: signertypes.MethodNone},
 				MaxCertSize:                     100,
 				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
@@ -76,7 +76,7 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "committee membership check disabled with PessimisticProofMode",
 			cfg: config.Config{
-				Mode:                            string(types.PessimisticProofMode),
+				Mode:                            types.PessimisticProofMode,
 				AggsenderPrivateKey:             signertypes.SignerConfig{Method: signertypes.MethodNone},
 				MaxCertSize:                     100,
 				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
@@ -97,7 +97,7 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "not member of committee",
 			cfg: config.Config{
-				Mode:                            string(types.PessimisticProofMode),
+				Mode:                            types.PessimisticProofMode,
 				AggsenderPrivateKey:             signertypes.SignerConfig{Method: signertypes.MethodNone},
 				MaxCertSize:                     100,
 				AggkitProverClient:              aggkitgrpc.DefaultConfig(),
@@ -119,7 +119,7 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "error creating signer in PessimisticProofMode",
 			cfg: config.Config{
-				Mode: string(types.PessimisticProofMode),
+				Mode: types.PessimisticProofMode,
 				AggsenderPrivateKey: signertypes.SignerConfig{
 					Method: signertypes.MethodLocal,
 				},
@@ -137,7 +137,7 @@ func TestNewFlow(t *testing.T) {
 		{
 			name: "error optimistic mode fetching aggchain signers in AggchainProofMode",
 			cfg: config.Config{
-				Mode:                string(types.AggchainProofMode),
+				Mode:                types.AggchainProofMode,
 				AggsenderPrivateKey: keyConfig,
 				AggkitProverClient: &aggkitgrpc.ClientConfig{
 					URL:               "http://127.0.0.1",

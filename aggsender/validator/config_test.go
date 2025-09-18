@@ -23,7 +23,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Valid PessimisticProof mode",
 			config: Config{
-				Mode: aggsendertypes.PessimisticProofMode.String(),
+				Mode: aggsendertypes.PessimisticProofMode,
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL:               "http://localhost:9090",
 					MinConnectTimeout: types.NewDuration(5 * time.Second),
@@ -33,7 +33,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Valid AggchainProof mode",
 			config: Config{
-				Mode: aggsendertypes.AggchainProofMode.String(),
+				Mode: aggsendertypes.AggchainProofMode,
 				FEPConfig: FEPConfig{
 					SovereignRollupAddr: common.HexToAddress("0x1"),
 				},
@@ -46,7 +46,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Invalid AggchainProof mode",
 			config: Config{
-				Mode: aggsendertypes.AggchainProofMode.String(),
+				Mode: aggsendertypes.AggchainProofMode,
 				FEPConfig: FEPConfig{
 					SovereignRollupAddr: common.HexToAddress("0x0"), // Zero address
 				},
@@ -82,7 +82,7 @@ func TestValidatorConfigValidate(t *testing.T) {
 		{
 			name: "Invalid AgglayerClient configuration",
 			config: Config{
-				Mode: aggsendertypes.PessimisticProofMode.String(),
+				Mode: aggsendertypes.PessimisticProofMode,
 				AgglayerClient: agglayer.ClientConfig{GRPC: &grpc.ClientConfig{
 					URL: "",
 				}},

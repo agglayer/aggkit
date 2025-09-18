@@ -72,6 +72,16 @@ func New(
 	rollupDataQuerier types.RollupDataQuerier,
 	committeeQuerier types.MultisigQuerier,
 ) (*AggSender, error) {
+	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
+	if err != nil {
+		return nil, err
+	}
+	// Override configuration with the resolved mode
+	if cfg.Mode != mode {
+		log.Infof("aggsender mode from %s to %s", cfg.Mode, mode)
+		cfg.Mode = mode
+	}
+
 	storageConfig := db.AggSenderSQLStorageConfig{
 		DBPath:                  cfg.StoragePath,
 		CertificatesDir:         cfg.CertificatesDir,
@@ -99,6 +109,7 @@ func New(
 	}
 
 	logger.Infof("Aggsender Config: %s.", cfg.String())
+
 	l2OriginNetwork := l2Syncer.OriginNetwork()
 
 	compatibilityStoragedChecker := compatibility.NewCompatibilityCheck(
@@ -109,7 +120,7 @@ func New(
 		compatibility.NewKeyValueToCompatibilityStorage[db.RuntimeData](storage, aggkitcommon.AGGSENDER),
 	)
 
-	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, types.AggsenderMode(cfg.Mode),
+	aggchainFEPCaller, err := query.NewAggchainFEPQuerier(logger, mode,
 		cfg.SovereignRollupAddr, l1Client)
 	if err != nil {
 		return nil, fmt.Errorf("error creating aggchain FEP caller: %w", err)

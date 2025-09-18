@@ -7,6 +7,7 @@ import (
 
 	"github.com/0xPolygon/cdk-contracts-tooling/contracts/fep/aggchain-ecdsa-multisig/aggchainbase"
 	"github.com/agglayer/aggkit/aggsender/mocks"
+	"github.com/agglayer/aggkit/aggsender/types"
 	typesmocks "github.com/agglayer/aggkit/types/mocks"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/stretchr/testify/mock"
@@ -92,9 +93,9 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 			}
 
 			q := &BaseMultisigCommitteeQuery{
-				sovereignRollupAddrSC: mockSC,
-				sovereignRollupAddr:   common.Address{},
-				overrideURL:           tc.overrideURL,
+				sovereignRollupSC:   mockSC,
+				sovereignRollupAddr: common.Address{},
+				overrideURL:         tc.overrideURL,
 			}
 
 			blockNum := big.NewInt(100)
@@ -229,6 +230,142 @@ func Test_NewBaseMultisigCommitteeQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, query)
 		require.Equal(t, rollupAddr, query.sovereignRollupAddr)
-		require.NotNil(t, query.sovereignRollupAddrSC)
+		require.NotNil(t, query.sovereignRollupSC)
 	})
+}
+
+func Test_ContractMode(t *testing.T) {
+	type testCase struct {
+		name                string
+		consensusTypeReturn uint32
+		consensusTypeErr    error
+		aggchainTypeReturn  [2]byte
+		aggchainTypeErr     error
+		expectedMode        types.AggsenderMode
+		expectedErr         string // if "" no error
+	}
+	errGeneric := errors.New("some error")
+	testCases := []testCase{
+		{
+			name:                "error CONSENSUSTYPE",
+			consensusTypeReturn: 0,
+			expectedErr:         "consensus type must be 1 always",
+		},
+		{
+			name:             "error getting CONSENSUSTYPE",
+			consensusTypeErr: errGeneric,
+			expectedErr:      "failed to get consensus type",
+		},
+		{
+			name:                "error getting AGGCHAINTYPE",
+			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
+			aggchainTypeErr:     errGeneric,
+			expectedErr:         "failed to get aggchain type",
+		},
+		{
+			name:                "return PessimisticProofMode",
+			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
+			aggchainTypeReturn:  aggchainECDSAMultisig,
+			expectedMode:        types.PessimisticProofMode,
+		},
+		{
+			name:                "return AggchainProofMode",
+			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
+			aggchainTypeReturn:  aggchainFEP,
+			expectedMode:        types.AggchainProofMode,
+		},
+		{
+			name:                "unknown AGGCHAINTYPE",
+			consensusTypeReturn: consensusTypeMultiECDSAAndSP1,
+			aggchainTypeReturn:  [2]byte{0xFF, 0xFF},
+			expectedErr:         "unsupported aggchain type",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSC := new(mocks.MultisigContract)
+			sut := &BaseMultisigCommitteeQuery{
+				sovereignRollupSC:   mockSC,
+				sovereignRollupAddr: common.Address{},
+			}
+			mockSC.EXPECT().CONSENSUSTYPE(mock.Anything).
+				Return(tc.consensusTypeReturn, tc.consensusTypeErr).Maybe()
+			mockSC.EXPECT().AGGCHAINTYPE(mock.Anything).
+				Return(tc.aggchainTypeReturn, tc.aggchainTypeErr).Maybe()
+
+			mode, err := sut.ContractMode()
+			if tc.expectedErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedMode, mode)
+			}
+			mockSC.AssertExpectations(t)
+		})
+	}
+}
+
+func Test_ResolveAutoMode(t *testing.T) {
+	type testCase struct {
+		name               string
+		aggchainTypeReturn [2]byte
+		aggchainTypeErr    error
+		cfgMode            types.AggsenderMode
+		expectedMode       types.AggsenderMode
+		expectedErr        string // if "" no error
+	}
+	errGeneric := errors.New("some error")
+	testCases := []testCase{
+
+		{
+			name:            "error getting ContractMode",
+			aggchainTypeErr: errGeneric,
+			cfgMode:         types.AutoMode,
+			expectedErr:     "aggsender mode is AUTO, but can't get contract mode",
+		},
+		{
+			name:            "dont ask for ContractMode due cfg is not AUTO",
+			aggchainTypeErr: errGeneric,
+			cfgMode:         types.AggchainProofMode,
+			expectedMode:    types.AggchainProofMode,
+		},
+		{
+			name:               "return PessimisticProofMode",
+			aggchainTypeReturn: aggchainECDSAMultisig,
+			cfgMode:            types.AutoMode,
+			expectedMode:       types.PessimisticProofMode,
+		},
+		{
+			name:               "return AggchainProofMode",
+			aggchainTypeReturn: aggchainFEP,
+			cfgMode:            types.AutoMode,
+			expectedMode:       types.AggchainProofMode,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			mockSC := new(mocks.MultisigContract)
+			sut := &BaseMultisigCommitteeQuery{
+				sovereignRollupSC:   mockSC,
+				sovereignRollupAddr: common.Address{},
+			}
+			mockSC.EXPECT().CONSENSUSTYPE(mock.Anything).
+				Return(consensusTypeMultiECDSAAndSP1, nil).Maybe()
+			mockSC.EXPECT().AGGCHAINTYPE(mock.Anything).
+				Return(tc.aggchainTypeReturn, tc.aggchainTypeErr).Maybe()
+
+			mode, err := sut.ResolveAutoMode(tc.cfgMode)
+			if tc.expectedErr != "" {
+				require.Error(t, err)
+				require.Contains(t, err.Error(), tc.expectedErr)
+			} else {
+				require.NoError(t, err)
+				require.Equal(t, tc.expectedMode, mode)
+			}
+			mockSC.AssertExpectations(t)
+		})
+	}
 }

@@ -221,6 +221,16 @@ func createAggSenderValidator(ctx context.Context,
 	rollupDataQuerier *etherman.RollupDataQuerier,
 	committeeQuerier aggsendertypes.MultisigQuerier,
 ) (*aggsender.AggsenderValidator, error) {
+	mode, err := committeeQuerier.ResolveAutoMode(cfg.Mode)
+	if err != nil {
+		return nil, err
+	}
+	// Override configuration with the resolved mode
+	if cfg.Mode != mode {
+		log.Infof("aggsenderValidator mode from %s to %s", cfg.Mode, mode)
+		cfg.Mode = mode
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid aggsender validator config: %w", err)
 	}
@@ -237,7 +247,7 @@ func createAggSenderValidator(ctx context.Context,
 	)
 
 	switch cfg.Mode {
-	case aggsendertypes.PessimisticProofMode.String():
+	case aggsendertypes.PessimisticProofMode:
 		commonFlowComponents, err = flows.CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
@@ -260,7 +270,7 @@ func createAggSenderValidator(ctx context.Context,
 			cfg.PPConfig.RequireOneBridgeInPPCertificate,
 			cfg.MaxL2BlockNumber,
 		)
-	case aggsendertypes.AggchainProofMode.String():
+	case aggsendertypes.AggchainProofMode:
 		commonFlowComponents, err = flows.CreateCommonFlowComponents(
 			ctx, logger,
 			nil, // storage is not used in validator,
@@ -299,7 +309,7 @@ func createAggSenderValidator(ctx context.Context,
 
 	aggchainFEPQuerier, err := query.NewAggchainFEPQuerier(
 		logger,
-		aggsendertypes.AggsenderMode(cfg.Mode),
+		cfg.Mode,
 		cfg.FEPConfig.SovereignRollupAddr,
 		l1Client,
 	)

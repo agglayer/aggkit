@@ -3,6 +3,7 @@ package types
 import (
 	"database/sql/driver"
 	"fmt"
+	"strings"
 	"time"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -21,7 +22,44 @@ type AggsenderMode string
 const (
 	PessimisticProofMode AggsenderMode = "PessimisticProof"
 	AggchainProofMode    AggsenderMode = "AggchainProof"
+	AutoMode             AggsenderMode = "Auto"
 )
+
+// meddler support for store as string
+func (c *AggsenderMode) Scan(value interface{}) error {
+	str, ok := value.(string)
+	if !ok {
+		return fmt.Errorf("AggsenderMode: expected string, got %T", value)
+	}
+	v, err := NewAggsenderMode(str)
+	if err != nil {
+		return fmt.Errorf("AggsenderMode.Scan(...): %w", err)
+	}
+	*c = v
+	return nil
+}
+
+func (c *AggsenderMode) Validate() error {
+	if c == nil {
+		return fmt.Errorf("AggsenderMode is nil")
+	}
+	_, err := NewAggsenderMode(c.String())
+	return err
+}
+
+func NewAggsenderMode(mode string) (AggsenderMode, error) {
+	modeUpper := strings.ToUpper(mode)
+	switch modeUpper {
+	case strings.ToUpper(PessimisticProofMode.String()):
+		return PessimisticProofMode, nil
+	case strings.ToUpper(AggchainProofMode.String()):
+		return AggchainProofMode, nil
+	case strings.ToUpper(AutoMode.String()):
+		return AutoMode, nil
+	default:
+		return "", fmt.Errorf("unknown AggsenderMode: %s", mode)
+	}
+}
 
 func (m AggsenderMode) String() string {
 	return string(m)
