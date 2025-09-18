@@ -13,6 +13,23 @@ import (
 	"github.com/invopop/jsonschema"
 )
 
+const (
+	SafeBlockName      = "SafeBlock"
+	FinalizedBlockName = "FinalizedBlock"
+	LatestBlockName    = "LatestBlock"
+	PendingBlockName   = "PendingBlock"
+	EmptyBlockName     = ""
+
+	blockNameAndOffsetSeparator = "/"
+)
+
+var (
+	FinalizedBlock = BlockNumberFinality{Block: Finalized}
+	LatestBlock    = BlockNumberFinality{Block: Latest}
+	SafeBlock      = BlockNumberFinality{Block: Safe}
+	PendingBlock   = BlockNumberFinality{Block: Pending}
+)
+
 // BlockNumberFinality represents a block finality with an optional offset
 type BlockNumberFinality struct {
 	Block  BlockNumber
@@ -44,23 +61,6 @@ func NewBlockNumberFinality(s string) (BlockNumberFinality, error) {
 	}
 	return result, nil
 }
-
-const (
-	SafeBlockName      = "SafeBlock"
-	FinalizedBlockName = "FinalizedBlock"
-	LatestBlockName    = "LatestBlock"
-	PendingBlockName   = "PendingBlock"
-	EmptyBlockName     = ""
-
-	blockNameAndOffsetSeparator = "/"
-)
-
-var (
-	FinalizedBlock = BlockNumberFinality{Block: Finalized}
-	LatestBlock    = BlockNumberFinality{Block: Latest}
-	SafeBlock      = BlockNumberFinality{Block: Safe}
-	PendingBlock   = BlockNumberFinality{Block: Pending}
-)
 
 // String returns the string representation of the BlockNumberFinality
 func (b *BlockNumberFinality) String() string {
