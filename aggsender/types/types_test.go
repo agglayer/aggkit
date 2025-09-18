@@ -249,6 +249,7 @@ func TestCertificateHeader_ElapsedTimeSinceCreation(t *testing.T) {
 		require.GreaterOrEqual(t, int64(dur.Seconds()), int64(10))
 	})
 }
+
 func TestAggsenderMode_Scan(t *testing.T) {
 	tests := []struct {
 		input       interface{}
@@ -275,6 +276,7 @@ func TestAggsenderMode_Scan(t *testing.T) {
 		})
 	}
 }
+
 func TestNewAggsenderMode(t *testing.T) {
 	tests := []struct {
 		input       string
@@ -303,6 +305,7 @@ func TestNewAggsenderMode(t *testing.T) {
 		})
 	}
 }
+
 func TestAggsenderMode_Validate(t *testing.T) {
 	tests := []struct {
 		name    string
