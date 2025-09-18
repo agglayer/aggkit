@@ -1,7 +1,6 @@
 package validator
 
 import (
-	"bytes"
 	"fmt"
 
 	agglayertypes "github.com/agglayer/aggkit/agglayer/types"
@@ -37,11 +36,6 @@ func DiffsCertificate(
 	if validatingCertificate.NewLocalExitRoot != expectedCertificate.NewLocalExitRoot {
 		diffs = append(diffs, fmt.Sprintf("NewLocalExitRoot mismatch. Expected: %s, Certificate: %s",
 			expectedCertificate.NewLocalExitRoot.Hex(), validatingCertificate.NewLocalExitRoot.Hex()))
-	}
-
-	if !bytes.Equal(validatingCertificate.CustomChainData, expectedCertificate.CustomChainData) {
-		diffs = append(diffs, fmt.Sprintf("CustomChainData mismatch. Expected: %x, Certificate: %x",
-			expectedCertificate.CustomChainData, validatingCertificate.CustomChainData))
 	}
 
 	if validatingCertificate.L1InfoTreeLeafCount != expectedCertificate.L1InfoTreeLeafCount {
