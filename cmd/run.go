@@ -45,6 +45,12 @@ import (
 )
 
 func start(cliCtx *cli.Context) error {
+	// Validate components first before loading configuration
+	components := cliCtx.StringSlice(config.FlagComponents)
+	if err := aggkitcommon.ValidateComponents(components); err != nil {
+		return err
+	}
+
 	cfg, err := config.Load(cliCtx)
 	if err != nil {
 		return err
@@ -71,7 +77,6 @@ func start(cliCtx *cli.Context) error {
 	if cfg.Prometheus.Enabled {
 		prometheus.Init()
 	}
-	components := cliCtx.StringSlice(config.FlagComponents)
 	l1Client := runL1ClientIfNeeded(cliCtx.Context, components, cfg.L1NetworkConfig.RPC)
 	l2Client := runL2ClientIfNeeded(cliCtx.Context, components, cfg.Common.L2RPC)
 

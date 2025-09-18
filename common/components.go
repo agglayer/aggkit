@@ -1,5 +1,7 @@
 package common
 
+import "fmt"
+
 const (
 	// AGGORACLE name to identify the aggoracle component
 	AGGORACLE = "aggoracle"
@@ -22,3 +24,37 @@ const (
 	// AGGSENDERVALIDATOR runs aggsender certificate validator
 	AGGSENDERVALIDATOR = "aggsender-validator"
 )
+
+// ValidateComponents validates that all provided components are known/supported
+func ValidateComponents(components []string) error {
+	validComponents := map[string]bool{
+		AGGORACLE:          true,
+		BRIDGE:             true,
+		PROVER:             true,
+		AGGSENDER:          true,
+		L1INFOTREESYNC:     true,
+		L2BRIDGESYNC:       true,
+		L1BRIDGESYNC:       true,
+		L2GERSYNC:          true,
+		AGGCHAINPROOFGEN:   true,
+		AGGSENDERVALIDATOR: true,
+	}
+
+	for _, component := range components {
+		if !validComponents[component] {
+			return fmt.Errorf("unknown component: %s. Valid components are: %s, %s, %s, %s, %s, %s, %s, %s, %s",
+				component,
+				AGGORACLE,
+				BRIDGE,
+				AGGSENDER,
+				AGGCHAINPROOFGEN,
+				AGGSENDERVALIDATOR,
+				L1INFOTREESYNC,
+				L2BRIDGESYNC,
+				L1BRIDGESYNC,
+				L2GERSYNC)
+		}
+	}
+
+	return nil
+}
