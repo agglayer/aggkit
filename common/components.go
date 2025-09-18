@@ -1,6 +1,10 @@
 package common
 
-import "fmt"
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
 
 const (
 	// AGGORACLE name to identify the aggoracle component
@@ -25,34 +29,33 @@ const (
 	AGGSENDERVALIDATOR = "aggsender-validator"
 )
 
-// ValidateComponents validates that all provided components are known/supported
+// ValidateComponents validates that all provided components are known/supported.
 func ValidateComponents(components []string) error {
-	validComponents := map[string]bool{
-		AGGORACLE:          true,
-		BRIDGE:             true,
-		PROVER:             true,
-		AGGSENDER:          true,
-		L1INFOTREESYNC:     true,
-		L2BRIDGESYNC:       true,
-		L1BRIDGESYNC:       true,
-		L2GERSYNC:          true,
-		AGGCHAINPROOFGEN:   true,
-		AGGSENDERVALIDATOR: true,
+	validComponents := map[string]struct{}{
+		AGGORACLE:          {},
+		BRIDGE:             {},
+		PROVER:             {},
+		AGGSENDER:          {},
+		L1INFOTREESYNC:     {},
+		L2BRIDGESYNC:       {},
+		L1BRIDGESYNC:       {},
+		L2GERSYNC:          {},
+		AGGCHAINPROOFGEN:   {},
+		AGGSENDERVALIDATOR: {},
 	}
 
+	// build a sorted list of valid component names for error messages
+	keys := make([]string, 0, len(validComponents))
+	for k := range validComponents {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys) // ensures deterministic ordering
+	validList := strings.Join(keys, ", ")
+
 	for _, component := range components {
-		if !validComponents[component] {
-			return fmt.Errorf("unknown component: %s. Valid components are: %s, %s, %s, %s, %s, %s, %s, %s, %s",
-				component,
-				AGGORACLE,
-				BRIDGE,
-				AGGSENDER,
-				AGGCHAINPROOFGEN,
-				AGGSENDERVALIDATOR,
-				L1INFOTREESYNC,
-				L2BRIDGESYNC,
-				L1BRIDGESYNC,
-				L2GERSYNC)
+		if _, ok := validComponents[component]; !ok {
+			return fmt.Errorf("unknown component: %s. Valid components are: %s",
+				component, validList)
 		}
 	}
 
