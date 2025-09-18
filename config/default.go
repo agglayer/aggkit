@@ -120,6 +120,7 @@ EnableAggOracleCommittee = false
 				ReadPendingL1Txs = false
 				SafeStatusL1NumberOfBlocks = 5
 				FinalizedStatusL1NumberOfBlocks = 10
+				EstimateGasMaxRetries = 1
 					[AggOracle.EVMSender.EthTxManager.Etherman]
 						URL = "{{L2URL}}"
 						MultiGasProvider = false
@@ -179,6 +180,7 @@ RequireStorageContentCompatibility = {{RequireStorageContentCompatibility}}
 
 [AggSender]
 StoragePath = "{{PathRWData}}/aggsender.sqlite"
+CertificatesDir = "{{PathRWData}}/certificates/"
 AggsenderPrivateKey = {{AggsenderPrivateKey}}
 EpochNotificationPercentage = 50
 MaxRetriesStoreCertificate = 3
@@ -208,6 +210,11 @@ RequireValidatorCall = false
 		MaxRetries = 6 # 1+6 attempts, around 22m
 	[AggSender.AgglayerClient]
 		Cached = false
+		[[AggSender.AgglayerClient.APIRateLimits]]
+			MethodName = "SendCertificate"
+			[AggSender.AgglayerClient.APIRateLimits.RateLimit]
+				NumRequests = 20
+				Interval = "1h"
 		[AggSender.AgglayerClient.ConfigurationCache]
 			TTL = "5m"
 			Capacity = 100
@@ -226,9 +233,6 @@ RequireValidatorCall = false
 		MinConnectTimeout = "5s"
 		RequestTimeout = "{{GenerateAggchainProofTimeout}}"
 		UseTLS = false
-	[AggSender.MaxSubmitCertificateRate]
-		NumRequests = 20
-		Interval = "1h"
 	[AggSender.OptimisticModeConfig]
 		SovereignRollupAddr = "{{AggSender.SovereignRollupAddr}}"
 		# By default use the same key that aggsender signs certs

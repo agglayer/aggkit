@@ -7,6 +7,7 @@ import (
 	"math/big"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -31,6 +32,7 @@ func Test_StorageExploratory(t *testing.T) {
 	}
 	cfg := AggSenderSQLStorageConfig{
 		DBPath:                  path,
+		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
@@ -51,6 +53,7 @@ func Test_Storage(t *testing.T) {
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
 		DBPath:                  path,
+		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 
@@ -362,6 +365,7 @@ func Test_SaveLastSentCertificate(t *testing.T) {
 	log.Debugf("sqlite path: %s", path)
 	cfg := AggSenderSQLStorageConfig{
 		DBPath:                  path,
+		CertificatesDir:         filepath.Join(filepath.Dir(path), "certificates"),
 		KeepCertificatesHistory: true,
 	}
 
@@ -619,7 +623,7 @@ func Test_StorageAggchainProof(t *testing.T) {
 		DBPath:                  dbPath,
 		KeepCertificatesHistory: true,
 	}
-	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	storage, err := NewAggSenderSQLStorage(log.WithFields("module", "aggsender-db"), cfg)
 	require.NoError(t, err)
 	require.NotNil(t, storage)
 
@@ -782,6 +786,19 @@ func Test_GetLastSentCertificateHeaderWithProofIfInError(t *testing.T) {
 	})
 }
 
+func Test_SaveNonAcceptedCertificate_Nil(t *testing.T) {
+	path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
+	log.Debugf("sqlite path: %s", path)
+	cfg := AggSenderSQLStorageConfig{
+		DBPath:          path,
+		CertificatesDir: filepath.Join(filepath.Dir(path), "certificates"),
+	}
+	storage, err := NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+	require.NoError(t, err)
+	err = storage.SaveNonAcceptedCertificate(context.Background(), nil)
+	require.ErrorContains(t, err, "param nonAcceptedCert is nil")
+}
+
 func Test_SaveNonAcceptedCertificate(t *testing.T) {
 	ctx := context.Background()
 
@@ -809,11 +826,12 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 	createdAt := uint32(time.Now().UTC().UnixMilli())
 
 	testCases := []struct {
-		name          string
-		mockDBFn      func()
-		certificates  []*agglayertypes.Certificate
-		certError     string
-		expectedError string
+		name                string
+		mockDBFn            func()
+		certificates        []*agglayertypes.Certificate
+		OverrideFileContent bool
+		certError           string
+		expectedError       string
 	}{
 		{
 			name: "SaveNonAcceptedCertificate_Success_PP_Certificate",
@@ -893,7 +911,26 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 			},
 			certError: "yet another error occurred",
 		},
-
+		{
+			name: "SaveNonAcceptedCertificate_Mismatch_file_on_disk",
+			certificates: []*agglayertypes.Certificate{
+				{
+					Height:              11,
+					PrevLocalExitRoot:   common.HexToHash("0x11"),
+					NewLocalExitRoot:    common.HexToHash("0x22"),
+					Metadata:            common.HexToHash("0x33"),
+					NetworkID:           2,
+					BridgeExits:         bridgeExits,
+					ImportedBridgeExits: importedBridgeExits,
+					L1InfoTreeLeafCount: 12,
+					AggchainData: &agglayertypes.AggchainDataSignature{
+						Signature: common.Hex2Bytes("0x1234567890abcdef"),
+					},
+				},
+			},
+			certError:           "yet another error occurred",
+			OverrideFileContent: true,
+		},
 		{
 			name:         "SaveNonAcceptedCertificate_CommitAndRollbackFails",
 			certificates: []*agglayertypes.Certificate{{}},
@@ -902,9 +939,9 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 				newTxer = func(_ context.Context, _ dbtypes.DBer) (dbtypes.Txer, error) {
 					return txnMock, nil
 				}
-				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil)
-				txnMock.EXPECT().Commit().Return(errors.New("failed to commit tx"))
-				txnMock.EXPECT().Rollback().Return(errors.New("failed to rollback tx"))
+				txnMock.EXPECT().Exec(mock.Anything, aggkitcommon.AGGSENDER, nonAcceptedCertKey, mock.Anything, mock.Anything).Return(nil, nil).Once()
+				txnMock.EXPECT().Commit().Return(errors.New("failed to commit tx")).Once()
+				txnMock.EXPECT().Rollback().Return(errors.New("failed to rollback tx")).Once()
 			},
 			expectedError: "failed to commit tx",
 		},
@@ -917,12 +954,13 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 				err     error
 			)
 
-			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate.sqlite")
+			path := path.Join(t.TempDir(), "aggsenderTest_SaveNonAcceptedCertificate"+tc.name+".sqlite")
 			log.Debugf("sqlite path: %s", path)
 			cfg := AggSenderSQLStorageConfig{
-				DBPath: path,
+				DBPath:          path,
+				CertificatesDir: filepath.Join(filepath.Dir(path), "certificates"),
 			}
-			storage, err = NewAggSenderSQLStorage(log.WithFields("aggsender-db"), cfg)
+			storage, err = NewAggSenderSQLStorage(log.WithFields("module", "aggsender-db"), cfg)
 			require.NoError(t, err)
 
 			if tc.mockDBFn != nil {
@@ -939,19 +977,29 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 					require.NoError(t, err, "should save non-accepted certificate without error")
 				}
 			}
+			if tc.OverrideFileContent {
+				// Override the content of the last saved certificate file to simulate file read error
+				certFilePath := filepath.Join(cfg.CertificatesDir, nonAcceptedCertFilename)
+				err = os.WriteFile(certFilePath, []byte("invalid json"), 0o644)
+				require.NoError(t, err, "should override certificate file content without error")
+			}
 
 			if tc.expectedError == "" {
 				nonAcceptedCert, err := storage.GetNonAcceptedCertificate()
-				require.NoError(t, err, "should retrieve one non-accepted certificate from DB even though multiple were saved")
+				if tc.OverrideFileContent {
+					require.ErrorContains(t, err, "certificate hash mismatch")
+				} else {
+					require.NoError(t, err, "should retrieve one non-accepted certificate from DB even though multiple were saved")
 
-				var certificate agglayertypes.Certificate
-				if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificate); err != nil {
-					t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+					var certificate agglayertypes.Certificate
+					if err = json.Unmarshal([]byte(nonAcceptedCert.SignedCertificate), &certificate); err != nil {
+						t.Fatalf("error unmarshalling non-accepted certificate: %v", err)
+					}
+
+					require.Equal(t, tc.certificates[len(tc.certificates)-1], &certificate, "last saved certificate should match the one retrieved from DB")
+					require.Equal(t, tc.certError, nonAcceptedCert.Error, "error message should match the expected error")
+					require.Equal(t, createdAt, nonAcceptedCert.CreatedAt, "created at timestamp should match the expected value")
 				}
-
-				require.Equal(t, tc.certificates[len(tc.certificates)-1], &certificate, "last saved certificate should match the one retrieved from DB")
-				require.Equal(t, tc.certError, nonAcceptedCert.Error, "error message should match the expected error")
-				require.Equal(t, createdAt, nonAcceptedCert.CreatedAt, "created at timestamp should match the expected value")
 			}
 		})
 	}
@@ -960,7 +1008,8 @@ func Test_SaveNonAcceptedCertificate(t *testing.T) {
 func Test_GetNonAcceptedCert(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath: dbPath,
+		DBPath:          dbPath,
+		CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
 	}
 
 	newTxer = db.NewTx
@@ -1002,7 +1051,8 @@ func Test_GetNonAcceptedCert(t *testing.T) {
 func TestSaveOrUpdateCertificate(t *testing.T) {
 	dbPath := path.Join(t.TempDir(), "Test_GetNonAcceptedCert.sqlite")
 	cfg := AggSenderSQLStorageConfig{
-		DBPath: dbPath,
+		DBPath:          dbPath,
+		CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
 	}
 
 	newTxer = db.NewTx
@@ -1231,7 +1281,8 @@ func Test_deleteCertificate(t *testing.T) {
 		t.Helper()
 		dbPath := path.Join(t.TempDir(), testName+".sqlite")
 		cfg := AggSenderSQLStorageConfig{
-			DBPath: dbPath,
+			DBPath:          dbPath,
+			CertificatesDir: filepath.Join(filepath.Dir(dbPath), "certificates"),
 		}
 		storage, err := NewAggSenderSQLStorage(logger, cfg)
 		require.NoError(t, err)
