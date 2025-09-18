@@ -68,9 +68,9 @@ func (b *BlockNumberFinality) String() string {
 		return "nil"
 	}
 	if b.Offset == 0 {
-		return b.Block.ToString()
+		return b.Block.String()
 	}
-	return fmt.Sprintf("%s%s%d", b.Block.ToString(), blockNameAndOffsetSeparator, b.Offset)
+	return fmt.Sprintf("%s%s%d", b.Block.String(), blockNameAndOffsetSeparator, b.Offset)
 }
 
 // UnmarshalText unmarshalls BlockNumberFinality from text.
@@ -188,7 +188,7 @@ func (b BlockNumber) ApplyOffset(blockNumber uint64, offset int64) uint64 {
 	return blockNumber
 }
 
-func (b BlockNumber) ToString() string {
+func (b BlockNumber) String() string {
 	switch b {
 	case Finalized:
 		return FinalizedBlockName
