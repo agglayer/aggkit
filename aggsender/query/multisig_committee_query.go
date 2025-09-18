@@ -19,10 +19,12 @@ var (
 	aggchainFEP                                  = [2]byte{0, 1}
 )
 
+const consensusTypeMultiECDSAAndSP1 = uint32(1)
+
 type BaseMultisigCommitteeQuery struct {
-	sovereignRollupAddrSC types.MultisigContract
-	sovereignRollupAddr   common.Address
-	overrideURL           *CommitteeOverride
+	sovereignRollupSC   types.MultisigContract
+	sovereignRollupAddr common.Address
+	overrideURL         *CommitteeOverride
 }
 
 // CommitteeOverride is used to override the URLs of the committee members
@@ -66,9 +68,9 @@ func NewBaseMultisigCommitteeQuery(sovereignRollupAddr common.Address,
 	}
 
 	return &BaseMultisigCommitteeQuery{
-		sovereignRollupAddrSC: sovereignRollupAddrSC,
-		sovereignRollupAddr:   sovereignRollupAddr,
-		overrideURL:           overrideURL,
+		sovereignRollupSC:   sovereignRollupAddrSC,
+		sovereignRollupAddr: sovereignRollupAddr,
+		overrideURL:         overrideURL,
 	}, nil
 }
 
@@ -76,13 +78,13 @@ func NewBaseMultisigCommitteeQuery(sovereignRollupAddr common.Address,
 func (m *BaseMultisigCommitteeQuery) GetMultisigCommittee(
 	ctx context.Context, blockNum *big.Int) (*types.MultisigCommittee, error) {
 	callOpts := &bind.CallOpts{Pending: false, BlockNumber: blockNum}
-	threshold, err := m.sovereignRollupAddrSC.Threshold(callOpts)
+	threshold, err := m.sovereignRollupSC.Threshold(callOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query the signatures threshold for block %d (rollupAddr %s): %w",
 			blockNum, m.sovereignRollupAddr.String(), err)
 	}
 
-	aggChainSigners, err := m.sovereignRollupAddrSC.GetAggchainSignerInfos(callOpts)
+	aggChainSigners, err := m.sovereignRollupSC.GetAggchainSignerInfos(callOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query the committee signers for block %d (rollupAddr %s): %w",
 			blockNum, m.sovereignRollupAddr.String(), err)
@@ -105,24 +107,25 @@ func (m *BaseMultisigCommitteeQuery) ContractMode() (types.AggsenderMode, error)
 	if m == nil {
 		return none, fmt.Errorf("object is nil")
 	}
-	consensusType, err := m.sovereignRollupAddrSC.CONSENSUSTYPE(&bind.CallOpts{})
+	consensusType, err := m.sovereignRollupSC.CONSENSUSTYPE(&bind.CallOpts{})
 	if err != nil {
 		return none, fmt.Errorf("failed to get consensus type from contract: %w", err)
 	}
-	if consensusType != 1 {
+	if consensusType != consensusTypeMultiECDSAAndSP1 {
 		return none, fmt.Errorf("consensus type must be 1 always: %d", consensusType)
 	}
-	aggchainType, err := m.sovereignRollupAddrSC.AGGCHAINTYPE(&bind.CallOpts{})
+	aggchainType, err := m.sovereignRollupSC.AGGCHAINTYPE(&bind.CallOpts{})
 	if err != nil {
 		return none, fmt.Errorf("failed to get aggchain type from contract: %w", err)
 	}
-	if aggchainType == aggchainECDSAMultisig {
+	switch aggchainType {
+	case aggchainECDSAMultisig:
 		return types.PessimisticProofMode, nil
-	}
-	if aggchainType == aggchainFEP {
+	case aggchainFEP:
 		return types.AggchainProofMode, nil
+	default:
+		return none, fmt.Errorf("unsupported aggchain type: %v", aggchainType)
 	}
-	return none, fmt.Errorf("unsupported aggchain type: %v", aggchainType)
 }
 
 func (m *BaseMultisigCommitteeQuery) ResolveAutoMode(cfgMode types.AggsenderMode) (types.AggsenderMode, error) {

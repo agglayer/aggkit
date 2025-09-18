@@ -251,23 +251,23 @@ func TestCertificateHeader_ElapsedTimeSinceCreation(t *testing.T) {
 }
 func TestAggsenderMode_Scan(t *testing.T) {
 	tests := []struct {
-		input    interface{}
-		expected AggsenderMode
-		hasError bool
+		input       interface{}
+		expected    AggsenderMode
+		expectedErr string
 	}{
-		{"PessimisticProof", AggsenderMode("PessimisticProof"), false},
-		{"AggchainProof", AggsenderMode("AggchainProof"), false},
-		{"Auto", AggsenderMode("Auto"), false},
-		{"invalid", AggsenderMode(""), true},
-		{123, AggsenderMode(""), true}, // Non-string input
+		{"PessimisticProof", AggsenderMode("PessimisticProof"), ""},
+		{"AggchainProof", AggsenderMode("AggchainProof"), ""},
+		{"Auto", AggsenderMode("Auto"), ""},
+		{"invalid", AggsenderMode(""), "unknown AggsenderMode"},
+		{123, AggsenderMode(""), "expected string, got int"}, // Non-string input
 	}
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("AggsenderMode_Scan_%v", tt.input), func(t *testing.T) {
 			var mode AggsenderMode
 			err := mode.Scan(tt.input)
-			if tt.hasError {
-				require.Error(t, err)
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expected, mode)
@@ -277,25 +277,25 @@ func TestAggsenderMode_Scan(t *testing.T) {
 }
 func TestNewAggsenderMode(t *testing.T) {
 	tests := []struct {
-		input    string
-		expected AggsenderMode
-		hasError bool
+		input       string
+		expected    AggsenderMode
+		expectedErr string
 	}{
-		{"PessimisticProof", PessimisticProofMode, false},
-		{"pessimisticproof", PessimisticProofMode, false},
-		{"AggchainProof", AggchainProofMode, false},
-		{"aggchainproof", AggchainProofMode, false},
-		{"Auto", AutoMode, false},
-		{"auto", AutoMode, false},
-		{"invalid", "", true},
-		{"", "", true},
+		{"PessimisticProof", PessimisticProofMode, ""},
+		{"pessimisticproof", PessimisticProofMode, ""},
+		{"AggchainProof", AggchainProofMode, ""},
+		{"aggchainproof", AggchainProofMode, ""},
+		{"Auto", AutoMode, ""},
+		{"auto", AutoMode, ""},
+		{"invalid", "", "unknown AggsenderMode"},
+		{"", "", "unknown AggsenderMode"},
 	}
 
 	for _, tt := range tests {
 		t.Run(fmt.Sprintf("NewAggsenderMode_%s", tt.input), func(t *testing.T) {
 			result, err := NewAggsenderMode(tt.input)
-			if tt.hasError {
-				require.Error(t, err)
+			if tt.expectedErr != "" {
+				require.ErrorContains(t, err, tt.expectedErr)
 			} else {
 				require.NoError(t, err)
 				require.Equal(t, tt.expected, result)

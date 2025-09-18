@@ -93,9 +93,9 @@ func Test_ECDSAMultisigCommitteeQuery_GetMultisigCommittee(t *testing.T) {
 			}
 
 			q := &BaseMultisigCommitteeQuery{
-				sovereignRollupAddrSC: mockSC,
-				sovereignRollupAddr:   common.Address{},
-				overrideURL:           tc.overrideURL,
+				sovereignRollupSC:   mockSC,
+				sovereignRollupAddr: common.Address{},
+				overrideURL:         tc.overrideURL,
 			}
 
 			blockNum := big.NewInt(100)
@@ -230,7 +230,7 @@ func Test_NewBaseMultisigCommitteeQuery(t *testing.T) {
 		require.NoError(t, err)
 		require.NotNil(t, query)
 		require.Equal(t, rollupAddr, query.sovereignRollupAddr)
-		require.NotNil(t, query.sovereignRollupAddrSC)
+		require.NotNil(t, query.sovereignRollupSC)
 	})
 }
 
@@ -285,8 +285,8 @@ func Test_ContractMode(t *testing.T) {
 	for _, tc := range testCases {
 		mockSC := new(mocks.MultisigContract)
 		sut := &BaseMultisigCommitteeQuery{
-			sovereignRollupAddrSC: mockSC,
-			sovereignRollupAddr:   common.Address{},
+			sovereignRollupSC:   mockSC,
+			sovereignRollupAddr: common.Address{},
 		}
 		mockSC.EXPECT().CONSENSUSTYPE(mock.Anything).
 			Return(tc.consensusTypeReturn, tc.consensusTypeErr).Maybe()
