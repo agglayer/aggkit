@@ -10,6 +10,7 @@ import (
 	"time"
 
 	mocksbridgesync "github.com/agglayer/aggkit/bridgesync/mocks"
+	cfgtypes "github.com/agglayer/aggkit/config/types"
 	"github.com/agglayer/aggkit/log"
 	"github.com/agglayer/aggkit/reorgdetector"
 	"github.com/agglayer/aggkit/sync"
@@ -56,21 +57,25 @@ func TestNewLx(t *testing.T) {
 
 	dbQueryTimeout := 30 * time.Second
 
+	bridgeSyncL1Cfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: true,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
 	l1BridgeSync, err := NewL1(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
+		bridgeSyncL1Cfg,
 		blockFinalityType,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		true,
-		dbQueryTimeout,
 	)
 
 	require.NoError(t, err)
@@ -78,22 +83,25 @@ func TestNewLx(t *testing.T) {
 	require.Equal(t, originNetwork, l1BridgeSync.OriginNetwork())
 	require.Equal(t, blockFinalityType, l1BridgeSync.BlockFinality())
 
+	bridgeSyncL2Cfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.SafeBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: true,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
 	l2BridgdeSync, err := NewL2(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		bridgeSyncL2Cfg,
 		mockReorgDetector,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		true,
-		dbQueryTimeout,
 	)
 
 	require.NoError(t, err)
@@ -105,26 +113,18 @@ func TestNewLx(t *testing.T) {
 	mockEthClient = mocksethclient.NewEthClienter(t)
 	mockEthClient.EXPECT().CallContract(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
 	mockEthClient.EXPECT().CodeAt(mock.Anything, mock.Anything, mock.Anything).Return(nil, nil).Once()
-	l2BridgdeSyncErr, err := NewL2(
+
+	l2BridgeSyncer, err := NewL2(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		bridgeSyncL2Cfg,
 		mockReorgDetector,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		true,
-		dbQueryTimeout,
 	)
 	t.Log(err)
 	require.Error(t, err)
-	require.Nil(t, l2BridgdeSyncErr)
+	require.Nil(t, l2BridgeSyncer)
 }
 
 func TestGetLastProcessedBlock(t *testing.T) {
@@ -216,22 +216,25 @@ func TestBridgeSync_GetTokenMappings(t *testing.T) {
 
 	dbQueryTimeout := 30 * time.Second
 
+	bridgeSyncCfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: false,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
 	s, err := NewL2(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		bridgeSyncCfg,
 		mockReorgDetector,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		false,
-		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 
@@ -374,22 +377,25 @@ func TestBridgeSync_GetLegacyTokenMigrations(t *testing.T) {
 
 	dbQueryTimeout := 30 * time.Second
 
+	bridgeSyncCfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: false,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
 	s, err := NewL2(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		bridgeSyncCfg,
 		mockReorgDetector,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		false,
-		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 
@@ -558,22 +564,25 @@ func TestBridgeSync_GetLastRoot(t *testing.T) {
 
 	dbQueryTimeout := 30 * time.Second
 
+	bridgeSyncCfg := Config{
+		DBPath:                             dbPath,
+		BridgeAddr:                         bridge,
+		BlockFinality:                      aggkittypes.LatestBlock,
+		SyncBlockChunkSize:                 syncBlockChunkSize,
+		InitialBlockNum:                    initialBlock,
+		WaitForNewBlocksPeriod:             cfgtypes.NewDuration(waitForNewBlocksPeriod),
+		RetryAfterErrorPeriod:              cfgtypes.NewDuration(retryAfterErrorPeriod),
+		MaxRetryAttemptsAfterError:         maxRetryAttemptsAfterError,
+		RequireStorageContentCompatibility: false,
+		DBQueryTimeout:                     cfgtypes.NewDuration(dbQueryTimeout),
+	}
 	s, err := NewL2(
 		ctx,
-		dbPath,
-		bridge,
-		syncBlockChunkSize,
-		blockFinalityType,
+		bridgeSyncCfg,
 		mockReorgDetector,
 		mockEthClient,
-		initialBlock,
-		waitForNewBlocksPeriod,
-		retryAfterErrorPeriod,
-		maxRetryAttemptsAfterError,
 		originNetwork,
 		false,
-		false,
-		dbQueryTimeout,
 	)
 	require.NoError(t, err)
 

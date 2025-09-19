@@ -624,19 +624,11 @@ func runBridgeSyncL1IfNeeded(
 
 	bridgeSyncL1, err := bridgesync.NewL1(
 		ctx,
-		cfg.DBPath,
-		cfg.BridgeAddr,
-		cfg.SyncBlockChunkSize,
+		cfg,
 		aggkittypes.FinalizedBlock,
 		l1Client,
-		cfg.InitialBlockNum,
-		cfg.WaitForNewBlocksPeriod.Duration,
-		cfg.RetryAfterErrorPeriod.Duration,
-		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		true,
-		cfg.RequireStorageContentCompatibility,
-		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL1: %s", err)
@@ -665,20 +657,11 @@ func runBridgeSyncL2IfNeeded(
 
 	bridgeSyncL2, err := bridgesync.NewL2(
 		ctx,
-		cfg.DBPath,
-		cfg.BridgeAddr,
-		cfg.SyncBlockChunkSize,
-		cfg.BlockFinality,
+		cfg,
 		reorgDetectorL2,
 		l2Client,
-		cfg.InitialBlockNum,
-		cfg.WaitForNewBlocksPeriod.Duration,
-		cfg.RetryAfterErrorPeriod.Duration,
-		cfg.MaxRetryAttemptsAfterError,
 		rollupID,
 		true,
-		cfg.RequireStorageContentCompatibility,
-		cfg.DBQueryTimeout.Duration,
 	)
 	if err != nil {
 		log.Fatalf("error creating bridgeSyncL2: %s", err)
