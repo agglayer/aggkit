@@ -56,8 +56,8 @@ func TestRateLimitSleepTime(t *testing.T) {
 	elapsed := time.Since(start)
 	require.Nil(t, sleepTime)
 	// The call should have slept for approximately 5 seconds
-	require.True(t, elapsed >= time.Second*1, "Expected to sleep for at least 1 seconds (1min- 59sec), but slept for %v", elapsed)
-	require.True(t, elapsed <= time.Second*2, "Expected to sleep for at most 1  seconds (error margin of 1sec), but slept for %v", elapsed)
+	require.True(t, elapsed >= time.Second*1, "Expected to sleep for at least 1 seconds (1minute - 59 seconds), but slept for %v", elapsed)
+	require.True(t, elapsed <= time.Second*2, "Expected to sleep for at most 2 seconds (error margin of 1 second), but slept for %v", elapsed)
 }
 
 func TestRateLimitDisabled(t *testing.T) {
